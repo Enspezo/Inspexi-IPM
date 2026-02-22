@@ -8,7 +8,14 @@ const pageTitles: Record<string, string> = {
   '/users': 'Gebruikers',
   '/organization/settings': 'Organisatie-instellingen',
   '/profile': 'Profiel',
+  '/contacts': 'Relaties',
 };
+
+function getPageTitle(pathname: string): string {
+  if (pageTitles[pathname]) return pageTitles[pathname];
+  if (pathname.match(/^\/contacts\/[^/]+$/)) return 'Relatie detail';
+  return 'InspeXi Beheer';
+}
 
 export function Header() {
   const { user, logout } = useAuth();
@@ -16,7 +23,7 @@ export function Header() {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  const pageTitle = pageTitles[location.pathname] || 'InspeXi Beheer';
+  const pageTitle = getPageTitle(location.pathname);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {

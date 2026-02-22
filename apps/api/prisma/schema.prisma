@@ -18,6 +18,18 @@ enum Role {
   INSPECTEUR
 }
 
+enum ContactType {
+  COMPANY
+  INDIVIDUAL
+}
+
+enum LogType {
+  EMAIL
+  PHONE
+  MEETING
+  NOTE
+}
+
 // ─── PRD-01: Foundation Models ───────────────────────────
 
 model Organization {
@@ -32,6 +44,8 @@ model Organization {
 
   users       User[]
   invitations Invitation[]
+  contacts    Contact[]
+  locations   Location[]
 
   @@map("imp_organizations")
 }
@@ -50,6 +64,8 @@ model User {
 
   organization  Organization?  @relation(fields: [orgId], references: [id])
   refreshTokens RefreshToken[]
+  contactLogs   ContactLog[]
+  contactEmails ContactEmail[]
 
   @@map("imp_users")
 }
@@ -79,4 +95,101 @@ model Invitation {
   organization Organization @relation(fields: [orgId], references: [id])
 
   @@map("imp_invitations")
+}
+
+// ─── PRD-02: CRM Models ────────────────────────────────
+
+model Contact {
+  id           String      @id @default(uuid()) @db.Uuid
+  orgId        String      @map("org_id") @db.Uuid
+  type         ContactType
+  companyName  String?     @map("company_name")
+  firstName    String?     @map("first_name")
+  lastName     String?     @map("last_name")
+  email        String?
+  phone        String?
+  website      String?
+  vatNumber    String?     @map("vat_number")
+  cocNumber    String?     @map("coc_number")
+  notes        String?
+  priceTableId String?     @map("price_table_id") @db.Uuid
+  isDeleted    Boolean     @default(false) @map("is_deleted")
+  createdAt    DateTime    @default(now()) @map("created_at")
+
+  organization Organization     @relation(fields: [orgId], references: [id])
+  addresses    ContactAddress[]
+  locations    Location[]
+  logs         ContactLog[]
+  emails       ContactEmail[]
+
+  @@map("imp_contacts")
+}
+
+model ContactAddress {
+  id          String  @id @default(uuid()) @db.Uuid
+  contactId   String  @map("contact_id") @db.Uuid
+  label       String
+  street      String
+  houseNumber String  @map("house_number")
+  postalCode  String  @map("postal_code")
+  city        String
+  country     String  @default("NL")
+  isPrimary   Boolean @default(false) @map("is_primary")
+
+  contact Contact @relation(fields: [contactId], references: [id])
+
+  @@map("imp_contact_addresses")
+}
+
+model Location {
+  id          String   @id @default(uuid()) @db.Uuid
+  contactId   String   @map("contact_id") @db.Uuid
+  orgId       String   @map("org_id") @db.Uuid
+  name        String
+  street      String
+  houseNumber String   @map("house_number")
+  postalCode  String   @map("postal_code")
+  city        String
+  objectType  String?  @map("object_type")
+  notes       String?
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  contact      Contact      @relation(fields: [contactId], references: [id])
+  organization Organization @relation(fields: [orgId], references: [id])
+
+  @@map("imp_locations")
+}
+
+model ContactLog {
+  id        String   @id @default(uuid()) @db.Uuid
+  contactId String   @map("contact_id") @db.Uuid
+  orgId     String   @map("org_id") @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  type      LogType
+  subject   String?
+  body      String?
+  loggedAt  DateTime @default(now()) @map("logged_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  contact Contact @relation(fields: [contactId], references: [id])
+  user    User    @relation(fields: [userId], references: [id])
+
+  @@map("imp_contact_logs")
+}
+
+model ContactEmail {
+  id       String    @id @default(uuid()) @db.Uuid
+  contactId String   @map("contact_id") @db.Uuid
+  orgId    String    @map("org_id") @db.Uuid
+  userId   String    @map("user_id") @db.Uuid
+  resendId String?   @map("resend_id")
+  subject  String
+  bodyHtml String    @map("body_html")
+  sentAt   DateTime  @default(now()) @map("sent_at")
+  openedAt DateTime? @map("opened_at")
+
+  contact Contact @relation(fields: [contactId], references: [id])
+  user    User    @relation(fields: [userId], references: [id])
+
+  @@map("imp_contact_emails")
 }

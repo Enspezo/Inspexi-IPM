@@ -15,6 +15,10 @@ const OrganizationSettingsPage = lazy(
   () => import('@/pages/organization/organization-settings-page'),
 );
 const ProfilePage = lazy(() => import('@/pages/profile/profile-page'));
+const ContactsPage = lazy(() => import('@/pages/contacts/contacts-page'));
+const ContactDetailPage = lazy(
+  () => import('@/pages/contacts/contact-detail-page'),
+);
 
 function PageLoader() {
   return (
@@ -45,6 +49,8 @@ export default function App() {
               element={<OrganizationSettingsPage />}
             />
             <Route path="/profile" element={<ProfilePage />} />
+            <Route path="/contacts" element={<ContactsPage />} />
+            <Route path="/contacts/:id" element={<ContactDetailPage />} />
           </Route>
         </Route>
 

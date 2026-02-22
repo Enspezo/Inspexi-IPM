@@ -81,4 +81,23 @@ export class EmailService {
       this.logger.error(`Failed to send invitation email to ${to}`, error);
     }
   }
+
+  async sendContactEmail(
+    to: string,
+    subject: string,
+    bodyHtml: string,
+  ): Promise<{ id?: string } | undefined> {
+    try {
+      const result = await this.resend.emails.send({
+        from: this.fromEmail,
+        to,
+        subject,
+        html: bodyHtml,
+      });
+      return { id: result?.data?.id };
+    } catch (error) {
+      this.logger.error(`Failed to send contact email to ${to}`, error);
+      throw error;
+    }
+  }
 }

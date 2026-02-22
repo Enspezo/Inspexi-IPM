@@ -9,6 +9,7 @@ import { EmailModule } from './common/services/email.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { OrganizationsModule } from './modules/organizations/organizations.module';
 import { UsersModule } from './modules/users/users.module';
+import { ContactsModule } from './modules/contacts/contacts.module';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { UsersModule } from './modules/users/users.module';
     AuthModule,
     OrganizationsModule,
     UsersModule,
+    ContactsModule,
   ],
   providers: [
     {

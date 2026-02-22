@@ -1,4 +1,4 @@
-import { PrismaClient, Role, ContactType, LogType } from '@prisma/client';
+import { PrismaClient, Role, ContactType, LogType, PriceType } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 
 const prisma = new PrismaClient();
@@ -7,7 +7,13 @@ async function main() {
   console.log('🌱 Seeding database...');
 
   // Clean existing imp_ data (safe for shared DB — only deletes our tables)
-  // CRM tables first (dependent on contacts)
+  // PRD-04 tables first (dependent on products/price-tables)
+  await prisma.priceTier.deleteMany();
+  await prisma.priceTableItem.deleteMany();
+  await prisma.contactPriceTable.deleteMany();
+  await prisma.priceTable.deleteMany();
+  await prisma.product.deleteMany();
+  // CRM tables (dependent on contacts)
   await prisma.contactEmail.deleteMany();
   await prisma.contactLog.deleteMany();
   await prisma.location.deleteMany();
@@ -384,6 +390,143 @@ async function main() {
   });
 
   console.log('    → 1 adres, 1 locatie');
+
+  // ─── PRD-04: Products & Price Tables ─────────────────
+  console.log('\n📦 Seeding Products & Price Tables...');
+
+  // --- Org 1: Products ---
+  const products1 = await Promise.all([
+    prisma.product.create({
+      data: { orgId: org1.id, name: 'NEN1010 Inspectie', unit: 'uur', category: 'inspectie', description: 'Elektrische inspectie conform NEN1010 norm' },
+    }),
+    prisma.product.create({
+      data: { orgId: org1.id, name: 'NEN3140 Inspectie', unit: 'uur', category: 'inspectie', description: 'Periodieke inspectie elektrische arbeidsmiddelen' },
+    }),
+    prisma.product.create({
+      data: { orgId: org1.id, name: 'Thermografisch onderzoek', unit: 'traject', category: 'inspectie', description: 'Warmtebeeldanalyse van elektrische installaties' },
+    }),
+    prisma.product.create({
+      data: { orgId: org1.id, name: 'Rapportage opstellen', unit: 'uur', category: 'administratie', description: 'Inspectie rapport en documentatie' },
+    }),
+    prisma.product.create({
+      data: { orgId: org1.id, name: 'Reiskosten', unit: 'km', category: 'overig', defaultVat: 21, description: 'Kilometervergoeding' },
+    }),
+    prisma.product.create({
+      data: { orgId: org1.id, name: 'Spoedtoeslag', unit: 'stuks', category: 'overig', description: 'Toeslag voor spoedopdrachten' },
+    }),
+  ]);
+  console.log(`  ✓ ${products1.length} producten voor ${org1.name}`);
+
+  // --- Org 1: Standaard prijstabel ---
+  const stdTable = await prisma.priceTable.create({
+    data: {
+      orgId: org1.id,
+      name: 'Standaard',
+      description: 'Standaard tarieven voor alle klanten',
+      isDefault: true,
+    },
+  });
+
+  await Promise.all([
+    prisma.priceTableItem.create({
+      data: { priceTableId: stdTable.id, productId: products1[0].id, priceType: PriceType.FIXED, basePrice: 85.00 },
+    }),
+    prisma.priceTableItem.create({
+      data: { priceTableId: stdTable.id, productId: products1[1].id, priceType: PriceType.FIXED, basePrice: 75.00 },
+    }),
+    prisma.priceTableItem.create({
+      data: { priceTableId: stdTable.id, productId: products1[2].id, priceType: PriceType.FIXED, basePrice: 495.00 },
+    }),
+    prisma.priceTableItem.create({
+      data: { priceTableId: stdTable.id, productId: products1[3].id, priceType: PriceType.FIXED, basePrice: 55.00 },
+    }),
+    prisma.priceTableItem.create({
+      data: { priceTableId: stdTable.id, productId: products1[4].id, priceType: PriceType.FIXED, basePrice: 0.25 },
+    }),
+    prisma.priceTableItem.create({
+      data: { priceTableId: stdTable.id, productId: products1[5].id, priceType: PriceType.FIXED, basePrice: 150.00 },
+    }),
+  ]);
+  console.log(`  ✓ Prijstabel: ${stdTable.name} (standaard, 6 producten)`);
+
+  // --- Org 1: VIP Klanten prijstabel ---
+  const vipTable = await prisma.priceTable.create({
+    data: {
+      orgId: org1.id,
+      name: 'VIP Klanten',
+      description: 'Gereduceerde tarieven voor vaste klanten',
+      isDefault: false,
+    },
+  });
+
+  await Promise.all([
+    prisma.priceTableItem.create({
+      data: { priceTableId: vipTable.id, productId: products1[0].id, priceType: PriceType.FIXED, basePrice: 75.00 },
+    }),
+    prisma.priceTableItem.create({
+      data: { priceTableId: vipTable.id, productId: products1[1].id, priceType: PriceType.FIXED, basePrice: 65.00 },
+    }),
+    // Thermografisch onderzoek: TIERED pricing
+    prisma.priceTableItem.create({
+      data: {
+        priceTableId: vipTable.id,
+        productId: products1[2].id,
+        priceType: PriceType.TIERED,
+        tiers: {
+          create: [
+            { fromQty: 1, toQty: 5, price: 450.00 },
+            { fromQty: 6, toQty: 10, price: 400.00 },
+            { fromQty: 11, price: 350.00 },
+          ],
+        },
+      },
+    }),
+    prisma.priceTableItem.create({
+      data: { priceTableId: vipTable.id, productId: products1[3].id, priceType: PriceType.FIXED, basePrice: 45.00 },
+    }),
+    prisma.priceTableItem.create({
+      data: { priceTableId: vipTable.id, productId: products1[4].id, priceType: PriceType.FIXED, basePrice: 0.00 },
+    }),
+    prisma.priceTableItem.create({
+      data: { priceTableId: vipTable.id, productId: products1[5].id, priceType: PriceType.FIXED, basePrice: 100.00 },
+    }),
+  ]);
+  console.log(`  ✓ Prijstabel: ${vipTable.name} (6 producten, incl. staffel)`);
+
+  // Koppel VIP tabel aan Bouwbedrijf De Vries BV
+  await prisma.contactPriceTable.create({
+    data: { contactId: contact1.id, priceTableId: vipTable.id },
+  });
+  console.log(`  ✓ Koppeling: ${contact1.companyName} → ${vipTable.name}`);
+
+  // --- Org 2: Products ---
+  const products2 = await Promise.all([
+    prisma.product.create({
+      data: { orgId: org2.id, name: 'Basisinspectie', unit: 'uur', category: 'inspectie' },
+    }),
+    prisma.product.create({
+      data: { orgId: org2.id, name: 'Uitgebreide inspectie', unit: 'dag', category: 'inspectie' },
+    }),
+  ]);
+
+  const org2Table = await prisma.priceTable.create({
+    data: {
+      orgId: org2.id,
+      name: 'Standaard',
+      description: 'Standaard tarieven',
+      isDefault: true,
+    },
+  });
+
+  await Promise.all([
+    prisma.priceTableItem.create({
+      data: { priceTableId: org2Table.id, productId: products2[0].id, priceType: PriceType.FIXED, basePrice: 65.00 },
+    }),
+    prisma.priceTableItem.create({
+      data: { priceTableId: org2Table.id, productId: products2[1].id, priceType: PriceType.FIXED, basePrice: 450.00 },
+    }),
+  ]);
+  console.log(`  ✓ ${products2.length} producten + 1 prijstabel voor ${org2.name}`);
 
   console.log('\n✅ Seed completed successfully!');
   console.log('\n📋 Login credentials (all use Password123!):');

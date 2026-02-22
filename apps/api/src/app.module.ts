@@ -10,6 +10,8 @@ import { AuthModule } from './modules/auth/auth.module';
 import { OrganizationsModule } from './modules/organizations/organizations.module';
 import { UsersModule } from './modules/users/users.module';
 import { ContactsModule } from './modules/contacts/contacts.module';
+import { ProductsModule } from './modules/products/products.module';
+import { PriceTablesModule } from './modules/price-tables/price-tables.module';
 
 @Module({
   imports: [
@@ -20,6 +22,8 @@ import { ContactsModule } from './modules/contacts/contacts.module';
     OrganizationsModule,
     UsersModule,
     ContactsModule,
+    ProductsModule,
+    PriceTablesModule,
   ],
   providers: [
     {

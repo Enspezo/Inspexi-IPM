@@ -19,6 +19,13 @@ const ContactsPage = lazy(() => import('@/pages/contacts/contacts-page'));
 const ContactDetailPage = lazy(
   () => import('@/pages/contacts/contact-detail-page'),
 );
+const ProductsPage = lazy(() => import('@/pages/products/products-page'));
+const PriceTablesPage = lazy(
+  () => import('@/pages/price-tables/price-tables-page'),
+);
+const PriceTableDetailPage = lazy(
+  () => import('@/pages/price-tables/price-table-detail-page'),
+);
 
 function PageLoader() {
   return (
@@ -51,6 +58,9 @@ export default function App() {
             <Route path="/profile" element={<ProfilePage />} />
             <Route path="/contacts" element={<ContactsPage />} />
             <Route path="/contacts/:id" element={<ContactDetailPage />} />
+            <Route path="/products" element={<ProductsPage />} />
+            <Route path="/price-tables" element={<PriceTablesPage />} />
+            <Route path="/price-tables/:id" element={<PriceTableDetailPage />} />
           </Route>
         </Route>
 

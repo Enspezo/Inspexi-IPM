@@ -142,3 +142,62 @@ export interface ContactEmail {
   openedAt: string | null;
   user?: { firstName: string; lastName: string };
 }
+
+// ─── PRD-04: Products & Price Tables Types ─────────────
+
+export enum PriceType {
+  FIXED = 'FIXED',
+  TIERED = 'TIERED',
+}
+
+export interface Product {
+  id: string;
+  orgId: string;
+  name: string;
+  description: string | null;
+  unit: string;
+  defaultVat: number;
+  category: string | null;
+  isActive: boolean;
+  createdAt: string;
+}
+
+export interface PriceTable {
+  id: string;
+  orgId: string;
+  name: string;
+  description: string | null;
+  isDefault: boolean;
+  createdAt: string;
+  items?: PriceTableItem[];
+  contactPriceTables?: { contact: ContactSummary }[];
+  _count?: { items: number };
+}
+
+export interface ContactSummary {
+  id: string;
+  type: ContactType;
+  companyName: string | null;
+  firstName: string | null;
+  lastName: string | null;
+  email: string | null;
+}
+
+export interface PriceTableItem {
+  id: string;
+  priceTableId: string;
+  productId: string;
+  priceType: PriceType;
+  basePrice: number | null;
+  createdAt: string;
+  tiers?: PriceTier[];
+  product?: Product;
+}
+
+export interface PriceTier {
+  id: string;
+  priceTableItemId: string;
+  fromQty: number;
+  toQty: number | null;
+  price: number;
+}

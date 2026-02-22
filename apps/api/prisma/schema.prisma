@@ -30,6 +30,11 @@ enum LogType {
   NOTE
 }
 
+enum PriceType {
+  FIXED
+  TIERED
+}
+
 // ─── PRD-01: Foundation Models ───────────────────────────
 
 model Organization {
@@ -46,6 +51,8 @@ model Organization {
   invitations Invitation[]
   contacts    Contact[]
   locations   Location[]
+  products    Product[]
+  priceTables PriceTable[]
 
   @@map("imp_organizations")
 }
@@ -116,11 +123,12 @@ model Contact {
   isDeleted    Boolean     @default(false) @map("is_deleted")
   createdAt    DateTime    @default(now()) @map("created_at")
 
-  organization Organization     @relation(fields: [orgId], references: [id])
-  addresses    ContactAddress[]
-  locations    Location[]
-  logs         ContactLog[]
-  emails       ContactEmail[]
+  organization       Organization        @relation(fields: [orgId], references: [id])
+  addresses          ContactAddress[]
+  locations          Location[]
+  logs               ContactLog[]
+  emails             ContactEmail[]
+  contactPriceTables ContactPriceTable[]
 
   @@map("imp_contacts")
 }
@@ -192,4 +200,76 @@ model ContactEmail {
   user    User    @relation(fields: [userId], references: [id])
 
   @@map("imp_contact_emails")
+}
+
+// ─── PRD-04: Products & Price Tables ────────────────────
+
+model Product {
+  id          String   @id @default(uuid()) @db.Uuid
+  orgId       String   @map("org_id") @db.Uuid
+  name        String
+  description String?
+  unit        String
+  defaultVat  Float    @default(21) @map("default_vat")
+  category    String?
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  organization    Organization     @relation(fields: [orgId], references: [id])
+  priceTableItems PriceTableItem[]
+
+  @@map("imp_products")
+}
+
+model PriceTable {
+  id          String   @id @default(uuid()) @db.Uuid
+  orgId       String   @map("org_id") @db.Uuid
+  name        String
+  description String?
+  isDefault   Boolean  @default(false) @map("is_default")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  organization       Organization        @relation(fields: [orgId], references: [id])
+  items              PriceTableItem[]
+  contactPriceTables ContactPriceTable[]
+
+  @@map("imp_price_tables")
+}
+
+model PriceTableItem {
+  id           String    @id @default(uuid()) @db.Uuid
+  priceTableId String    @map("price_table_id") @db.Uuid
+  productId    String    @map("product_id") @db.Uuid
+  priceType    PriceType @map("price_type")
+  basePrice    Float?    @map("base_price")
+  createdAt    DateTime  @default(now()) @map("created_at")
+
+  priceTable PriceTable @relation(fields: [priceTableId], references: [id])
+  product    Product    @relation(fields: [productId], references: [id])
+  tiers      PriceTier[]
+
+  @@map("imp_price_table_items")
+}
+
+model PriceTier {
+  id               String @id @default(uuid()) @db.Uuid
+  priceTableItemId String @map("price_table_item_id") @db.Uuid
+  fromQty          Float  @map("from_qty")
+  toQty            Float? @map("to_qty")
+  price            Float
+
+  priceTableItem PriceTableItem @relation(fields: [priceTableItemId], references: [id])
+
+  @@map("imp_price_tiers")
+}
+
+model ContactPriceTable {
+  contactId    String @map("contact_id") @db.Uuid
+  priceTableId String @map("price_table_id") @db.Uuid
+
+  contact    Contact    @relation(fields: [contactId], references: [id])
+  priceTable PriceTable @relation(fields: [priceTableId], references: [id])
+
+  @@id([contactId, priceTableId])
+  @@map("imp_contact_price_tables")
 }

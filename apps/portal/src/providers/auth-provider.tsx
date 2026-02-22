@@ -7,7 +7,7 @@ import {
   type ReactNode,
 } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { apiClient, setAccessToken } from '@/lib/api-client';
+import { apiClient, setAccessToken, setInitialized } from '@/lib/api-client';
 import type { User } from '@/types';
 
 interface AuthContextType {
@@ -55,13 +55,15 @@ export function AuthProvider({ children }: AuthProviderProps) {
         });
 
         if (response.ok) {
-          const data = await response.json();
-          setAccessToken(data.accessToken);
+          const json = await response.json();
+          const token = json.data?.accessToken ?? json.accessToken;
+          setAccessToken(token);
           await fetchUser();
         }
       } catch {
         // Not authenticated, that's fine
       } finally {
+        setInitialized();
         setIsLoading(false);
       }
     };

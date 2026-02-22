@@ -24,6 +24,13 @@ class ApiClientError extends Error {
   }
 }
 
+// Track whether we're in the initial auth check to avoid redirect loops
+let isInitializing = true;
+
+export function setInitialized(): void {
+  isInitializing = false;
+}
+
 async function refreshAccessToken(): Promise<boolean> {
   try {
     const response = await fetch(`${BASE_URL}/auth/refresh`, {
@@ -38,8 +45,8 @@ async function refreshAccessToken(): Promise<boolean> {
       return false;
     }
 
-    const data = await response.json();
-    setAccessToken(data.accessToken);
+    const json = await response.json();
+    setAccessToken(json.data?.accessToken ?? json.accessToken);
     return true;
   } catch {
     return false;
@@ -67,8 +74,16 @@ async function request<T>(
     credentials: 'include',
   });
 
-  // If 401, try refreshing the token
+  // If 401, try refreshing the token (skip for auth endpoints and during init)
   if (response.status === 401 && endpoint !== '/auth/refresh' && endpoint !== '/auth/login') {
+    if (isInitializing) {
+      // During init, just throw without redirect
+      throw new ApiClientError({
+        message: 'Niet ingelogd',
+        statusCode: 401,
+      });
+    }
+
     const refreshed = await refreshAccessToken();
     if (refreshed) {
       headers['Authorization'] = `Bearer ${accessToken}`;
@@ -100,7 +115,12 @@ async function request<T>(
     return undefined as T;
   }
 
-  return response.json();
+  // Unwrap { success, data } API response format
+  const json = await response.json();
+  if (json && typeof json === 'object' && 'success' in json && 'data' in json) {
+    return json.data as T;
+  }
+  return json as T;
 }
 
 export const apiClient = {

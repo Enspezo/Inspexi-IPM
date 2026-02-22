@@ -1,0 +1,84 @@
+import { Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { Resend } from 'resend';
+
+@Injectable()
+export class EmailService {
+  private readonly logger = new Logger(EmailService.name);
+  private resend: Resend;
+  private fromEmail: string;
+
+  constructor(private config: ConfigService) {
+    this.resend = new Resend(this.config.get<string>('RESEND_API_KEY'));
+    this.fromEmail = this.config.get<string>(
+      'RESEND_FROM_EMAIL',
+      'noreply@inspexi.nl',
+    );
+  }
+
+  async sendPasswordReset(to: string, resetUrl: string): Promise<void> {
+    try {
+      await this.resend.emails.send({
+        from: this.fromEmail,
+        to,
+        subject: 'Wachtwoord resetten — InspeXi Beheer',
+        html: `
+          <h2>Wachtwoord resetten</h2>
+          <p>Je hebt een verzoek ingediend om je wachtwoord te resetten.</p>
+          <p><a href="${resetUrl}" style="background: #1E40AF; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px;">Wachtwoord resetten</a></p>
+          <p>Deze link is 1 uur geldig.</p>
+          <p>Als je dit verzoek niet hebt gedaan, kun je deze email negeren.</p>
+        `,
+      });
+    } catch (error) {
+      this.logger.error(`Failed to send password reset email to ${to}`, error);
+    }
+  }
+
+  async sendEmailVerification(
+    to: string,
+    verifyUrl: string,
+  ): Promise<void> {
+    try {
+      await this.resend.emails.send({
+        from: this.fromEmail,
+        to,
+        subject: 'E-mailadres bevestigen — InspeXi Beheer',
+        html: `
+          <h2>E-mailadres bevestigen</h2>
+          <p>Klik op de onderstaande knop om je e-mailadres te bevestigen.</p>
+          <p><a href="${verifyUrl}" style="background: #1E40AF; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px;">E-mail bevestigen</a></p>
+          <p>Deze link is 24 uur geldig.</p>
+        `,
+      });
+    } catch (error) {
+      this.logger.error(
+        `Failed to send email verification to ${to}`,
+        error,
+      );
+    }
+  }
+
+  async sendInvitation(
+    to: string,
+    inviteUrl: string,
+    orgName: string,
+    role: string,
+  ): Promise<void> {
+    try {
+      await this.resend.emails.send({
+        from: this.fromEmail,
+        to,
+        subject: `Uitnodiging voor ${orgName} — InspeXi Beheer`,
+        html: `
+          <h2>Je bent uitgenodigd!</h2>
+          <p>Je bent uitgenodigd om deel te nemen aan <strong>${orgName}</strong> als <strong>${role}</strong>.</p>
+          <p><a href="${inviteUrl}" style="background: #1E40AF; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px;">Uitnodiging accepteren</a></p>
+          <p>Deze uitnodiging is 7 dagen geldig.</p>
+        `,
+      });
+    } catch (error) {
+      this.logger.error(`Failed to send invitation email to ${to}`, error);
+    }
+  }
+}

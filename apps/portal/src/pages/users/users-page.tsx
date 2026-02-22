@@ -1,0 +1,212 @@
+import { useState, useRef, useEffect } from 'react';
+import type { User } from '@/types';
+import {
+  Button,
+  Table,
+  Badge,
+  Spinner,
+  useToast,
+  type Column,
+} from '@/components/ui';
+import { useUsers, useDeactivateUser, useActivateUser } from './hooks/use-users';
+import { InviteUserModal } from './components/invite-user-modal';
+import { ChangeRoleModal } from './components/change-role-modal';
+
+export default function UsersPage() {
+  const { data: users, isLoading, error } = useUsers();
+  const deactivateMutation = useDeactivateUser();
+  const activateMutation = useActivateUser();
+  const { showToast } = useToast();
+
+  const [isInviteOpen, setIsInviteOpen] = useState(false);
+  const [changeRoleUser, setChangeRoleUser] = useState<User | null>(null);
+  const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClick = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setOpenDropdownId(null);
+      }
+    };
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, []);
+
+  const handleDeactivate = async (userId: string) => {
+    try {
+      await deactivateMutation.mutateAsync(userId);
+      showToast('Gebruiker gedeactiveerd', 'success');
+    } catch {
+      showToast('Deactiveren mislukt', 'error');
+    }
+    setOpenDropdownId(null);
+  };
+
+  const handleActivate = async (userId: string) => {
+    try {
+      await activateMutation.mutateAsync(userId);
+      showToast('Gebruiker geactiveerd', 'success');
+    } catch {
+      showToast('Activeren mislukt', 'error');
+    }
+    setOpenDropdownId(null);
+  };
+
+  const columns: Column<User>[] = [
+    {
+      key: 'name',
+      header: 'Naam',
+      render: (user) => (
+        <div>
+          <p className="font-medium text-gray-900">
+            {user.firstName} {user.lastName}
+          </p>
+        </div>
+      ),
+    },
+    {
+      key: 'email',
+      header: 'E-mail',
+      render: (user) => (
+        <span className="text-gray-600">{user.email}</span>
+      ),
+    },
+    {
+      key: 'role',
+      header: 'Rol',
+      render: (user) => <Badge role={user.role} />,
+    },
+    {
+      key: 'status',
+      header: 'Status',
+      render: (user) => (
+        <span
+          className={`inline-flex items-center gap-1.5 text-sm ${
+            user.isActive ? 'text-green-700' : 'text-gray-500'
+          }`}
+        >
+          <span
+            className={`h-2 w-2 rounded-full ${
+              user.isActive ? 'bg-green-500' : 'bg-gray-300'
+            }`}
+          />
+          {user.isActive ? 'Actief' : 'Inactief'}
+        </span>
+      ),
+    },
+    {
+      key: 'actions',
+      header: 'Acties',
+      className: 'text-right',
+      render: (user) => (
+        <div className="relative flex justify-end" ref={openDropdownId === user.id ? dropdownRef : undefined}>
+          <button
+            onClick={() =>
+              setOpenDropdownId(openDropdownId === user.id ? null : user.id)
+            }
+            className="rounded-lg p-1.5 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600"
+          >
+            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
+            </svg>
+          </button>
+
+          {openDropdownId === user.id && (
+            <div
+              className="absolute right-0 top-full z-10 mt-1 w-48 rounded-lg border border-gray-200 bg-white py-1 shadow-lg"
+              style={{ animation: 'fade-in 0.1s ease-out' }}
+            >
+              <button
+                onClick={() => {
+                  setChangeRoleUser(user);
+                  setOpenDropdownId(null);
+                }}
+                className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50"
+              >
+                <svg className="h-4 w-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                </svg>
+                Rol wijzigen
+              </button>
+              {user.isActive ? (
+                <button
+                  onClick={() => handleDeactivate(user.id)}
+                  className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-red-600 hover:bg-red-50"
+                >
+                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+                  </svg>
+                  Deactiveren
+                </button>
+              ) : (
+                <button
+                  onClick={() => handleActivate(user.id)}
+                  className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-green-600 hover:bg-green-50"
+                >
+                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  Activeren
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      ),
+    },
+  ];
+
+  if (isLoading) {
+    return (
+      <div className="flex h-64 items-center justify-center">
+        <Spinner size="lg" />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="rounded-lg bg-danger-50 p-4 text-sm text-danger-600">
+        Fout bij het laden van gebruikers: {error.message}
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-2xl font-bold text-gray-900">Gebruikers</h2>
+          <p className="mt-1 text-sm text-gray-500">
+            Beheer de gebruikers van uw organisatie
+          </p>
+        </div>
+        <Button onClick={() => setIsInviteOpen(true)}>
+          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+          </svg>
+          Uitnodigen
+        </Button>
+      </div>
+
+      <Table
+        columns={columns}
+        data={users || []}
+        keyExtractor={(user) => user.id}
+        emptyMessage="Geen gebruikers gevonden"
+      />
+
+      <InviteUserModal
+        isOpen={isInviteOpen}
+        onClose={() => setIsInviteOpen(false)}
+      />
+
+      <ChangeRoleModal
+        isOpen={!!changeRoleUser}
+        onClose={() => setChangeRoleUser(null)}
+        user={changeRoleUser}
+      />
+    </div>
+  );
+}

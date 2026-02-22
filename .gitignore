@@ -1,8 +1,38 @@
-# Nestjs specific
-/dist
-/node_modules
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+.next/
 /build
 /tmp
+
+# Environment
+.env
+.env.local
+.env.*.local
+.env.development
+.env.test
+.env.production
+
+# Turbo
+.turbo/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test
+coverage/
+
+# Prisma
+.prisma/
 
 # Logs
 logs
@@ -12,12 +42,6 @@ pnpm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 lerna-debug.log*
-
-# dotenv environment variable files
-.env
-.env.development
-.env.test
-.env.production
 
 # temp directory
 .temp

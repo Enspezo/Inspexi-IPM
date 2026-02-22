@@ -1,0 +1,48 @@
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import {
+  IsString,
+  MinLength,
+  Matches,
+  IsOptional,
+  IsNumber,
+  Min,
+  Max,
+  IsInt,
+} from 'class-validator';
+
+export class CreateOrganizationDto {
+  @ApiProperty({ example: 'InspeXi Demo' })
+  @IsString()
+  @MinLength(2)
+  name: string;
+
+  @ApiProperty({ example: 'inspexi-demo' })
+  @IsString()
+  @Matches(/^[a-z0-9-]+$/, {
+    message: 'Slug mag alleen kleine letters, cijfers en streepjes bevatten',
+  })
+  slug: string;
+
+  @ApiPropertyOptional({ example: 'https://example.com/logo.png' })
+  @IsOptional()
+  @IsString()
+  logoUrl?: string;
+
+  @ApiPropertyOptional({ example: '#1E40AF' })
+  @IsOptional()
+  @IsString()
+  primaryColor?: string;
+
+  @ApiPropertyOptional({ example: 21 })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(100)
+  defaultVat?: number;
+
+  @ApiPropertyOptional({ example: 30 })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  defaultValidityDays?: number;
+}

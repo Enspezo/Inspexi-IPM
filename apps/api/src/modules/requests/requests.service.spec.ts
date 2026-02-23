@@ -12,6 +12,7 @@ import {
 } from '@prisma/client';
 import { RequestsService } from './requests.service';
 import { PrismaService } from '@/prisma';
+import { QuotesService } from '../quotes/quotes.service';
 
 describe('RequestsService', () => {
   let service: RequestsService;
@@ -173,6 +174,10 @@ describe('RequestsService', () => {
       providers: [
         RequestsService,
         { provide: PrismaService, useValue: mockPrismaService },
+        {
+          provide: QuotesService,
+          useValue: { createFromRequest: jest.fn() },
+        },
       ],
     }).compile();
 

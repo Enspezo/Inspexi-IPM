@@ -104,14 +104,15 @@ export class RequestsController {
   }
 
   @Post(':id/quote')
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER)
-  @ApiOperation({ summary: 'Offerte aanmaken vanuit aanvraag (stub)' })
-  @ApiResponse({ status: 501, description: 'Nog niet geïmplementeerd' })
+  @Roles(Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE)
+  @ApiOperation({ summary: 'Offerte aanmaken vanuit aanvraag' })
+  @ApiResponse({ status: 201, description: 'Offerte aangemaakt' })
   async createQuote(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: User,
   ) {
-    return this.requestsService.createQuote(id, user);
+    const quote = await this.requestsService.createQuote(id, user);
+    return { success: true, data: quote };
   }
 
   @Delete(':id')

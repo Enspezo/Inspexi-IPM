@@ -2,7 +2,6 @@ import {
   Injectable,
   NotFoundException,
   ForbiddenException,
-  NotImplementedException,
 } from '@nestjs/common';
 import { User, Role, Prisma, RequestStatus } from '@prisma/client';
 import { PrismaService } from '@/prisma';
@@ -12,10 +11,14 @@ import {
   UpdateRequestStatusDto,
   ListRequestsQueryDto,
 } from './dto';
+import { QuotesService } from '../quotes/quotes.service';
 
 @Injectable()
 export class RequestsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private quotesService: QuotesService,
+  ) {}
 
   async findAll(user: User, query: ListRequestsQueryDto) {
     const { search, status, priority, assignedTo, page = 1, limit = 20 } = query;
@@ -164,7 +167,7 @@ export class RequestsService {
   }
 
   async create(dto: CreateRequestDto, user: User) {
-    const orgId = user.orgId;
+    let orgId = user.orgId;
     if (!orgId && user.role !== Role.SUPERUSER) {
       throw new ForbiddenException('Geen organisatie gekoppeld');
     }
@@ -176,6 +179,11 @@ export class RequestsService {
 
     if (!contact || contact.isDeleted) {
       throw new NotFoundException('Relatie niet gevonden');
+    }
+
+    // For SUPERUSER (no orgId), derive orgId from the contact
+    if (!orgId && user.role === Role.SUPERUSER) {
+      orgId = contact.orgId;
     }
 
     if (user.role !== Role.SUPERUSER && contact.orgId !== orgId) {
@@ -284,9 +292,9 @@ export class RequestsService {
     });
   }
 
-  async createQuote(_id: string, _user: User) {
-    throw new NotImplementedException(
-      'Offertes (PRD-05) nog niet geïmplementeerd',
-    );
+  async createQuote(id: string, user: User) {
+    // Verify request exists and user has access
+    await this.findOne(id, user);
+    return this.quotesService.createFromRequest(id, user);
   }
 }

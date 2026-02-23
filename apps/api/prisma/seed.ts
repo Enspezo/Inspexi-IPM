@@ -1,4 +1,4 @@
-import { PrismaClient, Role, ContactType, LogType, PriceType, RequestSource, RequestStatus, Priority } from '@prisma/client';
+import { PrismaClient, Role, ContactType, LogType, PriceType, RequestSource, RequestStatus, Priority, QuoteStatus } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 
 const prisma = new PrismaClient();
@@ -7,7 +7,12 @@ async function main() {
   console.log('🌱 Seeding database...');
 
   // Clean existing imp_ data (safe for shared DB — only deletes our tables)
-  // PRD-04 tables first (dependent on products/price-tables)
+  // PRD-05 tables first (dependent on quotes → products/contacts)
+  await prisma.quoteApprovalRequest.deleteMany();
+  await prisma.quoteLine.deleteMany();
+  await prisma.quote.deleteMany();
+  await prisma.quoteTemplate.deleteMany();
+  // PRD-04 tables (dependent on products/price-tables)
   await prisma.priceTier.deleteMany();
   await prisma.priceTableItem.deleteMany();
   await prisma.contactPriceTable.deleteMany();
@@ -715,6 +720,202 @@ async function main() {
     },
   });
   console.log(`  ✓ Aanvraag: ${req5.title} (NIEUW, org2)`);
+
+  // ─── PRD-05: Quote Templates ─────────────────────────
+  console.log('\n📄 Seeding Quote Templates...');
+
+  const template1 = await prisma.quoteTemplate.create({
+    data: {
+      orgId: org1.id,
+      name: 'Standaard Inspectie Offerte',
+      coverBlocks: [
+        { type: 'heading', content: 'Offerte Inspectie' },
+        { type: 'text', content: 'Hierbij ontvangt u onze offerte voor de gevraagde inspectie.' },
+      ],
+      contentBlocks: [
+        { type: 'heading', content: 'Werkzaamheden' },
+        { type: 'text', content: 'De volgende werkzaamheden zijn opgenomen in deze offerte:' },
+      ],
+      closingBlocks: [
+        { type: 'text', content: 'Wij vertrouwen erop u hiermee een passend aanbod te hebben gedaan.' },
+        { type: 'text', content: 'Met vriendelijke groet,\nInspeXi Demo' },
+      ],
+      defaultValidityDays: 30,
+      requiresApproval: false,
+    },
+  });
+  console.log(`  ✓ Template: ${template1.name}`);
+
+  const template2 = await prisma.quoteTemplate.create({
+    data: {
+      orgId: org1.id,
+      name: 'Groot Project Offerte (goedkeuring vereist)',
+      coverBlocks: [{ type: 'heading', content: 'Projectofferte' }],
+      contentBlocks: [{ type: 'text', content: 'Projectomschrijving en specificaties:' }],
+      closingBlocks: [{ type: 'text', content: 'Wij zien uw reactie met belangstelling tegemoet.' }],
+      defaultValidityDays: 14,
+      requiresApproval: true,
+    },
+  });
+  console.log(`  ✓ Template: ${template2.name}`);
+
+  // ─── PRD-05: Quotes ────────────────────────────────────
+  console.log('\n📄 Seeding Quotes...');
+
+  // Quote 1: Linked to req3 (NEN3140 inspectie werkplaats), GOEDGEKEURD
+  const quote1 = await prisma.quote.create({
+    data: {
+      orgId: org1.id,
+      quoteNumber: 'OFF-2026-0001',
+      templateId: template1.id,
+      requestId: req3.id,
+      contactId: contact2.id,
+      locationId: loc2Woning.id,
+      status: QuoteStatus.GOEDGEKEURD,
+      subject: 'NEN3140 inspectie werkplaats Pieter Jansen',
+      coverBlocks: template1.coverBlocks ?? undefined,
+      contentBlocks: template1.contentBlocks ?? undefined,
+      closingBlocks: template1.closingBlocks ?? undefined,
+      subtotal: 355.00,
+      discountTotal: 0,
+      vatTotal: 74.55,
+      total: 429.55,
+      validUntil: new Date('2026-03-15'),
+      requiresApproval: false,
+      createdBy: createdOrg1Users[Role.BACKOFFICE],
+    },
+  });
+
+  await prisma.quoteLine.createMany({
+    data: [
+      {
+        quoteId: quote1.id,
+        productId: products1[1].id, // NEN3140 Inspectie
+        description: 'NEN3140 Inspectie',
+        quantity: 3,
+        unit: 'uur',
+        unitPrice: 75.00,
+        vatRate: 21,
+        discountPct: 0,
+        lineTotal: 225.00,
+        sortOrder: 0,
+      },
+      {
+        quoteId: quote1.id,
+        productId: products1[3].id, // Rapportage opstellen
+        description: 'Rapportage opstellen',
+        quantity: 2,
+        unit: 'uur',
+        unitPrice: 55.00,
+        vatRate: 21,
+        discountPct: 0,
+        lineTotal: 110.00,
+        sortOrder: 1,
+      },
+      {
+        quoteId: quote1.id,
+        productId: products1[4].id, // Reiskosten
+        description: 'Reiskosten Utrecht',
+        quantity: 80,
+        unit: 'km',
+        unitPrice: 0.25,
+        vatRate: 21,
+        discountPct: 0,
+        lineTotal: 20.00,
+        sortOrder: 2,
+      },
+    ],
+  });
+  console.log(`  ✓ Offerte: ${quote1.quoteNumber} — ${quote1.subject} (GOEDGEKEURD, 3 regels)`);
+
+  // Quote 2: CONCEPT with approval required, with lines
+  const quote2 = await prisma.quote.create({
+    data: {
+      orgId: org1.id,
+      quoteNumber: 'OFF-2026-0002',
+      templateId: template2.id,
+      contactId: contact1.id,
+      locationId: loc1Kantoor.id,
+      status: QuoteStatus.CONCEPT,
+      subject: 'Thermografisch onderzoek + NEN1010 Zuidas',
+      coverBlocks: template2.coverBlocks ?? undefined,
+      contentBlocks: template2.contentBlocks ?? undefined,
+      closingBlocks: template2.closingBlocks ?? undefined,
+      subtotal: 1165.00,
+      discountTotal: 15.00,
+      vatTotal: 244.65,
+      total: 1409.65,
+      validUntil: new Date('2026-03-25'),
+      requiresApproval: true,
+      createdBy: createdOrg1Users[Role.BACKOFFICE],
+    },
+  });
+
+  await prisma.quoteLine.createMany({
+    data: [
+      {
+        quoteId: quote2.id,
+        productId: products1[2].id, // Thermografisch onderzoek
+        description: 'Thermografisch onderzoek kantoorgebouw Zuidas',
+        quantity: 1,
+        unit: 'traject',
+        unitPrice: 495.00,
+        vatRate: 21,
+        discountPct: 0,
+        lineTotal: 495.00,
+        sortOrder: 0,
+      },
+      {
+        quoteId: quote2.id,
+        productId: products1[0].id, // NEN1010 Inspectie
+        description: 'NEN1010 Inspectie elektrische installatie',
+        quantity: 4,
+        unit: 'uur',
+        unitPrice: 85.00,
+        vatRate: 21,
+        discountPct: 0,
+        lineTotal: 340.00,
+        sortOrder: 1,
+      },
+      {
+        quoteId: quote2.id,
+        productId: products1[3].id, // Rapportage opstellen
+        description: 'Rapportage en certificering',
+        quantity: 3,
+        unit: 'uur',
+        unitPrice: 55.00,
+        vatRate: 21,
+        discountPct: 0,
+        lineTotal: 165.00,
+        sortOrder: 2,
+      },
+      {
+        quoteId: quote2.id,
+        productId: products1[4].id, // Reiskosten
+        description: 'Reiskosten Amsterdam',
+        quantity: 120,
+        unit: 'km',
+        unitPrice: 0.25,
+        vatRate: 21,
+        discountPct: 0,
+        lineTotal: 30.00,
+        sortOrder: 3,
+      },
+      {
+        quoteId: quote2.id,
+        productId: products1[5].id, // Spoedtoeslag
+        description: 'Spoedtoeslag (gewenste uitvoering < 5 werkdagen)',
+        quantity: 1,
+        unit: 'stuks',
+        unitPrice: 150.00,
+        vatRate: 21,
+        discountPct: 10,
+        lineTotal: 135.00,  // 150 * (1 - 10/100) = 135
+        sortOrder: 4,
+      },
+    ],
+  });
+  console.log(`  ✓ Offerte: ${quote2.quoteNumber} — ${quote2.subject} (CONCEPT, 5 regels)`);
 
   console.log('\n✅ Seed completed successfully!');
   console.log('\n📋 Login credentials (all use Password123!):');

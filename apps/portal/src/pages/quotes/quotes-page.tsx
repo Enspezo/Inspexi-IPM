@@ -1,0 +1,268 @@
+import { useState, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { QuoteStatus, Role } from '@/types';
+import type { Quote } from '@/types';
+import {
+  Button,
+  Spinner,
+  Table,
+  Input,
+  Select,
+  type Column,
+} from '@/components/ui';
+import { useAuth } from '@/providers/auth-provider';
+import { useQuotes } from './hooks/use-quotes';
+
+const statusFilterOptions = [
+  { value: '', label: 'Alle statussen' },
+  { value: QuoteStatus.CONCEPT, label: 'Concept' },
+  { value: QuoteStatus.TER_GOEDKEURING, label: 'Ter goedkeuring' },
+  { value: QuoteStatus.GOEDGEKEURD, label: 'Goedgekeurd' },
+  { value: QuoteStatus.VERSTUURD, label: 'Verstuurd' },
+  { value: QuoteStatus.BEKEKEN, label: 'Bekeken' },
+  { value: QuoteStatus.GEACCEPTEERD, label: 'Geaccepteerd' },
+  { value: QuoteStatus.AFGEWEZEN, label: 'Afgewezen' },
+  { value: QuoteStatus.VERLOPEN, label: 'Verlopen' },
+];
+
+const statusColors: Record<string, string> = {
+  [QuoteStatus.CONCEPT]: 'bg-gray-100 text-gray-800',
+  [QuoteStatus.TER_GOEDKEURING]: 'bg-yellow-100 text-yellow-800',
+  [QuoteStatus.GOEDGEKEURD]: 'bg-green-100 text-green-800',
+  [QuoteStatus.VERSTUURD]: 'bg-blue-100 text-blue-800',
+  [QuoteStatus.BEKEKEN]: 'bg-purple-100 text-purple-800',
+  [QuoteStatus.GEACCEPTEERD]: 'bg-emerald-100 text-emerald-800',
+  [QuoteStatus.AFGEWEZEN]: 'bg-red-100 text-red-800',
+  [QuoteStatus.VERLOPEN]: 'bg-orange-100 text-orange-800',
+};
+
+const statusLabels: Record<string, string> = {
+  [QuoteStatus.CONCEPT]: 'Concept',
+  [QuoteStatus.TER_GOEDKEURING]: 'Ter goedkeuring',
+  [QuoteStatus.GOEDGEKEURD]: 'Goedgekeurd',
+  [QuoteStatus.VERSTUURD]: 'Verstuurd',
+  [QuoteStatus.BEKEKEN]: 'Bekeken',
+  [QuoteStatus.GEACCEPTEERD]: 'Geaccepteerd',
+  [QuoteStatus.AFGEWEZEN]: 'Afgewezen',
+  [QuoteStatus.VERLOPEN]: 'Verlopen',
+};
+
+const canWrite = [Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE];
+
+function getContactName(quote: Quote): string {
+  if (!quote.contact) return '\u2014';
+  if (quote.contact.companyName) return quote.contact.companyName;
+  return [quote.contact.firstName, quote.contact.lastName].filter(Boolean).join(' ') || '\u2014';
+}
+
+function formatCurrency(amount: number): string {
+  return new Intl.NumberFormat('nl-NL', {
+    style: 'currency',
+    currency: 'EUR',
+  }).format(amount);
+}
+
+export default function QuotesPage() {
+  const { user } = useAuth();
+  const navigate = useNavigate();
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
+  const [page, setPage] = useState(1);
+
+  const { data, isLoading, error } = useQuotes({
+    search: search || undefined,
+    status: (statusFilter as QuoteStatus) || undefined,
+    page,
+    limit: 20,
+  });
+
+  const handleSearchChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      setSearch(e.target.value);
+      setPage(1);
+    },
+    [],
+  );
+
+  const userCanWrite = user && canWrite.includes(user.role);
+
+  const columns: Column<Quote>[] = [
+    {
+      key: 'quoteNumber',
+      header: 'Offertenummer',
+      render: (quote) => (
+        <button
+          onClick={() => navigate(`/quotes/${quote.id}`)}
+          className="font-medium text-primary-600 hover:text-primary-800 hover:underline"
+        >
+          {quote.quoteNumber}
+        </button>
+      ),
+    },
+    {
+      key: 'subject',
+      header: 'Onderwerp',
+      render: (quote) => (
+        <span className="text-gray-900">{quote.subject}</span>
+      ),
+    },
+    {
+      key: 'contact',
+      header: 'Relatie',
+      render: (quote) => (
+        <span className="text-gray-600">{getContactName(quote)}</span>
+      ),
+    },
+    {
+      key: 'status',
+      header: 'Status',
+      render: (quote) => (
+        <span
+          className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
+            statusColors[quote.status] || 'bg-gray-100 text-gray-600'
+          }`}
+        >
+          {statusLabels[quote.status] || quote.status}
+        </span>
+      ),
+    },
+    {
+      key: 'total',
+      header: 'Totaal',
+      render: (quote) => (
+        <span className="text-gray-900 font-medium">
+          {formatCurrency(quote.total)}
+        </span>
+      ),
+    },
+    {
+      key: 'validUntil',
+      header: 'Geldig tot',
+      render: (quote) => (
+        <span className="text-gray-500 text-xs">
+          {quote.validUntil
+            ? new Date(quote.validUntil).toLocaleDateString('nl-NL')
+            : '\u2014'}
+        </span>
+      ),
+    },
+    {
+      key: 'createdAt',
+      header: 'Aangemaakt',
+      render: (quote) => (
+        <span className="text-gray-500 text-xs">
+          {new Date(quote.createdAt).toLocaleDateString('nl-NL')}
+        </span>
+      ),
+    },
+  ];
+
+  if (isLoading) {
+    return (
+      <div className="flex h-64 items-center justify-center">
+        <Spinner size="lg" />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="rounded-lg bg-danger-50 p-4 text-sm text-danger-600">
+        Fout bij het laden van offertes: {error.message}
+      </div>
+    );
+  }
+
+  const quotes = data?.data || [];
+  const total = data?.total || 0;
+  const totalPages = Math.ceil(total / 20);
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-2xl font-bold text-gray-900">Offertes</h2>
+          <p className="mt-1 text-sm text-gray-500">
+            Beheer offertes en prijsopgaven
+          </p>
+        </div>
+        {userCanWrite && (
+          <Button onClick={() => navigate('/quotes/new')}>
+            <svg
+              className="h-4 w-4"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M12 4v16m8-8H4"
+              />
+            </svg>
+            Offerte aanmaken
+          </Button>
+        )}
+      </div>
+
+      {/* Filters */}
+      <div className="flex flex-col gap-4 sm:flex-row">
+        <div className="flex-1">
+          <Input
+            placeholder="Zoeken op nummer, onderwerp of relatie..."
+            value={search}
+            onChange={handleSearchChange}
+          />
+        </div>
+        <div className="w-48">
+          <Select
+            options={statusFilterOptions}
+            value={statusFilter}
+            onChange={(e) => {
+              setStatusFilter(e.target.value);
+              setPage(1);
+            }}
+          />
+        </div>
+      </div>
+
+      <Table
+        columns={columns}
+        data={quotes}
+        keyExtractor={(q) => q.id}
+        emptyMessage="Geen offertes gevonden"
+      />
+
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between">
+          <p className="text-sm text-gray-500">
+            {total} offerte{total !== 1 ? 's' : ''} gevonden
+          </p>
+          <div className="flex gap-2">
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={page === 1}
+            >
+              Vorige
+            </Button>
+            <span className="flex items-center px-3 text-sm text-gray-600">
+              {page} / {totalPages}
+            </span>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              disabled={page === totalPages}
+            >
+              Volgende
+            </Button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

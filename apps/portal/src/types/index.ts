@@ -271,3 +271,102 @@ export interface RequestStatusHistory {
   note: string | null;
   changedByUser?: UserSummary;
 }
+
+// ─── PRD-05: Quotes (Offertes) ─────────────────────────
+
+export enum QuoteStatus {
+  CONCEPT = 'CONCEPT',
+  TER_GOEDKEURING = 'TER_GOEDKEURING',
+  GOEDGEKEURD = 'GOEDGEKEURD',
+  VERSTUURD = 'VERSTUURD',
+  BEKEKEN = 'BEKEKEN',
+  GEACCEPTEERD = 'GEACCEPTEERD',
+  AFGEWEZEN = 'AFGEWEZEN',
+  VERLOPEN = 'VERLOPEN',
+}
+
+export enum ApprovalStatus {
+  PENDING = 'PENDING',
+  APPROVED = 'APPROVED',
+  REJECTED = 'REJECTED',
+}
+
+export interface QuoteTemplate {
+  id: string;
+  orgId: string;
+  name: string;
+  coverBlocks: any;
+  contentBlocks: any;
+  closingBlocks: any;
+  defaultValidityDays: number;
+  requiresApproval: boolean;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Quote {
+  id: string;
+  orgId: string;
+  quoteNumber: string;
+  templateId: string | null;
+  requestId: string | null;
+  contactId: string;
+  locationId: string | null;
+  status: QuoteStatus;
+  subject: string;
+  coverBlocks: any;
+  contentBlocks: any;
+  closingBlocks: any;
+  subtotal: number;
+  discountTotal: number;
+  vatTotal: number;
+  total: number;
+  validUntil: string | null;
+  requiresApproval: boolean;
+  internalNotes: string | null;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+  contact?: { id: string; type: string; companyName: string | null; firstName: string | null; lastName: string | null; email: string | null };
+  location?: LocationSummary;
+  request?: { id: string; title: string };
+  template?: { id: string; name: string };
+  createdByUser?: UserSummary;
+  lines?: QuoteLine[];
+  approvalRequests?: QuoteApprovalRequest[];
+}
+
+export interface QuoteLine {
+  id: string;
+  quoteId: string;
+  productId: string | null;
+  description: string;
+  quantity: number;
+  unit: string;
+  unitPrice: number;
+  vatRate: number;
+  discountPct: number;
+  lineTotal: number;
+  sortOrder: number;
+  product?: { id: string; name: string; unit: string; category: string | null };
+}
+
+export interface QuoteApprovalRequest {
+  id: string;
+  quoteId: string;
+  requestedBy: string;
+  reviewedBy: string | null;
+  status: ApprovalStatus;
+  note: string | null;
+  requestedAt: string;
+  reviewedAt: string | null;
+  requestedByUser?: UserSummary;
+  reviewedByUser?: UserSummary;
+}
+
+export interface ResolvedPrice {
+  unitPrice: number;
+  vatRate: number;
+  unit: string;
+}

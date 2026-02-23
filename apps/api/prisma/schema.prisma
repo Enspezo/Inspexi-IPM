@@ -57,6 +57,23 @@ enum Priority {
   HIGH
 }
 
+enum QuoteStatus {
+  CONCEPT
+  TER_GOEDKEURING
+  GOEDGEKEURD
+  VERSTUURD
+  BEKEKEN
+  GEACCEPTEERD
+  AFGEWEZEN
+  VERLOPEN
+}
+
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
 // ─── PRD-01: Foundation Models ───────────────────────────
 
 model Organization {
@@ -73,9 +90,11 @@ model Organization {
   invitations Invitation[]
   contacts    Contact[]
   locations   Location[]
-  products    Product[]
-  priceTables PriceTable[]
-  requests    Request[]
+  products       Product[]
+  priceTables    PriceTable[]
+  requests       Request[]
+  quoteTemplates QuoteTemplate[]
+  quotes         Quote[]
 
   @@map("imp_organizations")
 }
@@ -100,6 +119,10 @@ model User {
   assignedRequests       Request[]              @relation("AssignedToUser")
   createdRequests        Request[]              @relation("CreatedByUser")
   requestStatusChanges   RequestStatusHistory[] @relation("StatusChangedByUser")
+
+  createdQuotes          Quote[]                @relation("QuoteCreatedByUser")
+  requestedApprovals     QuoteApprovalRequest[] @relation("ApprovalRequestedByUser")
+  reviewedApprovals      QuoteApprovalRequest[] @relation("ApprovalReviewedByUser")
 
   @@map("imp_users")
 }
@@ -157,6 +180,7 @@ model Contact {
   emails             ContactEmail[]
   contactPriceTables ContactPriceTable[]
   requests           Request[]
+  quotes             Quote[]
 
   @@map("imp_contacts")
 }
@@ -193,6 +217,7 @@ model Location {
   contact      Contact      @relation(fields: [contactId], references: [id])
   organization Organization @relation(fields: [orgId], references: [id])
   requests     Request[]
+  quotes       Quote[]
 
   @@map("imp_locations")
 }
@@ -246,6 +271,7 @@ model Product {
 
   organization    Organization     @relation(fields: [orgId], references: [id])
   priceTableItems PriceTableItem[]
+  quoteLines      QuoteLine[]
 
   @@map("imp_products")
 }
@@ -327,6 +353,7 @@ model Request {
   assignedUser  User?                  @relation("AssignedToUser", fields: [assignedTo], references: [id])
   createdByUser User                   @relation("CreatedByUser", fields: [createdBy], references: [id])
   statusHistory RequestStatusHistory[]
+  quotes        Quote[]
 
   @@map("imp_requests")
 }
@@ -344,4 +371,108 @@ model RequestStatusHistory {
   changedByUser User    @relation("StatusChangedByUser", fields: [changedBy], references: [id])
 
   @@map("imp_request_status_history")
+}
+
+// ─── PRD-05: Quotes (Offertes) ────────────────────────────
+
+model QuoteTemplate {
+  id                  String   @id @default(uuid()) @db.Uuid
+  orgId               String   @map("org_id") @db.Uuid
+  name                String
+  coverBlocks         Json?    @map("cover_blocks")
+  contentBlocks       Json?    @map("content_blocks")
+  closingBlocks       Json?    @map("closing_blocks")
+  defaultValidityDays Int      @default(30) @map("default_validity_days")
+  requiresApproval    Boolean  @default(false) @map("requires_approval")
+  isActive            Boolean  @default(true) @map("is_active")
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [orgId], references: [id])
+  quotes       Quote[]
+
+  @@map("imp_quote_templates")
+}
+
+model Quote {
+  id               String      @id @default(uuid()) @db.Uuid
+  orgId            String      @map("org_id") @db.Uuid
+  quoteNumber      String      @unique @map("quote_number")
+  templateId       String?     @map("template_id") @db.Uuid
+  requestId        String?     @map("request_id") @db.Uuid
+  contactId        String      @map("contact_id") @db.Uuid
+  locationId       String?     @map("location_id") @db.Uuid
+  status           QuoteStatus @default(CONCEPT)
+  subject          String
+  coverBlocks      Json?       @map("cover_blocks")
+  contentBlocks    Json?       @map("content_blocks")
+  closingBlocks    Json?       @map("closing_blocks")
+  subtotal         Float       @default(0)
+  discountTotal    Float       @default(0) @map("discount_total")
+  vatTotal         Float       @default(0) @map("vat_total")
+  total            Float       @default(0)
+  validUntil       DateTime?   @map("valid_until")
+  requiresApproval Boolean     @default(false) @map("requires_approval")
+  internalNotes    String?     @map("internal_notes")
+  createdBy        String      @map("created_by") @db.Uuid
+
+  // Future fields (added now but unused in core scope)
+  sentAt           DateTime?   @map("sent_at")
+  viewedAt         DateTime?   @map("viewed_at")
+  signedAt         DateTime?   @map("signed_at")
+  clientSignature  String?     @map("client_signature")
+  clientIp         String?     @map("client_ip")
+  clientUserAgent  String?     @map("client_user_agent")
+  managerSignature String?     @map("manager_signature")
+  publicToken      String?     @unique @map("public_token")
+
+  createdAt        DateTime    @default(now()) @map("created_at")
+  updatedAt        DateTime    @updatedAt @map("updated_at")
+
+  organization     Organization          @relation(fields: [orgId], references: [id])
+  template         QuoteTemplate?        @relation(fields: [templateId], references: [id])
+  request          Request?              @relation(fields: [requestId], references: [id])
+  contact          Contact               @relation(fields: [contactId], references: [id])
+  location         Location?             @relation(fields: [locationId], references: [id])
+  createdByUser    User                  @relation("QuoteCreatedByUser", fields: [createdBy], references: [id])
+  lines            QuoteLine[]
+  approvalRequests QuoteApprovalRequest[]
+
+  @@map("imp_quotes")
+}
+
+model QuoteLine {
+  id          String  @id @default(uuid()) @db.Uuid
+  quoteId     String  @map("quote_id") @db.Uuid
+  productId   String? @map("product_id") @db.Uuid
+  description String
+  quantity    Float
+  unit        String
+  unitPrice   Float   @map("unit_price")
+  vatRate     Float   @default(21) @map("vat_rate")
+  discountPct Float   @default(0) @map("discount_pct")
+  lineTotal   Float   @map("line_total")
+  sortOrder   Int     @default(0) @map("sort_order")
+
+  quote   Quote    @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  product Product? @relation(fields: [productId], references: [id])
+
+  @@map("imp_quote_lines")
+}
+
+model QuoteApprovalRequest {
+  id          String         @id @default(uuid()) @db.Uuid
+  quoteId     String         @map("quote_id") @db.Uuid
+  requestedBy String         @map("requested_by") @db.Uuid
+  reviewedBy  String?        @map("reviewed_by") @db.Uuid
+  status      ApprovalStatus @default(PENDING)
+  note        String?
+  requestedAt DateTime       @default(now()) @map("requested_at")
+  reviewedAt  DateTime?      @map("reviewed_at")
+
+  quote           Quote @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  requestedByUser User  @relation("ApprovalRequestedByUser", fields: [requestedBy], references: [id])
+  reviewedByUser  User? @relation("ApprovalReviewedByUser", fields: [reviewedBy], references: [id])
+
+  @@map("imp_quote_approval_requests")
 }

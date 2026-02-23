@@ -12,6 +12,7 @@ import {
   useUpdateRequestStatus,
   useDeleteRequest,
 } from './hooks/use-requests';
+import { useCreateQuoteFromRequest } from '@/pages/quotes/hooks/use-quotes';
 import { EditRequestModal } from './components/edit-request-modal';
 
 const canWrite = [Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE];
@@ -82,12 +83,24 @@ export default function RequestDetailPage() {
   const { data: request, isLoading, error } = useRequest(id!);
   const updateStatusMutation = useUpdateRequestStatus(id!);
   const deleteMutation = useDeleteRequest();
+  const createQuoteMutation = useCreateQuoteFromRequest();
 
   const [newStatus, setNewStatus] = useState('');
   const [statusNote, setStatusNote] = useState('');
   const [isEditOpen, setIsEditOpen] = useState(false);
 
   const userCanWrite = user && canWrite.includes(user.role);
+
+  const handleCreateQuote = async () => {
+    if (!request) return;
+    try {
+      const quote = await createQuoteMutation.mutateAsync(request.id);
+      showToast('Offerte aangemaakt', 'success');
+      navigate(`/quotes/${quote.id}/edit`);
+    } catch {
+      showToast('Offerte aanmaken mislukt', 'error');
+    }
+  };
 
   const handleStatusUpdate = async () => {
     if (!newStatus) return;
@@ -170,6 +183,16 @@ export default function RequestDetailPage() {
         </div>
         {userCanWrite && (
           <div className="flex gap-2">
+            {(request.status === RequestStatus.NIEUW ||
+              request.status === RequestStatus.IN_BEHANDELING) && (
+              <Button
+                size="sm"
+                onClick={handleCreateQuote}
+                isLoading={createQuoteMutation.isPending}
+              >
+                Offerte aanmaken
+              </Button>
+            )}
             <Button variant="secondary" size="sm" onClick={() => setIsEditOpen(true)}>
               Bewerken
             </Button>

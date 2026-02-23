@@ -13,6 +13,8 @@ import { ContactsModule } from './modules/contacts/contacts.module';
 import { ProductsModule } from './modules/products/products.module';
 import { PriceTablesModule } from './modules/price-tables/price-tables.module';
 import { RequestsModule } from './modules/requests/requests.module';
+import { QuoteTemplatesModule } from './modules/quote-templates/quote-templates.module';
+import { QuotesModule } from './modules/quotes/quotes.module';
 
 @Module({
   imports: [
@@ -26,6 +28,8 @@ import { RequestsModule } from './modules/requests/requests.module';
     ProductsModule,
     PriceTablesModule,
     RequestsModule,
+    QuoteTemplatesModule,
+    QuotesModule,
   ],
   providers: [
     {

@@ -394,7 +394,7 @@ describe('Requests API (e2e)', () => {
   // ─── POST /requests/:id/quote ───────────────────────────
 
   describe('POST /api/v1/requests/:id/quote', () => {
-    it('returns 501 Not Implemented', async () => {
+    it('creates a quote from request and returns 201', async () => {
       // Use a seeded request
       const listRes = await request(app.getHttpServer())
         .get('/api/v1/requests')
@@ -403,10 +403,15 @@ describe('Requests API (e2e)', () => {
 
       const seededRequest = listRes.body.data.data[0];
 
-      await request(app.getHttpServer())
+      const res = await request(app.getHttpServer())
         .post(`/api/v1/requests/${seededRequest.id}/quote`)
         .set('Authorization', `Bearer ${org1AdminToken}`)
-        .expect(501);
+        .expect(201);
+
+      expect(res.body.success).toBe(true);
+      expect(res.body.data).toBeDefined();
+      expect(res.body.data.requestId).toBe(seededRequest.id);
+      expect(res.body.data.quoteNumber).toBeDefined();
     });
   });
 

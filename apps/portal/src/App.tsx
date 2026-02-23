@@ -30,6 +30,16 @@ const PriceTablesPage = lazy(
 const PriceTableDetailPage = lazy(
   () => import('@/pages/price-tables/price-table-detail-page'),
 );
+const QuotesPage = lazy(() => import('@/pages/quotes/quotes-page'));
+const QuoteDetailPage = lazy(
+  () => import('@/pages/quotes/quote-detail-page'),
+);
+const QuoteEditorPage = lazy(
+  () => import('@/pages/quotes/quote-editor-page'),
+);
+const QuoteTemplatesPage = lazy(
+  () => import('@/pages/quotes/quote-templates-page'),
+);
 
 function PageLoader() {
   return (
@@ -64,6 +74,11 @@ export default function App() {
             <Route path="/contacts/:id" element={<ContactDetailPage />} />
             <Route path="/requests" element={<RequestsPage />} />
             <Route path="/requests/:id" element={<RequestDetailPage />} />
+            <Route path="/quotes" element={<QuotesPage />} />
+            <Route path="/quotes/new" element={<QuoteEditorPage />} />
+            <Route path="/quotes/:id/edit" element={<QuoteEditorPage />} />
+            <Route path="/quotes/:id" element={<QuoteDetailPage />} />
+            <Route path="/quote-templates" element={<QuoteTemplatesPage />} />
             <Route path="/products" element={<ProductsPage />} />
             <Route path="/price-tables" element={<PriceTablesPage />} />
             <Route path="/price-tables/:id" element={<PriceTableDetailPage />} />

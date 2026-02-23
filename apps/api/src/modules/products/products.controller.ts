@@ -26,7 +26,7 @@ export class ProductsController {
   constructor(private productsService: ProductsService) {}
 
   @Get()
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN)
+  @Roles(Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE, Role.WERKVOORBEREIDER)
   @ApiOperation({ summary: 'Productcatalogus ophalen' })
   @ApiResponse({ status: 200, description: 'Gepagineerde lijst producten' })
   async findAll(

@@ -12,6 +12,9 @@ const pageTitles: Record<string, string> = {
   '/requests': 'Aanvragen',
   '/products': 'Producten',
   '/price-tables': 'Prijstabellen',
+  '/quotes': 'Offertes',
+  '/quotes/new': 'Nieuwe offerte',
+  '/quote-templates': 'Offerte Templates',
 };
 
 function getPageTitle(pathname: string): string {
@@ -19,6 +22,8 @@ function getPageTitle(pathname: string): string {
   if (pathname.match(/^\/contacts\/[^/]+$/)) return 'Relatie detail';
   if (pathname.match(/^\/requests\/[^/]+$/)) return 'Aanvraag detail';
   if (pathname.match(/^\/price-tables\/[^/]+$/)) return 'Prijstabel detail';
+  if (pathname.match(/^\/quotes\/[^/]+\/edit$/)) return 'Offerte bewerken';
+  if (pathname.match(/^\/quotes\/[^/]+$/)) return 'Offerte detail';
   return 'InspeXi Beheer';
 }
 

@@ -152,11 +152,14 @@ describe('Products API (e2e)', () => {
       }
     });
 
-    it('MANAGER gets 403', async () => {
-      await request(app.getHttpServer())
+    it('MANAGER can list products', async () => {
+      const res = await request(app.getHttpServer())
         .get('/api/v1/products')
         .set('Authorization', `Bearer ${org1ManagerToken}`)
-        .expect(403);
+        .expect(200);
+
+      expect(res.body.success).toBe(true);
+      expect(res.body.data.data.length).toBeGreaterThan(0);
     });
 
     it('cross-org: ORG_ADMIN from org2 only sees own products', async () => {

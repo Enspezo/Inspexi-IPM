@@ -1,0 +1,388 @@
+import { Test, TestingModule } from '@nestjs/testing';
+import {
+  NotFoundException,
+  ForbiddenException,
+} from '@nestjs/common';
+import { Role, NotificationType, User } from '@prisma/client';
+import { NotificationsService } from './notifications.service';
+import { PrismaService } from '@/prisma';
+import { EmailService } from '@/common/services/email.service';
+
+describe('NotificationsService', () => {
+  let service: NotificationsService;
+
+  const mockUser: User = {
+    id: 'user-1',
+    orgId: 'org-1',
+    email: 'admin@test.com',
+    passwordHash: '$2b$10$hashedpassword',
+    firstName: 'Admin',
+    lastName: 'User',
+    role: Role.ORG_ADMIN,
+    isActive: true,
+    emailVerifiedAt: new Date('2025-01-01'),
+    createdAt: new Date('2025-01-01'),
+  };
+
+  const mockOtherUser: User = {
+    id: 'user-other',
+    orgId: 'org-1',
+    email: 'other@test.com',
+    passwordHash: '$2b$10$hashedpassword',
+    firstName: 'Other',
+    lastName: 'User',
+    role: Role.MANAGER,
+    isActive: true,
+    emailVerifiedAt: new Date('2025-01-01'),
+    createdAt: new Date('2025-01-01'),
+  };
+
+  const mockNotification = {
+    id: 'notif-1',
+    orgId: 'org-1',
+    userId: 'user-1',
+    type: NotificationType.OFFERTE_GOEDGEKEURD,
+    title: 'Offerte goedgekeurd',
+    body: 'Offerte OFF-2026-0001 is goedgekeurd.',
+    entityType: 'quote',
+    entityId: 'quote-1',
+    isRead: false,
+    readAt: null,
+    createdAt: new Date('2025-01-01'),
+  };
+
+  const mockPrismaService = {
+    notification: {
+      create: jest.fn(),
+      findUnique: jest.fn(),
+      findMany: jest.fn(),
+      count: jest.fn(),
+      update: jest.fn(),
+      updateMany: jest.fn(),
+    },
+    notificationPref: {
+      findUnique: jest.fn(),
+      findMany: jest.fn(),
+      upsert: jest.fn(),
+    },
+    notificationGroupPref: {
+      findUnique: jest.fn(),
+      findMany: jest.fn(),
+      upsert: jest.fn(),
+    },
+    user: {
+      findUnique: jest.fn(),
+      findMany: jest.fn(),
+    },
+  };
+
+  const mockEmailService = {
+    sendNotificationEmail: jest.fn().mockResolvedValue(undefined),
+  };
+
+  beforeEach(async () => {
+    jest.clearAllMocks();
+
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        NotificationsService,
+        { provide: PrismaService, useValue: mockPrismaService },
+        { provide: EmailService, useValue: mockEmailService },
+      ],
+    }).compile();
+
+    service = module.get<NotificationsService>(NotificationsService);
+  });
+
+  // ─── findAll ─────────────────────────────────────────────
+
+  describe('findAll()', () => {
+    it('should return paginated notifications scoped to userId', async () => {
+      const notifications = [mockNotification];
+      mockPrismaService.notification.findMany.mockResolvedValue(notifications);
+      mockPrismaService.notification.count.mockResolvedValue(1);
+
+      const result = await service.findAll(mockUser, { page: 1, limit: 20 });
+
+      expect(result).toEqual({
+        data: notifications,
+        total: 1,
+        page: 1,
+        limit: 20,
+      });
+      expect(mockPrismaService.notification.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            userId: 'user-1',
+          }),
+          orderBy: { createdAt: 'desc' },
+          skip: 0,
+          take: 20,
+        }),
+      );
+    });
+
+    it('should filter by type and unread', async () => {
+      mockPrismaService.notification.findMany.mockResolvedValue([]);
+      mockPrismaService.notification.count.mockResolvedValue(0);
+
+      await service.findAll(mockUser, {
+        type: NotificationType.OFFERTE_GOEDGEKEURD,
+        unread: true,
+        page: 1,
+        limit: 10,
+      });
+
+      expect(mockPrismaService.notification.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            userId: 'user-1',
+            type: NotificationType.OFFERTE_GOEDGEKEURD,
+            isRead: false,
+          }),
+        }),
+      );
+    });
+  });
+
+  // ─── getUnreadCount ──────────────────────────────────────
+
+  describe('getUnreadCount()', () => {
+    it('should return count of unread notifications', async () => {
+      mockPrismaService.notification.count.mockResolvedValue(5);
+
+      const result = await service.getUnreadCount(mockUser);
+
+      expect(result).toEqual({ count: 5 });
+      expect(mockPrismaService.notification.count).toHaveBeenCalledWith({
+        where: { userId: 'user-1', isRead: false },
+      });
+    });
+  });
+
+  // ─── markRead ────────────────────────────────────────────
+
+  describe('markRead()', () => {
+    it('should mark notification as read', async () => {
+      mockPrismaService.notification.findUnique.mockResolvedValue(mockNotification);
+      const readNotif = { ...mockNotification, isRead: true, readAt: new Date() };
+      mockPrismaService.notification.update.mockResolvedValue(readNotif);
+
+      const result = await service.markRead('notif-1', mockUser);
+
+      expect(result.isRead).toBe(true);
+      expect(mockPrismaService.notification.update).toHaveBeenCalledWith({
+        where: { id: 'notif-1' },
+        data: { isRead: true, readAt: expect.any(Date) },
+      });
+    });
+
+    it('should throw NotFoundException for non-existent notification', async () => {
+      mockPrismaService.notification.findUnique.mockResolvedValue(null);
+
+      await expect(
+        service.markRead('non-existent', mockUser),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('should throw ForbiddenException for other user notification', async () => {
+      const otherNotif = { ...mockNotification, userId: 'user-other' };
+      mockPrismaService.notification.findUnique.mockResolvedValue(otherNotif);
+
+      await expect(
+        service.markRead('notif-1', mockUser),
+      ).rejects.toThrow(ForbiddenException);
+    });
+  });
+
+  // ─── markAllRead ─────────────────────────────────────────
+
+  describe('markAllRead()', () => {
+    it('should update all unread notifications for user', async () => {
+      mockPrismaService.notification.updateMany.mockResolvedValue({ count: 3 });
+
+      await service.markAllRead(mockUser);
+
+      expect(mockPrismaService.notification.updateMany).toHaveBeenCalledWith({
+        where: { userId: 'user-1', isRead: false },
+        data: { isRead: true, readAt: expect.any(Date) },
+      });
+    });
+  });
+
+  // ─── dispatch ────────────────────────────────────────────
+
+  describe('dispatch()', () => {
+    it('should create in-app notification when channelInApp is true (default)', async () => {
+      // No user pref → no group pref → defaults to both true
+      mockPrismaService.notificationPref.findUnique.mockResolvedValue(null);
+      mockPrismaService.user.findUnique
+        .mockResolvedValueOnce({ role: Role.MANAGER }) // for resolvePreference
+        .mockResolvedValueOnce({ email: 'manager@test.com' }); // for email
+      mockPrismaService.notificationGroupPref.findUnique.mockResolvedValue(null);
+      mockPrismaService.notification.create.mockResolvedValue(mockNotification);
+
+      service.dispatch({
+        type: NotificationType.OFFERTE_TER_GOEDKEURING,
+        orgId: 'org-1',
+        recipientUserIds: ['user-1'],
+        title: 'Test',
+        body: 'Test body',
+        entityType: 'quote',
+        entityId: 'quote-1',
+      });
+
+      // Wait for async doDispatch to settle
+      await new Promise((r) => setTimeout(r, 50));
+
+      expect(mockPrismaService.notification.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          orgId: 'org-1',
+          userId: 'user-1',
+          type: NotificationType.OFFERTE_TER_GOEDKEURING,
+          title: 'Test',
+          body: 'Test body',
+          entityType: 'quote',
+          entityId: 'quote-1',
+        }),
+      });
+    });
+
+    it('should send email notification when channelEmail is true (default)', async () => {
+      mockPrismaService.notificationPref.findUnique.mockResolvedValue(null);
+      mockPrismaService.user.findUnique
+        .mockResolvedValueOnce({ role: Role.MANAGER })
+        .mockResolvedValueOnce({ email: 'manager@test.com' });
+      mockPrismaService.notificationGroupPref.findUnique.mockResolvedValue(null);
+      mockPrismaService.notification.create.mockResolvedValue(mockNotification);
+
+      service.dispatch({
+        type: NotificationType.OFFERTE_TER_GOEDKEURING,
+        orgId: 'org-1',
+        recipientUserIds: ['user-1'],
+        title: 'Email Test',
+        body: 'Email test body',
+      });
+
+      await new Promise((r) => setTimeout(r, 50));
+
+      expect(mockEmailService.sendNotificationEmail).toHaveBeenCalledWith(
+        'manager@test.com',
+        'Email Test',
+        'Email test body',
+      );
+    });
+
+    it('should skip in-app notification when user pref channelInApp is false', async () => {
+      mockPrismaService.notificationPref.findUnique.mockResolvedValue({
+        channelInApp: false,
+        channelEmail: false,
+      });
+
+      service.dispatch({
+        type: NotificationType.OFFERTE_GOEDGEKEURD,
+        orgId: 'org-1',
+        recipientUserIds: ['user-1'],
+        title: 'Skipped',
+        body: 'Should not create notification',
+      });
+
+      await new Promise((r) => setTimeout(r, 50));
+
+      expect(mockPrismaService.notification.create).not.toHaveBeenCalled();
+      expect(mockEmailService.sendNotificationEmail).not.toHaveBeenCalled();
+    });
+
+    it('should fallback to group pref when no user pref exists', async () => {
+      mockPrismaService.notificationPref.findUnique.mockResolvedValue(null);
+      mockPrismaService.user.findUnique.mockResolvedValue({ role: Role.MANAGER });
+      mockPrismaService.notificationGroupPref.findUnique.mockResolvedValue({
+        channelInApp: true,
+        channelEmail: false,
+      });
+      mockPrismaService.notification.create.mockResolvedValue(mockNotification);
+
+      service.dispatch({
+        type: NotificationType.AANVRAAG_TOEGEWEZEN,
+        orgId: 'org-1',
+        recipientUserIds: ['user-1'],
+        title: 'Group pref test',
+        body: 'Uses group pref',
+      });
+
+      await new Promise((r) => setTimeout(r, 50));
+
+      expect(mockPrismaService.notification.create).toHaveBeenCalled();
+      expect(mockEmailService.sendNotificationEmail).not.toHaveBeenCalled();
+    });
+
+    it('should continue with next recipient if one fails', async () => {
+      mockPrismaService.notificationPref.findUnique
+        .mockRejectedValueOnce(new Error('DB error'))
+        .mockResolvedValueOnce(null);
+      mockPrismaService.user.findUnique
+        .mockResolvedValueOnce({ role: Role.MANAGER })
+        .mockResolvedValueOnce({ email: 'user2@test.com' });
+      mockPrismaService.notificationGroupPref.findUnique.mockResolvedValue(null);
+      mockPrismaService.notification.create.mockResolvedValue(mockNotification);
+
+      service.dispatch({
+        type: NotificationType.OFFERTE_TER_GOEDKEURING,
+        orgId: 'org-1',
+        recipientUserIds: ['user-fail', 'user-success'],
+        title: 'Continue test',
+        body: 'Should still create for second user',
+      });
+
+      await new Promise((r) => setTimeout(r, 100));
+
+      // First user fails, second succeeds
+      expect(mockPrismaService.notification.create).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  // ─── saveOwnPrefs ────────────────────────────────────────
+
+  describe('saveOwnPrefs()', () => {
+    it('should upsert preferences for each type', async () => {
+      const dto = {
+        prefs: [
+          {
+            type: NotificationType.OFFERTE_TER_GOEDKEURING,
+            channelInApp: true,
+            channelEmail: false,
+          },
+          {
+            type: NotificationType.AANVRAAG_TOEGEWEZEN,
+            channelInApp: false,
+            channelEmail: true,
+          },
+        ],
+      };
+
+      mockPrismaService.notificationPref.upsert.mockResolvedValue({});
+      mockPrismaService.notificationPref.findMany.mockResolvedValue([]);
+
+      await service.saveOwnPrefs(mockUser, dto);
+
+      expect(mockPrismaService.notificationPref.upsert).toHaveBeenCalledTimes(2);
+      expect(mockPrismaService.notificationPref.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            userId_notificationType: {
+              userId: 'user-1',
+              notificationType: NotificationType.OFFERTE_TER_GOEDKEURING,
+            },
+          },
+          update: { channelInApp: true, channelEmail: false },
+          create: {
+            userId: 'user-1',
+            notificationType: NotificationType.OFFERTE_TER_GOEDKEURING,
+            channelInApp: true,
+            channelEmail: false,
+          },
+        }),
+      );
+    });
+  });
+});

@@ -1,4 +1,4 @@
-import { PrismaClient, Role, ContactType, LogType, PriceType, RequestSource, RequestStatus, Priority, QuoteStatus } from '@prisma/client';
+import { PrismaClient, Role, ContactType, LogType, PriceType, RequestSource, RequestStatus, Priority, QuoteStatus, NotificationType } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 
 const prisma = new PrismaClient();
@@ -7,6 +7,10 @@ async function main() {
   console.log('🌱 Seeding database...');
 
   // Clean existing imp_ data (safe for shared DB — only deletes our tables)
+  // PRD-06 tables (no dependents)
+  await prisma.notificationGroupPref.deleteMany();
+  await prisma.notificationPref.deleteMany();
+  await prisma.notification.deleteMany();
   // PRD-05 tables first (dependent on quotes → products/contacts)
   await prisma.quoteApprovalRequest.deleteMany();
   await prisma.quoteLine.deleteMany();
@@ -916,6 +920,46 @@ async function main() {
     ],
   });
   console.log(`  ✓ Offerte: ${quote2.quoteNumber} — ${quote2.subject} (CONCEPT, 5 regels)`);
+
+  // ─── PRD-06: Notifications ─────────────────────────────
+  console.log('\n🔔 Seeding Notifications...');
+
+  await prisma.notification.createMany({
+    data: [
+      {
+        orgId: org1.id,
+        userId: createdOrg1Users[Role.MANAGER],
+        type: NotificationType.OFFERTE_TER_GOEDKEURING,
+        title: 'Offerte ter goedkeuring',
+        body: `Offerte ${quote2.quoteNumber} staat klaar voor uw goedkeuring.`,
+        entityType: 'quote',
+        entityId: quote2.id,
+        isRead: false,
+      },
+      {
+        orgId: org1.id,
+        userId: createdOrg1Users[Role.BACKOFFICE],
+        type: NotificationType.OFFERTE_GOEDGEKEURD,
+        title: 'Offerte goedgekeurd',
+        body: `Offerte ${quote1.quoteNumber} is goedgekeurd.`,
+        entityType: 'quote',
+        entityId: quote1.id,
+        isRead: true,
+        readAt: new Date('2026-02-20T12:00:00Z'),
+      },
+      {
+        orgId: org1.id,
+        userId: createdOrg1Users[Role.MANAGER],
+        type: NotificationType.AANVRAAG_TOEGEWEZEN,
+        title: 'Aanvraag toegewezen',
+        body: `Aanvraag "${req1.title}" is aan u toegewezen.`,
+        entityType: 'request',
+        entityId: req1.id,
+        isRead: false,
+      },
+    ],
+  });
+  console.log('  ✓ 3 sample notificaties');
 
   console.log('\n✅ Seed completed successfully!');
   console.log('\n📋 Login credentials (all use Password123!):');

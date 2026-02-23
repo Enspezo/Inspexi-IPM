@@ -13,6 +13,7 @@ import {
 import { RequestsService } from './requests.service';
 import { PrismaService } from '@/prisma';
 import { QuotesService } from '../quotes/quotes.service';
+import { NotificationsService } from '@/modules/notifications/notifications.service';
 
 describe('RequestsService', () => {
   let service: RequestsService;
@@ -177,6 +178,10 @@ describe('RequestsService', () => {
         {
           provide: QuotesService,
           useValue: { createFromRequest: jest.fn() },
+        },
+        {
+          provide: NotificationsService,
+          useValue: { dispatch: jest.fn() },
         },
       ],
     }).compile();

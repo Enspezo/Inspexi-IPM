@@ -4,8 +4,9 @@ import {
   ForbiddenException,
   BadRequestException,
 } from '@nestjs/common';
-import { User, Role, Prisma, QuoteStatus, RequestStatus } from '@prisma/client';
+import { User, Role, Prisma, QuoteStatus, RequestStatus, NotificationType } from '@prisma/client';
 import { PrismaService } from '@/prisma';
+import { NotificationsService } from '../notifications/notifications.service';
 import {
   CreateQuoteDto,
   UpdateQuoteDto,
@@ -52,7 +53,10 @@ function calculateLineTotal(
 
 @Injectable()
 export class QuotesService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private notifications: NotificationsService,
+  ) {}
 
   // ─── List ──────────────────────────────────────────────
 
@@ -423,10 +427,25 @@ export class QuotesService {
       );
     }
 
-    return this.prisma.quote.update({
+    const updated = await this.prisma.quote.update({
       where: { id: quote.id },
       data: { status },
     });
+
+    // Notify the quote creator when sent
+    if (status === QuoteStatus.VERSTUURD) {
+      this.notifications.dispatch({
+        type: NotificationType.OFFERTE_VERSTUURD,
+        orgId: quote.orgId,
+        recipientUserIds: [quote.createdBy],
+        title: 'Offerte verstuurd',
+        body: `Offerte ${quote.quoteNumber} is naar de klant verstuurd.`,
+        entityType: 'quote',
+        entityId: quote.id,
+      });
+    }
+
+    return updated;
   }
 
   // ─── Submit for Approval ───────────────────────────────
@@ -446,7 +465,7 @@ export class QuotesService {
       );
     }
 
-    return this.prisma.$transaction(async (tx) => {
+    const updated = await this.prisma.$transaction(async (tx) => {
       await tx.quoteApprovalRequest.create({
         data: {
           quoteId: quote.id,
@@ -460,6 +479,27 @@ export class QuotesService {
         data: { status: QuoteStatus.TER_GOEDKEURING },
       });
     });
+
+    // Notify all managers + org admins in the org
+    const managers = await this.prisma.user.findMany({
+      where: {
+        orgId: quote.orgId,
+        role: { in: [Role.MANAGER, Role.ORG_ADMIN] },
+        isActive: true,
+      },
+      select: { id: true },
+    });
+    this.notifications.dispatch({
+      type: NotificationType.OFFERTE_TER_GOEDKEURING,
+      orgId: quote.orgId,
+      recipientUserIds: managers.map((m) => m.id),
+      title: 'Offerte ter goedkeuring',
+      body: `Offerte ${quote.quoteNumber} staat klaar voor uw goedkeuring.`,
+      entityType: 'quote',
+      entityId: quote.id,
+    });
+
+    return updated;
   }
 
   // ─── Approve ───────────────────────────────────────────
@@ -473,7 +513,7 @@ export class QuotesService {
       );
     }
 
-    return this.prisma.$transaction(async (tx) => {
+    const updated = await this.prisma.$transaction(async (tx) => {
       // Update the latest pending approval request
       const pendingApproval = await tx.quoteApprovalRequest.findFirst({
         where: { quoteId: quote.id, status: 'PENDING' },
@@ -497,6 +537,19 @@ export class QuotesService {
         data: { status: QuoteStatus.GOEDGEKEURD },
       });
     });
+
+    // Notify the quote creator
+    this.notifications.dispatch({
+      type: NotificationType.OFFERTE_GOEDGEKEURD,
+      orgId: quote.orgId,
+      recipientUserIds: [quote.createdBy],
+      title: 'Offerte goedgekeurd',
+      body: `Offerte ${quote.quoteNumber} is goedgekeurd.`,
+      entityType: 'quote',
+      entityId: quote.id,
+    });
+
+    return updated;
   }
 
   // ─── Reject ────────────────────────────────────────────
@@ -510,7 +563,7 @@ export class QuotesService {
       );
     }
 
-    return this.prisma.$transaction(async (tx) => {
+    const updated = await this.prisma.$transaction(async (tx) => {
       const pendingApproval = await tx.quoteApprovalRequest.findFirst({
         where: { quoteId: quote.id, status: 'PENDING' },
         orderBy: { requestedAt: 'desc' },
@@ -533,6 +586,19 @@ export class QuotesService {
         data: { status: QuoteStatus.CONCEPT },
       });
     });
+
+    // Notify the quote creator
+    this.notifications.dispatch({
+      type: NotificationType.OFFERTE_AFGEWEZEN,
+      orgId: quote.orgId,
+      recipientUserIds: [quote.createdBy],
+      title: 'Offerte afgewezen',
+      body: `Offerte ${quote.quoteNumber} is afgewezen.`,
+      entityType: 'quote',
+      entityId: quote.id,
+    });
+
+    return updated;
   }
 
   // ─── Delete ────────────────────────────────────────────

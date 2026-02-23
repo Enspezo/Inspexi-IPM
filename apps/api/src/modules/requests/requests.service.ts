@@ -3,8 +3,9 @@ import {
   NotFoundException,
   ForbiddenException,
 } from '@nestjs/common';
-import { User, Role, Prisma, RequestStatus } from '@prisma/client';
+import { User, Role, Prisma, RequestStatus, NotificationType } from '@prisma/client';
 import { PrismaService } from '@/prisma';
+import { NotificationsService } from '../notifications/notifications.service';
 import {
   CreateRequestDto,
   UpdateRequestDto,
@@ -18,6 +19,7 @@ export class RequestsService {
   constructor(
     private prisma: PrismaService,
     private quotesService: QuotesService,
+    private notifications: NotificationsService,
   ) {}
 
   async findAll(user: User, query: ListRequestsQueryDto) {
@@ -234,6 +236,7 @@ export class RequestsService {
 
   async update(id: string, dto: UpdateRequestDto, user: User) {
     const request = await this.findOne(id, user);
+    const oldAssignedTo = request.assignedTo;
 
     // Verify location if provided
     if (dto.locationId) {
@@ -248,7 +251,7 @@ export class RequestsService {
       }
     }
 
-    return this.prisma.request.update({
+    const updated = await this.prisma.request.update({
       where: { id: request.id },
       data: {
         ...(dto.title !== undefined && { title: dto.title }),
@@ -258,13 +261,28 @@ export class RequestsService {
         ...(dto.priority !== undefined && { priority: dto.priority }),
       },
     });
+
+    // Notify new assignee when assignment changes
+    if (dto.assignedTo && dto.assignedTo !== oldAssignedTo) {
+      this.notifications.dispatch({
+        type: NotificationType.AANVRAAG_TOEGEWEZEN,
+        orgId: request.orgId,
+        recipientUserIds: [dto.assignedTo],
+        title: 'Aanvraag toegewezen',
+        body: `Aanvraag "${request.title}" is aan u toegewezen.`,
+        entityType: 'request',
+        entityId: request.id,
+      });
+    }
+
+    return updated;
   }
 
   async updateStatus(id: string, dto: UpdateRequestStatusDto, user: User) {
     const request = await this.findOne(id, user);
 
-    return this.prisma.$transaction(async (tx) => {
-      const updated = await tx.request.update({
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const result = await tx.request.update({
         where: { id: request.id },
         data: { status: dto.status },
       });
@@ -279,8 +297,23 @@ export class RequestsService {
         },
       });
 
-      return updated;
+      return result;
     });
+
+    // Notify the assigned user about status change
+    if (request.assignedTo) {
+      this.notifications.dispatch({
+        type: NotificationType.AANVRAAG_STATUS_GEWIJZIGD,
+        orgId: request.orgId,
+        recipientUserIds: [request.assignedTo],
+        title: 'Aanvraagstatus gewijzigd',
+        body: `Status van aanvraag "${request.title}" is gewijzigd naar ${dto.status}.`,
+        entityType: 'request',
+        entityId: request.id,
+      });
+    }
+
+    return updated;
   }
 
   async softDelete(id: string, user: User) {

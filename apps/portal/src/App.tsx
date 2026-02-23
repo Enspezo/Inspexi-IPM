@@ -40,6 +40,9 @@ const QuoteEditorPage = lazy(
 const QuoteTemplatesPage = lazy(
   () => import('@/pages/quotes/quote-templates-page'),
 );
+const NotificationsPage = lazy(
+  () => import('@/pages/notifications/notifications-page'),
+);
 
 function PageLoader() {
   return (
@@ -79,6 +82,7 @@ export default function App() {
             <Route path="/quotes/:id/edit" element={<QuoteEditorPage />} />
             <Route path="/quotes/:id" element={<QuoteDetailPage />} />
             <Route path="/quote-templates" element={<QuoteTemplatesPage />} />
+            <Route path="/notifications" element={<NotificationsPage />} />
             <Route path="/products" element={<ProductsPage />} />
             <Route path="/price-tables" element={<PriceTablesPage />} />
             <Route path="/price-tables/:id" element={<PriceTableDetailPage />} />

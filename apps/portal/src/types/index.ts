@@ -370,3 +370,54 @@ export interface ResolvedPrice {
   vatRate: number;
   unit: string;
 }
+
+// ─── PRD-06: Notifications ──────────────────────────────
+
+export enum NotificationType {
+  OFFERTE_TER_GOEDKEURING = 'OFFERTE_TER_GOEDKEURING',
+  OFFERTE_GOEDGEKEURD = 'OFFERTE_GOEDGEKEURD',
+  OFFERTE_AFGEWEZEN = 'OFFERTE_AFGEWEZEN',
+  OFFERTE_VERSTUURD = 'OFFERTE_VERSTUURD',
+  OFFERTE_BEKEKEN = 'OFFERTE_BEKEKEN',
+  OFFERTE_ONDERTEKEND = 'OFFERTE_ONDERTEKEND',
+  OFFERTE_VERLOPEN = 'OFFERTE_VERLOPEN',
+  NIEUWE_VRAAG_KLANT = 'NIEUWE_VRAAG_KLANT',
+  ANTWOORD_OP_VRAAG = 'ANTWOORD_OP_VRAAG',
+  AANVRAAG_TOEGEWEZEN = 'AANVRAAG_TOEGEWEZEN',
+  AANVRAAG_STATUS_GEWIJZIGD = 'AANVRAAG_STATUS_GEWIJZIGD',
+}
+
+export interface Notification {
+  id: string;
+  orgId: string | null;
+  userId: string;
+  type: NotificationType;
+  title: string;
+  body: string;
+  entityType: string | null;
+  entityId: string | null;
+  isRead: boolean;
+  readAt: string | null;
+  createdAt: string;
+}
+
+export interface NotificationPref {
+  id: string;
+  userId: string;
+  notificationType: NotificationType;
+  channelInApp: boolean;
+  channelEmail: boolean;
+}
+
+export interface NotificationGroupPref {
+  id: string;
+  orgId: string;
+  role: Role;
+  notificationType: NotificationType;
+  channelInApp: boolean;
+  channelEmail: boolean;
+}
+
+export interface UnreadCountResponse {
+  count: number;
+}

@@ -7,6 +7,7 @@ import {
 import { Role, User, QuoteStatus, RequestStatus } from '@prisma/client';
 import { QuotesService } from './quotes.service';
 import { PrismaService } from '@/prisma';
+import { NotificationsService } from '@/modules/notifications/notifications.service';
 
 describe('QuotesService', () => {
   let service: QuotesService;
@@ -220,6 +221,9 @@ describe('QuotesService', () => {
     request: {
       findUnique: jest.fn(),
     },
+    user: {
+      findMany: jest.fn().mockResolvedValue([]),
+    },
     $transaction: jest.fn((cb: (tx: typeof mockTx) => Promise<unknown>) =>
       cb(mockTx),
     ),
@@ -232,6 +236,10 @@ describe('QuotesService', () => {
       providers: [
         QuotesService,
         { provide: PrismaService, useValue: mockPrismaService },
+        {
+          provide: NotificationsService,
+          useValue: { dispatch: jest.fn() },
+        },
       ],
     }).compile();
 

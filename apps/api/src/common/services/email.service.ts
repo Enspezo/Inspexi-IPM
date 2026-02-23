@@ -82,6 +82,34 @@ export class EmailService {
     }
   }
 
+  async sendNotificationEmail(
+    to: string,
+    title: string,
+    body: string,
+  ): Promise<void> {
+    try {
+      await this.resend.emails.send({
+        from: this.fromEmail,
+        to,
+        subject: `${title} — InspeXi Beheer`,
+        html: `
+          <h2>${title}</h2>
+          <p>${body}</p>
+          <hr style="border: none; border-top: 1px solid #E5E7EB; margin: 24px 0;" />
+          <p style="color: #6B7280; font-size: 12px;">
+            U ontvangt dit bericht omdat u een notificatie heeft ingeschakeld in InspeXi Beheer.
+            U kunt uw notificatievoorkeuren aanpassen in uw profielinstellingen.
+          </p>
+        `,
+      });
+    } catch (error) {
+      this.logger.error(
+        `Failed to send notification email to ${to}`,
+        error,
+      );
+    }
+  }
+
   async sendContactEmail(
     to: string,
     subject: string,

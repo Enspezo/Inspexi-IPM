@@ -15,12 +15,14 @@ import { PriceTablesModule } from './modules/price-tables/price-tables.module';
 import { RequestsModule } from './modules/requests/requests.module';
 import { QuoteTemplatesModule } from './modules/quote-templates/quote-templates.module';
 import { QuotesModule } from './modules/quotes/quotes.module';
+import { NotificationsModule } from './modules/notifications/notifications.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     PrismaModule,
     EmailModule,
+    NotificationsModule,
     AuthModule,
     OrganizationsModule,
     UsersModule,

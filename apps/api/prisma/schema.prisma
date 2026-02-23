@@ -74,6 +74,20 @@ enum ApprovalStatus {
   REJECTED
 }
 
+enum NotificationType {
+  OFFERTE_TER_GOEDKEURING
+  OFFERTE_GOEDGEKEURD
+  OFFERTE_AFGEWEZEN
+  OFFERTE_VERSTUURD
+  OFFERTE_BEKEKEN
+  OFFERTE_ONDERTEKEND
+  OFFERTE_VERLOPEN
+  NIEUWE_VRAAG_KLANT
+  ANTWOORD_OP_VRAAG
+  AANVRAAG_TOEGEWEZEN
+  AANVRAAG_STATUS_GEWIJZIGD
+}
+
 // ─── PRD-01: Foundation Models ───────────────────────────
 
 model Organization {
@@ -93,8 +107,10 @@ model Organization {
   products       Product[]
   priceTables    PriceTable[]
   requests       Request[]
-  quoteTemplates QuoteTemplate[]
-  quotes         Quote[]
+  quoteTemplates         QuoteTemplate[]
+  quotes                 Quote[]
+  notifications          Notification[]
+  notificationGroupPrefs NotificationGroupPref[]
 
   @@map("imp_organizations")
 }
@@ -123,6 +139,9 @@ model User {
   createdQuotes          Quote[]                @relation("QuoteCreatedByUser")
   requestedApprovals     QuoteApprovalRequest[] @relation("ApprovalRequestedByUser")
   reviewedApprovals      QuoteApprovalRequest[] @relation("ApprovalReviewedByUser")
+
+  notifications          Notification[]
+  notificationPrefs      NotificationPref[]
 
   @@map("imp_users")
 }
@@ -475,4 +494,52 @@ model QuoteApprovalRequest {
   reviewedByUser  User? @relation("ApprovalReviewedByUser", fields: [reviewedBy], references: [id])
 
   @@map("imp_quote_approval_requests")
+}
+
+// ─── PRD-06: Notifications ────────────────────────────────
+
+model Notification {
+  id         String           @id @default(uuid()) @db.Uuid
+  orgId      String?          @map("org_id") @db.Uuid
+  userId     String           @map("user_id") @db.Uuid
+  type       NotificationType
+  title      String
+  body       String
+  entityType String?          @map("entity_type")
+  entityId   String?          @map("entity_id") @db.Uuid
+  isRead     Boolean          @default(false) @map("is_read")
+  readAt     DateTime?        @map("read_at")
+  createdAt  DateTime         @default(now()) @map("created_at")
+
+  organization Organization? @relation(fields: [orgId], references: [id])
+  user         User          @relation(fields: [userId], references: [id])
+
+  @@map("imp_notifications")
+}
+
+model NotificationPref {
+  id               String           @id @default(uuid()) @db.Uuid
+  userId           String           @map("user_id") @db.Uuid
+  notificationType NotificationType @map("notification_type")
+  channelInApp     Boolean          @default(true) @map("channel_in_app")
+  channelEmail     Boolean          @default(true) @map("channel_email")
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@unique([userId, notificationType])
+  @@map("imp_notification_prefs")
+}
+
+model NotificationGroupPref {
+  id               String           @id @default(uuid()) @db.Uuid
+  orgId            String           @map("org_id") @db.Uuid
+  role             Role
+  notificationType NotificationType @map("notification_type")
+  channelInApp     Boolean          @default(true) @map("channel_in_app")
+  channelEmail     Boolean          @default(true) @map("channel_email")
+
+  organization Organization @relation(fields: [orgId], references: [id])
+
+  @@unique([orgId, role, notificationType])
+  @@map("imp_notification_group_prefs")
 }

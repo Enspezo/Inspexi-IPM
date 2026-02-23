@@ -19,6 +19,10 @@ const ContactsPage = lazy(() => import('@/pages/contacts/contacts-page'));
 const ContactDetailPage = lazy(
   () => import('@/pages/contacts/contact-detail-page'),
 );
+const RequestsPage = lazy(() => import('@/pages/requests/requests-page'));
+const RequestDetailPage = lazy(
+  () => import('@/pages/requests/request-detail-page'),
+);
 const ProductsPage = lazy(() => import('@/pages/products/products-page'));
 const PriceTablesPage = lazy(
   () => import('@/pages/price-tables/price-tables-page'),
@@ -58,6 +62,8 @@ export default function App() {
             <Route path="/profile" element={<ProfilePage />} />
             <Route path="/contacts" element={<ContactsPage />} />
             <Route path="/contacts/:id" element={<ContactDetailPage />} />
+            <Route path="/requests" element={<RequestsPage />} />
+            <Route path="/requests/:id" element={<RequestDetailPage />} />
             <Route path="/products" element={<ProductsPage />} />
             <Route path="/price-tables" element={<PriceTablesPage />} />
             <Route path="/price-tables/:id" element={<PriceTableDetailPage />} />

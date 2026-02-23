@@ -35,6 +35,28 @@ enum PriceType {
   TIERED
 }
 
+enum RequestSource {
+  MANUAL
+  WEB_FORM
+  EMAIL
+  PHONE
+}
+
+enum RequestStatus {
+  NIEUW
+  IN_BEHANDELING
+  OFFERTE_GEMAAKT
+  GEWONNEN
+  VERLOREN
+  ON_HOLD
+}
+
+enum Priority {
+  LOW
+  NORMAL
+  HIGH
+}
+
 // ─── PRD-01: Foundation Models ───────────────────────────
 
 model Organization {
@@ -53,6 +75,7 @@ model Organization {
   locations   Location[]
   products    Product[]
   priceTables PriceTable[]
+  requests    Request[]
 
   @@map("imp_organizations")
 }
@@ -73,6 +96,10 @@ model User {
   refreshTokens RefreshToken[]
   contactLogs   ContactLog[]
   contactEmails ContactEmail[]
+
+  assignedRequests       Request[]              @relation("AssignedToUser")
+  createdRequests        Request[]              @relation("CreatedByUser")
+  requestStatusChanges   RequestStatusHistory[] @relation("StatusChangedByUser")
 
   @@map("imp_users")
 }
@@ -129,6 +156,7 @@ model Contact {
   logs               ContactLog[]
   emails             ContactEmail[]
   contactPriceTables ContactPriceTable[]
+  requests           Request[]
 
   @@map("imp_contacts")
 }
@@ -164,6 +192,7 @@ model Location {
 
   contact      Contact      @relation(fields: [contactId], references: [id])
   organization Organization @relation(fields: [orgId], references: [id])
+  requests     Request[]
 
   @@map("imp_locations")
 }
@@ -272,4 +301,47 @@ model ContactPriceTable {
 
   @@id([contactId, priceTableId])
   @@map("imp_contact_price_tables")
+}
+
+// ─── PRD-03: Requests (Leads & Aanvragen) ────────────────
+
+model Request {
+  id          String        @id @default(uuid()) @db.Uuid
+  orgId       String        @map("org_id") @db.Uuid
+  contactId   String        @map("contact_id") @db.Uuid
+  locationId  String?       @map("location_id") @db.Uuid
+  assignedTo  String?       @map("assigned_to") @db.Uuid
+  source      RequestSource
+  status      RequestStatus @default(NIEUW)
+  title       String
+  description String?
+  priority    Priority      @default(NORMAL)
+  createdBy   String        @map("created_by") @db.Uuid
+  isDeleted   Boolean       @default(false) @map("is_deleted")
+  createdAt   DateTime      @default(now()) @map("created_at")
+  updatedAt   DateTime      @updatedAt @map("updated_at")
+
+  organization  Organization           @relation(fields: [orgId], references: [id])
+  contact       Contact                @relation(fields: [contactId], references: [id])
+  location      Location?              @relation(fields: [locationId], references: [id])
+  assignedUser  User?                  @relation("AssignedToUser", fields: [assignedTo], references: [id])
+  createdByUser User                   @relation("CreatedByUser", fields: [createdBy], references: [id])
+  statusHistory RequestStatusHistory[]
+
+  @@map("imp_requests")
+}
+
+model RequestStatusHistory {
+  id         String         @id @default(uuid()) @db.Uuid
+  requestId  String         @map("request_id") @db.Uuid
+  fromStatus RequestStatus? @map("from_status")
+  toStatus   RequestStatus  @map("to_status")
+  changedBy  String         @map("changed_by") @db.Uuid
+  changedAt  DateTime       @default(now()) @map("changed_at")
+  note       String?
+
+  request       Request @relation(fields: [requestId], references: [id])
+  changedByUser User    @relation("StatusChangedByUser", fields: [changedBy], references: [id])
+
+  @@map("imp_request_status_history")
 }

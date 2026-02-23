@@ -12,6 +12,7 @@ import { UsersModule } from './modules/users/users.module';
 import { ContactsModule } from './modules/contacts/contacts.module';
 import { ProductsModule } from './modules/products/products.module';
 import { PriceTablesModule } from './modules/price-tables/price-tables.module';
+import { RequestsModule } from './modules/requests/requests.module';
 
 @Module({
   imports: [
@@ -24,6 +25,7 @@ import { PriceTablesModule } from './modules/price-tables/price-tables.module';
     ContactsModule,
     ProductsModule,
     PriceTablesModule,
+    RequestsModule,
   ],
   providers: [
     {

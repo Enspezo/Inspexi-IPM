@@ -201,3 +201,73 @@ export interface PriceTier {
   toQty: number | null;
   price: number;
 }
+
+// ─── PRD-03: Requests (Leads & Aanvragen) Types ─────────
+
+export enum RequestSource {
+  MANUAL = 'MANUAL',
+  WEB_FORM = 'WEB_FORM',
+  EMAIL = 'EMAIL',
+  PHONE = 'PHONE',
+}
+
+export enum RequestStatus {
+  NIEUW = 'NIEUW',
+  IN_BEHANDELING = 'IN_BEHANDELING',
+  OFFERTE_GEMAAKT = 'OFFERTE_GEMAAKT',
+  GEWONNEN = 'GEWONNEN',
+  VERLOREN = 'VERLOREN',
+  ON_HOLD = 'ON_HOLD',
+}
+
+export enum Priority {
+  LOW = 'LOW',
+  NORMAL = 'NORMAL',
+  HIGH = 'HIGH',
+}
+
+export interface UserSummary {
+  id: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+}
+
+export interface LocationSummary {
+  id: string;
+  name: string;
+  city: string;
+}
+
+export interface Request {
+  id: string;
+  orgId: string;
+  contactId: string;
+  locationId: string | null;
+  assignedTo: string | null;
+  source: RequestSource;
+  status: RequestStatus;
+  title: string;
+  description: string | null;
+  priority: Priority;
+  createdBy: string;
+  isDeleted: boolean;
+  createdAt: string;
+  updatedAt: string;
+  contact?: ContactSummary;
+  location?: LocationSummary;
+  assignedUser?: UserSummary;
+  createdByUser?: UserSummary;
+  statusHistory?: RequestStatusHistory[];
+}
+
+export interface RequestStatusHistory {
+  id: string;
+  requestId: string;
+  fromStatus: RequestStatus | null;
+  toStatus: RequestStatus;
+  changedBy: string;
+  changedAt: string;
+  note: string | null;
+  changedByUser?: UserSummary;
+}

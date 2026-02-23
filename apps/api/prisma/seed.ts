@@ -1,4 +1,4 @@
-import { PrismaClient, Role, ContactType, LogType, PriceType } from '@prisma/client';
+import { PrismaClient, Role, ContactType, LogType, PriceType, RequestSource, RequestStatus, Priority } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 
 const prisma = new PrismaClient();
@@ -13,6 +13,9 @@ async function main() {
   await prisma.contactPriceTable.deleteMany();
   await prisma.priceTable.deleteMany();
   await prisma.product.deleteMany();
+  // PRD-03 tables (dependent on requests → contacts/locations)
+  await prisma.requestStatusHistory.deleteMany();
+  await prisma.request.deleteMany();
   // CRM tables (dependent on contacts)
   await prisma.contactEmail.deleteMany();
   await prisma.contactLog.deleteMany();
@@ -154,7 +157,7 @@ async function main() {
   });
 
   // Locaties
-  await prisma.location.create({
+  const loc1Kantoor = await prisma.location.create({
     data: {
       contactId: contact1.id,
       orgId: org1.id,
@@ -179,7 +182,7 @@ async function main() {
       objectType: 'woning',
     },
   });
-  await prisma.location.create({
+  const loc1Bedrijfshal = await prisma.location.create({
     data: {
       contactId: contact1.id,
       orgId: org1.id,
@@ -267,7 +270,7 @@ async function main() {
     },
   });
 
-  await prisma.location.create({
+  const loc2Woning = await prisma.location.create({
     data: {
       contactId: contact2.id,
       orgId: org1.id,
@@ -322,30 +325,30 @@ async function main() {
     },
   });
 
-  await prisma.location.createMany({
-    data: [
-      {
-        contactId: contact3.id,
-        orgId: org1.id,
-        name: 'Appartementencomplex Kralingen',
-        street: 'Kralingse Plaslaan',
-        houseNumber: '50',
-        postalCode: '3062 DB',
-        city: 'Rotterdam',
-        objectType: 'woning',
-        notes: '24 appartementen',
-      },
-      {
-        contactId: contact3.id,
-        orgId: org1.id,
-        name: 'Winkelcentrum Alexandrium',
-        street: 'Alexandrium',
-        houseNumber: '1',
-        postalCode: '3068 NC',
-        city: 'Rotterdam',
-        objectType: 'kantoor',
-      },
-    ],
+  const loc3Zuidas = await prisma.location.create({
+    data: {
+      contactId: contact3.id,
+      orgId: org1.id,
+      name: 'Bouwplaats Zuidas',
+      street: 'Kralingse Plaslaan',
+      houseNumber: '50',
+      postalCode: '3062 DB',
+      city: 'Rotterdam',
+      objectType: 'woning',
+      notes: '24 appartementen',
+    },
+  });
+  await prisma.location.create({
+    data: {
+      contactId: contact3.id,
+      orgId: org1.id,
+      name: 'Winkelcentrum Alexandrium',
+      street: 'Alexandrium',
+      houseNumber: '1',
+      postalCode: '3068 NC',
+      city: 'Rotterdam',
+      objectType: 'kantoor',
+    },
   });
 
   console.log('    → 1 adres, 2 locaties');
@@ -376,7 +379,7 @@ async function main() {
     },
   });
 
-  await prisma.location.create({
+  const loc4Magazijn = await prisma.location.create({
     data: {
       contactId: contact4.id,
       orgId: org2.id,
@@ -527,6 +530,191 @@ async function main() {
     }),
   ]);
   console.log(`  ✓ ${products2.length} producten + 1 prijstabel voor ${org2.name}`);
+
+  // ─── PRD-03: Requests (Leads & Aanvragen) ───────────────
+  console.log('\n📋 Seeding Requests...');
+
+  // Request 1: NEN1010 keuring kantoorpand — Bouwbedrijf De Vries, locatie Kantoorpand Zuidas
+  const req1 = await prisma.request.create({
+    data: {
+      orgId: org1.id,
+      contactId: contact1.id,
+      locationId: loc1Kantoor.id,
+      assignedTo: createdOrg1Users[Role.MANAGER],
+      source: RequestSource.PHONE,
+      status: RequestStatus.IN_BEHANDELING,
+      title: 'NEN1010 keuring kantoorpand',
+      description: 'Klant belt met verzoek om NEN1010 keuring voor kantoorpand Zuidas. Dringend ivm verzekeringseisen.',
+      priority: Priority.HIGH,
+      createdBy: createdOrg1Users[Role.ORG_ADMIN],
+    },
+  });
+  await prisma.requestStatusHistory.createMany({
+    data: [
+      {
+        requestId: req1.id,
+        fromStatus: null,
+        toStatus: RequestStatus.NIEUW,
+        changedBy: createdOrg1Users[Role.ORG_ADMIN],
+        changedAt: new Date('2026-02-15T09:00:00Z'),
+      },
+      {
+        requestId: req1.id,
+        fromStatus: RequestStatus.NIEUW,
+        toStatus: RequestStatus.IN_BEHANDELING,
+        changedBy: createdOrg1Users[Role.MANAGER],
+        changedAt: new Date('2026-02-15T11:30:00Z'),
+        note: 'Inspecteur inplannen voor volgende week',
+      },
+    ],
+  });
+  console.log(`  ✓ Aanvraag: ${req1.title} (IN_BEHANDELING)`);
+
+  // Request 2: Thermografisch onderzoek bedrijfshal — Bouwbedrijf De Vries, locatie Bedrijfshal
+  const req2 = await prisma.request.create({
+    data: {
+      orgId: org1.id,
+      contactId: contact1.id,
+      locationId: loc1Bedrijfshal.id,
+      source: RequestSource.EMAIL,
+      status: RequestStatus.NIEUW,
+      title: 'Thermografisch onderzoek bedrijfshal',
+      description: 'Email ontvangen met verzoek om thermografisch onderzoek in bedrijfshal Schiphol.',
+      priority: Priority.NORMAL,
+      createdBy: createdOrg1Users[Role.BACKOFFICE],
+    },
+  });
+  await prisma.requestStatusHistory.create({
+    data: {
+      requestId: req2.id,
+      fromStatus: null,
+      toStatus: RequestStatus.NIEUW,
+      changedBy: createdOrg1Users[Role.BACKOFFICE],
+      changedAt: new Date('2026-02-18T08:00:00Z'),
+    },
+  });
+  console.log(`  ✓ Aanvraag: ${req2.title} (NIEUW)`);
+
+  // Request 3: NEN3140 inspectie werkplaats — Pieter Jansen, locatie Woning Utrecht
+  const req3 = await prisma.request.create({
+    data: {
+      orgId: org1.id,
+      contactId: contact2.id,
+      locationId: loc2Woning.id,
+      assignedTo: createdOrg1Users[Role.BACKOFFICE],
+      source: RequestSource.MANUAL,
+      status: RequestStatus.OFFERTE_GEMAAKT,
+      title: 'NEN3140 inspectie werkplaats',
+      description: 'Particuliere klant wil NEN3140 inspectie voor werkplaats achter woning.',
+      priority: Priority.NORMAL,
+      createdBy: createdOrg1Users[Role.BACKOFFICE],
+    },
+  });
+  await prisma.requestStatusHistory.createMany({
+    data: [
+      {
+        requestId: req3.id,
+        fromStatus: null,
+        toStatus: RequestStatus.NIEUW,
+        changedBy: createdOrg1Users[Role.BACKOFFICE],
+        changedAt: new Date('2026-02-10T14:00:00Z'),
+      },
+      {
+        requestId: req3.id,
+        fromStatus: RequestStatus.NIEUW,
+        toStatus: RequestStatus.IN_BEHANDELING,
+        changedBy: createdOrg1Users[Role.BACKOFFICE],
+        changedAt: new Date('2026-02-11T09:00:00Z'),
+        note: 'Offerte in voorbereiding',
+      },
+      {
+        requestId: req3.id,
+        fromStatus: RequestStatus.IN_BEHANDELING,
+        toStatus: RequestStatus.OFFERTE_GEMAAKT,
+        changedBy: createdOrg1Users[Role.BACKOFFICE],
+        changedAt: new Date('2026-02-13T16:00:00Z'),
+        note: 'Offerte verstuurd per email',
+      },
+    ],
+  });
+  console.log(`  ✓ Aanvraag: ${req3.title} (OFFERTE_GEMAAKT)`);
+
+  // Request 4: Elektrakeuring nieuwbouwproject — Vastgoed Partners, locatie Bouwplaats Zuidas
+  const req4 = await prisma.request.create({
+    data: {
+      orgId: org1.id,
+      contactId: contact3.id,
+      locationId: loc3Zuidas.id,
+      assignedTo: createdOrg1Users[Role.MANAGER],
+      source: RequestSource.WEB_FORM,
+      status: RequestStatus.GEWONNEN,
+      title: 'Elektrakeuring nieuwbouwproject',
+      description: 'Aanvraag via websiteformulier voor volledige elektrakeuring nieuwbouwproject Zuidas.',
+      priority: Priority.LOW,
+      createdBy: createdOrg1Users[Role.ORG_ADMIN],
+    },
+  });
+  await prisma.requestStatusHistory.createMany({
+    data: [
+      {
+        requestId: req4.id,
+        fromStatus: null,
+        toStatus: RequestStatus.NIEUW,
+        changedBy: createdOrg1Users[Role.ORG_ADMIN],
+        changedAt: new Date('2026-02-01T10:00:00Z'),
+      },
+      {
+        requestId: req4.id,
+        fromStatus: RequestStatus.NIEUW,
+        toStatus: RequestStatus.IN_BEHANDELING,
+        changedBy: createdOrg1Users[Role.MANAGER],
+        changedAt: new Date('2026-02-02T08:30:00Z'),
+        note: 'Planning opgesteld',
+      },
+      {
+        requestId: req4.id,
+        fromStatus: RequestStatus.IN_BEHANDELING,
+        toStatus: RequestStatus.OFFERTE_GEMAAKT,
+        changedBy: createdOrg1Users[Role.MANAGER],
+        changedAt: new Date('2026-02-05T15:00:00Z'),
+        note: 'Offerte voor meerdere fases opgestuurd',
+      },
+      {
+        requestId: req4.id,
+        fromStatus: RequestStatus.OFFERTE_GEMAAKT,
+        toStatus: RequestStatus.GEWONNEN,
+        changedBy: createdOrg1Users[Role.ORG_ADMIN],
+        changedAt: new Date('2026-02-10T11:00:00Z'),
+        note: 'Klant akkoord, opdracht bevestigd',
+      },
+    ],
+  });
+  console.log(`  ✓ Aanvraag: ${req4.title} (GEWONNEN)`);
+
+  // Request 5: Basisinspectie fabriek — Installatie Groep (org2)
+  const req5 = await prisma.request.create({
+    data: {
+      orgId: org2.id,
+      contactId: contact4.id,
+      locationId: loc4Magazijn.id,
+      source: RequestSource.MANUAL,
+      status: RequestStatus.NIEUW,
+      title: 'Basisinspectie fabriek',
+      description: 'Jaarlijkse basisinspectie voor het magazijn.',
+      priority: Priority.NORMAL,
+      createdBy: createdOrg2Users[Role.ORG_ADMIN],
+    },
+  });
+  await prisma.requestStatusHistory.create({
+    data: {
+      requestId: req5.id,
+      fromStatus: null,
+      toStatus: RequestStatus.NIEUW,
+      changedBy: createdOrg2Users[Role.ORG_ADMIN],
+      changedAt: new Date('2026-02-20T09:00:00Z'),
+    },
+  });
+  console.log(`  ✓ Aanvraag: ${req5.title} (NIEUW, org2)`);
 
   console.log('\n✅ Seed completed successfully!');
   console.log('\n📋 Login credentials (all use Password123!):');

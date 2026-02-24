@@ -46,3 +46,6 @@ lerna-debug.log*
 # temp directory
 .temp
 .tmp
+
+# Document uploads (local dev storage)
+apps/api/uploads/

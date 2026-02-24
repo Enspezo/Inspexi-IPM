@@ -3,7 +3,7 @@ import { useAuditLog } from '@/hooks/use-audit-log';
 import { AuditAction } from '@/types';
 import type { AuditLogEntry } from '@/types';
 import { getFieldLabel } from '@/lib/audit-field-labels';
-import { formatAuditValue } from '@/lib/audit-value-format';
+import { formatAuditValue, isHiddenAuditField } from '@/lib/audit-value-format';
 import { Button, Spinner } from '@/components/ui';
 
 const ITEMS_PER_PAGE = 10;
@@ -64,14 +64,18 @@ function renderChangesSummary(entry: AuditLogEntry, entityType: string) {
     return <p className="text-sm text-gray-600">Gegevens bijgewerkt</p>;
   }
 
-  const entries = Object.entries(entry.changes);
-  if (entries.length === 0) {
+  // Filter out internal/hidden fields
+  const visibleEntries = Object.entries(entry.changes).filter(
+    ([field]) => !isHiddenAuditField(field),
+  );
+
+  if (visibleEntries.length === 0) {
     return <p className="text-sm text-gray-600">Gegevens bijgewerkt</p>;
   }
 
   return (
     <ul className="space-y-1">
-      {entries.slice(0, 5).map(([field, change]) => (
+      {visibleEntries.slice(0, 5).map(([field, change]) => (
         <li key={field} className="text-sm text-gray-600">
           <span className="font-medium text-gray-700">
             {getFieldLabel(entityType, field)}
@@ -86,9 +90,9 @@ function renderChangesSummary(entry: AuditLogEntry, entityType: string) {
           </span>
         </li>
       ))}
-      {entries.length > 5 && (
+      {visibleEntries.length > 5 && (
         <li className="text-xs text-gray-400">
-          en {entries.length - 5} andere wijziging{entries.length - 5 !== 1 ? 'en' : ''}
+          en {visibleEntries.length - 5} andere wijziging{visibleEntries.length - 5 !== 1 ? 'en' : ''}
         </li>
       )}
     </ul>

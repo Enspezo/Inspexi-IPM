@@ -59,8 +59,10 @@ async function request<T>(
 ): Promise<T> {
   const url = `${BASE_URL}${endpoint}`;
 
+  const isFormData = options.body instanceof FormData;
+
   const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
+    ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
     ...(options.headers as Record<string, string>),
   };
 
@@ -147,5 +149,11 @@ export const apiClient = {
   delete: <T>(endpoint: string) =>
     request<T>(endpoint, {
       method: 'DELETE',
+    }),
+
+  upload: <T>(endpoint: string, formData: FormData) =>
+    request<T>(endpoint, {
+      method: 'POST',
+      body: formData,
     }),
 };

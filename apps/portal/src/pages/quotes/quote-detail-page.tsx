@@ -5,6 +5,7 @@ import {
   ApprovalStatus,
   Role,
   TaskEntityType,
+  DocumentEntityType,
 } from '@/types';
 import { Button, Card, Spinner, Input, Table, useToast, type Column } from '@/components/ui';
 import { DetailPageLayout } from '@/components/layout/detail-page-layout';
@@ -20,6 +21,7 @@ import {
 import type { QuoteLine, QuoteApprovalRequest } from '@/types';
 import { AuditHistory } from '@/components/audit-history/audit-history';
 import { CreateTaskModal } from '@/pages/tasks/components/create-task-modal';
+import { DocumentsSection } from '@/components/documents';
 
 const canWrite = [Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE];
 const canApprove = [Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER];
@@ -512,6 +514,15 @@ export default function QuoteDetailPage() {
           <p className="text-sm text-gray-600 whitespace-pre-wrap">{quote.internalNotes}</p>
         </Card>
       )}
+
+      {/* Documenten */}
+      <Card>
+        <DocumentsSection
+          entityType={DocumentEntityType.QUOTE}
+          entityId={quote.id}
+          canUpload={!!userCanWrite}
+        />
+      </Card>
 
       {/* Verwijderen */}
       {userCanWrite && quote.status === QuoteStatus.CONCEPT && (

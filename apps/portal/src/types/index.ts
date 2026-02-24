@@ -444,6 +444,9 @@ export enum NotificationType {
   ANTWOORD_OP_VRAAG = 'ANTWOORD_OP_VRAAG',
   AANVRAAG_TOEGEWEZEN = 'AANVRAAG_TOEGEWEZEN',
   AANVRAAG_STATUS_GEWIJZIGD = 'AANVRAAG_STATUS_GEWIJZIGD',
+  TAAK_TOEGEWEZEN = 'TAAK_TOEGEWEZEN',
+  TAAK_STATUS_GEWIJZIGD = 'TAAK_STATUS_GEWIJZIGD',
+  DOCUMENT_GEUPLOAD = 'DOCUMENT_GEUPLOAD',
 }
 
 export interface Notification {
@@ -523,6 +526,7 @@ export interface Task {
   status: TaskStatus;
   entityType: TaskEntityType;
   entityId: string;
+  entityName: string | null;
   assigneeId: string | null;
   createdById: string;
   deadline: string | null;
@@ -530,4 +534,31 @@ export interface Task {
   updatedAt: string;
   assignee?: UserSummary;
   createdBy?: UserSummary;
+}
+
+// ─── Document Management ────────────────────────────────
+
+export enum DocumentEntityType {
+  CONTACT = 'CONTACT',
+  REQUEST = 'REQUEST',
+  QUOTE = 'QUOTE',
+  PRODUCT = 'PRODUCT',
+  TASK = 'TASK',
+}
+
+export interface CrmDocument {
+  id: string;
+  orgId: string;
+  entityType: DocumentEntityType;
+  entityId: string;
+  entityName?: string | null;
+  fileName: string;
+  originalName: string;
+  mimeType: string;
+  size: number;
+  description: string | null;
+  uploadedById: string;
+  isDeleted: boolean;
+  createdAt: string;
+  uploadedBy?: UserSummary;
 }

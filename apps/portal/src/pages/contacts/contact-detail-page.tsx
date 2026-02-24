@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ContactType, ContactPersonRole, LogType, QuoteStatus, Role, TaskEntityType } from '@/types';
+import { ContactType, ContactPersonRole, LogType, QuoteStatus, Role, TaskEntityType, DocumentEntityType } from '@/types';
 import type { Contact, ContactAddress, ContactLog, ContactEmail, Location } from '@/types';
 import { Button, Card, Spinner, useToast } from '@/components/ui';
 import { DetailPageLayout } from '@/components/layout/detail-page-layout';
@@ -17,6 +17,7 @@ import { AddLogModal } from './components/add-log-modal';
 import { SendEmailModal } from './components/send-email-modal';
 import { AuditHistory } from '@/components/audit-history/audit-history';
 import { CreateTaskModal } from '@/pages/tasks/components/create-task-modal';
+import { DocumentsSection } from '@/components/documents';
 
 type Tab = 'algemeen' | 'adressen' | 'locaties' | 'offertes' | 'geschiedenis';
 
@@ -676,6 +677,15 @@ export default function ContactDetailPage() {
           )}
         </div>
       )}
+
+      {/* Documenten */}
+      <Card>
+        <DocumentsSection
+          entityType={DocumentEntityType.CONTACT}
+          entityId={contact.id}
+          canUpload={!!userCanWrite}
+        />
+      </Card>
 
       {/* Verwijderen */}
       {userCanManage && (

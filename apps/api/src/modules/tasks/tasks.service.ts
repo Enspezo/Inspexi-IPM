@@ -3,8 +3,9 @@ import {
   NotFoundException,
   ForbiddenException,
 } from '@nestjs/common';
-import { User, Role, Prisma } from '@prisma/client';
+import { User, Role, Prisma, TaskEntityType, NotificationType } from '@prisma/client';
 import { PrismaService } from '@/prisma';
+import { NotificationsService } from '../notifications/notifications.service';
 import { CreateTaskDto, UpdateTaskDto, ListTasksQueryDto } from './dto';
 
 const userSelect = {
@@ -14,9 +15,71 @@ const userSelect = {
   email: true,
 };
 
+const statusLabels: Record<string, string> = {
+  TE_DOEN: 'Te doen',
+  MEE_BEZIG: 'Mee bezig',
+  VOLTOOID: 'Voltooid',
+};
+
 @Injectable()
 export class TasksService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private notifications: NotificationsService,
+  ) {}
+
+  /**
+   * Resolve entity display names for a list of tasks.
+   * Batches lookups per entity type for efficiency.
+   */
+  private async enrichWithEntityNames(
+    tasks: Array<{ entityType: TaskEntityType; entityId: string }>,
+  ): Promise<Map<string, string>> {
+    const nameMap = new Map<string, string>();
+
+    const contactIds = tasks
+      .filter((t) => t.entityType === TaskEntityType.CONTACT)
+      .map((t) => t.entityId);
+    const requestIds = tasks
+      .filter((t) => t.entityType === TaskEntityType.REQUEST)
+      .map((t) => t.entityId);
+    const quoteIds = tasks
+      .filter((t) => t.entityType === TaskEntityType.QUOTE)
+      .map((t) => t.entityId);
+
+    if (contactIds.length > 0) {
+      const contacts = await this.prisma.contact.findMany({
+        where: { id: { in: contactIds } },
+        select: { id: true, type: true, companyName: true, firstName: true, lastName: true },
+      });
+      for (const c of contacts) {
+        const name = c.companyName || [c.firstName, c.lastName].filter(Boolean).join(' ') || '—';
+        nameMap.set(c.id, name);
+      }
+    }
+
+    if (requestIds.length > 0) {
+      const requests = await this.prisma.request.findMany({
+        where: { id: { in: requestIds } },
+        select: { id: true, title: true },
+      });
+      for (const r of requests) {
+        nameMap.set(r.id, r.title);
+      }
+    }
+
+    if (quoteIds.length > 0) {
+      const quotes = await this.prisma.quote.findMany({
+        where: { id: { in: quoteIds } },
+        select: { id: true, quoteNumber: true },
+      });
+      for (const q of quotes) {
+        nameMap.set(q.id, q.quoteNumber);
+      }
+    }
+
+    return nameMap;
+  }
 
   async findAll(user: User, query: ListTasksQueryDto) {
     const { search, status, entityType, entityId, onlyMine, page = 1, limit = 20 } = query;
@@ -62,7 +125,14 @@ export class TasksService {
       this.prisma.task.count({ where }),
     ]);
 
-    return { data, total, page, limit };
+    // Enrich with entity names
+    const nameMap = await this.enrichWithEntityNames(data);
+    const enrichedData = data.map((task) => ({
+      ...task,
+      entityName: nameMap.get(task.entityId) || null,
+    }));
+
+    return { data: enrichedData, total, page, limit };
   }
 
   async findOne(id: string, user: User) {
@@ -82,7 +152,12 @@ export class TasksService {
       throw new ForbiddenException('Geen toegang tot deze taak');
     }
 
-    return task;
+    // Enrich with entity name
+    const nameMap = await this.enrichWithEntityNames([task]);
+    return {
+      ...task,
+      entityName: nameMap.get(task.entityId) || null,
+    };
   }
 
   async create(dto: CreateTaskDto, user: User) {
@@ -104,11 +179,42 @@ export class TasksService {
       },
     });
 
-    return task;
+    // Notify the assignee (if assigned to someone other than the creator)
+    if (task.assigneeId && task.assigneeId !== user.id) {
+      this.notifications.dispatch({
+        type: NotificationType.TAAK_TOEGEWEZEN,
+        orgId: task.orgId,
+        recipientUserIds: [task.assigneeId],
+        title: 'Taak toegewezen',
+        body: `Taak "${task.title}" is aan u toegewezen.`,
+        entityType: 'task',
+        entityId: task.id,
+      });
+    }
+
+    // Enrich with entity name
+    const nameMap = await this.enrichWithEntityNames([task]);
+    return {
+      ...task,
+      entityName: nameMap.get(task.entityId) || null,
+    };
   }
 
   async update(id: string, dto: UpdateTaskDto, user: User) {
-    const existing = await this.findOne(id, user);
+    const existing = await this.prisma.task.findUnique({
+      where: { id },
+    });
+
+    if (!existing) {
+      throw new NotFoundException('Taak niet gevonden');
+    }
+
+    if (user.role !== Role.SUPERUSER && existing.orgId !== user.orgId) {
+      throw new ForbiddenException('Geen toegang tot deze taak');
+    }
+
+    const oldStatus = existing.status;
+    const oldAssigneeId = existing.assigneeId;
 
     const data: Prisma.TaskUpdateInput = {};
 
@@ -133,11 +239,63 @@ export class TasksService {
       },
     });
 
-    return task;
+    // Notify on assignment change
+    if (dto.assigneeId && dto.assigneeId !== oldAssigneeId && dto.assigneeId !== user.id) {
+      this.notifications.dispatch({
+        type: NotificationType.TAAK_TOEGEWEZEN,
+        orgId: task.orgId,
+        recipientUserIds: [dto.assigneeId],
+        title: 'Taak toegewezen',
+        body: `Taak "${task.title}" is aan u toegewezen.`,
+        entityType: 'task',
+        entityId: task.id,
+      });
+    }
+
+    // Notify on status change (to assignee and/or creator)
+    if (dto.status && dto.status !== oldStatus) {
+      const recipientIds = new Set<string>();
+      if (task.assigneeId && task.assigneeId !== user.id) {
+        recipientIds.add(task.assigneeId);
+      }
+      if (task.createdById !== user.id) {
+        recipientIds.add(task.createdById);
+      }
+
+      if (recipientIds.size > 0) {
+        const newStatusLabel = statusLabels[dto.status] || dto.status;
+        this.notifications.dispatch({
+          type: NotificationType.TAAK_STATUS_GEWIJZIGD,
+          orgId: task.orgId,
+          recipientUserIds: Array.from(recipientIds),
+          title: 'Taakstatus gewijzigd',
+          body: `Status van taak "${task.title}" is gewijzigd naar ${newStatusLabel}.`,
+          entityType: 'task',
+          entityId: task.id,
+        });
+      }
+    }
+
+    // Enrich with entity name
+    const nameMap = await this.enrichWithEntityNames([task]);
+    return {
+      ...task,
+      entityName: nameMap.get(task.entityId) || null,
+    };
   }
 
   async remove(id: string, user: User) {
-    const existing = await this.findOne(id, user);
+    const existing = await this.prisma.task.findUnique({
+      where: { id },
+    });
+
+    if (!existing) {
+      throw new NotFoundException('Taak niet gevonden');
+    }
+
+    if (user.role !== Role.SUPERUSER && existing.orgId !== user.orgId) {
+      throw new ForbiddenException('Geen toegang tot deze taak');
+    }
 
     await this.prisma.task.delete({
       where: { id: existing.id },

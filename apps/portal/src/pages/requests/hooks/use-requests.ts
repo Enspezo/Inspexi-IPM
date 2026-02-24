@@ -119,3 +119,21 @@ export function useOrgUsers() {
     queryFn: () => apiClient.get<UserSummary[]>('/users'),
   });
 }
+
+/** Haalt alle aanvragen op zonder paginering, voor de kanban-weergave */
+export function useAllRequests(params: Omit<ListRequestsParams, 'page' | 'limit'> = {}) {
+  const queryParams = new URLSearchParams();
+  if (params.search) queryParams.set('search', params.search);
+  if (params.status) queryParams.set('status', params.status);
+  if (params.priority) queryParams.set('priority', params.priority);
+  if (params.assignedTo) queryParams.set('assignedTo', params.assignedTo);
+  queryParams.set('limit', '500');
+
+  const qs = queryParams.toString();
+  const endpoint = `/requests${qs ? `?${qs}` : ''}`;
+
+  return useQuery<PaginatedResponse<Request>>({
+    queryKey: ['requests-all', params],
+    queryFn: () => apiClient.get<PaginatedResponse<Request>>(endpoint),
+  });
+}

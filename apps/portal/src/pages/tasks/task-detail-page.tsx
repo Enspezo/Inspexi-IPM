@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { TaskStatus, TaskEntityType, Role } from '@/types';
-import { Button, Card, Spinner, useToast } from '@/components/ui';
+import { TaskStatus, TaskEntityType, DocumentEntityType, Role } from '@/types';
+import { Button, Card, Spinner, Select, useToast } from '@/components/ui';
 import { useAuth } from '@/providers/auth-provider';
-import { useTask, useDeleteTask } from './hooks/use-tasks';
+import { useTask, useUpdateTask, useDeleteTask } from './hooks/use-tasks';
 import { EditTaskModal } from './components/edit-task-modal';
+import { DocumentsSection } from '@/components/documents';
 
 const canWrite = [Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE, Role.WERKVOORBEREIDER];
 
@@ -19,6 +20,11 @@ const statusLabels: Record<string, string> = {
   [TaskStatus.MEE_BEZIG]: 'Mee bezig',
   [TaskStatus.VOLTOOID]: 'Voltooid',
 };
+
+const statusOptions = Object.values(TaskStatus).map((s) => ({
+  value: s,
+  label: statusLabels[s] || s,
+}));
 
 const entityTypeLabels: Record<string, string> = {
   [TaskEntityType.CONTACT]: 'Relatie',
@@ -46,9 +52,11 @@ export default function TaskDetailPage() {
   const { showToast } = useToast();
   const { user } = useAuth();
   const { data: task, isLoading, error } = useTask(id!);
+  const updateMutation = useUpdateTask();
   const deleteMutation = useDeleteTask();
 
   const [isEditOpen, setIsEditOpen] = useState(false);
+  const [newStatus, setNewStatus] = useState('');
 
   const userCanWrite = user && canWrite.includes(user.role);
 
@@ -72,6 +80,23 @@ export default function TaskDetailPage() {
     task.deadline &&
     task.status !== TaskStatus.VOLTOOID &&
     new Date(task.deadline) < new Date();
+
+  const handleStatusUpdate = async () => {
+    if (!newStatus) return;
+    try {
+      await updateMutation.mutateAsync({
+        id: task.id,
+        data: { status: newStatus as TaskStatus },
+      });
+      showToast('Status bijgewerkt', 'success');
+      setNewStatus('');
+    } catch (err) {
+      showToast(
+        err instanceof Error ? err.message : 'Status wijzigen mislukt',
+        'error',
+      );
+    }
+  };
 
   const handleDelete = async () => {
     if (!confirm('Weet je zeker dat je deze taak wilt verwijderen?')) return;
@@ -191,12 +216,14 @@ export default function TaskDetailPage() {
               </span>
             </div>
             <div className="flex items-center justify-between">
-              <span className="text-sm text-gray-500">Link</span>
+              <span className="text-sm text-gray-500">
+                {entityTypeLabels[task.entityType] || 'Entiteit'}
+              </span>
               <Link
                 to={`${entityTypeRoutes[task.entityType]}/${task.entityId}`}
                 className="text-sm text-primary-600 hover:text-primary-800 hover:underline"
               >
-                Bekijk {entityTypeLabels[task.entityType]?.toLowerCase() || 'entiteit'}
+                {task.entityName || `Bekijk ${entityTypeLabels[task.entityType]?.toLowerCase() || 'entiteit'}`}
               </Link>
             </div>
           </div>
@@ -210,6 +237,39 @@ export default function TaskDetailPage() {
           )}
         </Card>
       </div>
+
+      {/* Status wijzigen */}
+      {userCanWrite && (
+        <Card>
+          <h3 className="mb-4 text-sm font-semibold text-gray-900">Status wijzigen</h3>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+            <div className="w-56">
+              <Select
+                label="Nieuwe status"
+                options={statusOptions}
+                value={newStatus}
+                onChange={(e) => setNewStatus(e.target.value)}
+              />
+            </div>
+            <Button
+              onClick={handleStatusUpdate}
+              isLoading={updateMutation.isPending}
+              disabled={!newStatus || newStatus === task.status}
+            >
+              Bijwerken
+            </Button>
+          </div>
+        </Card>
+      )}
+
+      {/* Bijlagen */}
+      <Card>
+        <DocumentsSection
+          entityType={DocumentEntityType.TASK}
+          entityId={task.id}
+          canUpload={!!userCanWrite}
+        />
+      </Card>
 
       {/* Edit modal */}
       {isEditOpen && (

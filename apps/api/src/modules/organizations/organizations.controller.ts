@@ -2,19 +2,27 @@ import {
   Controller,
   Get,
   Post,
+  Delete,
   Patch,
   Param,
   Body,
   ParseUUIDPipe,
   ForbiddenException,
   NotFoundException,
+  UseInterceptors,
+  UploadedFile,
+  Res,
 } from '@nestjs/common';
 import {
   ApiTags,
   ApiOperation,
   ApiResponse,
   ApiBearerAuth,
+  ApiConsumes,
 } from '@nestjs/swagger';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { memoryStorage } from 'multer';
+import { Response } from 'express';
 import { User, Role } from '@prisma/client';
 import { OrganizationsService } from './organizations.service';
 import { CreateOrganizationDto, UpdateOrganizationDto } from './dto';
@@ -112,5 +120,65 @@ export class OrganizationsController {
     }
     const org = await this.organizationsService.update(id, dto);
     return { success: true, data: org };
+  }
+
+  @Post(':id/logo')
+  @Roles(Role.SUPERUSER, Role.ORG_ADMIN)
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: memoryStorage(),
+      limits: { fileSize: 5 * 1024 * 1024 }, // 5 MB
+    }),
+  )
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({ summary: 'Logo uploaden voor organisatie' })
+  @ApiResponse({ status: 200, description: 'Logo geüpload' })
+  async uploadLogo(
+    @Param('id', ParseUUIDPipe) id: string,
+    @UploadedFile() file: Express.Multer.File,
+    @CurrentUser() user: User,
+  ) {
+    if (user.role !== Role.SUPERUSER && user.orgId !== id) {
+      throw new ForbiddenException('Geen toegang tot deze organisatie');
+    }
+    if (!file) {
+      throw new NotFoundException('Geen bestand ontvangen');
+    }
+    const storageKey = await this.organizationsService.uploadLogo(id, file);
+    return { success: true, data: { storageKey } };
+  }
+
+  @Public()
+  @Get(':id/logo')
+  @ApiOperation({ summary: 'Logo ophalen voor organisatie' })
+  @ApiResponse({ status: 200, description: 'Logo afbeelding' })
+  @ApiResponse({ status: 404, description: 'Geen logo gevonden' })
+  async getLogo(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Res() res: Response,
+  ) {
+    const { buffer, mimeType } =
+      await this.organizationsService.downloadLogo(id);
+    res.set({
+      'Content-Type': mimeType,
+      'Content-Length': buffer.length.toString(),
+      'Cache-Control': 'public, max-age=86400',
+    });
+    res.send(buffer);
+  }
+
+  @Delete(':id/logo')
+  @Roles(Role.SUPERUSER, Role.ORG_ADMIN)
+  @ApiOperation({ summary: 'Logo verwijderen van organisatie' })
+  @ApiResponse({ status: 200, description: 'Logo verwijderd' })
+  async deleteLogo(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: User,
+  ) {
+    if (user.role !== Role.SUPERUSER && user.orgId !== id) {
+      throw new ForbiddenException('Geen toegang tot deze organisatie');
+    }
+    await this.organizationsService.deleteLogo(id);
+    return { success: true, data: null };
   }
 }

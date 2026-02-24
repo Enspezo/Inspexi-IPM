@@ -22,6 +22,9 @@ import {
 import { useAuth } from '@/providers/auth-provider';
 import { useRequests } from './hooks/use-requests';
 import { CreateRequestModal } from './components/create-request-modal';
+import { RequestsKanban } from './components/requests-kanban';
+
+type ViewMode = 'table' | 'kanban';
 
 const statusFilterOptions = [
   { value: '', label: 'Alle statussen' },
@@ -85,6 +88,36 @@ function getContactName(req: Request): string {
   return [req.contact.firstName, req.contact.lastName].filter(Boolean).join(' ') || '—';
 }
 
+// ─── Iconen voor de toggle knoppen ────────────────────────────────────────
+
+function TableIcon() {
+  return (
+    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2}
+        d="M3 10h18M3 6h18M3 14h18M3 18h18"
+      />
+    </svg>
+  );
+}
+
+function KanbanIcon() {
+  return (
+    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2}
+        d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2"
+      />
+    </svg>
+  );
+}
+
+// ─── Hoofd-component ───────────────────────────────────────────────────────
+
 export default function RequestsPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -93,6 +126,14 @@ export default function RequestsPage() {
   const [priorityFilter, setPriorityFilter] = useState('');
   const [page, setPage] = useState(1);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [viewMode, setViewMode] = useState<ViewMode>(
+    () => (localStorage.getItem('requests-view-mode') as ViewMode | null) ?? 'table',
+  );
+
+  const handleSetViewMode = (mode: ViewMode) => {
+    localStorage.setItem('requests-view-mode', mode);
+    setViewMode(mode);
+  };
 
   const { data, isLoading, error } = useRequests({
     search: search || undefined,
@@ -238,7 +279,7 @@ export default function RequestsPage() {
     allColumns,
   } = useTableConfig({ pageKey: 'requests', columns });
 
-  if (isLoading) {
+  if (isLoading && viewMode === 'table') {
     return (
       <div className="flex h-64 items-center justify-center">
         <Spinner size="lg" />
@@ -246,7 +287,7 @@ export default function RequestsPage() {
     );
   }
 
-  if (error) {
+  if (error && viewMode === 'table') {
     return (
       <div className="rounded-lg bg-danger-50 p-4 text-sm text-danger-600">
         Fout bij het laden van aanvragen: {error.message}
@@ -261,123 +302,166 @@ export default function RequestsPage() {
   return (
     <DetailPageLayout
       sidebar={
-        <TableConfigSidebar
-          columns={allColumns}
-          pendingColumnConfig={pendingColumnConfig}
-          onColumnConfigChange={setPendingColumnConfig}
-          pendingFilters={pendingFilters}
-          onFiltersChange={setPendingFilters}
-          pendingGrouping={pendingGrouping}
-          onGroupingChange={setPendingGrouping}
-          onApplyColumns={applyColumns}
-          onApplyFilters={applyFilters}
-          onReset={resetToDefaults}
-          isColumnsDirty={isColumnsDirty}
-          isFiltersDirty={isFiltersDirty}
-        />
+        viewMode === 'table' ? (
+          <TableConfigSidebar
+            columns={allColumns}
+            pendingColumnConfig={pendingColumnConfig}
+            onColumnConfigChange={setPendingColumnConfig}
+            pendingFilters={pendingFilters}
+            onFiltersChange={setPendingFilters}
+            pendingGrouping={pendingGrouping}
+            onGroupingChange={setPendingGrouping}
+            onApplyColumns={applyColumns}
+            onApplyFilters={applyFilters}
+            onReset={resetToDefaults}
+            isColumnsDirty={isColumnsDirty}
+            isFiltersDirty={isFiltersDirty}
+          />
+        ) : null
       }
     >
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-bold text-gray-900">Aanvragen</h2>
-          <p className="mt-1 text-sm text-gray-500">
-            Beheer leads en aanvragen
-          </p>
-        </div>
-        {userCanWrite && (
-          <Button onClick={() => setIsCreateOpen(true)}>
-            <svg
-              className="h-4 w-4"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M12 4v16m8-8H4"
-              />
-            </svg>
-            Aanvraag aanmaken
-          </Button>
-        )}
-      </div>
-
-      {/* Filters */}
-      <div className="flex flex-col gap-4 sm:flex-row">
-        <div className="flex-1">
-          <Input
-            placeholder="Zoeken op titel of relatie..."
-            value={search}
-            onChange={handleSearchChange}
-          />
-        </div>
-        <div className="w-48">
-          <Select
-            options={statusFilterOptions}
-            value={statusFilter}
-            onChange={(e) => {
-              setStatusFilter(e.target.value);
-              setPage(1);
-            }}
-          />
-        </div>
-        <div className="w-48">
-          <Select
-            options={priorityFilterOptions}
-            value={priorityFilter}
-            onChange={(e) => {
-              setPriorityFilter(e.target.value);
-              setPage(1);
-            }}
-          />
-        </div>
-      </div>
-
-      <Table
-        columns={activeColumns}
-        data={filteredData(requests)}
-        keyExtractor={(r) => r.id}
-        emptyMessage="Geen aanvragen gevonden"
-      />
-
-      {/* Pagination */}
-      {totalPages > 1 && (
+      <div className="space-y-6">
+        {/* Header */}
         <div className="flex items-center justify-between">
-          <p className="text-sm text-gray-500">
-            {total} aanvra{total !== 1 ? 'gen' : 'ag'} gevonden
-          </p>
-          <div className="flex gap-2">
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-              disabled={page === 1}
-            >
-              Vorige
-            </Button>
-            <span className="flex items-center px-3 text-sm text-gray-600">
-              {page} / {totalPages}
-            </span>
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-              disabled={page === totalPages}
-            >
-              Volgende
-            </Button>
+          <div>
+            <h2 className="text-2xl font-bold text-gray-900">Aanvragen</h2>
+            <p className="mt-1 text-sm text-gray-500">
+              Beheer leads en aanvragen
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2">
+            {/* Weergave toggle */}
+            <div className="flex rounded-lg border border-gray-200 bg-white p-0.5 shadow-sm">
+              <button
+                onClick={() => handleSetViewMode('table')}
+                className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                  viewMode === 'table'
+                    ? 'bg-primary-600 text-white shadow-sm'
+                    : 'text-gray-500 hover:text-gray-700'
+                }`}
+                title="Tabelweergave"
+              >
+                <TableIcon />
+                Lijst
+              </button>
+              <button
+                onClick={() => handleSetViewMode('kanban')}
+                className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                  viewMode === 'kanban'
+                    ? 'bg-primary-600 text-white shadow-sm'
+                    : 'text-gray-500 hover:text-gray-700'
+                }`}
+                title="Kanban-weergave"
+              >
+                <KanbanIcon />
+                Kanban
+              </button>
+            </div>
+
+            {userCanWrite && (
+              <Button onClick={() => setIsCreateOpen(true)}>
+                <svg
+                  className="h-4 w-4"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M12 4v16m8-8H4"
+                  />
+                </svg>
+                Aanvraag aanmaken
+              </Button>
+            )}
           </div>
         </div>
-      )}
 
-      <CreateRequestModal
-        isOpen={isCreateOpen}
-        onClose={() => setIsCreateOpen(false)}
-      />
-    </div>
+        {/* Filters — statusfilter alleen in tabelweergave */}
+        <div className="flex flex-col gap-4 sm:flex-row">
+          <div className="flex-1">
+            <Input
+              placeholder="Zoeken op titel of relatie..."
+              value={search}
+              onChange={handleSearchChange}
+            />
+          </div>
+          {viewMode === 'table' && (
+            <div className="w-48">
+              <Select
+                options={statusFilterOptions}
+                value={statusFilter}
+                onChange={(e) => {
+                  setStatusFilter(e.target.value);
+                  setPage(1);
+                }}
+              />
+            </div>
+          )}
+          <div className="w-48">
+            <Select
+              options={priorityFilterOptions}
+              value={priorityFilter}
+              onChange={(e) => {
+                setPriorityFilter(e.target.value);
+                setPage(1);
+              }}
+            />
+          </div>
+        </div>
+
+        {/* Inhoud */}
+        {viewMode === 'kanban' ? (
+          <RequestsKanban search={search} priorityFilter={priorityFilter} />
+        ) : (
+          <>
+            <Table
+              columns={activeColumns}
+              data={filteredData(requests)}
+              keyExtractor={(r) => r.id}
+              emptyMessage="Geen aanvragen gevonden"
+            />
+
+            {/* Paginering */}
+            {totalPages > 1 && (
+              <div className="flex items-center justify-between">
+                <p className="text-sm text-gray-500">
+                  {total} aanvra{total !== 1 ? 'gen' : 'ag'} gevonden
+                </p>
+                <div className="flex gap-2">
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => setPage((p) => Math.max(1, p - 1))}
+                    disabled={page === 1}
+                  >
+                    Vorige
+                  </Button>
+                  <span className="flex items-center px-3 text-sm text-gray-600">
+                    {page} / {totalPages}
+                  </span>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                    disabled={page === totalPages}
+                  >
+                    Volgende
+                  </Button>
+                </div>
+              </div>
+            )}
+          </>
+        )}
+
+        <CreateRequestModal
+          isOpen={isCreateOpen}
+          onClose={() => setIsCreateOpen(false)}
+        />
+      </div>
     </DetailPageLayout>
   );
 }

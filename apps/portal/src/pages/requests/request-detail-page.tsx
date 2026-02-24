@@ -5,6 +5,7 @@ import {
   Priority,
   Role,
   TaskEntityType,
+  DocumentEntityType,
 } from '@/types';
 import { Button, Card, Spinner, Select, Input, useToast } from '@/components/ui';
 import { DetailPageLayout } from '@/components/layout/detail-page-layout';
@@ -18,6 +19,7 @@ import { useCreateQuoteFromRequest } from '@/pages/quotes/hooks/use-quotes';
 import { EditRequestModal } from './components/edit-request-modal';
 import { AuditHistory } from '@/components/audit-history/audit-history';
 import { CreateTaskModal } from '@/pages/tasks/components/create-task-modal';
+import { DocumentsSection } from '@/components/documents';
 
 const canWrite = [Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE];
 
@@ -353,6 +355,15 @@ export default function RequestDetailPage() {
           </div>
         )}
       </div>
+
+      {/* Documenten */}
+      <Card>
+        <DocumentsSection
+          entityType={DocumentEntityType.REQUEST}
+          entityId={request.id}
+          canUpload={!!userCanWrite}
+        />
+      </Card>
 
       {/* Verwijderen */}
       {userCanWrite && (

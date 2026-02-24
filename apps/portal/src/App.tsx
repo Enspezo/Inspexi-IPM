@@ -39,6 +39,9 @@ const TasksPage = lazy(() => import('@/pages/tasks/tasks-page'));
 const TaskDetailPage = lazy(
   () => import('@/pages/tasks/task-detail-page'),
 );
+const DocumentsPage = lazy(
+  () => import('@/pages/documents/documents-page'),
+);
 const ProductsPage = lazy(() => import('@/pages/products/products-page'));
 const PriceTablesPage = lazy(
   () => import('@/pages/price-tables/price-tables-page'),
@@ -105,6 +108,7 @@ export default function App() {
             <Route path="/requests/:id" element={<RequestDetailPage />} />
             <Route path="/tasks" element={<TasksPage />} />
             <Route path="/tasks/:id" element={<TaskDetailPage />} />
+            <Route path="/documents" element={<DocumentsPage />} />
             <Route path="/quotes" element={<QuotesPage />} />
             <Route path="/quotes/new" element={<QuoteEditorPage />} />
             <Route path="/quotes/:id/edit" element={<QuoteEditorPage />} />

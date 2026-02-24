@@ -53,6 +53,30 @@ const entityTypeRoutes: Record<string, string> = {
   [TaskEntityType.QUOTE]: '/quotes',
 };
 
+function EntityIcon({ type }: { type: TaskEntityType }) {
+  if (type === TaskEntityType.CONTACT) {
+    return (
+      <svg className="h-4 w-4 shrink-0 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+      </svg>
+    );
+  }
+  if (type === TaskEntityType.REQUEST) {
+    return (
+      <svg className="h-4 w-4 shrink-0 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+      </svg>
+    );
+  }
+  // QUOTE
+  return (
+    <svg className="h-4 w-4 shrink-0 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 2v5a2 2 0 002 2h5" />
+    </svg>
+  );
+}
+
 const canWrite = [Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE, Role.WERKVOORBEREIDER];
 
 export default function TasksPage() {
@@ -125,9 +149,13 @@ export default function TasksPage() {
       render: (task) => (
         <button
           onClick={() => navigate(`${entityTypeRoutes[task.entityType]}/${task.entityId}`)}
-          className="text-sm text-primary-600 hover:text-primary-800 hover:underline"
+          className="inline-flex items-center gap-1.5 text-sm text-primary-600 hover:text-primary-800 hover:underline"
+          title={entityTypeLabels[task.entityType] || task.entityType}
         >
-          {entityTypeLabels[task.entityType] || task.entityType}
+          <EntityIcon type={task.entityType} />
+          <span className="truncate max-w-[200px]">
+            {task.entityName || entityTypeLabels[task.entityType] || task.entityType}
+          </span>
         </button>
       ),
     },

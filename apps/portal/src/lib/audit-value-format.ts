@@ -53,6 +53,14 @@ const enumLabels: Record<string, string> = {
   BACKOFFICE: 'Backoffice',
   WERKVOORBEREIDER: 'Werkvoorbereider',
   INSPECTEUR: 'Inspecteur',
+
+  // TaskStatus
+  OPEN: 'Open',
+  IN_PROGRESS: 'In uitvoering',
+  DONE: 'Afgerond',
+  CANCELLED: 'Geannuleerd',
+
+  // TaskPriority (reuses Priority above)
 };
 
 /** Currency fields that should be formatted as EUR */
@@ -74,6 +82,28 @@ const dateFields = new Set([
   'signedAt',
   'emailVerifiedAt',
   'loggedAt',
+  'dueDate',
+]);
+
+/** UUID v4 pattern — used to detect unresolved UUIDs */
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Fields that contain FK references (UUIDs) — these should never show raw UUIDs */
+const FK_FIELDS = new Set([
+  'id',
+  'orgId',
+  'contactId',
+  'priceTableId',
+  'ownerId',
+  'assignedTo',
+  'createdBy',
+  'locationId',
+  'templateId',
+  'requestId',
+  'quoteId',
+  'productId',
+  'customerGroupId',
+  'userId',
 ]);
 
 const currencyFormatter = new Intl.NumberFormat('nl-NL', {
@@ -104,8 +134,18 @@ export function formatAuditValue(
   if (typeof value === 'boolean') return value ? 'Ja' : 'Nee';
 
   if (typeof value === 'string') {
-    // Check enum label
+    // Check enum label first
     if (enumLabels[value]) return enumLabels[value];
+
+    // If this is a known FK field and the value is still a UUID, show a fallback
+    if (field && FK_FIELDS.has(field) && UUID_REGEX.test(value)) {
+      return '(verwijderd)';
+    }
+
+    // For any unknown field that happens to be a UUID, also show fallback
+    if (UUID_REGEX.test(value)) {
+      return '(verwijderd)';
+    }
 
     // Check date fields
     if (field && dateFields.has(field)) {
@@ -134,4 +174,15 @@ export function formatAuditValue(
   }
 
   return String(value);
+}
+
+/** Fields that should be hidden from the audit trail (internal IDs, etc.) */
+const HIDDEN_FIELDS = new Set(['id', 'orgId']);
+
+/**
+ * Returns true if a field should be hidden from the audit trail display.
+ * These are internal system fields that have no meaning for end users.
+ */
+export function isHiddenAuditField(field: string): boolean {
+  return HIDDEN_FIELDS.has(field);
 }

@@ -22,6 +22,8 @@ import { QuotesModule } from './modules/quotes/quotes.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { AuditLogModule } from './modules/audit-log/audit-log.module';
 import { TasksModule } from './modules/tasks/tasks.module';
+import { StorageModule } from './common/services/storage/storage.module';
+import { DocumentsModule } from './modules/documents/documents.module';
 
 @Module({
   imports: [
@@ -41,6 +43,8 @@ import { TasksModule } from './modules/tasks/tasks.module';
     QuotesModule,
     AuditLogModule,
     TasksModule,
+    StorageModule,
+    DocumentsModule,
   ],
   providers: [
     {

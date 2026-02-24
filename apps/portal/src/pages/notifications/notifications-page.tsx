@@ -28,6 +28,9 @@ const typeLabels: Record<string, string> = {
   [NotificationType.ANTWOORD_OP_VRAAG]: 'Antwoord op vraag',
   [NotificationType.AANVRAAG_TOEGEWEZEN]: 'Aanvraag toegewezen',
   [NotificationType.AANVRAAG_STATUS_GEWIJZIGD]: 'Aanvraag status gewijzigd',
+  [NotificationType.TAAK_TOEGEWEZEN]: 'Taak toegewezen',
+  [NotificationType.TAAK_STATUS_GEWIJZIGD]: 'Taakstatus gewijzigd',
+  [NotificationType.DOCUMENT_GEUPLOAD]: 'Document geüpload',
 };
 
 const typeFilterOptions = [
@@ -47,6 +50,8 @@ function getEntityRoute(notif: Notification): string | null {
   if (!notif.entityType || !notif.entityId) return null;
   if (notif.entityType === 'quote') return `/quotes/${notif.entityId}`;
   if (notif.entityType === 'request') return `/requests/${notif.entityId}`;
+  if (notif.entityType === 'task') return `/tasks/${notif.entityId}`;
+  if (notif.entityType === 'document') return `/documents`;
   return null;
 }
 

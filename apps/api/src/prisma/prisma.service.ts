@@ -18,6 +18,7 @@ const AUDITED_MODELS = new Set([
   'QuoteTemplate',
   'User',
   'Organization',
+  'Document',
 ]);
 
 /** Fields excluded from change tracking */
@@ -43,6 +44,7 @@ const MODEL_TABLE_MAP: Record<string, string> = {
   QuoteTemplate: 'imp_quote_templates',
   User: 'imp_users',
   Organization: 'imp_organizations',
+  Document: 'imp_documents',
 };
 
 function sanitize(obj: Record<string, any>): Record<string, any> {

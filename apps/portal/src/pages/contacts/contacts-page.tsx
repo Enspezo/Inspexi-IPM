@@ -7,19 +7,17 @@ import {
   Spinner,
   Table,
   Input,
-  Select,
-  type Column,
 } from '@/components/ui';
+import { DetailPageLayout } from '@/components/layout/detail-page-layout';
+import {
+  TableConfigSidebar,
+  useTableConfig,
+  type ColumnDef,
+} from '@/components/table-config';
 import { useAuth } from '@/providers/auth-provider';
 import { Role } from '@/types';
 import { useContacts } from './hooks/use-contacts';
 import { CreateContactModal } from './components/create-contact-modal';
-
-const typeFilterOptions = [
-  { value: '', label: 'Alle types' },
-  { value: ContactType.COMPANY, label: 'Bedrijf' },
-  { value: ContactType.INDIVIDUAL, label: 'Particulier' },
-];
 
 const canWrite = [Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE];
 
@@ -36,17 +34,22 @@ function getContactCity(contact: Contact): string {
   return primary?.city || first?.city || '—';
 }
 
+function getOwnerName(contact: Contact): string {
+  if (!contact.owner) return '—';
+  return `${contact.owner.firstName} ${contact.owner.lastName}`;
+}
+
 export default function ContactsPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [search, setSearch] = useState('');
-  const [typeFilter, setTypeFilter] = useState('');
+  const [onlyMine, setOnlyMine] = useState(false);
   const [page, setPage] = useState(1);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
 
   const { data, isLoading, error } = useContacts({
     search: search || undefined,
-    type: (typeFilter as ContactType) || undefined,
+    onlyMine: onlyMine || undefined,
     page,
     limit: 20,
   });
@@ -61,10 +64,11 @@ export default function ContactsPage() {
 
   const userCanWrite = user && canWrite.includes(user.role);
 
-  const columns: Column<Contact>[] = [
+  const columns: ColumnDef<Contact>[] = [
     {
       key: 'name',
       header: 'Naam',
+      pinned: true,
       render: (contact) => (
         <button
           onClick={() => navigate(`/contacts/${contact.id}`)}
@@ -77,6 +81,14 @@ export default function ContactsPage() {
     {
       key: 'type',
       header: 'Type',
+      filterable: true,
+      filterType: 'select',
+      filterOptions: [
+        { value: ContactType.COMPANY, label: 'Bedrijf' },
+        { value: ContactType.INDIVIDUAL, label: 'Particulier' },
+      ],
+      groupable: true,
+      getFilterValue: (contact) => contact.type,
       render: (contact) => (
         <span
           className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
@@ -92,6 +104,9 @@ export default function ContactsPage() {
     {
       key: 'email',
       header: 'E-mail',
+      filterable: true,
+      filterType: 'text',
+      getFilterValue: (contact) => contact.email,
       render: (contact) => (
         <span className="text-gray-600">{contact.email || '—'}</span>
       ),
@@ -99,6 +114,9 @@ export default function ContactsPage() {
     {
       key: 'phone',
       header: 'Telefoon',
+      filterable: true,
+      filterType: 'text',
+      getFilterValue: (contact) => contact.phone,
       render: (contact) => (
         <span className="text-gray-600">{contact.phone || '—'}</span>
       ),
@@ -106,11 +124,70 @@ export default function ContactsPage() {
     {
       key: 'city',
       header: 'Stad',
+      filterable: true,
+      filterType: 'text',
+      groupable: true,
+      getFilterValue: (contact) => getContactCity(contact),
       render: (contact) => (
         <span className="text-gray-600">{getContactCity(contact)}</span>
       ),
     },
+    {
+      key: 'owner',
+      header: 'Eigenaar',
+      filterable: true,
+      filterType: 'text',
+      groupable: true,
+      getFilterValue: (contact) => getOwnerName(contact),
+      render: (contact) => (
+        <span className="text-gray-600">{getOwnerName(contact)}</span>
+      ),
+    },
+    {
+      key: 'customerGroups',
+      header: 'Klantgroep',
+      filterable: true,
+      filterType: 'text',
+      groupable: true,
+      getFilterValue: (contact) =>
+        (contact.customerGroups || [])
+          .map((cg) => cg.customerGroup?.name || '')
+          .join(', '),
+      render: (contact) => {
+        const groups = contact.customerGroups || [];
+        if (groups.length === 0) return <span className="text-gray-400">—</span>;
+        return (
+          <div className="flex flex-wrap gap-1">
+            {groups.map((cg) => (
+              <span
+                key={cg.customerGroupId}
+                className="inline-flex items-center rounded-full bg-indigo-50 px-2 py-0.5 text-xs font-medium text-indigo-700"
+              >
+                {cg.customerGroup?.name || '—'}
+              </span>
+            ))}
+          </div>
+        );
+      },
+    },
   ];
+
+  const {
+    activeColumns,
+    filteredData,
+    pendingColumnConfig,
+    setPendingColumnConfig,
+    pendingFilters,
+    setPendingFilters,
+    pendingGrouping,
+    setPendingGrouping,
+    applyColumns,
+    applyFilters,
+    resetToDefaults,
+    isColumnsDirty,
+    isFiltersDirty,
+    allColumns,
+  } = useTableConfig({ pageKey: 'contacts', columns });
 
   if (isLoading) {
     return (
@@ -133,6 +210,24 @@ export default function ContactsPage() {
   const totalPages = Math.ceil(total / 20);
 
   return (
+    <DetailPageLayout
+      sidebar={
+        <TableConfigSidebar
+          columns={allColumns}
+          pendingColumnConfig={pendingColumnConfig}
+          onColumnConfigChange={setPendingColumnConfig}
+          pendingFilters={pendingFilters}
+          onFiltersChange={setPendingFilters}
+          pendingGrouping={pendingGrouping}
+          onGroupingChange={setPendingGrouping}
+          onApplyColumns={applyColumns}
+          onApplyFilters={applyFilters}
+          onReset={resetToDefaults}
+          isColumnsDirty={isColumnsDirty}
+          isFiltersDirty={isFiltersDirty}
+        />
+      }
+    >
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
@@ -162,7 +257,7 @@ export default function ContactsPage() {
       </div>
 
       {/* Filters */}
-      <div className="flex flex-col gap-4 sm:flex-row">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
         <div className="flex-1">
           <Input
             placeholder="Zoeken op naam, e-mail..."
@@ -170,21 +265,23 @@ export default function ContactsPage() {
             onChange={handleSearchChange}
           />
         </div>
-        <div className="w-48">
-          <Select
-            options={typeFilterOptions}
-            value={typeFilter}
+        <label className="inline-flex cursor-pointer items-center gap-2 whitespace-nowrap rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm transition-colors hover:border-gray-400">
+          <input
+            type="checkbox"
+            className="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+            checked={onlyMine}
             onChange={(e) => {
-              setTypeFilter(e.target.value);
+              setOnlyMine(e.target.checked);
               setPage(1);
             }}
           />
-        </div>
+          <span className="text-gray-700">Mijn relaties</span>
+        </label>
       </div>
 
       <Table
-        columns={columns}
-        data={contacts}
+        columns={activeColumns}
+        data={filteredData(contacts)}
         keyExtractor={(c) => c.id}
         emptyMessage="Geen relaties gevonden"
       />
@@ -224,5 +321,6 @@ export default function ContactsPage() {
         onClose={() => setIsCreateOpen(false)}
       />
     </div>
+    </DetailPageLayout>
   );
 }

@@ -12,10 +12,13 @@ import {
   CreateContactDto,
   UpdateContactDto,
   CreateContactAddressDto,
+  CreateContactPersonDto,
+  UpdateContactPersonDto,
   CreateLocationDto,
   CreateContactLogDto,
   SendContactEmailDto,
   ListContactsQueryDto,
+  ListContactPersonsQueryDto,
 } from './dto';
 
 @Injectable()
@@ -27,8 +30,23 @@ export class ContactsService {
     private emailService: EmailService,
   ) {}
 
+  /**
+   * Alleen de eigenaar van de relatie, een ORG_ADMIN of SUPERUSER
+   * mag de eigenaar wijzigen of de relatie verwijderen.
+   */
+  private assertOwnerOrAdmin(
+    contact: { ownerId?: string | null },
+    user: User,
+  ): void {
+    if (user.role === Role.SUPERUSER || user.role === Role.ORG_ADMIN) return;
+    if (contact.ownerId && contact.ownerId === user.id) return;
+    throw new ForbiddenException(
+      'Alleen de eigenaar, organisatie-admin of superadmin mag dit doen',
+    );
+  }
+
   async findAll(user: User, query: ListContactsQueryDto) {
-    const { search, type, page = 1, limit = 20 } = query;
+    const { search, type, onlyMine, page = 1, limit = 20 } = query;
     const skip = (page - 1) * limit;
 
     const where: Prisma.ContactWhereInput = {
@@ -42,6 +60,11 @@ export class ContactsService {
 
     if (type) {
       where.type = type;
+    }
+
+    // "Mijn relaties" filter
+    if (onlyMine === 'true') {
+      where.ownerId = user.id;
     }
 
     if (search) {
@@ -58,6 +81,12 @@ export class ContactsService {
         where,
         include: {
           addresses: true,
+          owner: { select: { id: true, firstName: true, lastName: true } },
+          customerGroups: {
+            include: {
+              customerGroup: { select: { id: true, name: true } },
+            },
+          },
         },
         orderBy: { createdAt: 'desc' },
         skip,
@@ -74,6 +103,16 @@ export class ContactsService {
       where: { id },
       include: {
         addresses: true,
+        owner: { select: { id: true, firstName: true, lastName: true } },
+        contactPersons: {
+          where: { isDeleted: false },
+          orderBy: { createdAt: 'desc' },
+        },
+        customerGroups: {
+          include: {
+            customerGroup: { select: { id: true, name: true } },
+          },
+        },
         locations: true,
         logs: {
           include: { user: { select: { firstName: true, lastName: true } } },
@@ -82,6 +121,13 @@ export class ContactsService {
         emails: {
           include: { user: { select: { firstName: true, lastName: true } } },
           orderBy: { sentAt: 'desc' },
+        },
+        quotes: {
+          include: {
+            createdByUser: { select: { id: true, firstName: true, lastName: true, email: true } },
+            location: { select: { id: true, name: true, city: true } },
+          },
+          orderBy: { createdAt: 'desc' },
         },
       },
     });
@@ -117,6 +163,7 @@ export class ContactsService {
         vatNumber: dto.vatNumber,
         cocNumber: dto.cocNumber,
         notes: dto.notes,
+        ownerId: dto.ownerId,
       },
       include: { addresses: true },
     });
@@ -124,6 +171,11 @@ export class ContactsService {
 
   async update(id: string, dto: UpdateContactDto, user: User) {
     const contact = await this.findOne(id, user);
+
+    // Eigenaar wijzigen: alleen eigenaar, ORG_ADMIN of SUPERUSER
+    if (dto.ownerId !== undefined) {
+      this.assertOwnerOrAdmin(contact, user);
+    }
 
     return this.prisma.contact.update({
       where: { id: contact.id },
@@ -138,6 +190,7 @@ export class ContactsService {
         ...(dto.vatNumber !== undefined && { vatNumber: dto.vatNumber }),
         ...(dto.cocNumber !== undefined && { cocNumber: dto.cocNumber }),
         ...(dto.notes !== undefined && { notes: dto.notes }),
+        ...(dto.ownerId !== undefined && { ownerId: dto.ownerId || null }),
       },
       include: { addresses: true },
     });
@@ -145,6 +198,9 @@ export class ContactsService {
 
   async softDelete(id: string, user: User) {
     const contact = await this.findOne(id, user);
+
+    // Verwijderen: alleen eigenaar, ORG_ADMIN of SUPERUSER
+    this.assertOwnerOrAdmin(contact, user);
 
     await this.prisma.contact.update({
       where: { id: contact.id },
@@ -155,13 +211,31 @@ export class ContactsService {
   async addAddress(contactId: string, dto: CreateContactAddressDto, user: User) {
     const contact = await this.findOne(contactId, user);
 
-    // If setting as primary, unset other primary addresses in a transaction
-    if (dto.isPrimary) {
+    const needsTransaction = dto.isPrimary || dto.isPostal || dto.isInvoice;
+
+    if (needsTransaction) {
       return this.prisma.$transaction(async (tx) => {
-        await tx.contactAddress.updateMany({
-          where: { contactId: contact.id, isPrimary: true },
-          data: { isPrimary: false },
-        });
+        // If setting as primary, unset other primary addresses
+        if (dto.isPrimary) {
+          await tx.contactAddress.updateMany({
+            where: { contactId: contact.id, isPrimary: true },
+            data: { isPrimary: false },
+          });
+        }
+        // If setting as postal, unset other postal addresses
+        if (dto.isPostal) {
+          await tx.contactAddress.updateMany({
+            where: { contactId: contact.id, isPostal: true },
+            data: { isPostal: false },
+          });
+        }
+        // If setting as invoice, unset other invoice addresses
+        if (dto.isInvoice) {
+          await tx.contactAddress.updateMany({
+            where: { contactId: contact.id, isInvoice: true },
+            data: { isInvoice: false },
+          });
+        }
 
         return tx.contactAddress.create({
           data: {
@@ -172,7 +246,9 @@ export class ContactsService {
             postalCode: dto.postalCode,
             city: dto.city,
             country: dto.country ?? 'NL',
-            isPrimary: true,
+            isPrimary: dto.isPrimary ?? false,
+            isPostal: dto.isPostal ?? false,
+            isInvoice: dto.isInvoice ?? false,
           },
         });
       });
@@ -188,7 +264,118 @@ export class ContactsService {
         city: dto.city,
         country: dto.country ?? 'NL',
         isPrimary: dto.isPrimary ?? false,
+        isPostal: dto.isPostal ?? false,
+        isInvoice: dto.isInvoice ?? false,
       },
+    });
+  }
+
+  // ─── Contact Persons ───────────────────────────────────
+
+  async findAllContactPersons(user: User, query: ListContactPersonsQueryDto) {
+    const { search, role, page = 1, limit = 20 } = query;
+    const skip = (page - 1) * limit;
+
+    const where: Prisma.ContactPersonWhereInput = {
+      isDeleted: false,
+    };
+
+    if (user.role !== Role.SUPERUSER) {
+      where.orgId = user.orgId!;
+    }
+
+    if (role) {
+      where.role = role;
+    }
+
+    if (search) {
+      where.OR = [
+        { firstName: { contains: search, mode: 'insensitive' } },
+        { lastName: { contains: search, mode: 'insensitive' } },
+        { email: { contains: search, mode: 'insensitive' } },
+      ];
+    }
+
+    const [data, total] = await Promise.all([
+      this.prisma.contactPerson.findMany({
+        where,
+        include: {
+          contact: {
+            select: {
+              id: true,
+              type: true,
+              companyName: true,
+              firstName: true,
+              lastName: true,
+            },
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limit,
+      }),
+      this.prisma.contactPerson.count({ where }),
+    ]);
+
+    return { data, total, page, limit };
+  }
+
+  async addContactPerson(contactId: string, dto: CreateContactPersonDto, user: User) {
+    const contact = await this.findOne(contactId, user);
+
+    return this.prisma.contactPerson.create({
+      data: {
+        contactId: contact.id,
+        orgId: contact.orgId,
+        firstName: dto.firstName,
+        lastName: dto.lastName,
+        email: dto.email,
+        phone: dto.phone,
+        role: dto.role,
+        notes: dto.notes,
+      },
+    });
+  }
+
+  async findContactPerson(id: string, user: User) {
+    const person = await this.prisma.contactPerson.findUnique({
+      where: { id },
+      include: { contact: true },
+    });
+
+    if (!person || person.isDeleted) {
+      throw new NotFoundException('Contactpersoon niet gevonden');
+    }
+
+    if (user.role !== Role.SUPERUSER && person.orgId !== user.orgId) {
+      throw new ForbiddenException();
+    }
+
+    return person;
+  }
+
+  async updateContactPerson(id: string, dto: UpdateContactPersonDto, user: User) {
+    const person = await this.findContactPerson(id, user);
+
+    return this.prisma.contactPerson.update({
+      where: { id: person.id },
+      data: {
+        ...(dto.firstName !== undefined && { firstName: dto.firstName }),
+        ...(dto.lastName !== undefined && { lastName: dto.lastName }),
+        ...(dto.email !== undefined && { email: dto.email }),
+        ...(dto.phone !== undefined && { phone: dto.phone }),
+        ...(dto.role !== undefined && { role: dto.role }),
+        ...(dto.notes !== undefined && { notes: dto.notes }),
+      },
+    });
+  }
+
+  async deleteContactPerson(id: string, user: User) {
+    const person = await this.findContactPerson(id, user);
+
+    await this.prisma.contactPerson.update({
+      where: { id: person.id },
+      data: { isDeleted: true },
     });
   }
 
@@ -287,5 +474,29 @@ export class ContactsService {
         user: { select: { firstName: true, lastName: true } },
       },
     });
+  }
+
+  // ─── Customer Group Assignment ────────────────────────
+
+  async setContactGroups(contactId: string, groupIds: string[], user: User) {
+    const contact = await this.findOne(contactId, user);
+
+    // Remove all existing group assignments, then re-create
+    await this.prisma.$transaction([
+      this.prisma.contactCustomerGroup.deleteMany({
+        where: { contactId: contact.id },
+      }),
+      ...groupIds.map((groupId) =>
+        this.prisma.contactCustomerGroup.create({
+          data: {
+            contactId: contact.id,
+            customerGroupId: groupId,
+          },
+        }),
+      ),
+    ]);
+
+    // Return updated contact
+    return this.findOne(contactId, user);
   }
 }

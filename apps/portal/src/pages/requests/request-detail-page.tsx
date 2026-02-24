@@ -6,6 +6,7 @@ import {
   Role,
 } from '@/types';
 import { Button, Card, Spinner, Select, Input, useToast } from '@/components/ui';
+import { DetailPageLayout } from '@/components/layout/detail-page-layout';
 import { useAuth } from '@/providers/auth-provider';
 import {
   useRequest,
@@ -14,6 +15,7 @@ import {
 } from './hooks/use-requests';
 import { useCreateQuoteFromRequest } from '@/pages/quotes/hooks/use-quotes';
 import { EditRequestModal } from './components/edit-request-modal';
+import { AuditHistory } from '@/components/audit-history/audit-history';
 
 const canWrite = [Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE];
 
@@ -146,6 +148,7 @@ export default function RequestDetailPage() {
   }
 
   return (
+    <DetailPageLayout sidebar={<AuditHistory entityType="Request" entityId={id} />}>
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
@@ -195,9 +198,6 @@ export default function RequestDetailPage() {
             )}
             <Button variant="secondary" size="sm" onClick={() => setIsEditOpen(true)}>
               Bewerken
-            </Button>
-            <Button variant="danger" size="sm" onClick={handleDelete}>
-              Verwijderen
             </Button>
           </div>
         )}
@@ -345,6 +345,15 @@ export default function RequestDetailPage() {
         )}
       </div>
 
+      {/* Verwijderen */}
+      {userCanWrite && (
+        <div className="flex justify-end border-t border-gray-200 pt-6">
+          <Button variant="danger" size="sm" onClick={handleDelete}>
+            Aanvraag verwijderen
+          </Button>
+        </div>
+      )}
+
       {/* Edit modal */}
       {request && (
         <EditRequestModal
@@ -354,5 +363,6 @@ export default function RequestDetailPage() {
         />
       )}
     </div>
+    </DetailPageLayout>
   );
 }

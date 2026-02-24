@@ -21,10 +21,13 @@ import {
   CreateContactDto,
   UpdateContactDto,
   CreateContactAddressDto,
+  CreateContactPersonDto,
+  UpdateContactPersonDto,
   CreateLocationDto,
   CreateContactLogDto,
   SendContactEmailDto,
   ListContactsQueryDto,
+  ListContactPersonsQueryDto,
 } from './dto';
 import { Roles, CurrentUser } from '@/common/decorators';
 
@@ -46,6 +49,24 @@ export class ContactsController {
   @ApiResponse({ status: 200, description: 'Gepagineerde lijst van relaties' })
   async findAll(@CurrentUser() user: User, @Query() query: ListContactsQueryDto) {
     const result = await this.contactsService.findAll(user, query);
+    return { success: true, data: result };
+  }
+
+  @Get('contact-persons')
+  @Roles(
+    Role.SUPERUSER,
+    Role.ORG_ADMIN,
+    Role.MANAGER,
+    Role.BACKOFFICE,
+    Role.WERKVOORBEREIDER,
+  )
+  @ApiOperation({ summary: 'Lijst contactpersonen ophalen' })
+  @ApiResponse({ status: 200, description: 'Gepagineerde lijst van contactpersonen' })
+  async findAllContactPersons(
+    @CurrentUser() user: User,
+    @Query() query: ListContactPersonsQueryDto,
+  ) {
+    const result = await this.contactsService.findAllContactPersons(user, query);
     return { success: true, data: result };
   }
 
@@ -115,6 +136,83 @@ export class ContactsController {
   ) {
     const address = await this.contactsService.addAddress(id, dto, user);
     return { success: true, data: address };
+  }
+
+  // ─── Nested: Customer Groups Assignment ───────────────
+
+  @Patch(':id/groups')
+  @Roles(Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE)
+  @ApiOperation({ summary: 'Klantgroepen van relatie instellen' })
+  @ApiResponse({ status: 200, description: 'Klantgroepen bijgewerkt' })
+  async setContactGroups(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: { groupIds: string[] },
+    @CurrentUser() user: User,
+  ) {
+    const contact = await this.contactsService.setContactGroups(
+      id,
+      body.groupIds || [],
+      user,
+    );
+    return { success: true, data: contact };
+  }
+
+  // ─── Nested: Contact Persons ──────────────────────────
+
+  @Post(':id/contact-persons')
+  @Roles(Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE)
+  @ApiOperation({ summary: 'Contactpersoon toevoegen aan relatie' })
+  @ApiResponse({ status: 201, description: 'Contactpersoon toegevoegd' })
+  async addContactPerson(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: CreateContactPersonDto,
+    @CurrentUser() user: User,
+  ) {
+    const person = await this.contactsService.addContactPerson(id, dto, user);
+    return { success: true, data: person };
+  }
+
+  @Get('contact-persons/:personId')
+  @Roles(
+    Role.SUPERUSER,
+    Role.ORG_ADMIN,
+    Role.MANAGER,
+    Role.BACKOFFICE,
+    Role.WERKVOORBEREIDER,
+  )
+  @ApiOperation({ summary: 'Contactpersoon detail ophalen' })
+  @ApiResponse({ status: 200, description: 'Contactpersoon details' })
+  async findContactPerson(
+    @Param('personId', ParseUUIDPipe) personId: string,
+    @CurrentUser() user: User,
+  ) {
+    const person = await this.contactsService.findContactPerson(personId, user);
+    return { success: true, data: person };
+  }
+
+  @Patch('contact-persons/:personId')
+  @Roles(Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE)
+  @ApiOperation({ summary: 'Contactpersoon bijwerken' })
+  @ApiResponse({ status: 200, description: 'Contactpersoon bijgewerkt' })
+  async updateContactPerson(
+    @Param('personId', ParseUUIDPipe) personId: string,
+    @Body() dto: UpdateContactPersonDto,
+    @CurrentUser() user: User,
+  ) {
+    const person = await this.contactsService.updateContactPerson(personId, dto, user);
+    return { success: true, data: person };
+  }
+
+  @Delete('contact-persons/:personId')
+  @Roles(Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE)
+  @ApiOperation({ summary: 'Contactpersoon verwijderen (soft delete)' })
+  @ApiResponse({ status: 200, description: 'Contactpersoon verwijderd' })
+  async deleteContactPerson(
+    @Param('personId', ParseUUIDPipe) personId: string,
+    @CurrentUser() user: User,
+  ) {
+    await this.contactsService.deleteContactPerson(personId, user);
+    return { success: true, message: 'Contactpersoon verwijderd' };
   }
 
   // ─── Nested: Locations ─────────────────────────────────

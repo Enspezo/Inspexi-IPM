@@ -2,7 +2,9 @@ import {
   Controller,
   Post,
   Get,
+  Delete,
   Body,
+  Param,
   Req,
   Res,
   HttpCode,
@@ -41,9 +43,12 @@ export class AuthController {
   @ApiResponse({ status: 401, description: 'Ongeldige inloggegevens' })
   async login(
     @Body() dto: LoginDto,
+    @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
-    const result = await this.authService.login(dto);
+    const ip = req.ip || req.socket?.remoteAddress;
+    const ua = req.headers['user-agent'];
+    const result = await this.authService.login(dto, ip, ua);
     res.cookie('refresh_token', result.refreshToken, REFRESH_COOKIE_OPTIONS);
     return { success: true, data: { accessToken: result.accessToken } };
   }
@@ -63,7 +68,9 @@ export class AuthController {
       return { success: false, message: 'Geen refresh token' };
     }
 
-    const result = await this.authService.refresh(refreshToken);
+    const ip = req.ip || req.socket?.remoteAddress;
+    const ua = req.headers['user-agent'];
+    const result = await this.authService.refresh(refreshToken, ip, ua);
     res.cookie('refresh_token', result.refreshToken, REFRESH_COOKIE_OPTIONS);
     return { success: true, data: { accessToken: result.accessToken } };
   }
@@ -128,5 +135,48 @@ export class AuthController {
   async verifyEmail(@Body() dto: VerifyEmailDto) {
     await this.authService.verifyEmail(dto);
     return { success: true, message: 'E-mail bevestigd' };
+  }
+
+  // ─── Session Management ─────────────────────────────────
+
+  @Get('sessions')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Lijst van alle sessies (actief + historisch)' })
+  @ApiResponse({ status: 200, description: 'Lijst van sessies' })
+  async getSessions(
+    @CurrentUser() user: User,
+    @Req() req: Request,
+  ) {
+    const refreshToken = req.cookies?.['refresh_token'];
+    const data = await this.authService.getSessions(user.id, refreshToken);
+    return { success: true, data };
+  }
+
+  @Delete('sessions/:id')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Beëindig een specifieke sessie' })
+  @ApiResponse({ status: 200, description: 'Sessie beëindigd' })
+  @ApiResponse({ status: 400, description: 'Sessie niet gevonden' })
+  async revokeSession(
+    @CurrentUser() user: User,
+    @Param('id') sessionId: string,
+  ) {
+    await this.authService.revokeSession(user.id, sessionId);
+    return { success: true, message: 'Sessie beëindigd' };
+  }
+
+  @Delete('sessions')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Beëindig alle andere sessies' })
+  @ApiResponse({ status: 200, description: 'Overige sessies beëindigd' })
+  async revokeOtherSessions(
+    @CurrentUser() user: User,
+    @Req() req: Request,
+  ) {
+    const refreshToken = req.cookies?.['refresh_token'];
+    if (refreshToken) {
+      await this.authService.revokeOtherSessions(user.id, refreshToken);
+    }
+    return { success: true, message: 'Overige sessies beëindigd' };
   }
 }

@@ -12,6 +12,8 @@ const addressSchema = z.object({
   city: z.string().min(1, 'Stad is verplicht'),
   country: z.string().optional(),
   isPrimary: z.boolean().optional(),
+  isPostal: z.boolean().optional(),
+  isInvoice: z.boolean().optional(),
 });
 
 type AddressFormData = z.infer<typeof addressSchema>;
@@ -40,6 +42,8 @@ export function AddAddressModal({
     defaultValues: {
       country: 'NL',
       isPrimary: false,
+      isPostal: false,
+      isInvoice: false,
     },
   });
 
@@ -110,14 +114,32 @@ export function AddAddressModal({
           {...register('country')}
         />
 
-        <label className="flex items-center gap-2">
-          <input
-            type="checkbox"
-            {...register('isPrimary')}
-            className="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
-          />
-          <span className="text-sm text-gray-700">Primair adres</span>
-        </label>
+        <div className="space-y-2">
+          <label className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              {...register('isPrimary')}
+              className="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+            />
+            <span className="text-sm text-gray-700">Primair adres</span>
+          </label>
+          <label className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              {...register('isPostal')}
+              className="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+            />
+            <span className="text-sm text-gray-700">Postadres</span>
+          </label>
+          <label className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              {...register('isInvoice')}
+              className="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+            />
+            <span className="text-sm text-gray-700">Factuuradres</span>
+          </label>
+        </div>
 
         <div className="flex justify-end gap-3 pt-2">
           <Button type="button" variant="secondary" onClick={handleClose}>

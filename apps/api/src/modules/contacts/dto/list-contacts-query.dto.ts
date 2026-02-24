@@ -1,5 +1,5 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsOptional, IsString, IsEnum, IsInt, Min, Max } from 'class-validator';
+import { IsOptional, IsString, IsEnum, IsInt, Min, Max, IsBooleanString } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ContactType } from '@prisma/client';
 
@@ -13,6 +13,11 @@ export class ListContactsQueryDto {
   @IsOptional()
   @IsEnum(ContactType)
   type?: ContactType;
+
+  @ApiPropertyOptional({ description: 'Alleen mijn relaties tonen' })
+  @IsOptional()
+  @IsBooleanString()
+  onlyMine?: string;
 
   @ApiPropertyOptional({ default: 1 })
   @IsOptional()

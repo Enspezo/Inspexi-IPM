@@ -31,4 +31,14 @@ export class CreateContactAddressDto {
   @IsOptional()
   @IsBoolean()
   isPrimary?: boolean;
+
+  @ApiPropertyOptional({ example: false, default: false, description: 'Postadres' })
+  @IsOptional()
+  @IsBoolean()
+  isPostal?: boolean;
+
+  @ApiPropertyOptional({ example: false, default: false, description: 'Factuuradres' })
+  @IsOptional()
+  @IsBoolean()
+  isInvoice?: boolean;
 }

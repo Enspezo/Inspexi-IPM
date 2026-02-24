@@ -1,7 +1,10 @@
 export { CreateContactDto } from './create-contact.dto';
 export { UpdateContactDto } from './update-contact.dto';
 export { CreateContactAddressDto } from './create-contact-address.dto';
+export { CreateContactPersonDto } from './create-contact-person.dto';
+export { UpdateContactPersonDto } from './update-contact-person.dto';
 export { CreateLocationDto } from './create-location.dto';
 export { CreateContactLogDto } from './create-contact-log.dto';
 export { SendContactEmailDto } from './send-contact-email.dto';
 export { ListContactsQueryDto } from './list-contacts-query.dto';
+export { ListContactPersonsQueryDto } from './list-contact-persons-query.dto';

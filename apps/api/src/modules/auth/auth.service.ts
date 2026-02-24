@@ -25,7 +25,7 @@ export class AuthService {
     private emailService: EmailService,
   ) {}
 
-  async login(dto: LoginDto) {
+  async login(dto: LoginDto, ipAddress?: string, userAgent?: string) {
     const user = await this.prisma.user.findUnique({
       where: { email: dto.email },
     });
@@ -44,12 +44,12 @@ export class AuthService {
     }
 
     const accessToken = this.generateAccessToken(user);
-    const refreshToken = await this.createRefreshToken(user.id);
+    const refreshToken = await this.createRefreshToken(user.id, ipAddress, userAgent);
 
     return { accessToken, refreshToken };
   }
 
-  async refresh(refreshTokenRaw: string) {
+  async refresh(refreshTokenRaw: string, ipAddress?: string, userAgent?: string) {
     const tokenHash = this.hashToken(refreshTokenRaw);
 
     const storedToken = await this.prisma.refreshToken.findFirst({
@@ -75,9 +75,13 @@ export class AuthService {
       data: { revokedAt: new Date() },
     });
 
-    // Issue new tokens
+    // Issue new tokens — carry forward IP/UA from original session if not provided
     const accessToken = this.generateAccessToken(storedToken.user);
-    const newRefreshToken = await this.createRefreshToken(storedToken.userId);
+    const newRefreshToken = await this.createRefreshToken(
+      storedToken.userId,
+      ipAddress ?? storedToken.ipAddress ?? undefined,
+      userAgent ?? storedToken.userAgent ?? undefined,
+    );
 
     return { accessToken, refreshToken: newRefreshToken };
   }
@@ -179,6 +183,70 @@ export class AuthService {
     return userWithoutPassword;
   }
 
+  // ─── Session Management ──────────────────────────────────
+
+  async getSessions(userId: string, currentRefreshTokenRaw?: string) {
+    const sessions = await this.prisma.refreshToken.findMany({
+      where: { userId },
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        ipAddress: true,
+        userAgent: true,
+        createdAt: true,
+        expiresAt: true,
+        revokedAt: true,
+      },
+    });
+
+    const currentTokenHash = currentRefreshTokenRaw
+      ? this.hashToken(currentRefreshTokenRaw)
+      : null;
+
+    // To mark the current session, we need to check the hash
+    let currentSessionId: string | null = null;
+    if (currentTokenHash) {
+      const current = await this.prisma.refreshToken.findFirst({
+        where: { tokenHash: currentTokenHash, revokedAt: null },
+        select: { id: true },
+      });
+      currentSessionId = current?.id ?? null;
+    }
+
+    return sessions.map((s) => ({
+      ...s,
+      isCurrent: s.id === currentSessionId,
+    }));
+  }
+
+  async revokeSession(userId: string, sessionId: string) {
+    const session = await this.prisma.refreshToken.findFirst({
+      where: { id: sessionId, userId, revokedAt: null },
+    });
+
+    if (!session) {
+      throw new BadRequestException('Sessie niet gevonden of al beëindigd');
+    }
+
+    await this.prisma.refreshToken.update({
+      where: { id: sessionId },
+      data: { revokedAt: new Date() },
+    });
+  }
+
+  async revokeOtherSessions(userId: string, currentRefreshTokenRaw: string) {
+    const currentTokenHash = this.hashToken(currentRefreshTokenRaw);
+
+    await this.prisma.refreshToken.updateMany({
+      where: {
+        userId,
+        revokedAt: null,
+        tokenHash: { not: currentTokenHash },
+      },
+      data: { revokedAt: new Date() },
+    });
+  }
+
   // ─── Private Helpers ───────────────────────────────────
 
   private generateAccessToken(user: {
@@ -196,7 +264,11 @@ export class AuthService {
     return this.jwtService.sign(payload);
   }
 
-  private async createRefreshToken(userId: string): Promise<string> {
+  private async createRefreshToken(
+    userId: string,
+    ipAddress?: string,
+    userAgent?: string,
+  ): Promise<string> {
     const rawToken = uuidv4();
     const tokenHash = this.hashToken(rawToken);
 
@@ -211,6 +283,8 @@ export class AuthService {
         userId,
         tokenHash,
         expiresAt,
+        ipAddress: ipAddress ?? null,
+        userAgent: userAgent ?? null,
       },
     });
 

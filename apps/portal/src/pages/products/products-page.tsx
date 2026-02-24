@@ -6,8 +6,13 @@ import {
   Table,
   Input,
   Select,
-  type Column,
 } from '@/components/ui';
+import { DetailPageLayout } from '@/components/layout/detail-page-layout';
+import {
+  TableConfigSidebar,
+  useTableConfig,
+  type ColumnDef,
+} from '@/components/table-config';
 import { useProducts } from './hooks/use-products';
 import { CreateProductModal } from './components/create-product-modal';
 import { EditProductModal } from './components/edit-product-modal';
@@ -40,10 +45,14 @@ export default function ProductsPage() {
     [],
   );
 
-  const columns: Column<Product>[] = [
+  const columns: ColumnDef<Product>[] = [
     {
       key: 'name',
       header: 'Naam',
+      pinned: true,
+      filterable: true,
+      filterType: 'text',
+      getFilterValue: (product) => product.name,
       render: (product) => (
         <span className="font-medium text-gray-900">{product.name}</span>
       ),
@@ -51,6 +60,9 @@ export default function ProductsPage() {
     {
       key: 'unit',
       header: 'Eenheid',
+      filterable: true,
+      filterType: 'text',
+      getFilterValue: (product) => product.unit,
       render: (product) => (
         <span className="text-gray-600">{product.unit}</span>
       ),
@@ -65,6 +77,10 @@ export default function ProductsPage() {
     {
       key: 'category',
       header: 'Categorie',
+      filterable: true,
+      filterType: 'text',
+      groupable: true,
+      getFilterValue: (product) => product.category,
       render: (product) =>
         product.category ? (
           <span className="inline-flex items-center rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-700">
@@ -77,6 +93,10 @@ export default function ProductsPage() {
     {
       key: 'isActive',
       header: 'Status',
+      filterable: true,
+      filterType: 'boolean',
+      groupable: true,
+      getFilterValue: (product) => String(product.isActive),
       render: (product) => (
         <span
           className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
@@ -92,6 +112,9 @@ export default function ProductsPage() {
     {
       key: 'actions',
       header: '',
+      pinned: true,
+      pinnedPosition: 'end',
+      sidebarLabel: 'Acties',
       render: (product) => (
         <button
           onClick={() => setEditProduct(product)}
@@ -102,6 +125,23 @@ export default function ProductsPage() {
       ),
     },
   ];
+
+  const {
+    activeColumns,
+    filteredData,
+    pendingColumnConfig,
+    setPendingColumnConfig,
+    pendingFilters,
+    setPendingFilters,
+    pendingGrouping,
+    setPendingGrouping,
+    applyColumns,
+    applyFilters,
+    resetToDefaults,
+    isColumnsDirty,
+    isFiltersDirty,
+    allColumns,
+  } = useTableConfig({ pageKey: 'products', columns });
 
   if (isLoading) {
     return (
@@ -124,6 +164,24 @@ export default function ProductsPage() {
   const totalPages = Math.ceil(total / 20);
 
   return (
+    <DetailPageLayout
+      sidebar={
+        <TableConfigSidebar
+          columns={allColumns}
+          pendingColumnConfig={pendingColumnConfig}
+          onColumnConfigChange={setPendingColumnConfig}
+          pendingFilters={pendingFilters}
+          onFiltersChange={setPendingFilters}
+          pendingGrouping={pendingGrouping}
+          onGroupingChange={setPendingGrouping}
+          onApplyColumns={applyColumns}
+          onApplyFilters={applyFilters}
+          onReset={resetToDefaults}
+          isColumnsDirty={isColumnsDirty}
+          isFiltersDirty={isFiltersDirty}
+        />
+      }
+    >
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
@@ -172,8 +230,8 @@ export default function ProductsPage() {
       </div>
 
       <Table
-        columns={columns}
-        data={products}
+        columns={activeColumns}
+        data={filteredData(products)}
         keyExtractor={(p) => p.id}
         emptyMessage="Geen producten gevonden"
       />
@@ -221,5 +279,6 @@ export default function ProductsPage() {
         />
       )}
     </div>
+    </DetailPageLayout>
   );
 }

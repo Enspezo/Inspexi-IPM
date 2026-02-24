@@ -42,6 +42,16 @@ export interface Invitation {
   createdAt: string;
 }
 
+export interface Session {
+  id: string;
+  ipAddress: string | null;
+  userAgent: string | null;
+  createdAt: string;
+  expiresAt: string;
+  revokedAt: string | null;
+  isCurrent: boolean;
+}
+
 export interface ApiError {
   message: string;
   statusCode: number;
@@ -69,6 +79,13 @@ export enum LogType {
   NOTE = 'NOTE',
 }
 
+export enum ContactPersonRole {
+  ALGEMEEN = 'ALGEMEEN',
+  TECHNISCH = 'TECHNISCH',
+  ADMINISTRATIEF = 'ADMINISTRATIEF',
+  ANDERS = 'ANDERS',
+}
+
 export interface Contact {
   id: string;
   orgId: string;
@@ -83,12 +100,51 @@ export interface Contact {
   cocNumber: string | null;
   notes: string | null;
   priceTableId: string | null;
+  ownerId: string | null;
   isDeleted: boolean;
   createdAt: string;
+  owner?: { id: string; firstName: string; lastName: string } | null;
   addresses?: ContactAddress[];
+  contactPersons?: ContactPerson[];
+  customerGroups?: ContactCustomerGroup[];
   locations?: Location[];
   logs?: ContactLog[];
   emails?: ContactEmail[];
+  quotes?: Quote[];
+}
+
+export interface ContactPerson {
+  id: string;
+  contactId: string;
+  orgId: string;
+  firstName: string;
+  lastName: string;
+  email: string | null;
+  phone: string | null;
+  role: ContactPersonRole;
+  notes: string | null;
+  isDeleted: boolean;
+  createdAt: string;
+  contact?: Contact;
+}
+
+export interface CustomerGroup {
+  id: string;
+  orgId: string;
+  name: string;
+  notes: string | null;
+  isDeleted: boolean;
+  createdAt: string;
+  contacts?: ContactCustomerGroup[];
+  _count?: { contacts: number };
+}
+
+export interface ContactCustomerGroup {
+  id: string;
+  contactId: string;
+  customerGroupId: string;
+  contact?: Contact;
+  customerGroup?: { id: string; name: string };
 }
 
 export interface ContactAddress {
@@ -101,6 +157,8 @@ export interface ContactAddress {
   city: string;
   country: string;
   isPrimary: boolean;
+  isPostal: boolean;
+  isInvoice: boolean;
 }
 
 export interface Location {
@@ -420,4 +478,24 @@ export interface NotificationGroupPref {
 
 export interface UnreadCountResponse {
   count: number;
+}
+
+// ─── Audit Trail ──────────────────────────────────────────
+
+export enum AuditAction {
+  CREATE = 'CREATE',
+  UPDATE = 'UPDATE',
+  DELETE = 'DELETE',
+}
+
+export interface AuditLogEntry {
+  id: string;
+  entityType: string;
+  entityId: string;
+  action: AuditAction;
+  changes: Record<string, { from: any; to: any }> | null;
+  snapshot: Record<string, any> | null;
+  userId: string;
+  user: { id: string; firstName: string; lastName: string };
+  createdAt: string;
 }

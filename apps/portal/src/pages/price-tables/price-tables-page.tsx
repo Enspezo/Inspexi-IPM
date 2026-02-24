@@ -5,8 +5,13 @@ import {
   Button,
   Spinner,
   Table,
-  type Column,
 } from '@/components/ui';
+import { DetailPageLayout } from '@/components/layout/detail-page-layout';
+import {
+  TableConfigSidebar,
+  useTableConfig,
+  type ColumnDef,
+} from '@/components/table-config';
 import { usePriceTables } from './hooks/use-price-tables';
 import { CreatePriceTableModal } from './components/create-price-table-modal';
 
@@ -16,10 +21,11 @@ export default function PriceTablesPage() {
 
   const { data, isLoading, error } = usePriceTables();
 
-  const columns: Column<PriceTable>[] = [
+  const columns: ColumnDef<PriceTable>[] = [
     {
       key: 'name',
       header: 'Naam',
+      pinned: true,
       render: (table) => (
         <button
           onClick={() => navigate(`/price-tables/${table.id}`)}
@@ -32,6 +38,9 @@ export default function PriceTablesPage() {
     {
       key: 'description',
       header: 'Beschrijving',
+      filterable: true,
+      filterType: 'text',
+      getFilterValue: (table) => table.description,
       render: (table) => (
         <span className="text-gray-600">{table.description || '—'}</span>
       ),
@@ -39,6 +48,9 @@ export default function PriceTablesPage() {
     {
       key: 'isDefault',
       header: 'Standaard',
+      filterable: true,
+      filterType: 'boolean',
+      getFilterValue: (table) => String(table.isDefault),
       render: (table) =>
         table.isDefault ? (
           <span className="inline-flex items-center rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-800">
@@ -54,6 +66,23 @@ export default function PriceTablesPage() {
       ),
     },
   ];
+
+  const {
+    activeColumns,
+    filteredData,
+    pendingColumnConfig,
+    setPendingColumnConfig,
+    pendingFilters,
+    setPendingFilters,
+    pendingGrouping,
+    setPendingGrouping,
+    applyColumns,
+    applyFilters,
+    resetToDefaults,
+    isColumnsDirty,
+    isFiltersDirty,
+    allColumns,
+  } = useTableConfig({ pageKey: 'price-tables', columns });
 
   if (isLoading) {
     return (
@@ -74,6 +103,24 @@ export default function PriceTablesPage() {
   const tables = data?.data || [];
 
   return (
+    <DetailPageLayout
+      sidebar={
+        <TableConfigSidebar
+          columns={allColumns}
+          pendingColumnConfig={pendingColumnConfig}
+          onColumnConfigChange={setPendingColumnConfig}
+          pendingFilters={pendingFilters}
+          onFiltersChange={setPendingFilters}
+          pendingGrouping={pendingGrouping}
+          onGroupingChange={setPendingGrouping}
+          onApplyColumns={applyColumns}
+          onApplyFilters={applyFilters}
+          onReset={resetToDefaults}
+          isColumnsDirty={isColumnsDirty}
+          isFiltersDirty={isFiltersDirty}
+        />
+      }
+    >
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
@@ -101,8 +148,8 @@ export default function PriceTablesPage() {
       </div>
 
       <Table
-        columns={columns}
-        data={tables}
+        columns={activeColumns}
+        data={filteredData(tables)}
         keyExtractor={(t) => t.id}
         emptyMessage="Geen prijstabellen gevonden"
       />
@@ -112,5 +159,6 @@ export default function PriceTablesPage() {
         onClose={() => setIsCreateOpen(false)}
       />
     </div>
+    </DetailPageLayout>
   );
 }

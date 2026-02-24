@@ -3,16 +3,19 @@ import { apiClient } from '@/lib/api-client';
 import type {
   Contact,
   ContactAddress,
+  ContactPerson,
   Location,
   ContactLog,
   ContactEmail,
   PaginatedResponse,
   ContactType,
+  ContactPersonRole,
 } from '@/types';
 
 interface ListContactsParams {
   search?: string;
   type?: ContactType;
+  onlyMine?: boolean;
   page?: number;
   limit?: number;
 }
@@ -21,6 +24,7 @@ export function useContacts(params: ListContactsParams = {}) {
   const queryParams = new URLSearchParams();
   if (params.search) queryParams.set('search', params.search);
   if (params.type) queryParams.set('type', params.type);
+  if (params.onlyMine) queryParams.set('onlyMine', 'true');
   if (params.page) queryParams.set('page', String(params.page));
   if (params.limit) queryParams.set('limit', String(params.limit));
 
@@ -52,6 +56,7 @@ interface CreateContactDto {
   vatNumber?: string;
   cocNumber?: string;
   notes?: string;
+  ownerId?: string;
 }
 
 export function useCreateContact() {
@@ -99,6 +104,8 @@ interface CreateAddressDto {
   city: string;
   country?: string;
   isPrimary?: boolean;
+  isPostal?: boolean;
+  isInvoice?: boolean;
 }
 
 export function useAddAddress(contactId: string) {
@@ -194,6 +201,109 @@ export function useSendEmail(contactId: string) {
       apiClient.post<ContactEmail>(`/contacts/${contactId}/email`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['contacts', contactId] });
+    },
+  });
+}
+
+// ─── Contact Persons ──────────────────────────────────
+
+interface ListContactPersonsParams {
+  search?: string;
+  role?: ContactPersonRole;
+  page?: number;
+  limit?: number;
+}
+
+export function useContactPersons(params: ListContactPersonsParams = {}) {
+  const queryParams = new URLSearchParams();
+  if (params.search) queryParams.set('search', params.search);
+  if (params.role) queryParams.set('role', params.role);
+  if (params.page) queryParams.set('page', String(params.page));
+  if (params.limit) queryParams.set('limit', String(params.limit));
+
+  const qs = queryParams.toString();
+  const endpoint = `/contacts/contact-persons${qs ? `?${qs}` : ''}`;
+
+  return useQuery<PaginatedResponse<ContactPerson>>({
+    queryKey: ['contact-persons', params],
+    queryFn: () => apiClient.get<PaginatedResponse<ContactPerson>>(endpoint),
+  });
+}
+
+interface CreateContactPersonDto {
+  firstName: string;
+  lastName: string;
+  email?: string;
+  phone?: string;
+  role: ContactPersonRole;
+  notes?: string;
+}
+
+export function useAddContactPerson(contactId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (data: CreateContactPersonDto) =>
+      apiClient.post<ContactPerson>(
+        `/contacts/${contactId}/contact-persons`,
+        data,
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['contacts', contactId] });
+    },
+  });
+}
+
+export function useContactPerson(personId: string) {
+  return useQuery<ContactPerson>({
+    queryKey: ['contact-persons', personId],
+    queryFn: () =>
+      apiClient.get<ContactPerson>(`/contacts/contact-persons/${personId}`),
+    enabled: !!personId,
+  });
+}
+
+interface UpdateContactPersonDto extends Partial<CreateContactPersonDto> {}
+
+export function useUpdateContactPerson(personId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (data: UpdateContactPersonDto) =>
+      apiClient.patch<ContactPerson>(
+        `/contacts/contact-persons/${personId}`,
+        data,
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['contacts'] });
+      queryClient.invalidateQueries({ queryKey: ['contact-persons', personId] });
+    },
+  });
+}
+
+export function useDeleteContactPerson() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (personId: string) =>
+      apiClient.delete(`/contacts/contact-persons/${personId}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['contacts'] });
+    },
+  });
+}
+
+// ─── Customer Group Assignment ────────────────────────
+
+export function useSetContactGroups(contactId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (groupIds: string[]) =>
+      apiClient.patch<Contact>(`/contacts/${contactId}/groups`, { groupIds }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['contacts', contactId] });
+      queryClient.invalidateQueries({ queryKey: ['customer-groups'] });
     },
   });
 }

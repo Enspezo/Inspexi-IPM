@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsEnum, IsOptional, IsString, IsEmail } from 'class-validator';
+import { IsEnum, IsOptional, IsString, IsEmail, IsUUID } from 'class-validator';
 import { ContactType } from '@prisma/client';
 
 export class CreateContactDto {
@@ -51,4 +51,9 @@ export class CreateContactDto {
   @IsOptional()
   @IsString()
   notes?: string;
+
+  @ApiPropertyOptional({ description: 'UUID van de eigenaar (gebruiker)' })
+  @IsOptional()
+  @IsUUID()
+  ownerId?: string;
 }

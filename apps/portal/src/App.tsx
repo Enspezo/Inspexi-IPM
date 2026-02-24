@@ -19,6 +19,18 @@ const ContactsPage = lazy(() => import('@/pages/contacts/contacts-page'));
 const ContactDetailPage = lazy(
   () => import('@/pages/contacts/contact-detail-page'),
 );
+const ContactPersonsPage = lazy(
+  () => import('@/pages/contacts/contact-persons-page'),
+);
+const ContactPersonDetailPage = lazy(
+  () => import('@/pages/contacts/contact-person-detail-page'),
+);
+const CustomerGroupsPage = lazy(
+  () => import('@/pages/customer-groups/customer-groups-page'),
+);
+const CustomerGroupDetailPage = lazy(
+  () => import('@/pages/customer-groups/customer-group-detail-page'),
+);
 const RequestsPage = lazy(() => import('@/pages/requests/requests-page'));
 const RequestDetailPage = lazy(
   () => import('@/pages/requests/request-detail-page'),
@@ -74,6 +86,10 @@ export default function App() {
             />
             <Route path="/profile" element={<ProfilePage />} />
             <Route path="/contacts" element={<ContactsPage />} />
+            <Route path="/contacts/persons" element={<ContactPersonsPage />} />
+            <Route path="/contacts/persons/:personId" element={<ContactPersonDetailPage />} />
+            <Route path="/contacts/groups" element={<CustomerGroupsPage />} />
+            <Route path="/contacts/groups/:id" element={<CustomerGroupDetailPage />} />
             <Route path="/contacts/:id" element={<ContactDetailPage />} />
             <Route path="/requests" element={<RequestsPage />} />
             <Route path="/requests/:id" element={<RequestDetailPage />} />

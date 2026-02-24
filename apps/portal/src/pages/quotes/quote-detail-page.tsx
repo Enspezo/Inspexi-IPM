@@ -6,6 +6,7 @@ import {
   Role,
 } from '@/types';
 import { Button, Card, Spinner, Input, Table, useToast, type Column } from '@/components/ui';
+import { DetailPageLayout } from '@/components/layout/detail-page-layout';
 import { useAuth } from '@/providers/auth-provider';
 import {
   useQuote,
@@ -16,6 +17,7 @@ import {
   useDeleteQuote,
 } from './hooks/use-quotes';
 import type { QuoteLine, QuoteApprovalRequest } from '@/types';
+import { AuditHistory } from '@/components/audit-history/audit-history';
 
 const canWrite = [Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE];
 const canApprove = [Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER];
@@ -200,6 +202,7 @@ export default function QuoteDetailPage() {
   ];
 
   return (
+    <DetailPageLayout sidebar={<AuditHistory entityType="Quote" entityId={id} />}>
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
@@ -303,14 +306,9 @@ export default function QuoteDetailPage() {
               </>
             )}
             {quote.status === QuoteStatus.CONCEPT && (
-              <>
-                <Button variant="secondary" size="sm" onClick={() => navigate(`/quotes/${quote.id}/edit`)}>
-                  Bewerken
-                </Button>
-                <Button variant="danger" size="sm" onClick={handleDelete}>
-                  Verwijderen
-                </Button>
-              </>
+              <Button variant="secondary" size="sm" onClick={() => navigate(`/quotes/${quote.id}/edit`)}>
+                Bewerken
+              </Button>
             )}
           </div>
         )}
@@ -505,6 +503,16 @@ export default function QuoteDetailPage() {
           <p className="text-sm text-gray-600 whitespace-pre-wrap">{quote.internalNotes}</p>
         </Card>
       )}
+
+      {/* Verwijderen */}
+      {userCanWrite && quote.status === QuoteStatus.CONCEPT && (
+        <div className="flex justify-end border-t border-gray-200 pt-6">
+          <Button variant="danger" size="sm" onClick={handleDelete}>
+            Offerte verwijderen
+          </Button>
+        </div>
+      )}
     </div>
+    </DetailPageLayout>
   );
 }

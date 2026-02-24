@@ -3,8 +3,10 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { PriceType, ContactType } from '@/types';
 import type { PriceTableItem, PriceTier, Product, ContactSummary } from '@/types';
 import { Button, Card, Spinner, Select, useToast } from '@/components/ui';
+import { DetailPageLayout } from '@/components/layout/detail-page-layout';
 import { usePriceTable, useSetPriceTableItems, useRemovePriceTableAssignment } from './hooks/use-price-tables';
 import { useProducts } from '../products/hooks/use-products';
+import { AuditHistory } from '@/components/audit-history/audit-history';
 
 interface EditableItem {
   productId: string;
@@ -157,6 +159,7 @@ export default function PriceTableDetailPage() {
   const usedProductIds = items.map((i) => i.productId);
 
   return (
+    <DetailPageLayout sidebar={<AuditHistory entityType="PriceTable" entityId={id} />}>
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
@@ -365,5 +368,6 @@ export default function PriceTableDetailPage() {
         )}
       </Card>
     </div>
+    </DetailPageLayout>
   );
 }

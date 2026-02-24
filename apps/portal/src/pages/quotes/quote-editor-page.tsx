@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -65,6 +65,7 @@ function nextLineKey(): string {
 export default function QuoteEditorPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { showToast } = useToast();
   const isEditing = !!id;
 
@@ -141,6 +142,17 @@ export default function QuoteEditorPage() {
       }
     }
   }, [isEditing, existingQuote, reset]);
+
+  // Pre-fill contactId from URL query param (e.g. /quotes/new?contactId=xxx)
+  useEffect(() => {
+    if (!isEditing) {
+      const prefilledContactId = searchParams.get('contactId');
+      if (prefilledContactId) {
+        setValue('contactId', prefilledContactId);
+        setSelectedContactId(prefilledContactId);
+      }
+    }
+  }, [isEditing, searchParams, setValue]);
 
   const contacts = contactsData?.data || [];
   const products = productsData?.data || [];

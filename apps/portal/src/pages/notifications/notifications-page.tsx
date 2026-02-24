@@ -2,7 +2,13 @@ import { useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { NotificationType } from '@/types';
 import type { Notification } from '@/types';
-import { Button, Spinner, Table, Select, type Column } from '@/components/ui';
+import { Button, Spinner, Table, Select } from '@/components/ui';
+import { DetailPageLayout } from '@/components/layout/detail-page-layout';
+import {
+  TableConfigSidebar,
+  useTableConfig,
+  type ColumnDef,
+} from '@/components/table-config';
 import {
   useNotifications,
   useMarkRead,
@@ -72,10 +78,12 @@ export default function NotificationsPage() {
     [markRead, navigate],
   );
 
-  const columns: Column<Notification>[] = [
+  const columns: ColumnDef<Notification>[] = [
     {
       key: 'status',
       header: '',
+      pinned: true,
+      sidebarLabel: 'Gelezen',
       render: (notif) => (
         <span className="flex justify-center">
           {!notif.isRead && (
@@ -87,6 +95,11 @@ export default function NotificationsPage() {
     {
       key: 'type',
       header: 'Type',
+      filterable: true,
+      filterType: 'select',
+      filterOptions: typeFilterOptions.filter((o) => o.value !== ''),
+      groupable: true,
+      getFilterValue: (notif) => notif.type,
       render: (notif) => (
         <span className="text-xs text-gray-500">
           {typeLabels[notif.type] || notif.type}
@@ -96,6 +109,9 @@ export default function NotificationsPage() {
     {
       key: 'title',
       header: 'Titel',
+      filterable: true,
+      filterType: 'text',
+      getFilterValue: (notif) => notif.title,
       render: (notif) => (
         <button
           onClick={() => handleRowClick(notif)}
@@ -121,6 +137,9 @@ export default function NotificationsPage() {
     {
       key: 'createdAt',
       header: 'Datum',
+      filterable: true,
+      filterType: 'date',
+      getFilterValue: (notif) => notif.createdAt,
       render: (notif) => (
         <span className="whitespace-nowrap text-xs text-gray-500">
           {new Date(notif.createdAt).toLocaleDateString('nl-NL', {
@@ -134,6 +153,23 @@ export default function NotificationsPage() {
       ),
     },
   ];
+
+  const {
+    activeColumns,
+    filteredData,
+    pendingColumnConfig,
+    setPendingColumnConfig,
+    pendingFilters,
+    setPendingFilters,
+    pendingGrouping,
+    setPendingGrouping,
+    applyColumns,
+    applyFilters,
+    resetToDefaults,
+    isColumnsDirty,
+    isFiltersDirty,
+    allColumns,
+  } = useTableConfig({ pageKey: 'notifications', columns });
 
   if (isLoading) {
     return (
@@ -157,6 +193,24 @@ export default function NotificationsPage() {
   const unreadCount = unreadData?.count ?? 0;
 
   return (
+    <DetailPageLayout
+      sidebar={
+        <TableConfigSidebar
+          columns={allColumns}
+          pendingColumnConfig={pendingColumnConfig}
+          onColumnConfigChange={setPendingColumnConfig}
+          pendingFilters={pendingFilters}
+          onFiltersChange={setPendingFilters}
+          pendingGrouping={pendingGrouping}
+          onGroupingChange={setPendingGrouping}
+          onApplyColumns={applyColumns}
+          onApplyFilters={applyFilters}
+          onReset={resetToDefaults}
+          isColumnsDirty={isColumnsDirty}
+          isFiltersDirty={isFiltersDirty}
+        />
+      }
+    >
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
@@ -213,8 +267,8 @@ export default function NotificationsPage() {
       </div>
 
       <Table
-        columns={columns}
-        data={notifications}
+        columns={activeColumns}
+        data={filteredData(notifications)}
         keyExtractor={(n) => n.id}
         emptyMessage="Geen notificaties gevonden"
       />
@@ -249,5 +303,6 @@ export default function NotificationsPage() {
         </div>
       )}
     </div>
+    </DetailPageLayout>
   );
 }

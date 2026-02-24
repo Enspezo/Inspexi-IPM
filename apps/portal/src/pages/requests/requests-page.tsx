@@ -12,8 +12,13 @@ import {
   Table,
   Input,
   Select,
-  type Column,
 } from '@/components/ui';
+import { DetailPageLayout } from '@/components/layout/detail-page-layout';
+import {
+  TableConfigSidebar,
+  useTableConfig,
+  type ColumnDef,
+} from '@/components/table-config';
 import { useAuth } from '@/providers/auth-provider';
 import { useRequests } from './hooks/use-requests';
 import { CreateRequestModal } from './components/create-request-modal';
@@ -107,10 +112,11 @@ export default function RequestsPage() {
 
   const userCanWrite = user && canWrite.includes(user.role);
 
-  const columns: Column<Request>[] = [
+  const columns: ColumnDef<Request>[] = [
     {
       key: 'title',
       header: 'Titel',
+      pinned: true,
       render: (req) => (
         <button
           onClick={() => navigate(`/requests/${req.id}`)}
@@ -123,6 +129,9 @@ export default function RequestsPage() {
     {
       key: 'contact',
       header: 'Relatie',
+      filterable: true,
+      filterType: 'text',
+      getFilterValue: (req) => getContactName(req),
       render: (req) => (
         <span className="text-gray-600">{getContactName(req)}</span>
       ),
@@ -130,6 +139,11 @@ export default function RequestsPage() {
     {
       key: 'status',
       header: 'Status',
+      filterable: true,
+      filterType: 'select',
+      filterOptions: statusFilterOptions.filter((o) => o.value !== ''),
+      groupable: true,
+      getFilterValue: (req) => req.status,
       render: (req) => (
         <span
           className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
@@ -143,6 +157,11 @@ export default function RequestsPage() {
     {
       key: 'priority',
       header: 'Prioriteit',
+      filterable: true,
+      filterType: 'select',
+      filterOptions: priorityFilterOptions.filter((o) => o.value !== ''),
+      groupable: true,
+      getFilterValue: (req) => req.priority,
       render: (req) => (
         <span
           className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
@@ -156,6 +175,12 @@ export default function RequestsPage() {
     {
       key: 'assignedUser',
       header: 'Toegewezen aan',
+      filterable: true,
+      filterType: 'text',
+      getFilterValue: (req) =>
+        req.assignedUser
+          ? `${req.assignedUser.firstName} ${req.assignedUser.lastName}`
+          : '',
       render: (req) =>
         req.assignedUser ? (
           <span className="text-gray-600">
@@ -168,6 +193,14 @@ export default function RequestsPage() {
     {
       key: 'source',
       header: 'Bron',
+      filterable: true,
+      filterType: 'select',
+      filterOptions: Object.entries(sourceLabels).map(([value, label]) => ({
+        value,
+        label,
+      })),
+      groupable: true,
+      getFilterValue: (req) => req.source,
       render: (req) => (
         <span className="text-gray-600">
           {sourceLabels[req.source] || req.source}
@@ -177,6 +210,9 @@ export default function RequestsPage() {
     {
       key: 'createdAt',
       header: 'Aangemaakt',
+      filterable: true,
+      filterType: 'date',
+      getFilterValue: (req) => req.createdAt,
       render: (req) => (
         <span className="text-gray-500 text-xs">
           {new Date(req.createdAt).toLocaleDateString('nl-NL')}
@@ -184,6 +220,23 @@ export default function RequestsPage() {
       ),
     },
   ];
+
+  const {
+    activeColumns,
+    filteredData,
+    pendingColumnConfig,
+    setPendingColumnConfig,
+    pendingFilters,
+    setPendingFilters,
+    pendingGrouping,
+    setPendingGrouping,
+    applyColumns,
+    applyFilters,
+    resetToDefaults,
+    isColumnsDirty,
+    isFiltersDirty,
+    allColumns,
+  } = useTableConfig({ pageKey: 'requests', columns });
 
   if (isLoading) {
     return (
@@ -206,6 +259,24 @@ export default function RequestsPage() {
   const totalPages = Math.ceil(total / 20);
 
   return (
+    <DetailPageLayout
+      sidebar={
+        <TableConfigSidebar
+          columns={allColumns}
+          pendingColumnConfig={pendingColumnConfig}
+          onColumnConfigChange={setPendingColumnConfig}
+          pendingFilters={pendingFilters}
+          onFiltersChange={setPendingFilters}
+          pendingGrouping={pendingGrouping}
+          onGroupingChange={setPendingGrouping}
+          onApplyColumns={applyColumns}
+          onApplyFilters={applyFilters}
+          onReset={resetToDefaults}
+          isColumnsDirty={isColumnsDirty}
+          isFiltersDirty={isFiltersDirty}
+        />
+      }
+    >
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
@@ -266,8 +337,8 @@ export default function RequestsPage() {
       </div>
 
       <Table
-        columns={columns}
-        data={requests}
+        columns={activeColumns}
+        data={filteredData(requests)}
         keyExtractor={(r) => r.id}
         emptyMessage="Geen aanvragen gevonden"
       />
@@ -307,5 +378,6 @@ export default function RequestsPage() {
         onClose={() => setIsCreateOpen(false)}
       />
     </div>
+    </DetailPageLayout>
   );
 }

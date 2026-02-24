@@ -1,16 +1,21 @@
 import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ContactType, LogType, Role } from '@/types';
+import { ContactType, ContactPersonRole, LogType, QuoteStatus, Role } from '@/types';
 import type { Contact, ContactLog, ContactEmail } from '@/types';
 import { Button, Card, Spinner, useToast } from '@/components/ui';
+import { DetailPageLayout } from '@/components/layout/detail-page-layout';
 import { useAuth } from '@/providers/auth-provider';
-import { useContact, useDeleteContact } from './hooks/use-contacts';
+import { useContact, useUpdateContact, useDeleteContact, useSetContactGroups } from './hooks/use-contacts';
+import { useCustomerGroupsCompact } from '@/pages/customer-groups/hooks/use-customer-groups';
+import { useUsers } from '@/pages/users/hooks/use-users';
 import { AddAddressModal } from './components/add-address-modal';
+import { AddContactPersonModal } from './components/add-contact-person-modal';
 import { AddLocationModal } from './components/add-location-modal';
 import { AddLogModal } from './components/add-log-modal';
 import { SendEmailModal } from './components/send-email-modal';
+import { AuditHistory } from '@/components/audit-history/audit-history';
 
-type Tab = 'algemeen' | 'adressen' | 'locaties' | 'geschiedenis';
+type Tab = 'algemeen' | 'adressen' | 'locaties' | 'offertes' | 'geschiedenis';
 
 const canWrite = [Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE];
 
@@ -31,6 +36,14 @@ function formatDate(dateStr: string): string {
   });
 }
 
+function formatShortDate(dateStr: string): string {
+  return new Date(dateStr).toLocaleDateString('nl-NL', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  });
+}
+
 const logTypeLabels: Record<string, string> = {
   [LogType.EMAIL]: 'E-mail',
   [LogType.PHONE]: 'Telefoon',
@@ -45,21 +58,66 @@ const logTypeColors: Record<string, string> = {
   [LogType.NOTE]: 'bg-gray-100 text-gray-800',
 };
 
+const contactPersonRoleLabels: Record<string, string> = {
+  [ContactPersonRole.ALGEMEEN]: 'Algemeen',
+  [ContactPersonRole.TECHNISCH]: 'Technisch',
+  [ContactPersonRole.ADMINISTRATIEF]: 'Administratief',
+  [ContactPersonRole.ANDERS]: 'Anders',
+};
+
+const contactPersonRoleColors: Record<string, string> = {
+  [ContactPersonRole.ALGEMEEN]: 'bg-blue-100 text-blue-800',
+  [ContactPersonRole.TECHNISCH]: 'bg-orange-100 text-orange-800',
+  [ContactPersonRole.ADMINISTRATIEF]: 'bg-green-100 text-green-800',
+  [ContactPersonRole.ANDERS]: 'bg-gray-100 text-gray-800',
+};
+
+const quoteStatusLabels: Record<string, string> = {
+  [QuoteStatus.CONCEPT]: 'Concept',
+  [QuoteStatus.TER_GOEDKEURING]: 'Ter goedkeuring',
+  [QuoteStatus.GOEDGEKEURD]: 'Goedgekeurd',
+  [QuoteStatus.VERSTUURD]: 'Verstuurd',
+  [QuoteStatus.BEKEKEN]: 'Bekeken',
+  [QuoteStatus.GEACCEPTEERD]: 'Geaccepteerd',
+  [QuoteStatus.AFGEWEZEN]: 'Afgewezen',
+  [QuoteStatus.VERLOPEN]: 'Verlopen',
+};
+
+const quoteStatusColors: Record<string, string> = {
+  [QuoteStatus.CONCEPT]: 'bg-gray-100 text-gray-800',
+  [QuoteStatus.TER_GOEDKEURING]: 'bg-yellow-100 text-yellow-800',
+  [QuoteStatus.GOEDGEKEURD]: 'bg-green-100 text-green-800',
+  [QuoteStatus.VERSTUURD]: 'bg-blue-100 text-blue-800',
+  [QuoteStatus.BEKEKEN]: 'bg-purple-100 text-purple-800',
+  [QuoteStatus.GEACCEPTEERD]: 'bg-emerald-100 text-emerald-800',
+  [QuoteStatus.AFGEWEZEN]: 'bg-red-100 text-red-800',
+  [QuoteStatus.VERLOPEN]: 'bg-orange-100 text-orange-800',
+};
+
 export default function ContactDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { user } = useAuth();
   const { showToast } = useToast();
   const { data: contact, isLoading, error } = useContact(id!);
+  const updateMutation = useUpdateContact(id!);
   const deleteMutation = useDeleteContact();
 
   const [activeTab, setActiveTab] = useState<Tab>('algemeen');
   const [isAddressOpen, setIsAddressOpen] = useState(false);
+  const [isContactPersonOpen, setIsContactPersonOpen] = useState(false);
   const [isLocationOpen, setIsLocationOpen] = useState(false);
   const [isLogOpen, setIsLogOpen] = useState(false);
   const [isEmailOpen, setIsEmailOpen] = useState(false);
 
   const userCanWrite = user && canWrite.includes(user.role);
+
+  // Eigenaar, ORG_ADMIN of SUPERUSER mag eigenaar wijzigen en relatie verwijderen
+  const userCanManage =
+    user &&
+    (user.role === Role.SUPERUSER ||
+      user.role === Role.ORG_ADMIN ||
+      (contact?.ownerId != null && contact.ownerId === user.id));
 
   const handleDelete = async () => {
     if (!contact) return;
@@ -93,6 +151,7 @@ export default function ContactDetailPage() {
     { key: 'algemeen', label: 'Algemeen' },
     { key: 'adressen', label: `Adressen (${contact.addresses?.length || 0})` },
     { key: 'locaties', label: `Locaties (${contact.locations?.length || 0})` },
+    { key: 'offertes', label: `Offertes (${contact.quotes?.length || 0})` },
     { key: 'geschiedenis', label: 'Geschiedenis' },
   ];
 
@@ -110,6 +169,7 @@ export default function ContactDetailPage() {
   });
 
   return (
+    <DetailPageLayout sidebar={<AuditHistory entityType="Contact" entityId={id} />}>
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
@@ -142,21 +202,16 @@ export default function ContactDetailPage() {
             )}
           </div>
         </div>
-        {userCanWrite && (
-          <Button variant="danger" size="sm" onClick={handleDelete}>
-            Verwijderen
-          </Button>
-        )}
       </div>
 
       {/* Tabs */}
       <div className="border-b border-gray-200">
-        <nav className="-mb-px flex gap-6">
+        <nav className="-mb-px flex gap-6 overflow-x-auto">
           {tabs.map((tab) => (
             <button
               key={tab.key}
               onClick={() => setActiveTab(tab.key)}
-              className={`border-b-2 px-1 py-3 text-sm font-medium transition-colors ${
+              className={`whitespace-nowrap border-b-2 px-1 py-3 text-sm font-medium transition-colors ${
                 activeTab === tab.key
                   ? 'border-primary-600 text-primary-600'
                   : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'
@@ -170,29 +225,123 @@ export default function ContactDetailPage() {
 
       {/* Tab content */}
       {activeTab === 'algemeen' && (
-        <Card>
-          <div className="grid grid-cols-2 gap-6">
-            {contact.type === ContactType.COMPANY && (
-              <>
-                <InfoField label="Bedrijfsnaam" value={contact.companyName} />
-                <InfoField label="KvK-nummer" value={contact.cocNumber} />
-                <InfoField label="BTW-nummer" value={contact.vatNumber} />
-                <InfoField label="Website" value={contact.website} />
-              </>
-            )}
-            {contact.type === ContactType.INDIVIDUAL && (
-              <>
-                <InfoField label="Voornaam" value={contact.firstName} />
-                <InfoField label="Achternaam" value={contact.lastName} />
-              </>
-            )}
-            <InfoField label="E-mail" value={contact.email} />
-            <InfoField label="Telefoon" value={contact.phone} />
-            <div className="col-span-2">
-              <InfoField label="Notities" value={contact.notes} />
+        <div className="space-y-6">
+          <Card>
+            <div className="grid grid-cols-2 gap-6">
+              {contact.type === ContactType.COMPANY && (
+                <>
+                  <InfoField label="Bedrijfsnaam" value={contact.companyName} />
+                  <InfoField label="KvK-nummer" value={contact.cocNumber} />
+                  <InfoField label="BTW-nummer" value={contact.vatNumber} />
+                  <InfoField label="Website" value={contact.website} />
+                </>
+              )}
+              {contact.type === ContactType.INDIVIDUAL && (
+                <>
+                  <InfoField label="Voornaam" value={contact.firstName} />
+                  <InfoField label="Achternaam" value={contact.lastName} />
+                </>
+              )}
+              <InfoField label="E-mail" value={contact.email} />
+              <InfoField label="Telefoon" value={contact.phone} />
+              <OwnerSelect
+                currentOwnerId={contact.ownerId}
+                ownerName={
+                  contact.owner
+                    ? `${contact.owner.firstName} ${contact.owner.lastName}`
+                    : null
+                }
+                canEdit={!!userCanManage}
+                onSave={async (ownerId) => {
+                  try {
+                    await updateMutation.mutateAsync({ ownerId: ownerId || undefined });
+                    showToast('Eigenaar bijgewerkt', 'success');
+                  } catch {
+                    showToast('Eigenaar bijwerken mislukt', 'error');
+                  }
+                }}
+                isSaving={updateMutation.isPending}
+              />
+              <div className="col-span-2">
+                <InfoField label="Notities" value={contact.notes} />
+              </div>
             </div>
+          </Card>
+
+          {/* Klantgroepen */}
+          <ContactCustomerGroups contactId={contact.id} contact={contact} userCanWrite={!!userCanWrite} />
+
+          {/* Contactpersonen */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-gray-900">
+                Contactpersonen
+              </h3>
+              {userCanWrite && (
+                <Button size="sm" onClick={() => setIsContactPersonOpen(true)}>
+                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                  </svg>
+                  Contactpersoon toevoegen
+                </Button>
+              )}
+            </div>
+            {(contact.contactPersons?.length || 0) === 0 ? (
+              <p className="py-6 text-center text-sm text-gray-500">
+                Nog geen contactpersonen toegevoegd
+              </p>
+            ) : (
+              <div className="overflow-hidden rounded-lg border border-gray-200">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                        Naam
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                        Rol
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                        E-mail
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                        Telefoon
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200 bg-white">
+                    {contact.contactPersons?.map((person) => (
+                      <tr
+                        key={person.id}
+                        className="cursor-pointer hover:bg-gray-50"
+                        onClick={() => navigate(`/contacts/persons/${person.id}`)}
+                      >
+                        <td className="whitespace-nowrap px-4 py-3 text-sm font-medium text-gray-900">
+                          {person.firstName} {person.lastName}
+                        </td>
+                        <td className="whitespace-nowrap px-4 py-3 text-sm">
+                          <span
+                            className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
+                              contactPersonRoleColors[person.role] || 'bg-gray-100 text-gray-800'
+                            }`}
+                          >
+                            {contactPersonRoleLabels[person.role] || person.role}
+                          </span>
+                        </td>
+                        <td className="whitespace-nowrap px-4 py-3 text-sm text-gray-500">
+                          {person.email || '—'}
+                        </td>
+                        <td className="whitespace-nowrap px-4 py-3 text-sm text-gray-500">
+                          {person.phone || '—'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
-        </Card>
+        </div>
       )}
 
       {activeTab === 'adressen' && (
@@ -220,11 +369,23 @@ export default function ContactDetailPage() {
                       <span className="text-sm font-medium text-gray-900">
                         {addr.label}
                       </span>
-                      {addr.isPrimary && (
-                        <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-800">
-                          Primair
-                        </span>
-                      )}
+                      <div className="flex gap-1">
+                        {addr.isPrimary && (
+                          <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-800">
+                            Primair
+                          </span>
+                        )}
+                        {addr.isPostal && (
+                          <span className="rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-800">
+                            Postadres
+                          </span>
+                        )}
+                        {addr.isInvoice && (
+                          <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
+                            Factuuradres
+                          </span>
+                        )}
+                      </div>
                     </div>
                     <p className="mt-1 text-sm text-gray-600">
                       {addr.street} {addr.houseNumber}
@@ -284,6 +445,84 @@ export default function ContactDetailPage() {
                   </div>
                 </Card>
               ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {activeTab === 'offertes' && (
+        <div className="space-y-4">
+          {userCanWrite && (
+            <div className="flex justify-end">
+              <Button size="sm" onClick={() => navigate(`/quotes/new?contactId=${contact.id}`)}>
+                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                </svg>
+                Offerte aanmaken
+              </Button>
+            </div>
+          )}
+          {(contact.quotes?.length || 0) === 0 ? (
+            <p className="py-8 text-center text-sm text-gray-500">
+              Nog geen offertes voor deze relatie
+            </p>
+          ) : (
+            <div className="overflow-hidden rounded-lg border border-gray-200">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                      Nummer
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                      Onderwerp
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                      Status
+                    </th>
+                    <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500">
+                      Totaal
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                      Datum
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200 bg-white">
+                  {contact.quotes?.map((quote) => (
+                    <tr
+                      key={quote.id}
+                      className="cursor-pointer hover:bg-gray-50"
+                      onClick={() => navigate(`/quotes/${quote.id}`)}
+                    >
+                      <td className="whitespace-nowrap px-4 py-3 text-sm font-medium text-primary-600">
+                        {quote.quoteNumber}
+                      </td>
+                      <td className="px-4 py-3 text-sm text-gray-900">
+                        {quote.subject}
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-3 text-sm">
+                        <span
+                          className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
+                            quoteStatusColors[quote.status] || 'bg-gray-100 text-gray-800'
+                          }`}
+                        >
+                          {quoteStatusLabels[quote.status] || quote.status}
+                        </span>
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-3 text-right text-sm text-gray-900">
+                        {new Intl.NumberFormat('nl-NL', {
+                          style: 'currency',
+                          currency: 'EUR',
+                        }).format(quote.total)}
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-3 text-sm text-gray-500">
+                        {formatShortDate(quote.createdAt)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           )}
         </div>
@@ -387,10 +626,24 @@ export default function ContactDetailPage() {
         </div>
       )}
 
+      {/* Verwijderen */}
+      {userCanManage && (
+        <div className="flex justify-end border-t border-gray-200 pt-6">
+          <Button variant="danger" size="sm" onClick={handleDelete}>
+            Relatie verwijderen
+          </Button>
+        </div>
+      )}
+
       {/* Modals */}
       <AddAddressModal
         isOpen={isAddressOpen}
         onClose={() => setIsAddressOpen(false)}
+        contactId={contact.id}
+      />
+      <AddContactPersonModal
+        isOpen={isContactPersonOpen}
+        onClose={() => setIsContactPersonOpen(false)}
         contactId={contact.id}
       />
       <AddLocationModal
@@ -409,6 +662,157 @@ export default function ContactDetailPage() {
         contactId={contact.id}
         contactEmail={contact.email}
       />
+    </div>
+    </DetailPageLayout>
+  );
+}
+
+function ContactCustomerGroups({
+  contactId,
+  contact,
+  userCanWrite,
+}: {
+  contactId: string;
+  contact: Contact;
+  userCanWrite: boolean;
+}) {
+  const navigate = useNavigate();
+  const { showToast } = useToast();
+  const { data: allGroups, isLoading: groupsLoading } = useCustomerGroupsCompact();
+  const setGroupsMutation = useSetContactGroups(contactId);
+
+  const assignedIds = new Set(
+    (contact.customerGroups || []).map((cg) => cg.customerGroupId),
+  );
+
+  const handleToggle = async (groupId: string) => {
+    const newIds = assignedIds.has(groupId)
+      ? [...assignedIds].filter((id) => id !== groupId)
+      : [...assignedIds, groupId];
+    try {
+      await setGroupsMutation.mutateAsync(newIds);
+    } catch {
+      showToast('Klantgroepen bijwerken mislukt', 'error');
+    }
+  };
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <h3 className="text-lg font-semibold text-gray-900">Klantgroepen</h3>
+      </div>
+      {groupsLoading ? (
+        <div className="flex justify-center py-4">
+          <Spinner size="sm" />
+        </div>
+      ) : !allGroups || allGroups.length === 0 ? (
+        <p className="py-4 text-center text-sm text-gray-500">
+          Er zijn nog geen klantgroepen aangemaakt
+        </p>
+      ) : (
+        <div className="rounded-lg border border-gray-200 bg-white p-4">
+          <div className="flex flex-wrap gap-3">
+            {allGroups.map((group) => {
+              const isAssigned = assignedIds.has(group.id);
+              return (
+                <label
+                  key={group.id}
+                  className={`inline-flex cursor-pointer items-center gap-2 rounded-full border px-3 py-1.5 text-sm transition-colors ${
+                    isAssigned
+                      ? 'border-primary-300 bg-primary-50 text-primary-700'
+                      : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300'
+                  } ${!userCanWrite ? 'pointer-events-none opacity-75' : ''}`}
+                >
+                  <input
+                    type="checkbox"
+                    className="sr-only"
+                    checked={isAssigned}
+                    disabled={!userCanWrite || setGroupsMutation.isPending}
+                    onChange={() => handleToggle(group.id)}
+                  />
+                  <span
+                    className={`flex h-4 w-4 items-center justify-center rounded border ${
+                      isAssigned
+                        ? 'border-primary-600 bg-primary-600 text-white'
+                        : 'border-gray-300 bg-white'
+                    }`}
+                  >
+                    {isAssigned && (
+                      <svg className="h-3 w-3" viewBox="0 0 12 12" fill="none">
+                        <path
+                          d="M2 6l3 3 5-5"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                      </svg>
+                    )}
+                  </span>
+                  <span
+                    className="cursor-pointer hover:underline"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      navigate(`/contacts/groups/${group.id}`);
+                    }}
+                  >
+                    {group.name}
+                  </span>
+                </label>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function OwnerSelect({
+  currentOwnerId,
+  ownerName,
+  canEdit,
+  onSave,
+  isSaving,
+}: {
+  currentOwnerId: string | null;
+  ownerName: string | null;
+  canEdit: boolean;
+  onSave: (ownerId: string | null) => Promise<void>;
+  isSaving: boolean;
+}) {
+  const { data: users } = useUsers();
+
+  if (!canEdit) {
+    return (
+      <div>
+        <dt className="text-sm font-medium text-gray-500">Eigenaar</dt>
+        <dd className="mt-1 text-sm text-gray-900">{ownerName || '—'}</dd>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <dt className="text-sm font-medium text-gray-500">Eigenaar</dt>
+      <dd className="mt-1">
+        <select
+          className="w-full rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-900 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 disabled:opacity-50"
+          value={currentOwnerId || ''}
+          disabled={isSaving}
+          onChange={(e) => onSave(e.target.value || null)}
+        >
+          <option value="">Geen eigenaar</option>
+          {(users || [])
+            .filter((u) => u.isActive)
+            .map((u) => (
+              <option key={u.id} value={u.id}>
+                {u.firstName} {u.lastName}
+              </option>
+            ))}
+        </select>
+      </dd>
     </div>
   );
 }

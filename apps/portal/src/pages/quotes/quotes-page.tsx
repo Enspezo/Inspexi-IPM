@@ -8,8 +8,13 @@ import {
   Table,
   Input,
   Select,
-  type Column,
 } from '@/components/ui';
+import { DetailPageLayout } from '@/components/layout/detail-page-layout';
+import {
+  TableConfigSidebar,
+  useTableConfig,
+  type ColumnDef,
+} from '@/components/table-config';
 import { useAuth } from '@/providers/auth-provider';
 import { useQuotes } from './hooks/use-quotes';
 
@@ -86,10 +91,11 @@ export default function QuotesPage() {
 
   const userCanWrite = user && canWrite.includes(user.role);
 
-  const columns: Column<Quote>[] = [
+  const columns: ColumnDef<Quote>[] = [
     {
       key: 'quoteNumber',
       header: 'Offertenummer',
+      pinned: true,
       render: (quote) => (
         <button
           onClick={() => navigate(`/quotes/${quote.id}`)}
@@ -102,6 +108,9 @@ export default function QuotesPage() {
     {
       key: 'subject',
       header: 'Onderwerp',
+      filterable: true,
+      filterType: 'text',
+      getFilterValue: (quote) => quote.subject,
       render: (quote) => (
         <span className="text-gray-900">{quote.subject}</span>
       ),
@@ -109,6 +118,9 @@ export default function QuotesPage() {
     {
       key: 'contact',
       header: 'Relatie',
+      filterable: true,
+      filterType: 'text',
+      getFilterValue: (quote) => getContactName(quote),
       render: (quote) => (
         <span className="text-gray-600">{getContactName(quote)}</span>
       ),
@@ -116,6 +128,11 @@ export default function QuotesPage() {
     {
       key: 'status',
       header: 'Status',
+      filterable: true,
+      filterType: 'select',
+      filterOptions: statusFilterOptions.filter((o) => o.value !== ''),
+      groupable: true,
+      getFilterValue: (quote) => quote.status,
       render: (quote) => (
         <span
           className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
@@ -138,6 +155,9 @@ export default function QuotesPage() {
     {
       key: 'validUntil',
       header: 'Geldig tot',
+      filterable: true,
+      filterType: 'date',
+      getFilterValue: (quote) => quote.validUntil,
       render: (quote) => (
         <span className="text-gray-500 text-xs">
           {quote.validUntil
@@ -149,6 +169,9 @@ export default function QuotesPage() {
     {
       key: 'createdAt',
       header: 'Aangemaakt',
+      filterable: true,
+      filterType: 'date',
+      getFilterValue: (quote) => quote.createdAt,
       render: (quote) => (
         <span className="text-gray-500 text-xs">
           {new Date(quote.createdAt).toLocaleDateString('nl-NL')}
@@ -156,6 +179,23 @@ export default function QuotesPage() {
       ),
     },
   ];
+
+  const {
+    activeColumns,
+    filteredData,
+    pendingColumnConfig,
+    setPendingColumnConfig,
+    pendingFilters,
+    setPendingFilters,
+    pendingGrouping,
+    setPendingGrouping,
+    applyColumns,
+    applyFilters,
+    resetToDefaults,
+    isColumnsDirty,
+    isFiltersDirty,
+    allColumns,
+  } = useTableConfig({ pageKey: 'quotes', columns });
 
   if (isLoading) {
     return (
@@ -178,6 +218,24 @@ export default function QuotesPage() {
   const totalPages = Math.ceil(total / 20);
 
   return (
+    <DetailPageLayout
+      sidebar={
+        <TableConfigSidebar
+          columns={allColumns}
+          pendingColumnConfig={pendingColumnConfig}
+          onColumnConfigChange={setPendingColumnConfig}
+          pendingFilters={pendingFilters}
+          onFiltersChange={setPendingFilters}
+          pendingGrouping={pendingGrouping}
+          onGroupingChange={setPendingGrouping}
+          onApplyColumns={applyColumns}
+          onApplyFilters={applyFilters}
+          onReset={resetToDefaults}
+          isColumnsDirty={isColumnsDirty}
+          isFiltersDirty={isFiltersDirty}
+        />
+      }
+    >
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
@@ -228,8 +286,8 @@ export default function QuotesPage() {
       </div>
 
       <Table
-        columns={columns}
-        data={quotes}
+        columns={activeColumns}
+        data={filteredData(quotes)}
         keyExtractor={(q) => q.id}
         emptyMessage="Geen offertes gevonden"
       />
@@ -264,5 +322,6 @@ export default function QuotesPage() {
         </div>
       )}
     </div>
+    </DetailPageLayout>
   );
 }

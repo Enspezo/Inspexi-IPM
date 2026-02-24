@@ -10,8 +10,13 @@ import {
   Input,
   Select,
   useToast,
-  type Column,
 } from '@/components/ui';
+import { DetailPageLayout } from '@/components/layout/detail-page-layout';
+import {
+  TableConfigSidebar,
+  useTableConfig,
+  type ColumnDef,
+} from '@/components/table-config';
 import { useAuth } from '@/providers/auth-provider';
 import { Role } from '@/types';
 import type { QuoteTemplate } from '@/types';
@@ -45,10 +50,11 @@ export default function QuoteTemplatesPage() {
 
   const userIsAdmin = user && adminRoles.includes(user.role);
 
-  const columns: Column<QuoteTemplate>[] = [
+  const columns: ColumnDef<QuoteTemplate>[] = [
     {
       key: 'name',
       header: 'Naam',
+      pinned: true,
       render: (t) => (
         <button
           onClick={() => setEditingTemplate(t)}
@@ -68,6 +74,9 @@ export default function QuoteTemplatesPage() {
     {
       key: 'requiresApproval',
       header: 'Goedkeuring vereist',
+      filterable: true,
+      filterType: 'boolean',
+      getFilterValue: (t) => String(t.requiresApproval),
       render: (t) => (
         <span className={t.requiresApproval ? 'text-green-600' : 'text-gray-500'}>
           {t.requiresApproval ? 'Ja' : 'Nee'}
@@ -77,6 +86,10 @@ export default function QuoteTemplatesPage() {
     {
       key: 'isActive',
       header: 'Actief',
+      filterable: true,
+      filterType: 'boolean',
+      groupable: true,
+      getFilterValue: (t) => String(t.isActive),
       render: (t) => (
         <span className={t.isActive ? 'text-green-600' : 'text-gray-500'}>
           {t.isActive ? 'Ja' : 'Nee'}
@@ -86,6 +99,9 @@ export default function QuoteTemplatesPage() {
     {
       key: 'createdAt',
       header: 'Aangemaakt',
+      filterable: true,
+      filterType: 'date',
+      getFilterValue: (t) => t.createdAt,
       render: (t) => (
         <span className="text-gray-500 text-xs">
           {new Date(t.createdAt).toLocaleDateString('nl-NL')}
@@ -95,6 +111,9 @@ export default function QuoteTemplatesPage() {
     {
       key: 'actions',
       header: '',
+      pinned: true,
+      pinnedPosition: 'end',
+      sidebarLabel: 'Acties',
       render: (t) =>
         userIsAdmin && t.isActive ? (
           <Button
@@ -122,6 +141,23 @@ export default function QuoteTemplatesPage() {
     }
   };
 
+  const {
+    activeColumns,
+    filteredData,
+    pendingColumnConfig,
+    setPendingColumnConfig,
+    pendingFilters,
+    setPendingFilters,
+    pendingGrouping,
+    setPendingGrouping,
+    applyColumns,
+    applyFilters,
+    resetToDefaults,
+    isColumnsDirty,
+    isFiltersDirty,
+    allColumns,
+  } = useTableConfig({ pageKey: 'quote-templates', columns });
+
   if (isLoading) {
     return (
       <div className="flex h-64 items-center justify-center">
@@ -143,6 +179,24 @@ export default function QuoteTemplatesPage() {
   const totalPages = Math.ceil(total / 20);
 
   return (
+    <DetailPageLayout
+      sidebar={
+        <TableConfigSidebar
+          columns={allColumns}
+          pendingColumnConfig={pendingColumnConfig}
+          onColumnConfigChange={setPendingColumnConfig}
+          pendingFilters={pendingFilters}
+          onFiltersChange={setPendingFilters}
+          pendingGrouping={pendingGrouping}
+          onGroupingChange={setPendingGrouping}
+          onApplyColumns={applyColumns}
+          onApplyFilters={applyFilters}
+          onReset={resetToDefaults}
+          isColumnsDirty={isColumnsDirty}
+          isFiltersDirty={isFiltersDirty}
+        />
+      }
+    >
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
@@ -172,8 +226,8 @@ export default function QuoteTemplatesPage() {
       </div>
 
       <Table
-        columns={columns}
-        data={templates}
+        columns={activeColumns}
+        data={filteredData(templates)}
         keyExtractor={(t) => t.id}
         emptyMessage="Geen templates gevonden"
       />
@@ -223,6 +277,7 @@ export default function QuoteTemplatesPage() {
         />
       )}
     </div>
+    </DetailPageLayout>
   );
 }
 

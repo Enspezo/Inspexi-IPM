@@ -1,4 +1,4 @@
-import { NavLink } from 'react-router-dom';
+import { NavLink, useLocation } from 'react-router-dom';
 import { clsx } from 'clsx';
 import { useAuth } from '@/providers/auth-provider';
 import { Badge } from '@/components/ui';
@@ -13,11 +13,17 @@ const crmRoles: Role[] = [
   Role.WERKVOORBEREIDER,
 ];
 
+interface NavChild {
+  to: string;
+  label: string;
+}
+
 interface NavItem {
   to: string;
   label: string;
   icon: React.ReactNode;
   roles?: Role[];
+  children?: NavChild[];
 }
 
 const navItems: NavItem[] = [
@@ -39,6 +45,11 @@ const navItems: NavItem[] = [
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
       </svg>
     ),
+    children: [
+      { to: '/contacts', label: 'Overzicht' },
+      { to: '/contacts/persons', label: 'Contactpersonen' },
+      { to: '/contacts/groups', label: 'Klantgroepen' },
+    ],
   },
   {
     to: '/requests',
@@ -133,6 +144,7 @@ const navItems: NavItem[] = [
 
 export function Sidebar() {
   const { user } = useAuth();
+  const location = useLocation();
 
   const visibleItems = navItems.filter((item) => {
     if (!item.roles) return true;
@@ -153,23 +165,54 @@ export function Sidebar() {
 
       {/* Navigation */}
       <nav className="flex-1 space-y-1 px-3 py-4">
-        {visibleItems.map((item) => (
-          <NavLink
-            key={item.to}
-            to={item.to}
-            className={({ isActive }) =>
-              clsx(
-                'flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors duration-150',
-                isActive
-                  ? 'bg-gray-800 text-white'
-                  : 'text-gray-400 hover:bg-gray-800 hover:text-white',
-              )
-            }
-          >
-            {item.icon}
-            {item.label}
-          </NavLink>
-        ))}
+        {visibleItems.map((item) => {
+          const isParentActive = location.pathname.startsWith(item.to);
+          const hasChildren = item.children && item.children.length > 0;
+          const showChildren = hasChildren && isParentActive;
+
+          return (
+            <div key={item.to}>
+              <NavLink
+                to={item.to}
+                end={hasChildren}
+                className={({ isActive }) =>
+                  clsx(
+                    'flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors duration-150',
+                    isActive || (hasChildren && isParentActive)
+                      ? 'bg-gray-800 text-white'
+                      : 'text-gray-400 hover:bg-gray-800 hover:text-white',
+                  )
+                }
+              >
+                {item.icon}
+                {item.label}
+              </NavLink>
+
+              {/* Submenu */}
+              {showChildren && (
+                <div className="ml-8 mt-1 space-y-0.5">
+                  {item.children!.map((child) => (
+                    <NavLink
+                      key={child.to}
+                      to={child.to}
+                      end
+                      className={({ isActive }) =>
+                        clsx(
+                          'block rounded-md px-3 py-1.5 text-sm transition-colors duration-150',
+                          isActive
+                            ? 'text-white font-medium'
+                            : 'text-gray-500 hover:text-gray-300',
+                        )
+                      }
+                    >
+                      {child.label}
+                    </NavLink>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })}
       </nav>
 
       {/* User info */}

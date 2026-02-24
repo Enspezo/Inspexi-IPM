@@ -6,8 +6,13 @@ import {
   Badge,
   Spinner,
   useToast,
-  type Column,
 } from '@/components/ui';
+import { DetailPageLayout } from '@/components/layout/detail-page-layout';
+import {
+  TableConfigSidebar,
+  useTableConfig,
+  type ColumnDef,
+} from '@/components/table-config';
 import { useUsers, useDeactivateUser, useActivateUser } from './hooks/use-users';
 import { InviteUserModal } from './components/invite-user-modal';
 import { ChangeRoleModal } from './components/change-role-modal';
@@ -53,10 +58,11 @@ export default function UsersPage() {
     setOpenDropdownId(null);
   };
 
-  const columns: Column<User>[] = [
+  const columns: ColumnDef<User>[] = [
     {
       key: 'name',
       header: 'Naam',
+      pinned: true,
       render: (user) => (
         <div>
           <p className="font-medium text-gray-900">
@@ -68,6 +74,9 @@ export default function UsersPage() {
     {
       key: 'email',
       header: 'E-mail',
+      filterable: true,
+      filterType: 'text',
+      getFilterValue: (user) => user.email,
       render: (user) => (
         <span className="text-gray-600">{user.email}</span>
       ),
@@ -75,11 +84,19 @@ export default function UsersPage() {
     {
       key: 'role',
       header: 'Rol',
+      filterable: true,
+      filterType: 'text',
+      groupable: true,
+      getFilterValue: (user) => user.role,
       render: (user) => <Badge role={user.role} />,
     },
     {
       key: 'status',
       header: 'Status',
+      filterable: true,
+      filterType: 'boolean',
+      groupable: true,
+      getFilterValue: (user) => String(user.isActive),
       render: (user) => (
         <span
           className={`inline-flex items-center gap-1.5 text-sm ${
@@ -98,6 +115,9 @@ export default function UsersPage() {
     {
       key: 'actions',
       header: 'Acties',
+      pinned: true,
+      pinnedPosition: 'end',
+      sidebarLabel: 'Acties',
       className: 'text-right',
       render: (user) => (
         <div className="relative flex justify-end" ref={openDropdownId === user.id ? dropdownRef : undefined}>
@@ -157,6 +177,23 @@ export default function UsersPage() {
     },
   ];
 
+  const {
+    activeColumns,
+    filteredData,
+    pendingColumnConfig,
+    setPendingColumnConfig,
+    pendingFilters,
+    setPendingFilters,
+    pendingGrouping,
+    setPendingGrouping,
+    applyColumns,
+    applyFilters,
+    resetToDefaults,
+    isColumnsDirty,
+    isFiltersDirty,
+    allColumns,
+  } = useTableConfig({ pageKey: 'users', columns });
+
   if (isLoading) {
     return (
       <div className="flex h-64 items-center justify-center">
@@ -174,6 +211,24 @@ export default function UsersPage() {
   }
 
   return (
+    <DetailPageLayout
+      sidebar={
+        <TableConfigSidebar
+          columns={allColumns}
+          pendingColumnConfig={pendingColumnConfig}
+          onColumnConfigChange={setPendingColumnConfig}
+          pendingFilters={pendingFilters}
+          onFiltersChange={setPendingFilters}
+          pendingGrouping={pendingGrouping}
+          onGroupingChange={setPendingGrouping}
+          onApplyColumns={applyColumns}
+          onApplyFilters={applyFilters}
+          onReset={resetToDefaults}
+          isColumnsDirty={isColumnsDirty}
+          isFiltersDirty={isFiltersDirty}
+        />
+      }
+    >
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
@@ -191,8 +246,8 @@ export default function UsersPage() {
       </div>
 
       <Table
-        columns={columns}
-        data={users || []}
+        columns={activeColumns}
+        data={filteredData(users || [])}
         keyExtractor={(user) => user.id}
         emptyMessage="Geen gebruikers gevonden"
       />
@@ -208,5 +263,6 @@ export default function UsersPage() {
         user={changeRoleUser}
       />
     </div>
+    </DetailPageLayout>
   );
 }

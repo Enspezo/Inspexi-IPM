@@ -1,5 +1,6 @@
 import { useAuth } from '@/providers/auth-provider';
 import { Card } from '@/components/ui';
+import { DetailPageLayout } from '@/components/layout/detail-page-layout';
 
 const stats = [
   {
@@ -48,6 +49,7 @@ export default function DashboardPage() {
   const { user } = useAuth();
 
   return (
+    <DetailPageLayout>
     <div className="space-y-6">
       {/* Welcome */}
       <div>
@@ -94,5 +96,6 @@ export default function DashboardPage() {
         </Card>
       </div>
     </div>
+    </DetailPageLayout>
   );
 }

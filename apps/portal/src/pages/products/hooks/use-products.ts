@@ -2,9 +2,17 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api-client';
 import type { Product, PaginatedResponse } from '@/types';
 
+export function useProduct(id: string) {
+  return useQuery<Product>({
+    queryKey: ['products', id],
+    queryFn: () => apiClient.get<Product>(`/products/${id}`),
+    enabled: !!id,
+  });
+}
+
 interface ListProductsParams {
   search?: string;
-  category?: string;
+  productGroupId?: string;
   isActive?: boolean;
   page?: number;
   limit?: number;
@@ -13,7 +21,7 @@ interface ListProductsParams {
 export function useProducts(params: ListProductsParams = {}) {
   const queryParams = new URLSearchParams();
   if (params.search) queryParams.set('search', params.search);
-  if (params.category) queryParams.set('category', params.category);
+  if (params.productGroupId) queryParams.set('productGroupId', params.productGroupId);
   if (params.isActive !== undefined) queryParams.set('isActive', String(params.isActive));
   if (params.page) queryParams.set('page', String(params.page));
   if (params.limit) queryParams.set('limit', String(params.limit));
@@ -32,7 +40,7 @@ interface CreateProductDto {
   unit: string;
   description?: string;
   defaultVat?: number;
-  category?: string;
+  productGroupId?: string;
   isActive?: boolean;
 }
 
@@ -61,3 +69,4 @@ export function useUpdateProduct(id: string) {
     },
   });
 }
+

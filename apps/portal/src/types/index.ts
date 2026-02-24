@@ -209,16 +209,40 @@ export enum PriceType {
   TIERED = 'TIERED',
 }
 
+export interface ProductGroupProduct {
+  id: string;
+  orgId: string;
+  productGroupId: string | null;
+  name: string;
+  unit: string;
+  defaultVat: number;
+  description: string | null;
+  isActive: boolean;
+  createdAt: string;
+}
+
+export interface ProductGroup {
+  id: string;
+  orgId: string;
+  name: string;
+  notes: string | null;
+  isDeleted: boolean;
+  createdAt: string;
+  products?: ProductGroupProduct[];
+  _count?: { products: number };
+}
+
 export interface Product {
   id: string;
   orgId: string;
+  productGroupId: string | null;
   name: string;
   description: string | null;
   unit: string;
   defaultVat: number;
-  category: string | null;
   isActive: boolean;
   createdAt: string;
+  productGroup?: { id: string; name: string } | null;
 }
 
 export interface PriceTable {

@@ -1,5 +1,5 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsOptional, IsString, IsInt, Min, Max } from 'class-validator';
+import { IsOptional, IsString, IsUUID, IsInt, Min, Max } from 'class-validator';
 import { Type, Transform } from 'class-transformer';
 
 export class ListProductsQueryDto {
@@ -8,10 +8,10 @@ export class ListProductsQueryDto {
   @IsString()
   search?: string;
 
-  @ApiPropertyOptional({ description: 'Filter op categorie' })
+  @ApiPropertyOptional({ description: 'Filter op productgroep (UUID)' })
   @IsOptional()
-  @IsString()
-  category?: string;
+  @IsUUID()
+  productGroupId?: string;
 
   @ApiPropertyOptional({ description: 'Filter op actief (true/false)' })
   @IsOptional()

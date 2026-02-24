@@ -47,10 +47,13 @@ const entityLabels: Record<string, Record<string, string>> = {
     objectType: 'Objecttype',
   },
   CustomerGroup: {},
+  ProductGroup: {
+    notes: 'Notities',
+  },
   Product: {
     unit: 'Eenheid',
     defaultVat: 'Standaard BTW',
-    category: 'Categorie',
+    productGroupId: 'Productgroep',
   },
   PriceTable: {
     isDefault: 'Standaard',

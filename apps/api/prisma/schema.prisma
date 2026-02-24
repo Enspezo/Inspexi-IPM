@@ -142,6 +142,7 @@ model Organization {
   contactPersons ContactPerson[]
   customerGroups CustomerGroup[]
   locations      Location[]
+  productGroups  ProductGroup[]
   products       Product[]
   priceTables    PriceTable[]
   requests       Request[]
@@ -377,18 +378,33 @@ model ContactEmail {
 
 // ─── PRD-04: Products & Price Tables ────────────────────
 
-model Product {
-  id          String   @id @default(uuid()) @db.Uuid
-  orgId       String   @map("org_id") @db.Uuid
-  name        String
-  description String?
-  unit        String
-  defaultVat  Float    @default(21) @map("default_vat")
-  category    String?
-  isActive    Boolean  @default(true) @map("is_active")
-  createdAt   DateTime @default(now()) @map("created_at")
+model ProductGroup {
+  id        String   @id @default(uuid()) @db.Uuid
+  orgId     String   @map("org_id") @db.Uuid
+  name      String
+  notes     String?
+  isDeleted Boolean  @default(false) @map("is_deleted")
+  createdAt DateTime @default(now()) @map("created_at")
 
-  organization    Organization     @relation(fields: [orgId], references: [id])
+  organization Organization @relation(fields: [orgId], references: [id])
+  products     Product[]
+
+  @@map("imp_product_groups")
+}
+
+model Product {
+  id             String  @id @default(uuid()) @db.Uuid
+  orgId          String  @map("org_id") @db.Uuid
+  productGroupId String? @map("product_group_id") @db.Uuid
+  name           String
+  description    String?
+  unit           String
+  defaultVat     Float   @default(21) @map("default_vat")
+  isActive       Boolean @default(true) @map("is_active")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  organization  Organization  @relation(fields: [orgId], references: [id])
+  productGroup  ProductGroup? @relation(fields: [productGroupId], references: [id])
   priceTableItems PriceTableItem[]
   quoteLines      QuoteLine[]
 

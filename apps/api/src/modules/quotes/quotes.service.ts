@@ -170,7 +170,7 @@ export class QuotesService {
         lines: {
           include: {
             product: {
-              select: { id: true, name: true, unit: true, category: true },
+              select: { id: true, name: true, unit: true, productGroupId: true },
             },
           },
           orderBy: { sortOrder: 'asc' },

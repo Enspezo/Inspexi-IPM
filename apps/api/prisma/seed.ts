@@ -22,6 +22,7 @@ async function main() {
   await prisma.contactPriceTable.deleteMany();
   await prisma.priceTable.deleteMany();
   await prisma.product.deleteMany();
+  await prisma.productGroup.deleteMany();
   // PRD-03 tables (dependent on requests → contacts/locations)
   await prisma.requestStatusHistory.deleteMany();
   await prisma.request.deleteMany();
@@ -34,6 +35,9 @@ async function main() {
   await prisma.location.deleteMany();
   await prisma.contactAddress.deleteMany();
   await prisma.contact.deleteMany();
+  // Tasks & Documents (dependent on users)
+  await prisma.document.deleteMany();
+  await prisma.task.deleteMany();
   // Auth/org tables
   await prisma.auditLog.deleteMany();
   await prisma.invitation.deleteMany();
@@ -410,25 +414,33 @@ async function main() {
   // ─── PRD-04: Products & Price Tables ─────────────────
   console.log('\n📦 Seeding Products & Price Tables...');
 
+  // --- Org 1: Product Groups ---
+  const [grpInspectie1, grpAdministratie1, grpOverig1] = await Promise.all([
+    prisma.productGroup.create({ data: { orgId: org1.id, name: 'Inspectie' } }),
+    prisma.productGroup.create({ data: { orgId: org1.id, name: 'Administratie' } }),
+    prisma.productGroup.create({ data: { orgId: org1.id, name: 'Overig' } }),
+  ]);
+  console.log(`  ✓ 3 productgroepen voor ${org1.name}`);
+
   // --- Org 1: Products ---
   const products1 = await Promise.all([
     prisma.product.create({
-      data: { orgId: org1.id, name: 'NEN1010 Inspectie', unit: 'uur', category: 'inspectie', description: 'Elektrische inspectie conform NEN1010 norm' },
+      data: { orgId: org1.id, name: 'NEN1010 Inspectie', unit: 'uur', productGroupId: grpInspectie1.id, description: 'Elektrische inspectie conform NEN1010 norm' },
     }),
     prisma.product.create({
-      data: { orgId: org1.id, name: 'NEN3140 Inspectie', unit: 'uur', category: 'inspectie', description: 'Periodieke inspectie elektrische arbeidsmiddelen' },
+      data: { orgId: org1.id, name: 'NEN3140 Inspectie', unit: 'uur', productGroupId: grpInspectie1.id, description: 'Periodieke inspectie elektrische arbeidsmiddelen' },
     }),
     prisma.product.create({
-      data: { orgId: org1.id, name: 'Thermografisch onderzoek', unit: 'traject', category: 'inspectie', description: 'Warmtebeeldanalyse van elektrische installaties' },
+      data: { orgId: org1.id, name: 'Thermografisch onderzoek', unit: 'traject', productGroupId: grpInspectie1.id, description: 'Warmtebeeldanalyse van elektrische installaties' },
     }),
     prisma.product.create({
-      data: { orgId: org1.id, name: 'Rapportage opstellen', unit: 'uur', category: 'administratie', description: 'Inspectie rapport en documentatie' },
+      data: { orgId: org1.id, name: 'Rapportage opstellen', unit: 'uur', productGroupId: grpAdministratie1.id, description: 'Inspectie rapport en documentatie' },
     }),
     prisma.product.create({
-      data: { orgId: org1.id, name: 'Reiskosten', unit: 'km', category: 'overig', defaultVat: 21, description: 'Kilometervergoeding' },
+      data: { orgId: org1.id, name: 'Reiskosten', unit: 'km', productGroupId: grpOverig1.id, defaultVat: 21, description: 'Kilometervergoeding' },
     }),
     prisma.product.create({
-      data: { orgId: org1.id, name: 'Spoedtoeslag', unit: 'stuks', category: 'overig', description: 'Toeslag voor spoedopdrachten' },
+      data: { orgId: org1.id, name: 'Spoedtoeslag', unit: 'stuks', productGroupId: grpOverig1.id, description: 'Toeslag voor spoedopdrachten' },
     }),
   ]);
   console.log(`  ✓ ${products1.length} producten voor ${org1.name}`);
@@ -515,13 +527,18 @@ async function main() {
   });
   console.log(`  ✓ Koppeling: ${contact1.companyName} → ${vipTable.name}`);
 
+  // --- Org 2: Product Groups ---
+  const grpInspectie2 = await prisma.productGroup.create({
+    data: { orgId: org2.id, name: 'Inspectie' },
+  });
+
   // --- Org 2: Products ---
   const products2 = await Promise.all([
     prisma.product.create({
-      data: { orgId: org2.id, name: 'Basisinspectie', unit: 'uur', category: 'inspectie' },
+      data: { orgId: org2.id, name: 'Basisinspectie', unit: 'uur', productGroupId: grpInspectie2.id },
     }),
     prisma.product.create({
-      data: { orgId: org2.id, name: 'Uitgebreide inspectie', unit: 'dag', category: 'inspectie' },
+      data: { orgId: org2.id, name: 'Uitgebreide inspectie', unit: 'dag', productGroupId: grpInspectie2.id },
     }),
   ]);
 

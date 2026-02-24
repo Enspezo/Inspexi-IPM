@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -121,14 +121,26 @@ export default function LoginPage() {
               {...register('email')}
             />
 
-            <Input
-              label="Wachtwoord"
-              type="password"
-              placeholder="Voer uw wachtwoord in"
-              autoComplete="current-password"
-              error={errors.password?.message}
-              {...register('password')}
-            />
+            <div>
+              <div className="mb-1 flex items-center justify-between">
+                <label className="block text-sm font-medium text-gray-700">
+                  Wachtwoord
+                </label>
+                <Link
+                  to="/forgot-password"
+                  className="text-xs text-primary-600 hover:text-primary-700"
+                >
+                  Wachtwoord vergeten?
+                </Link>
+              </div>
+              <Input
+                type="password"
+                placeholder="Voer uw wachtwoord in"
+                autoComplete="current-password"
+                error={errors.password?.message}
+                {...register('password')}
+              />
+            </div>
 
             <Button
               type="submit"

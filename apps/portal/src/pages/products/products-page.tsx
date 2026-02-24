@@ -1,4 +1,5 @@
 import { useState, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import type { Product } from '@/types';
 import {
   Button,
@@ -15,7 +16,6 @@ import {
 } from '@/components/table-config';
 import { useProducts } from './hooks/use-products';
 import { CreateProductModal } from './components/create-product-modal';
-import { EditProductModal } from './components/edit-product-modal';
 
 const statusOptions = [
   { value: '', label: 'Alle statussen' },
@@ -24,11 +24,11 @@ const statusOptions = [
 ];
 
 export default function ProductsPage() {
+  const navigate = useNavigate();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [page, setPage] = useState(1);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
-  const [editProduct, setEditProduct] = useState<Product | null>(null);
 
   const { data, isLoading, error } = useProducts({
     search: search || undefined,
@@ -54,7 +54,12 @@ export default function ProductsPage() {
       filterType: 'text',
       getFilterValue: (product) => product.name,
       render: (product) => (
-        <span className="font-medium text-gray-900">{product.name}</span>
+        <button
+          onClick={() => navigate(`/products/${product.id}`)}
+          className="font-medium text-primary-600 hover:text-primary-800 hover:underline"
+        >
+          {product.name}
+        </button>
       ),
     },
     {
@@ -75,16 +80,16 @@ export default function ProductsPage() {
       ),
     },
     {
-      key: 'category',
-      header: 'Categorie',
+      key: 'productGroup',
+      header: 'Productgroep',
       filterable: true,
       filterType: 'text',
       groupable: true,
-      getFilterValue: (product) => product.category,
+      getFilterValue: (product) => product.productGroup?.name ?? null,
       render: (product) =>
-        product.category ? (
+        product.productGroup ? (
           <span className="inline-flex items-center rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-700">
-            {product.category}
+            {product.productGroup.name}
           </span>
         ) : (
           <span className="text-gray-400">—</span>
@@ -117,7 +122,7 @@ export default function ProductsPage() {
       sidebarLabel: 'Acties',
       render: (product) => (
         <button
-          onClick={() => setEditProduct(product)}
+          onClick={() => navigate(`/products/${product.id}`)}
           className="text-sm font-medium text-primary-600 hover:text-primary-800"
         >
           Bewerken
@@ -270,14 +275,6 @@ export default function ProductsPage() {
         isOpen={isCreateOpen}
         onClose={() => setIsCreateOpen(false)}
       />
-
-      {editProduct && (
-        <EditProductModal
-          isOpen={!!editProduct}
-          onClose={() => setEditProduct(null)}
-          product={editProduct}
-        />
-      )}
     </div>
     </DetailPageLayout>
   );

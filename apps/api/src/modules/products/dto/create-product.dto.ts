@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsString, IsOptional, IsNumber, IsBoolean, Min, Max } from 'class-validator';
+import { IsString, IsOptional, IsNumber, IsBoolean, IsUUID, Min, Max } from 'class-validator';
 
 export class CreateProductDto {
   @ApiProperty({ example: 'NEN1010 Inspectie' })
@@ -22,10 +22,10 @@ export class CreateProductDto {
   @Max(100)
   defaultVat?: number;
 
-  @ApiPropertyOptional({ example: 'inspectie' })
+  @ApiPropertyOptional({ example: 'uuid-of-product-group' })
   @IsOptional()
-  @IsString()
-  category?: string;
+  @IsUUID()
+  productGroupId?: string;
 
   @ApiPropertyOptional({ default: true })
   @IsOptional()

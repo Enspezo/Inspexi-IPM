@@ -187,7 +187,7 @@ export default function QuoteEditorPage() {
     { value: '', label: 'Selecteer product...' },
     ...products.map((p) => ({
       value: p.id,
-      label: `${p.name}${p.category ? ` (${p.category})` : ''}`,
+      label: `${p.name}${p.productGroup ? ` (${p.productGroup.name})` : ''}`,
     })),
   ];
 

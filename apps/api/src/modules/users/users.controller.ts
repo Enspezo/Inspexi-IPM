@@ -21,6 +21,7 @@ import {
   AcceptInvitationDto,
   ChangeRoleDto,
   UpdateProfileDto,
+  AdminResetPasswordDto,
 } from './dto';
 import { Roles, CurrentUser, Public } from '@/common/decorators';
 
@@ -112,6 +113,20 @@ export class UsersController {
   ) {
     await this.usersService.changeRole(id, dto, user);
     return { success: true, message: 'Rol gewijzigd' };
+  }
+
+  @Patch(':id/reset-password')
+  @Roles(Role.SUPERUSER, Role.ORG_ADMIN)
+  @ApiOperation({ summary: 'Wachtwoord van gebruiker resetten (admin)' })
+  @ApiResponse({ status: 200, description: 'Wachtwoord gereset' })
+  @ApiResponse({ status: 403, description: 'Geen bevoegdheid' })
+  async adminResetPassword(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: AdminResetPasswordDto,
+    @CurrentUser() user: User,
+  ) {
+    await this.usersService.adminResetPassword(id, dto.newPassword, user);
+    return { success: true, message: 'Wachtwoord gereset' };
   }
 
   @Patch('profile')

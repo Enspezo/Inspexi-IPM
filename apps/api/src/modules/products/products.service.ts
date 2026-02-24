@@ -16,7 +16,7 @@ export class ProductsService {
   constructor(private prisma: PrismaService) {}
 
   async findAll(user: User, query: ListProductsQueryDto) {
-    const { search, category, isActive, page = 1, limit = 20 } = query;
+    const { search, productGroupId, isActive, page = 1, limit = 20 } = query;
     const skip = (page - 1) * limit;
 
     const where: Prisma.ProductWhereInput = {};
@@ -29,12 +29,12 @@ export class ProductsService {
     if (search) {
       where.OR = [
         { name: { contains: search, mode: 'insensitive' } },
-        { category: { contains: search, mode: 'insensitive' } },
+        { productGroup: { name: { contains: search, mode: 'insensitive' } } },
       ];
     }
 
-    if (category) {
-      where.category = category;
+    if (productGroupId) {
+      where.productGroupId = productGroupId;
     }
 
     if (isActive !== undefined) {
@@ -44,6 +44,9 @@ export class ProductsService {
     const [data, total] = await Promise.all([
       this.prisma.product.findMany({
         where,
+        include: {
+          productGroup: { select: { id: true, name: true } },
+        },
         orderBy: { name: 'asc' },
         skip,
         take: limit,
@@ -57,6 +60,9 @@ export class ProductsService {
   async findOne(id: string, user: User) {
     const product = await this.prisma.product.findUnique({
       where: { id },
+      include: {
+        productGroup: { select: { id: true, name: true } },
+      },
     });
 
     if (!product) {
@@ -83,8 +89,11 @@ export class ProductsService {
         unit: dto.unit,
         description: dto.description,
         defaultVat: dto.defaultVat ?? 21,
-        category: dto.category,
+        productGroupId: dto.productGroupId ?? null,
         isActive: dto.isActive ?? true,
+      },
+      include: {
+        productGroup: { select: { id: true, name: true } },
       },
     });
   }
@@ -99,8 +108,11 @@ export class ProductsService {
         ...(dto.unit !== undefined && { unit: dto.unit }),
         ...(dto.description !== undefined && { description: dto.description }),
         ...(dto.defaultVat !== undefined && { defaultVat: dto.defaultVat }),
-        ...(dto.category !== undefined && { category: dto.category }),
+        ...(dto.productGroupId !== undefined && { productGroupId: dto.productGroupId || null }),
         ...(dto.isActive !== undefined && { isActive: dto.isActive }),
+      },
+      include: {
+        productGroup: { select: { id: true, name: true } },
       },
     });
   }

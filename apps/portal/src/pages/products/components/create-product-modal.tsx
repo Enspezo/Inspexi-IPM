@@ -3,6 +3,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Modal, Input, Select, Button, useToast } from '@/components/ui';
 import { useCreateProduct } from '../hooks/use-products';
+import { useProductGroupsCompact } from '@/pages/product-groups/hooks/use-product-groups';
 
 const unitOptions = [
   { value: 'uur', label: 'Uur' },
@@ -19,7 +20,7 @@ const schema = z.object({
   unit: z.string().min(1, 'Eenheid is verplicht'),
   description: z.string().optional(),
   defaultVat: z.coerce.number().min(0).max(100).optional(),
-  category: z.string().optional(),
+  productGroupId: z.string().optional(),
 });
 
 type FormData = z.infer<typeof schema>;
@@ -32,6 +33,12 @@ interface CreateProductModalProps {
 export function CreateProductModal({ isOpen, onClose }: CreateProductModalProps) {
   const { showToast } = useToast();
   const createMutation = useCreateProduct();
+  const { data: productGroups } = useProductGroupsCompact();
+
+  const groupOptions = [
+    { value: '', label: '— Geen groep —' },
+    ...(productGroups ?? []).map((g) => ({ value: g.id, label: g.name })),
+  ];
 
   const {
     register,
@@ -50,7 +57,7 @@ export function CreateProductModal({ isOpen, onClose }: CreateProductModalProps)
         unit: data.unit,
         description: data.description || undefined,
         defaultVat: data.defaultVat,
-        category: data.category || undefined,
+        productGroupId: data.productGroupId || undefined,
       });
       showToast('Product aangemaakt!', 'success');
       reset();
@@ -96,10 +103,10 @@ export function CreateProductModal({ isOpen, onClose }: CreateProductModalProps)
             error={errors.defaultVat?.message}
             {...register('defaultVat')}
           />
-          <Input
-            label="Categorie"
-            placeholder="inspectie"
-            {...register('category')}
+          <Select
+            label="Productgroep"
+            options={groupOptions}
+            {...register('productGroupId')}
           />
         </div>
 

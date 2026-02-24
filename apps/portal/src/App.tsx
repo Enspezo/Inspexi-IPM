@@ -9,6 +9,12 @@ const LoginPage = lazy(() => import('@/pages/auth/login-page'));
 const AcceptInvitationPage = lazy(
   () => import('@/pages/auth/accept-invitation-page'),
 );
+const ForgotPasswordPage = lazy(
+  () => import('@/pages/auth/forgot-password-page'),
+);
+const ResetPasswordPage = lazy(
+  () => import('@/pages/auth/reset-password-page'),
+);
 const DashboardPage = lazy(() => import('@/pages/dashboard/dashboard-page'));
 const UsersPage = lazy(() => import('@/pages/users/users-page'));
 const OrganizationSettingsPage = lazy(
@@ -43,6 +49,15 @@ const DocumentsPage = lazy(
   () => import('@/pages/documents/documents-page'),
 );
 const ProductsPage = lazy(() => import('@/pages/products/products-page'));
+const ProductDetailPage = lazy(
+  () => import('@/pages/products/product-detail-page'),
+);
+const ProductGroupsPage = lazy(
+  () => import('@/pages/product-groups/product-groups-page'),
+);
+const ProductGroupDetailPage = lazy(
+  () => import('@/pages/product-groups/product-group-detail-page'),
+);
 const PriceTablesPage = lazy(
   () => import('@/pages/price-tables/price-tables-page'),
 );
@@ -84,6 +99,8 @@ export default function App() {
         {/* Public routes */}
         <Route path="/login" element={<LoginPage />} />
         <Route path="/invite/:token" element={<AcceptInvitationPage />} />
+        <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+        <Route path="/reset-password" element={<ResetPasswordPage />} />
 
         {/* Root redirect */}
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
@@ -118,6 +135,9 @@ export default function App() {
             <Route path="/organizations" element={<OrganizationsPage />} />
             <Route path="/organizations/:id" element={<OrganizationDetailPage />} />
             <Route path="/products" element={<ProductsPage />} />
+            <Route path="/products/groups" element={<ProductGroupsPage />} />
+            <Route path="/products/groups/:id" element={<ProductGroupDetailPage />} />
+            <Route path="/products/:id" element={<ProductDetailPage />} />
             <Route path="/price-tables" element={<PriceTablesPage />} />
             <Route path="/price-tables/:id" element={<PriceTableDetailPage />} />
           </Route>

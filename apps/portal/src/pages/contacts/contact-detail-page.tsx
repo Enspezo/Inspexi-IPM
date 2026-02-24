@@ -1,13 +1,17 @@
 import { useState, useRef, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ContactType, ContactPersonRole, LogType, QuoteStatus, Role, TaskEntityType, DocumentEntityType } from '@/types';
-import type { Contact, ContactAddress, ContactLog, ContactEmail, Location } from '@/types';
-import { Button, Card, Spinner, useToast } from '@/components/ui';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
+import { ContactType, ContactPersonRole, LogType, QuoteStatus, TaskStatus, Role, TaskEntityType, DocumentEntityType } from '@/types';
+import type { Contact, ContactAddress, ContactLog, ContactEmail, Location, Task } from '@/types';
+import { Button, Card, Input, Spinner, useToast } from '@/components/ui';
 import { DetailPageLayout } from '@/components/layout/detail-page-layout';
 import { useAuth } from '@/providers/auth-provider';
 import { useContact, useUpdateContact, useDeleteContact, useSetContactGroups, useDeleteAddress, useDeleteLocation } from './hooks/use-contacts';
 import { useCustomerGroupsCompact } from '@/pages/customer-groups/hooks/use-customer-groups';
 import { useUsers } from '@/pages/users/hooks/use-users';
+import { useTasks, useUpdateTask } from '@/pages/tasks/hooks/use-tasks';
 import { AddAddressModal } from './components/add-address-modal';
 import { EditAddressModal } from './components/edit-address-modal';
 import { AddContactPersonModal } from './components/add-contact-person-modal';
@@ -19,9 +23,24 @@ import { AuditHistory } from '@/components/audit-history/audit-history';
 import { CreateTaskModal } from '@/pages/tasks/components/create-task-modal';
 import { DocumentsSection } from '@/components/documents';
 
-type Tab = 'algemeen' | 'adressen' | 'locaties' | 'offertes' | 'geschiedenis';
+type Tab = 'algemeen' | 'adressen' | 'locaties' | 'taken' | 'offertes';
 
 const canWrite = [Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE];
+
+const contactSchema = z.object({
+  companyName: z.string().optional(),
+  firstName: z.string().optional(),
+  lastName: z.string().optional(),
+  email: z.string().email('Ongeldig e-mailadres').optional().or(z.literal('')),
+  phone: z.string().optional(),
+  website: z.string().optional(),
+  vatNumber: z.string().optional(),
+  cocNumber: z.string().optional(),
+  notes: z.string().optional(),
+  ownerId: z.string().optional(),
+});
+
+type ContactFormData = z.infer<typeof contactSchema>;
 
 function getContactDisplayName(contact: Contact): string {
   if (contact.type === ContactType.COMPANY) {
@@ -98,6 +117,18 @@ const quoteStatusColors: Record<string, string> = {
   [QuoteStatus.VERLOPEN]: 'bg-orange-100 text-orange-800',
 };
 
+const taskStatusLabels: Record<string, string> = {
+  [TaskStatus.TE_DOEN]: 'Te doen',
+  [TaskStatus.MEE_BEZIG]: 'Mee bezig',
+  [TaskStatus.VOLTOOID]: 'Voltooid',
+};
+
+const taskStatusColors: Record<string, string> = {
+  [TaskStatus.TE_DOEN]: 'bg-blue-100 text-blue-800',
+  [TaskStatus.MEE_BEZIG]: 'bg-yellow-100 text-yellow-800',
+  [TaskStatus.VOLTOOID]: 'bg-green-100 text-green-800',
+};
+
 export default function ContactDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -106,10 +137,22 @@ export default function ContactDetailPage() {
   const { data: contact, isLoading, error } = useContact(id!);
   const updateMutation = useUpdateContact(id!);
   const deleteMutation = useDeleteContact();
+  const { data: allUsers } = useUsers();
 
   const deleteAddressMutation = useDeleteAddress(id!);
   const deleteLocationMutation = useDeleteLocation(id!);
+  const updateTaskMutation = useUpdateTask();
 
+  // Fetch tasks linked to this contact
+  const { data: tasksData } = useTasks({
+    entityType: TaskEntityType.CONTACT,
+    entityId: id,
+    limit: 100,
+  });
+  const contactTasks = tasksData?.data || [];
+  const incompleteTasks = contactTasks.filter((t) => t.status !== TaskStatus.VOLTOOID);
+
+  const [isEditing, setIsEditing] = useState(false);
   const [activeTab, setActiveTab] = useState<Tab>('algemeen');
   const [isAddressOpen, setIsAddressOpen] = useState(false);
   const [editingAddress, setEditingAddress] = useState<ContactAddress | null>(null);
@@ -128,6 +171,69 @@ export default function ContactDetailPage() {
     (user.role === Role.SUPERUSER ||
       user.role === Role.ORG_ADMIN ||
       (contact?.ownerId != null && contact.ownerId === user.id));
+
+  const {
+    register,
+    handleSubmit,
+    reset: resetForm,
+    formState: { errors: formErrors, isDirty },
+  } = useForm<ContactFormData>({ resolver: zodResolver(contactSchema) });
+
+  useEffect(() => {
+    if (contact) {
+      resetForm({
+        companyName: contact.companyName || '',
+        firstName: contact.firstName || '',
+        lastName: contact.lastName || '',
+        email: contact.email || '',
+        phone: contact.phone || '',
+        website: contact.website || '',
+        vatNumber: contact.vatNumber || '',
+        cocNumber: contact.cocNumber || '',
+        notes: contact.notes || '',
+        ownerId: contact.ownerId || '',
+      });
+    }
+  }, [contact, resetForm]);
+
+  const onSubmitContact = async (data: ContactFormData) => {
+    try {
+      await updateMutation.mutateAsync({
+        companyName: data.companyName || undefined,
+        firstName: data.firstName || undefined,
+        lastName: data.lastName || undefined,
+        email: data.email || undefined,
+        phone: data.phone || undefined,
+        website: data.website || undefined,
+        vatNumber: data.vatNumber || undefined,
+        cocNumber: data.cocNumber || undefined,
+        notes: data.notes || undefined,
+        ownerId: data.ownerId || undefined,
+      });
+      showToast('Relatie bijgewerkt', 'success');
+      setIsEditing(false);
+    } catch {
+      showToast('Opslaan mislukt', 'error');
+    }
+  };
+
+  const handleCancelEdit = () => {
+    if (contact) {
+      resetForm({
+        companyName: contact.companyName || '',
+        firstName: contact.firstName || '',
+        lastName: contact.lastName || '',
+        email: contact.email || '',
+        phone: contact.phone || '',
+        website: contact.website || '',
+        vatNumber: contact.vatNumber || '',
+        cocNumber: contact.cocNumber || '',
+        notes: contact.notes || '',
+        ownerId: contact.ownerId || '',
+      });
+    }
+    setIsEditing(false);
+  };
 
   const handleDelete = async () => {
     if (!contact) return;
@@ -157,12 +263,12 @@ export default function ContactDetailPage() {
     );
   }
 
-  const tabs: { key: Tab; label: string }[] = [
+  const tabs: { key: Tab; label: string; count?: number }[] = [
     { key: 'algemeen', label: 'Algemeen' },
     { key: 'adressen', label: `Adressen (${contact.addresses?.length || 0})` },
     { key: 'locaties', label: `Locaties (${contact.locations?.length || 0})` },
+    { key: 'taken', label: 'Taken', count: incompleteTasks.length },
     { key: 'offertes', label: `Offertes (${contact.quotes?.length || 0})` },
-    { key: 'geschiedenis', label: 'Geschiedenis' },
   ];
 
   // Merge logs + emails into timeline
@@ -178,8 +284,24 @@ export default function ContactDetailPage() {
     return new Date(dateB).getTime() - new Date(dateA).getTime();
   });
 
+  const sidebarContent = (
+    <div className="space-y-6">
+      {/* Geschiedenis (contactmomenten timeline) */}
+      <ContactHistorySidebar
+        contact={contact}
+        timeline={timeline}
+        userCanWrite={!!userCanWrite}
+        onLogOpen={() => setIsLogOpen(true)}
+        onEmailOpen={() => setIsEmailOpen(true)}
+      />
+
+      {/* Audit trail */}
+      <AuditHistory entityType="Contact" entityId={id} />
+    </div>
+  );
+
   return (
-    <DetailPageLayout sidebar={<AuditHistory entityType="Contact" entityId={id} />}>
+    <DetailPageLayout sidebar={sidebarContent}>
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
@@ -213,12 +335,28 @@ export default function ContactDetailPage() {
           </div>
         </div>
         {userCanWrite && (
-          <Button variant="secondary" size="sm" onClick={() => setIsTaskOpen(true)}>
-            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
-            </svg>
-            Taak aanmaken
-          </Button>
+          <div className="flex items-center gap-2">
+            {!isEditing && (
+              <Button variant="secondary" size="sm" onClick={() => setIsEditing(true)}>
+                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                </svg>
+                Bewerken
+              </Button>
+            )}
+            <Button variant="secondary" size="sm" onClick={() => setIsLogOpen(true)}>
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              Moment loggen
+            </Button>
+            <Button variant="secondary" size="sm" onClick={() => setIsTaskOpen(true)}>
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+              </svg>
+              Taak aanmaken
+            </Button>
+          </div>
         )}
       </div>
 
@@ -229,13 +367,18 @@ export default function ContactDetailPage() {
             <button
               key={tab.key}
               onClick={() => setActiveTab(tab.key)}
-              className={`whitespace-nowrap border-b-2 px-1 py-3 text-sm font-medium transition-colors ${
+              className={`inline-flex items-center gap-1.5 whitespace-nowrap border-b-2 px-1 py-3 text-sm font-medium transition-colors ${
                 activeTab === tab.key
                   ? 'border-primary-600 text-primary-600'
                   : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'
               }`}
             >
               {tab.label}
+              {tab.count != null && tab.count > 0 && (
+                <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-primary-100 px-1.5 text-xs font-semibold text-primary-700">
+                  {tab.count}
+                </span>
+              )}
             </button>
           ))}
         </nav>
@@ -244,47 +387,139 @@ export default function ContactDetailPage() {
       {/* Tab content */}
       {activeTab === 'algemeen' && (
         <div className="space-y-6">
-          <Card>
-            <div className="grid grid-cols-2 gap-6">
-              {contact.type === ContactType.COMPANY && (
-                <>
-                  <InfoField label="Bedrijfsnaam" value={contact.companyName} />
-                  <InfoField label="KvK-nummer" value={contact.cocNumber} />
-                  <InfoField label="BTW-nummer" value={contact.vatNumber} />
-                  <InfoField label="Website" value={contact.website} />
-                </>
-              )}
-              {contact.type === ContactType.INDIVIDUAL && (
-                <>
-                  <InfoField label="Voornaam" value={contact.firstName} />
-                  <InfoField label="Achternaam" value={contact.lastName} />
-                </>
-              )}
-              <InfoField label="E-mail" value={contact.email} />
-              <InfoField label="Telefoon" value={contact.phone} />
-              <OwnerSelect
-                currentOwnerId={contact.ownerId}
-                ownerName={
-                  contact.owner
-                    ? `${contact.owner.firstName} ${contact.owner.lastName}`
-                    : null
-                }
-                canEdit={!!userCanManage}
-                onSave={async (ownerId) => {
-                  try {
-                    await updateMutation.mutateAsync({ ownerId: ownerId || undefined });
-                    showToast('Eigenaar bijgewerkt', 'success');
-                  } catch {
-                    showToast('Eigenaar bijwerken mislukt', 'error');
-                  }
-                }}
-                isSaving={updateMutation.isPending}
-              />
-              <div className="col-span-2">
-                <InfoField label="Notities" value={contact.notes} />
+          {isEditing ? (
+            <Card>
+              <form onSubmit={handleSubmit(onSubmitContact)} className="space-y-4">
+                {contact.type === ContactType.COMPANY && (
+                  <>
+                    <div className="grid grid-cols-2 gap-4">
+                      <Input label="Bedrijfsnaam" {...register('companyName')} />
+                      <Input label="KvK-nummer" {...register('cocNumber')} />
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <Input label="BTW-nummer" {...register('vatNumber')} />
+                      <Input label="Website" {...register('website')} />
+                    </div>
+                  </>
+                )}
+                {contact.type === ContactType.INDIVIDUAL && (
+                  <div className="grid grid-cols-2 gap-4">
+                    <Input label="Voornaam" {...register('firstName')} />
+                    <Input label="Achternaam" {...register('lastName')} />
+                  </div>
+                )}
+                <div className="grid grid-cols-2 gap-4">
+                  <Input
+                    label="E-mail"
+                    type="email"
+                    error={formErrors.email?.message}
+                    {...register('email')}
+                  />
+                  <Input label="Telefoon" {...register('phone')} />
+                </div>
+                <div className="w-1/2">
+                  <label className="mb-1.5 block text-sm font-medium text-gray-700">Eigenaar</label>
+                  <select
+                    {...register('ownerId')}
+                    className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
+                  >
+                    <option value="">Geen eigenaar</option>
+                    {(allUsers || []).filter((u) => u.isActive).map((u) => (
+                      <option key={u.id} value={u.id}>
+                        {u.firstName} {u.lastName}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium text-gray-700">Notities</label>
+                  <textarea
+                    {...register('notes')}
+                    rows={3}
+                    className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
+                  />
+                </div>
+                <div className="flex justify-end gap-3 border-t border-gray-100 pt-4">
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    onClick={handleCancelEdit}
+                    disabled={updateMutation.isPending}
+                  >
+                    Annuleren
+                  </Button>
+                  <Button
+                    type="submit"
+                    isLoading={updateMutation.isPending}
+                    disabled={!isDirty}
+                  >
+                    Opslaan
+                  </Button>
+                </div>
+              </form>
+            </Card>
+          ) : (
+            <Card>
+              <div className="grid grid-cols-2 gap-6">
+                {contact.type === ContactType.COMPANY && (
+                  <>
+                    <InfoField label="Bedrijfsnaam" value={contact.companyName} />
+                    <InfoField label="KvK-nummer" value={contact.cocNumber} />
+                    <InfoField label="BTW-nummer" value={contact.vatNumber} />
+                    <InfoField label="Website" value={contact.website} />
+                  </>
+                )}
+                {contact.type === ContactType.INDIVIDUAL && (
+                  <>
+                    <InfoField label="Voornaam" value={contact.firstName} />
+                    <InfoField label="Achternaam" value={contact.lastName} />
+                  </>
+                )}
+                <div>
+                  <dt className="text-sm font-medium text-gray-500">E-mail</dt>
+                  <dd className="mt-1 flex items-center gap-1.5 text-sm text-gray-900">
+                    {contact.email || '—'}
+                    {contact.email && userCanWrite && (
+                      <button
+                        type="button"
+                        onClick={() => setIsEmailOpen(true)}
+                        title="E-mail versturen"
+                        className="rounded p-0.5 text-gray-400 transition-colors hover:bg-primary-50 hover:text-primary-600"
+                      >
+                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                        </svg>
+                      </button>
+                    )}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-sm font-medium text-gray-500">Telefoon</dt>
+                  <dd className="mt-1 flex items-center gap-1.5 text-sm text-gray-900">
+                    {contact.phone || '—'}
+                    {contact.phone && (
+                      <a
+                        href={`tel:${contact.phone}`}
+                        title="Bellen"
+                        className="rounded p-0.5 text-gray-400 transition-colors hover:bg-primary-50 hover:text-primary-600"
+                      >
+                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+                        </svg>
+                      </a>
+                    )}
+                  </dd>
+                </div>
+                <InfoField
+                  label="Eigenaar"
+                  value={contact.owner ? `${contact.owner.firstName} ${contact.owner.lastName}` : null}
+                />
+                <div className="col-span-2">
+                  <InfoField label="Notities" value={contact.notes} />
+                </div>
               </div>
-            </div>
-          </Card>
+            </Card>
+          )}
 
           {/* Klantgroepen */}
           <ContactCustomerGroups contactId={contact.id} contact={contact} userCanWrite={!!userCanWrite} />
@@ -359,6 +594,15 @@ export default function ContactDetailPage() {
               </div>
             )}
           </div>
+
+          {/* Documenten */}
+          <Card>
+            <DocumentsSection
+              entityType={DocumentEntityType.CONTACT}
+              entityId={contact.id}
+              canUpload={!!userCanWrite}
+            />
+          </Card>
         </div>
       )}
 
@@ -580,112 +824,22 @@ export default function ContactDetailPage() {
         </div>
       )}
 
-      {activeTab === 'geschiedenis' && (
-        <div className="space-y-4">
-          {userCanWrite && (
-            <div className="flex justify-end gap-2">
-              <Button
-                size="sm"
-                variant="secondary"
-                onClick={() => setIsLogOpen(true)}
-              >
-                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                </svg>
-                Moment loggen
-              </Button>
-              <Button size="sm" onClick={() => setIsEmailOpen(true)}>
-                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                </svg>
-                E-mail versturen
-              </Button>
-            </div>
-          )}
-          {timeline.length === 0 ? (
-            <p className="py-8 text-center text-sm text-gray-500">
-              Nog geen contactgeschiedenis
-            </p>
-          ) : (
-            <div className="space-y-3">
-              {timeline.map((item) => {
-                if (item._kind === 'log') {
-                  return (
-                    <Card key={`log-${item.id}`}>
-                      <div>
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <span
-                              className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
-                                logTypeColors[item.type] || 'bg-gray-100 text-gray-800'
-                              }`}
-                            >
-                              {logTypeLabels[item.type] || item.type}
-                            </span>
-                            {item.subject && (
-                              <span className="text-sm font-medium text-gray-900">
-                                {item.subject}
-                              </span>
-                            )}
-                          </div>
-                          <span className="text-xs text-gray-400">
-                            {formatDate(item.loggedAt)}
-                          </span>
-                        </div>
-                        {item.body && (
-                          <p className="mt-2 text-sm text-gray-600">
-                            {item.body}
-                          </p>
-                        )}
-                        {item.user && (
-                          <p className="mt-1 text-xs text-gray-400">
-                            Door {item.user.firstName} {item.user.lastName}
-                          </p>
-                        )}
-                      </div>
-                    </Card>
-                  );
-                }
-
-                // Email item
-                return (
-                  <Card key={`email-${item.id}`}>
-                    <div>
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <span className="inline-flex items-center rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-800">
-                            E-mail verstuurd
-                          </span>
-                          <span className="text-sm font-medium text-gray-900">
-                            {item.subject}
-                          </span>
-                        </div>
-                        <span className="text-xs text-gray-400">
-                          {formatDate(item.sentAt)}
-                        </span>
-                      </div>
-                      {item.user && (
-                        <p className="mt-1 text-xs text-gray-400">
-                          Door {item.user.firstName} {item.user.lastName}
-                        </p>
-                      )}
-                    </div>
-                  </Card>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Documenten */}
-      <Card>
-        <DocumentsSection
-          entityType={DocumentEntityType.CONTACT}
-          entityId={contact.id}
-          canUpload={!!userCanWrite}
+      {activeTab === 'taken' && (
+        <ContactTasksTab
+          tasks={contactTasks}
+          userCanWrite={!!userCanWrite}
+          onCreateTask={() => setIsTaskOpen(true)}
+          onStatusChange={async (taskId, newStatus) => {
+            try {
+              await updateTaskMutation.mutateAsync({ id: taskId, data: { status: newStatus } });
+              showToast('Taakstatus bijgewerkt', 'success');
+            } catch {
+              showToast('Status bijwerken mislukt', 'error');
+            }
+          }}
+          navigate={navigate}
         />
-      </Card>
+      )}
 
       {/* Verwijderen */}
       {userCanManage && (
@@ -747,6 +901,271 @@ export default function ContactDetailPage() {
       />
     </div>
     </DetailPageLayout>
+  );
+}
+
+function ContactTasksTab({
+  tasks,
+  userCanWrite,
+  onCreateTask,
+  onStatusChange,
+  navigate,
+}: {
+  tasks: Task[];
+  userCanWrite: boolean;
+  onCreateTask: () => void;
+  onStatusChange: (taskId: string, status: TaskStatus) => void;
+  navigate: ReturnType<typeof useNavigate>;
+}) {
+  // Split into incomplete and completed
+  const incomplete = tasks.filter((t) => t.status !== TaskStatus.VOLTOOID);
+  const completed = tasks.filter((t) => t.status === TaskStatus.VOLTOOID);
+
+  return (
+    <div className="space-y-4">
+      {userCanWrite && (
+        <div className="flex justify-end">
+          <Button size="sm" onClick={onCreateTask}>
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            </svg>
+            Taak aanmaken
+          </Button>
+        </div>
+      )}
+      {tasks.length === 0 ? (
+        <p className="py-8 text-center text-sm text-gray-500">
+          Nog geen taken voor deze relatie
+        </p>
+      ) : (
+        <div className="space-y-6">
+          {/* Incomplete tasks */}
+          {incomplete.length > 0 && (
+            <div className="space-y-2">
+              {incomplete.map((task) => (
+                <TaskCard
+                  key={task.id}
+                  task={task}
+                  onStatusChange={onStatusChange}
+                  navigate={navigate}
+                />
+              ))}
+            </div>
+          )}
+
+          {/* Completed tasks */}
+          {completed.length > 0 && (
+            <div className="space-y-2">
+              <h4 className="text-sm font-medium text-gray-500">
+                Voltooid ({completed.length})
+              </h4>
+              {completed.map((task) => (
+                <TaskCard
+                  key={task.id}
+                  task={task}
+                  onStatusChange={onStatusChange}
+                  navigate={navigate}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TaskCard({
+  task,
+  onStatusChange,
+  navigate,
+}: {
+  task: Task;
+  onStatusChange: (taskId: string, status: TaskStatus) => void;
+  navigate: ReturnType<typeof useNavigate>;
+}) {
+  const isCompleted = task.status === TaskStatus.VOLTOOID;
+  const isOverdue = !isCompleted && task.deadline && new Date(task.deadline) < new Date();
+
+  return (
+    <div
+      className={`group flex items-start gap-3 rounded-lg border p-3 transition-colors hover:bg-gray-50 ${
+        isCompleted ? 'border-gray-100 bg-gray-50' : 'border-gray-200 bg-white'
+      }`}
+    >
+      {/* Checkbox for quick status toggle */}
+      <button
+        type="button"
+        onClick={() =>
+          onStatusChange(
+            task.id,
+            isCompleted ? TaskStatus.TE_DOEN : TaskStatus.VOLTOOID,
+          )
+        }
+        className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded border transition-colors ${
+          isCompleted
+            ? 'border-green-500 bg-green-500 text-white'
+            : 'border-gray-300 bg-white hover:border-primary-500'
+        }`}
+      >
+        {isCompleted && (
+          <svg className="h-3 w-3" viewBox="0 0 12 12" fill="none">
+            <path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        )}
+      </button>
+
+      {/* Task info */}
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => navigate(`/tasks/${task.id}`)}
+            className={`text-sm font-medium hover:underline ${
+              isCompleted ? 'text-gray-400 line-through' : 'text-gray-900'
+            }`}
+          >
+            {task.title}
+          </button>
+          <span
+            className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
+              taskStatusColors[task.status] || 'bg-gray-100 text-gray-600'
+            }`}
+          >
+            {taskStatusLabels[task.status] || task.status}
+          </span>
+        </div>
+        <div className="mt-1 flex items-center gap-3 text-xs text-gray-500">
+          {task.assignee && (
+            <span>
+              {task.assignee.firstName} {task.assignee.lastName}
+            </span>
+          )}
+          {task.deadline && (
+            <span className={isOverdue ? 'font-medium text-red-600' : ''}>
+              {isOverdue && (
+                <svg className="mr-0.5 inline h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                </svg>
+              )}
+              {new Date(task.deadline).toLocaleDateString('nl-NL')}
+            </span>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ContactHistorySidebar({
+  contact,
+  timeline,
+  userCanWrite,
+  onLogOpen,
+  onEmailOpen,
+}: {
+  contact: Contact;
+  timeline: Array<
+    | (ContactLog & { _kind: 'log' })
+    | (ContactEmail & { _kind: 'email' })
+  >;
+  userCanWrite: boolean;
+  onLogOpen: () => void;
+  onEmailOpen: () => void;
+}) {
+  const [showAll, setShowAll] = useState(false);
+  const MAX_ITEMS = 5;
+  const visibleTimeline = showAll ? timeline : timeline.slice(0, MAX_ITEMS);
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-semibold text-gray-900">Contactgeschiedenis</h3>
+      </div>
+
+      {timeline.length === 0 ? (
+        <p className="text-xs text-gray-400">Nog geen contactgeschiedenis</p>
+      ) : (
+        <div className="space-y-2">
+          {visibleTimeline.map((item) => {
+            if (item._kind === 'log') {
+              return (
+                <div
+                  key={`log-${item.id}`}
+                  className="rounded-lg border border-gray-200 bg-white p-3"
+                >
+                  <div className="mb-1 flex items-center justify-between">
+                    <span
+                      className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
+                        logTypeColors[item.type] || 'bg-gray-100 text-gray-800'
+                      }`}
+                    >
+                      {logTypeLabels[item.type] || item.type}
+                    </span>
+                    <span className="text-xs text-gray-400">
+                      {formatShortDate(item.loggedAt)}
+                    </span>
+                  </div>
+                  {item.subject && (
+                    <p className="text-xs font-medium text-gray-900">{item.subject}</p>
+                  )}
+                  {item.body && (
+                    <p className="mt-0.5 line-clamp-2 text-xs text-gray-600" title={item.body}>
+                      {item.body}
+                    </p>
+                  )}
+                  {item.user && (
+                    <p className="mt-1 text-xs text-gray-400">
+                      {item.user.firstName} {item.user.lastName}
+                    </p>
+                  )}
+                </div>
+              );
+            }
+
+            return (
+              <div
+                key={`email-${item.id}`}
+                className="rounded-lg border border-gray-200 bg-white p-3"
+              >
+                <div className="mb-1 flex items-center justify-between">
+                  <span className="inline-flex items-center rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-800">
+                    E-mail
+                  </span>
+                  <span className="text-xs text-gray-400">
+                    {formatShortDate(item.sentAt)}
+                  </span>
+                </div>
+                <p className="text-xs font-medium text-gray-900">{item.subject}</p>
+                {item.bodyHtml && (
+                  <p
+                    className="mt-0.5 line-clamp-2 text-xs text-gray-600"
+                    title={item.bodyHtml.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim()}
+                  >
+                    {item.bodyHtml.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim()}
+                  </p>
+                )}
+                {item.user && (
+                  <p className="mt-1 text-xs text-gray-400">
+                    {item.user.firstName} {item.user.lastName}
+                  </p>
+                )}
+              </div>
+            );
+          })}
+
+          {timeline.length > MAX_ITEMS && (
+            <button
+              onClick={() => setShowAll(!showAll)}
+              className="w-full py-1 text-center text-xs font-medium text-primary-600 hover:text-primary-800"
+            >
+              {showAll
+                ? 'Minder tonen'
+                : `Alle ${timeline.length} items tonen`}
+            </button>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -848,54 +1267,6 @@ function ContactCustomerGroups({
           </div>
         </div>
       )}
-    </div>
-  );
-}
-
-function OwnerSelect({
-  currentOwnerId,
-  ownerName,
-  canEdit,
-  onSave,
-  isSaving,
-}: {
-  currentOwnerId: string | null;
-  ownerName: string | null;
-  canEdit: boolean;
-  onSave: (ownerId: string | null) => Promise<void>;
-  isSaving: boolean;
-}) {
-  const { data: users } = useUsers();
-
-  if (!canEdit) {
-    return (
-      <div>
-        <dt className="text-sm font-medium text-gray-500">Eigenaar</dt>
-        <dd className="mt-1 text-sm text-gray-900">{ownerName || '—'}</dd>
-      </div>
-    );
-  }
-
-  return (
-    <div>
-      <dt className="text-sm font-medium text-gray-500">Eigenaar</dt>
-      <dd className="mt-1">
-        <select
-          className="w-full rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-900 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 disabled:opacity-50"
-          value={currentOwnerId || ''}
-          disabled={isSaving}
-          onChange={(e) => onSave(e.target.value || null)}
-        >
-          <option value="">Geen eigenaar</option>
-          {(users || [])
-            .filter((u) => u.isActive)
-            .map((u) => (
-              <option key={u.id} value={u.id}>
-                {u.firstName} {u.lastName}
-              </option>
-            ))}
-        </select>
-      </dd>
     </div>
   );
 }

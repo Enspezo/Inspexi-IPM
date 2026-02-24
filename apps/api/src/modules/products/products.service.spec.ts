@@ -127,12 +127,13 @@ describe('ProductsService', () => {
       );
     });
 
-    it('should filter by category', async () => {
+    it('should filter by productGroupId', async () => {
       mockPrismaService.product.findMany.mockResolvedValue([]);
       mockPrismaService.product.count.mockResolvedValue(0);
 
+      const groupId = 'group-uuid-123';
       await service.findAll(mockUser, {
-        category: 'inspectie',
+        productGroupId: groupId,
         page: 1,
         limit: 20,
       });
@@ -140,7 +141,7 @@ describe('ProductsService', () => {
       expect(mockPrismaService.product.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
           where: expect.objectContaining({
-            category: 'inspectie',
+            productGroupId: groupId,
           }),
         }),
       );

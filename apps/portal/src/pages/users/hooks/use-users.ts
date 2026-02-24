@@ -67,3 +67,16 @@ export function useChangeRole() {
     },
   });
 }
+
+export function useAdminResetPassword() {
+  return useMutation({
+    mutationFn: ({
+      userId,
+      newPassword,
+    }: {
+      userId: string;
+      newPassword: string;
+    }) =>
+      apiClient.patch(`/users/${userId}/reset-password`, { newPassword }),
+  });
+}

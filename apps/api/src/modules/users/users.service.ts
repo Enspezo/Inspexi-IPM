@@ -241,6 +241,51 @@ export class UsersService {
     });
   }
 
+  async adminResetPassword(
+    id: string,
+    newPassword: string,
+    currentUser: User,
+  ) {
+    if (id === currentUser.id) {
+      throw new ForbiddenException(
+        'Gebruik het profiel-scherm om uw eigen wachtwoord te wijzigen',
+      );
+    }
+
+    const user = await this.findOne(id);
+
+    // Tenant isolatie
+    if (
+      currentUser.role !== Role.SUPERUSER &&
+      user.orgId !== currentUser.orgId
+    ) {
+      throw new ForbiddenException();
+    }
+
+    // ORG_ADMIN mag geen andere ORG_ADMIN of SUPERUSER resetten
+    if (
+      currentUser.role === Role.ORG_ADMIN &&
+      (user.role === Role.SUPERUSER || user.role === Role.ORG_ADMIN)
+    ) {
+      throw new ForbiddenException(
+        'U heeft geen bevoegdheid om het wachtwoord van deze gebruiker te resetten',
+      );
+    }
+
+    const passwordHash = await bcrypt.hash(newPassword, 10);
+
+    await this.prisma.user.update({
+      where: { id },
+      data: { passwordHash },
+    });
+
+    // Revoke alle actieve sessies zodat de gebruiker opnieuw moet inloggen
+    await this.prisma.refreshToken.updateMany({
+      where: { userId: id, revokedAt: null },
+      data: { revokedAt: new Date() },
+    });
+  }
+
   async updateProfile(id: string, dto: UpdateProfileDto) {
     const data: any = {};
 

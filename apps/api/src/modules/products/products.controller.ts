@@ -37,6 +37,18 @@ export class ProductsController {
     return { success: true, data: result };
   }
 
+  @Get(':id')
+  @Roles(Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE, Role.WERKVOORBEREIDER)
+  @ApiOperation({ summary: 'Product detail ophalen' })
+  @ApiResponse({ status: 200, description: 'Product gevonden' })
+  async findOne(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: User,
+  ) {
+    const product = await this.productsService.findOne(id, user);
+    return { success: true, data: product };
+  }
+
   @Post()
   @Roles(Role.SUPERUSER, Role.ORG_ADMIN)
   @ApiOperation({ summary: 'Nieuw product aanmaken' })

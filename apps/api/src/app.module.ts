@@ -14,6 +14,7 @@ import { OrganizationsModule } from './modules/organizations/organizations.modul
 import { UsersModule } from './modules/users/users.module';
 import { ContactsModule } from './modules/contacts/contacts.module';
 import { CustomerGroupsModule } from './modules/customer-groups/customer-groups.module';
+import { ProductGroupsModule } from './modules/product-groups/product-groups.module';
 import { ProductsModule } from './modules/products/products.module';
 import { PriceTablesModule } from './modules/price-tables/price-tables.module';
 import { RequestsModule } from './modules/requests/requests.module';
@@ -36,6 +37,7 @@ import { DocumentsModule } from './modules/documents/documents.module';
     UsersModule,
     ContactsModule,
     CustomerGroupsModule,
+    ProductGroupsModule,
     ProductsModule,
     PriceTablesModule,
     RequestsModule,

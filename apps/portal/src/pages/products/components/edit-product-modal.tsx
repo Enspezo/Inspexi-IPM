@@ -4,6 +4,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Modal, Input, Select, Button, useToast } from '@/components/ui';
 import { useUpdateProduct } from '../hooks/use-products';
+import { useProductGroupsCompact } from '@/pages/product-groups/hooks/use-product-groups';
 import type { Product } from '@/types';
 
 const unitOptions = [
@@ -21,7 +22,7 @@ const schema = z.object({
   unit: z.string().min(1, 'Eenheid is verplicht'),
   description: z.string().optional(),
   defaultVat: z.coerce.number().min(0).max(100).optional(),
-  category: z.string().optional(),
+  productGroupId: z.string().optional(),
   isActive: z.boolean().optional(),
 });
 
@@ -31,11 +32,18 @@ interface EditProductModalProps {
   isOpen: boolean;
   onClose: () => void;
   product: Product;
+  disableGroupSelect?: boolean;
 }
 
-export function EditProductModal({ isOpen, onClose, product }: EditProductModalProps) {
+export function EditProductModal({ isOpen, onClose, product, disableGroupSelect = false }: EditProductModalProps) {
   const { showToast } = useToast();
   const updateMutation = useUpdateProduct(product.id);
+  const { data: productGroups } = useProductGroupsCompact();
+
+  const groupOptions = [
+    { value: '', label: '— Geen groep —' },
+    ...(productGroups ?? []).map((g) => ({ value: g.id, label: g.name })),
+  ];
 
   const {
     register,
@@ -53,7 +61,7 @@ export function EditProductModal({ isOpen, onClose, product }: EditProductModalP
         unit: product.unit,
         description: product.description || '',
         defaultVat: product.defaultVat,
-        category: product.category || '',
+        productGroupId: product.productGroupId || '',
         isActive: product.isActive,
       });
     }
@@ -66,7 +74,7 @@ export function EditProductModal({ isOpen, onClose, product }: EditProductModalP
         unit: data.unit,
         description: data.description || undefined,
         defaultVat: data.defaultVat,
-        category: data.category || undefined,
+        productGroupId: data.productGroupId || '',
         isActive: data.isActive,
       });
       showToast('Product bijgewerkt!', 'success');
@@ -104,10 +112,19 @@ export function EditProductModal({ isOpen, onClose, product }: EditProductModalP
             error={errors.defaultVat?.message}
             {...register('defaultVat')}
           />
-          <Input
-            label="Categorie"
-            {...register('category')}
-          />
+          <div>
+            <Select
+              label="Productgroep"
+              options={groupOptions}
+              disabled={disableGroupSelect}
+              {...register('productGroupId')}
+            />
+            {disableGroupSelect && (
+              <p className="mt-1 text-xs text-gray-400">
+                Wijzig de groep via de productpagina
+              </p>
+            )}
+          </div>
         </div>
 
         <label className="flex items-center gap-2">

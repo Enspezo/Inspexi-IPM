@@ -21,9 +21,11 @@ import {
   CreateContactDto,
   UpdateContactDto,
   CreateContactAddressDto,
+  UpdateContactAddressDto,
   CreateContactPersonDto,
   UpdateContactPersonDto,
   CreateLocationDto,
+  UpdateLocationDto,
   CreateContactLogDto,
   SendContactEmailDto,
   ListContactsQueryDto,
@@ -138,6 +140,31 @@ export class ContactsController {
     return { success: true, data: address };
   }
 
+  @Patch('addresses/:addressId')
+  @Roles(Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE)
+  @ApiOperation({ summary: 'Adres bijwerken' })
+  @ApiResponse({ status: 200, description: 'Adres bijgewerkt' })
+  async updateAddress(
+    @Param('addressId', ParseUUIDPipe) addressId: string,
+    @Body() dto: UpdateContactAddressDto,
+    @CurrentUser() user: User,
+  ) {
+    const address = await this.contactsService.updateAddress(addressId, dto, user);
+    return { success: true, data: address };
+  }
+
+  @Delete('addresses/:addressId')
+  @Roles(Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE)
+  @ApiOperation({ summary: 'Adres verwijderen' })
+  @ApiResponse({ status: 200, description: 'Adres verwijderd' })
+  async deleteAddress(
+    @Param('addressId', ParseUUIDPipe) addressId: string,
+    @CurrentUser() user: User,
+  ) {
+    await this.contactsService.deleteAddress(addressId, user);
+    return { success: true, message: 'Adres verwijderd' };
+  }
+
   // ─── Nested: Customer Groups Assignment ───────────────
 
   @Patch(':id/groups')
@@ -246,6 +273,31 @@ export class ContactsController {
   ) {
     const locations = await this.contactsService.findLocations(id, user);
     return { success: true, data: locations };
+  }
+
+  @Patch('locations/:locationId')
+  @Roles(Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE)
+  @ApiOperation({ summary: 'Locatie bijwerken' })
+  @ApiResponse({ status: 200, description: 'Locatie bijgewerkt' })
+  async updateLocation(
+    @Param('locationId', ParseUUIDPipe) locationId: string,
+    @Body() dto: UpdateLocationDto,
+    @CurrentUser() user: User,
+  ) {
+    const location = await this.contactsService.updateLocation(locationId, dto, user);
+    return { success: true, data: location };
+  }
+
+  @Delete('locations/:locationId')
+  @Roles(Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE)
+  @ApiOperation({ summary: 'Locatie verwijderen' })
+  @ApiResponse({ status: 200, description: 'Locatie verwijderd' })
+  async deleteLocation(
+    @Param('locationId', ParseUUIDPipe) locationId: string,
+    @CurrentUser() user: User,
+  ) {
+    await this.contactsService.deleteLocation(locationId, user);
+    return { success: true, message: 'Locatie verwijderd' };
   }
 
   // ─── Nested: Logs ──────────────────────────────────────

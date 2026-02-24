@@ -132,7 +132,15 @@ describe('ContactsService', () => {
       expect(result).toEqual({ data: contacts, total: 1, page: 1, limit: 20 });
       expect(mockPrismaService.contact.findMany).toHaveBeenCalledWith({
         where: { isDeleted: false, orgId: 'org-1' },
-        include: { addresses: true },
+        include: {
+          addresses: true,
+          owner: { select: { id: true, firstName: true, lastName: true } },
+          customerGroups: {
+            include: {
+              customerGroup: { select: { id: true, name: true } },
+            },
+          },
+        },
         orderBy: { createdAt: 'desc' },
         skip: 0,
         take: 20,
@@ -235,6 +243,16 @@ describe('ContactsService', () => {
         where: { id: 'contact-1' },
         include: {
           addresses: true,
+          owner: { select: { id: true, firstName: true, lastName: true } },
+          contactPersons: {
+            where: { isDeleted: false },
+            orderBy: { createdAt: 'desc' },
+          },
+          customerGroups: {
+            include: {
+              customerGroup: { select: { id: true, name: true } },
+            },
+          },
           locations: true,
           logs: {
             include: { user: { select: { firstName: true, lastName: true } } },
@@ -243,6 +261,13 @@ describe('ContactsService', () => {
           emails: {
             include: { user: { select: { firstName: true, lastName: true } } },
             orderBy: { sentAt: 'desc' },
+          },
+          quotes: {
+            include: {
+              createdByUser: { select: { id: true, firstName: true, lastName: true, email: true } },
+              location: { select: { id: true, name: true, city: true } },
+            },
+            orderBy: { createdAt: 'desc' },
           },
         },
       });
@@ -464,6 +489,8 @@ describe('ContactsService', () => {
           city: addressDto.city,
           country: 'NL',
           isPrimary: false,
+          isPostal: false,
+          isInvoice: false,
         },
       });
     });

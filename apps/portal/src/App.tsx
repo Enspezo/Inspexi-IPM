@@ -35,6 +35,10 @@ const RequestsPage = lazy(() => import('@/pages/requests/requests-page'));
 const RequestDetailPage = lazy(
   () => import('@/pages/requests/request-detail-page'),
 );
+const TasksPage = lazy(() => import('@/pages/tasks/tasks-page'));
+const TaskDetailPage = lazy(
+  () => import('@/pages/tasks/task-detail-page'),
+);
 const ProductsPage = lazy(() => import('@/pages/products/products-page'));
 const PriceTablesPage = lazy(
   () => import('@/pages/price-tables/price-tables-page'),
@@ -54,6 +58,12 @@ const QuoteTemplatesPage = lazy(
 );
 const NotificationsPage = lazy(
   () => import('@/pages/notifications/notifications-page'),
+);
+const OrganizationsPage = lazy(
+  () => import('@/pages/organizations/organizations-page'),
+);
+const OrganizationDetailPage = lazy(
+  () => import('@/pages/organizations/organization-detail-page'),
 );
 
 function PageLoader() {
@@ -93,12 +103,16 @@ export default function App() {
             <Route path="/contacts/:id" element={<ContactDetailPage />} />
             <Route path="/requests" element={<RequestsPage />} />
             <Route path="/requests/:id" element={<RequestDetailPage />} />
+            <Route path="/tasks" element={<TasksPage />} />
+            <Route path="/tasks/:id" element={<TaskDetailPage />} />
             <Route path="/quotes" element={<QuotesPage />} />
             <Route path="/quotes/new" element={<QuoteEditorPage />} />
             <Route path="/quotes/:id/edit" element={<QuoteEditorPage />} />
             <Route path="/quotes/:id" element={<QuoteDetailPage />} />
             <Route path="/quote-templates" element={<QuoteTemplatesPage />} />
             <Route path="/notifications" element={<NotificationsPage />} />
+            <Route path="/organizations" element={<OrganizationsPage />} />
+            <Route path="/organizations/:id" element={<OrganizationDetailPage />} />
             <Route path="/products" element={<ProductsPage />} />
             <Route path="/price-tables" element={<PriceTablesPage />} />
             <Route path="/price-tables/:id" element={<PriceTableDetailPage />} />

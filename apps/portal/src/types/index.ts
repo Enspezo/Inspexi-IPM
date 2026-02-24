@@ -16,6 +16,7 @@ export interface Organization {
   defaultVat: number;
   defaultValidityDays: number;
   createdAt: string;
+  _count?: { users: number };
 }
 
 export interface User {
@@ -24,7 +25,7 @@ export interface User {
   firstName: string;
   lastName: string;
   role: Role;
-  orgId: string;
+  orgId: string | null;
   isActive: boolean;
   emailVerifiedAt: string | null;
   createdAt: string;
@@ -498,4 +499,35 @@ export interface AuditLogEntry {
   userId: string;
   user: { id: string; firstName: string; lastName: string };
   createdAt: string;
+}
+
+// ─── Task Management ─────────────────────────────────────
+
+export enum TaskStatus {
+  TE_DOEN = 'TE_DOEN',
+  MEE_BEZIG = 'MEE_BEZIG',
+  VOLTOOID = 'VOLTOOID',
+}
+
+export enum TaskEntityType {
+  CONTACT = 'CONTACT',
+  REQUEST = 'REQUEST',
+  QUOTE = 'QUOTE',
+}
+
+export interface Task {
+  id: string;
+  orgId: string;
+  title: string;
+  description: string | null;
+  status: TaskStatus;
+  entityType: TaskEntityType;
+  entityId: string;
+  assigneeId: string | null;
+  createdById: string;
+  deadline: string | null;
+  createdAt: string;
+  updatedAt: string;
+  assignee?: UserSummary;
+  createdBy?: UserSummary;
 }

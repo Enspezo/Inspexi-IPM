@@ -4,6 +4,7 @@ import {
   RequestStatus,
   Priority,
   Role,
+  TaskEntityType,
 } from '@/types';
 import { Button, Card, Spinner, Select, Input, useToast } from '@/components/ui';
 import { DetailPageLayout } from '@/components/layout/detail-page-layout';
@@ -16,6 +17,7 @@ import {
 import { useCreateQuoteFromRequest } from '@/pages/quotes/hooks/use-quotes';
 import { EditRequestModal } from './components/edit-request-modal';
 import { AuditHistory } from '@/components/audit-history/audit-history';
+import { CreateTaskModal } from '@/pages/tasks/components/create-task-modal';
 
 const canWrite = [Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE];
 
@@ -90,6 +92,7 @@ export default function RequestDetailPage() {
   const [newStatus, setNewStatus] = useState('');
   const [statusNote, setStatusNote] = useState('');
   const [isEditOpen, setIsEditOpen] = useState(false);
+  const [isTaskOpen, setIsTaskOpen] = useState(false);
 
   const userCanWrite = user && canWrite.includes(user.role);
 
@@ -196,6 +199,12 @@ export default function RequestDetailPage() {
                 Offerte aanmaken
               </Button>
             )}
+            <Button variant="secondary" size="sm" onClick={() => setIsTaskOpen(true)}>
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+              </svg>
+              Taak aanmaken
+            </Button>
             <Button variant="secondary" size="sm" onClick={() => setIsEditOpen(true)}>
               Bewerken
             </Button>
@@ -360,6 +369,14 @@ export default function RequestDetailPage() {
           isOpen={isEditOpen}
           onClose={() => setIsEditOpen(false)}
           request={request}
+        />
+      )}
+      {request && (
+        <CreateTaskModal
+          isOpen={isTaskOpen}
+          onClose={() => setIsTaskOpen(false)}
+          entityType={TaskEntityType.REQUEST}
+          entityId={request.id}
         />
       )}
     </div>

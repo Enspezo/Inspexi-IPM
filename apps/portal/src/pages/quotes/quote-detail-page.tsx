@@ -4,6 +4,7 @@ import {
   QuoteStatus,
   ApprovalStatus,
   Role,
+  TaskEntityType,
 } from '@/types';
 import { Button, Card, Spinner, Input, Table, useToast, type Column } from '@/components/ui';
 import { DetailPageLayout } from '@/components/layout/detail-page-layout';
@@ -18,6 +19,7 @@ import {
 } from './hooks/use-quotes';
 import type { QuoteLine, QuoteApprovalRequest } from '@/types';
 import { AuditHistory } from '@/components/audit-history/audit-history';
+import { CreateTaskModal } from '@/pages/tasks/components/create-task-modal';
 
 const canWrite = [Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE];
 const canApprove = [Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER];
@@ -93,6 +95,7 @@ export default function QuoteDetailPage() {
 
   const [rejectNote, setRejectNote] = useState('');
   const [showRejectInput, setShowRejectInput] = useState(false);
+  const [isTaskOpen, setIsTaskOpen] = useState(false);
 
   const userCanWrite = user && canWrite.includes(user.role);
   const userCanApprove = user && canApprove.includes(user.role);
@@ -305,6 +308,12 @@ export default function QuoteDetailPage() {
                 </Button>
               </>
             )}
+            <Button variant="secondary" size="sm" onClick={() => setIsTaskOpen(true)}>
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+              </svg>
+              Taak aanmaken
+            </Button>
             {quote.status === QuoteStatus.CONCEPT && (
               <Button variant="secondary" size="sm" onClick={() => navigate(`/quotes/${quote.id}/edit`)}>
                 Bewerken
@@ -511,6 +520,16 @@ export default function QuoteDetailPage() {
             Offerte verwijderen
           </Button>
         </div>
+      )}
+
+      {/* Task modal */}
+      {quote && (
+        <CreateTaskModal
+          isOpen={isTaskOpen}
+          onClose={() => setIsTaskOpen(false)}
+          entityType={TaskEntityType.QUOTE}
+          entityId={quote.id}
+        />
       )}
     </div>
     </DetailPageLayout>

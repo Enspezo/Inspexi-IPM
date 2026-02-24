@@ -11,9 +11,33 @@ async function bootstrap() {
   // Cookie parser
   app.use(cookieParser());
 
-  // CORS
+  // CORS — allow all subdomains of BASE_DOMAIN
+  const baseDomain = process.env.BASE_DOMAIN || 'localhost';
+  const portalPort = process.env.PORTAL_PORT || '5173';
+  const isLocalhost = baseDomain === 'localhost';
+  const protocol = isLocalhost ? 'http' : 'https';
+  const portSuffix = isLocalhost ? `:${portalPort}` : '';
+
   app.enableCors({
-    origin: process.env.PUBLIC_URL || 'http://localhost:5173',
+    origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
+      // Allow requests with no origin (server-to-server, Postman, etc.)
+      if (!origin) {
+        callback(null, true);
+        return;
+      }
+      try {
+        const url = new URL(origin);
+        const hostname = url.hostname;
+        // Allow exact base domain or any subdomain of base domain
+        if (hostname === baseDomain || hostname.endsWith(`.${baseDomain}`)) {
+          callback(null, true);
+          return;
+        }
+      } catch {
+        // Invalid origin URL
+      }
+      callback(null, false);
+    },
     credentials: true,
   });
 

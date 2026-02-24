@@ -1,6 +1,8 @@
 import { NavLink, useLocation } from 'react-router-dom';
 import { clsx } from 'clsx';
 import { useAuth } from '@/providers/auth-provider';
+import { useTenant } from '@/providers/tenant-provider';
+import { OrgSwitcher } from './org-switcher';
 import { Badge } from '@/components/ui';
 import { Role } from '@/types';
 
@@ -62,6 +64,16 @@ const navItems: NavItem[] = [
     ),
   },
   {
+    to: '/tasks',
+    label: 'Taken',
+    roles: crmRoles,
+    icon: (
+      <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+      </svg>
+    ),
+  },
+  {
     to: '/quotes',
     label: 'Offertes',
     roles: crmRoles,
@@ -113,6 +125,16 @@ const navItems: NavItem[] = [
     ),
   },
   {
+    to: '/organizations',
+    label: 'Organisaties',
+    roles: [Role.SUPERUSER],
+    icon: (
+      <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+      </svg>
+    ),
+  },
+  {
     to: '/organization/settings',
     label: 'Organisatie',
     roles: adminRoles,
@@ -144,6 +166,7 @@ const navItems: NavItem[] = [
 
 export function Sidebar() {
   const { user } = useAuth();
+  const { orgBranding } = useTenant();
   const location = useLocation();
 
   const visibleItems = navItems.filter((item) => {
@@ -151,17 +174,30 @@ export function Sidebar() {
     return user && item.roles.includes(user.role);
   });
 
+  const brandName = orgBranding?.name ?? 'InspeXi';
+
   return (
     <aside className="flex h-screen w-64 flex-col bg-gray-900">
       {/* Logo */}
       <div className="flex h-16 items-center gap-3 px-6">
-        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary-600">
-          <svg className="h-5 w-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-          </svg>
-        </div>
-        <span className="text-lg font-bold text-white">InspeXi</span>
+        {orgBranding?.logoUrl ? (
+          <img
+            src={orgBranding.logoUrl}
+            alt={orgBranding.name}
+            className="h-8 w-8 rounded-lg object-contain"
+          />
+        ) : (
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary-600">
+            <svg className="h-5 w-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+          </div>
+        )}
+        <span className="text-lg font-bold text-white">{brandName}</span>
       </div>
+
+      {/* Org Switcher (SUPERUSER only) */}
+      <OrgSwitcher />
 
       {/* Navigation */}
       <nav className="flex-1 space-y-1 px-3 py-4">

@@ -37,7 +37,7 @@ describe('Organizations (e2e)', () => {
 
     // Create test org
     const org = await prisma.organization.create({
-      data: { name: 'E2E Org Test', slug: 'e2e-org-test' },
+      data: { name: 'E2E Org Test', slug: 'e2eorgtest' },
     });
     testOrgId = org.id;
 
@@ -81,6 +81,9 @@ describe('Organizations (e2e)', () => {
   });
 
   afterAll(async () => {
+    await prisma.auditLog.deleteMany({
+      where: { userId: { in: [superuserId, orgAdminId] } },
+    });
     await prisma.refreshToken.deleteMany({
       where: { userId: { in: [superuserId, orgAdminId] } },
     });
@@ -90,7 +93,7 @@ describe('Organizations (e2e)', () => {
     await prisma.organization.deleteMany({ where: { id: testOrgId } });
     // Also delete any orgs created during tests
     await prisma.organization.deleteMany({
-      where: { slug: { startsWith: 'e2e-new-' } },
+      where: { slug: { startsWith: 'e2enew' } },
     });
     await app.close();
   });
@@ -100,19 +103,19 @@ describe('Organizations (e2e)', () => {
       const res = await request(app.getHttpServer())
         .post('/api/v1/organizations')
         .set('Authorization', `Bearer ${superuserToken}`)
-        .send({ name: 'E2E New Org', slug: 'e2e-new-org' })
+        .send({ name: 'E2E New Org', slug: 'e2eneworg' })
         .expect(201);
 
       expect(res.body.success).toBe(true);
       expect(res.body.data.name).toBe('E2E New Org');
-      expect(res.body.data.slug).toBe('e2e-new-org');
+      expect(res.body.data.slug).toBe('e2eneworg');
     });
 
     it('should return 403 for Org Admin', async () => {
       await request(app.getHttpServer())
         .post('/api/v1/organizations')
         .set('Authorization', `Bearer ${orgAdminToken}`)
-        .send({ name: 'Forbidden Org', slug: 'e2e-new-forbidden' })
+        .send({ name: 'Forbidden Org', slug: 'e2enewforbidden' })
         .expect(403);
     });
   });

@@ -11,7 +11,8 @@ import * as crypto from 'crypto';
 import { v4 as uuidv4 } from 'uuid';
 import { PrismaService } from '@/prisma';
 import { EmailService } from '@/common/services/email.service';
-import { JwtPayload } from '@/common/interfaces';
+import { JwtPayload, TenantContext } from '@/common/interfaces';
+import { Role } from '@prisma/client';
 import { LoginDto, ForgotPasswordDto, ResetPasswordDto, VerifyEmailDto } from './dto';
 
 @Injectable()
@@ -25,7 +26,12 @@ export class AuthService {
     private emailService: EmailService,
   ) {}
 
-  async login(dto: LoginDto, ipAddress?: string, userAgent?: string) {
+  async login(
+    dto: LoginDto,
+    ipAddress?: string,
+    userAgent?: string,
+    tenant?: TenantContext | null,
+  ) {
     const user = await this.prisma.user.findUnique({
       where: { email: dto.email },
     });
@@ -41,6 +47,26 @@ export class AuthService {
     const passwordValid = await bcrypt.compare(dto.password, user.passwordHash);
     if (!passwordValid) {
       throw new UnauthorizedException('Ongeldige inloggegevens');
+    }
+
+    // Tenant-aware login checks
+    if (tenant) {
+      if (tenant.isSuperuserDomain && tenant.orgId === null) {
+        // Explicit SUPERUSER domain (mijn.inspexi.nl) — only SUPERUSER may login
+        if (user.role !== Role.SUPERUSER) {
+          throw new UnauthorizedException(
+            'Gebruik het subdomein van uw organisatie om in te loggen',
+          );
+        }
+      } else if (tenant.orgId !== null) {
+        // Org subdomain — user must belong to this org (unless SUPERUSER)
+        if (user.role !== Role.SUPERUSER && user.orgId !== tenant.orgId) {
+          throw new UnauthorizedException(
+            'Uw account hoort niet bij deze organisatie',
+          );
+        }
+      }
+      // Unknown domain (isSuperuserDomain=false, orgId=null) → no restrictions
     }
 
     const accessToken = this.generateAccessToken(user);

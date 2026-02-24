@@ -1,9 +1,11 @@
-import { Module } from '@nestjs/common';
+import { Module, NestModule, MiddlewareConsumer } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { APP_GUARD, APP_FILTER, APP_INTERCEPTOR } from '@nestjs/core';
+import { TenantMiddleware } from './common/middleware/tenant.middleware';
 import { PrismaModule } from './prisma';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { RolesGuard } from './common/guards/roles.guard';
+import { TenantGuard } from './common/guards/tenant.guard';
 import { AllExceptionsFilter } from './common/filters';
 import { AuditContextInterceptor } from './common/interceptors/audit-context.interceptor';
 import { EmailModule } from './common/services/email.module';
@@ -19,6 +21,7 @@ import { QuoteTemplatesModule } from './modules/quote-templates/quote-templates.
 import { QuotesModule } from './modules/quotes/quotes.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { AuditLogModule } from './modules/audit-log/audit-log.module';
+import { TasksModule } from './modules/tasks/tasks.module';
 
 @Module({
   imports: [
@@ -37,6 +40,7 @@ import { AuditLogModule } from './modules/audit-log/audit-log.module';
     QuoteTemplatesModule,
     QuotesModule,
     AuditLogModule,
+    TasksModule,
   ],
   providers: [
     {
@@ -55,6 +59,14 @@ import { AuditLogModule } from './modules/audit-log/audit-log.module';
       provide: APP_GUARD,
       useClass: RolesGuard,
     },
+    {
+      provide: APP_GUARD,
+      useClass: TenantGuard,
+    },
   ],
 })
-export class AppModule {}
+export class AppModule implements NestModule {
+  configure(consumer: MiddlewareConsumer) {
+    consumer.apply(TenantMiddleware).forRoutes('*');
+  }
+}

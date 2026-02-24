@@ -12,10 +12,13 @@ export default defineConfig({
   },
   server: {
     port: 5173,
+    // Accept all hostnames (*.localhost subdomains)
+    host: true,
     proxy: {
       '/api': {
         target: 'http://localhost:3001',
-        changeOrigin: true,
+        // Keep original Host header so backend can detect subdomain
+        changeOrigin: false,
       },
     },
   },

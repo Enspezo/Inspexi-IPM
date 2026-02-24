@@ -23,6 +23,7 @@ export class OrganizationsService {
 
   async findAll() {
     return this.prisma.organization.findMany({
+      include: { _count: { select: { users: true } } },
       orderBy: { createdAt: 'desc' },
     });
   }
@@ -30,11 +31,29 @@ export class OrganizationsService {
   async findOne(id: string) {
     const org = await this.prisma.organization.findUnique({
       where: { id },
+      include: { _count: { select: { users: true } } },
     });
     if (!org) {
       throw new NotFoundException('Organisatie niet gevonden');
     }
     return org;
+  }
+
+  async findUsers(orgId: string) {
+    await this.findOne(orgId);
+    return this.prisma.user.findMany({
+      where: { orgId },
+      select: {
+        id: true,
+        email: true,
+        firstName: true,
+        lastName: true,
+        role: true,
+        isActive: true,
+        createdAt: true,
+      },
+      orderBy: { createdAt: 'desc' },
+    });
   }
 
   async findBySlug(slug: string) {

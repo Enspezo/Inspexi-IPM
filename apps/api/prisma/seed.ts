@@ -26,12 +26,16 @@ async function main() {
   await prisma.requestStatusHistory.deleteMany();
   await prisma.request.deleteMany();
   // CRM tables (dependent on contacts)
+  await prisma.contactCustomerGroup.deleteMany();
+  await prisma.customerGroup.deleteMany();
+  await prisma.contactPerson.deleteMany();
   await prisma.contactEmail.deleteMany();
   await prisma.contactLog.deleteMany();
   await prisma.location.deleteMany();
   await prisma.contactAddress.deleteMany();
   await prisma.contact.deleteMany();
   // Auth/org tables
+  await prisma.auditLog.deleteMany();
   await prisma.invitation.deleteMany();
   await prisma.refreshToken.deleteMany();
   await prisma.user.deleteMany();
@@ -41,7 +45,7 @@ async function main() {
   const org1 = await prisma.organization.create({
     data: {
       name: 'InspeXi Demo',
-      slug: 'inspexi-demo',
+      slug: 'inspexidemo',
       primaryColor: '#1E40AF',
       defaultVat: 21,
       defaultValidityDays: 30,
@@ -52,7 +56,7 @@ async function main() {
   const org2 = await prisma.organization.create({
     data: {
       name: 'Test Bedrijf',
-      slug: 'test-bedrijf',
+      slug: 'testbedrijf',
       primaryColor: '#059669',
       defaultVat: 21,
       defaultValidityDays: 14,

@@ -95,7 +95,7 @@ describe('Price Tables API (e2e)', () => {
         where: { name: 'VIP Klanten' },
       }),
       prisma.product.findMany({
-        where: { organization: { slug: 'inspexi-demo' } },
+        where: { organization: { slug: 'inspexidemo' } },
         orderBy: { name: 'asc' },
       }),
     ]);

@@ -38,7 +38,7 @@ describe('Users (e2e)', () => {
 
     // Create test org
     const org = await prisma.organization.create({
-      data: { name: 'E2E Users Test', slug: 'e2e-users-test' },
+      data: { name: 'E2E Users Test', slug: 'e2euserstest' },
     });
     testOrgId = org.id;
 
@@ -97,6 +97,19 @@ describe('Users (e2e)', () => {
 
   afterAll(async () => {
     await prisma.invitation.deleteMany({ where: { orgId: testOrgId } });
+    // Clean up audit logs for invited users before deleting them
+    await prisma.auditLog.deleteMany({
+      where: { userId: { in: [superuserId, orgAdminId, targetUserId] } },
+    });
+    const invitedUsers = await prisma.user.findMany({
+      where: { email: { startsWith: 'e2e-invite' } },
+      select: { id: true },
+    });
+    if (invitedUsers.length > 0) {
+      await prisma.auditLog.deleteMany({
+        where: { userId: { in: invitedUsers.map((u) => u.id) } },
+      });
+    }
     await prisma.refreshToken.deleteMany({
       where: { userId: { in: [superuserId, orgAdminId, targetUserId] } },
     });

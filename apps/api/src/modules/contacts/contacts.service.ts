@@ -12,9 +12,11 @@ import {
   CreateContactDto,
   UpdateContactDto,
   CreateContactAddressDto,
+  UpdateContactAddressDto,
   CreateContactPersonDto,
   UpdateContactPersonDto,
   CreateLocationDto,
+  UpdateLocationDto,
   CreateContactLogDto,
   SendContactEmailDto,
   ListContactsQueryDto,
@@ -270,6 +272,96 @@ export class ContactsService {
     });
   }
 
+  async updateAddress(
+    addressId: string,
+    dto: UpdateContactAddressDto,
+    user: User,
+  ) {
+    const address = await this.prisma.contactAddress.findUnique({
+      where: { id: addressId },
+      include: { contact: true },
+    });
+
+    if (!address) {
+      throw new NotFoundException('Adres niet gevonden');
+    }
+
+    // Verify org scoping via contact
+    await this.findOne(address.contactId, user);
+
+    const needsTransaction = dto.isPrimary || dto.isPostal || dto.isInvoice;
+
+    if (needsTransaction) {
+      return this.prisma.$transaction(async (tx) => {
+        if (dto.isPrimary) {
+          await tx.contactAddress.updateMany({
+            where: { contactId: address.contactId, isPrimary: true, id: { not: addressId } },
+            data: { isPrimary: false },
+          });
+        }
+        if (dto.isPostal) {
+          await tx.contactAddress.updateMany({
+            where: { contactId: address.contactId, isPostal: true, id: { not: addressId } },
+            data: { isPostal: false },
+          });
+        }
+        if (dto.isInvoice) {
+          await tx.contactAddress.updateMany({
+            where: { contactId: address.contactId, isInvoice: true, id: { not: addressId } },
+            data: { isInvoice: false },
+          });
+        }
+
+        return tx.contactAddress.update({
+          where: { id: addressId },
+          data: {
+            ...(dto.label !== undefined && { label: dto.label }),
+            ...(dto.street !== undefined && { street: dto.street }),
+            ...(dto.houseNumber !== undefined && { houseNumber: dto.houseNumber }),
+            ...(dto.postalCode !== undefined && { postalCode: dto.postalCode }),
+            ...(dto.city !== undefined && { city: dto.city }),
+            ...(dto.country !== undefined && { country: dto.country }),
+            ...(dto.isPrimary !== undefined && { isPrimary: dto.isPrimary }),
+            ...(dto.isPostal !== undefined && { isPostal: dto.isPostal }),
+            ...(dto.isInvoice !== undefined && { isInvoice: dto.isInvoice }),
+          },
+        });
+      });
+    }
+
+    return this.prisma.contactAddress.update({
+      where: { id: addressId },
+      data: {
+        ...(dto.label !== undefined && { label: dto.label }),
+        ...(dto.street !== undefined && { street: dto.street }),
+        ...(dto.houseNumber !== undefined && { houseNumber: dto.houseNumber }),
+        ...(dto.postalCode !== undefined && { postalCode: dto.postalCode }),
+        ...(dto.city !== undefined && { city: dto.city }),
+        ...(dto.country !== undefined && { country: dto.country }),
+        ...(dto.isPrimary !== undefined && { isPrimary: dto.isPrimary }),
+        ...(dto.isPostal !== undefined && { isPostal: dto.isPostal }),
+        ...(dto.isInvoice !== undefined && { isInvoice: dto.isInvoice }),
+      },
+    });
+  }
+
+  async deleteAddress(addressId: string, user: User) {
+    const address = await this.prisma.contactAddress.findUnique({
+      where: { id: addressId },
+    });
+
+    if (!address) {
+      throw new NotFoundException('Adres niet gevonden');
+    }
+
+    // Verify org scoping via contact
+    await this.findOne(address.contactId, user);
+
+    await this.prisma.contactAddress.delete({
+      where: { id: addressId },
+    });
+  }
+
   // ─── Contact Persons ───────────────────────────────────
 
   async findAllContactPersons(user: User, query: ListContactPersonsQueryDto) {
@@ -403,6 +495,53 @@ export class ContactsService {
     return this.prisma.location.findMany({
       where: { contactId: contact.id },
       orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  async updateLocation(locationId: string, dto: UpdateLocationDto, user: User) {
+    const location = await this.prisma.location.findUnique({
+      where: { id: locationId },
+    });
+
+    if (!location) {
+      throw new NotFoundException('Locatie niet gevonden');
+    }
+
+    // Verify org scoping
+    if (user.role !== Role.SUPERUSER && location.orgId !== user.orgId) {
+      throw new ForbiddenException();
+    }
+
+    return this.prisma.location.update({
+      where: { id: locationId },
+      data: {
+        ...(dto.name !== undefined && { name: dto.name }),
+        ...(dto.street !== undefined && { street: dto.street }),
+        ...(dto.houseNumber !== undefined && { houseNumber: dto.houseNumber }),
+        ...(dto.postalCode !== undefined && { postalCode: dto.postalCode }),
+        ...(dto.city !== undefined && { city: dto.city }),
+        ...(dto.objectType !== undefined && { objectType: dto.objectType }),
+        ...(dto.notes !== undefined && { notes: dto.notes }),
+      },
+    });
+  }
+
+  async deleteLocation(locationId: string, user: User) {
+    const location = await this.prisma.location.findUnique({
+      where: { id: locationId },
+    });
+
+    if (!location) {
+      throw new NotFoundException('Locatie niet gevonden');
+    }
+
+    // Verify org scoping
+    if (user.role !== Role.SUPERUSER && location.orgId !== user.orgId) {
+      throw new ForbiddenException();
+    }
+
+    await this.prisma.location.delete({
+      where: { id: locationId },
     });
   }
 

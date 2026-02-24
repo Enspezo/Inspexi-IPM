@@ -7,6 +7,7 @@ import {
   Body,
   ParseUUIDPipe,
   ForbiddenException,
+  NotFoundException,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -17,13 +18,17 @@ import {
 import { User, Role } from '@prisma/client';
 import { OrganizationsService } from './organizations.service';
 import { CreateOrganizationDto, UpdateOrganizationDto } from './dto';
-import { Roles, CurrentUser } from '@/common/decorators';
+import { Roles, CurrentUser, Public } from '@/common/decorators';
+import { PrismaService } from '@/prisma';
 
 @ApiTags('Organizations')
 @ApiBearerAuth()
 @Controller('organizations')
 export class OrganizationsController {
-  constructor(private organizationsService: OrganizationsService) {}
+  constructor(
+    private organizationsService: OrganizationsService,
+    private prisma: PrismaService,
+  ) {}
 
   @Post()
   @Roles(Role.SUPERUSER)
@@ -43,6 +48,37 @@ export class OrganizationsController {
   async findAll() {
     const orgs = await this.organizationsService.findAll();
     return { success: true, data: orgs };
+  }
+
+  @Public()
+  @Get('by-slug/:slug')
+  @ApiOperation({ summary: 'Publieke branding info ophalen op slug (login pagina)' })
+  @ApiResponse({ status: 200, description: 'Organisatie branding' })
+  @ApiResponse({ status: 404, description: 'Niet gevonden' })
+  async findBySlug(@Param('slug') slug: string) {
+    const org = await this.prisma.organization.findUnique({
+      where: { slug },
+      select: {
+        id: true,
+        name: true,
+        slug: true,
+        logoUrl: true,
+        primaryColor: true,
+      },
+    });
+    if (!org) {
+      throw new NotFoundException('Organisatie niet gevonden');
+    }
+    return { success: true, data: org };
+  }
+
+  @Get(':id/users')
+  @Roles(Role.SUPERUSER)
+  @ApiOperation({ summary: 'Gebruikers van een organisatie ophalen (Superuser)' })
+  @ApiResponse({ status: 200, description: 'Lijst van gebruikers' })
+  async findUsers(@Param('id', ParseUUIDPipe) id: string) {
+    const users = await this.organizationsService.findUsers(id);
+    return { success: true, data: users };
   }
 
   @Get(':id')

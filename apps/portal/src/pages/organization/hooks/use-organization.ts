@@ -2,7 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api-client';
 import type { Organization } from '@/types';
 
-export function useOrganization(orgId: string | undefined) {
+export function useOrganization(orgId: string | null | undefined) {
   return useQuery<Organization>({
     queryKey: ['organization', orgId],
     queryFn: () => apiClient.get<Organization>(`/organizations/${orgId}`),
@@ -17,7 +17,7 @@ interface UpdateOrganizationDto {
   defaultValidityDays?: number;
 }
 
-export function useUpdateOrganization(orgId: string | undefined) {
+export function useUpdateOrganization(orgId: string | null | undefined) {
   const queryClient = useQueryClient();
 
   return useMutation({

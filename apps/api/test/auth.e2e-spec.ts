@@ -33,7 +33,7 @@ describe('Auth (e2e)', () => {
 
     // Create test org and user
     const org = await prisma.organization.create({
-      data: { name: 'E2E Test Org', slug: 'e2e-test-org' },
+      data: { name: 'E2E Test Org', slug: 'e2etestorg' },
     });
     testOrgId = org.id;
 
@@ -54,6 +54,7 @@ describe('Auth (e2e)', () => {
 
   afterAll(async () => {
     // Cleanup
+    await prisma.auditLog.deleteMany({ where: { userId: testUserId } });
     await prisma.refreshToken.deleteMany({ where: { userId: testUserId } });
     await prisma.user.deleteMany({ where: { id: testUserId } });
     await prisma.organization.deleteMany({ where: { id: testOrgId } });

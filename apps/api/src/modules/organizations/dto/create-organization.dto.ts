@@ -16,10 +16,10 @@ export class CreateOrganizationDto {
   @MinLength(2)
   name: string;
 
-  @ApiProperty({ example: 'inspexi-demo' })
+  @ApiProperty({ example: 'inspexidemo' })
   @IsString()
-  @Matches(/^[a-z0-9-]+$/, {
-    message: 'Slug mag alleen kleine letters, cijfers en streepjes bevatten',
+  @Matches(/^[a-z0-9]+$/, {
+    message: 'Slug mag alleen kleine letters en cijfers bevatten (geen streepjes)',
   })
   slug: string;
 

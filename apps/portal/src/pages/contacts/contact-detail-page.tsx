@@ -1,19 +1,22 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ContactType, ContactPersonRole, LogType, QuoteStatus, Role } from '@/types';
-import type { Contact, ContactLog, ContactEmail } from '@/types';
+import { ContactType, ContactPersonRole, LogType, QuoteStatus, Role, TaskEntityType } from '@/types';
+import type { Contact, ContactAddress, ContactLog, ContactEmail, Location } from '@/types';
 import { Button, Card, Spinner, useToast } from '@/components/ui';
 import { DetailPageLayout } from '@/components/layout/detail-page-layout';
 import { useAuth } from '@/providers/auth-provider';
-import { useContact, useUpdateContact, useDeleteContact, useSetContactGroups } from './hooks/use-contacts';
+import { useContact, useUpdateContact, useDeleteContact, useSetContactGroups, useDeleteAddress, useDeleteLocation } from './hooks/use-contacts';
 import { useCustomerGroupsCompact } from '@/pages/customer-groups/hooks/use-customer-groups';
 import { useUsers } from '@/pages/users/hooks/use-users';
 import { AddAddressModal } from './components/add-address-modal';
+import { EditAddressModal } from './components/edit-address-modal';
 import { AddContactPersonModal } from './components/add-contact-person-modal';
 import { AddLocationModal } from './components/add-location-modal';
+import { EditLocationModal } from './components/edit-location-modal';
 import { AddLogModal } from './components/add-log-modal';
 import { SendEmailModal } from './components/send-email-modal';
 import { AuditHistory } from '@/components/audit-history/audit-history';
+import { CreateTaskModal } from '@/pages/tasks/components/create-task-modal';
 
 type Tab = 'algemeen' | 'adressen' | 'locaties' | 'offertes' | 'geschiedenis';
 
@@ -103,12 +106,18 @@ export default function ContactDetailPage() {
   const updateMutation = useUpdateContact(id!);
   const deleteMutation = useDeleteContact();
 
+  const deleteAddressMutation = useDeleteAddress(id!);
+  const deleteLocationMutation = useDeleteLocation(id!);
+
   const [activeTab, setActiveTab] = useState<Tab>('algemeen');
   const [isAddressOpen, setIsAddressOpen] = useState(false);
+  const [editingAddress, setEditingAddress] = useState<ContactAddress | null>(null);
   const [isContactPersonOpen, setIsContactPersonOpen] = useState(false);
   const [isLocationOpen, setIsLocationOpen] = useState(false);
+  const [editingLocation, setEditingLocation] = useState<Location | null>(null);
   const [isLogOpen, setIsLogOpen] = useState(false);
   const [isEmailOpen, setIsEmailOpen] = useState(false);
+  const [isTaskOpen, setIsTaskOpen] = useState(false);
 
   const userCanWrite = user && canWrite.includes(user.role);
 
@@ -202,6 +211,14 @@ export default function ContactDetailPage() {
             )}
           </div>
         </div>
+        {userCanWrite && (
+          <Button variant="secondary" size="sm" onClick={() => setIsTaskOpen(true)}>
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+            </svg>
+            Taak aanmaken
+          </Button>
+        )}
       </div>
 
       {/* Tabs */}
@@ -364,28 +381,44 @@ export default function ContactDetailPage() {
             <div className="grid gap-4 sm:grid-cols-2">
               {contact.addresses?.map((addr) => (
                 <Card key={addr.id}>
-                  <div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-medium text-gray-900">
-                        {addr.label}
-                      </span>
-                      <div className="flex gap-1">
-                        {addr.isPrimary && (
-                          <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-800">
-                            Primair
+                  <div className="relative">
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex flex-wrap items-center gap-1">
+                          <span className="text-sm font-medium text-gray-900">
+                            {addr.label}
                           </span>
-                        )}
-                        {addr.isPostal && (
-                          <span className="rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-800">
-                            Postadres
-                          </span>
-                        )}
-                        {addr.isInvoice && (
-                          <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
-                            Factuuradres
-                          </span>
-                        )}
+                          {addr.isPrimary && (
+                            <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-800">
+                              Primair
+                            </span>
+                          )}
+                          {addr.isPostal && (
+                            <span className="rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-800">
+                              Postadres
+                            </span>
+                          )}
+                          {addr.isInvoice && (
+                            <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
+                              Factuuradres
+                            </span>
+                          )}
+                        </div>
                       </div>
+                      {userCanWrite && (
+                        <CardMenu
+                          onEdit={() => setEditingAddress(addr)}
+                          onDelete={async () => {
+                            if (!window.confirm('Weet u zeker dat u dit adres wilt verwijderen?')) return;
+                            try {
+                              await deleteAddressMutation.mutateAsync(addr.id);
+                              showToast('Adres verwijderd', 'success');
+                            } catch {
+                              showToast('Verwijderen mislukt', 'error');
+                            }
+                          }}
+                        />
+                      )}
                     </div>
                     <p className="mt-1 text-sm text-gray-600">
                       {addr.street} {addr.houseNumber}
@@ -422,15 +455,33 @@ export default function ContactDetailPage() {
             <div className="grid gap-4 sm:grid-cols-2">
               {contact.locations?.map((loc) => (
                 <Card key={loc.id}>
-                  <div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-medium text-gray-900">
-                        {loc.name}
-                      </span>
-                      {loc.objectType && (
-                        <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-700">
-                          {loc.objectType}
-                        </span>
+                  <div className="relative">
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex flex-wrap items-center gap-1">
+                          <span className="text-sm font-medium text-gray-900">
+                            {loc.name}
+                          </span>
+                          {loc.objectType && (
+                            <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-700">
+                              {loc.objectType}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      {userCanWrite && (
+                        <CardMenu
+                          onEdit={() => setEditingLocation(loc)}
+                          onDelete={async () => {
+                            if (!window.confirm('Weet u zeker dat u deze locatie wilt verwijderen?')) return;
+                            try {
+                              await deleteLocationMutation.mutateAsync(loc.id);
+                              showToast('Locatie verwijderd', 'success');
+                            } catch {
+                              showToast('Verwijderen mislukt', 'error');
+                            }
+                          }}
+                        />
                       )}
                     </div>
                     <p className="mt-1 text-sm text-gray-600">
@@ -641,6 +692,14 @@ export default function ContactDetailPage() {
         onClose={() => setIsAddressOpen(false)}
         contactId={contact.id}
       />
+      {editingAddress && (
+        <EditAddressModal
+          isOpen={!!editingAddress}
+          onClose={() => setEditingAddress(null)}
+          contactId={contact.id}
+          address={editingAddress}
+        />
+      )}
       <AddContactPersonModal
         isOpen={isContactPersonOpen}
         onClose={() => setIsContactPersonOpen(false)}
@@ -651,6 +710,14 @@ export default function ContactDetailPage() {
         onClose={() => setIsLocationOpen(false)}
         contactId={contact.id}
       />
+      {editingLocation && (
+        <EditLocationModal
+          isOpen={!!editingLocation}
+          onClose={() => setEditingLocation(null)}
+          contactId={contact.id}
+          location={editingLocation}
+        />
+      )}
       <AddLogModal
         isOpen={isLogOpen}
         onClose={() => setIsLogOpen(false)}
@@ -661,6 +728,12 @@ export default function ContactDetailPage() {
         onClose={() => setIsEmailOpen(false)}
         contactId={contact.id}
         contactEmail={contact.email}
+      />
+      <CreateTaskModal
+        isOpen={isTaskOpen}
+        onClose={() => setIsTaskOpen(false)}
+        entityType={TaskEntityType.CONTACT}
+        entityId={contact.id}
       />
     </div>
     </DetailPageLayout>
@@ -828,6 +901,76 @@ function InfoField({
     <div>
       <dt className="text-sm font-medium text-gray-500">{label}</dt>
       <dd className="mt-1 text-sm text-gray-900">{value || '—'}</dd>
+    </div>
+  );
+}
+
+function CardMenu({
+  onEdit,
+  onDelete,
+}: {
+  onEdit: () => void;
+  onDelete: () => void;
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    }
+    if (isOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [isOpen]);
+
+  return (
+    <div className="relative ml-2 flex-shrink-0" ref={menuRef}>
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          setIsOpen(!isOpen);
+        }}
+        className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+      >
+        <svg className="h-5 w-5" fill="currentColor" viewBox="0 0 20 20">
+          <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" />
+        </svg>
+      </button>
+      {isOpen && (
+        <div className="absolute right-0 z-10 mt-1 w-36 rounded-lg border border-gray-200 bg-white py-1 shadow-lg">
+          <button
+            type="button"
+            onClick={() => {
+              setIsOpen(false);
+              onEdit();
+            }}
+            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50"
+          >
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+            </svg>
+            Bewerken
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setIsOpen(false);
+              onDelete();
+            }}
+            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-red-600 hover:bg-red-50"
+          >
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+            </svg>
+            Verwijderen
+          </button>
+        </div>
+      )}
     </div>
   );
 }

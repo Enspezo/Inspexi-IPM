@@ -16,24 +16,40 @@ import {
   ApiResponse,
   ApiBearerAuth,
 } from '@nestjs/swagger';
+import { ConfigService } from '@nestjs/config';
 import { Request, Response } from 'express';
 import { User } from '@prisma/client';
 import { AuthService } from './auth.service';
 import { LoginDto, ForgotPasswordDto, ResetPasswordDto, VerifyEmailDto } from './dto';
 import { Public, CurrentUser } from '@/common/decorators';
 
-const REFRESH_COOKIE_OPTIONS = {
-  httpOnly: true,
-  secure: process.env.NODE_ENV === 'production',
-  sameSite: 'lax' as const,
-  path: '/api/v1/auth',
-  maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
-};
-
 @ApiTags('Auth')
 @Controller('auth')
 export class AuthController {
-  constructor(private authService: AuthService) {}
+  private readonly baseDomain: string;
+
+  constructor(
+    private authService: AuthService,
+    private config: ConfigService,
+  ) {
+    this.baseDomain = this.config.get<string>('BASE_DOMAIN', 'localhost');
+  }
+
+  /** Build cookie options with correct domain for subdomain support */
+  private getCookieOptions() {
+    return {
+      httpOnly: true,
+      secure: this.baseDomain !== 'localhost',
+      sameSite: 'lax' as const,
+      path: '/api/v1/auth',
+      maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
+      // localhost: no domain set (cookie stays on exact hostname)
+      // production: .inspexi.nl (shared across all subdomains)
+      ...(this.baseDomain !== 'localhost'
+        ? { domain: `.${this.baseDomain}` }
+        : {}),
+    };
+  }
 
   @Public()
   @Post('login')
@@ -48,8 +64,8 @@ export class AuthController {
   ) {
     const ip = req.ip || req.socket?.remoteAddress;
     const ua = req.headers['user-agent'];
-    const result = await this.authService.login(dto, ip, ua);
-    res.cookie('refresh_token', result.refreshToken, REFRESH_COOKIE_OPTIONS);
+    const result = await this.authService.login(dto, ip, ua, req.tenant);
+    res.cookie('refresh_token', result.refreshToken, this.getCookieOptions());
     return { success: true, data: { accessToken: result.accessToken } };
   }
 
@@ -71,7 +87,7 @@ export class AuthController {
     const ip = req.ip || req.socket?.remoteAddress;
     const ua = req.headers['user-agent'];
     const result = await this.authService.refresh(refreshToken, ip, ua);
-    res.cookie('refresh_token', result.refreshToken, REFRESH_COOKIE_OPTIONS);
+    res.cookie('refresh_token', result.refreshToken, this.getCookieOptions());
     return { success: true, data: { accessToken: result.accessToken } };
   }
 
@@ -88,7 +104,11 @@ export class AuthController {
     if (refreshToken) {
       await this.authService.logout(refreshToken);
     }
-    res.clearCookie('refresh_token', { path: '/api/v1/auth' });
+    const clearOptions = this.getCookieOptions();
+    res.clearCookie('refresh_token', {
+      path: clearOptions.path,
+      ...(clearOptions.domain ? { domain: clearOptions.domain } : {}),
+    });
     return { success: true };
   }
 

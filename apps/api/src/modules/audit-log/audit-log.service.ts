@@ -93,6 +93,68 @@ export class AuditLogService {
 
   constructor(private readonly prisma: PrismaService) {}
 
+  async findByUser(
+    userId: string,
+    orgId: string | null,
+    options: {
+      entityType?: string;
+      action?: string;
+      dateFrom?: string;
+      dateTo?: string;
+      page: number;
+      limit: number;
+    },
+  ) {
+    const where: any = { userId };
+
+    // Org-scoping
+    if (orgId) {
+      where.orgId = orgId;
+    }
+
+    if (options.entityType) {
+      where.entityType = options.entityType;
+    }
+
+    if (options.action) {
+      where.action = options.action;
+    }
+
+    if (options.dateFrom || options.dateTo) {
+      where.createdAt = {};
+      if (options.dateFrom) where.createdAt.gte = new Date(options.dateFrom);
+      if (options.dateTo) where.createdAt.lte = new Date(options.dateTo);
+    }
+
+    const [data, total] = await Promise.all([
+      this.prisma.auditLog.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip: (options.page - 1) * options.limit,
+        take: options.limit,
+        include: {
+          user: {
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+            },
+          },
+        },
+      }),
+      this.prisma.auditLog.count({ where }),
+    ]);
+
+    const enrichedData = await this.resolveDisplayNames(data);
+
+    return {
+      data: enrichedData,
+      total,
+      page: options.page,
+      limit: options.limit,
+    };
+  }
+
   async findByEntity(
     entityType: string,
     entityId: string,

@@ -86,6 +86,7 @@ const OrganizationsPage = lazy(
 const OrganizationDetailPage = lazy(
   () => import('@/pages/organizations/organization-detail-page'),
 );
+const ActivityPage = lazy(() => import('@/pages/activity/activity-page'));
 
 function PageLoader() {
   return (
@@ -144,6 +145,7 @@ export default function App() {
             <Route path="/products/:id" element={<ProductDetailPage />} />
             <Route path="/price-tables" element={<PriceTablesPage />} />
             <Route path="/price-tables/:id" element={<PriceTableDetailPage />} />
+            <Route path="/activiteiten" element={<ActivityPage />} />
           </Route>
         </Route>
 

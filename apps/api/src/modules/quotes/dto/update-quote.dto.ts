@@ -17,6 +17,11 @@ export class UpdateQuoteDto {
   @IsUUID()
   locationId?: string;
 
+  @ApiPropertyOptional({ description: 'Template ID' })
+  @IsOptional()
+  @IsUUID()
+  templateId?: string;
+
   @ApiPropertyOptional({ description: 'Geldig tot datum' })
   @IsOptional()
   @IsDateString()

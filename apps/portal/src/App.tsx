@@ -74,6 +74,9 @@ const QuoteEditorPage = lazy(
 const QuoteTemplatesPage = lazy(
   () => import('@/pages/quotes/quote-templates-page'),
 );
+const PublicQuotePage = lazy(
+  () => import('@/pages/quotes/public-quote-page'),
+);
 const NotificationsPage = lazy(
   () => import('@/pages/notifications/notifications-page'),
 );
@@ -101,6 +104,7 @@ export default function App() {
         <Route path="/invite/:token" element={<AcceptInvitationPage />} />
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />
         <Route path="/reset-password" element={<ResetPasswordPage />} />
+        <Route path="/offerte/:token" element={<PublicQuotePage />} />
 
         {/* Root redirect */}
         <Route path="/" element={<Navigate to="/dashboard" replace />} />

@@ -10,6 +10,7 @@ import {
   Input,
   Select,
   useToast,
+  RichTextEditor,
 } from '@/components/ui';
 import { DetailPageLayout } from '@/components/layout/detail-page-layout';
 import {
@@ -286,6 +287,7 @@ export default function QuoteTemplatesPage() {
 function CreateTemplateModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
   const { showToast } = useToast();
   const createMutation = useCreateQuoteTemplate();
+  const [contentBlocks, setContentBlocks] = useState<object | null>(null);
 
   const {
     register,
@@ -307,9 +309,11 @@ function CreateTemplateModal({ isOpen, onClose }: { isOpen: boolean; onClose: ()
         name: data.name,
         defaultValidityDays: data.defaultValidityDays,
         requiresApproval: data.requiresApproval === 'true',
+        contentBlocks: contentBlocks ?? undefined,
       });
       showToast('Template aangemaakt', 'success');
       reset();
+      setContentBlocks(null);
       onClose();
     } catch {
       showToast('Aanmaken mislukt', 'error');
@@ -318,6 +322,7 @@ function CreateTemplateModal({ isOpen, onClose }: { isOpen: boolean; onClose: ()
 
   const handleClose = () => {
     reset();
+    setContentBlocks(null);
     onClose();
   };
 
@@ -348,6 +353,11 @@ function CreateTemplateModal({ isOpen, onClose }: { isOpen: boolean; onClose: ()
           {...register('requiresApproval')}
         />
 
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Standaard inhoud (optioneel)</label>
+          <RichTextEditor value={contentBlocks} onChange={setContentBlocks} placeholder="Standaard tekst voor offertes op basis van dit template..." />
+        </div>
+
         <div className="flex justify-end gap-3 pt-2">
           <Button type="button" variant="secondary" onClick={handleClose}>
             Annuleren
@@ -374,6 +384,9 @@ function EditTemplateModal({
 }) {
   const { showToast } = useToast();
   const updateMutation = useUpdateQuoteTemplate(template.id);
+  const [contentBlocks, setContentBlocks] = useState<object | null>(
+    (template.contentBlocks as object) ?? null
+  );
 
   const {
     register,
@@ -395,6 +408,7 @@ function EditTemplateModal({
         name: data.name,
         defaultValidityDays: data.defaultValidityDays,
         requiresApproval: data.requiresApproval === 'true',
+        contentBlocks: contentBlocks ?? undefined,
       });
       showToast('Template bijgewerkt', 'success');
       onClose();
@@ -434,6 +448,11 @@ function EditTemplateModal({
           ]}
           {...register('requiresApproval')}
         />
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Standaard inhoud (optioneel)</label>
+          <RichTextEditor value={contentBlocks} onChange={setContentBlocks} placeholder="Standaard tekst voor offertes op basis van dit template..." />
+        </div>
 
         <div className="flex justify-end gap-3 pt-2">
           <Button type="button" variant="secondary" onClick={handleClose}>

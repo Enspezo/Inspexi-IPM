@@ -3,7 +3,7 @@ import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { Button, Card, Input, Select, Spinner, useToast } from '@/components/ui';
+import { Button, Card, Input, Select, Spinner, useToast, RichTextEditor } from '@/components/ui';
 import { useAuth } from '@/providers/auth-provider';
 import { useContacts, useContactLocations } from '@/pages/contacts/hooks/use-contacts';
 import { useProducts } from '@/pages/products/hooks/use-products';
@@ -82,6 +82,7 @@ export default function QuoteEditorPage() {
 
   const [lines, setLines] = useState<EditorLine[]>([]);
   const [pendingProductId, setPendingProductId] = useState('');
+  const [contentBlocks, setContentBlocks] = useState<object | null>(null);
 
   const {
     register,
@@ -126,6 +127,7 @@ export default function QuoteEditorPage() {
         internalNotes: existingQuote.internalNotes || '',
       });
       setSelectedContactId(existingQuote.contactId);
+      if (existingQuote.contentBlocks) setContentBlocks(existingQuote.contentBlocks as object);
       if (existingQuote.lines) {
         setLines(
           existingQuote.lines.map((l) => ({
@@ -293,6 +295,7 @@ export default function QuoteEditorPage() {
         templateId: data.templateId || undefined,
         validUntil: data.validUntil || undefined,
         internalNotes: data.internalNotes || undefined,
+        contentBlocks: contentBlocks ?? undefined,
       };
 
       if (isEditing) {
@@ -416,6 +419,17 @@ export default function QuoteEditorPage() {
               />
             </div>
           </div>
+        </Card>
+
+        {/* Content blocks */}
+        <Card>
+          <h3 className="text-lg font-semibold text-gray-900 mb-1">Inhoud</h3>
+          <p className="text-sm text-gray-500 mb-4">Optionele tekst die zichtbaar is voor de klant in het klantportaal.</p>
+          <RichTextEditor
+            value={contentBlocks}
+            onChange={setContentBlocks}
+            placeholder="Schrijf hier een omschrijving, voorwaarden of andere informatie voor de klant..."
+          />
         </Card>
 
         {/* Lines */}

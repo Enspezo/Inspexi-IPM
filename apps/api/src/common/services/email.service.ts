@@ -110,6 +110,74 @@ export class EmailService {
     }
   }
 
+  async sendQuoteEmail(params: {
+    to: string;
+    cc?: string[];
+    subject: string;
+    bodyText: string;
+    quoteUrl: string;
+    orgName: string;
+  }): Promise<void> {
+    try {
+      await this.resend.emails.send({
+        from: this.fromEmail,
+        to: params.to,
+        cc: params.cc,
+        subject: params.subject,
+        html: `
+          <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
+            <h2 style="color: #111827;">${params.subject}</h2>
+            <div style="color: #374151; white-space: pre-line;">${params.bodyText}</div>
+            <div style="margin: 32px 0;">
+              <a href="${params.quoteUrl}" style="background: #1E40AF; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">
+                Offerte bekijken
+              </a>
+            </div>
+            <hr style="border: none; border-top: 1px solid #E5E7EB; margin: 24px 0;" />
+            <p style="color: #6B7280; font-size: 12px;">
+              Verstuurd via InspeXi Beheer door ${params.orgName}
+            </p>
+          </div>
+        `,
+      });
+    } catch (error) {
+      this.logger.error(`Failed to send quote email to ${params.to}`, error);
+      throw error;
+    }
+  }
+
+  async sendQuoteAnswerEmail(params: {
+    to: string;
+    quoteNumber: string;
+    answer: string;
+    quoteUrl: string;
+    orgName: string;
+  }): Promise<void> {
+    try {
+      await this.resend.emails.send({
+        from: this.fromEmail,
+        to: params.to,
+        subject: `Antwoord op uw vraag — Offerte ${params.quoteNumber}`,
+        html: `
+          <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
+            <h2 style="color: #111827;">Er is een antwoord op uw vraag</h2>
+            <p style="color: #374151;">Betreffende offerte ${params.quoteNumber}</p>
+            <div style="background: #F9FAFB; border-left: 4px solid #1E40AF; padding: 16px; margin: 16px 0; color: #374151;">
+              ${params.answer}
+            </div>
+            <a href="${params.quoteUrl}" style="background: #1E40AF; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">
+              Offerte bekijken
+            </a>
+            <hr style="border: none; border-top: 1px solid #E5E7EB; margin: 24px 0;" />
+            <p style="color: #6B7280; font-size: 12px;">Verstuurd door ${params.orgName}</p>
+          </div>
+        `,
+      });
+    } catch (error) {
+      this.logger.error(`Failed to send quote answer email to ${params.to}`, error);
+    }
+  }
+
   async sendContactEmail(
     to: string,
     subject: string,

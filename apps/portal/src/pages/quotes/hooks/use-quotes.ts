@@ -70,6 +70,7 @@ interface UpdateQuoteDto {
   templateId?: string;
   validUntil?: string;
   internalNotes?: string;
+  contentBlocks?: object | null;
 }
 
 export function useUpdateQuote(id: string) {
@@ -121,12 +122,17 @@ export function useSubmitApproval(id: string) {
   });
 }
 
+interface ApproveQuoteDto {
+  note?: string;
+  managerSignature?: string;
+}
+
 export function useApproveQuote(id: string) {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: () =>
-      apiClient.post<Quote>(`/quotes/${id}/approve`),
+    mutationFn: (data?: ApproveQuoteDto) =>
+      apiClient.post<Quote>(`/quotes/${id}/approve`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['quotes'] });
     },
@@ -207,6 +213,80 @@ export function useCreateQuoteFromRequest() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['quotes'] });
       queryClient.invalidateQueries({ queryKey: ['requests'] });
+    },
+  });
+}
+
+interface SendQuoteDto {
+  to: string;
+  cc?: string[];
+  subject: string;
+  bodyText: string;
+}
+
+export function useSendQuote(id: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (data: SendQuoteDto) =>
+      apiClient.post<Quote>(`/quotes/${id}/send`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['quotes'] });
+    },
+  });
+}
+
+interface AddQuestionDto {
+  message: string;
+}
+
+export function useAddQuestion(id: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (data: AddQuestionDto) =>
+      apiClient.post(`/quotes/${id}/questions`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['quotes', id] });
+    },
+  });
+}
+
+export function useAnswerQuestion(id: string, questionId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (data: AddQuestionDto) =>
+      apiClient.post(`/quotes/${id}/questions/${questionId}/answer`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['quotes', id] });
+    },
+  });
+}
+
+export function useUploadQuoteAttachment(id: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (file: File) => {
+      const formData = new FormData();
+      formData.append('file', file);
+      return apiClient.upload(`/quotes/${id}/attachments`, formData);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['quotes', id] });
+    },
+  });
+}
+
+export function useDeleteQuoteAttachment(id: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (attachmentId: string) =>
+      apiClient.delete(`/quotes/${id}/attachments/${attachmentId}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['quotes', id] });
     },
   });
 }

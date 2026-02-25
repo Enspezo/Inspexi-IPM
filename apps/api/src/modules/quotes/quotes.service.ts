@@ -3,10 +3,15 @@ import {
   NotFoundException,
   ForbiddenException,
   BadRequestException,
+  Inject,
 } from '@nestjs/common';
 import { User, Role, Prisma, QuoteStatus, RequestStatus, NotificationType } from '@prisma/client';
+import { ConfigService } from '@nestjs/config';
+import { randomUUID } from 'crypto';
 import { PrismaService } from '@/prisma';
 import { NotificationsService } from '../notifications/notifications.service';
+import { EmailService } from '@/common/services/email.service';
+import { StorageProvider, STORAGE_PROVIDER } from '@/common/services/storage/storage.interface';
 import {
   CreateQuoteDto,
   UpdateQuoteDto,
@@ -15,107 +20,85 @@ import {
   SubmitApprovalDto,
   ApproveQuoteDto,
   RejectQuoteDto,
+  SendQuoteDto,
+  AddQuestionDto,
+  SignQuoteDto,
 } from './dto';
 
-// Valid status transitions
 const VALID_TRANSITIONS: Record<QuoteStatus, QuoteStatus[]> = {
-  [QuoteStatus.CONCEPT]: [
-    QuoteStatus.TER_GOEDKEURING,
-    QuoteStatus.GOEDGEKEURD,
-    QuoteStatus.VERLOPEN,
-  ],
-  [QuoteStatus.TER_GOEDKEURING]: [
-    QuoteStatus.GOEDGEKEURD,
-    QuoteStatus.CONCEPT,
-    QuoteStatus.VERLOPEN,
-  ],
+  [QuoteStatus.CONCEPT]: [QuoteStatus.TER_GOEDKEURING, QuoteStatus.GOEDGEKEURD, QuoteStatus.VERLOPEN],
+  [QuoteStatus.TER_GOEDKEURING]: [QuoteStatus.GOEDGEKEURD, QuoteStatus.CONCEPT, QuoteStatus.VERLOPEN],
   [QuoteStatus.GOEDGEKEURD]: [QuoteStatus.VERSTUURD, QuoteStatus.VERLOPEN],
   [QuoteStatus.VERSTUURD]: [QuoteStatus.BEKEKEN, QuoteStatus.VERLOPEN],
-  [QuoteStatus.BEKEKEN]: [
-    QuoteStatus.GEACCEPTEERD,
-    QuoteStatus.AFGEWEZEN,
-    QuoteStatus.VERLOPEN,
-  ],
+  [QuoteStatus.BEKEKEN]: [QuoteStatus.GEACCEPTEERD, QuoteStatus.AFGEWEZEN, QuoteStatus.VERLOPEN],
   [QuoteStatus.GEACCEPTEERD]: [],
   [QuoteStatus.AFGEWEZEN]: [],
   [QuoteStatus.VERLOPEN]: [],
 };
 
-function calculateLineTotal(
-  quantity: number,
-  unitPrice: number,
-  discountPct: number,
-): number {
-  return (
-    Math.round(quantity * unitPrice * (1 - discountPct / 100) * 100) / 100
-  );
+function calculateLineTotal(quantity: number, unitPrice: number, discountPct: number): number {
+  return Math.round(quantity * unitPrice * (1 - discountPct / 100) * 100) / 100;
 }
+
+const QUOTE_INCLUDE = {
+  contact: { select: { id: true, type: true, companyName: true, firstName: true, lastName: true, email: true } },
+  location: { select: { id: true, name: true, city: true, street: true, houseNumber: true, postalCode: true } },
+  request: { select: { id: true, title: true } },
+  template: { select: { id: true, name: true } },
+  createdByUser: { select: { id: true, firstName: true, lastName: true, email: true } },
+  lines: {
+    include: { product: { select: { id: true, name: true, unit: true, productGroupId: true } } },
+    orderBy: { sortOrder: 'asc' as const },
+  },
+  approvalRequests: {
+    include: {
+      requestedByUser: { select: { id: true, firstName: true, lastName: true, email: true } },
+      reviewedByUser: { select: { id: true, firstName: true, lastName: true, email: true } },
+    },
+    orderBy: { requestedAt: 'desc' as const },
+  },
+  questions: {
+    include: { user: { select: { id: true, firstName: true, lastName: true } } },
+    orderBy: { createdAt: 'asc' as const },
+  },
+  attachments: { orderBy: { sortOrder: 'asc' as const } },
+};
 
 @Injectable()
 export class QuotesService {
   constructor(
     private prisma: PrismaService,
     private notifications: NotificationsService,
+    private emailService: EmailService,
+    private config: ConfigService,
+    @Inject(STORAGE_PROVIDER) private storage: StorageProvider,
   ) {}
 
-  // ─── List ──────────────────────────────────────────────
+  private getPublicUrl(path: string): string {
+    const baseUrl = this.config.get<string>('PUBLIC_URL', 'http://localhost:5173');
+    return `${baseUrl}${path}`;
+  }
 
   async findAll(user: User, query: ListQuotesQueryDto) {
     const { search, status, contactId, page = 1, limit = 20 } = query;
     const skip = (page - 1) * limit;
-
     const where: Prisma.QuoteWhereInput = {};
-
-    if (user.role !== Role.SUPERUSER) {
-      where.orgId = user.orgId!;
-    }
-
-    if (status) {
-      where.status = status;
-    }
-
-    if (contactId) {
-      where.contactId = contactId;
-    }
-
+    if (user.role !== Role.SUPERUSER) where.orgId = user.orgId!;
+    if (status) where.status = status;
+    if (contactId) where.contactId = contactId;
     if (search) {
       where.OR = [
         { subject: { contains: search, mode: 'insensitive' } },
         { quoteNumber: { contains: search, mode: 'insensitive' } },
-        {
-          contact: {
-            OR: [
-              { companyName: { contains: search, mode: 'insensitive' } },
-              { firstName: { contains: search, mode: 'insensitive' } },
-              { lastName: { contains: search, mode: 'insensitive' } },
-            ],
-          },
-        },
+        { contact: { OR: [{ companyName: { contains: search, mode: 'insensitive' } }, { firstName: { contains: search, mode: 'insensitive' } }, { lastName: { contains: search, mode: 'insensitive' } }] } },
       ];
     }
-
     const [data, total] = await Promise.all([
       this.prisma.quote.findMany({
         where,
         include: {
-          contact: {
-            select: {
-              id: true,
-              type: true,
-              companyName: true,
-              firstName: true,
-              lastName: true,
-              email: true,
-            },
-          },
-          createdByUser: {
-            select: {
-              id: true,
-              firstName: true,
-              lastName: true,
-              email: true,
-            },
-          },
+          contact: { select: { id: true, type: true, companyName: true, firstName: true, lastName: true, email: true } },
+          createdByUser: { select: { id: true, firstName: true, lastName: true, email: true } },
         },
         orderBy: { createdAt: 'desc' },
         skip,
@@ -123,178 +106,46 @@ export class QuotesService {
       }),
       this.prisma.quote.count({ where }),
     ]);
-
     return { data, total, page, limit };
   }
 
-  // ─── Detail ────────────────────────────────────────────
-
   async findOne(id: string, user: User) {
-    const quote = await this.prisma.quote.findUnique({
-      where: { id },
-      include: {
-        contact: {
-          select: {
-            id: true,
-            type: true,
-            companyName: true,
-            firstName: true,
-            lastName: true,
-            email: true,
-          },
-        },
-        location: {
-          select: {
-            id: true,
-            name: true,
-            city: true,
-            street: true,
-            houseNumber: true,
-            postalCode: true,
-          },
-        },
-        request: {
-          select: { id: true, title: true },
-        },
-        template: {
-          select: { id: true, name: true },
-        },
-        createdByUser: {
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-            email: true,
-          },
-        },
-        lines: {
-          include: {
-            product: {
-              select: { id: true, name: true, unit: true, productGroupId: true },
-            },
-          },
-          orderBy: { sortOrder: 'asc' },
-        },
-        approvalRequests: {
-          include: {
-            requestedByUser: {
-              select: {
-                id: true,
-                firstName: true,
-                lastName: true,
-                email: true,
-              },
-            },
-            reviewedByUser: {
-              select: {
-                id: true,
-                firstName: true,
-                lastName: true,
-                email: true,
-              },
-            },
-          },
-          orderBy: { requestedAt: 'desc' },
-        },
-      },
-    });
-
-    if (!quote) {
-      throw new NotFoundException('Offerte niet gevonden');
-    }
-
-    if (user.role !== Role.SUPERUSER && quote.orgId !== user.orgId) {
-      throw new ForbiddenException();
-    }
-
+    const quote = await this.prisma.quote.findUnique({ where: { id }, include: QUOTE_INCLUDE });
+    if (!quote) throw new NotFoundException('Offerte niet gevonden');
+    if (user.role !== Role.SUPERUSER && quote.orgId !== user.orgId) throw new ForbiddenException();
     return quote;
   }
 
-  // ─── Create ────────────────────────────────────────────
-
   async create(dto: CreateQuoteDto, user: User) {
     let orgId = user.orgId;
-    if (!orgId && user.role !== Role.SUPERUSER) {
-      throw new ForbiddenException('Geen organisatie gekoppeld');
-    }
-
-    // Verify contact belongs to same org
-    const contact = await this.prisma.contact.findUnique({
-      where: { id: dto.contactId },
-    });
-    if (!contact || contact.isDeleted) {
-      throw new NotFoundException('Relatie niet gevonden');
-    }
-
-    // For SUPERUSER (no orgId), derive orgId from the contact
-    if (!orgId && user.role === Role.SUPERUSER) {
-      orgId = contact.orgId;
-    }
-
-    if (user.role !== Role.SUPERUSER && contact.orgId !== orgId) {
-      throw new ForbiddenException('Relatie behoort niet tot uw organisatie');
-    }
-
-    // Verify location if provided
+    if (!orgId && user.role !== Role.SUPERUSER) throw new ForbiddenException('Geen organisatie gekoppeld');
+    const contact = await this.prisma.contact.findUnique({ where: { id: dto.contactId } });
+    if (!contact || contact.isDeleted) throw new NotFoundException('Relatie niet gevonden');
+    if (!orgId && user.role === Role.SUPERUSER) orgId = contact.orgId;
+    if (user.role !== Role.SUPERUSER && contact.orgId !== orgId) throw new ForbiddenException('Relatie behoort niet tot uw organisatie');
     if (dto.locationId) {
-      const location = await this.prisma.location.findUnique({
-        where: { id: dto.locationId },
-      });
-      if (!location) {
-        throw new NotFoundException('Locatie niet gevonden');
-      }
-      if (location.contactId !== dto.contactId) {
-        throw new ForbiddenException(
-          'Locatie behoort niet tot deze relatie',
-        );
-      }
+      const location = await this.prisma.location.findUnique({ where: { id: dto.locationId } });
+      if (!location) throw new NotFoundException('Locatie niet gevonden');
+      if (location.contactId !== dto.contactId) throw new ForbiddenException('Locatie behoort niet tot deze relatie');
     }
-
-    // Load template if provided
-    let templateData: {
-      coverBlocks?: any;
-      contentBlocks?: any;
-      closingBlocks?: any;
-      defaultValidityDays?: number;
-      requiresApproval?: boolean;
-    } = {};
+    let templateData: { coverBlocks?: any; contentBlocks?: any; closingBlocks?: any; defaultValidityDays?: number; requiresApproval?: boolean } = {};
     if (dto.templateId) {
-      const template = await this.prisma.quoteTemplate.findUnique({
-        where: { id: dto.templateId },
-      });
-      if (!template || !template.isActive) {
-        throw new NotFoundException('Template niet gevonden');
-      }
-      if (user.role !== Role.SUPERUSER && template.orgId !== orgId) {
-        throw new ForbiddenException(
-          'Template behoort niet tot uw organisatie',
-        );
-      }
-      templateData = {
-        coverBlocks: template.coverBlocks,
-        contentBlocks: template.contentBlocks,
-        closingBlocks: template.closingBlocks,
-        defaultValidityDays: template.defaultValidityDays,
-        requiresApproval: template.requiresApproval,
-      };
+      const template = await this.prisma.quoteTemplate.findUnique({ where: { id: dto.templateId } });
+      if (!template || !template.isActive) throw new NotFoundException('Template niet gevonden');
+      if (user.role !== Role.SUPERUSER && template.orgId !== orgId) throw new ForbiddenException('Template behoort niet tot uw organisatie');
+      templateData = { coverBlocks: template.coverBlocks, contentBlocks: template.contentBlocks, closingBlocks: template.closingBlocks, defaultValidityDays: template.defaultValidityDays, requiresApproval: template.requiresApproval };
     }
-
-    // Calculate validUntil
     let validUntil: Date | undefined;
     if (dto.validUntil) {
       validUntil = new Date(dto.validUntil);
     } else {
-      const org = await this.prisma.organization.findUnique({
-        where: { id: orgId! },
-      });
+      const org = await this.prisma.organization.findUnique({ where: { id: orgId! } });
       const days = templateData.defaultValidityDays ?? org?.defaultValidityDays ?? 30;
       validUntil = new Date();
       validUntil.setDate(validUntil.getDate() + days);
     }
-
     return this.prisma.$transaction(async (tx) => {
       const quoteNumber = await this.generateQuoteNumber(orgId!, tx);
-
       return tx.quote.create({
         data: {
           orgId: orgId!,
@@ -305,490 +156,336 @@ export class QuotesService {
           locationId: dto.locationId || undefined,
           subject: dto.subject,
           coverBlocks: templateData.coverBlocks ?? undefined,
-          contentBlocks: templateData.contentBlocks ?? undefined,
+          contentBlocks: dto.contentBlocks ?? templateData.contentBlocks ?? undefined,
           closingBlocks: templateData.closingBlocks ?? undefined,
           validUntil,
           requiresApproval: templateData.requiresApproval ?? false,
           internalNotes: dto.internalNotes || undefined,
           createdBy: user.id,
+          publicToken: randomUUID(),
         },
       });
     });
   }
 
-  // ─── Update ────────────────────────────────────────────
-
   async update(id: string, dto: UpdateQuoteDto, user: User) {
     const quote = await this.findOne(id, user);
-
-    if (quote.status !== QuoteStatus.CONCEPT) {
-      throw new BadRequestException(
-        'Alleen offertes met status CONCEPT kunnen bewerkt worden',
-      );
-    }
-
+    if (quote.status !== QuoteStatus.CONCEPT) throw new BadRequestException('Alleen offertes met status CONCEPT kunnen bewerkt worden');
     return this.prisma.quote.update({
       where: { id: quote.id },
       data: {
         ...(dto.subject !== undefined && { subject: dto.subject }),
         ...(dto.contactId !== undefined && { contactId: dto.contactId }),
         ...(dto.locationId !== undefined && { locationId: dto.locationId }),
-        ...(dto.validUntil !== undefined && {
-          validUntil: new Date(dto.validUntil),
-        }),
-        ...(dto.internalNotes !== undefined && {
-          internalNotes: dto.internalNotes,
-        }),
+        ...(dto.validUntil !== undefined && { validUntil: new Date(dto.validUntil) }),
+        ...(dto.internalNotes !== undefined && { internalNotes: dto.internalNotes }),
         ...(dto.coverBlocks !== undefined && { coverBlocks: dto.coverBlocks }),
-        ...(dto.contentBlocks !== undefined && {
-          contentBlocks: dto.contentBlocks,
-        }),
-        ...(dto.closingBlocks !== undefined && {
-          closingBlocks: dto.closingBlocks,
-        }),
+        ...(dto.contentBlocks !== undefined && { contentBlocks: dto.contentBlocks }),
+        ...(dto.closingBlocks !== undefined && { closingBlocks: dto.closingBlocks }),
       },
     });
   }
-
-  // ─── Set Lines ─────────────────────────────────────────
 
   async setLines(id: string, dto: SetQuoteLinesDto, user: User) {
     const quote = await this.findOne(id, user);
-
-    if (quote.status !== QuoteStatus.CONCEPT) {
-      throw new BadRequestException(
-        'Offerteregels kunnen alleen bij status CONCEPT gewijzigd worden',
-      );
-    }
-
+    if (quote.status !== QuoteStatus.CONCEPT) throw new BadRequestException('Offerteregels kunnen alleen bij status CONCEPT gewijzigd worden');
     return this.prisma.$transaction(async (tx) => {
-      // Delete existing lines
       await tx.quoteLine.deleteMany({ where: { quoteId: quote.id } });
-
-      // Calculate and create new lines
-      let subtotal = 0;
-      let vatTotal = 0;
-      let discountTotal = 0;
-
+      let subtotal = 0, vatTotal = 0, discountTotal = 0;
       const lineData = dto.lines.map((line, index) => {
         const vatRate = line.vatRate ?? 21;
         const discountPct = line.discountPct ?? 0;
-        const lineTotal = calculateLineTotal(
-          line.quantity,
-          line.unitPrice,
-          discountPct,
-        );
+        const lineTotal = calculateLineTotal(line.quantity, line.unitPrice, discountPct);
         const fullPrice = Math.round(line.quantity * line.unitPrice * 100) / 100;
-
         subtotal += lineTotal;
         vatTotal += Math.round((lineTotal * vatRate) / 100 * 100) / 100;
         discountTotal += Math.round((fullPrice - lineTotal) * 100) / 100;
-
-        return {
-          quoteId: quote.id,
-          productId: line.productId || undefined,
-          description: line.description,
-          quantity: line.quantity,
-          unit: line.unit,
-          unitPrice: line.unitPrice,
-          vatRate,
-          discountPct,
-          lineTotal,
-          sortOrder: line.sortOrder ?? index,
-        };
+        return { quoteId: quote.id, productId: line.productId || undefined, description: line.description, quantity: line.quantity, unit: line.unit, unitPrice: line.unitPrice, vatRate, discountPct, lineTotal, sortOrder: line.sortOrder ?? index };
       });
-
-      if (lineData.length > 0) {
-        await tx.quoteLine.createMany({ data: lineData });
-      }
-
+      if (lineData.length > 0) await tx.quoteLine.createMany({ data: lineData });
       const total = Math.round((subtotal + vatTotal) * 100) / 100;
-
-      // Update quote totals
-      return tx.quote.update({
-        where: { id: quote.id },
-        data: { subtotal, vatTotal, discountTotal, total },
-        include: {
-          lines: { orderBy: { sortOrder: 'asc' } },
-        },
-      });
+      return tx.quote.update({ where: { id: quote.id }, data: { subtotal, vatTotal, discountTotal, total }, include: { lines: { orderBy: { sortOrder: 'asc' } } } });
     });
   }
-
-  // ─── Status Update ─────────────────────────────────────
 
   async updateStatus(id: string, status: QuoteStatus, user: User) {
     const quote = await this.findOne(id, user);
-
     const validTargets = VALID_TRANSITIONS[quote.status];
-    if (!validTargets.includes(status)) {
-      throw new BadRequestException(
-        `Statusovergang van ${quote.status} naar ${status} is niet toegestaan`,
-      );
-    }
-
-    const updated = await this.prisma.quote.update({
-      where: { id: quote.id },
-      data: { status },
-    });
-
-    // Notify the quote creator when sent
+    if (!validTargets.includes(status)) throw new BadRequestException(`Statusovergang van ${quote.status} naar ${status} is niet toegestaan`);
+    const updated = await this.prisma.quote.update({ where: { id: quote.id }, data: { status } });
     if (status === QuoteStatus.VERSTUURD) {
-      this.notifications.dispatch({
-        type: NotificationType.OFFERTE_VERSTUURD,
-        orgId: quote.orgId,
-        recipientUserIds: [quote.createdBy],
-        title: 'Offerte verstuurd',
-        body: `Offerte ${quote.quoteNumber} is naar de klant verstuurd.`,
-        entityType: 'quote',
-        entityId: quote.id,
-      });
+      this.notifications.dispatch({ type: NotificationType.OFFERTE_VERSTUURD, orgId: quote.orgId, recipientUserIds: [quote.createdBy], title: 'Offerte verstuurd', body: `Offerte ${quote.quoteNumber} is naar de klant verstuurd.`, entityType: 'quote', entityId: quote.id });
     }
-
     return updated;
   }
 
-  // ─── Submit for Approval ───────────────────────────────
+  async sendQuote(id: string, dto: SendQuoteDto, user: User) {
+    const quote = await this.findOne(id, user);
+    if (quote.status !== QuoteStatus.GOEDGEKEURD && quote.status !== QuoteStatus.CONCEPT) {
+      throw new BadRequestException('Alleen offertes met status CONCEPT of GOEDGEKEURD kunnen verstuurd worden');
+    }
+    const org = await this.prisma.organization.findUnique({ where: { id: quote.orgId }, select: { name: true } });
+    let token = quote.publicToken;
+    if (!token) {
+      token = randomUUID();
+      await this.prisma.quote.update({ where: { id: quote.id }, data: { publicToken: token } });
+    }
+    const quoteUrl = this.getPublicUrl(`/offerte/${token}`);
+    await this.emailService.sendQuoteEmail({ to: dto.to, cc: dto.cc, subject: dto.subject, bodyText: dto.bodyText, quoteUrl, orgName: org?.name ?? 'InspeXi' });
+    const updated = await this.prisma.quote.update({ where: { id: quote.id }, data: { status: QuoteStatus.VERSTUURD, sentAt: new Date() } });
+    this.notifications.dispatch({ type: NotificationType.OFFERTE_VERSTUURD, orgId: quote.orgId, recipientUserIds: [quote.createdBy], title: 'Offerte verstuurd', body: `Offerte ${quote.quoteNumber} is naar ${dto.to} verstuurd.`, entityType: 'quote', entityId: quote.id });
+    return updated;
+  }
 
   async submitForApproval(id: string, dto: SubmitApprovalDto, user: User) {
     const quote = await this.findOne(id, user);
-
-    if (quote.status !== QuoteStatus.CONCEPT) {
-      throw new BadRequestException(
-        'Alleen offertes met status CONCEPT kunnen ter goedkeuring worden ingediend',
-      );
-    }
-
-    if (!quote.requiresApproval) {
-      throw new BadRequestException(
-        'Deze offerte vereist geen goedkeuring',
-      );
-    }
-
+    if (quote.status !== QuoteStatus.CONCEPT) throw new BadRequestException('Alleen offertes met status CONCEPT kunnen ter goedkeuring worden ingediend');
+    if (!quote.requiresApproval) throw new BadRequestException('Deze offerte vereist geen goedkeuring');
     const updated = await this.prisma.$transaction(async (tx) => {
-      await tx.quoteApprovalRequest.create({
-        data: {
-          quoteId: quote.id,
-          requestedBy: user.id,
-          note: dto.note || undefined,
-        },
-      });
-
-      return tx.quote.update({
-        where: { id: quote.id },
-        data: { status: QuoteStatus.TER_GOEDKEURING },
-      });
+      await tx.quoteApprovalRequest.create({ data: { quoteId: quote.id, requestedBy: user.id, note: dto.note || undefined } });
+      return tx.quote.update({ where: { id: quote.id }, data: { status: QuoteStatus.TER_GOEDKEURING } });
     });
-
-    // Notify all managers + org admins in the org
-    const managers = await this.prisma.user.findMany({
-      where: {
-        orgId: quote.orgId,
-        role: { in: [Role.MANAGER, Role.ORG_ADMIN] },
-        isActive: true,
-      },
-      select: { id: true },
-    });
-    this.notifications.dispatch({
-      type: NotificationType.OFFERTE_TER_GOEDKEURING,
-      orgId: quote.orgId,
-      recipientUserIds: managers.map((m) => m.id),
-      title: 'Offerte ter goedkeuring',
-      body: `Offerte ${quote.quoteNumber} staat klaar voor uw goedkeuring.`,
-      entityType: 'quote',
-      entityId: quote.id,
-    });
-
+    const managers = await this.prisma.user.findMany({ where: { orgId: quote.orgId, role: { in: [Role.MANAGER, Role.ORG_ADMIN] }, isActive: true }, select: { id: true } });
+    this.notifications.dispatch({ type: NotificationType.OFFERTE_TER_GOEDKEURING, orgId: quote.orgId, recipientUserIds: managers.map((m) => m.id), title: 'Offerte ter goedkeuring', body: `Offerte ${quote.quoteNumber} staat klaar voor uw goedkeuring.`, entityType: 'quote', entityId: quote.id });
     return updated;
   }
-
-  // ─── Approve ───────────────────────────────────────────
 
   async approve(id: string, dto: ApproveQuoteDto, user: User) {
     const quote = await this.findOne(id, user);
-
-    if (quote.status !== QuoteStatus.TER_GOEDKEURING) {
-      throw new BadRequestException(
-        'Alleen offertes met status TER_GOEDKEURING kunnen goedgekeurd worden',
-      );
-    }
-
+    if (quote.status !== QuoteStatus.TER_GOEDKEURING) throw new BadRequestException('Alleen offertes met status TER_GOEDKEURING kunnen goedgekeurd worden');
     const updated = await this.prisma.$transaction(async (tx) => {
-      // Update the latest pending approval request
-      const pendingApproval = await tx.quoteApprovalRequest.findFirst({
-        where: { quoteId: quote.id, status: 'PENDING' },
-        orderBy: { requestedAt: 'desc' },
-      });
-
-      if (pendingApproval) {
-        await tx.quoteApprovalRequest.update({
-          where: { id: pendingApproval.id },
-          data: {
-            status: 'APPROVED',
-            reviewedBy: user.id,
-            reviewedAt: new Date(),
-            note: dto.note || pendingApproval.note,
-          },
-        });
-      }
-
-      return tx.quote.update({
-        where: { id: quote.id },
-        data: { status: QuoteStatus.GOEDGEKEURD },
-      });
+      const pending = await tx.quoteApprovalRequest.findFirst({ where: { quoteId: quote.id, status: 'PENDING' }, orderBy: { requestedAt: 'desc' } });
+      if (pending) await tx.quoteApprovalRequest.update({ where: { id: pending.id }, data: { status: 'APPROVED', reviewedBy: user.id, reviewedAt: new Date(), note: dto.note || pending.note } });
+      return tx.quote.update({ where: { id: quote.id }, data: { status: QuoteStatus.GOEDGEKEURD, managerSignature: dto.managerSignature || null } });
     });
-
-    // Notify the quote creator
-    this.notifications.dispatch({
-      type: NotificationType.OFFERTE_GOEDGEKEURD,
-      orgId: quote.orgId,
-      recipientUserIds: [quote.createdBy],
-      title: 'Offerte goedgekeurd',
-      body: `Offerte ${quote.quoteNumber} is goedgekeurd.`,
-      entityType: 'quote',
-      entityId: quote.id,
-    });
-
+    this.notifications.dispatch({ type: NotificationType.OFFERTE_GOEDGEKEURD, orgId: quote.orgId, recipientUserIds: [quote.createdBy], title: 'Offerte goedgekeurd', body: `Offerte ${quote.quoteNumber} is goedgekeurd.`, entityType: 'quote', entityId: quote.id });
     return updated;
   }
-
-  // ─── Reject ────────────────────────────────────────────
 
   async reject(id: string, dto: RejectQuoteDto, user: User) {
     const quote = await this.findOne(id, user);
-
-    if (quote.status !== QuoteStatus.TER_GOEDKEURING) {
-      throw new BadRequestException(
-        'Alleen offertes met status TER_GOEDKEURING kunnen afgewezen worden',
-      );
-    }
-
+    if (quote.status !== QuoteStatus.TER_GOEDKEURING) throw new BadRequestException('Alleen offertes met status TER_GOEDKEURING kunnen afgewezen worden');
     const updated = await this.prisma.$transaction(async (tx) => {
-      const pendingApproval = await tx.quoteApprovalRequest.findFirst({
-        where: { quoteId: quote.id, status: 'PENDING' },
-        orderBy: { requestedAt: 'desc' },
-      });
-
-      if (pendingApproval) {
-        await tx.quoteApprovalRequest.update({
-          where: { id: pendingApproval.id },
-          data: {
-            status: 'REJECTED',
-            reviewedBy: user.id,
-            reviewedAt: new Date(),
-            note: dto.note,
-          },
-        });
-      }
-
-      return tx.quote.update({
-        where: { id: quote.id },
-        data: { status: QuoteStatus.CONCEPT },
-      });
+      const pending = await tx.quoteApprovalRequest.findFirst({ where: { quoteId: quote.id, status: 'PENDING' }, orderBy: { requestedAt: 'desc' } });
+      if (pending) await tx.quoteApprovalRequest.update({ where: { id: pending.id }, data: { status: 'REJECTED', reviewedBy: user.id, reviewedAt: new Date(), note: dto.note } });
+      return tx.quote.update({ where: { id: quote.id }, data: { status: QuoteStatus.CONCEPT } });
     });
-
-    // Notify the quote creator
-    this.notifications.dispatch({
-      type: NotificationType.OFFERTE_AFGEWEZEN,
-      orgId: quote.orgId,
-      recipientUserIds: [quote.createdBy],
-      title: 'Offerte afgewezen',
-      body: `Offerte ${quote.quoteNumber} is afgewezen.`,
-      entityType: 'quote',
-      entityId: quote.id,
-    });
-
+    this.notifications.dispatch({ type: NotificationType.OFFERTE_AFGEWEZEN, orgId: quote.orgId, recipientUserIds: [quote.createdBy], title: 'Offerte afgewezen', body: `Offerte ${quote.quoteNumber} is afgewezen.`, entityType: 'quote', entityId: quote.id });
     return updated;
   }
 
-  // ─── Delete ────────────────────────────────────────────
-
   async remove(id: string, user: User) {
     const quote = await this.findOne(id, user);
-
-    if (quote.status !== QuoteStatus.CONCEPT) {
-      throw new BadRequestException(
-        'Alleen offertes met status CONCEPT kunnen verwijderd worden',
-      );
-    }
-
+    if (quote.status !== QuoteStatus.CONCEPT) throw new BadRequestException('Alleen offertes met status CONCEPT kunnen verwijderd worden');
     await this.prisma.quote.delete({ where: { id: quote.id } });
     return { deleted: true };
   }
 
-  // ─── Resolve Price ─────────────────────────────────────
-
-  async resolvePrice(
-    productId: string,
-    contactId: string,
-    quantity: number,
-    user: User,
-  ) {
-    const product = await this.prisma.product.findUnique({
-      where: { id: productId },
+  // Q&A (medewerker)
+  async addQuestion(id: string, dto: AddQuestionDto, user: User) {
+    const quote = await this.findOne(id, user);
+    return this.prisma.quoteQuestion.create({
+      data: { quoteId: quote.id, userId: user.id, message: dto.message, isFromClient: false },
+      include: { user: { select: { id: true, firstName: true, lastName: true } } },
     });
-    if (!product) {
-      throw new NotFoundException('Product niet gevonden');
-    }
+  }
 
-    if (user.role !== Role.SUPERUSER && product.orgId !== user.orgId) {
-      throw new ForbiddenException();
-    }
+  async getQuestions(id: string, user: User) {
+    const quote = await this.findOne(id, user);
+    return this.prisma.quoteQuestion.findMany({
+      where: { quoteId: quote.id },
+      include: { user: { select: { id: true, firstName: true, lastName: true } } },
+      orderBy: { createdAt: 'asc' },
+    });
+  }
 
-    // Check contact's assigned price tables first
-    const contactTables = await this.prisma.contactPriceTable.findMany({
-      where: { contactId },
+  async answerClientQuestion(id: string, questionId: string, dto: AddQuestionDto, user: User) {
+    const quote = await this.findOne(id, user);
+    const question = await this.prisma.quoteQuestion.findUnique({ where: { id: questionId } });
+    if (!question || question.quoteId !== quote.id) throw new NotFoundException('Vraag niet gevonden');
+    const answer = await this.prisma.quoteQuestion.create({
+      data: { quoteId: quote.id, userId: user.id, message: dto.message, isFromClient: false },
+      include: { user: { select: { id: true, firstName: true, lastName: true } } },
+    });
+    const contactEmail = (quote as any).contact?.email;
+    if (contactEmail && quote.publicToken) {
+      const org = await this.prisma.organization.findUnique({ where: { id: quote.orgId }, select: { name: true } });
+      const quoteUrl = this.getPublicUrl(`/offerte/${quote.publicToken}`);
+      this.emailService.sendQuoteAnswerEmail({ to: contactEmail, quoteNumber: quote.quoteNumber, answer: dto.message, quoteUrl, orgName: org?.name ?? 'InspeXi' }).catch(() => {});
+    }
+    return answer;
+  }
+
+  // Bijlagen (intern)
+  async getAttachments(id: string, user: User) {
+    const quote = await this.findOne(id, user);
+    return this.prisma.quoteAttachment.findMany({ where: { quoteId: quote.id }, orderBy: { sortOrder: 'asc' } });
+  }
+
+  async uploadAttachment(id: string, file: Express.Multer.File, user: User) {
+    const quote = await this.findOne(id, user);
+    const storageKey = `${quote.orgId}/quotes/${quote.id}/${randomUUID()}-${file.originalname}`;
+    await this.storage.upload(storageKey, file.buffer, file.mimetype);
+    const count = await this.prisma.quoteAttachment.count({ where: { quoteId: quote.id } });
+    return this.prisma.quoteAttachment.create({
+      data: { quoteId: quote.id, storageKey, fileName: file.originalname, mimeType: file.mimetype, fileSize: file.size, isStandard: false, sortOrder: count },
+    });
+  }
+
+  async downloadAttachment(id: string, attachmentId: string, user: User) {
+    const quote = await this.findOne(id, user);
+    const attachment = await this.prisma.quoteAttachment.findUnique({ where: { id: attachmentId } });
+    if (!attachment || attachment.quoteId !== quote.id) throw new NotFoundException('Bijlage niet gevonden');
+    const buffer = await this.storage.download(attachment.storageKey);
+    return { buffer, attachment };
+  }
+
+  async deleteAttachment(id: string, attachmentId: string, user: User) {
+    const quote = await this.findOne(id, user);
+    const attachment = await this.prisma.quoteAttachment.findUnique({ where: { id: attachmentId } });
+    if (!attachment || attachment.quoteId !== quote.id) throw new NotFoundException('Bijlage niet gevonden');
+    await this.storage.delete(attachment.storageKey);
+    await this.prisma.quoteAttachment.delete({ where: { id: attachmentId } });
+    return { deleted: true };
+  }
+
+  // Publieke webviewer
+  async findByPublicToken(token: string) {
+    const quote = await this.prisma.quote.findUnique({
+      where: { publicToken: token },
       include: {
-        priceTable: {
-          include: {
-            items: {
-              where: { productId },
-              include: { tiers: { orderBy: { fromQty: 'asc' } } },
-            },
-          },
-        },
+        ...QUOTE_INCLUDE,
+        organization: { select: { id: true, name: true, logoUrl: true, primaryColor: true } },
       },
     });
+    if (!quote) throw new NotFoundException('Offerte niet gevonden');
+    const notSentStatuses: QuoteStatus[] = [QuoteStatus.CONCEPT, QuoteStatus.TER_GOEDKEURING, QuoteStatus.GOEDGEKEURD];
+    if (notSentStatuses.includes(quote.status)) {
+      throw new ForbiddenException('Offerte is nog niet verstuurd');
+    }
+    if (!quote.viewedAt) {
+      await this.prisma.quote.update({
+        where: { id: quote.id },
+        data: { viewedAt: new Date(), status: quote.status === QuoteStatus.VERSTUURD ? QuoteStatus.BEKEKEN : quote.status },
+      });
+      this.notifications.dispatch({ type: NotificationType.OFFERTE_BEKEKEN, orgId: quote.orgId, recipientUserIds: [quote.createdBy], title: 'Offerte bekeken', body: `Klant heeft offerte ${quote.quoteNumber} voor het eerst geopend.`, entityType: 'quote', entityId: quote.id });
+    }
+    return quote;
+  }
 
+  async addClientQuestion(token: string, dto: AddQuestionDto) {
+    const quote = await this.prisma.quote.findUnique({
+      where: { publicToken: token },
+      select: { id: true, orgId: true, quoteNumber: true, createdBy: true, status: true },
+    });
+    if (!quote) throw new NotFoundException('Offerte niet gevonden');
+    const unavailableStatuses: QuoteStatus[] = [QuoteStatus.CONCEPT, QuoteStatus.TER_GOEDKEURING, QuoteStatus.GOEDGEKEURD];
+    if (unavailableStatuses.includes(quote.status)) throw new ForbiddenException('Offerte is niet beschikbaar');
+    const question = await this.prisma.quoteQuestion.create({ data: { quoteId: quote.id, userId: null, message: dto.message, isFromClient: true } });
+    this.notifications.dispatch({ type: NotificationType.NIEUWE_VRAAG_KLANT, orgId: quote.orgId, recipientUserIds: [quote.createdBy], title: 'Nieuwe vraag van klant', body: `Klant heeft een vraag gesteld bij offerte ${quote.quoteNumber}.`, entityType: 'quote', entityId: quote.id });
+    return question;
+  }
+
+  async signQuote(token: string, dto: SignQuoteDto, clientIp?: string, userAgent?: string) {
+    const quote = await this.prisma.quote.findUnique({ where: { publicToken: token }, include: { organization: { select: { name: true } } } });
+    if (!quote) throw new NotFoundException('Offerte niet gevonden');
+    if (quote.status !== QuoteStatus.VERSTUURD && quote.status !== QuoteStatus.BEKEKEN) throw new BadRequestException('Offerte kan niet worden ondertekend in de huidige status');
+    if (quote.signedAt) throw new BadRequestException('Offerte is al ondertekend');
+    const updated = await this.prisma.quote.update({
+      where: { id: quote.id },
+      data: { status: QuoteStatus.GEACCEPTEERD, signedAt: new Date(), clientName: dto.clientName, clientSignature: dto.signature || null, clientIp: clientIp || null, clientUserAgent: userAgent || null, viewedAt: quote.viewedAt ?? new Date() },
+    });
+    const managers = await this.prisma.user.findMany({ where: { orgId: quote.orgId, role: { in: [Role.MANAGER, Role.ORG_ADMIN] }, isActive: true }, select: { id: true } });
+    const recipientIds = [...new Set([quote.createdBy, ...managers.map((m) => m.id)])];
+    this.notifications.dispatch({ type: NotificationType.OFFERTE_ONDERTEKEND, orgId: quote.orgId, recipientUserIds: recipientIds, title: 'Offerte ondertekend', body: `${dto.clientName} heeft offerte ${quote.quoteNumber} ondertekend.`, entityType: 'quote', entityId: quote.id });
+    return { success: true, signedAt: updated.signedAt };
+  }
+
+  async downloadPublicAttachment(token: string, attachmentId: string) {
+    const quote = await this.prisma.quote.findUnique({ where: { publicToken: token }, select: { id: true, status: true } });
+    if (!quote) throw new NotFoundException('Offerte niet gevonden');
+    const unavailableStatusesForDownload: QuoteStatus[] = [QuoteStatus.CONCEPT, QuoteStatus.TER_GOEDKEURING, QuoteStatus.GOEDGEKEURD];
+    if (unavailableStatusesForDownload.includes(quote.status)) throw new ForbiddenException('Offerte is niet beschikbaar');
+    const attachment = await this.prisma.quoteAttachment.findUnique({ where: { id: attachmentId } });
+    if (!attachment || attachment.quoteId !== quote.id) throw new NotFoundException('Bijlage niet gevonden');
+    const buffer = await this.storage.download(attachment.storageKey);
+    return { buffer, attachment };
+  }
+
+  // Price resolution
+  async resolvePrice(productId: string, contactId: string, quantity: number, user: User) {
+    const product = await this.prisma.product.findUnique({ where: { id: productId } });
+    if (!product) throw new NotFoundException('Product niet gevonden');
+    if (user.role !== Role.SUPERUSER && product.orgId !== user.orgId) throw new ForbiddenException();
+    const contactTables = await this.prisma.contactPriceTable.findMany({
+      where: { contactId },
+      include: { priceTable: { include: { items: { where: { productId }, include: { tiers: { orderBy: { fromQty: 'asc' } } } } } } },
+    });
     let priceTableItem: any = null;
     for (const cpt of contactTables) {
-      const item = cpt.priceTable.items.find(
-        (i) => i.productId === productId,
-      );
-      if (item) {
-        priceTableItem = item;
-        break;
-      }
+      const item = cpt.priceTable.items.find((i) => i.productId === productId);
+      if (item) { priceTableItem = item; break; }
     }
-
-    // Fallback to org default price table
     if (!priceTableItem) {
-      const defaultTable = await this.prisma.priceTable.findFirst({
-        where: { orgId: product.orgId, isDefault: true },
-        include: {
-          items: {
-            where: { productId },
-            include: { tiers: { orderBy: { fromQty: 'asc' } } },
-          },
-        },
-      });
-      priceTableItem =
-        defaultTable?.items.find((i) => i.productId === productId) ?? null;
+      const defaultTable = await this.prisma.priceTable.findFirst({ where: { orgId: product.orgId, isDefault: true }, include: { items: { where: { productId }, include: { tiers: { orderBy: { fromQty: 'asc' } } } } } });
+      priceTableItem = defaultTable?.items.find((i) => i.productId === productId) ?? null;
     }
-
-    // Resolve the price
     let unitPrice = 0;
     if (priceTableItem) {
-      if (priceTableItem.priceType === 'FIXED') {
-        unitPrice = priceTableItem.basePrice ?? 0;
-      } else if (priceTableItem.priceType === 'TIERED') {
+      if (priceTableItem.priceType === 'FIXED') unitPrice = priceTableItem.basePrice ?? 0;
+      else if (priceTableItem.priceType === 'TIERED') {
         for (const tier of priceTableItem.tiers) {
-          if (
-            quantity >= tier.fromQty &&
-            (tier.toQty === null || quantity <= tier.toQty)
-          ) {
-            unitPrice = tier.price;
-            break;
-          }
+          if (quantity >= tier.fromQty && (tier.toQty === null || quantity <= tier.toQty)) { unitPrice = tier.price; break; }
         }
       }
     }
-
-    return {
-      unitPrice,
-      vatRate: product.defaultVat,
-      unit: product.unit,
-    };
+    return { unitPrice, vatRate: product.defaultVat, unit: product.unit };
   }
 
-  // ─── Create from Request ───────────────────────────────
-
   async createFromRequest(requestId: string, user: User) {
-    const request = await this.prisma.request.findUnique({
-      where: { id: requestId },
-    });
-
-    if (!request || request.isDeleted) {
-      throw new NotFoundException('Aanvraag niet gevonden');
-    }
-
-    if (user.role !== Role.SUPERUSER && request.orgId !== user.orgId) {
-      throw new ForbiddenException();
-    }
-
+    const request = await this.prisma.request.findUnique({ where: { id: requestId } });
+    if (!request || request.isDeleted) throw new NotFoundException('Aanvraag niet gevonden');
+    if (user.role !== Role.SUPERUSER && request.orgId !== user.orgId) throw new ForbiddenException();
     return this.prisma.$transaction(async (tx) => {
       const quoteNumber = await this.generateQuoteNumber(request.orgId, tx);
-
-      // Calculate validity from org settings
-      const org = await tx.organization.findUnique({
-        where: { id: request.orgId },
-      });
+      const org = await tx.organization.findUnique({ where: { id: request.orgId } });
       const validUntil = new Date();
-      validUntil.setDate(
-        validUntil.getDate() + (org?.defaultValidityDays ?? 30),
-      );
-
+      validUntil.setDate(validUntil.getDate() + (org?.defaultValidityDays ?? 30));
       const quote = await tx.quote.create({
-        data: {
-          orgId: request.orgId,
-          quoteNumber,
-          requestId: request.id,
-          contactId: request.contactId,
-          locationId: request.locationId || undefined,
-          subject: request.title,
-          validUntil,
-          createdBy: user.id,
-        },
+        data: { orgId: request.orgId, quoteNumber, requestId: request.id, contactId: request.contactId, locationId: request.locationId || undefined, subject: request.title, validUntil, createdBy: user.id, publicToken: randomUUID() },
       });
-
-      // Update request status to OFFERTE_GEMAAKT
-      await tx.request.update({
-        where: { id: request.id },
-        data: { status: RequestStatus.OFFERTE_GEMAAKT },
-      });
-
-      // Add status history for the request
-      await tx.requestStatusHistory.create({
-        data: {
-          requestId: request.id,
-          fromStatus: request.status,
-          toStatus: RequestStatus.OFFERTE_GEMAAKT,
-          changedBy: user.id,
-          note: `Offerte ${quoteNumber} aangemaakt`,
-        },
-      });
-
+      await tx.request.update({ where: { id: request.id }, data: { status: RequestStatus.OFFERTE_GEMAAKT } });
+      await tx.requestStatusHistory.create({ data: { requestId: request.id, fromStatus: request.status, toStatus: RequestStatus.OFFERTE_GEMAAKT, changedBy: user.id, note: `Offerte ${quoteNumber} aangemaakt` } });
       return quote;
     });
   }
 
-  // ─── Quote Number Generation ───────────────────────────
+  async generatePdf(id: string, user: User): Promise<{ buffer: Buffer; quoteNumber: string }> {
+    const quote = await this.findOne(id, user);
+    if (!quote.publicToken) throw new BadRequestException('Offerte heeft geen publiek token. Verstuur de offerte eerst.');
+    const puppeteer = await import('puppeteer');
+    const publicUrl = this.getPublicUrl(`/offerte/${quote.publicToken}`);
+    const browser = await puppeteer.default.launch({ headless: true, args: ['--no-sandbox', '--disable-setuid-sandbox'] });
+    try {
+      const page = await browser.newPage();
+      await page.goto(publicUrl, { waitUntil: 'networkidle0', timeout: 30000 });
+      const pdfBuffer = await page.pdf({ format: 'A4', printBackground: true, margin: { top: '10mm', bottom: '10mm', left: '10mm', right: '10mm' } });
+      return { buffer: Buffer.from(pdfBuffer), quoteNumber: quote.quoteNumber };
+    } finally {
+      await browser.close();
+    }
+  }
 
-  private async generateQuoteNumber(
-    orgId: string,
-    tx: Prisma.TransactionClient,
-  ): Promise<string> {
+  private async generateQuoteNumber(orgId: string, tx: Prisma.TransactionClient): Promise<string> {
     const year = new Date().getFullYear();
     const prefix = `OFF-${year}-`;
-
-    const latestQuote = await tx.quote.findFirst({
-      where: {
-        orgId,
-        quoteNumber: { startsWith: prefix },
-      },
-      orderBy: { quoteNumber: 'desc' },
-      select: { quoteNumber: true },
-    });
-
+    const latestQuote = await tx.quote.findFirst({ where: { orgId, quoteNumber: { startsWith: prefix } }, orderBy: { quoteNumber: 'desc' }, select: { quoteNumber: true } });
     let sequence = 1;
     if (latestQuote) {
       const parts = latestQuote.quoteNumber.split('-');
       const lastSeq = parseInt(parts[2], 10);
-      if (!isNaN(lastSeq)) {
-        sequence = lastSeq + 1;
-      }
+      if (!isNaN(lastSeq)) sequence = lastSeq + 1;
     }
-
     return `${prefix}${String(sequence).padStart(4, '0')}`;
   }
 }

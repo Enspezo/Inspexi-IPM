@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsString, IsOptional, IsUUID, IsDateString } from 'class-validator';
+import { IsString, IsOptional, IsUUID, IsDateString, IsObject } from 'class-validator';
 
 export class CreateQuoteDto {
   @ApiProperty({ description: 'Relatie ID' })
@@ -34,4 +34,9 @@ export class CreateQuoteDto {
   @IsOptional()
   @IsString()
   internalNotes?: string;
+
+  @ApiPropertyOptional({ description: 'Inhoud blokken (TipTap JSON)' })
+  @IsOptional()
+  @IsObject()
+  contentBlocks?: Record<string, any>;
 }

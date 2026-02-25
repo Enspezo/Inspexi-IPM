@@ -6,6 +6,11 @@ export class ApproveQuoteDto {
   @IsOptional()
   @IsString()
   note?: string;
+
+  @ApiPropertyOptional({ description: 'Handtekening van de manager (base64 data URL)' })
+  @IsOptional()
+  @IsString()
+  managerSignature?: string;
 }
 
 export class RejectQuoteDto {

@@ -411,13 +411,23 @@ export interface Quote {
   createdBy: string;
   createdAt: string;
   updatedAt: string;
+  // Send & client portal
+  sentAt: string | null;
+  viewedAt: string | null;
+  signedAt: string | null;
+  clientName: string | null;
+  clientSignature: string | null;
+  publicToken: string | null;
   contact?: { id: string; type: string; companyName: string | null; firstName: string | null; lastName: string | null; email: string | null };
   location?: LocationSummary;
   request?: { id: string; title: string };
   template?: { id: string; name: string };
   createdByUser?: UserSummary;
+  organization?: { id: string; name: string; logoUrl: string | null; primaryColor: string | null };
   lines?: QuoteLine[];
   approvalRequests?: QuoteApprovalRequest[];
+  questions?: QuoteQuestion[];
+  attachments?: QuoteAttachment[];
 }
 
 export interface QuoteLine {
@@ -452,6 +462,28 @@ export interface ResolvedPrice {
   unitPrice: number;
   vatRate: number;
   unit: string;
+}
+
+export interface QuoteQuestion {
+  id: string;
+  quoteId: string;
+  userId: string | null;
+  message: string;
+  isFromClient: boolean;
+  createdAt: string;
+  user?: { id: string; firstName: string; lastName: string } | null;
+}
+
+export interface QuoteAttachment {
+  id: string;
+  quoteId: string;
+  storageKey: string;
+  fileName: string;
+  mimeType: string;
+  fileSize: number;
+  isStandard: boolean;
+  sortOrder: number;
+  createdAt: string;
 }
 
 // ─── PRD-06: Notifications ──────────────────────────────

@@ -4,3 +4,6 @@ export { SetQuoteLinesDto, QuoteLineDto } from './set-quote-lines.dto';
 export { ListQuotesQueryDto } from './list-quotes-query.dto';
 export { SubmitApprovalDto } from './submit-approval.dto';
 export { ApproveQuoteDto, RejectQuoteDto } from './review-approval.dto';
+export { SendQuoteDto } from './send-quote.dto';
+export { AddQuestionDto } from './add-question.dto';
+export { SignQuoteDto } from './sign-quote.dto';

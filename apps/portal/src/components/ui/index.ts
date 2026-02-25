@@ -8,3 +8,6 @@ export { Modal } from './modal';
 export { Card } from './card';
 export { Spinner } from './spinner';
 export { ToastProvider, useToast } from './toast';
+export { RichTextEditor } from './rich-text-editor';
+export { RichTextViewer } from './rich-text-viewer';
+export { SignatureCanvas } from './signature-canvas';

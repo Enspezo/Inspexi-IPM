@@ -181,6 +181,7 @@ model User {
   createdQuotes          Quote[]                @relation("QuoteCreatedByUser")
   requestedApprovals     QuoteApprovalRequest[] @relation("ApprovalRequestedByUser")
   reviewedApprovals      QuoteApprovalRequest[] @relation("ApprovalReviewedByUser")
+  quoteQuestions         QuoteQuestion[]        @relation("QuoteQuestionUser")
 
   notifications          Notification[]
   notificationPrefs      NotificationPref[]
@@ -551,10 +552,11 @@ model Quote {
   internalNotes    String?     @map("internal_notes")
   createdBy        String      @map("created_by") @db.Uuid
 
-  // Future fields (added now but unused in core scope)
+  // Send & client portal fields
   sentAt           DateTime?   @map("sent_at")
   viewedAt         DateTime?   @map("viewed_at")
   signedAt         DateTime?   @map("signed_at")
+  clientName       String?     @map("client_name")
   clientSignature  String?     @map("client_signature")
   clientIp         String?     @map("client_ip")
   clientUserAgent  String?     @map("client_user_agent")
@@ -572,8 +574,42 @@ model Quote {
   createdByUser    User                  @relation("QuoteCreatedByUser", fields: [createdBy], references: [id])
   lines            QuoteLine[]
   approvalRequests QuoteApprovalRequest[]
+  questions        QuoteQuestion[]
+  attachments      QuoteAttachment[]
 
   @@map("imp_quotes")
+}
+
+model QuoteQuestion {
+  id           String   @id @default(uuid()) @db.Uuid
+  quoteId      String   @map("quote_id") @db.Uuid
+  userId       String?  @map("user_id") @db.Uuid
+  message      String
+  isFromClient Boolean  @default(false) @map("is_from_client")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  quote Quote @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  user  User? @relation("QuoteQuestionUser", fields: [userId], references: [id])
+
+  @@index([quoteId])
+  @@map("imp_quote_questions")
+}
+
+model QuoteAttachment {
+  id          String  @id @default(uuid()) @db.Uuid
+  quoteId     String  @map("quote_id") @db.Uuid
+  storageKey  String  @map("storage_key")
+  fileName    String  @map("file_name")
+  mimeType    String  @map("mime_type")
+  fileSize    Int     @map("file_size")
+  isStandard  Boolean @default(false) @map("is_standard")
+  sortOrder   Int     @default(0) @map("sort_order")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  quote Quote @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+
+  @@index([quoteId])
+  @@map("imp_quote_attachments")
 }
 
 model QuoteLine {

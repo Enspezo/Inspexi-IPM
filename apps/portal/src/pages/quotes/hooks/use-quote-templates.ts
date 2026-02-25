@@ -37,6 +37,7 @@ interface CreateQuoteTemplateDto {
   name: string;
   defaultValidityDays?: number;
   requiresApproval?: boolean;
+  contentBlocks?: object;
 }
 
 export function useCreateQuoteTemplate() {
@@ -56,6 +57,7 @@ interface UpdateQuoteTemplateDto {
   defaultValidityDays?: number;
   requiresApproval?: boolean;
   isActive?: boolean;
+  contentBlocks?: object;
 }
 
 export function useUpdateQuoteTemplate(id: string) {

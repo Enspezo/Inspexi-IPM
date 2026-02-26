@@ -128,7 +128,7 @@ function ActivityRow({ entry }: { entry: AuditLogEntry }) {
 
 export default function DashboardPage() {
   const { user } = useAuth();
-  const { data: activityData, isLoading: activityLoading } = useMyActivity({ limit: 10 });
+  const { data: activityData, isLoading: activityLoading } = useMyActivity({ limit: 5 });
 
   const hasActivity = activityData && activityData.data.length > 0;
 

@@ -72,6 +72,19 @@ export class AuthService {
     const accessToken = this.generateAccessToken(user);
     const refreshToken = await this.createRefreshToken(user.id, ipAddress, userAgent);
 
+    // Clean up expired and old revoked tokens for this user to keep the session list tidy
+    await this.prisma.refreshToken.deleteMany({
+      where: {
+        userId: user.id,
+        OR: [
+          // Tokens that have expired naturally
+          { expiresAt: { lt: new Date() } },
+          // Tokens revoked more than 30 days ago (explicit logouts kept for 30 days)
+          { revokedAt: { lt: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) } },
+        ],
+      },
+    });
+
     return { accessToken, refreshToken };
   }
 
@@ -95,10 +108,10 @@ export class AuthService {
       throw new UnauthorizedException('Account is gedeactiveerd');
     }
 
-    // Revoke old token (rotation)
-    await this.prisma.refreshToken.update({
+    // Hard-delete old token on rotation — rotation artifacts don't need to be
+    // kept as visible "ended sessions"; only explicit logouts are soft-deleted.
+    await this.prisma.refreshToken.delete({
       where: { id: storedToken.id },
-      data: { revokedAt: new Date() },
     });
 
     // Issue new tokens — carry forward IP/UA from original session if not provided
@@ -212,8 +225,17 @@ export class AuthService {
   // ─── Session Management ──────────────────────────────────
 
   async getSessions(userId: string, currentRefreshTokenRaw?: string) {
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
     const sessions = await this.prisma.refreshToken.findMany({
-      where: { userId },
+      where: {
+        userId,
+        OR: [
+          // Active sessions (not revoked, not expired)
+          { revokedAt: null, expiresAt: { gt: new Date() } },
+          // Recently explicitly-revoked sessions (last 30 days) — from logout/revoke, not rotation
+          { revokedAt: { gte: thirtyDaysAgo } },
+        ],
+      },
       orderBy: { createdAt: 'desc' },
       select: {
         id: true,

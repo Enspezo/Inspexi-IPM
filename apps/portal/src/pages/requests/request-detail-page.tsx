@@ -5,8 +5,10 @@ import {
   Priority,
   Role,
   TaskEntityType,
+  TaskStatus,
   DocumentEntityType,
 } from '@/types';
+import type { Task } from '@/types';
 import { Button, Card, Spinner, Select, Input, useToast } from '@/components/ui';
 import { DetailPageLayout } from '@/components/layout/detail-page-layout';
 import { useAuth } from '@/providers/auth-provider';
@@ -16,10 +18,13 @@ import {
   useDeleteRequest,
 } from './hooks/use-requests';
 import { useCreateQuoteFromRequest } from '@/pages/quotes/hooks/use-quotes';
+import { useTasks, useUpdateTask } from '@/pages/tasks/hooks/use-tasks';
 import { EditRequestModal } from './components/edit-request-modal';
 import { AuditHistory } from '@/components/audit-history/audit-history';
 import { CreateTaskModal } from '@/pages/tasks/components/create-task-modal';
 import { DocumentsSection } from '@/components/documents';
+
+type Tab = 'algemeen' | 'taken';
 
 const canWrite = [Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE];
 
@@ -60,6 +65,18 @@ const sourceLabels: Record<string, string> = {
   PHONE: 'Telefoon',
 };
 
+const taskStatusLabels: Record<string, string> = {
+  [TaskStatus.TE_DOEN]: 'Te doen',
+  [TaskStatus.MEE_BEZIG]: 'Mee bezig',
+  [TaskStatus.VOLTOOID]: 'Voltooid',
+};
+
+const taskStatusColors: Record<string, string> = {
+  [TaskStatus.TE_DOEN]: 'bg-blue-100 text-blue-800',
+  [TaskStatus.MEE_BEZIG]: 'bg-yellow-100 text-yellow-800',
+  [TaskStatus.VOLTOOID]: 'bg-green-100 text-green-800',
+};
+
 const statusOptions = Object.values(RequestStatus).map((s) => ({
   value: s,
   label: statusLabels[s] || s,
@@ -90,13 +107,29 @@ export default function RequestDetailPage() {
   const updateStatusMutation = useUpdateRequestStatus(id!);
   const deleteMutation = useDeleteRequest();
   const createQuoteMutation = useCreateQuoteFromRequest();
+  const updateTaskMutation = useUpdateTask();
 
+  // Fetch tasks linked to this request
+  const { data: tasksData } = useTasks({
+    entityType: TaskEntityType.REQUEST,
+    entityId: id,
+    limit: 100,
+  });
+  const requestTasks = tasksData?.data || [];
+  const incompleteTasks = requestTasks.filter((t) => t.status !== TaskStatus.VOLTOOID);
+
+  const [activeTab, setActiveTab] = useState<Tab>('algemeen');
   const [newStatus, setNewStatus] = useState('');
   const [statusNote, setStatusNote] = useState('');
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [isTaskOpen, setIsTaskOpen] = useState(false);
 
   const userCanWrite = user && canWrite.includes(user.role);
+
+  const tabs: { key: Tab; label: string; count?: number }[] = [
+    { key: 'algemeen', label: 'Algemeen' },
+    { key: 'taken', label: 'Taken', count: incompleteTasks.length },
+  ];
 
   const handleCreateQuote = async () => {
     if (!request) return;
@@ -214,164 +247,211 @@ export default function RequestDetailPage() {
         )}
       </div>
 
-      {/* Info grid */}
-      <Card>
-        <div className="grid grid-cols-2 gap-6 lg:grid-cols-3">
-          <div>
-            <dt className="text-sm font-medium text-gray-500">Relatie</dt>
-            <dd className="mt-1 text-sm text-gray-900">
-              {request.contact ? (
-                <Link
-                  to={`/contacts/${request.contactId}`}
-                  className="text-primary-600 hover:text-primary-800 hover:underline"
-                >
-                  {getContactName(request.contact)}
-                </Link>
-              ) : (
-                '—'
-              )}
-            </dd>
-          </div>
-          <div>
-            <dt className="text-sm font-medium text-gray-500">Locatie</dt>
-            <dd className="mt-1 text-sm text-gray-900">
-              {request.location
-                ? `${request.location.name} — ${request.location.city}`
-                : '—'}
-            </dd>
-          </div>
-          <div>
-            <dt className="text-sm font-medium text-gray-500">Bron</dt>
-            <dd className="mt-1 text-sm text-gray-900">
-              {sourceLabels[request.source] || request.source}
-            </dd>
-          </div>
-          <div>
-            <dt className="text-sm font-medium text-gray-500">Toegewezen aan</dt>
-            <dd className="mt-1 text-sm text-gray-900">
-              {request.assignedUser
-                ? `${request.assignedUser.firstName} ${request.assignedUser.lastName}`
-                : '—'}
-            </dd>
-          </div>
-          <div>
-            <dt className="text-sm font-medium text-gray-500">Aangemaakt door</dt>
-            <dd className="mt-1 text-sm text-gray-900">
-              {request.createdByUser
-                ? `${request.createdByUser.firstName} ${request.createdByUser.lastName}`
-                : '—'}
-            </dd>
-          </div>
-          <div>
-            <dt className="text-sm font-medium text-gray-500">Aangemaakt op</dt>
-            <dd className="mt-1 text-sm text-gray-900">
-              {formatDate(request.createdAt)}
-            </dd>
-          </div>
-        </div>
-      </Card>
-
-      {/* Status wijzigen */}
-      {userCanWrite && (
-        <Card>
-          <h3 className="text-sm font-semibold text-gray-900 mb-4">Status wijzigen</h3>
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-            <div className="w-56">
-              <Select
-                label="Nieuwe status"
-                options={statusOptions}
-                value={newStatus}
-                onChange={(e) => setNewStatus(e.target.value)}
-              />
-            </div>
-            <div className="flex-1">
-              <Input
-                label="Notitie (optioneel)"
-                placeholder="Toelichting bij statuswijziging..."
-                value={statusNote}
-                onChange={(e) => setStatusNote(e.target.value)}
-              />
-            </div>
-            <Button
-              onClick={handleStatusUpdate}
-              isLoading={updateStatusMutation.isPending}
-              disabled={!newStatus || newStatus === request.status}
+      {/* Tabs */}
+      <div className="border-b border-gray-200">
+        <nav className="-mb-px flex gap-6 overflow-x-auto">
+          {tabs.map((tab) => (
+            <button
+              key={tab.key}
+              onClick={() => setActiveTab(tab.key)}
+              className={`inline-flex items-center gap-1.5 whitespace-nowrap border-b-2 px-1 py-3 text-sm font-medium transition-colors ${
+                activeTab === tab.key
+                  ? 'border-primary-600 text-primary-600'
+                  : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'
+              }`}
             >
-              Bijwerken
-            </Button>
-          </div>
-        </Card>
-      )}
-
-      {/* Status historie */}
-      <div>
-        <h3 className="text-sm font-semibold text-gray-900 mb-3">Statushistorie</h3>
-        {(request.statusHistory?.length || 0) === 0 ? (
-          <p className="py-4 text-center text-sm text-gray-500">
-            Geen statushistorie beschikbaar
-          </p>
-        ) : (
-          <div className="space-y-3">
-            {request.statusHistory?.map((entry) => (
-              <Card key={entry.id}>
-                <div className="flex items-start justify-between">
-                  <div className="flex items-center gap-2">
-                    {entry.fromStatus && (
-                      <>
-                        <span
-                          className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
-                            statusColors[entry.fromStatus] || 'bg-gray-100 text-gray-600'
-                          }`}
-                        >
-                          {statusLabels[entry.fromStatus] || entry.fromStatus}
-                        </span>
-                        <svg className="h-4 w-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                        </svg>
-                      </>
-                    )}
-                    <span
-                      className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
-                        statusColors[entry.toStatus] || 'bg-gray-100 text-gray-600'
-                      }`}
-                    >
-                      {statusLabels[entry.toStatus] || entry.toStatus}
-                    </span>
-                  </div>
-                  <span className="text-xs text-gray-400">
-                    {formatDate(entry.changedAt)}
-                  </span>
-                </div>
-                {entry.note && (
-                  <p className="mt-2 text-sm text-gray-600">{entry.note}</p>
-                )}
-                {entry.changedByUser && (
-                  <p className="mt-1 text-xs text-gray-400">
-                    Door {entry.changedByUser.firstName} {entry.changedByUser.lastName}
-                  </p>
-                )}
-              </Card>
-            ))}
-          </div>
-        )}
+              {tab.label}
+              {tab.count != null && tab.count > 0 && (
+                <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-primary-100 px-1.5 text-xs font-semibold text-primary-700">
+                  {tab.count}
+                </span>
+              )}
+            </button>
+          ))}
+        </nav>
       </div>
 
-      {/* Documenten */}
-      <Card>
-        <DocumentsSection
-          entityType={DocumentEntityType.REQUEST}
-          entityId={request.id}
-          canUpload={!!userCanWrite}
-        />
-      </Card>
+      {/* Tab content: Algemeen */}
+      {activeTab === 'algemeen' && (
+        <div className="space-y-6">
+          {/* Info grid */}
+          <Card>
+            <div className="grid grid-cols-2 gap-6 lg:grid-cols-3">
+              <div>
+                <dt className="text-sm font-medium text-gray-500">Relatie</dt>
+                <dd className="mt-1 text-sm text-gray-900">
+                  {request.contact ? (
+                    <Link
+                      to={`/contacts/${request.contactId}`}
+                      className="text-primary-600 hover:text-primary-800 hover:underline"
+                    >
+                      {getContactName(request.contact)}
+                    </Link>
+                  ) : (
+                    '—'
+                  )}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-sm font-medium text-gray-500">Locatie</dt>
+                <dd className="mt-1 text-sm text-gray-900">
+                  {request.location
+                    ? `${request.location.name} — ${request.location.city}`
+                    : '—'}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-sm font-medium text-gray-500">Bron</dt>
+                <dd className="mt-1 text-sm text-gray-900">
+                  {sourceLabels[request.source] || request.source}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-sm font-medium text-gray-500">Toegewezen aan</dt>
+                <dd className="mt-1 text-sm text-gray-900">
+                  {request.assignedUser
+                    ? `${request.assignedUser.firstName} ${request.assignedUser.lastName}`
+                    : '—'}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-sm font-medium text-gray-500">Aangemaakt door</dt>
+                <dd className="mt-1 text-sm text-gray-900">
+                  {request.createdByUser
+                    ? `${request.createdByUser.firstName} ${request.createdByUser.lastName}`
+                    : '—'}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-sm font-medium text-gray-500">Aangemaakt op</dt>
+                <dd className="mt-1 text-sm text-gray-900">
+                  {formatDate(request.createdAt)}
+                </dd>
+              </div>
+            </div>
+          </Card>
 
-      {/* Verwijderen */}
-      {userCanWrite && (
-        <div className="flex justify-end border-t border-gray-200 pt-6">
-          <Button variant="danger" size="sm" onClick={handleDelete}>
-            Aanvraag verwijderen
-          </Button>
+          {/* Status wijzigen */}
+          {userCanWrite && (
+            <Card>
+              <h3 className="text-sm font-semibold text-gray-900 mb-4">Status wijzigen</h3>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+                <div className="w-56">
+                  <Select
+                    label="Nieuwe status"
+                    options={statusOptions}
+                    value={newStatus}
+                    onChange={(e) => setNewStatus(e.target.value)}
+                  />
+                </div>
+                <div className="flex-1">
+                  <Input
+                    label="Notitie (optioneel)"
+                    placeholder="Toelichting bij statuswijziging..."
+                    value={statusNote}
+                    onChange={(e) => setStatusNote(e.target.value)}
+                  />
+                </div>
+                <Button
+                  onClick={handleStatusUpdate}
+                  isLoading={updateStatusMutation.isPending}
+                  disabled={!newStatus || newStatus === request.status}
+                >
+                  Bijwerken
+                </Button>
+              </div>
+            </Card>
+          )}
+
+          {/* Status historie */}
+          <div>
+            <h3 className="text-sm font-semibold text-gray-900 mb-3">Statushistorie</h3>
+            {(request.statusHistory?.length || 0) === 0 ? (
+              <p className="py-4 text-center text-sm text-gray-500">
+                Geen statushistorie beschikbaar
+              </p>
+            ) : (
+              <div className="space-y-3">
+                {request.statusHistory?.map((entry) => (
+                  <Card key={entry.id}>
+                    <div className="flex items-start justify-between">
+                      <div className="flex items-center gap-2">
+                        {entry.fromStatus && (
+                          <>
+                            <span
+                              className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
+                                statusColors[entry.fromStatus] || 'bg-gray-100 text-gray-600'
+                              }`}
+                            >
+                              {statusLabels[entry.fromStatus] || entry.fromStatus}
+                            </span>
+                            <svg className="h-4 w-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                            </svg>
+                          </>
+                        )}
+                        <span
+                          className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
+                            statusColors[entry.toStatus] || 'bg-gray-100 text-gray-600'
+                          }`}
+                        >
+                          {statusLabels[entry.toStatus] || entry.toStatus}
+                        </span>
+                      </div>
+                      <span className="text-xs text-gray-400">
+                        {formatDate(entry.changedAt)}
+                      </span>
+                    </div>
+                    {entry.note && (
+                      <p className="mt-2 text-sm text-gray-600">{entry.note}</p>
+                    )}
+                    {entry.changedByUser && (
+                      <p className="mt-1 text-xs text-gray-400">
+                        Door {entry.changedByUser.firstName} {entry.changedByUser.lastName}
+                      </p>
+                    )}
+                  </Card>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Documenten */}
+          <Card>
+            <DocumentsSection
+              entityType={DocumentEntityType.REQUEST}
+              entityId={request.id}
+              canUpload={!!userCanWrite}
+            />
+          </Card>
+
+          {/* Verwijderen */}
+          {userCanWrite && (
+            <div className="flex justify-end border-t border-gray-200 pt-6">
+              <Button variant="danger" size="sm" onClick={handleDelete}>
+                Aanvraag verwijderen
+              </Button>
+            </div>
+          )}
         </div>
+      )}
+
+      {/* Tab content: Taken */}
+      {activeTab === 'taken' && (
+        <RequestTasksTab
+          tasks={requestTasks}
+          userCanWrite={!!userCanWrite}
+          onCreateTask={() => setIsTaskOpen(true)}
+          onStatusChange={async (taskId, newStatus) => {
+            try {
+              await updateTaskMutation.mutateAsync({ id: taskId, data: { status: newStatus } });
+              showToast('Taakstatus bijgewerkt', 'success');
+            } catch {
+              showToast('Status bijwerken mislukt', 'error');
+            }
+          }}
+          navigate={navigate}
+        />
       )}
 
       {/* Edit modal */}
@@ -392,5 +472,157 @@ export default function RequestDetailPage() {
       )}
     </div>
     </DetailPageLayout>
+  );
+}
+
+// ─── RequestTasksTab ───────────────────────────────────
+
+function RequestTasksTab({
+  tasks,
+  userCanWrite,
+  onCreateTask,
+  onStatusChange,
+  navigate,
+}: {
+  tasks: Task[];
+  userCanWrite: boolean;
+  onCreateTask: () => void;
+  onStatusChange: (taskId: string, status: TaskStatus) => void;
+  navigate: ReturnType<typeof useNavigate>;
+}) {
+  const incomplete = tasks.filter((t) => t.status !== TaskStatus.VOLTOOID);
+  const completed = tasks.filter((t) => t.status === TaskStatus.VOLTOOID);
+
+  return (
+    <div className="space-y-4">
+      {userCanWrite && (
+        <div className="flex justify-end">
+          <Button size="sm" onClick={onCreateTask}>
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            </svg>
+            Taak aanmaken
+          </Button>
+        </div>
+      )}
+      {tasks.length === 0 ? (
+        <p className="py-8 text-center text-sm text-gray-500">
+          Nog geen taken voor deze aanvraag
+        </p>
+      ) : (
+        <div className="space-y-6">
+          {incomplete.length > 0 && (
+            <div className="space-y-2">
+              {incomplete.map((task) => (
+                <TaskCard
+                  key={task.id}
+                  task={task}
+                  onStatusChange={onStatusChange}
+                  navigate={navigate}
+                />
+              ))}
+            </div>
+          )}
+          {completed.length > 0 && (
+            <div className="space-y-2">
+              <h4 className="text-sm font-medium text-gray-500">
+                Voltooid ({completed.length})
+              </h4>
+              {completed.map((task) => (
+                <TaskCard
+                  key={task.id}
+                  task={task}
+                  onStatusChange={onStatusChange}
+                  navigate={navigate}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── TaskCard ──────────────────────────────────────────
+
+function TaskCard({
+  task,
+  onStatusChange,
+  navigate,
+}: {
+  task: Task;
+  onStatusChange: (taskId: string, status: TaskStatus) => void;
+  navigate: ReturnType<typeof useNavigate>;
+}) {
+  const isCompleted = task.status === TaskStatus.VOLTOOID;
+  const isOverdue = !isCompleted && task.deadline && new Date(task.deadline) < new Date();
+
+  return (
+    <div
+      className={`group flex items-start gap-3 rounded-lg border p-3 transition-colors hover:bg-gray-50 ${
+        isCompleted ? 'border-gray-100 bg-gray-50' : 'border-gray-200 bg-white'
+      }`}
+    >
+      {/* Checkbox for quick status toggle */}
+      <button
+        type="button"
+        onClick={() =>
+          onStatusChange(
+            task.id,
+            isCompleted ? TaskStatus.TE_DOEN : TaskStatus.VOLTOOID,
+          )
+        }
+        className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded border transition-colors ${
+          isCompleted
+            ? 'border-green-500 bg-green-500 text-white'
+            : 'border-gray-300 bg-white hover:border-primary-500'
+        }`}
+      >
+        {isCompleted && (
+          <svg className="h-3 w-3" viewBox="0 0 12 12" fill="none">
+            <path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        )}
+      </button>
+
+      {/* Task info */}
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => navigate(`/tasks/${task.id}`)}
+            className={`text-sm font-medium hover:underline ${
+              isCompleted ? 'text-gray-400 line-through' : 'text-gray-900'
+            }`}
+          >
+            {task.title}
+          </button>
+          <span
+            className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
+              taskStatusColors[task.status] || 'bg-gray-100 text-gray-600'
+            }`}
+          >
+            {taskStatusLabels[task.status] || task.status}
+          </span>
+        </div>
+        <div className="mt-1 flex items-center gap-3 text-xs text-gray-500">
+          {task.assignee && (
+            <span>
+              {task.assignee.firstName} {task.assignee.lastName}
+            </span>
+          )}
+          {task.deadline && (
+            <span className={isOverdue ? 'font-medium text-red-600' : ''}>
+              {isOverdue && (
+                <svg className="mr-0.5 inline h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                </svg>
+              )}
+              {new Date(task.deadline).toLocaleDateString('nl-NL')}
+            </span>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }

@@ -124,6 +124,7 @@ export default function RequestsPage() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [priorityFilter, setPriorityFilter] = useState('');
+  const [onlyMine, setOnlyMine] = useState(false);
   const [page, setPage] = useState(1);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>(
@@ -139,6 +140,7 @@ export default function RequestsPage() {
     search: search || undefined,
     status: (statusFilter as RequestStatus) || undefined,
     priority: (priorityFilter as Priority) || undefined,
+    assignedTo: onlyMine ? user?.id : undefined,
     page,
     limit: 20,
   });
@@ -302,22 +304,52 @@ export default function RequestsPage() {
   return (
     <DetailPageLayout
       sidebar={
-        viewMode === 'table' ? (
-          <TableConfigSidebar
-            columns={allColumns}
-            pendingColumnConfig={pendingColumnConfig}
-            onColumnConfigChange={setPendingColumnConfig}
-            pendingFilters={pendingFilters}
-            onFiltersChange={setPendingFilters}
-            pendingGrouping={pendingGrouping}
-            onGroupingChange={setPendingGrouping}
-            onApplyColumns={applyColumns}
-            onApplyFilters={applyFilters}
-            onReset={resetToDefaults}
-            isColumnsDirty={isColumnsDirty}
-            isFiltersDirty={isFiltersDirty}
-          />
-        ) : null
+        <div className="space-y-6">
+          {/* Snelfilters */}
+          <div className="space-y-3">
+            <h3 className="text-sm font-semibold text-gray-900">Snelfilters</h3>
+            <label className="flex cursor-pointer items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                className="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                checked={onlyMine}
+                onChange={(e) => {
+                  setOnlyMine(e.target.checked);
+                  setPage(1);
+                }}
+              />
+              <span className="text-gray-700">Mijn aanvragen</span>
+            </label>
+            <div>
+              <Select
+                options={priorityFilterOptions}
+                value={priorityFilter}
+                onChange={(e) => {
+                  setPriorityFilter(e.target.value);
+                  setPage(1);
+                }}
+              />
+            </div>
+          </div>
+
+          {/* Tabelconfiguratie — alleen in tabelweergave */}
+          {viewMode === 'table' && (
+            <TableConfigSidebar
+              columns={allColumns}
+              pendingColumnConfig={pendingColumnConfig}
+              onColumnConfigChange={setPendingColumnConfig}
+              pendingFilters={pendingFilters}
+              onFiltersChange={setPendingFilters}
+              pendingGrouping={pendingGrouping}
+              onGroupingChange={setPendingGrouping}
+              onApplyColumns={applyColumns}
+              onApplyFilters={applyFilters}
+              onReset={resetToDefaults}
+              isColumnsDirty={isColumnsDirty}
+              isFiltersDirty={isFiltersDirty}
+            />
+          )}
+        </div>
       }
     >
       <div className="space-y-6">
@@ -401,21 +433,11 @@ export default function RequestsPage() {
               />
             </div>
           )}
-          <div className="w-48">
-            <Select
-              options={priorityFilterOptions}
-              value={priorityFilter}
-              onChange={(e) => {
-                setPriorityFilter(e.target.value);
-                setPage(1);
-              }}
-            />
-          </div>
         </div>
 
         {/* Inhoud */}
         {viewMode === 'kanban' ? (
-          <RequestsKanban search={search} priorityFilter={priorityFilter} />
+          <RequestsKanban search={search} priorityFilter={priorityFilter} assignedTo={onlyMine ? user?.id : undefined} />
         ) : (
           <>
             <Table

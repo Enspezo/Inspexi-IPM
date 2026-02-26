@@ -278,9 +278,22 @@ export function Sidebar() {
       {user && (
         <div className="border-t border-gray-800 px-4 py-4">
           <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-gray-700 text-sm font-medium text-white">
-              {user.firstName?.[0]}
-              {user.lastName?.[0]}
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-gray-700 text-sm font-medium text-white">
+              {user.avatarUrl ? (
+                <img
+                  src={`/api/v1/users/me/avatar`}
+                  alt={`${user.firstName} ${user.lastName}`}
+                  className="h-full w-full object-cover"
+                  onError={(e) => {
+                    (e.target as HTMLImageElement).style.display = 'none';
+                  }}
+                />
+              ) : (
+                <>
+                  {user.firstName?.[0]}
+                  {user.lastName?.[0]}
+                </>
+              )}
             </div>
             <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-medium text-white">

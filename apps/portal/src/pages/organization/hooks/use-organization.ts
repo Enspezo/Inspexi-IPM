@@ -15,6 +15,8 @@ interface UpdateOrganizationDto {
   primaryColor?: string | null;
   defaultVat?: number;
   defaultValidityDays?: number;
+  senderName?: string | null;
+  senderEmail?: string | null;
 }
 
 export function useUpdateOrganization(orgId: string | null | undefined) {

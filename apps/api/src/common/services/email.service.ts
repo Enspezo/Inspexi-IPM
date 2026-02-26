@@ -82,14 +82,27 @@ export class EmailService {
     }
   }
 
+  /** Builds an RFC 5321-compliant "Name <email>" from address string. */
+  private buildFrom(senderName?: string | null, senderEmail?: string | null): string {
+    if (senderEmail) {
+      return senderName ? `${senderName} <${senderEmail}>` : senderEmail;
+    }
+    return this.fromEmail;
+  }
+
   async sendNotificationEmail(
     to: string,
     title: string,
     body: string,
+    opts?: { senderName?: string | null; senderEmail?: string | null; unsubscribeUrl?: string },
   ): Promise<void> {
+    const from = this.buildFrom(opts?.senderName, opts?.senderEmail);
+    const unsubscribeFooter = opts?.unsubscribeUrl
+      ? `Wilt u geen e-mails meer ontvangen? <a href="${opts.unsubscribeUrl}" style="color:#6B7280;">Klik hier om u af te melden.</a>`
+      : 'U kunt uw notificatievoorkeuren aanpassen in uw profielinstellingen.';
     try {
       await this.resend.emails.send({
-        from: this.fromEmail,
+        from,
         to,
         subject: `${title} — InspeXi Beheer`,
         html: `
@@ -98,7 +111,7 @@ export class EmailService {
           <hr style="border: none; border-top: 1px solid #E5E7EB; margin: 24px 0;" />
           <p style="color: #6B7280; font-size: 12px;">
             U ontvangt dit bericht omdat u een notificatie heeft ingeschakeld in InspeXi Beheer.
-            U kunt uw notificatievoorkeuren aanpassen in uw profielinstellingen.
+            ${unsubscribeFooter}
           </p>
         `,
       });
@@ -117,10 +130,13 @@ export class EmailService {
     bodyText: string;
     quoteUrl: string;
     orgName: string;
+    senderName?: string | null;
+    senderEmail?: string | null;
   }): Promise<void> {
+    const from = this.buildFrom(params.senderName, params.senderEmail);
     try {
       await this.resend.emails.send({
-        from: this.fromEmail,
+        from,
         to: params.to,
         cc: params.cc,
         subject: params.subject,
@@ -152,10 +168,13 @@ export class EmailService {
     answer: string;
     quoteUrl: string;
     orgName: string;
+    senderName?: string | null;
+    senderEmail?: string | null;
   }): Promise<void> {
+    const from = this.buildFrom(params.senderName, params.senderEmail);
     try {
       await this.resend.emails.send({
-        from: this.fromEmail,
+        from,
         to: params.to,
         subject: `Antwoord op uw vraag — Offerte ${params.quoteNumber}`,
         html: `
@@ -182,10 +201,12 @@ export class EmailService {
     to: string,
     subject: string,
     bodyHtml: string,
+    opts?: { senderName?: string | null; senderEmail?: string | null },
   ): Promise<{ id?: string } | undefined> {
+    const from = this.buildFrom(opts?.senderName, opts?.senderEmail);
     try {
       const result = await this.resend.emails.send({
-        from: this.fromEmail,
+        from,
         to,
         subject,
         html: bodyHtml,

@@ -585,6 +585,14 @@ export class ContactsService {
       );
     }
 
+    // Fetch org sender config
+    const org = user.orgId
+      ? await this.prisma.organization.findUnique({
+          where: { id: user.orgId },
+          select: { senderName: true, senderEmail: true },
+        })
+      : null;
+
     // Send via Resend (EmailService)
     let resendId: string | undefined;
     try {
@@ -592,6 +600,7 @@ export class ContactsService {
         contact.email,
         dto.subject,
         dto.bodyHtml,
+        { senderName: org?.senderName, senderEmail: org?.senderEmail },
       );
       resendId = result?.id;
     } catch (error) {

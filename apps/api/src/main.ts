@@ -6,7 +6,8 @@ import { AppModule } from './app.module';
 import { AllExceptionsFilter } from './common/filters';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  // Enable rawBody so webhook controllers can verify signatures
+  const app = await NestFactory.create(AppModule, { rawBody: true });
 
   // Cookie parser
   app.use(cookieParser());

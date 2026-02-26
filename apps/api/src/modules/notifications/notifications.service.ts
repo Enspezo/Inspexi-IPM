@@ -3,7 +3,10 @@ import {
   Logger,
   NotFoundException,
   ForbiddenException,
+  BadRequestException,
 } from '@nestjs/common';
+import { JwtService } from '@nestjs/jwt';
+import { ConfigService } from '@nestjs/config';
 import { User, Role, NotificationType, Prisma } from '@prisma/client';
 import { PrismaService } from '@/prisma';
 import { EmailService } from '@/common/services/email.service';
@@ -30,6 +33,8 @@ export class NotificationsService {
   constructor(
     private prisma: PrismaService,
     private emailService: EmailService,
+    private jwtService: JwtService,
+    private config: ConfigService,
   ) {}
 
   // ─── Fire-and-forget dispatch ──────────────────────────
@@ -43,6 +48,12 @@ export class NotificationsService {
   private async doDispatch(params: DispatchParams): Promise<void> {
     const { type, orgId, recipientUserIds, title, body, entityType, entityId } =
       params;
+
+    // Fetch org sender config once for all recipients
+    const org = await this.prisma.organization.findUnique({
+      where: { id: orgId },
+      select: { senderName: true, senderEmail: true },
+    });
 
     for (const userId of recipientUserIds) {
       try {
@@ -60,8 +71,16 @@ export class NotificationsService {
             select: { email: true },
           });
           if (user?.email) {
+            const unsubscribeToken = this.generateUnsubscribeToken(userId);
+            const apiPort = this.config.get<string>('API_PORT', '3000');
+            const apiBaseUrl = this.config.get<string>('API_BASE_URL', `http://localhost:${apiPort}`);
+            const unsubscribeUrl = `${apiBaseUrl}/api/v1/notifications/unsubscribe?token=${unsubscribeToken}`;
             this.emailService
-              .sendNotificationEmail(user.email, title, body)
+              .sendNotificationEmail(user.email, title, body, {
+                senderName: org?.senderName,
+                senderEmail: org?.senderEmail,
+                unsubscribeUrl,
+              })
               .catch((err) =>
                 this.logger.error('Notification email failed', err),
               );
@@ -258,5 +277,46 @@ export class NotificationsService {
     }
 
     return this.getGroupPrefs(user);
+  }
+
+  // ─── Unsubscribe token ─────────────────────────────────
+
+  generateUnsubscribeToken(userId: string): string {
+    const secret = this.config.get<string>('JWT_SECRET');
+    return this.jwtService.sign(
+      { sub: userId, purpose: 'unsubscribe' },
+      { secret, expiresIn: '90d' },
+    );
+  }
+
+  async processUnsubscribe(token: string): Promise<void> {
+    let payload: any;
+    try {
+      const secret = this.config.get<string>('JWT_SECRET');
+      payload = this.jwtService.verify(token, { secret });
+    } catch {
+      throw new BadRequestException('Ongeldige of verlopen afmeldingslink');
+    }
+
+    if (payload.purpose !== 'unsubscribe' || !payload.sub) {
+      throw new BadRequestException('Ongeldige token');
+    }
+
+    const userId = payload.sub as string;
+
+    // Disable email for ALL notification types by upserting each pref
+    const allTypes = Object.values(NotificationType);
+    for (const type of allTypes) {
+      await this.prisma.notificationPref.upsert({
+        where: { userId_notificationType: { userId, notificationType: type } },
+        update: { channelEmail: false },
+        create: {
+          userId,
+          notificationType: type,
+          channelInApp: true,
+          channelEmail: false,
+        },
+      });
+    }
   }
 }

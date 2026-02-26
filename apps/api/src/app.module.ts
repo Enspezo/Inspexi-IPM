@@ -1,5 +1,6 @@
 import { Module, NestModule, MiddlewareConsumer } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { ScheduleModule } from '@nestjs/schedule';
 import { APP_GUARD, APP_FILTER, APP_INTERCEPTOR } from '@nestjs/core';
 import { TenantMiddleware } from './common/middleware/tenant.middleware';
 import { PrismaModule } from './prisma';
@@ -25,10 +26,12 @@ import { AuditLogModule } from './modules/audit-log/audit-log.module';
 import { TasksModule } from './modules/tasks/tasks.module';
 import { StorageModule } from './common/services/storage/storage.module';
 import { DocumentsModule } from './modules/documents/documents.module';
+import { WebhooksModule } from './modules/webhooks/webhooks.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
+    ScheduleModule.forRoot(),
     PrismaModule,
     EmailModule,
     NotificationsModule,
@@ -47,6 +50,7 @@ import { DocumentsModule } from './modules/documents/documents.module';
     TasksModule,
     StorageModule,
     DocumentsModule,
+    WebhooksModule,
   ],
   providers: [
     {

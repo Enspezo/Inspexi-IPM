@@ -134,6 +134,8 @@ model Organization {
   primaryColor        String?  @map("primary_color")
   defaultVat          Float    @default(21) @map("default_vat")
   defaultValidityDays Int      @default(30) @map("default_validity_days")
+  senderName          String?  @map("sender_name")
+  senderEmail         String?  @map("sender_email")
   createdAt           DateTime @default(now()) @map("created_at")
 
   users       User[]
@@ -166,6 +168,7 @@ model User {
   role            Role
   isActive        Boolean   @default(true) @map("is_active")
   emailVerifiedAt DateTime? @map("email_verified_at")
+  avatarUrl       String?   @map("avatar_url")
   createdAt       DateTime  @default(now()) @map("created_at")
 
   organization  Organization?  @relation(fields: [orgId], references: [id])

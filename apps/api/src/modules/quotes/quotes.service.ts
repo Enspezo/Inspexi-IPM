@@ -224,14 +224,14 @@ export class QuotesService {
     if (quote.status !== QuoteStatus.GOEDGEKEURD && quote.status !== QuoteStatus.CONCEPT) {
       throw new BadRequestException('Alleen offertes met status CONCEPT of GOEDGEKEURD kunnen verstuurd worden');
     }
-    const org = await this.prisma.organization.findUnique({ where: { id: quote.orgId }, select: { name: true } });
+    const org = await this.prisma.organization.findUnique({ where: { id: quote.orgId }, select: { name: true, senderName: true, senderEmail: true } });
     let token = quote.publicToken;
     if (!token) {
       token = randomUUID();
       await this.prisma.quote.update({ where: { id: quote.id }, data: { publicToken: token } });
     }
     const quoteUrl = this.getPublicUrl(`/offerte/${token}`);
-    await this.emailService.sendQuoteEmail({ to: dto.to, cc: dto.cc, subject: dto.subject, bodyText: dto.bodyText, quoteUrl, orgName: org?.name ?? 'InspeXi' });
+    await this.emailService.sendQuoteEmail({ to: dto.to, cc: dto.cc, subject: dto.subject, bodyText: dto.bodyText, quoteUrl, orgName: org?.name ?? 'InspeXi', senderName: org?.senderName, senderEmail: org?.senderEmail });
     const updated = await this.prisma.quote.update({ where: { id: quote.id }, data: { status: QuoteStatus.VERSTUURD, sentAt: new Date() } });
     this.notifications.dispatch({ type: NotificationType.OFFERTE_VERSTUURD, orgId: quote.orgId, recipientUserIds: [quote.createdBy], title: 'Offerte verstuurd', body: `Offerte ${quote.quoteNumber} is naar ${dto.to} verstuurd.`, entityType: 'quote', entityId: quote.id });
     return updated;
@@ -309,9 +309,9 @@ export class QuotesService {
     });
     const contactEmail = (quote as any).contact?.email;
     if (contactEmail && quote.publicToken) {
-      const org = await this.prisma.organization.findUnique({ where: { id: quote.orgId }, select: { name: true } });
+      const org = await this.prisma.organization.findUnique({ where: { id: quote.orgId }, select: { name: true, senderName: true, senderEmail: true } });
       const quoteUrl = this.getPublicUrl(`/offerte/${quote.publicToken}`);
-      this.emailService.sendQuoteAnswerEmail({ to: contactEmail, quoteNumber: quote.quoteNumber, answer: dto.message, quoteUrl, orgName: org?.name ?? 'InspeXi' }).catch(() => {});
+      this.emailService.sendQuoteAnswerEmail({ to: contactEmail, quoteNumber: quote.quoteNumber, answer: dto.message, quoteUrl, orgName: org?.name ?? 'InspeXi', senderName: org?.senderName, senderEmail: org?.senderEmail }).catch(() => {});
     }
     return answer;
   }

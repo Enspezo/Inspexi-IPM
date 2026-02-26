@@ -2,18 +2,27 @@ import {
   Controller,
   Get,
   Post,
+  Delete,
   Patch,
   Param,
   Body,
   ParseUUIDPipe,
   ForbiddenException,
+  NotFoundException,
+  UseInterceptors,
+  UploadedFile,
+  Res,
 } from '@nestjs/common';
 import {
   ApiTags,
   ApiOperation,
   ApiResponse,
   ApiBearerAuth,
+  ApiConsumes,
 } from '@nestjs/swagger';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { memoryStorage } from 'multer';
+import { Response } from 'express';
 import { User, Role } from '@prisma/client';
 import { UsersService } from './users.service';
 import {
@@ -140,5 +149,49 @@ export class UsersController {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { passwordHash, ...rest } = updated;
     return { success: true, data: rest };
+  }
+
+  @Post('me/avatar')
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: memoryStorage(),
+      limits: { fileSize: 5 * 1024 * 1024 }, // 5 MB
+    }),
+  )
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({ summary: 'Avatar uploaden voor eigen profiel' })
+  @ApiResponse({ status: 200, description: 'Avatar geüpload' })
+  async uploadAvatar(
+    @UploadedFile() file: Express.Multer.File,
+    @CurrentUser() user: User,
+  ) {
+    if (!file) throw new NotFoundException('Geen bestand ontvangen');
+    const storageKey = await this.usersService.uploadAvatar(user.id, file);
+    return { success: true, data: { storageKey } };
+  }
+
+  @Get('me/avatar')
+  @ApiOperation({ summary: 'Avatar ophalen voor eigen profiel' })
+  @ApiResponse({ status: 200, description: 'Avatar afbeelding' })
+  @ApiResponse({ status: 404, description: 'Geen avatar gevonden' })
+  async getOwnAvatar(
+    @CurrentUser() user: User,
+    @Res() res: Response,
+  ) {
+    const { buffer, mimeType } = await this.usersService.downloadAvatar(user.id);
+    res.set({
+      'Content-Type': mimeType,
+      'Content-Length': buffer.length.toString(),
+      'Cache-Control': 'private, max-age=3600',
+    });
+    res.send(buffer);
+  }
+
+  @Delete('me/avatar')
+  @ApiOperation({ summary: 'Avatar verwijderen van eigen profiel' })
+  @ApiResponse({ status: 200, description: 'Avatar verwijderd' })
+  async deleteAvatar(@CurrentUser() user: User) {
+    await this.usersService.deleteAvatar(user.id);
+    return { success: true, data: null };
   }
 }

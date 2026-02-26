@@ -24,6 +24,10 @@ const orgSchema = z.object({
     .number()
     .int('Moet een geheel getal zijn')
     .min(1, 'Minimaal 1 dag'),
+  senderName: z.string().optional(),
+  senderEmail: z
+    .union([z.string().email('Voer een geldig e-mailadres in'), z.literal('')])
+    .optional(),
 });
 
 type OrgFormData = z.infer<typeof orgSchema>;
@@ -60,6 +64,8 @@ export default function OrganizationSettingsPage() {
         primaryColor: organization.primaryColor ?? '#1E40AF',
         defaultVat: organization.defaultVat,
         defaultValidityDays: organization.defaultValidityDays,
+        senderName: organization.senderName ?? '',
+        senderEmail: organization.senderEmail ?? '',
       });
     }
   }, [organization, reset]);
@@ -71,6 +77,8 @@ export default function OrganizationSettingsPage() {
         primaryColor: data.primaryColor,
         defaultVat: data.defaultVat,
         defaultValidityDays: data.defaultValidityDays,
+        senderName: data.senderName || null,
+        senderEmail: data.senderEmail || null,
       });
       showToast('Organisatie-instellingen opgeslagen', 'success');
     } catch (err) {
@@ -329,6 +337,34 @@ export default function OrganizationSettingsPage() {
               type="number"
               error={errors.defaultValidityDays?.message}
               {...register('defaultValidityDays')}
+            />
+          </div>
+
+          <div>
+            <h3 className="text-base font-semibold text-gray-900">
+              E-mail afzender
+            </h3>
+            <p className="mt-1 text-sm text-gray-500">
+              Optioneel: gebruik een organisatie-specifiek afzendernaam en e-mailadres voor uitgaande e-mails (notificaties, offertes). Laat leeg om de standaard InspeXi-afzender te gebruiken.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
+            <Input
+              label="Afzendernaam"
+              placeholder="Bijv. InspeXi Demo"
+              helperText="Naam die ontvangers zien als afzender"
+              error={errors.senderName?.message}
+              {...register('senderName')}
+            />
+
+            <Input
+              label="Afzender e-mailadres"
+              type="email"
+              placeholder="Bijv. offerte@mijnbedrijf.nl"
+              helperText="Moet geverifieerd zijn in Resend"
+              error={errors.senderEmail?.message}
+              {...register('senderEmail')}
             />
           </div>
 

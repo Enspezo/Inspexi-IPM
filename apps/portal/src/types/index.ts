@@ -15,6 +15,8 @@ export interface Organization {
   primaryColor: string | null;
   defaultVat: number;
   defaultValidityDays: number;
+  senderName: string | null;
+  senderEmail: string | null;
   createdAt: string;
   _count?: { users: number };
 }
@@ -28,6 +30,7 @@ export interface User {
   orgId: string | null;
   isActive: boolean;
   emailVerifiedAt: string | null;
+  avatarUrl: string | null;
   createdAt: string;
   organization?: Organization;
 }

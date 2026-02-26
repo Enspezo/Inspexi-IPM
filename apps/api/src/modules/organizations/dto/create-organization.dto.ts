@@ -8,6 +8,7 @@ import {
   Min,
   Max,
   IsInt,
+  IsEmail,
 } from 'class-validator';
 
 export class CreateOrganizationDto {
@@ -45,4 +46,14 @@ export class CreateOrganizationDto {
   @IsInt()
   @Min(1)
   defaultValidityDays?: number;
+
+  @ApiPropertyOptional({ example: 'InspeXi Demo' })
+  @IsOptional()
+  @IsString()
+  senderName?: string;
+
+  @ApiPropertyOptional({ example: 'offerte@mijnbedrijf.nl' })
+  @IsOptional()
+  @IsEmail()
+  senderEmail?: string;
 }

@@ -4,12 +4,18 @@ import {
   ConflictException,
   ForbiddenException,
   BadRequestException,
+  Inject,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcrypt';
+import { randomUUID } from 'crypto';
 import { User, Role } from '@prisma/client';
 import { PrismaService } from '@/prisma';
 import { EmailService } from '@/common/services/email.service';
+import {
+  STORAGE_PROVIDER,
+  StorageProvider,
+} from '@/common/services/storage/storage.interface';
 import {
   InviteUserDto,
   AcceptInvitationDto,
@@ -23,6 +29,7 @@ export class UsersService {
     private prisma: PrismaService,
     private emailService: EmailService,
     private config: ConfigService,
+    @Inject(STORAGE_PROVIDER) private storage: StorageProvider,
   ) {}
 
   async findAllByOrg(orgId: string | null, currentUserRole: Role) {
@@ -308,5 +315,49 @@ export class UsersService {
       data,
       include: { organization: true },
     });
+  }
+
+  async uploadAvatar(userId: string, file: Express.Multer.File): Promise<string> {
+    const allowed = ['image/png', 'image/jpeg', 'image/webp'];
+    if (!allowed.includes(file.mimetype)) {
+      throw new BadRequestException('Alleen PNG, JPEG en WebP afbeeldingen zijn toegestaan');
+    }
+
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new NotFoundException('Gebruiker niet gevonden');
+
+    // Delete old avatar if exists
+    if (user.avatarUrl) {
+      await this.storage.delete(user.avatarUrl).catch(() => {});
+    }
+
+    const ext = file.originalname.split('.').pop() ?? 'png';
+    const storageKey = `avatars/${userId}/${randomUUID()}.${ext}`;
+    await this.storage.upload(storageKey, file.buffer, file.mimetype);
+
+    await this.prisma.user.update({ where: { id: userId }, data: { avatarUrl: storageKey } });
+    return storageKey;
+  }
+
+  async downloadAvatar(userId: string): Promise<{ buffer: Buffer; mimeType: string }> {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user?.avatarUrl) throw new NotFoundException('Geen avatar gevonden');
+
+    const buffer = await this.storage.download(user.avatarUrl);
+    const ext = user.avatarUrl.split('.').pop()?.toLowerCase() ?? 'png';
+    const mimeMap: Record<string, string> = {
+      png: 'image/png',
+      jpg: 'image/jpeg',
+      jpeg: 'image/jpeg',
+      webp: 'image/webp',
+    };
+    return { buffer, mimeType: mimeMap[ext] ?? 'image/png' };
+  }
+
+  async deleteAvatar(userId: string): Promise<void> {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user?.avatarUrl) return;
+    await this.storage.delete(user.avatarUrl).catch(() => {});
+    await this.prisma.user.update({ where: { id: userId }, data: { avatarUrl: null } });
   }
 }

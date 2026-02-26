@@ -80,3 +80,22 @@ export function useAdminResetPassword() {
       apiClient.patch(`/users/${userId}/reset-password`, { newPassword }),
   });
 }
+
+interface AdminUpdateUserDto {
+  firstName?: string;
+  lastName?: string;
+  email?: string;
+  initials?: string;
+}
+
+export function useAdminUpdateUser() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ userId, data }: { userId: string; data: AdminUpdateUserDto }) =>
+      apiClient.patch(`/users/${userId}`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['users'] });
+    },
+  });
+}

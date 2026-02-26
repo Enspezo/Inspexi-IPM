@@ -124,6 +124,12 @@ enum DocumentEntityType {
   TASK
 }
 
+enum SignatureType {
+  DRAW
+  UPLOAD
+  TEXT
+}
+
 // ─── PRD-01: Foundation Models ───────────────────────────
 
 model Organization {
@@ -168,7 +174,10 @@ model User {
   role            Role
   isActive        Boolean   @default(true) @map("is_active")
   emailVerifiedAt DateTime? @map("email_verified_at")
+  initials        String?   @map("initials")
   avatarUrl       String?   @map("avatar_url")
+  signatureType   SignatureType? @map("signature_type")
+  signatureData   String?   @map("signature_data")
   createdAt       DateTime  @default(now()) @map("created_at")
 
   organization  Organization?  @relation(fields: [orgId], references: [id])

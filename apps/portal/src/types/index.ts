@@ -21,6 +21,17 @@ export interface Organization {
   _count?: { users: number };
 }
 
+export enum SignatureType {
+  DRAW = 'DRAW',
+  UPLOAD = 'UPLOAD',
+  TEXT = 'TEXT',
+}
+
+export interface UserSignature {
+  signatureType: SignatureType | null;
+  signatureData: string | null;
+}
+
 export interface User {
   id: string;
   email: string;
@@ -30,7 +41,10 @@ export interface User {
   orgId: string | null;
   isActive: boolean;
   emailVerifiedAt: string | null;
+  initials: string | null;
   avatarUrl: string | null;
+  signatureType: SignatureType | null;
+  signatureData: string | null;
   createdAt: string;
   organization?: Organization;
 }

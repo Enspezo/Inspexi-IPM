@@ -21,6 +21,8 @@ import {
   AcceptInvitationDto,
   ChangeRoleDto,
   UpdateProfileDto,
+  AdminUpdateUserDto,
+  UpdateSignatureDto,
 } from './dto';
 
 @Injectable()
@@ -298,6 +300,7 @@ export class UsersService {
 
     if (dto.firstName) data.firstName = dto.firstName;
     if (dto.lastName) data.lastName = dto.lastName;
+    if (dto.initials !== undefined) data.initials = dto.initials || null;
 
     if (dto.email) {
       const existing = await this.prisma.user.findFirst({
@@ -315,6 +318,38 @@ export class UsersService {
       data,
       include: { organization: true },
     });
+  }
+
+  async adminUpdateUser(id: string, dto: AdminUpdateUserDto, actor: User) {
+    const target = await this.findOne(id);
+    if (actor.role !== Role.SUPERUSER && target.orgId !== actor.orgId) {
+      throw new ForbiddenException();
+    }
+
+    const data: any = {};
+    if (dto.firstName) data.firstName = dto.firstName;
+    if (dto.lastName) data.lastName = dto.lastName;
+    if (dto.initials !== undefined) data.initials = dto.initials || null;
+
+    if (dto.email) {
+      const existing = await this.prisma.user.findFirst({
+        where: { email: dto.email, NOT: { id } },
+      });
+      if (existing) {
+        throw new ConflictException('E-mailadres is al in gebruik');
+      }
+      data.email = dto.email;
+      data.emailVerifiedAt = null;
+    }
+
+    const updated = await this.prisma.user.update({
+      where: { id },
+      data,
+      include: { organization: true },
+    });
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { passwordHash, ...rest } = updated;
+    return rest;
   }
 
   async uploadAvatar(userId: string, file: Express.Multer.File): Promise<string> {
@@ -359,5 +394,32 @@ export class UsersService {
     if (!user?.avatarUrl) return;
     await this.storage.delete(user.avatarUrl).catch(() => {});
     await this.prisma.user.update({ where: { id: userId }, data: { avatarUrl: null } });
+  }
+
+  async getSignature(userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { signatureType: true, signatureData: true },
+    });
+    if (!user) throw new NotFoundException('Gebruiker niet gevonden');
+    return { signatureType: user.signatureType, signatureData: user.signatureData };
+  }
+
+  async updateSignature(userId: string, dto: UpdateSignatureDto) {
+    return this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        signatureType: dto.signatureType,
+        signatureData: dto.signatureData ?? null,
+      },
+      select: { signatureType: true, signatureData: true },
+    });
+  }
+
+  async deleteSignature(userId: string) {
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { signatureType: null, signatureData: null },
+    });
   }
 }

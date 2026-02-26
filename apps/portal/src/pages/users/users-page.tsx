@@ -17,6 +17,7 @@ import { useUsers, useDeactivateUser, useActivateUser } from './hooks/use-users'
 import { InviteUserModal } from './components/invite-user-modal';
 import { ChangeRoleModal } from './components/change-role-modal';
 import { ResetPasswordModal } from './components/reset-password-modal';
+import { EditUserModal } from './components/edit-user-modal';
 
 export default function UsersPage() {
   const { data: users, isLoading, error } = useUsers();
@@ -25,6 +26,7 @@ export default function UsersPage() {
   const { showToast } = useToast();
 
   const [isInviteOpen, setIsInviteOpen] = useState(false);
+  const [editUser, setEditUser] = useState<User | null>(null);
   const [changeRoleUser, setChangeRoleUser] = useState<User | null>(null);
   const [resetPasswordUser, setResetPasswordUser] = useState<User | null>(null);
   const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
@@ -84,6 +86,15 @@ export default function UsersPage() {
       ),
     },
     {
+      key: 'initials',
+      header: 'Initialen',
+      render: (user) => (
+        <span className="font-mono text-sm text-gray-700">
+          {user.initials || <span className="text-gray-400">—</span>}
+        </span>
+      ),
+    },
+    {
       key: 'role',
       header: 'Rol',
       filterable: true,
@@ -139,6 +150,18 @@ export default function UsersPage() {
               className="absolute right-0 top-full z-10 mt-1 w-48 rounded-lg border border-gray-200 bg-white py-1 shadow-lg"
               style={{ animation: 'fade-in 0.1s ease-out' }}
             >
+              <button
+                onClick={() => {
+                  setEditUser(user);
+                  setOpenDropdownId(null);
+                }}
+                className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50"
+              >
+                <svg className="h-4 w-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                </svg>
+                Bewerken
+              </button>
               <button
                 onClick={() => {
                   setChangeRoleUser(user);
@@ -270,6 +293,14 @@ export default function UsersPage() {
         isOpen={isInviteOpen}
         onClose={() => setIsInviteOpen(false)}
       />
+
+      {editUser && (
+        <EditUserModal
+          isOpen={!!editUser}
+          onClose={() => setEditUser(null)}
+          user={editUser}
+        />
+      )}
 
       <ChangeRoleModal
         isOpen={!!changeRoleUser}

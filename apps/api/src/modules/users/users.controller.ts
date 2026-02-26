@@ -30,7 +30,9 @@ import {
   AcceptInvitationDto,
   ChangeRoleDto,
   UpdateProfileDto,
+  AdminUpdateUserDto,
   AdminResetPasswordDto,
+  UpdateSignatureDto,
 } from './dto';
 import { Roles, CurrentUser, Public } from '@/common/decorators';
 
@@ -40,6 +42,7 @@ import { Roles, CurrentUser, Public } from '@/common/decorators';
 export class UsersController {
   constructor(private usersService: UsersService) {}
 
+  // ─── List ─────────────────────────────────────────────
   @Get()
   @Roles(Role.SUPERUSER, Role.ORG_ADMIN)
   @ApiOperation({ summary: 'Gebruikers van organisatie ophalen' })
@@ -49,21 +52,88 @@ export class UsersController {
     return { success: true, data: users };
   }
 
-  @Get(':id')
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN)
-  @ApiOperation({ summary: 'Gebruiker ophalen op ID' })
-  @ApiResponse({ status: 200, description: 'Gebruiker details' })
-  @ApiResponse({ status: 404, description: 'Niet gevonden' })
-  async findOne(
-    @Param('id', ParseUUIDPipe) id: string,
+  // ─── Literal / me routes (must be before :id) ─────────
+  @Get('me/signature')
+  @ApiOperation({ summary: 'Eigen handtekening ophalen' })
+  @ApiResponse({ status: 200, description: 'Handtekening data' })
+  async getSignature(@CurrentUser() user: User) {
+    const data = await this.usersService.getSignature(user.id);
+    return { success: true, data };
+  }
+
+  @Patch('me/signature')
+  @ApiOperation({ summary: 'Eigen handtekening opslaan' })
+  @ApiResponse({ status: 200, description: 'Handtekening opgeslagen' })
+  async updateSignature(
+    @Body() dto: UpdateSignatureDto,
     @CurrentUser() user: User,
   ) {
-    const found = await this.usersService.findOne(id);
-    if (user.role !== Role.SUPERUSER && found.orgId !== user.orgId) {
-      throw new ForbiddenException();
-    }
+    const data = await this.usersService.updateSignature(user.id, dto);
+    return { success: true, data };
+  }
+
+  @Delete('me/signature')
+  @ApiOperation({ summary: 'Eigen handtekening verwijderen' })
+  @ApiResponse({ status: 200, description: 'Handtekening verwijderd' })
+  async deleteSignature(@CurrentUser() user: User) {
+    await this.usersService.deleteSignature(user.id);
+    return { success: true, data: null };
+  }
+
+  @Post('me/avatar')
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: memoryStorage(),
+      limits: { fileSize: 5 * 1024 * 1024 }, // 5 MB
+    }),
+  )
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({ summary: 'Avatar uploaden voor eigen profiel' })
+  @ApiResponse({ status: 200, description: 'Avatar geüpload' })
+  async uploadAvatar(
+    @UploadedFile() file: Express.Multer.File,
+    @CurrentUser() user: User,
+  ) {
+    if (!file) throw new NotFoundException('Geen bestand ontvangen');
+    const storageKey = await this.usersService.uploadAvatar(user.id, file);
+    return { success: true, data: { storageKey } };
+  }
+
+  @Get('me/avatar')
+  @ApiOperation({ summary: 'Avatar ophalen voor eigen profiel' })
+  @ApiResponse({ status: 200, description: 'Avatar afbeelding' })
+  @ApiResponse({ status: 404, description: 'Geen avatar gevonden' })
+  async getOwnAvatar(
+    @CurrentUser() user: User,
+    @Res() res: Response,
+  ) {
+    const { buffer, mimeType } = await this.usersService.downloadAvatar(user.id);
+    res.set({
+      'Content-Type': mimeType,
+      'Content-Length': buffer.length.toString(),
+      'Cache-Control': 'private, max-age=3600',
+    });
+    res.send(buffer);
+  }
+
+  @Delete('me/avatar')
+  @ApiOperation({ summary: 'Avatar verwijderen van eigen profiel' })
+  @ApiResponse({ status: 200, description: 'Avatar verwijderd' })
+  async deleteAvatar(@CurrentUser() user: User) {
+    await this.usersService.deleteAvatar(user.id);
+    return { success: true, data: null };
+  }
+
+  @Patch('profile')
+  @ApiOperation({ summary: 'Eigen profiel bewerken' })
+  @ApiResponse({ status: 200, description: 'Profiel bijgewerkt' })
+  async updateProfile(
+    @Body() dto: UpdateProfileDto,
+    @CurrentUser() user: User,
+  ) {
+    const updated = await this.usersService.updateProfile(user.id, dto);
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { passwordHash, ...rest } = found;
+    const { passwordHash, ...rest } = updated;
     return { success: true, data: rest };
   }
 
@@ -85,6 +155,25 @@ export class UsersController {
   async acceptInvitation(@Body() dto: AcceptInvitationDto) {
     const user = await this.usersService.acceptInvitation(dto);
     return { success: true, data: user };
+  }
+
+  // ─── Parameterized :id routes ─────────────────────────
+  @Get(':id')
+  @Roles(Role.SUPERUSER, Role.ORG_ADMIN)
+  @ApiOperation({ summary: 'Gebruiker ophalen op ID' })
+  @ApiResponse({ status: 200, description: 'Gebruiker details' })
+  @ApiResponse({ status: 404, description: 'Niet gevonden' })
+  async findOne(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: User,
+  ) {
+    const found = await this.usersService.findOne(id);
+    if (user.role !== Role.SUPERUSER && found.orgId !== user.orgId) {
+      throw new ForbiddenException();
+    }
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { passwordHash, ...rest } = found;
+    return { success: true, data: rest };
   }
 
   @Patch(':id/deactivate')
@@ -138,60 +227,17 @@ export class UsersController {
     return { success: true, message: 'Wachtwoord gereset' };
   }
 
-  @Patch('profile')
-  @ApiOperation({ summary: 'Eigen profiel bewerken' })
-  @ApiResponse({ status: 200, description: 'Profiel bijgewerkt' })
-  async updateProfile(
-    @Body() dto: UpdateProfileDto,
+  // ─── Admin update (generic, last to avoid swallowing literals) ──
+  @Patch(':id')
+  @Roles(Role.SUPERUSER, Role.ORG_ADMIN)
+  @ApiOperation({ summary: 'Gebruikersgegevens bijwerken (admin)' })
+  @ApiResponse({ status: 200, description: 'Gebruiker bijgewerkt' })
+  async adminUpdate(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: AdminUpdateUserDto,
     @CurrentUser() user: User,
   ) {
-    const updated = await this.usersService.updateProfile(user.id, dto);
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { passwordHash, ...rest } = updated;
-    return { success: true, data: rest };
-  }
-
-  @Post('me/avatar')
-  @UseInterceptors(
-    FileInterceptor('file', {
-      storage: memoryStorage(),
-      limits: { fileSize: 5 * 1024 * 1024 }, // 5 MB
-    }),
-  )
-  @ApiConsumes('multipart/form-data')
-  @ApiOperation({ summary: 'Avatar uploaden voor eigen profiel' })
-  @ApiResponse({ status: 200, description: 'Avatar geüpload' })
-  async uploadAvatar(
-    @UploadedFile() file: Express.Multer.File,
-    @CurrentUser() user: User,
-  ) {
-    if (!file) throw new NotFoundException('Geen bestand ontvangen');
-    const storageKey = await this.usersService.uploadAvatar(user.id, file);
-    return { success: true, data: { storageKey } };
-  }
-
-  @Get('me/avatar')
-  @ApiOperation({ summary: 'Avatar ophalen voor eigen profiel' })
-  @ApiResponse({ status: 200, description: 'Avatar afbeelding' })
-  @ApiResponse({ status: 404, description: 'Geen avatar gevonden' })
-  async getOwnAvatar(
-    @CurrentUser() user: User,
-    @Res() res: Response,
-  ) {
-    const { buffer, mimeType } = await this.usersService.downloadAvatar(user.id);
-    res.set({
-      'Content-Type': mimeType,
-      'Content-Length': buffer.length.toString(),
-      'Cache-Control': 'private, max-age=3600',
-    });
-    res.send(buffer);
-  }
-
-  @Delete('me/avatar')
-  @ApiOperation({ summary: 'Avatar verwijderen van eigen profiel' })
-  @ApiResponse({ status: 200, description: 'Avatar verwijderd' })
-  async deleteAvatar(@CurrentUser() user: User) {
-    await this.usersService.deleteAvatar(user.id);
-    return { success: true, data: null };
+    const data = await this.usersService.adminUpdateUser(id, dto, user);
+    return { success: true, data };
   }
 }

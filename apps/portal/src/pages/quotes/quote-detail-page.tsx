@@ -127,8 +127,8 @@ export default function QuoteDetailPage() {
 
   const answerMutation = useAnswerQuestion(id!, answeringId ?? '');
 
-  const userCanWrite = user && canWrite.includes(user.role);
-  const userCanApprove = user && canApprove.includes(user.role);
+  const userCanWrite = user && user.roles.some(r => canWrite.includes(r));
+  const userCanApprove = user && user.roles.some(r => canApprove.includes(r));
 
   const handleSubmitApproval = async () => {
     try {

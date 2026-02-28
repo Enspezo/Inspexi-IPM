@@ -78,6 +78,20 @@ export class TasksService {
       }
     }
 
+    const planningIds = tasks
+      .filter((t) => t.entityType === TaskEntityType.PLANNING)
+      .map((t) => t.entityId);
+
+    if (planningIds.length > 0) {
+      const items = await this.prisma.planningItem.findMany({
+        where: { id: { in: planningIds } },
+        select: { id: true, productName: true },
+      });
+      for (const item of items) {
+        nameMap.set(item.id, item.productName);
+      }
+    }
+
     return nameMap;
   }
 
@@ -87,7 +101,7 @@ export class TasksService {
 
     const where: Prisma.TaskWhereInput = {};
 
-    if (user.role !== Role.SUPERUSER) {
+    if (!user.roles.includes(Role.SUPERUSER)) {
       where.orgId = user.orgId!;
     }
 
@@ -148,7 +162,7 @@ export class TasksService {
       throw new NotFoundException('Taak niet gevonden');
     }
 
-    if (user.role !== Role.SUPERUSER && task.orgId !== user.orgId) {
+    if (!user.roles.includes(Role.SUPERUSER) && task.orgId !== user.orgId) {
       throw new ForbiddenException('Geen toegang tot deze taak');
     }
 
@@ -170,7 +184,7 @@ export class TasksService {
         entityId: dto.entityId,
         assigneeId: dto.assigneeId || null,
         deadline: dto.deadline ? new Date(dto.deadline) : null,
-        orgId: user.role === Role.SUPERUSER && !user.orgId ? '' : user.orgId!,
+        orgId: user.roles.includes(Role.SUPERUSER) && !user.orgId ? '' : user.orgId!,
         createdById: user.id,
       },
       include: {
@@ -209,7 +223,7 @@ export class TasksService {
       throw new NotFoundException('Taak niet gevonden');
     }
 
-    if (user.role !== Role.SUPERUSER && existing.orgId !== user.orgId) {
+    if (!user.roles.includes(Role.SUPERUSER) && existing.orgId !== user.orgId) {
       throw new ForbiddenException('Geen toegang tot deze taak');
     }
 
@@ -293,7 +307,7 @@ export class TasksService {
       throw new NotFoundException('Taak niet gevonden');
     }
 
-    if (user.role !== Role.SUPERUSER && existing.orgId !== user.orgId) {
+    if (!user.roles.includes(Role.SUPERUSER) && existing.orgId !== user.orgId) {
       throw new ForbiddenException('Geen toegang tot deze taak');
     }
 

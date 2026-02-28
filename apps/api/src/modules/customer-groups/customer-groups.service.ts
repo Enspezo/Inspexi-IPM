@@ -23,7 +23,7 @@ export class CustomerGroupsService {
       isDeleted: false,
     };
 
-    if (user.role !== Role.SUPERUSER) {
+    if (!user.roles.includes(Role.SUPERUSER)) {
       where.orgId = user.orgId!;
     }
 
@@ -75,7 +75,7 @@ export class CustomerGroupsService {
       throw new NotFoundException('Klantgroep niet gevonden');
     }
 
-    if (user.role !== Role.SUPERUSER && group.orgId !== user.orgId) {
+    if (!user.roles.includes(Role.SUPERUSER) && group.orgId !== user.orgId) {
       throw new ForbiddenException();
     }
 
@@ -125,7 +125,7 @@ export class CustomerGroupsService {
     if (!contact || contact.isDeleted) {
       throw new NotFoundException('Relatie niet gevonden');
     }
-    if (user.role !== Role.SUPERUSER && contact.orgId !== user.orgId) {
+    if (!user.roles.includes(Role.SUPERUSER) && contact.orgId !== user.orgId) {
       throw new ForbiddenException();
     }
 
@@ -166,7 +166,7 @@ export class CustomerGroupsService {
     const where: Prisma.CustomerGroupWhereInput = {
       isDeleted: false,
     };
-    if (user.role !== Role.SUPERUSER) {
+    if (!user.roles.includes(Role.SUPERUSER)) {
       where.orgId = user.orgId!;
     }
 

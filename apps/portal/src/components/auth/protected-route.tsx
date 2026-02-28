@@ -3,6 +3,7 @@ import { useAuth } from '@/providers/auth-provider';
 import { useTenant } from '@/providers/tenant-provider';
 import { Spinner } from '@/components/ui';
 import { Role } from '@/types';
+import { hasRole } from '@/lib/has-role';
 import { getOrgUrl } from '@/lib/tenant';
 
 export function ProtectedRoute() {
@@ -22,7 +23,7 @@ export function ProtectedRoute() {
   }
 
   // Base domain (mijn.inspexi.nl) + non-SUPERUSER → redirect to org subdomain
-  if (tenantInfo.isBaseDomain && user.role !== Role.SUPERUSER) {
+  if (tenantInfo.isBaseDomain && !hasRole(user, Role.SUPERUSER)) {
     const orgSlug = user.organization?.slug;
     if (orgSlug) {
       window.location.href = getOrgUrl(orgSlug, '/dashboard');
@@ -36,7 +37,7 @@ export function ProtectedRoute() {
 
   // Org subdomain + user.orgId ≠ org (and not SUPERUSER) → redirect to login
   // This is mostly handled by the backend TenantGuard, but as a safety net:
-  if (!tenantInfo.isBaseDomain && user.role !== Role.SUPERUSER) {
+  if (!tenantInfo.isBaseDomain && !hasRole(user, Role.SUPERUSER)) {
     // If user got here with wrong org token, the API will 403 anyway
     // We don't need to check explicitly since TenantGuard handles it
   }

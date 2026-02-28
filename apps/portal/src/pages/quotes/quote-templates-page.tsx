@@ -49,7 +49,7 @@ export default function QuoteTemplatesPage() {
   const createMutation = useCreateQuoteTemplate();
   const deleteMutation = useDeleteQuoteTemplate();
 
-  const userIsAdmin = user && adminRoles.includes(user.role);
+  const userIsAdmin = user && user.roles.some(r => adminRoles.includes(r));
 
   const columns: ColumnDef<QuoteTemplate>[] = [
     {

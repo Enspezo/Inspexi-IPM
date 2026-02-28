@@ -12,6 +12,7 @@ import {
 } from '@/components/ui';
 import { DetailPageLayout } from '@/components/layout/detail-page-layout';
 import { useContactPersons } from './hooks/use-contacts';
+import { CreateContactPersonModal } from './components/create-contact-person-modal';
 
 const roleFilterOptions = [
   { value: '', label: 'Alle rollen' },
@@ -51,6 +52,7 @@ export default function ContactPersonsPage() {
   const [search, setSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState('');
   const [page, setPage] = useState(1);
+  const [isCreateOpen, setIsCreateOpen] = useState(false);
 
   const { data, isLoading, error } = useContactPersons({
     search: search || undefined,
@@ -145,13 +147,19 @@ export default function ContactPersonsPage() {
   const totalPages = Math.ceil(total / 20);
 
   return (
+    <>
     <DetailPageLayout>
       <div className="space-y-6">
-        <div>
-          <h2 className="text-2xl font-bold text-gray-900">Contactpersonen</h2>
-          <p className="mt-1 text-sm text-gray-500">
-            Overzicht van alle contactpersonen
-          </p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-2xl font-bold text-gray-900">Contactpersonen</h2>
+            <p className="mt-1 text-sm text-gray-500">
+              Overzicht van alle contactpersonen
+            </p>
+          </div>
+          <Button onClick={() => setIsCreateOpen(true)}>
+            Nieuw contactpersoon
+          </Button>
         </div>
 
         {/* Filters */}
@@ -212,6 +220,12 @@ export default function ContactPersonsPage() {
           </div>
         )}
       </div>
-    </DetailPageLayout>
+      </DetailPageLayout>
+
+      <CreateContactPersonModal
+        isOpen={isCreateOpen}
+        onClose={() => setIsCreateOpen(false)}
+      />
+    </>
   );
 }

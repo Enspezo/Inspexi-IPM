@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { Contact } from '@/types';
 import { ContactType } from '@/types';
@@ -43,12 +43,18 @@ export default function ContactsPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [search, setSearch] = useState('');
-  const [onlyMine, setOnlyMine] = useState(false);
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [onlyMine, setOnlyMine] = useState(() => localStorage.getItem('inspexi:filter-mine:contacts') === 'true');
   const [page, setPage] = useState(1);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
 
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(search), 300);
+    return () => clearTimeout(timer);
+  }, [search]);
+
   const { data, isLoading, error } = useContacts({
-    search: search || undefined,
+    search: debouncedSearch.length >= 3 ? debouncedSearch : undefined,
     onlyMine: onlyMine || undefined,
     page,
     limit: 20,
@@ -62,7 +68,7 @@ export default function ContactsPage() {
     [],
   );
 
-  const userCanWrite = user && canWrite.includes(user.role);
+  const userCanWrite = user && user.roles.some(r => canWrite.includes(r));
 
   const columns: ColumnDef<Contact>[] = [
     {
@@ -260,7 +266,7 @@ export default function ContactsPage() {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
         <div className="flex-1">
           <Input
-            placeholder="Zoeken op naam, e-mail..."
+            placeholder="Zoeken op naam, e-mail, stad of telefoon..."
             value={search}
             onChange={handleSearchChange}
           />
@@ -272,6 +278,7 @@ export default function ContactsPage() {
             checked={onlyMine}
             onChange={(e) => {
               setOnlyMine(e.target.checked);
+              localStorage.setItem('inspexi:filter-mine:contacts', String(e.target.checked));
               setPage(1);
             }}
           />

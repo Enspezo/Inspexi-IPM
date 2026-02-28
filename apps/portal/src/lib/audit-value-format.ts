@@ -60,7 +60,16 @@ const enumLabels: Record<string, string> = {
   DONE: 'Afgerond',
   CANCELLED: 'Geannuleerd',
 
-  // TaskPriority (reuses Priority above)
+  // PlanningStatus
+  NOG_TE_PLANNEN: 'Nog te plannen',
+  GEPLAND: 'Gepland',
+  AFGEROND: 'Afgerond',
+  VERVALLEN: 'Vervallen',
+
+  // AcceptanceStatus
+  PENDING: 'In afwachting',
+  ACCEPTED: 'Geaccepteerd',
+  REJECTED: 'Afgewezen',
 };
 
 /** Currency fields that should be formatted as EUR */
@@ -83,6 +92,7 @@ const dateFields = new Set([
   'emailVerifiedAt',
   'loggedAt',
   'dueDate',
+  'scheduledDate',
 ]);
 
 /** UUID v4 pattern — used to detect unresolved UUIDs */
@@ -102,6 +112,7 @@ const FK_FIELDS = new Set([
   'requestId',
   'quoteId',
   'productId',
+  'planningItemId',
   'customerGroupId',
   'userId',
 ]);

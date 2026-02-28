@@ -53,7 +53,7 @@ export function useActivateUser() {
 
 interface ChangeRoleDto {
   userId: string;
-  role: Role;
+  roles: Role[];
 }
 
 export function useChangeRole() {
@@ -61,7 +61,7 @@ export function useChangeRole() {
 
   return useMutation({
     mutationFn: (data: ChangeRoleDto) =>
-      apiClient.patch(`/users/${data.userId}/role`, { role: data.role }),
+      apiClient.patch(`/users/${data.userId}/role`, { roles: data.roles }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['users'] });
     },
@@ -86,6 +86,12 @@ interface AdminUpdateUserDto {
   lastName?: string;
   email?: string;
   initials?: string;
+  homeStreet?: string | null;
+  homeHouseNumber?: string | null;
+  homePostalCode?: string | null;
+  homeCity?: string | null;
+  homeLat?: number | null;
+  homeLng?: number | null;
 }
 
 export function useAdminUpdateUser() {

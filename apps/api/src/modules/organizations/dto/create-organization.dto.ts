@@ -56,4 +56,18 @@ export class CreateOrganizationDto {
   @IsOptional()
   @IsEmail()
   senderEmail?: string;
+
+  @ApiPropertyOptional({ example: 8, description: 'Start of working day (0–23)' })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(23)
+  workdayStart?: number;
+
+  @ApiPropertyOptional({ example: 17, description: 'End of working day (1–24)' })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(24)
+  workdayEnd?: number;
 }

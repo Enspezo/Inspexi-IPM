@@ -17,6 +17,8 @@ export interface Organization {
   defaultValidityDays: number;
   senderName: string | null;
   senderEmail: string | null;
+  workdayStart: number;
+  workdayEnd: number;
   createdAt: string;
   _count?: { users: number };
 }
@@ -37,7 +39,7 @@ export interface User {
   email: string;
   firstName: string;
   lastName: string;
-  role: Role;
+  roles: Role[];
   orgId: string | null;
   isActive: boolean;
   emailVerifiedAt: string | null;
@@ -45,6 +47,14 @@ export interface User {
   avatarUrl: string | null;
   signatureType: SignatureType | null;
   signatureData: string | null;
+  color: string | null;
+  homeStreet: string | null;
+  homeHouseNumber: string | null;
+  homePostalCode: string | null;
+  homeCity: string | null;
+  homeLat: number | null;
+  homeLng: number | null;
+  icalToken: string | null;
   createdAt: string;
   organization?: Organization;
 }
@@ -129,6 +139,7 @@ export interface Contact {
   logs?: ContactLog[];
   emails?: ContactEmail[];
   quotes?: Quote[];
+  requests?: Request[];
 }
 
 export interface ContactPerson {
@@ -190,6 +201,7 @@ export interface Location {
   city: string;
   objectType: string | null;
   notes: string | null;
+  pdokData: Record<string, unknown> | null;
   createdAt: string;
 }
 
@@ -331,6 +343,10 @@ export interface UserSummary {
   firstName: string;
   lastName: string;
   email: string;
+  color?: string | null;
+  initials?: string | null;
+  homeLat?: number | null;
+  homeLng?: number | null;
 }
 
 export interface LocationSummary {
@@ -520,6 +536,12 @@ export enum NotificationType {
   TAAK_TOEGEWEZEN = 'TAAK_TOEGEWEZEN',
   TAAK_STATUS_GEWIJZIGD = 'TAAK_STATUS_GEWIJZIGD',
   DOCUMENT_GEUPLOAD = 'DOCUMENT_GEUPLOAD',
+  AFSPRAAK_ACCEPTATIE_VERZOEK = 'AFSPRAAK_ACCEPTATIE_VERZOEK',
+  AFSPRAAK_GEACCEPTEERD = 'AFSPRAAK_GEACCEPTEERD',
+  AFSPRAAK_GEWEIGERD = 'AFSPRAAK_GEWEIGERD',
+  AFSPRAAK_VERPLAATST = 'AFSPRAAK_VERPLAATST',
+  AFSPRAAK_VERZETTEN_VERZOEK = 'AFSPRAAK_VERZETTEN_VERZOEK',
+  AFSPRAAK_BEVESTIGING_VERSTUURD = 'AFSPRAAK_BEVESTIGING_VERSTUURD',
 }
 
 export interface Notification {
@@ -589,6 +611,7 @@ export enum TaskEntityType {
   CONTACT = 'CONTACT',
   REQUEST = 'REQUEST',
   QUOTE = 'QUOTE',
+  PLANNING = 'PLANNING',
 }
 
 export interface Task {
@@ -617,6 +640,7 @@ export enum DocumentEntityType {
   QUOTE = 'QUOTE',
   PRODUCT = 'PRODUCT',
   TASK = 'TASK',
+  PLANNING = 'PLANNING',
 }
 
 export interface CrmDocument {
@@ -630,8 +654,295 @@ export interface CrmDocument {
   mimeType: string;
   size: number;
   description: string | null;
+  isSharedWithClient: boolean;
   uploadedById: string;
   isDeleted: boolean;
   createdAt: string;
   uploadedBy?: UserSummary;
+}
+
+// ─── PRD-07: Planning & Afspraken ───────────────────────
+
+export enum PlanningStatus {
+  NOG_TE_PLANNEN = 'NOG_TE_PLANNEN',
+  CONCEPT = 'CONCEPT',
+  GEPLAND = 'GEPLAND',
+  AFGEROND = 'AFGEROND',
+  VERVALLEN = 'VERVALLEN',
+}
+
+export enum AcceptanceStatus {
+  PENDING = 'PENDING',
+  ACCEPTED = 'ACCEPTED',
+  REJECTED = 'REJECTED',
+}
+
+export enum SessionStatus {
+  NOG_TE_PLANNEN = 'NOG_TE_PLANNEN',
+  CONCEPT = 'CONCEPT',
+  DEFINITIEF = 'DEFINITIEF',
+  AFGEROND = 'AFGEROND',
+  VERVALLEN = 'VERVALLEN',
+}
+
+export enum RescheduleStatus {
+  PENDING = 'PENDING',
+  PROCESSED = 'PROCESSED',
+}
+
+export interface PlanningInspector {
+  id: string;
+  planningItemId: string;
+  userId: string;
+  isPrimary: boolean;
+  acceptanceStatus: AcceptanceStatus;
+  acceptedAt: string | null;
+  rejectedAt: string | null;
+  rejectionNote: string | null;
+  user?: UserSummary;
+}
+
+export interface PlanningSessionInspector {
+  id: string;
+  sessionId: string;
+  userId: string;
+  isPrimary: boolean;
+  acceptanceStatus: AcceptanceStatus;
+  acceptedAt: string | null;
+  rejectedAt: string | null;
+  rejectionNote: string | null;
+  user?: UserSummary;
+}
+
+export interface PlanningSession {
+  id: string;
+  planningItemId: string;
+  sessionNumber: number;
+  scheduledDate: string | null;
+  durationHours: number | null;
+  status: SessionStatus;
+  isDefinitief: boolean;
+  confirmedAt: string | null;
+  notes: string | null;
+  isCancelled: boolean;
+  replacedById: string | null;
+  replacesId: string | null;
+  originalDate: string | null;
+  createdAt: string;
+  updatedAt: string;
+  sessionInspectors?: PlanningSessionInspector[];
+}
+
+export interface PlanningFollower {
+  id: string;
+  planningItemId: string;
+  userId: string | null;
+  email: string | null;
+  name: string | null;
+  createdAt: string;
+  user?: UserSummary | null;
+}
+
+export interface PlanningHistoryEntry {
+  id: string;
+  planningItemId: string;
+  userId: string | null;
+  action: string;
+  description: string;
+  oldValue: string | null;
+  newValue: string | null;
+  createdAt: string;
+  user?: { id: string; firstName: string; lastName: string } | null;
+}
+
+export interface RescheduleRequest {
+  id: string;
+  planningItemId: string;
+  requestedBy: string | null;
+  clientName: string | null;
+  preferredDate: string;
+  reason: string;
+  status: RescheduleStatus;
+  processedBy: string | null;
+  processedAt: string | null;
+  createdAt: string;
+}
+
+export interface PlanningItem {
+  id: string;
+  orgId: string;
+  quoteId: string | null;
+  contactId: string;
+  contactPersonId: string | null;
+  locationId: string;
+  productId: string | null;
+  productName: string;
+  status: PlanningStatus;
+  isCancelled: boolean;
+  cancelledAt: string | null;
+  cancelReason: string | null;
+  scheduledDate: string | null;
+  durationHours: number | null;
+  labels: string[];
+  internalNotes: string | null;
+  publicToken: string;
+  replacedById: string | null;
+  replacesId: string | null;
+  originalDate: string | null;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+  contact?: {
+    id: string;
+    type: string;
+    companyName: string | null;
+    firstName: string | null;
+    lastName: string | null;
+    email: string | null;
+  };
+  contactPerson?: {
+    id: string;
+    firstName: string;
+    lastName: string;
+    email: string | null;
+    phone: string | null;
+    role: ContactPersonRole;
+  } | null;
+  location?: {
+    id: string;
+    name: string;
+    street: string;
+    houseNumber: string;
+    city: string;
+    postalCode: string;
+  };
+  createdByUser?: UserSummary;
+  isMultiDay: boolean;
+  sessionCount: number | null;
+  inspectors?: PlanningInspector[];
+  sessions?: PlanningSession[];
+  followers?: PlanningFollower[];
+  history?: PlanningHistoryEntry[];
+  organization?: {
+    id: string;
+    name: string;
+    logoUrl: string | null;
+    primaryColor: string | null;
+  };
+}
+
+// ─── Global Search ────────────────────────────────────────
+
+export type SearchEntityType =
+  | 'contact'
+  | 'contactPerson'
+  | 'request'
+  | 'quote'
+  | 'task'
+  | 'document'
+  | 'product';
+
+export interface SearchContactResult {
+  id: string;
+  type: ContactType;
+  companyName: string | null;
+  firstName: string | null;
+  lastName: string | null;
+  email: string | null;
+  phone: string | null;
+  addresses: { city: string }[];
+}
+
+export interface SearchContactPersonResult {
+  id: string;
+  contactId: string;
+  firstName: string;
+  lastName: string;
+  email: string | null;
+  phone: string | null;
+  role: ContactPersonRole;
+  contact: {
+    id: string;
+    companyName: string | null;
+    firstName: string | null;
+    lastName: string | null;
+  };
+}
+
+export interface SearchRequestResult {
+  id: string;
+  title: string;
+  status: RequestStatus;
+  priority: Priority;
+  createdAt: string;
+  contact: {
+    id: string;
+    companyName: string | null;
+    firstName: string | null;
+    lastName: string | null;
+  };
+}
+
+export interface SearchQuoteResult {
+  id: string;
+  quoteNumber: string;
+  subject: string;
+  status: QuoteStatus;
+  total: number;
+  createdAt: string;
+  contact: {
+    id: string;
+    companyName: string | null;
+    firstName: string | null;
+    lastName: string | null;
+  };
+}
+
+export interface SearchTaskResult {
+  id: string;
+  title: string;
+  status: TaskStatus;
+  entityType: TaskEntityType;
+  entityId: string;
+  entityName: string | null;
+  deadline: string | null;
+  assignee: UserSummary | null;
+}
+
+export interface SearchDocumentResult {
+  id: string;
+  originalName: string;
+  mimeType: string;
+  entityType: DocumentEntityType;
+  entityId: string;
+  entityName: string | null;
+  createdAt: string;
+  uploadedBy: UserSummary;
+}
+
+export interface SearchProductResult {
+  id: string;
+  name: string;
+  unit: string;
+  isActive: boolean;
+  productGroup: { id: string; name: string } | null;
+}
+
+export type SearchResultItem =
+  | SearchContactResult
+  | SearchContactPersonResult
+  | SearchRequestResult
+  | SearchQuoteResult
+  | SearchTaskResult
+  | SearchDocumentResult
+  | SearchProductResult;
+
+export interface SearchGroup {
+  type: SearchEntityType;
+  total: number;
+  items: SearchResultItem[];
+}
+
+export interface SearchResponse {
+  groups: SearchGroup[];
 }

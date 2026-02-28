@@ -11,3 +11,5 @@ export { ToastProvider, useToast } from './toast';
 export { RichTextEditor } from './rich-text-editor';
 export { RichTextViewer } from './rich-text-viewer';
 export { SignatureCanvas } from './signature-canvas';
+export { SignatureEditor } from './signature-editor';
+export { AddressSearchInput, type AddressSearchInputProps } from './address-search-input';

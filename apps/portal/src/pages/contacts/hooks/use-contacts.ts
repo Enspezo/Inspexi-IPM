@@ -266,6 +266,7 @@ export function useSendEmail(contactId: string) {
 // ─── Contact Persons ──────────────────────────────────
 
 interface ListContactPersonsParams {
+  contactId?: string;
   search?: string;
   role?: ContactPersonRole;
   page?: number;
@@ -274,6 +275,7 @@ interface ListContactPersonsParams {
 
 export function useContactPersons(params: ListContactPersonsParams = {}) {
   const queryParams = new URLSearchParams();
+  if (params.contactId) queryParams.set('contactId', params.contactId);
   if (params.search) queryParams.set('search', params.search);
   if (params.role) queryParams.set('role', params.role);
   if (params.page) queryParams.set('page', String(params.page));

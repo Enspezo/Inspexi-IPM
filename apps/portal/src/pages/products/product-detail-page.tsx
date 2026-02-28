@@ -55,7 +55,7 @@ export default function ProductDetailPage() {
   const updateMutation = useUpdateProduct(id!);
   const { data: productGroups } = useProductGroupsCompact();
 
-  const userCanWrite = user && canWrite.includes(user.role);
+  const userCanWrite = user && user.roles.some(r => canWrite.includes(r));
 
   const groupOptions = [
     { value: '', label: '— Geen groep —' },

@@ -12,6 +12,7 @@ interface ListQuotesParams {
   search?: string;
   status?: QuoteStatus;
   contactId?: string;
+  createdBy?: string;
   page?: number;
   limit?: number;
 }
@@ -21,6 +22,7 @@ export function useQuotes(params: ListQuotesParams = {}) {
   if (params.search) queryParams.set('search', params.search);
   if (params.status) queryParams.set('status', params.status);
   if (params.contactId) queryParams.set('contactId', params.contactId);
+  if (params.createdBy) queryParams.set('createdBy', params.createdBy);
   if (params.page) queryParams.set('page', String(params.page));
   if (params.limit) queryParams.set('limit', String(params.limit));
 

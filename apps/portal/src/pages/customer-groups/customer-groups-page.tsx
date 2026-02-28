@@ -37,7 +37,7 @@ export default function CustomerGroupsPage() {
     [],
   );
 
-  const userCanCreate = user && canCreate.includes(user.role);
+  const userCanCreate = user && user.roles.some(r => canCreate.includes(r));
 
   const columns: Column<CustomerGroup>[] = [
     {

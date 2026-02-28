@@ -5,7 +5,7 @@ import {
   IsUUID,
   IsEnum,
 } from 'class-validator';
-import { Priority } from '@prisma/client';
+import { Priority, RequestSource } from '@prisma/client';
 
 export class UpdateRequestDto {
   @ApiPropertyOptional({ example: 'Bijgewerkte titel' })
@@ -18,6 +18,11 @@ export class UpdateRequestDto {
   @IsString()
   description?: string;
 
+  @ApiPropertyOptional({ example: 'uuid', description: 'Relatie ID' })
+  @IsOptional()
+  @IsUUID()
+  contactId?: string;
+
   @ApiPropertyOptional({ example: 'uuid', description: 'Locatie ID' })
   @IsOptional()
   @IsUUID()
@@ -27,6 +32,11 @@ export class UpdateRequestDto {
   @IsOptional()
   @IsUUID()
   assignedTo?: string;
+
+  @ApiPropertyOptional({ enum: RequestSource })
+  @IsOptional()
+  @IsEnum(RequestSource)
+  source?: RequestSource;
 
   @ApiPropertyOptional({ enum: Priority })
   @IsOptional()

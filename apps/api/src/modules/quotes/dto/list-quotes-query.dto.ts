@@ -19,6 +19,11 @@ export class ListQuotesQueryDto {
   @IsUUID()
   contactId?: string;
 
+  @ApiPropertyOptional({ description: 'Filter op aanmaker (userId)' })
+  @IsOptional()
+  @IsUUID()
+  createdBy?: string;
+
   @ApiPropertyOptional({ default: 1 })
   @IsOptional()
   @Type(() => Number)

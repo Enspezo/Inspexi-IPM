@@ -7,6 +7,9 @@ import {
   useRecentNotifications,
   useMarkRead,
 } from '@/pages/notifications/hooks/use-notifications';
+import { useTasks } from '@/pages/tasks/hooks/use-tasks';
+import { SearchBox } from '@/components/search/search-box';
+import { TaskStatus } from '@/types';
 import type { Notification } from '@/types';
 
 const pageTitles: Record<string, string> = {
@@ -67,10 +70,21 @@ export function Header() {
 
   const { data: unreadData } = useUnreadCount();
   const { data: recentData } = useRecentNotifications();
+  const { data: myTasksData } = useTasks({ onlyMine: true, limit: 100 });
   const markRead = useMarkRead();
 
   const unreadCount = unreadData?.count ?? 0;
   const recentNotifications = recentData?.data ?? [];
+
+  // Verlopen taken: deadline verstreken, niet voltooid
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
+  const overdueTaskCount = (myTasksData?.data ?? []).filter(
+    (t) =>
+      t.status !== TaskStatus.VOLTOOID &&
+      t.deadline &&
+      new Date(t.deadline) < todayStart,
+  ).length;
 
   const pageTitle = getPageTitle(location.pathname);
 
@@ -98,13 +112,21 @@ export function Header() {
   };
 
   return (
-    <header className="flex h-16 items-center justify-between border-b border-gray-200 bg-white px-6">
-      {/* Page title / breadcrumb */}
-      <div>
-        <h1 className="text-xl font-semibold text-gray-900">{pageTitle}</h1>
+    <header className="flex h-16 items-center border-b border-gray-200 bg-white px-6">
+      {/* LEFT: page title — hidden on /search */}
+      <div className="w-48 flex-shrink-0">
+        {location.pathname !== '/search' && (
+          <h1 className="truncate text-lg font-semibold text-gray-900">{pageTitle}</h1>
+        )}
       </div>
 
-      <div className="flex items-center gap-2">
+      {/* CENTER: Search box */}
+      <div className="flex flex-1 items-center justify-center">
+        <SearchBox />
+      </div>
+
+      {/* RIGHT: actions */}
+      <div className="flex w-48 flex-shrink-0 items-center justify-end gap-2">
         {/* Notification bell */}
         <div className="relative" ref={notifRef}>
           <button
@@ -145,6 +167,30 @@ export function Header() {
                   Alles bekijken
                 </Link>
               </div>
+
+              {/* Pinned: verlopen taken */}
+              {overdueTaskCount > 0 && (
+                <Link
+                  to="/tasks"
+                  onClick={() => setIsNotifOpen(false)}
+                  className="flex items-center gap-3 border-b border-orange-100 bg-orange-50 px-4 py-3 transition-colors hover:bg-orange-100"
+                >
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-orange-100">
+                    <svg className="h-4 w-4 text-orange-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-semibold text-orange-900">
+                      {overdueTaskCount} verlopen {overdueTaskCount === 1 ? 'taak' : 'taken'}
+                    </p>
+                    <p className="text-xs text-orange-600">Klik om alle taken te bekijken</p>
+                  </div>
+                  <span className="flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-orange-500 px-1 text-[10px] font-bold text-white">
+                    {overdueTaskCount}
+                  </span>
+                </Link>
+              )}
 
               {/* Notification list */}
               <div className="max-h-96 overflow-y-auto">
@@ -225,8 +271,10 @@ export function Header() {
                 </p>
                 <p className="text-xs text-gray-500">{user?.email}</p>
                 {user && (
-                  <div className="mt-1.5">
-                    <Badge role={user.role} />
+                  <div className="mt-1.5 flex flex-wrap gap-1">
+                    {user.roles.map((r) => (
+                      <Badge key={r} role={r} />
+                    ))}
                   </div>
                 )}
               </div>

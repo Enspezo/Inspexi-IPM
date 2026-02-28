@@ -15,6 +15,7 @@ const ALLOWED_ENTITY_TYPES = new Set([
   'QuoteTemplate',
   'User',
   'Organization',
+  'PlanningItem',
 ]);
 
 /**

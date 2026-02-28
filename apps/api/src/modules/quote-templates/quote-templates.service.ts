@@ -25,7 +25,7 @@ export class QuoteTemplatesService {
       where.isActive = isActive;
     }
 
-    if (user.role !== Role.SUPERUSER) {
+    if (!user.roles.includes(Role.SUPERUSER)) {
       where.orgId = user.orgId!;
     }
 
@@ -55,7 +55,7 @@ export class QuoteTemplatesService {
       throw new NotFoundException('Template niet gevonden');
     }
 
-    if (user.role !== Role.SUPERUSER && template.orgId !== user.orgId) {
+    if (!user.roles.includes(Role.SUPERUSER) && template.orgId !== user.orgId) {
       throw new ForbiddenException();
     }
 
@@ -64,7 +64,7 @@ export class QuoteTemplatesService {
 
   async create(dto: CreateQuoteTemplateDto, user: User) {
     const orgId = user.orgId;
-    if (!orgId && user.role !== Role.SUPERUSER) {
+    if (!orgId && !user.roles.includes(Role.SUPERUSER)) {
       throw new ForbiddenException('Geen organisatie gekoppeld');
     }
 

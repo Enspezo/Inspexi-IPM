@@ -1,9 +1,14 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsOptional, IsString, IsEnum, IsInt, Min, Max } from 'class-validator';
+import { IsOptional, IsString, IsEnum, IsInt, IsUUID, Min, Max } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ContactPersonRole } from '@prisma/client';
 
 export class ListContactPersonsQueryDto {
+  @ApiPropertyOptional({ description: 'Filter op contact ID' })
+  @IsOptional()
+  @IsUUID()
+  contactId?: string;
+
   @ApiPropertyOptional({ description: 'Zoeken op naam, email' })
   @IsOptional()
   @IsString()

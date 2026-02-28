@@ -34,8 +34,8 @@ export default function CustomerGroupDetailPage() {
   const addContactMutation = useAddContactToGroup(id!);
   const removeContactMutation = useRemoveContactFromGroup(id!);
 
-  const userCanWrite = user && canWrite.includes(user.role);
-  const userCanDelete = user && canDelete.includes(user.role);
+  const userCanWrite = user && user.roles.some(r => canWrite.includes(r));
+  const userCanDelete = user && user.roles.some(r => canDelete.includes(r));
 
   const handleDelete = async () => {
     if (!group) return;

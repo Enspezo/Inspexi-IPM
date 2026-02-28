@@ -35,7 +35,7 @@ export class AuditLogController {
     @Query() query: ListMyActivityQueryDto,
     @CurrentUser() user: User,
   ) {
-    const orgId = user.role === Role.SUPERUSER ? null : user.orgId;
+    const orgId = user.roles.includes(Role.SUPERUSER) ? null : user.orgId;
     const result = await this.auditLogService.findByUser(user.id, orgId, {
       entityType: query.entityType,
       action: query.action,
@@ -60,7 +60,7 @@ export class AuditLogController {
     @Query() query: ListAuditLogsQueryDto,
     @CurrentUser() user: User,
   ) {
-    const orgId = user.role === Role.SUPERUSER ? null : user.orgId;
+    const orgId = user.roles.includes(Role.SUPERUSER) ? null : user.orgId;
     const result = await this.auditLogService.findByEntity(
       entityType,
       entityId,

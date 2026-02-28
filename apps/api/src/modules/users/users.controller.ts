@@ -33,6 +33,7 @@ import {
   AdminUpdateUserDto,
   AdminResetPasswordDto,
   UpdateSignatureDto,
+  UpdateColorDto,
 } from './dto';
 import { Roles, CurrentUser, Public } from '@/common/decorators';
 
@@ -48,7 +49,7 @@ export class UsersController {
   @ApiOperation({ summary: 'Gebruikers van organisatie ophalen' })
   @ApiResponse({ status: 200, description: 'Lijst van gebruikers' })
   async findAll(@CurrentUser() user: User) {
-    const users = await this.usersService.findAllByOrg(user.orgId, user.role);
+    const users = await this.usersService.findAllByOrg(user.orgId, user.roles.includes(Role.SUPERUSER));
     return { success: true, data: users };
   }
 
@@ -168,7 +169,7 @@ export class UsersController {
     @CurrentUser() user: User,
   ) {
     const found = await this.usersService.findOne(id);
-    if (user.role !== Role.SUPERUSER && found.orgId !== user.orgId) {
+    if (!user.roles.includes(Role.SUPERUSER) && found.orgId !== user.orgId) {
       throw new ForbiddenException();
     }
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -225,6 +226,18 @@ export class UsersController {
   ) {
     await this.usersService.adminResetPassword(id, dto.newPassword, user);
     return { success: true, message: 'Wachtwoord gereset' };
+  }
+
+  @Patch(':id/color')
+  @ApiOperation({ summary: 'Inspecteurkleur instellen (eigen profiel of ORG_ADMIN)' })
+  @ApiResponse({ status: 200, description: 'Kleur bijgewerkt' })
+  async updateColor(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateColorDto,
+    @CurrentUser() user: User,
+  ) {
+    const data = await this.usersService.updateColor(id, dto.color, user);
+    return { success: true, data };
   }
 
   // ─── Admin update (generic, last to avoid swallowing literals) ──

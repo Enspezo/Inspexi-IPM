@@ -1,5 +1,6 @@
 import {
   Injectable,
+  Logger,
   NotFoundException,
   ForbiddenException,
   BadRequestException,
@@ -12,6 +13,7 @@ import { PrismaService } from '@/prisma';
 import { NotificationsService } from '../notifications/notifications.service';
 import { EmailService } from '@/common/services/email.service';
 import { StorageProvider, STORAGE_PROVIDER } from '@/common/services/storage/storage.interface';
+import { PlanningService } from '../planning/planning.service';
 import {
   CreateQuoteDto,
   UpdateQuoteDto,
@@ -66,12 +68,15 @@ const QUOTE_INCLUDE = {
 
 @Injectable()
 export class QuotesService {
+  private readonly logger = new Logger(QuotesService.name);
+
   constructor(
     private prisma: PrismaService,
     private notifications: NotificationsService,
     private emailService: EmailService,
     private config: ConfigService,
     @Inject(STORAGE_PROVIDER) private storage: StorageProvider,
+    private planningService: PlanningService,
   ) {}
 
   private getPublicUrl(path: string): string {
@@ -80,12 +85,13 @@ export class QuotesService {
   }
 
   async findAll(user: User, query: ListQuotesQueryDto) {
-    const { search, status, contactId, page = 1, limit = 20 } = query;
+    const { search, status, contactId, createdBy, page = 1, limit = 20 } = query;
     const skip = (page - 1) * limit;
     const where: Prisma.QuoteWhereInput = {};
-    if (user.role !== Role.SUPERUSER) where.orgId = user.orgId!;
+    if (!user.roles.includes(Role.SUPERUSER)) where.orgId = user.orgId!;
     if (status) where.status = status;
     if (contactId) where.contactId = contactId;
+    if (createdBy) where.createdBy = createdBy;
     if (search) {
       where.OR = [
         { subject: { contains: search, mode: 'insensitive' } },
@@ -112,17 +118,17 @@ export class QuotesService {
   async findOne(id: string, user: User) {
     const quote = await this.prisma.quote.findUnique({ where: { id }, include: QUOTE_INCLUDE });
     if (!quote) throw new NotFoundException('Offerte niet gevonden');
-    if (user.role !== Role.SUPERUSER && quote.orgId !== user.orgId) throw new ForbiddenException();
+    if (!user.roles.includes(Role.SUPERUSER) && quote.orgId !== user.orgId) throw new ForbiddenException();
     return quote;
   }
 
   async create(dto: CreateQuoteDto, user: User) {
     let orgId = user.orgId;
-    if (!orgId && user.role !== Role.SUPERUSER) throw new ForbiddenException('Geen organisatie gekoppeld');
+    if (!orgId && !user.roles.includes(Role.SUPERUSER)) throw new ForbiddenException('Geen organisatie gekoppeld');
     const contact = await this.prisma.contact.findUnique({ where: { id: dto.contactId } });
     if (!contact || contact.isDeleted) throw new NotFoundException('Relatie niet gevonden');
-    if (!orgId && user.role === Role.SUPERUSER) orgId = contact.orgId;
-    if (user.role !== Role.SUPERUSER && contact.orgId !== orgId) throw new ForbiddenException('Relatie behoort niet tot uw organisatie');
+    if (!orgId && user.roles.includes(Role.SUPERUSER)) orgId = contact.orgId;
+    if (!user.roles.includes(Role.SUPERUSER) && contact.orgId !== orgId) throw new ForbiddenException('Relatie behoort niet tot uw organisatie');
     if (dto.locationId) {
       const location = await this.prisma.location.findUnique({ where: { id: dto.locationId } });
       if (!location) throw new NotFoundException('Locatie niet gevonden');
@@ -132,7 +138,7 @@ export class QuotesService {
     if (dto.templateId) {
       const template = await this.prisma.quoteTemplate.findUnique({ where: { id: dto.templateId } });
       if (!template || !template.isActive) throw new NotFoundException('Template niet gevonden');
-      if (user.role !== Role.SUPERUSER && template.orgId !== orgId) throw new ForbiddenException('Template behoort niet tot uw organisatie');
+      if (!user.roles.includes(Role.SUPERUSER) && template.orgId !== orgId) throw new ForbiddenException('Template behoort niet tot uw organisatie');
       templateData = { coverBlocks: template.coverBlocks, contentBlocks: template.contentBlocks, closingBlocks: template.closingBlocks, defaultValidityDays: template.defaultValidityDays, requiresApproval: template.requiresApproval };
     }
     let validUntil: Date | undefined;
@@ -245,7 +251,7 @@ export class QuotesService {
       await tx.quoteApprovalRequest.create({ data: { quoteId: quote.id, requestedBy: user.id, note: dto.note || undefined } });
       return tx.quote.update({ where: { id: quote.id }, data: { status: QuoteStatus.TER_GOEDKEURING } });
     });
-    const managers = await this.prisma.user.findMany({ where: { orgId: quote.orgId, role: { in: [Role.MANAGER, Role.ORG_ADMIN] }, isActive: true }, select: { id: true } });
+    const managers = await this.prisma.user.findMany({ where: { orgId: quote.orgId, roles: { hasSome: [Role.MANAGER, Role.ORG_ADMIN] }, isActive: true }, select: { id: true } });
     this.notifications.dispatch({ type: NotificationType.OFFERTE_TER_GOEDKEURING, orgId: quote.orgId, recipientUserIds: managers.map((m) => m.id), title: 'Offerte ter goedkeuring', body: `Offerte ${quote.quoteNumber} staat klaar voor uw goedkeuring.`, entityType: 'quote', entityId: quote.id });
     return updated;
   }
@@ -395,9 +401,18 @@ export class QuotesService {
       where: { id: quote.id },
       data: { status: QuoteStatus.GEACCEPTEERD, signedAt: new Date(), clientName: dto.clientName, clientSignature: dto.signature || null, clientIp: clientIp || null, clientUserAgent: userAgent || null, viewedAt: quote.viewedAt ?? new Date() },
     });
-    const managers = await this.prisma.user.findMany({ where: { orgId: quote.orgId, role: { in: [Role.MANAGER, Role.ORG_ADMIN] }, isActive: true }, select: { id: true } });
+    const managers = await this.prisma.user.findMany({ where: { orgId: quote.orgId, roles: { hasSome: [Role.MANAGER, Role.ORG_ADMIN] }, isActive: true }, select: { id: true } });
     const recipientIds = [...new Set([quote.createdBy, ...managers.map((m) => m.id)])];
     this.notifications.dispatch({ type: NotificationType.OFFERTE_ONDERTEKEND, orgId: quote.orgId, recipientUserIds: recipientIds, title: 'Offerte ondertekend', body: `${dto.clientName} heeft offerte ${quote.quoteNumber} ondertekend.`, entityType: 'quote', entityId: quote.id });
+    // Auto-create planning item on quote acceptance
+    this.planningService.createFromQuote({
+      id: quote.id,
+      orgId: quote.orgId,
+      contactId: quote.contactId,
+      locationId: quote.locationId ?? null,
+      createdBy: quote.createdBy,
+      quoteNumber: quote.quoteNumber,
+    }).catch((err) => this.logger.error('Failed to create planning item for quote', err));
     return { success: true, signedAt: updated.signedAt };
   }
 
@@ -416,7 +431,7 @@ export class QuotesService {
   async resolvePrice(productId: string, contactId: string, quantity: number, user: User) {
     const product = await this.prisma.product.findUnique({ where: { id: productId } });
     if (!product) throw new NotFoundException('Product niet gevonden');
-    if (user.role !== Role.SUPERUSER && product.orgId !== user.orgId) throw new ForbiddenException();
+    if (!user.roles.includes(Role.SUPERUSER) && product.orgId !== user.orgId) throw new ForbiddenException();
     const contactTables = await this.prisma.contactPriceTable.findMany({
       where: { contactId },
       include: { priceTable: { include: { items: { where: { productId }, include: { tiers: { orderBy: { fromQty: 'asc' } } } } } } },
@@ -445,7 +460,7 @@ export class QuotesService {
   async createFromRequest(requestId: string, user: User) {
     const request = await this.prisma.request.findUnique({ where: { id: requestId } });
     if (!request || request.isDeleted) throw new NotFoundException('Aanvraag niet gevonden');
-    if (user.role !== Role.SUPERUSER && request.orgId !== user.orgId) throw new ForbiddenException();
+    if (!user.roles.includes(Role.SUPERUSER) && request.orgId !== user.orgId) throw new ForbiddenException();
     return this.prisma.$transaction(async (tx) => {
       const quoteNumber = await this.generateQuoteNumber(request.orgId, tx);
       const org = await tx.organization.findUnique({ where: { id: request.orgId } });

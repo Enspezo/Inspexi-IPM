@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Button, Spinner, useToast } from '@/components/ui';
-import { useEntityDocuments, useDeleteDocument } from '@/pages/documents/hooks/use-documents';
+import { useEntityDocuments, useDeleteDocument, useUpdateDocument } from '@/pages/documents/hooks/use-documents';
 import { downloadFile } from '@/lib/download-file';
 import { UploadDocumentModal } from './upload-document-modal';
 import { DocumentPreviewModal } from './document-preview-modal';
@@ -10,6 +10,8 @@ interface DocumentsSectionProps {
   entityType: DocumentEntityType;
   entityId: string;
   canUpload?: boolean;
+  /** Toon toggle om document met opdrachtgever te delen (alleen voor PLANNING documenten) */
+  showSharedWithClient?: boolean;
 }
 
 function formatBytes(bytes: number): string {
@@ -54,13 +56,16 @@ function DocumentRow({
   doc,
   canDelete,
   onPreview,
+  showSharedWithClient,
 }: {
   doc: CrmDocument;
   canDelete: boolean;
   onPreview: (doc: CrmDocument) => void;
+  showSharedWithClient?: boolean;
 }) {
   const { showToast } = useToast();
   const deleteMutation = useDeleteDocument();
+  const updateMutation = useUpdateDocument();
 
   const handleDownload = async () => {
     try {
@@ -77,6 +82,15 @@ function DocumentRow({
       showToast('Document verwijderd', 'success');
     } catch {
       showToast('Verwijderen mislukt', 'error');
+    }
+  };
+
+  const handleToggleShared = async () => {
+    try {
+      await updateMutation.mutateAsync({ id: doc.id, data: { isSharedWithClient: !doc.isSharedWithClient } });
+      showToast(doc.isSharedWithClient ? 'Niet meer gedeeld met opdrachtgever' : 'Gedeeld met opdrachtgever', 'success');
+    } catch {
+      showToast('Bijwerken mislukt', 'error');
     }
   };
 
@@ -109,6 +123,12 @@ function DocumentRow({
               year: 'numeric',
             })}
           </span>
+          {showSharedWithClient && doc.isSharedWithClient && (
+            <>
+              <span>&middot;</span>
+              <span className="text-blue-600 font-medium">Zichtbaar voor opdrachtgever</span>
+            </>
+          )}
         </div>
         {doc.description && (
           <p className="mt-0.5 truncate text-xs text-gray-400">
@@ -117,6 +137,22 @@ function DocumentRow({
         )}
       </div>
       <div className="flex shrink-0 items-center gap-1">
+        {showSharedWithClient && canDelete && (
+          <button
+            onClick={handleToggleShared}
+            disabled={updateMutation.isPending}
+            title={doc.isSharedWithClient ? 'Verberg voor opdrachtgever' : 'Deel met opdrachtgever'}
+            className={`rounded p-1.5 transition-colors ${
+              doc.isSharedWithClient
+                ? 'text-blue-600 hover:bg-blue-50'
+                : 'text-gray-400 hover:bg-gray-100 hover:text-gray-600'
+            }`}
+          >
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
+            </svg>
+          </button>
+        )}
         <button
           onClick={() => onPreview(doc)}
           className="rounded p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
@@ -157,6 +193,7 @@ export function DocumentsSection({
   entityType,
   entityId,
   canUpload = false,
+  showSharedWithClient = false,
 }: DocumentsSectionProps) {
   const { data, isLoading } = useEntityDocuments(entityType, entityId);
   const [isUploadOpen, setIsUploadOpen] = useState(false);
@@ -196,6 +233,7 @@ export function DocumentsSection({
               doc={doc}
               canDelete={canUpload}
               onPreview={setPreviewDoc}
+              showSharedWithClient={showSharedWithClient}
             />
           ))}
         </div>

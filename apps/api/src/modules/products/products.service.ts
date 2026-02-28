@@ -22,7 +22,7 @@ export class ProductsService {
     const where: Prisma.ProductWhereInput = {};
 
     // Org scoping — SUPERUSER sees all
-    if (user.role !== Role.SUPERUSER) {
+    if (!user.roles.includes(Role.SUPERUSER)) {
       where.orgId = user.orgId!;
     }
 
@@ -69,7 +69,7 @@ export class ProductsService {
       throw new NotFoundException('Product niet gevonden');
     }
 
-    if (user.role !== Role.SUPERUSER && product.orgId !== user.orgId) {
+    if (!user.roles.includes(Role.SUPERUSER) && product.orgId !== user.orgId) {
       throw new ForbiddenException();
     }
 
@@ -78,7 +78,7 @@ export class ProductsService {
 
   async create(dto: CreateProductDto, user: User) {
     const orgId = user.orgId;
-    if (!orgId && user.role !== Role.SUPERUSER) {
+    if (!orgId && !user.roles.includes(Role.SUPERUSER)) {
       throw new ForbiddenException('Geen organisatie gekoppeld');
     }
 

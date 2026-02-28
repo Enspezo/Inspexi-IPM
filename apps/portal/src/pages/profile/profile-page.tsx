@@ -5,11 +5,124 @@ import { z } from 'zod';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/providers/auth-provider';
 import { apiClient } from '@/lib/api-client';
-import { Card, Input, Button, Badge, Spinner, useToast, SignatureEditor } from '@/components/ui';
+import { Card, Input, Button, Badge, Spinner, useToast, SignatureEditor, AddressSearchInput } from '@/components/ui';
+import type { ParsedAddress } from '@/lib/geocoding';
 import { useUploadAvatar, useDeleteAvatar, getAvatarUrl } from './hooks/use-avatar';
 import { useSignature, useSaveSignature, useDeleteSignature } from './hooks/use-signature';
 import { NotificationType, Role, SignatureType } from '@/types';
+import { hasRole } from '@/lib/has-role';
 import type { User, NotificationPref, NotificationGroupPref, Session } from '@/types';
+
+// ─── Inspector Color & iCal Card ──────────────────────────
+
+const PRESET_COLORS = [
+  '#EF4444', '#F97316', '#EAB308', '#22C55E',
+  '#06B6D4', '#3B82F6', '#8B5CF6', '#EC4899',
+  '#14B8A6', '#6366F1', '#F43F5E', '#84CC16',
+];
+
+function InspectorCard() {
+  const { user, refreshUser } = useAuth();
+  const { showToast } = useToast();
+  const [color, setColor] = useState(user?.color || '#3B82F6');
+  const [saving, setSaving] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    if (user?.color) setColor(user.color);
+  }, [user?.color]);
+
+  const handleSaveColor = async () => {
+    setSaving(true);
+    try {
+      await apiClient.patch(`/users/${user!.id}/color`, { color });
+      refreshUser();
+      showToast('Kleur opgeslagen', 'success');
+    } catch {
+      showToast('Opslaan mislukt', 'error');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleCopyIcal = () => {
+    const icalUrl = `${window.location.origin}/api/v1/ical/${user?.icalToken}.ics`;
+    navigator.clipboard.writeText(icalUrl).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  };
+
+  return (
+    <Card title="Inspecteur-instellingen">
+      <div className="space-y-6">
+        {/* Color picker */}
+        <div>
+          <p className="mb-3 text-sm font-medium text-gray-700">Kleur in planning</p>
+          <p className="mb-3 text-xs text-gray-500">
+            Deze kleur wordt gebruikt om u te onderscheiden in de planningsoverzichten.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {PRESET_COLORS.map((c) => (
+              <button
+                key={c}
+                type="button"
+                onClick={() => setColor(c)}
+                className={`h-8 w-8 rounded-full border-2 transition-all ${
+                  color === c ? 'border-gray-900 scale-110' : 'border-transparent hover:scale-105'
+                }`}
+                style={{ backgroundColor: c }}
+                title={c}
+              />
+            ))}
+            <input
+              type="color"
+              value={color}
+              onChange={(e) => setColor(e.target.value)}
+              className="h-8 w-8 cursor-pointer rounded-full border-2 border-gray-300 p-0.5"
+              title="Aangepaste kleur"
+            />
+          </div>
+          <div className="mt-3 flex items-center gap-3">
+            <div
+              className="flex h-10 w-10 items-center justify-center rounded-full text-sm font-semibold text-white"
+              style={{ backgroundColor: color }}
+            >
+              {user?.initials || `${user?.firstName?.[0] ?? ''}${user?.lastName?.[0] ?? ''}`}
+            </div>
+            <span className="text-sm text-gray-500">Zo ziet uw avatar eruit in de planning</span>
+          </div>
+          <div className="mt-4">
+            <Button size="sm" onClick={handleSaveColor} isLoading={saving}>
+              Kleur opslaan
+            </Button>
+          </div>
+        </div>
+
+        {/* iCal feed */}
+        <div className="border-t border-gray-200 pt-6">
+          <p className="mb-2 text-sm font-medium text-gray-700">Persoonlijke agendafeed (iCal)</p>
+          <p className="mb-3 text-xs text-gray-500">
+            Abonneer u op uw afspraken vanuit elke agenda-app (Google Calendar, Outlook, Apple Calendar, etc.).
+            De URL is persoonlijk en beveiligd — deel deze niet.
+          </p>
+          <div className="flex items-center gap-2">
+            <code className="flex-1 truncate rounded-lg bg-gray-100 px-3 py-2 text-xs text-gray-700">
+              {`${window.location.origin}/api/v1/ical/${user?.icalToken}.ics`}
+            </code>
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={handleCopyIcal}
+            >
+              {copied ? 'Gekopieerd!' : 'Kopieer'}
+            </Button>
+          </div>
+        </div>
+      </div>
+    </Card>
+  );
+}
 import {
   useNotificationPrefs,
   useSaveNotificationPrefs,
@@ -846,6 +959,221 @@ function SignatureCard() {
   );
 }
 
+// ─── Home Address Card ────────────────────────────────────
+
+function HomeAddressCard() {
+  const { user, refreshUser } = useAuth();
+  const { showToast } = useToast();
+  const [isEditing, setIsEditing] = useState(false);
+  const [street, setStreet] = useState('');
+  const [houseNumber, setHouseNumber] = useState('');
+  const [postalCode, setPostalCode] = useState('');
+  const [city, setCity] = useState('');
+  const [lat, setLat] = useState<number | null>(null);
+  const [lng, setLng] = useState<number | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  const hasAddress = !!(user?.homeStreet && user?.homeCity);
+
+  // Reset form to current user values when opening edit mode
+  const openEdit = () => {
+    setStreet(user?.homeStreet ?? '');
+    setHouseNumber(user?.homeHouseNumber ?? '');
+    setPostalCode(user?.homePostalCode ?? '');
+    setCity(user?.homeCity ?? '');
+    setLat(user?.homeLat ?? null);
+    setLng(user?.homeLng ?? null);
+    setIsEditing(true);
+  };
+
+  const handleAddressSelect = (address: ParsedAddress) => {
+    setStreet(address.street);
+    setHouseNumber(address.houseNumber);
+    setPostalCode(address.postalCode);
+    setCity(address.city);
+    setLat(address.lat);
+    setLng(address.lng);
+  };
+
+  const handleSave = async () => {
+    if (!street || !houseNumber || !postalCode || !city) {
+      showToast('Vul alle adresvelden in', 'error');
+      return;
+    }
+    setSaving(true);
+    try {
+      await apiClient.patch('/users/profile', {
+        homeStreet: street,
+        homeHouseNumber: houseNumber,
+        homePostalCode: postalCode,
+        homeCity: city,
+        homeLat: lat,
+        homeLng: lng,
+      });
+      refreshUser();
+      showToast('Thuisadres opgeslagen', 'success');
+      setIsEditing(false);
+    } catch (err) {
+      showToast(
+        err instanceof Error ? err.message : 'Opslaan mislukt',
+        'error',
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleClear = async () => {
+    setSaving(true);
+    try {
+      await apiClient.patch('/users/profile', {
+        homeStreet: null,
+        homeHouseNumber: null,
+        homePostalCode: null,
+        homeCity: null,
+        homeLat: null,
+        homeLng: null,
+      });
+      refreshUser();
+      showToast('Thuisadres verwijderd', 'success');
+      setIsEditing(false);
+    } catch (err) {
+      showToast(
+        err instanceof Error ? err.message : 'Verwijderen mislukt',
+        'error',
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Build the autocomplete initial display value
+  const addressLabel =
+    hasAddress
+      ? `${user.homeStreet} ${user.homeHouseNumber}, ${user.homePostalCode} ${user.homeCity}`
+      : undefined;
+
+  return (
+    <Card title="Thuisadres">
+      {!isEditing ? (
+        <div className="flex items-start justify-between">
+          <div>
+            {hasAddress ? (
+              <div className="flex items-start gap-2">
+                <svg
+                  className="mt-0.5 h-4 w-4 flex-shrink-0 text-gray-400"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"
+                  />
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"
+                  />
+                </svg>
+                <div className="text-sm text-gray-900">
+                  <p>
+                    {user.homeStreet} {user.homeHouseNumber}
+                  </p>
+                  <p className="text-gray-500">
+                    {user.homePostalCode} {user.homeCity}
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <div>
+                <p className="text-sm text-gray-500">
+                  Nog geen thuisadres ingesteld
+                </p>
+                <p className="mt-0.5 text-xs text-gray-400">
+                  Wordt gebruikt voor routeplanning
+                </p>
+              </div>
+            )}
+          </div>
+          <Button variant="secondary" onClick={openEdit}>
+            {hasAddress ? 'Wijzigen' : 'Instellen'}
+          </Button>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {/* PDOK autocomplete */}
+          <AddressSearchInput
+            label="Zoek adres"
+            placeholder="Typ een straat, huisnummer of postcode…"
+            initialValue={addressLabel}
+            onSelect={handleAddressSelect}
+          />
+
+          {/* Manual fields */}
+          <div className="grid grid-cols-3 gap-3">
+            <div className="col-span-2">
+              <Input
+                label="Straat"
+                value={street}
+                onChange={(e) => setStreet(e.target.value)}
+                placeholder="Hoofdstraat"
+              />
+            </div>
+            <Input
+              label="Huisnummer"
+              value={houseNumber}
+              onChange={(e) => setHouseNumber(e.target.value)}
+              placeholder="1A"
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <Input
+              label="Postcode"
+              value={postalCode}
+              onChange={(e) => setPostalCode(e.target.value)}
+              placeholder="1234 AB"
+              maxLength={10}
+            />
+            <Input
+              label="Stad"
+              value={city}
+              onChange={(e) => setCity(e.target.value)}
+              placeholder="Amsterdam"
+            />
+          </div>
+
+          <div className="flex items-center justify-between border-t border-gray-200 pt-4">
+            <div className="flex gap-2">
+              <Button onClick={handleSave} isLoading={saving}>
+                Opslaan
+              </Button>
+              <Button
+                variant="secondary"
+                onClick={() => setIsEditing(false)}
+                disabled={saving}
+              >
+                Annuleren
+              </Button>
+            </div>
+            {hasAddress && (
+              <Button variant="danger" onClick={handleClear} isLoading={saving}>
+                Adres wissen
+              </Button>
+            )}
+          </div>
+        </div>
+      )}
+    </Card>
+  );
+}
+
+// ──────────────────────────────────────────────────────────
+
 export default function ProfilePage() {
   const { user, refreshUser } = useAuth();
   const { showToast } = useToast();
@@ -910,6 +1238,9 @@ export default function ProfilePage() {
 
       {/* Avatar */}
       <AvatarCard />
+
+      {/* Inspector color + iCal (only for inspectors) */}
+      {user && hasRole(user, Role.INSPECTEUR) && <InspectorCard />}
 
       {/* Signature */}
       <SignatureCard />
@@ -978,7 +1309,13 @@ export default function ProfilePage() {
               <div>
                 <p className="text-sm font-medium text-gray-500">Rol</p>
                 <div className="mt-1">
-                  {user && <Badge role={user.role} />}
+                  {user && (
+                    <div className="flex flex-wrap gap-1">
+                      {user.roles.map((r) => (
+                        <Badge key={r} role={r} />
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -1031,12 +1368,15 @@ export default function ProfilePage() {
         </div>
       </div>
 
+      {/* Home address */}
+      <HomeAddressCard />
+
       {/* Notification preferences */}
       <NotificationPrefsCard />
 
       {/* Group preferences (OA/SU only) */}
       {user &&
-        (user.role === Role.SUPERUSER || user.role === Role.ORG_ADMIN) && (
+        hasRole(user, [Role.SUPERUSER, Role.ORG_ADMIN]) && (
           <GroupNotificationPrefsCard />
         )}
 

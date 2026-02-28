@@ -31,7 +31,7 @@ export default function ProductGroupsPage() {
     [],
   );
 
-  const userCanCreate = user && canCreate.includes(user.role);
+  const userCanCreate = user && user.roles.some(r => canCreate.includes(r));
 
   const columns: Column<ProductGroup>[] = [
     {

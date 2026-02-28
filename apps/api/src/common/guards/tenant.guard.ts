@@ -38,7 +38,7 @@ export class TenantGuard implements CanActivate {
     }
 
     // SUPERUSER can access any subdomain + base domain
-    if (user.role === Role.SUPERUSER) {
+    if (user.roles.includes(Role.SUPERUSER)) {
       return true;
     }
 

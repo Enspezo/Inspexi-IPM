@@ -53,14 +53,14 @@ export class AuthService {
     if (tenant) {
       if (tenant.isSuperuserDomain && tenant.orgId === null) {
         // Explicit SUPERUSER domain (mijn.inspexi.nl) — only SUPERUSER may login
-        if (user.role !== Role.SUPERUSER) {
+        if (!user.roles.includes(Role.SUPERUSER)) {
           throw new UnauthorizedException(
             'Gebruik het subdomein van uw organisatie om in te loggen',
           );
         }
       } else if (tenant.orgId !== null) {
         // Org subdomain — user must belong to this org (unless SUPERUSER)
-        if (user.role !== Role.SUPERUSER && user.orgId !== tenant.orgId) {
+        if (!user.roles.includes(Role.SUPERUSER) && user.orgId !== tenant.orgId) {
           throw new UnauthorizedException(
             'Uw account hoort niet bij deze organisatie',
           );
@@ -300,13 +300,13 @@ export class AuthService {
   private generateAccessToken(user: {
     id: string;
     email: string;
-    role: any;
+    roles: any;
     orgId: string | null;
   }): string {
     const payload: JwtPayload = {
       sub: user.id,
       email: user.email,
-      role: user.role,
+      roles: user.roles,
       orgId: user.orgId,
     };
     return this.jwtService.sign(payload);

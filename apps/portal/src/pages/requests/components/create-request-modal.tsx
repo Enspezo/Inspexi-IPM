@@ -1,13 +1,13 @@
 import { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
+import { useQueryClient } from '@tanstack/react-query';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Modal, Input, Select, Button, useToast } from '@/components/ui';
 import { useCreateRequest, useOrgUsers } from '../hooks/use-requests';
-import { useContacts } from '@/pages/contacts/hooks/use-contacts';
 import { useContactLocations } from '@/pages/contacts/hooks/use-contacts';
-import { RequestSource, Priority, ContactType } from '@/types';
-import type { Contact } from '@/types';
+import { ContactSearchInput } from '@/components/contacts/contact-search-input';
+import { RequestSource, Priority } from '@/types';
 
 const sourceOptions = [
   { value: RequestSource.MANUAL, label: 'Handmatig' },
@@ -34,22 +34,19 @@ const schema = z.object({
 
 type FormData = z.infer<typeof schema>;
 
-function getContactName(c: Contact): string {
-  if (c.type === ContactType.COMPANY) return c.companyName || '—';
-  return [c.firstName, c.lastName].filter(Boolean).join(' ') || '—';
-}
-
 interface CreateRequestModalProps {
   isOpen: boolean;
   onClose: () => void;
+  /** Pre-fill and lock the contact field when opened from a contact detail page */
+  contactId?: string;
 }
 
-export function CreateRequestModal({ isOpen, onClose }: CreateRequestModalProps) {
+export function CreateRequestModal({ isOpen, onClose, contactId: prefilledContactId }: CreateRequestModalProps) {
   const { showToast } = useToast();
+  const queryClient = useQueryClient();
   const createMutation = useCreateRequest();
-  const { data: contactsData } = useContacts({ limit: 100 });
   const { data: usersData } = useOrgUsers();
-  const [selectedContactId, setSelectedContactId] = useState('');
+  const [selectedContactId, setSelectedContactId] = useState(prefilledContactId || '');
 
   const { data: locationsData } = useContactLocations(selectedContactId);
 
@@ -58,37 +55,26 @@ export function CreateRequestModal({ isOpen, onClose }: CreateRequestModalProps)
     handleSubmit,
     reset,
     setValue,
-    watch,
     formState: { errors },
   } = useForm<FormData>({
     resolver: zodResolver(schema),
     defaultValues: {
+      contactId: prefilledContactId || '',
       source: RequestSource.MANUAL,
       priority: Priority.NORMAL,
     },
   });
 
-  const contactId = watch('contactId');
-
+  // Sync prefilled contactId when modal opens
   useEffect(() => {
-    setSelectedContactId(contactId || '');
-    // Clear location when contact changes
-    if (contactId !== selectedContactId) {
-      setValue('locationId', '');
+    if (isOpen && prefilledContactId) {
+      setValue('contactId', prefilledContactId);
+      setSelectedContactId(prefilledContactId);
     }
-  }, [contactId, selectedContactId, setValue]);
+  }, [isOpen, prefilledContactId, setValue]);
 
-  const contacts = contactsData?.data || [];
   const locations = locationsData || [];
   const users = usersData || [];
-
-  const contactOptions = [
-    { value: '', label: 'Selecteer relatie...' },
-    ...contacts.map((c) => ({
-      value: c.id,
-      label: getContactName(c),
-    })),
-  ];
 
   const locationOptions = [
     { value: '', label: 'Geen locatie' },
@@ -108,6 +94,14 @@ export function CreateRequestModal({ isOpen, onClose }: CreateRequestModalProps)
       : []),
   ];
 
+  const handleContactSelect = (contactId: string) => {
+    setValue('contactId', contactId, { shouldValidate: true });
+    if (contactId !== selectedContactId) {
+      setValue('locationId', '');
+      setSelectedContactId(contactId);
+    }
+  };
+
   const onSubmit = async (data: FormData) => {
     try {
       await createMutation.mutateAsync({
@@ -120,6 +114,10 @@ export function CreateRequestModal({ isOpen, onClose }: CreateRequestModalProps)
         priority: data.priority || undefined,
       });
       showToast('Aanvraag aangemaakt!', 'success');
+      // Invalidate contact detail so the aanvragen tab updates
+      if (prefilledContactId) {
+        queryClient.invalidateQueries({ queryKey: ['contacts', prefilledContactId] });
+      }
       reset();
       setSelectedContactId('');
       onClose();
@@ -137,11 +135,12 @@ export function CreateRequestModal({ isOpen, onClose }: CreateRequestModalProps)
   return (
     <Modal isOpen={isOpen} onClose={handleClose} title="Aanvraag aanmaken">
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-        <Select
+        <ContactSearchInput
           label="Relatie"
-          options={contactOptions}
+          value={selectedContactId}
+          onSelect={handleContactSelect}
           error={errors.contactId?.message}
-          {...register('contactId')}
+          disabled={!!prefilledContactId}
         />
 
         {selectedContactId && locations.length > 0 && (

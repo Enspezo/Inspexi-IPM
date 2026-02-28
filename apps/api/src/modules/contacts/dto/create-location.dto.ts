@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsString, IsOptional } from 'class-validator';
+import { IsString, IsOptional, IsObject } from 'class-validator';
 
 export class CreateLocationDto {
   @ApiProperty({ example: 'Hoofdkantoor Amsterdam' })
@@ -31,4 +31,11 @@ export class CreateLocationDto {
   @IsOptional()
   @IsString()
   notes?: string;
+
+  @ApiPropertyOptional({
+    description: 'Volledige PDOK-locatiedata (JSON) — inclusief BAG-IDs, gemeente, provincie, wijk, buurt, coördinaten',
+  })
+  @IsOptional()
+  @IsObject()
+  pdokData?: Record<string, unknown>;
 }

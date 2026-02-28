@@ -87,6 +87,10 @@ const OrganizationDetailPage = lazy(
   () => import('@/pages/organizations/organization-detail-page'),
 );
 const ActivityPage = lazy(() => import('@/pages/activity/activity-page'));
+const PlanningPage = lazy(() => import('@/pages/planning/planning-page'));
+const PlanningDetailPage = lazy(() => import('@/pages/planning/planning-detail-page'));
+const PlanningPublicPage = lazy(() => import('@/pages/planning/planning-public-page'));
+const SearchPage = lazy(() => import('@/pages/search/search-page'));
 
 function PageLoader() {
   return (
@@ -106,6 +110,7 @@ export default function App() {
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />
         <Route path="/reset-password" element={<ResetPasswordPage />} />
         <Route path="/offerte/:token" element={<PublicQuotePage />} />
+        <Route path="/afspraak/:token" element={<PlanningPublicPage />} />
 
         {/* Root redirect */}
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
@@ -146,6 +151,9 @@ export default function App() {
             <Route path="/price-tables" element={<PriceTablesPage />} />
             <Route path="/price-tables/:id" element={<PriceTableDetailPage />} />
             <Route path="/activiteiten" element={<ActivityPage />} />
+            <Route path="/planning" element={<PlanningPage />} />
+            <Route path="/planning/:id" element={<PlanningDetailPage />} />
+            <Route path="/search" element={<SearchPage />} />
           </Route>
         </Route>
 

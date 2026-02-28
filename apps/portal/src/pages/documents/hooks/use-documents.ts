@@ -67,6 +67,7 @@ export function useUploadDocument() {
 
 interface UpdateDocumentData {
   description?: string;
+  isSharedWithClient?: boolean;
 }
 
 export function useUpdateDocument() {

@@ -3,8 +3,9 @@ import { useAuth } from '@/providers/auth-provider';
 import { Card, Spinner } from '@/components/ui';
 import { DetailPageLayout } from '@/components/layout/detail-page-layout';
 import { useMyActivity } from '@/hooks/use-my-activity';
-import { AuditAction } from '@/types';
-import type { AuditLogEntry } from '@/types';
+import { useTasks } from '@/pages/tasks/hooks/use-tasks';
+import { AuditAction, TaskStatus } from '@/types';
+import type { AuditLogEntry, Task } from '@/types';
 import {
   getEntityTypeLabel,
   getEntityLink,
@@ -126,9 +127,89 @@ function ActivityRow({ entry }: { entry: AuditLogEntry }) {
   return <div className="rounded-lg">{content}</div>;
 }
 
+// ─── Date helpers ────────────────────────────────────────────────────────────
+
+function getTodayBounds() {
+  const now = new Date();
+  const start = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+  const end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+  return { start, end };
+}
+
+function filterTodayTasks(tasks: Task[]): Task[] {
+  const { start, end } = getTodayBounds();
+  return tasks.filter(
+    (t) =>
+      t.status !== TaskStatus.VOLTOOID &&
+      t.deadline &&
+      new Date(t.deadline) >= start &&
+      new Date(t.deadline) <= end,
+  );
+}
+
+function filterUpcomingTasks(tasks: Task[]): Task[] {
+  const { end: todayEnd } = getTodayBounds();
+  const in5Days = new Date(todayEnd.getTime() + 5 * 24 * 60 * 60 * 1000);
+  return tasks.filter(
+    (t) =>
+      t.status !== TaskStatus.VOLTOOID &&
+      t.deadline &&
+      new Date(t.deadline) > todayEnd &&
+      new Date(t.deadline) <= in5Days,
+  );
+}
+
+// ─── Task row ────────────────────────────────────────────────────────────────
+
+const taskStatusColors: Record<string, string> = {
+  [TaskStatus.TE_DOEN]: 'bg-blue-100 text-blue-800',
+  [TaskStatus.MEE_BEZIG]: 'bg-yellow-100 text-yellow-800',
+  [TaskStatus.VOLTOOID]: 'bg-green-100 text-green-800',
+};
+const taskStatusLabels: Record<string, string> = {
+  [TaskStatus.TE_DOEN]: 'Te doen',
+  [TaskStatus.MEE_BEZIG]: 'Mee bezig',
+  [TaskStatus.VOLTOOID]: 'Voltooid',
+};
+
+function DashboardTaskRow({ task }: { task: Task }) {
+  return (
+    <Link
+      to={`/tasks/${task.id}`}
+      className="flex items-center gap-3 rounded-lg px-1 py-2 transition-colors hover:bg-gray-50"
+    >
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-medium text-gray-900">{task.title}</p>
+        {task.entityName && (
+          <p className="truncate text-xs text-gray-400">{task.entityName}</p>
+        )}
+      </div>
+      <span
+        className={`shrink-0 inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
+          taskStatusColors[task.status] ?? 'bg-gray-100 text-gray-600'
+        }`}
+      >
+        {taskStatusLabels[task.status] ?? task.status}
+      </span>
+    </Link>
+  );
+}
+
+// ─── Page ────────────────────────────────────────────────────────────────────
+
 export default function DashboardPage() {
   const { user } = useAuth();
   const { data: activityData, isLoading: activityLoading } = useMyActivity({ limit: 5 });
+  const { data: myTasksData } = useTasks({ onlyMine: true, limit: 100 });
+
+  const myTasks = myTasksData?.data ?? [];
+  const allTodayTasks = filterTodayTasks(myTasks);
+  const allUpcomingTasks = filterUpcomingTasks(myTasks);
+
+  // Max 10 total — today tasks get priority
+  const DISPLAY_LIMIT = 10;
+  const todayDisplay = allTodayTasks.slice(0, DISPLAY_LIMIT);
+  const upcomingDisplay = allUpcomingTasks.slice(0, Math.max(0, DISPLAY_LIMIT - todayDisplay.length));
 
   const hasActivity = activityData && activityData.data.length > 0;
 
@@ -201,9 +282,61 @@ export default function DashboardPage() {
             )}
           </Card>
 
-          <Card title="Aankomende inspecties">
-            <div className="flex h-48 items-center justify-center text-gray-400">
-              <p className="text-sm">Geen aankomende inspecties</p>
+          <Card title="Aankomende taken">
+            <div className="space-y-5">
+              {/* ── Mijn taken vandaag ── */}
+              <div>
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
+                  Mijn taken vandaag
+                </p>
+                {allTodayTasks.length === 0 ? (
+                  <p className="py-3 text-center text-sm text-gray-400">Geen taken voor vandaag</p>
+                ) : (
+                  <div className="-mx-1 divide-y divide-gray-50">
+                    {todayDisplay.map((task) => (
+                      <DashboardTaskRow key={task.id} task={task} />
+                    ))}
+                  </div>
+                )}
+                <div className="mt-2 border-t border-gray-100 pt-2">
+                  <Link
+                    to="/tasks"
+                    className="flex items-center gap-1 text-sm font-medium text-primary-600 hover:text-primary-700"
+                  >
+                    alle taken ({allTodayTasks.length})
+                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                    </svg>
+                  </Link>
+                </div>
+              </div>
+
+              {/* ── Aankomende taken (volgende 5 dagen) ── */}
+              <div>
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
+                  Aankomende taken
+                </p>
+                {allUpcomingTasks.length === 0 ? (
+                  <p className="py-3 text-center text-sm text-gray-400">Geen aankomende taken</p>
+                ) : (
+                  <div className="-mx-1 divide-y divide-gray-50">
+                    {upcomingDisplay.map((task) => (
+                      <DashboardTaskRow key={task.id} task={task} />
+                    ))}
+                  </div>
+                )}
+                <div className="mt-2 border-t border-gray-100 pt-2">
+                  <Link
+                    to="/tasks"
+                    className="flex items-center gap-1 text-sm font-medium text-primary-600 hover:text-primary-700"
+                  >
+                    alle taken ({allUpcomingTasks.length})
+                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                    </svg>
+                  </Link>
+                </div>
+              </div>
             </div>
           </Card>
         </div>

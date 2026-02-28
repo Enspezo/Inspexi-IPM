@@ -30,7 +30,7 @@ export class RequestsService {
       isDeleted: false,
     };
 
-    if (user.role !== Role.SUPERUSER) {
+    if (!user.roles.includes(Role.SUPERUSER)) {
       where.orgId = user.orgId!;
     }
 
@@ -161,7 +161,7 @@ export class RequestsService {
       throw new NotFoundException('Aanvraag niet gevonden');
     }
 
-    if (user.role !== Role.SUPERUSER && request.orgId !== user.orgId) {
+    if (!user.roles.includes(Role.SUPERUSER) && request.orgId !== user.orgId) {
       throw new ForbiddenException();
     }
 
@@ -170,7 +170,7 @@ export class RequestsService {
 
   async create(dto: CreateRequestDto, user: User) {
     let orgId = user.orgId;
-    if (!orgId && user.role !== Role.SUPERUSER) {
+    if (!orgId && !user.roles.includes(Role.SUPERUSER)) {
       throw new ForbiddenException('Geen organisatie gekoppeld');
     }
 
@@ -184,11 +184,11 @@ export class RequestsService {
     }
 
     // For SUPERUSER (no orgId), derive orgId from the contact
-    if (!orgId && user.role === Role.SUPERUSER) {
+    if (!orgId && user.roles.includes(Role.SUPERUSER)) {
       orgId = contact.orgId;
     }
 
-    if (user.role !== Role.SUPERUSER && contact.orgId !== orgId) {
+    if (!user.roles.includes(Role.SUPERUSER) && contact.orgId !== orgId) {
       throw new ForbiddenException('Relatie behoort niet tot uw organisatie');
     }
 
@@ -238,7 +238,23 @@ export class RequestsService {
     const request = await this.findOne(id, user);
     const oldAssignedTo = request.assignedTo;
 
-    // Verify location if provided
+    // Determine the effective contactId (may change)
+    const effectiveContactId = dto.contactId ?? request.contactId;
+
+    // Verify new contact if provided
+    if (dto.contactId) {
+      const contact = await this.prisma.contact.findUnique({
+        where: { id: dto.contactId },
+      });
+      if (!contact || contact.isDeleted) {
+        throw new NotFoundException('Relatie niet gevonden');
+      }
+      if (!user.roles.includes(Role.SUPERUSER) && contact.orgId !== user.orgId) {
+        throw new ForbiddenException();
+      }
+    }
+
+    // Verify location if provided — must belong to the (possibly new) contact
     if (dto.locationId) {
       const location = await this.prisma.location.findUnique({
         where: { id: dto.locationId },
@@ -246,18 +262,25 @@ export class RequestsService {
       if (!location) {
         throw new NotFoundException('Locatie niet gevonden');
       }
-      if (location.contactId !== request.contactId) {
+      if (location.contactId !== effectiveContactId) {
         throw new ForbiddenException('Locatie behoort niet tot deze relatie');
       }
     }
+
+    // If contact changes and no new location is provided, clear the location
+    const shouldClearLocation =
+      dto.contactId && dto.contactId !== request.contactId && dto.locationId === undefined;
 
     const updated = await this.prisma.request.update({
       where: { id: request.id },
       data: {
         ...(dto.title !== undefined && { title: dto.title }),
         ...(dto.description !== undefined && { description: dto.description }),
+        ...(dto.contactId !== undefined && { contactId: dto.contactId }),
         ...(dto.locationId !== undefined && { locationId: dto.locationId }),
+        ...(shouldClearLocation && { locationId: null }),
         ...(dto.assignedTo !== undefined && { assignedTo: dto.assignedTo }),
+        ...(dto.source !== undefined && { source: dto.source }),
         ...(dto.priority !== undefined && { priority: dto.priority }),
       },
     });
@@ -282,9 +305,14 @@ export class RequestsService {
     const request = await this.findOne(id, user);
 
     const updated = await this.prisma.$transaction(async (tx) => {
+      const lostFields =
+        dto.status === 'VERLOREN'
+          ? { lostReason: dto.lostReason ?? null, lostNote: dto.lostNote ?? null }
+          : { lostReason: null, lostNote: null };
+
       const result = await tx.request.update({
         where: { id: request.id },
-        data: { status: dto.status },
+        data: { status: dto.status, ...lostFields },
       });
 
       await tx.requestStatusHistory.create({

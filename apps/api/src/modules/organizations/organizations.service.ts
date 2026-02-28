@@ -58,7 +58,7 @@ export class OrganizationsService {
         email: true,
         firstName: true,
         lastName: true,
-        role: true,
+        roles: true,
         isActive: true,
         createdAt: true,
       },

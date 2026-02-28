@@ -68,8 +68,10 @@ export function useCreateRequest() {
 interface UpdateRequestDto {
   title?: string;
   description?: string;
+  contactId?: string;
   locationId?: string;
   assignedTo?: string;
+  source?: string;
   priority?: string;
 }
 

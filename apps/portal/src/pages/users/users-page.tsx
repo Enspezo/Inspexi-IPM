@@ -100,8 +100,14 @@ export default function UsersPage() {
       filterable: true,
       filterType: 'text',
       groupable: true,
-      getFilterValue: (user) => user.role,
-      render: (user) => <Badge role={user.role} />,
+      getFilterValue: (user) => user.roles.join(', '),
+      render: (user) => (
+        <div className="flex flex-wrap gap-1">
+          {user.roles.map((r) => (
+            <Badge key={r} role={r} />
+          ))}
+        </div>
+      ),
     },
     {
       key: 'status',

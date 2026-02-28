@@ -35,7 +35,7 @@ export default function ContactPersonDetailPage() {
   const { data: person, isLoading, error } = useContactPerson(personId!);
   const deleteMutation = useDeleteContactPerson();
 
-  const userCanWrite = user && canWrite.includes(user.role);
+  const userCanWrite = user && user.roles.some(r => canWrite.includes(r));
 
   const handleDelete = async () => {
     if (!person) return;

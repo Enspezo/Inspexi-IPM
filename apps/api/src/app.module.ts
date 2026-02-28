@@ -27,6 +27,9 @@ import { TasksModule } from './modules/tasks/tasks.module';
 import { StorageModule } from './common/services/storage/storage.module';
 import { DocumentsModule } from './modules/documents/documents.module';
 import { WebhooksModule } from './modules/webhooks/webhooks.module';
+import { PlanningModule } from './modules/planning/planning.module';
+import { SearchModule } from './modules/search/search.module';
+import { GeocodingModule } from './modules/geocoding/geocoding.module';
 
 @Module({
   imports: [
@@ -51,6 +54,9 @@ import { WebhooksModule } from './modules/webhooks/webhooks.module';
     StorageModule,
     DocumentsModule,
     WebhooksModule,
+    PlanningModule,
+    SearchModule,
+    GeocodingModule,
   ],
   providers: [
     {

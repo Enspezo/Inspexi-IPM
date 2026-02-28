@@ -58,7 +58,7 @@ export default function TaskDetailPage() {
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [newStatus, setNewStatus] = useState('');
 
-  const userCanWrite = user && canWrite.includes(user.role);
+  const userCanWrite = user && user.roles.some(r => canWrite.includes(r));
 
   if (isLoading) {
     return (

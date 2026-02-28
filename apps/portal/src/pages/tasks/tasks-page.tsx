@@ -84,7 +84,7 @@ export default function TasksPage() {
   const navigate = useNavigate();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
-  const [onlyMine, setOnlyMine] = useState(false);
+  const [onlyMine, setOnlyMine] = useState(() => localStorage.getItem('inspexi:filter-mine:tasks') === 'true');
   const [page, setPage] = useState(1);
 
   const { data, isLoading, error } = useTasks({
@@ -300,6 +300,7 @@ export default function TasksPage() {
             checked={onlyMine}
             onChange={(e) => {
               setOnlyMine(e.target.checked);
+              localStorage.setItem('inspexi:filter-mine:tasks', String(e.target.checked));
               setPage(1);
             }}
           />

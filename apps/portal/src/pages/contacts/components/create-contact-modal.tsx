@@ -2,6 +2,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { ContactType } from '@/types';
+import type { Contact } from '@/types';
 import { Modal, Input, Button, useToast } from '@/components/ui';
 import { useCreateContact } from '../hooks/use-contacts';
 
@@ -23,9 +24,11 @@ type ContactFormData = z.infer<typeof contactSchema>;
 interface CreateContactModalProps {
   isOpen: boolean;
   onClose: () => void;
+  /** Called with the newly created contact after successful creation */
+  onCreated?: (contact: Contact) => void;
 }
 
-export function CreateContactModal({ isOpen, onClose }: CreateContactModalProps) {
+export function CreateContactModal({ isOpen, onClose, onCreated }: CreateContactModalProps) {
   const { showToast } = useToast();
   const createMutation = useCreateContact();
 
@@ -50,9 +53,10 @@ export function CreateContactModal({ isOpen, onClose }: CreateContactModalProps)
       const cleaned = Object.fromEntries(
         Object.entries(data).filter(([, v]) => v !== '' && v !== undefined),
       ) as ContactFormData;
-      await createMutation.mutateAsync(cleaned);
+      const created = await createMutation.mutateAsync(cleaned);
       showToast('Relatie aangemaakt!', 'success');
       reset();
+      onCreated?.(created);
       onClose();
     } catch (err) {
       showToast(

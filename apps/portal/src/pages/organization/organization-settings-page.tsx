@@ -28,6 +28,11 @@ const orgSchema = z.object({
   senderEmail: z
     .union([z.string().email('Voer een geldig e-mailadres in'), z.literal('')])
     .optional(),
+  workdayStart: z.coerce.number().int().min(0).max(23),
+  workdayEnd: z.coerce.number().int().min(1).max(24),
+}).refine((d) => d.workdayEnd > d.workdayStart, {
+  message: 'Eindtijd moet na begintijd liggen',
+  path: ['workdayEnd'],
 });
 
 type OrgFormData = z.infer<typeof orgSchema>;
@@ -66,6 +71,8 @@ export default function OrganizationSettingsPage() {
         defaultValidityDays: organization.defaultValidityDays,
         senderName: organization.senderName ?? '',
         senderEmail: organization.senderEmail ?? '',
+        workdayStart: organization.workdayStart ?? 8,
+        workdayEnd: organization.workdayEnd ?? 17,
       });
     }
   }, [organization, reset]);
@@ -79,6 +86,8 @@ export default function OrganizationSettingsPage() {
         defaultValidityDays: data.defaultValidityDays,
         senderName: data.senderName || null,
         senderEmail: data.senderEmail || null,
+        workdayStart: data.workdayStart,
+        workdayEnd: data.workdayEnd,
       });
       showToast('Organisatie-instellingen opgeslagen', 'success');
     } catch (err) {
@@ -366,6 +375,55 @@ export default function OrganizationSettingsPage() {
               error={errors.senderEmail?.message}
               {...register('senderEmail')}
             />
+          </div>
+
+          <div>
+            <h3 className="text-base font-semibold text-gray-900">
+              Standaard werktijden
+            </h3>
+            <p className="mt-1 text-sm text-gray-500">
+              De agenda in de planningsmodule toont standaard dit tijdsvenster. Inspecteurs kunnen hier buiten plannen als dat nodig is.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
+            <div className="space-y-1">
+              <label className="block text-sm font-medium text-gray-700">
+                Begintijd
+              </label>
+              <select
+                {...register('workdayStart', { valueAsNumber: true })}
+                className="block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+              >
+                {Array.from({ length: 24 }, (_, i) => (
+                  <option key={i} value={i}>
+                    {String(i).padStart(2, '0')}:00
+                  </option>
+                ))}
+              </select>
+              {errors.workdayStart && (
+                <p className="text-xs text-red-600">{errors.workdayStart.message}</p>
+              )}
+            </div>
+
+            <div className="space-y-1">
+              <label className="block text-sm font-medium text-gray-700">
+                Eindtijd
+              </label>
+              <select
+                {...register('workdayEnd', { valueAsNumber: true })}
+                className="block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+              >
+                {Array.from({ length: 24 }, (_, i) => (
+                  <option key={i + 1} value={i + 1}>
+                    {String(i + 1).padStart(2, '0')}:00
+                  </option>
+                ))}
+              </select>
+              {errors.workdayEnd && (
+                <p className="text-xs text-red-600">{errors.workdayEnd.message}</p>
+              )}
+            </div>
           </div>
 
           <div className="flex justify-end border-t border-gray-200 pt-4">

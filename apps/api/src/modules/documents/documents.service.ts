@@ -108,6 +108,20 @@ export class DocumentsService {
       }
     }
 
+    const planningIds = docs
+      .filter((d) => d.entityType === DocumentEntityType.PLANNING)
+      .map((d) => d.entityId);
+
+    if (planningIds.length > 0) {
+      const items = await this.prisma.planningItem.findMany({
+        where: { id: { in: planningIds } },
+        select: { id: true, productName: true },
+      });
+      for (const item of items) {
+        nameMap.set(item.id, item.productName);
+      }
+    }
+
     return nameMap;
   }
 
@@ -152,7 +166,7 @@ export class DocumentsService {
 
     const where: Prisma.DocumentWhereInput = { isDeleted: false };
 
-    if (user.role !== Role.SUPERUSER) {
+    if (!user.roles.includes(Role.SUPERUSER)) {
       where.orgId = user.orgId!;
     }
 
@@ -207,7 +221,7 @@ export class DocumentsService {
       throw new NotFoundException('Document niet gevonden');
     }
 
-    if (user.role !== Role.SUPERUSER && document.orgId !== user.orgId) {
+    if (!user.roles.includes(Role.SUPERUSER) && document.orgId !== user.orgId) {
       throw new ForbiddenException('Geen toegang tot dit document');
     }
 
@@ -227,7 +241,7 @@ export class DocumentsService {
       throw new NotFoundException('Document niet gevonden');
     }
 
-    if (user.role !== Role.SUPERUSER && document.orgId !== user.orgId) {
+    if (!user.roles.includes(Role.SUPERUSER) && document.orgId !== user.orgId) {
       throw new ForbiddenException('Geen toegang tot dit document');
     }
 
@@ -244,7 +258,7 @@ export class DocumentsService {
       throw new NotFoundException('Document niet gevonden');
     }
 
-    if (user.role !== Role.SUPERUSER && existing.orgId !== user.orgId) {
+    if (!user.roles.includes(Role.SUPERUSER) && existing.orgId !== user.orgId) {
       throw new ForbiddenException('Geen toegang tot dit document');
     }
 
@@ -252,6 +266,7 @@ export class DocumentsService {
       where: { id },
       data: {
         description: dto.description ?? existing.description,
+        ...(dto.isSharedWithClient !== undefined ? { isSharedWithClient: dto.isSharedWithClient } : {}),
       },
       include: {
         uploadedBy: { select: userSelect },
@@ -274,7 +289,7 @@ export class DocumentsService {
       throw new NotFoundException('Document niet gevonden');
     }
 
-    if (user.role !== Role.SUPERUSER && existing.orgId !== user.orgId) {
+    if (!user.roles.includes(Role.SUPERUSER) && existing.orgId !== user.orgId) {
       throw new ForbiddenException('Geen toegang tot dit document');
     }
 
@@ -352,6 +367,14 @@ export class DocumentsService {
       case DocumentEntityType.PRODUCT:
         // No specific owner for products
         break;
+      case DocumentEntityType.PLANNING: {
+        const planningItem = await this.prisma.planningItem.findUnique({
+          where: { id: document.entityId },
+          select: { createdBy: true },
+        });
+        if (planningItem?.createdBy) recipientIds.add(planningItem.createdBy);
+        break;
+      }
     }
 
     // Remove the uploader from recipients

@@ -40,7 +40,7 @@ export class ContactsService {
     contact: { ownerId?: string | null },
     user: User,
   ): void {
-    if (user.role === Role.SUPERUSER || user.role === Role.ORG_ADMIN) return;
+    if (user.roles.some(r => r === Role.SUPERUSER || r === Role.ORG_ADMIN)) return;
     if (contact.ownerId && contact.ownerId === user.id) return;
     throw new ForbiddenException(
       'Alleen de eigenaar, organisatie-admin of superadmin mag dit doen',
@@ -56,7 +56,7 @@ export class ContactsService {
     };
 
     // Org scoping — SUPERUSER sees all, others scoped to own org
-    if (user.role !== Role.SUPERUSER) {
+    if (!user.roles.includes(Role.SUPERUSER)) {
       where.orgId = user.orgId!;
     }
 
@@ -69,12 +69,14 @@ export class ContactsService {
       where.ownerId = user.id;
     }
 
-    if (search) {
+    if (search && search.length >= 3) {
       where.OR = [
         { companyName: { contains: search, mode: 'insensitive' } },
         { firstName: { contains: search, mode: 'insensitive' } },
         { lastName: { contains: search, mode: 'insensitive' } },
         { email: { contains: search, mode: 'insensitive' } },
+        { phone: { contains: search, mode: 'insensitive' } },
+        { addresses: { some: { city: { contains: search, mode: 'insensitive' } } } },
       ];
     }
 
@@ -131,6 +133,14 @@ export class ContactsService {
           },
           orderBy: { createdAt: 'desc' },
         },
+        requests: {
+          where: { isDeleted: false },
+          include: {
+            assignedUser: { select: { id: true, firstName: true, lastName: true } },
+            location: { select: { id: true, name: true, city: true } },
+          },
+          orderBy: { createdAt: 'desc' },
+        },
       },
     });
 
@@ -139,7 +149,7 @@ export class ContactsService {
     }
 
     // Check org scoping
-    if (user.role !== Role.SUPERUSER && contact.orgId !== user.orgId) {
+    if (!user.roles.includes(Role.SUPERUSER) && contact.orgId !== user.orgId) {
       throw new ForbiddenException();
     }
 
@@ -148,7 +158,7 @@ export class ContactsService {
 
   async create(dto: CreateContactDto, user: User) {
     const orgId = user.orgId;
-    if (!orgId && user.role !== Role.SUPERUSER) {
+    if (!orgId && !user.roles.includes(Role.SUPERUSER)) {
       throw new ForbiddenException('Geen organisatie gekoppeld');
     }
 
@@ -165,7 +175,7 @@ export class ContactsService {
         vatNumber: dto.vatNumber,
         cocNumber: dto.cocNumber,
         notes: dto.notes,
-        ownerId: dto.ownerId,
+        ownerId: dto.ownerId ?? user.id,
       },
       include: { addresses: true },
     });
@@ -365,15 +375,19 @@ export class ContactsService {
   // ─── Contact Persons ───────────────────────────────────
 
   async findAllContactPersons(user: User, query: ListContactPersonsQueryDto) {
-    const { search, role, page = 1, limit = 20 } = query;
+    const { search, role, contactId, page = 1, limit = 20 } = query;
     const skip = (page - 1) * limit;
 
     const where: Prisma.ContactPersonWhereInput = {
       isDeleted: false,
     };
 
-    if (user.role !== Role.SUPERUSER) {
+    if (!user.roles.includes(Role.SUPERUSER)) {
       where.orgId = user.orgId!;
+    }
+
+    if (contactId) {
+      where.contactId = contactId;
     }
 
     if (role) {
@@ -439,7 +453,7 @@ export class ContactsService {
       throw new NotFoundException('Contactpersoon niet gevonden');
     }
 
-    if (user.role !== Role.SUPERUSER && person.orgId !== user.orgId) {
+    if (!user.roles.includes(Role.SUPERUSER) && person.orgId !== user.orgId) {
       throw new ForbiddenException();
     }
 
@@ -485,6 +499,8 @@ export class ContactsService {
         city: dto.city,
         objectType: dto.objectType,
         notes: dto.notes,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        pdokData: (dto.pdokData ?? null) as any,
       },
     });
   }
@@ -508,7 +524,7 @@ export class ContactsService {
     }
 
     // Verify org scoping
-    if (user.role !== Role.SUPERUSER && location.orgId !== user.orgId) {
+    if (!user.roles.includes(Role.SUPERUSER) && location.orgId !== user.orgId) {
       throw new ForbiddenException();
     }
 
@@ -522,6 +538,8 @@ export class ContactsService {
         ...(dto.city !== undefined && { city: dto.city }),
         ...(dto.objectType !== undefined && { objectType: dto.objectType }),
         ...(dto.notes !== undefined && { notes: dto.notes }),
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        ...(dto.pdokData !== undefined && { pdokData: dto.pdokData as any }),
       },
     });
   }
@@ -536,7 +554,7 @@ export class ContactsService {
     }
 
     // Verify org scoping
-    if (user.role !== Role.SUPERUSER && location.orgId !== user.orgId) {
+    if (!user.roles.includes(Role.SUPERUSER) && location.orgId !== user.orgId) {
       throw new ForbiddenException();
     }
 

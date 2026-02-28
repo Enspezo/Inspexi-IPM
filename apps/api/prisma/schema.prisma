@@ -51,6 +51,13 @@ enum RequestStatus {
   ON_HOLD
 }
 
+enum LostReason {
+  TE_DUUR
+  GEEN_BESCHIKBAARHEID
+  NIET_LANGER_NODIG
+  ANDERS
+}
+
 enum Priority {
   LOW
   NORMAL
@@ -96,6 +103,12 @@ enum NotificationType {
   TAAK_TOEGEWEZEN
   TAAK_STATUS_GEWIJZIGD
   DOCUMENT_GEUPLOAD
+  AFSPRAAK_ACCEPTATIE_VERZOEK
+  AFSPRAAK_GEACCEPTEERD
+  AFSPRAAK_GEWEIGERD
+  AFSPRAAK_VERPLAATST
+  AFSPRAAK_VERZETTEN_VERZOEK
+  AFSPRAAK_BEVESTIGING_VERSTUURD
 }
 
 enum AuditAction {
@@ -114,6 +127,7 @@ enum TaskEntityType {
   CONTACT
   REQUEST
   QUOTE
+  PLANNING
 }
 
 enum DocumentEntityType {
@@ -122,12 +136,40 @@ enum DocumentEntityType {
   QUOTE
   PRODUCT
   TASK
+  PLANNING
 }
 
 enum SignatureType {
   DRAW
   UPLOAD
   TEXT
+}
+
+enum PlanningStatus {
+  NOG_TE_PLANNEN
+  CONCEPT
+  GEPLAND
+  AFGEROND
+  VERVALLEN
+}
+
+enum AcceptanceStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+}
+
+enum RescheduleStatus {
+  PENDING
+  PROCESSED
+}
+
+enum SessionStatus {
+  NOG_TE_PLANNEN
+  CONCEPT
+  DEFINITIEF
+  AFGEROND
+  VERVALLEN
 }
 
 // ─── PRD-01: Foundation Models ───────────────────────────
@@ -142,6 +184,9 @@ model Organization {
   defaultValidityDays Int      @default(30) @map("default_validity_days")
   senderName          String?  @map("sender_name")
   senderEmail         String?  @map("sender_email")
+  timezone            String   @default("Europe/Amsterdam")
+  workdayStart        Int      @default(8)  @map("workday_start")
+  workdayEnd          Int      @default(17) @map("workday_end")
   createdAt           DateTime @default(now()) @map("created_at")
 
   users       User[]
@@ -160,6 +205,7 @@ model Organization {
   notificationGroupPrefs NotificationGroupPref[]
   tasks                  Task[]
   documents              Document[]
+  planningItems          PlanningItem[]
 
   @@map("imp_organizations")
 }
@@ -171,13 +217,21 @@ model User {
   passwordHash    String    @map("password_hash")
   firstName       String    @map("first_name")
   lastName        String    @map("last_name")
-  role            Role
+  roles           Role[]    @default([])
   isActive        Boolean   @default(true) @map("is_active")
   emailVerifiedAt DateTime? @map("email_verified_at")
   initials        String?   @map("initials")
   avatarUrl       String?   @map("avatar_url")
   signatureType   SignatureType? @map("signature_type")
   signatureData   String?   @map("signature_data")
+  color           String?   // HEX kleurcode voor kalenderweergave, bijv. "#3B82F6"
+  homeStreet      String?   @map("home_street")
+  homeHouseNumber String?   @map("home_house_number")
+  homePostalCode  String?   @map("home_postal_code")
+  homeCity        String?   @map("home_city")
+  homeLat         Float?    @map("home_lat")
+  homeLng         Float?    @map("home_lng")
+  icalToken       String    @unique @default(uuid()) @map("ical_token")
   createdAt       DateTime  @default(now()) @map("created_at")
 
   organization  Organization?  @relation(fields: [orgId], references: [id])
@@ -202,6 +256,12 @@ model User {
   assignedTasks          Task[]                 @relation("TaskAssignee")
   createdTasks           Task[]                 @relation("TaskCreatedBy")
   uploadedDocuments      Document[]             @relation("DocumentUploadedBy")
+
+  planningInspectors        PlanningInspector[]
+  planningFollowers         PlanningFollower[]
+  planningHistory           PlanningHistory[]
+  createdPlanningItems      PlanningItem[]            @relation("PlanningCreatedByUser")
+  planningSessionInspectors PlanningSessionInspector[]
 
   @@map("imp_users")
 }
@@ -267,6 +327,7 @@ model Contact {
   contactPriceTables ContactPriceTable[]
   requests           Request[]
   quotes             Quote[]
+  planningItems      PlanningItem[]
 
   @@map("imp_contacts")
 }
@@ -330,6 +391,7 @@ model ContactPerson {
 
   contact      Contact      @relation(fields: [contactId], references: [id])
   organization Organization @relation(fields: [orgId], references: [id])
+  planningItems PlanningItem[]
 
   @@map("imp_contact_persons")
 }
@@ -345,12 +407,14 @@ model Location {
   city        String
   objectType  String?  @map("object_type")
   notes       String?
+  pdokData    Json?    @map("pdok_data")
   createdAt   DateTime @default(now()) @map("created_at")
 
   contact      Contact      @relation(fields: [contactId], references: [id])
   organization Organization @relation(fields: [orgId], references: [id])
   requests     Request[]
   quotes       Quote[]
+  planningItems PlanningItem[]
 
   @@map("imp_locations")
 }
@@ -487,6 +551,8 @@ model Request {
   assignedTo  String?       @map("assigned_to") @db.Uuid
   source      RequestSource
   status      RequestStatus @default(NIEUW)
+  lostReason  LostReason?   @map("lost_reason")
+  lostNote    String?       @map("lost_note")
   title       String
   description String?
   priority    Priority      @default(NORMAL)
@@ -768,10 +834,11 @@ model Document {
   mimeType     String             @map("mime_type")
   size         Int
   storageKey   String             @map("storage_key")
-  description  String?
-  uploadedById String             @map("uploaded_by_id") @db.Uuid
-  isDeleted    Boolean            @default(false) @map("is_deleted")
-  createdAt    DateTime           @default(now()) @map("created_at")
+  description        String?
+  uploadedById       String             @map("uploaded_by_id") @db.Uuid
+  isDeleted          Boolean            @default(false) @map("is_deleted")
+  isSharedWithClient Boolean            @default(false) @map("is_shared_with_client")
+  createdAt          DateTime           @default(now()) @map("created_at")
 
   organization Organization @relation(fields: [orgId], references: [id])
   uploadedBy   User         @relation("DocumentUploadedBy", fields: [uploadedById], references: [id])
@@ -779,4 +846,170 @@ model Document {
   @@index([orgId, entityType, entityId])
   @@index([uploadedById])
   @@map("imp_documents")
+}
+
+// ─── PRD-07: Planning & Afspraken ───────────────────────
+
+model PlanningItem {
+  id             String         @id @default(uuid()) @db.Uuid
+  orgId          String         @map("org_id") @db.Uuid
+  quoteId        String?        @map("quote_id") @db.Uuid
+  contactId      String         @map("contact_id") @db.Uuid
+  contactPersonId String?       @map("contact_person_id") @db.Uuid
+  locationId     String?        @map("location_id") @db.Uuid
+  productId      String?        @map("product_id") @db.Uuid
+  productName    String         @map("product_name")
+  status         PlanningStatus @default(NOG_TE_PLANNEN)
+  isCancelled    Boolean        @default(false) @map("is_cancelled")
+  cancelledAt    DateTime?      @map("cancelled_at")
+  cancelledBy    String?        @map("cancelled_by") @db.Uuid
+  cancelReason   String?        @map("cancel_reason")
+
+  scheduledDate  DateTime?      @map("scheduled_date")
+  durationHours  Float?         @map("duration_hours")
+  endTime        DateTime?      @map("end_time")
+
+  isMultiDay     Boolean        @default(false) @map("is_multi_day")
+  sessionCount   Int?           @map("session_count")
+
+  labels         String[]       @default([])
+  internalNotes  String?        @map("internal_notes")
+  publicToken    String         @unique @default(uuid()) @map("public_token")
+
+  // Stored as plain strings (not Prisma relations) to avoid self-referential complexity
+  replacedById   String?        @map("replaced_by_id") @db.Uuid
+  replacesId     String?        @map("replaces_id") @db.Uuid
+  originalDate   DateTime?      @map("original_date")
+
+  createdBy      String         @map("created_by") @db.Uuid
+  createdAt      DateTime       @default(now()) @map("created_at")
+  updatedAt      DateTime       @updatedAt @map("updated_at")
+
+  organization   Organization   @relation(fields: [orgId], references: [id])
+  contact        Contact        @relation(fields: [contactId], references: [id])
+  contactPerson  ContactPerson? @relation(fields: [contactPersonId], references: [id])
+  location       Location?      @relation(fields: [locationId], references: [id])
+  createdByUser  User           @relation("PlanningCreatedByUser", fields: [createdBy], references: [id])
+  inspectors     PlanningInspector[]
+  history        PlanningHistory[]
+  rescheduleRequests RescheduleRequest[]
+  followers      PlanningFollower[]
+  sessions       PlanningSession[]
+
+  @@index([orgId, status])
+  @@index([orgId, scheduledDate])
+  @@index([contactId])
+  @@map("imp_planning_items")
+}
+
+model PlanningInspector {
+  id               String           @id @default(uuid()) @db.Uuid
+  planningItemId   String           @map("planning_item_id") @db.Uuid
+  userId           String           @map("user_id") @db.Uuid
+  isPrimary        Boolean          @default(false) @map("is_primary")
+  acceptanceStatus AcceptanceStatus @default(PENDING) @map("acceptance_status")
+  acceptedAt       DateTime?        @map("accepted_at")
+  rejectedAt       DateTime?        @map("rejected_at")
+  rejectionNote    String?          @map("rejection_note")
+
+  planningItem PlanningItem @relation(fields: [planningItemId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id])
+
+  @@unique([planningItemId, userId])
+  @@map("imp_planning_inspectors")
+}
+
+model PlanningHistory {
+  id             String   @id @default(uuid()) @db.Uuid
+  planningItemId String   @map("planning_item_id") @db.Uuid
+  userId         String?  @map("user_id") @db.Uuid
+  action         String
+  description    String
+  oldValue       String?  @map("old_value")
+  newValue       String?  @map("new_value")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  planningItem PlanningItem @relation(fields: [planningItemId], references: [id], onDelete: Cascade)
+  user         User?        @relation(fields: [userId], references: [id])
+
+  @@index([planningItemId])
+  @@map("imp_planning_history")
+}
+
+model RescheduleRequest {
+  id             String           @id @default(uuid()) @db.Uuid
+  planningItemId String           @map("planning_item_id") @db.Uuid
+  requestedBy    String?          @map("requested_by") @db.Uuid
+  clientName     String?          @map("client_name")
+  preferredDate  DateTime         @map("preferred_date")
+  reason         String
+  status         RescheduleStatus @default(PENDING)
+  processedBy    String?          @map("processed_by") @db.Uuid
+  processedAt    DateTime?        @map("processed_at")
+  createdAt      DateTime         @default(now()) @map("created_at")
+
+  planningItem PlanningItem @relation(fields: [planningItemId], references: [id], onDelete: Cascade)
+
+  @@index([planningItemId])
+  @@map("imp_reschedule_requests")
+}
+
+model PlanningFollower {
+  id             String   @id @default(uuid()) @db.Uuid
+  planningItemId String   @map("planning_item_id") @db.Uuid
+  userId         String?  @map("user_id") @db.Uuid
+  email          String?
+  name           String?
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  planningItem PlanningItem @relation(fields: [planningItemId], references: [id], onDelete: Cascade)
+  user         User?        @relation(fields: [userId], references: [id])
+
+  @@index([planningItemId])
+  @@map("imp_planning_followers")
+}
+
+model PlanningSession {
+  id              String        @id @default(uuid()) @db.Uuid
+  planningItemId  String        @map("planning_item_id") @db.Uuid
+  sessionNumber   Int           @map("session_number")
+  scheduledDate   DateTime?     @map("scheduled_date")
+  durationHours   Float?        @map("duration_hours")
+  status          SessionStatus @default(NOG_TE_PLANNEN)
+  notes           String?
+  isDefinitief    Boolean       @default(false) @map("is_definitief")
+  confirmedAt     DateTime?     @map("confirmed_at")
+  confirmedBy     String?       @map("confirmed_by") @db.Uuid
+  // Reschedule tracking (same pattern as PlanningItem — stored as plain strings)
+  replacedById    String?       @map("replaced_by_id")
+  replacesId      String?       @map("replaces_id")
+  originalDate    DateTime?     @map("original_date")
+  isCancelled     Boolean       @default(false) @map("is_cancelled")
+  createdAt       DateTime      @default(now()) @map("created_at")
+  updatedAt       DateTime      @updatedAt @map("updated_at")
+
+  planningItem      PlanningItem               @relation(fields: [planningItemId], references: [id], onDelete: Cascade)
+  sessionInspectors PlanningSessionInspector[]
+
+  @@index([planningItemId, sessionNumber])
+  @@index([planningItemId, scheduledDate])
+  @@map("imp_planning_sessions")
+}
+
+model PlanningSessionInspector {
+  id               String           @id @default(uuid()) @db.Uuid
+  sessionId        String           @map("session_id") @db.Uuid
+  userId           String           @map("user_id") @db.Uuid
+  isPrimary        Boolean          @default(false) @map("is_primary")
+  acceptanceStatus AcceptanceStatus @default(PENDING) @map("acceptance_status")
+  acceptedAt       DateTime?        @map("accepted_at")
+  rejectedAt       DateTime?        @map("rejected_at")
+  rejectionNote    String?          @map("rejection_note")
+
+  session   PlanningSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  user      User            @relation(fields: [userId], references: [id])
+
+  @@unique([sessionId, userId])
+  @@index([sessionId])
+  @@map("imp_planning_session_inspectors")
 }

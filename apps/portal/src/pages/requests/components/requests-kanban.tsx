@@ -9,7 +9,13 @@ import { apiClient } from '@/lib/api-client';
 
 // ─── Config ────────────────────────────────────────────────────────────────
 
-const COLUMNS: { status: RequestStatus; label: string; color: string; headerBg: string }[] = [
+const COLUMNS: {
+  status: RequestStatus;
+  label: string;
+  color: string;
+  headerBg: string;
+  defaultCollapsed?: boolean;
+}[] = [
   {
     status: RequestStatus.NIEUW,
     label: 'Nieuw',
@@ -39,12 +45,14 @@ const COLUMNS: { status: RequestStatus; label: string; color: string; headerBg: 
     label: 'Verloren',
     color: 'bg-red-100 text-red-800',
     headerBg: 'bg-red-50 border-red-200',
+    defaultCollapsed: true,
   },
   {
     status: RequestStatus.ON_HOLD,
     label: 'On hold',
     color: 'bg-gray-100 text-gray-600',
     headerBg: 'bg-gray-50 border-gray-200',
+    defaultCollapsed: true,
   },
 ];
 
@@ -136,6 +144,8 @@ interface KanbanColumnProps {
   headerBg: string;
   requests: Request[];
   isDragOver: boolean;
+  isCollapsed: boolean;
+  onToggleCollapse: () => void;
   onDragOver: (e: React.DragEvent) => void;
   onDragLeave: () => void;
   onDrop: (e: React.DragEvent, targetStatus: RequestStatus) => void;
@@ -149,6 +159,8 @@ function KanbanColumn({
   headerBg,
   requests,
   isDragOver,
+  isCollapsed,
+  onToggleCollapse,
   onDragOver,
   onDragLeave,
   onDrop,
@@ -156,6 +168,53 @@ function KanbanColumn({
 }: KanbanColumnProps) {
   // dragCounter voorkomt dat onDragLeave afgaat bij hover over child-elementen
   const dragCounter = useRef(0);
+
+  if (isCollapsed) {
+    return (
+      <div
+        className={`flex w-10 flex-shrink-0 flex-col rounded-xl border-2 transition-colors cursor-pointer select-none ${
+          isDragOver ? 'border-primary-400 bg-primary-50' : 'border-transparent bg-gray-100'
+        }`}
+        title={`${label} uitvouwen`}
+        onClick={onToggleCollapse}
+        onDragOver={onDragOver}
+        onDragEnter={() => { dragCounter.current += 1; }}
+        onDragLeave={() => {
+          dragCounter.current -= 1;
+          if (dragCounter.current === 0) onDragLeave();
+        }}
+        onDrop={(e) => { dragCounter.current = 0; onDrop(e, status); }}
+      >
+        {/* Ingeklapte header */}
+        <div
+          className={`flex items-center justify-center rounded-t-lg border px-2 py-2.5 ${headerBg}`}
+        >
+          <span
+            className={`inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-xs font-bold ${color}`}
+          >
+            {requests.length}
+          </span>
+        </div>
+
+        {/* Verticale label */}
+        <div className="flex flex-1 items-center justify-center py-4">
+          <span
+            className="text-xs font-semibold text-gray-500 whitespace-nowrap"
+            style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}
+          >
+            {label}
+          </span>
+        </div>
+
+        {/* Uitvouw-chevron */}
+        <div className="flex items-center justify-center pb-3">
+          <svg className="h-3 w-3 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+          </svg>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div
@@ -180,11 +239,22 @@ function KanbanColumn({
           />
           <span className="text-sm font-semibold text-gray-700">{label}</span>
         </div>
-        <span
-          className={`inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-xs font-bold ${color}`}
-        >
-          {requests.length}
-        </span>
+        <div className="flex items-center gap-1.5">
+          <span
+            className={`inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-xs font-bold ${color}`}
+          >
+            {requests.length}
+          </span>
+          <button
+            onClick={onToggleCollapse}
+            title="Kolom inklappen"
+            className="flex h-5 w-5 items-center justify-center rounded text-gray-400 hover:bg-black/10 hover:text-gray-600 transition-colors"
+          >
+            <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+            </svg>
+          </button>
+        </div>
       </div>
 
       {/* Kaartjes */}
@@ -210,16 +280,38 @@ function KanbanColumn({
 // ─── RequestsKanban (hoofd-component) ─────────────────────────────────────
 
 interface RequestsKanbanProps {
-  search: string;
+  search?: string;
   priorityFilter: string;
+  assignedTo?: string;
 }
 
-export function RequestsKanban({ search, priorityFilter }: RequestsKanbanProps) {
+export function RequestsKanban({ search, priorityFilter, assignedTo }: RequestsKanbanProps) {
   const queryClient = useQueryClient();
   const { data, isLoading, error } = useAllRequests({
     search: search || undefined,
     priority: (priorityFilter as Priority) || undefined,
+    assignedTo,
   });
+
+  // Ingeklapte kolommen — persisted in localStorage
+  const STORAGE_KEY = 'inspexi:kanban-collapsed';
+  const [collapsedColumns, setCollapsedColumns] = useState<Set<RequestStatus>>(() => {
+    try {
+      const stored = localStorage.getItem(STORAGE_KEY);
+      if (stored) return new Set(JSON.parse(stored) as RequestStatus[]);
+    } catch {}
+    return new Set(COLUMNS.filter((c) => c.defaultCollapsed).map((c) => c.status));
+  });
+
+  const toggleCollapse = useCallback((status: RequestStatus) => {
+    setCollapsedColumns((prev) => {
+      const next = new Set(prev);
+      if (next.has(status)) next.delete(status);
+      else next.add(status);
+      try { localStorage.setItem(STORAGE_KEY, JSON.stringify([...next])); } catch {}
+      return next;
+    });
+  }, []);
 
   // Drag state
   const draggingId = useRef<string | null>(null);
@@ -327,6 +419,8 @@ export function RequestsKanban({ search, priorityFilter }: RequestsKanbanProps) 
             {...col}
             requests={byStatus[col.status] ?? []}
             isDragOver={dragOverStatus === col.status}
+            isCollapsed={collapsedColumns.has(col.status)}
+            onToggleCollapse={() => toggleCollapse(col.status)}
             onDragOver={(e) => handleDragOver(e, col.status)}
             onDragLeave={handleDragLeave}
             onDrop={handleDrop}

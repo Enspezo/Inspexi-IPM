@@ -110,25 +110,23 @@ export class NotificationsService {
       };
     }
 
-    // 2. Group-level pref
+    // 2. Group-level pref — check all roles of the user
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
-      select: { role: true },
+      select: { roles: true },
     });
-    if (user) {
-      const groupPref = await this.prisma.notificationGroupPref.findUnique({
+    if (user && user.roles.length > 0) {
+      const groupPrefs = await this.prisma.notificationGroupPref.findMany({
         where: {
-          orgId_role_notificationType: {
-            orgId,
-            role: user.role,
-            notificationType: type,
-          },
+          orgId,
+          role: { in: user.roles },
+          notificationType: type,
         },
       });
-      if (groupPref) {
+      if (groupPrefs.length > 0) {
         return {
-          channelInApp: groupPref.channelInApp,
-          channelEmail: groupPref.channelEmail,
+          channelInApp: groupPrefs.some((p) => p.channelInApp),
+          channelEmail: groupPrefs.some((p) => p.channelEmail),
         };
       }
     }
@@ -237,7 +235,7 @@ export class NotificationsService {
   // ─── Group preferences (ORG_ADMIN / SUPERUSER) ─────────
 
   async getGroupPrefs(user: User) {
-    if (user.role === Role.SUPERUSER) {
+    if (user.roles.includes(Role.SUPERUSER)) {
       return this.prisma.notificationGroupPref.findMany();
     }
 
@@ -248,7 +246,7 @@ export class NotificationsService {
 
   async saveGroupPrefs(user: User, dto: SaveGroupPrefsDto) {
     const orgId = user.orgId;
-    if (!orgId && user.role !== Role.SUPERUSER) {
+    if (!orgId && !user.roles.includes(Role.SUPERUSER)) {
       throw new ForbiddenException('Geen organisatie gekoppeld');
     }
 

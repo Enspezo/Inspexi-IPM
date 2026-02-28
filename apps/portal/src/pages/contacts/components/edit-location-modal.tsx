@@ -1,9 +1,12 @@
+import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Modal, Input, Select, Button, useToast } from '@/components/ui';
+import { AddressSearchInput } from '@/components/ui/address-search-input';
 import { useUpdateLocation } from '../hooks/use-contacts';
 import type { Location } from '@/types';
+import type { ParsedAddress } from '@/lib/geocoding';
 
 const locationSchema = z.object({
   name: z.string().min(1, 'Naam is verplicht'),
@@ -41,10 +44,17 @@ export function EditLocationModal({
 }: EditLocationModalProps) {
   const { showToast } = useToast();
   const updateMutation = useUpdateLocation(contactId);
+  // Track pdokData separately; initialized from existing location data
+  const [pdokData, setPdokData] = useState<Record<string, unknown> | null>(
+    location.pdokData ?? null,
+  );
+
+  const currentAddressLabel = `${location.street} ${location.houseNumber}, ${location.postalCode} ${location.city}`;
 
   const {
     register,
     handleSubmit,
+    setValue,
     formState: { errors },
   } = useForm<LocationFormData>({
     resolver: zodResolver(locationSchema),
@@ -59,12 +69,21 @@ export function EditLocationModal({
     },
   });
 
+  const handleAddressSelect = (address: ParsedAddress) => {
+    setValue('street', address.street, { shouldValidate: true });
+    setValue('houseNumber', address.houseNumber, { shouldValidate: true });
+    setValue('postalCode', address.postalCode, { shouldValidate: true });
+    setValue('city', address.city, { shouldValidate: true });
+    setPdokData(address.pdokData);
+  };
+
   const onSubmit = async (data: LocationFormData) => {
     try {
       const cleaned = {
         ...data,
         objectType: data.objectType || undefined,
         notes: data.notes || undefined,
+        pdokData: pdokData ?? undefined,
       };
       await updateMutation.mutateAsync({ locationId: location.id, data: cleaned });
       showToast('Locatie bijgewerkt!', 'success');
@@ -85,6 +104,13 @@ export function EditLocationModal({
           placeholder="Kantoorpand Zuidas"
           error={errors.name?.message}
           {...register('name')}
+        />
+
+        <AddressSearchInput
+          label="Adres zoeken (PDOK)"
+          placeholder="Zoek een adres…"
+          initialValue={currentAddressLabel}
+          onSelect={handleAddressSelect}
         />
 
         <div className="grid grid-cols-3 gap-4">

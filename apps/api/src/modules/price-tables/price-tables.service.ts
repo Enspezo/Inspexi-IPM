@@ -23,7 +23,7 @@ export class PriceTablesService {
 
     const where: Prisma.PriceTableWhereInput = {};
 
-    if (user.role !== Role.SUPERUSER) {
+    if (!user.roles.includes(Role.SUPERUSER)) {
       where.orgId = user.orgId!;
     }
 
@@ -79,7 +79,7 @@ export class PriceTablesService {
       throw new NotFoundException('Prijstabel niet gevonden');
     }
 
-    if (user.role !== Role.SUPERUSER && priceTable.orgId !== user.orgId) {
+    if (!user.roles.includes(Role.SUPERUSER) && priceTable.orgId !== user.orgId) {
       throw new ForbiddenException();
     }
 
@@ -88,7 +88,7 @@ export class PriceTablesService {
 
   async create(dto: CreatePriceTableDto, user: User) {
     const orgId = user.orgId;
-    if (!orgId && user.role !== Role.SUPERUSER) {
+    if (!orgId && !user.roles.includes(Role.SUPERUSER)) {
       throw new ForbiddenException('Geen organisatie gekoppeld');
     }
 
@@ -215,7 +215,7 @@ export class PriceTablesService {
       throw new NotFoundException('Relatie niet gevonden');
     }
 
-    if (user.role !== Role.SUPERUSER && contact.orgId !== user.orgId) {
+    if (!user.roles.includes(Role.SUPERUSER) && contact.orgId !== user.orgId) {
       throw new ForbiddenException();
     }
 
@@ -289,7 +289,7 @@ export class PriceTablesService {
       throw new NotFoundException('Relatie niet gevonden');
     }
 
-    if (user.role !== Role.SUPERUSER && contact.orgId !== user.orgId) {
+    if (!user.roles.includes(Role.SUPERUSER) && contact.orgId !== user.orgId) {
       throw new ForbiddenException();
     }
 

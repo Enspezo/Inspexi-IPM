@@ -108,6 +108,7 @@ const entityLabels: Record<string, Record<string, string>> = {
   },
   User: {
     emailVerifiedAt: 'E-mail geverifieerd op',
+    color: 'Kleur',
   },
   Organization: {
     slug: 'Slug',
@@ -115,6 +116,21 @@ const entityLabels: Record<string, Record<string, string>> = {
     primaryColor: 'Primaire kleur',
     defaultVat: 'Standaard BTW',
     defaultValidityDays: 'Standaard geldigheidsdagen',
+  },
+  PlanningItem: {
+    status: 'Status',
+    contactId: 'Relatie',
+    locationId: 'Locatie',
+    quoteId: 'Offerte',
+    productId: 'Product',
+    productName: 'Product naam',
+    scheduledDate: 'Datum',
+    scheduledTime: 'Tijdstip',
+    durationMinutes: 'Duur (minuten)',
+    labels: 'Labels',
+    notes: 'Opmerkingen',
+    publicToken: 'Portaal token',
+    createdBy: 'Aangemaakt door',
   },
 };
 

@@ -3,8 +3,8 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { ContactType, ContactPersonRole, LogType, QuoteStatus, TaskStatus, Role, TaskEntityType, DocumentEntityType } from '@/types';
-import type { Contact, ContactAddress, ContactLog, ContactEmail, Location, Task } from '@/types';
+import { ContactType, ContactPersonRole, LogType, QuoteStatus, RequestStatus, Priority, TaskStatus, Role, TaskEntityType, DocumentEntityType } from '@/types';
+import type { Contact, ContactAddress, ContactLog, ContactEmail, Location, Task, Request as RequestType } from '@/types';
 import { Button, Card, Input, Spinner, useToast } from '@/components/ui';
 import { DetailPageLayout } from '@/components/layout/detail-page-layout';
 import { useAuth } from '@/providers/auth-provider';
@@ -21,9 +21,10 @@ import { AddLogModal } from './components/add-log-modal';
 import { SendEmailModal } from './components/send-email-modal';
 import { AuditHistory } from '@/components/audit-history/audit-history';
 import { CreateTaskModal } from '@/pages/tasks/components/create-task-modal';
+import { CreateRequestModal } from '@/pages/requests/components/create-request-modal';
 import { DocumentsSection } from '@/components/documents';
 
-type Tab = 'algemeen' | 'adressen' | 'locaties' | 'taken' | 'offertes';
+type Tab = 'algemeen' | 'adressen' | 'locaties' | 'aanvragen' | 'taken' | 'offertes';
 
 const canWrite = [Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE];
 
@@ -117,6 +118,36 @@ const quoteStatusColors: Record<string, string> = {
   [QuoteStatus.VERLOPEN]: 'bg-orange-100 text-orange-800',
 };
 
+const requestStatusLabels: Record<string, string> = {
+  [RequestStatus.NIEUW]: 'Nieuw',
+  [RequestStatus.IN_BEHANDELING]: 'In behandeling',
+  [RequestStatus.OFFERTE_GEMAAKT]: 'Offerte gemaakt',
+  [RequestStatus.GEWONNEN]: 'Gewonnen',
+  [RequestStatus.VERLOREN]: 'Verloren',
+  [RequestStatus.ON_HOLD]: 'On hold',
+};
+
+const requestStatusColors: Record<string, string> = {
+  [RequestStatus.NIEUW]: 'bg-blue-100 text-blue-800',
+  [RequestStatus.IN_BEHANDELING]: 'bg-yellow-100 text-yellow-800',
+  [RequestStatus.OFFERTE_GEMAAKT]: 'bg-purple-100 text-purple-800',
+  [RequestStatus.GEWONNEN]: 'bg-green-100 text-green-800',
+  [RequestStatus.VERLOREN]: 'bg-red-100 text-red-800',
+  [RequestStatus.ON_HOLD]: 'bg-orange-100 text-orange-800',
+};
+
+const priorityLabels: Record<string, string> = {
+  [Priority.LOW]: 'Laag',
+  [Priority.NORMAL]: 'Normaal',
+  [Priority.HIGH]: 'Hoog',
+};
+
+const priorityColors: Record<string, string> = {
+  [Priority.LOW]: 'bg-gray-100 text-gray-700',
+  [Priority.NORMAL]: 'bg-blue-100 text-blue-700',
+  [Priority.HIGH]: 'bg-orange-100 text-orange-700',
+};
+
 const taskStatusLabels: Record<string, string> = {
   [TaskStatus.TE_DOEN]: 'Te doen',
   [TaskStatus.MEE_BEZIG]: 'Mee bezig',
@@ -162,14 +193,15 @@ export default function ContactDetailPage() {
   const [isLogOpen, setIsLogOpen] = useState(false);
   const [isEmailOpen, setIsEmailOpen] = useState(false);
   const [isTaskOpen, setIsTaskOpen] = useState(false);
+  const [isRequestOpen, setIsRequestOpen] = useState(false);
 
-  const userCanWrite = user && canWrite.includes(user.role);
+  const userCanWrite = user && user.roles.some(r => canWrite.includes(r));
 
   // Eigenaar, ORG_ADMIN of SUPERUSER mag eigenaar wijzigen en relatie verwijderen
   const userCanManage =
     user &&
-    (user.role === Role.SUPERUSER ||
-      user.role === Role.ORG_ADMIN ||
+    (user.roles.includes(Role.SUPERUSER) ||
+      user.roles.includes(Role.ORG_ADMIN) ||
       (contact?.ownerId != null && contact.ownerId === user.id));
 
   const {
@@ -267,6 +299,7 @@ export default function ContactDetailPage() {
     { key: 'algemeen', label: 'Algemeen' },
     { key: 'adressen', label: `Adressen (${contact.addresses?.length || 0})` },
     { key: 'locaties', label: `Locaties (${contact.locations?.length || 0})` },
+    { key: 'aanvragen', label: `Aanvragen (${contact.requests?.length || 0})` },
     { key: 'taken', label: 'Taken', count: incompleteTasks.length },
     { key: 'offertes', label: `Offertes (${contact.quotes?.length || 0})` },
   ];
@@ -746,6 +779,89 @@ export default function ContactDetailPage() {
         </div>
       )}
 
+      {activeTab === 'aanvragen' && (
+        <div className="space-y-4">
+          {userCanWrite && (
+            <div className="flex justify-end">
+              <Button size="sm" onClick={() => setIsRequestOpen(true)}>
+                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                </svg>
+                Aanvraag aanmaken
+              </Button>
+            </div>
+          )}
+          {(contact.requests?.length || 0) === 0 ? (
+            <p className="py-8 text-center text-sm text-gray-500">
+              Nog geen aanvragen voor deze relatie
+            </p>
+          ) : (
+            <div className="overflow-hidden rounded-lg border border-gray-200">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                      Titel
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                      Status
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                      Prioriteit
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                      Toegewezen aan
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                      Datum
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200 bg-white">
+                  {contact.requests?.map((request) => (
+                    <tr
+                      key={request.id}
+                      className="cursor-pointer hover:bg-gray-50"
+                      onClick={() => navigate(`/requests/${request.id}`)}
+                    >
+                      <td className="px-4 py-3 text-sm font-medium text-primary-600">
+                        {request.title}
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-3 text-sm">
+                        <span
+                          className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
+                            requestStatusColors[request.status] || 'bg-gray-100 text-gray-800'
+                          }`}
+                        >
+                          {requestStatusLabels[request.status] || request.status}
+                        </span>
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-3 text-sm">
+                        <span
+                          className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
+                            priorityColors[request.priority] || 'bg-gray-100 text-gray-800'
+                          }`}
+                        >
+                          {priorityLabels[request.priority] || request.priority}
+                        </span>
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-3 text-sm text-gray-500">
+                        {request.assignedUser
+                          ? `${request.assignedUser.firstName} ${request.assignedUser.lastName}`
+                          : '—'}
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-3 text-sm text-gray-500">
+                        {formatShortDate(request.createdAt)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
       {activeTab === 'offertes' && (
         <div className="space-y-4">
           {userCanWrite && (
@@ -898,6 +1014,11 @@ export default function ContactDetailPage() {
         onClose={() => setIsTaskOpen(false)}
         entityType={TaskEntityType.CONTACT}
         entityId={contact.id}
+      />
+      <CreateRequestModal
+        isOpen={isRequestOpen}
+        onClose={() => setIsRequestOpen(false)}
+        contactId={contact.id}
       />
     </div>
     </DetailPageLayout>

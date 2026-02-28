@@ -31,6 +31,13 @@ const typeLabels: Record<string, string> = {
   [NotificationType.TAAK_TOEGEWEZEN]: 'Taak toegewezen',
   [NotificationType.TAAK_STATUS_GEWIJZIGD]: 'Taakstatus gewijzigd',
   [NotificationType.DOCUMENT_GEUPLOAD]: 'Document geüpload',
+  // Planning
+  [NotificationType.AFSPRAAK_ACCEPTATIE_VERZOEK]: 'Afspraak: acceptatieverzoek',
+  [NotificationType.AFSPRAAK_GEACCEPTEERD]: 'Afspraak geaccepteerd',
+  [NotificationType.AFSPRAAK_GEWEIGERD]: 'Afspraak geweigerd',
+  [NotificationType.AFSPRAAK_VERPLAATST]: 'Afspraak verplaatst',
+  [NotificationType.AFSPRAAK_VERZETTEN_VERZOEK]: 'Afspraak: verzetten verzoek',
+  [NotificationType.AFSPRAAK_BEVESTIGING_VERSTUURD]: 'Afspraak bevestigd',
 };
 
 const typeFilterOptions = [
@@ -52,6 +59,7 @@ function getEntityRoute(notif: Notification): string | null {
   if (notif.entityType === 'request') return `/requests/${notif.entityId}`;
   if (notif.entityType === 'task') return `/tasks/${notif.entityId}`;
   if (notif.entityType === 'document') return `/documents`;
+  if (notif.entityType === 'planningItem') return `/planning/${notif.entityId}`;
   return null;
 }
 

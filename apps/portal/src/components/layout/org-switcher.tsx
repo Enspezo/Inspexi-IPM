@@ -6,6 +6,7 @@ import { apiClient } from '@/lib/api-client';
 import { getOrgUrl, getBaseDomainUrl } from '@/lib/tenant';
 import { Role } from '@/types';
 import type { Organization } from '@/types';
+import { hasRole } from '@/lib/has-role';
 
 export function OrgSwitcher() {
   const { user } = useAuth();
@@ -14,7 +15,7 @@ export function OrgSwitcher() {
   const ref = useRef<HTMLDivElement>(null);
 
   // Only visible for SUPERUSER
-  if (!user || user.role !== Role.SUPERUSER) {
+  if (!user || !hasRole(user, Role.SUPERUSER)) {
     return null;
   }
 

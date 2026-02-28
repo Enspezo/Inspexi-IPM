@@ -1,7 +1,11 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
 import {
   RequestStatus,
+  RequestSource,
   Priority,
   Role,
   TaskEntityType,
@@ -14,12 +18,15 @@ import { DetailPageLayout } from '@/components/layout/detail-page-layout';
 import { useAuth } from '@/providers/auth-provider';
 import {
   useRequest,
+  useUpdateRequest,
   useUpdateRequestStatus,
   useDeleteRequest,
+  useOrgUsers,
 } from './hooks/use-requests';
+import { useContactLocations } from '@/pages/contacts/hooks/use-contacts';
+import { ContactSearchInput } from '@/components/contacts/contact-search-input';
 import { useCreateQuoteFromRequest } from '@/pages/quotes/hooks/use-quotes';
 import { useTasks, useUpdateTask } from '@/pages/tasks/hooks/use-tasks';
-import { EditRequestModal } from './components/edit-request-modal';
 import { AuditHistory } from '@/components/audit-history/audit-history';
 import { CreateTaskModal } from '@/pages/tasks/components/create-task-modal';
 import { DocumentsSection } from '@/components/documents';
@@ -82,6 +89,31 @@ const statusOptions = Object.values(RequestStatus).map((s) => ({
   label: statusLabels[s] || s,
 }));
 
+const priorityOptions = [
+  { value: Priority.LOW, label: 'Laag' },
+  { value: Priority.NORMAL, label: 'Normaal' },
+  { value: Priority.HIGH, label: 'Hoog' },
+];
+
+const sourceOptions2 = [
+  { value: RequestSource.MANUAL, label: 'Handmatig' },
+  { value: RequestSource.PHONE, label: 'Telefoon' },
+  { value: RequestSource.EMAIL, label: 'E-mail' },
+  { value: RequestSource.WEB_FORM, label: 'Webformulier' },
+];
+
+const editSchema = z.object({
+  title: z.string().min(1, 'Titel is verplicht'),
+  description: z.string().optional(),
+  contactId: z.string().min(1, 'Relatie is verplicht'),
+  locationId: z.string().optional(),
+  source: z.nativeEnum(RequestSource),
+  priority: z.nativeEnum(Priority),
+  assignedTo: z.string().optional(),
+});
+
+type EditFormData = z.infer<typeof editSchema>;
+
 function formatDate(dateStr: string): string {
   return new Date(dateStr).toLocaleDateString('nl-NL', {
     day: 'numeric',
@@ -104,10 +136,12 @@ export default function RequestDetailPage() {
   const { user } = useAuth();
   const { showToast } = useToast();
   const { data: request, isLoading, error } = useRequest(id!);
+  const updateMutation = useUpdateRequest(id!);
   const updateStatusMutation = useUpdateRequestStatus(id!);
   const deleteMutation = useDeleteRequest();
   const createQuoteMutation = useCreateQuoteFromRequest();
   const updateTaskMutation = useUpdateTask();
+  const { data: allUsers } = useOrgUsers();
 
   // Fetch tasks linked to this request
   const { data: tasksData } = useTasks({
@@ -121,10 +155,84 @@ export default function RequestDetailPage() {
   const [activeTab, setActiveTab] = useState<Tab>('algemeen');
   const [newStatus, setNewStatus] = useState('');
   const [statusNote, setStatusNote] = useState('');
-  const [isEditOpen, setIsEditOpen] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
   const [isTaskOpen, setIsTaskOpen] = useState(false);
+  const [editContactId, setEditContactId] = useState('');
 
-  const userCanWrite = user && canWrite.includes(user.role);
+  const userCanWrite = user && user.roles.some(r => canWrite.includes(r));
+
+  // Fetch locations for the selected contact in edit mode
+  const { data: editLocationsData } = useContactLocations(editContactId);
+  const editLocations = editLocationsData || [];
+
+  const {
+    register,
+    handleSubmit,
+    reset: resetForm,
+    setValue,
+    formState: { errors: formErrors, isDirty },
+  } = useForm<EditFormData>({ resolver: zodResolver(editSchema) });
+
+  const handleEditContactSelect = (contactId: string) => {
+    if (contactId !== editContactId) {
+      setValue('contactId', contactId, { shouldValidate: true });
+      setEditContactId(contactId);
+      if (request && contactId !== request.contactId) {
+        setValue('locationId', '');
+      }
+    }
+  };
+
+  useEffect(() => {
+    if (request) {
+      resetForm({
+        title: request.title,
+        description: request.description || '',
+        contactId: request.contactId,
+        locationId: request.locationId || '',
+        source: request.source,
+        priority: request.priority,
+        assignedTo: request.assignedTo || '',
+      });
+      setEditContactId(request.contactId);
+    }
+  }, [request, resetForm]);
+
+  const onSubmitEdit = async (data: EditFormData) => {
+    try {
+      await updateMutation.mutateAsync({
+        title: data.title,
+        description: data.description || undefined,
+        contactId: data.contactId,
+        locationId: data.locationId || undefined,
+        source: data.source,
+        priority: data.priority,
+        assignedTo: data.assignedTo || undefined,
+      });
+      showToast('Aanvraag bijgewerkt', 'success');
+      setIsEditing(false);
+    } catch {
+      showToast('Opslaan mislukt', 'error');
+    }
+  };
+
+  const handleCancelEdit = () => {
+    if (request) {
+      resetForm({
+        title: request.title,
+        description: request.description || '',
+        contactId: request.contactId,
+        locationId: request.locationId || '',
+        source: request.source,
+        priority: request.priority,
+        assignedTo: request.assignedTo || '',
+      });
+      setEditContactId(request.contactId);
+    }
+    setIsEditing(false);
+  };
+
+  const users = Array.isArray(allUsers) ? allUsers : [];
 
   const tabs: { key: Tab; label: string; count?: number }[] = [
     { key: 'algemeen', label: 'Algemeen' },
@@ -240,9 +348,14 @@ export default function RequestDetailPage() {
               </svg>
               Taak aanmaken
             </Button>
-            <Button variant="secondary" size="sm" onClick={() => setIsEditOpen(true)}>
-              Bewerken
-            </Button>
+            {!isEditing && (
+              <Button variant="secondary" size="sm" onClick={() => setIsEditing(true)}>
+                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                </svg>
+                Bewerken
+              </Button>
+            )}
           </div>
         )}
       </div>
@@ -274,62 +387,182 @@ export default function RequestDetailPage() {
       {/* Tab content: Algemeen */}
       {activeTab === 'algemeen' && (
         <div className="space-y-6">
-          {/* Info grid */}
-          <Card>
-            <div className="grid grid-cols-2 gap-6 lg:grid-cols-3">
-              <div>
-                <dt className="text-sm font-medium text-gray-500">Relatie</dt>
-                <dd className="mt-1 text-sm text-gray-900">
-                  {request.contact ? (
-                    <Link
-                      to={`/contacts/${request.contactId}`}
-                      className="text-primary-600 hover:text-primary-800 hover:underline"
+          {isEditing ? (
+            <Card>
+              <form onSubmit={handleSubmit(onSubmitEdit)} className="space-y-4">
+                <Input
+                  label="Titel"
+                  error={formErrors.title?.message}
+                  {...register('title')}
+                />
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium text-gray-700">Beschrijving</label>
+                  <textarea
+                    {...register('description')}
+                    rows={3}
+                    placeholder="Optionele toelichting"
+                    className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <ContactSearchInput
+                    label="Relatie"
+                    value={editContactId}
+                    onSelect={handleEditContactSelect}
+                    error={formErrors.contactId?.message}
+                  />
+                  <div>
+                    <label className="mb-1.5 block text-sm font-medium text-gray-700">Locatie</label>
+                    <select
+                      {...register('locationId')}
+                      className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
                     >
-                      {getContactName(request.contact)}
-                    </Link>
-                  ) : (
-                    '—'
-                  )}
-                </dd>
+                      <option value="">Geen locatie</option>
+                      {editLocations.map((l) => (
+                        <option key={l.id} value={l.id}>
+                          {l.name} — {l.city}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+                <div className="grid grid-cols-3 gap-4">
+                  <Select
+                    label="Bron"
+                    options={sourceOptions2}
+                    {...register('source')}
+                  />
+                  <Select
+                    label="Prioriteit"
+                    options={priorityOptions}
+                    {...register('priority')}
+                  />
+                  <div>
+                    <label className="mb-1.5 block text-sm font-medium text-gray-700">Toegewezen aan</label>
+                    <select
+                      {...register('assignedTo')}
+                      className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
+                    >
+                      <option value="">Niet toegewezen</option>
+                      {users.map((u) => (
+                        <option key={u.id} value={u.id}>
+                          {u.firstName} {u.lastName}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+                {/* Read-only fields */}
+                <div className="grid grid-cols-2 gap-6 border-t border-gray-100 pt-4 lg:grid-cols-3">
+                  <div>
+                    <dt className="text-sm font-medium text-gray-500">Aangemaakt door</dt>
+                    <dd className="mt-1 text-sm text-gray-900">
+                      {request.createdByUser
+                        ? `${request.createdByUser.firstName} ${request.createdByUser.lastName}`
+                        : '—'}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-sm font-medium text-gray-500">Aangemaakt op</dt>
+                    <dd className="mt-1 text-sm text-gray-900">
+                      {formatDate(request.createdAt)}
+                    </dd>
+                  </div>
+                </div>
+                <div className="flex justify-end gap-3 border-t border-gray-100 pt-4">
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    onClick={handleCancelEdit}
+                    disabled={updateMutation.isPending}
+                  >
+                    Annuleren
+                  </Button>
+                  <Button
+                    type="submit"
+                    isLoading={updateMutation.isPending}
+                    disabled={!isDirty}
+                  >
+                    Opslaan
+                  </Button>
+                </div>
+              </form>
+            </Card>
+          ) : (
+            <Card>
+              <div className="grid grid-cols-2 gap-6 lg:grid-cols-3">
+                <div>
+                  <dt className="text-sm font-medium text-gray-500">Titel</dt>
+                  <dd className="mt-1 text-sm text-gray-900">{request.title}</dd>
+                </div>
+                <div>
+                  <dt className="text-sm font-medium text-gray-500">Beschrijving</dt>
+                  <dd className="mt-1 text-sm text-gray-900">{request.description || '—'}</dd>
+                </div>
+                <div>
+                  <dt className="text-sm font-medium text-gray-500">Prioriteit</dt>
+                  <dd className="mt-1">
+                    <span
+                      className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
+                        priorityColors[request.priority] || 'bg-gray-100 text-gray-600'
+                      }`}
+                    >
+                      {priorityLabels[request.priority] || request.priority}
+                    </span>
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-sm font-medium text-gray-500">Relatie</dt>
+                  <dd className="mt-1 text-sm text-gray-900">
+                    {request.contact ? (
+                      <Link
+                        to={`/contacts/${request.contactId}`}
+                        className="text-primary-600 hover:text-primary-800 hover:underline"
+                      >
+                        {getContactName(request.contact)}
+                      </Link>
+                    ) : '—'}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-sm font-medium text-gray-500">Locatie</dt>
+                  <dd className="mt-1 text-sm text-gray-900">
+                    {request.location
+                      ? `${request.location.name} — ${request.location.city}`
+                      : '—'}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-sm font-medium text-gray-500">Bron</dt>
+                  <dd className="mt-1 text-sm text-gray-900">
+                    {sourceLabels[request.source] || request.source}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-sm font-medium text-gray-500">Toegewezen aan</dt>
+                  <dd className="mt-1 text-sm text-gray-900">
+                    {request.assignedUser
+                      ? `${request.assignedUser.firstName} ${request.assignedUser.lastName}`
+                      : '—'}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-sm font-medium text-gray-500">Aangemaakt door</dt>
+                  <dd className="mt-1 text-sm text-gray-900">
+                    {request.createdByUser
+                      ? `${request.createdByUser.firstName} ${request.createdByUser.lastName}`
+                      : '—'}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-sm font-medium text-gray-500">Aangemaakt op</dt>
+                  <dd className="mt-1 text-sm text-gray-900">
+                    {formatDate(request.createdAt)}
+                  </dd>
+                </div>
               </div>
-              <div>
-                <dt className="text-sm font-medium text-gray-500">Locatie</dt>
-                <dd className="mt-1 text-sm text-gray-900">
-                  {request.location
-                    ? `${request.location.name} — ${request.location.city}`
-                    : '—'}
-                </dd>
-              </div>
-              <div>
-                <dt className="text-sm font-medium text-gray-500">Bron</dt>
-                <dd className="mt-1 text-sm text-gray-900">
-                  {sourceLabels[request.source] || request.source}
-                </dd>
-              </div>
-              <div>
-                <dt className="text-sm font-medium text-gray-500">Toegewezen aan</dt>
-                <dd className="mt-1 text-sm text-gray-900">
-                  {request.assignedUser
-                    ? `${request.assignedUser.firstName} ${request.assignedUser.lastName}`
-                    : '—'}
-                </dd>
-              </div>
-              <div>
-                <dt className="text-sm font-medium text-gray-500">Aangemaakt door</dt>
-                <dd className="mt-1 text-sm text-gray-900">
-                  {request.createdByUser
-                    ? `${request.createdByUser.firstName} ${request.createdByUser.lastName}`
-                    : '—'}
-                </dd>
-              </div>
-              <div>
-                <dt className="text-sm font-medium text-gray-500">Aangemaakt op</dt>
-                <dd className="mt-1 text-sm text-gray-900">
-                  {formatDate(request.createdAt)}
-                </dd>
-              </div>
-            </div>
-          </Card>
+            </Card>
+          )}
 
           {/* Status wijzigen */}
           {userCanWrite && (
@@ -454,14 +687,6 @@ export default function RequestDetailPage() {
         />
       )}
 
-      {/* Edit modal */}
-      {request && (
-        <EditRequestModal
-          isOpen={isEditOpen}
-          onClose={() => setIsEditOpen(false)}
-          request={request}
-        />
-      )}
       {request && (
         <CreateTaskModal
           isOpen={isTaskOpen}

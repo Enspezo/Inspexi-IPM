@@ -17,6 +17,8 @@ interface UpdateOrganizationDto {
   defaultValidityDays?: number;
   senderName?: string | null;
   senderEmail?: string | null;
+  workdayStart?: number;
+  workdayEnd?: number;
 }
 
 export function useUpdateOrganization(orgId: string | null | undefined) {

@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   RequestStatus,
@@ -122,9 +122,15 @@ export default function RequestsPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [priorityFilter, setPriorityFilter] = useState('');
-  const [onlyMine, setOnlyMine] = useState(false);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(search), 300);
+    return () => clearTimeout(timer);
+  }, [search]);
+  const [onlyMine, setOnlyMine] = useState(() => localStorage.getItem('inspexi:filter-mine:requests') === 'true');
   const [page, setPage] = useState(1);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>(
@@ -137,7 +143,7 @@ export default function RequestsPage() {
   };
 
   const { data, isLoading, error } = useRequests({
-    search: search || undefined,
+    search: debouncedSearch.length >= 3 ? debouncedSearch : undefined,
     status: (statusFilter as RequestStatus) || undefined,
     priority: (priorityFilter as Priority) || undefined,
     assignedTo: onlyMine ? user?.id : undefined,
@@ -153,7 +159,7 @@ export default function RequestsPage() {
     [],
   );
 
-  const userCanWrite = user && canWrite.includes(user.role);
+  const userCanWrite = user && user.roles.some(r => canWrite.includes(r));
 
   const columns: ColumnDef<Request>[] = [
     {
@@ -308,18 +314,6 @@ export default function RequestsPage() {
           {/* Snelfilters */}
           <div className="space-y-3">
             <h3 className="text-sm font-semibold text-gray-900">Snelfilters</h3>
-            <label className="flex cursor-pointer items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                className="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
-                checked={onlyMine}
-                onChange={(e) => {
-                  setOnlyMine(e.target.checked);
-                  setPage(1);
-                }}
-              />
-              <span className="text-gray-700">Mijn aanvragen</span>
-            </label>
             <div>
               <Select
                 options={priorityFilterOptions}
@@ -413,7 +407,7 @@ export default function RequestsPage() {
         </div>
 
         {/* Filters — statusfilter alleen in tabelweergave */}
-        <div className="flex flex-col gap-4 sm:flex-row">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
           <div className="flex-1">
             <Input
               placeholder="Zoeken op titel of relatie..."
@@ -433,11 +427,24 @@ export default function RequestsPage() {
               />
             </div>
           )}
+          <label className="inline-flex cursor-pointer items-center gap-2 whitespace-nowrap rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm transition-colors hover:border-gray-400">
+            <input
+              type="checkbox"
+              className="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+              checked={onlyMine}
+              onChange={(e) => {
+                setOnlyMine(e.target.checked);
+                localStorage.setItem('inspexi:filter-mine:requests', String(e.target.checked));
+                setPage(1);
+              }}
+            />
+            <span className="text-gray-700">Mijn aanvragen</span>
+          </label>
         </div>
 
         {/* Inhoud */}
         {viewMode === 'kanban' ? (
-          <RequestsKanban search={search} priorityFilter={priorityFilter} assignedTo={onlyMine ? user?.id : undefined} />
+          <RequestsKanban search={debouncedSearch.length >= 3 ? debouncedSearch : undefined} priorityFilter={priorityFilter} assignedTo={onlyMine ? user?.id : undefined} />
         ) : (
           <>
             <Table

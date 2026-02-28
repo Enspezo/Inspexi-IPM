@@ -129,9 +129,9 @@ export default function OrganizationDetailPage() {
   ];
 
   const sortedUsers = [...(users || [])].sort((a, b) => {
-    const aIdx = roleOrder.indexOf(a.role as Role);
-    const bIdx = roleOrder.indexOf(b.role as Role);
-    return (aIdx === -1 ? 99 : aIdx) - (bIdx === -1 ? 99 : bIdx);
+    const aIdx = Math.min(...a.roles.map((r) => { const i = roleOrder.indexOf(r); return i === -1 ? 99 : i; }));
+    const bIdx = Math.min(...b.roles.map((r) => { const i = roleOrder.indexOf(r); return i === -1 ? 99 : i; }));
+    return aIdx - bIdx;
   });
 
   return (
@@ -321,7 +321,11 @@ export default function OrganizationDetailPage() {
                           {user.email}
                         </td>
                         <td className="px-4 py-3">
-                          <Badge role={user.role} />
+                          <div className="flex flex-wrap gap-1">
+                            {user.roles.map((r) => (
+                              <Badge key={r} role={r} />
+                            ))}
+                          </div>
                         </td>
                         <td className="px-4 py-3">
                           <span

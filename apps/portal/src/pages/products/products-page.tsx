@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { Product } from '@/types';
 import {
@@ -26,12 +26,18 @@ const statusOptions = [
 export default function ProductsPage() {
   const navigate = useNavigate();
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [page, setPage] = useState(1);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
 
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(search), 300);
+    return () => clearTimeout(timer);
+  }, [search]);
+
   const { data, isLoading, error } = useProducts({
-    search: search || undefined,
+    search: debouncedSearch.length >= 3 ? debouncedSearch : undefined,
     isActive: statusFilter === '' ? undefined : statusFilter === 'true',
     page,
     limit: 20,

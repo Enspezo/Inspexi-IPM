@@ -34,8 +34,8 @@ export class UsersService {
     @Inject(STORAGE_PROVIDER) private storage: StorageProvider,
   ) {}
 
-  async findAllByOrg(orgId: string | null, currentUserRole: Role) {
-    if (currentUserRole === Role.SUPERUSER) {
+  async findAllByOrg(orgId: string | null, isSuperuser: boolean) {
+    if (isSuperuser) {
       return this.prisma.user.findMany({
         where: orgId ? { orgId } : undefined,
         include: { organization: true },
@@ -71,7 +71,7 @@ export class UsersService {
     }
 
     // Check role hierarchy
-    if (dto.role === Role.SUPERUSER && invitedBy.role !== Role.SUPERUSER) {
+    if (dto.role === Role.SUPERUSER && !invitedBy.roles.includes(Role.SUPERUSER)) {
       throw new ForbiddenException(
         'Alleen een superuser kan een superuser uitnodigen',
       );
@@ -161,7 +161,7 @@ export class UsersService {
           passwordHash,
           firstName: dto.firstName,
           lastName: dto.lastName,
-          role: invitation.role,
+          roles: [invitation.role],
           emailVerifiedAt: new Date(),
         },
       }),
@@ -185,7 +185,7 @@ export class UsersService {
 
     // Check tenant isolation
     if (
-      currentUser.role !== Role.SUPERUSER &&
+      !currentUser.roles.includes(Role.SUPERUSER) &&
       user.orgId !== currentUser.orgId
     ) {
       throw new ForbiddenException();
@@ -207,7 +207,7 @@ export class UsersService {
     const user = await this.findOne(id);
 
     if (
-      currentUser.role !== Role.SUPERUSER &&
+      !currentUser.roles.includes(Role.SUPERUSER) &&
       user.orgId !== currentUser.orgId
     ) {
       throw new ForbiddenException();
@@ -228,25 +228,29 @@ export class UsersService {
 
     // Check tenant isolation
     if (
-      currentUser.role !== Role.SUPERUSER &&
+      !currentUser.roles.includes(Role.SUPERUSER) &&
       user.orgId !== currentUser.orgId
     ) {
       throw new ForbiddenException();
     }
 
-    // Check role hierarchy
-    if (
-      dto.role === Role.SUPERUSER &&
-      currentUser.role !== Role.SUPERUSER
-    ) {
+    // Alleen SUPERUSER mag SUPERUSER-rol toewijzen
+    if (dto.roles.includes(Role.SUPERUSER) && !currentUser.roles.includes(Role.SUPERUSER)) {
       throw new ForbiddenException(
         'Alleen een superuser kan de superuser rol toewijzen',
       );
     }
 
+    // SUPERUSER mag niet gecombineerd worden met andere rollen
+    if (dto.roles.includes(Role.SUPERUSER) && dto.roles.length > 1) {
+      throw new BadRequestException(
+        'SUPERUSER kan niet gecombineerd worden met andere rollen',
+      );
+    }
+
     await this.prisma.user.update({
       where: { id },
-      data: { role: dto.role },
+      data: { roles: dto.roles },
     });
   }
 
@@ -265,7 +269,7 @@ export class UsersService {
 
     // Tenant isolatie
     if (
-      currentUser.role !== Role.SUPERUSER &&
+      !currentUser.roles.includes(Role.SUPERUSER) &&
       user.orgId !== currentUser.orgId
     ) {
       throw new ForbiddenException();
@@ -273,8 +277,8 @@ export class UsersService {
 
     // ORG_ADMIN mag geen andere ORG_ADMIN of SUPERUSER resetten
     if (
-      currentUser.role === Role.ORG_ADMIN &&
-      (user.role === Role.SUPERUSER || user.role === Role.ORG_ADMIN)
+      currentUser.roles.includes(Role.ORG_ADMIN) &&
+      (user.roles.includes(Role.SUPERUSER) || user.roles.includes(Role.ORG_ADMIN))
     ) {
       throw new ForbiddenException(
         'U heeft geen bevoegdheid om het wachtwoord van deze gebruiker te resetten',
@@ -313,6 +317,13 @@ export class UsersService {
       data.emailVerifiedAt = null; // Reset verification
     }
 
+    if ('homeStreet' in dto) data.homeStreet = dto.homeStreet || null;
+    if ('homeHouseNumber' in dto) data.homeHouseNumber = dto.homeHouseNumber || null;
+    if ('homePostalCode' in dto) data.homePostalCode = dto.homePostalCode || null;
+    if ('homeCity' in dto) data.homeCity = dto.homeCity || null;
+    if ('homeLat' in dto) data.homeLat = dto.homeLat ?? null;
+    if ('homeLng' in dto) data.homeLng = dto.homeLng ?? null;
+
     return this.prisma.user.update({
       where: { id },
       data,
@@ -322,7 +333,7 @@ export class UsersService {
 
   async adminUpdateUser(id: string, dto: AdminUpdateUserDto, actor: User) {
     const target = await this.findOne(id);
-    if (actor.role !== Role.SUPERUSER && target.orgId !== actor.orgId) {
+    if (!actor.roles.includes(Role.SUPERUSER) && target.orgId !== actor.orgId) {
       throw new ForbiddenException();
     }
 
@@ -341,6 +352,13 @@ export class UsersService {
       data.email = dto.email;
       data.emailVerifiedAt = null;
     }
+
+    if ('homeStreet' in dto) data.homeStreet = dto.homeStreet || null;
+    if ('homeHouseNumber' in dto) data.homeHouseNumber = dto.homeHouseNumber || null;
+    if ('homePostalCode' in dto) data.homePostalCode = dto.homePostalCode || null;
+    if ('homeCity' in dto) data.homeCity = dto.homeCity || null;
+    if ('homeLat' in dto) data.homeLat = dto.homeLat ?? null;
+    if ('homeLng' in dto) data.homeLng = dto.homeLng ?? null;
 
     const updated = await this.prisma.user.update({
       where: { id },
@@ -420,6 +438,30 @@ export class UsersService {
     await this.prisma.user.update({
       where: { id: userId },
       data: { signatureType: null, signatureData: null },
+    });
+  }
+
+  async updateColor(targetUserId: string, color: string | null | undefined, actor: User) {
+    const target = await this.findOne(targetUserId);
+
+    // Own profile OR ORG_ADMIN/SUPERUSER
+    if (
+      actor.id !== targetUserId &&
+      !actor.roles.includes(Role.SUPERUSER) &&
+      !actor.roles.includes(Role.ORG_ADMIN)
+    ) {
+      throw new ForbiddenException('Geen bevoegdheid om de kleur van deze gebruiker te wijzigen');
+    }
+
+    // Tenant isolation for non-superusers
+    if (!actor.roles.includes(Role.SUPERUSER) && target.orgId !== actor.orgId) {
+      throw new ForbiddenException();
+    }
+
+    return this.prisma.user.update({
+      where: { id: targetUserId },
+      data: { color: color ?? null },
+      select: { id: true, color: true },
     });
   }
 }

@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { QuoteStatus, Role } from '@/types';
 import type { Quote } from '@/types';
@@ -71,12 +71,20 @@ export default function QuotesPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const [onlyMine, setOnlyMine] = useState(() => localStorage.getItem('inspexi:filter-mine:quotes') === 'true');
   const [page, setPage] = useState(1);
 
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(search), 300);
+    return () => clearTimeout(timer);
+  }, [search]);
+
   const { data, isLoading, error } = useQuotes({
-    search: search || undefined,
+    search: debouncedSearch.length >= 3 ? debouncedSearch : undefined,
     status: (statusFilter as QuoteStatus) || undefined,
+    createdBy: onlyMine ? user?.id : undefined,
     page,
     limit: 20,
   });
@@ -89,7 +97,7 @@ export default function QuotesPage() {
     [],
   );
 
-  const userCanWrite = user && canWrite.includes(user.role);
+  const userCanWrite = user && user.roles.some(r => canWrite.includes(r));
 
   const columns: ColumnDef<Quote>[] = [
     {
@@ -265,7 +273,7 @@ export default function QuotesPage() {
       </div>
 
       {/* Filters */}
-      <div className="flex flex-col gap-4 sm:flex-row">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
         <div className="flex-1">
           <Input
             placeholder="Zoeken op nummer, onderwerp of relatie..."
@@ -283,6 +291,19 @@ export default function QuotesPage() {
             }}
           />
         </div>
+        <label className="inline-flex cursor-pointer items-center gap-2 whitespace-nowrap rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm transition-colors hover:border-gray-400">
+          <input
+            type="checkbox"
+            className="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+            checked={onlyMine}
+            onChange={(e) => {
+              setOnlyMine(e.target.checked);
+              localStorage.setItem('inspexi:filter-mine:quotes', String(e.target.checked));
+              setPage(1);
+            }}
+          />
+          <span className="text-gray-700">Mijn offertes</span>
+        </label>
       </div>
 
       <Table

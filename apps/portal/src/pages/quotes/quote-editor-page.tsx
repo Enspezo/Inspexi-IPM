@@ -5,7 +5,8 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Button, Card, Input, Select, Spinner, useToast, RichTextEditor } from '@/components/ui';
 import { useAuth } from '@/providers/auth-provider';
-import { useContacts, useContactLocations } from '@/pages/contacts/hooks/use-contacts';
+import { useContactLocations } from '@/pages/contacts/hooks/use-contacts';
+import { ContactSearchInput } from '@/components/contacts/contact-search-input';
 import { useProducts } from '@/pages/products/hooks/use-products';
 import { useQuoteTemplates } from './hooks/use-quote-templates';
 import {
@@ -16,7 +17,7 @@ import {
   useResolvePrice,
 } from './hooks/use-quotes';
 import { apiClient } from '@/lib/api-client';
-import type { ContactType, ResolvedPrice } from '@/types';
+import type { ResolvedPrice } from '@/types';
 
 const schema = z.object({
   subject: z.string().min(1, 'Onderwerp is verplicht'),
@@ -40,10 +41,6 @@ interface EditorLine {
   discountPct: number;
 }
 
-function getContactName(c: { type?: string; companyName?: string | null; firstName?: string | null; lastName?: string | null }): string {
-  if (c.companyName) return c.companyName;
-  return [c.firstName, c.lastName].filter(Boolean).join(' ') || '\u2014';
-}
 
 function calcLineTotal(line: EditorLine): number {
   return line.quantity * line.unitPrice * (1 - line.discountPct / 100);
@@ -73,7 +70,6 @@ export default function QuoteEditorPage() {
   const createMutation = useCreateQuote();
   const updateMutation = useUpdateQuote(id || '');
 
-  const { data: contactsData } = useContacts({ limit: 100 });
   const { data: productsData } = useProducts({ isActive: true, limit: 100 });
   const { data: templatesData } = useQuoteTemplates({ isActive: true, limit: 100 });
 
@@ -89,7 +85,6 @@ export default function QuoteEditorPage() {
     handleSubmit,
     reset,
     setValue,
-    watch,
     formState: { errors },
   } = useForm<FormData>({
     resolver: zodResolver(schema),
@@ -103,15 +98,13 @@ export default function QuoteEditorPage() {
     },
   });
 
-  const contactId = watch('contactId');
-
-  // Sync contactId to selectedContactId for location fetching
-  useEffect(() => {
+  const handleContactSelect = (contactId: string) => {
     if (contactId !== selectedContactId) {
+      setValue('contactId', contactId, { shouldValidate: true });
       setSelectedContactId(contactId || '');
       setValue('locationId', '');
     }
-  }, [contactId, selectedContactId, setValue]);
+  };
 
   // Load existing quote data when editing
   useEffect(() => {
@@ -156,18 +149,9 @@ export default function QuoteEditorPage() {
     }
   }, [isEditing, searchParams, setValue]);
 
-  const contacts = contactsData?.data || [];
   const products = productsData?.data || [];
   const templates = templatesData?.data || [];
   const locations = locationsData || [];
-
-  const contactOptions = [
-    { value: '', label: 'Selecteer relatie...' },
-    ...contacts.map((c) => ({
-      value: c.id,
-      label: getContactName(c),
-    })),
-  ];
 
   const locationOptions = [
     { value: '', label: 'Geen locatie' },
@@ -377,11 +361,11 @@ export default function QuoteEditorPage() {
             />
 
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-              <Select
+              <ContactSearchInput
                 label="Relatie"
-                options={contactOptions}
+                value={selectedContactId}
+                onSelect={handleContactSelect}
                 error={errors.contactId?.message}
-                {...register('contactId')}
               />
 
               {selectedContactId && locations.length > 0 && (

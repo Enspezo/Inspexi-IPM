@@ -1,4 +1,4 @@
-import { PrismaClient, Role, ContactType, LogType, PriceType, RequestSource, RequestStatus, Priority, QuoteStatus, NotificationType } from '@prisma/client';
+import { PrismaClient, Role, ContactType, LogType, PriceType, RequestSource, RequestStatus, Priority, QuoteStatus, NotificationType, PlanningStatus, AcceptanceStatus } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 
 const prisma = new PrismaClient();
@@ -26,6 +26,14 @@ async function main() {
   // PRD-03 tables (dependent on requests → contacts/locations)
   await prisma.requestStatusHistory.deleteMany();
   await prisma.request.deleteMany();
+  // PRD-07 tables (dependent on contacts/locations)
+  await prisma.planningSessionInspector.deleteMany();
+  await prisma.planningSession.deleteMany();
+  await prisma.planningFollower.deleteMany();
+  await prisma.rescheduleRequest.deleteMany();
+  await prisma.planningHistory.deleteMany();
+  await prisma.planningInspector.deleteMany();
+  await prisma.planningItem.deleteMany();
   // CRM tables (dependent on contacts)
   await prisma.contactCustomerGroup.deleteMany();
   await prisma.customerGroup.deleteMany();
@@ -78,7 +86,7 @@ async function main() {
       passwordHash,
       firstName: 'Super',
       lastName: 'Admin',
-      role: Role.SUPERUSER,
+      roles: [Role.SUPERUSER],
       emailVerifiedAt: new Date(),
     },
   });
@@ -86,11 +94,11 @@ async function main() {
 
   // Org 1 users
   const org1Users = [
-    { email: 'admin@inspexi-demo.nl', firstName: 'Jan', lastName: 'de Vries', role: Role.ORG_ADMIN },
-    { email: 'manager@inspexi-demo.nl', firstName: 'Pieter', lastName: 'Bakker', role: Role.MANAGER },
-    { email: 'backoffice@inspexi-demo.nl', firstName: 'Maria', lastName: 'Jansen', role: Role.BACKOFFICE },
-    { email: 'werkvoorbereider@inspexi-demo.nl', firstName: 'Kees', lastName: 'Smit', role: Role.WERKVOORBEREIDER },
-    { email: 'inspecteur@inspexi-demo.nl', firstName: 'Tom', lastName: 'Visser', role: Role.INSPECTEUR },
+    { email: 'admin@inspexi-demo.nl', firstName: 'Jan', lastName: 'de Vries', roles: [Role.ORG_ADMIN] },
+    { email: 'manager@inspexi-demo.nl', firstName: 'Pieter', lastName: 'Bakker', roles: [Role.MANAGER] },
+    { email: 'backoffice@inspexi-demo.nl', firstName: 'Maria', lastName: 'Jansen', roles: [Role.BACKOFFICE] },
+    { email: 'werkvoorbereider@inspexi-demo.nl', firstName: 'Kees', lastName: 'Smit', roles: [Role.WERKVOORBEREIDER] },
+    { email: 'inspecteur@inspexi-demo.nl', firstName: 'Tom', lastName: 'Visser', roles: [Role.INSPECTEUR] },
   ];
 
   const createdOrg1Users: Record<string, string> = {};
@@ -98,14 +106,14 @@ async function main() {
     const created = await prisma.user.create({
       data: { ...u, passwordHash, orgId: org1.id, emailVerifiedAt: new Date() },
     });
-    createdOrg1Users[u.role] = created.id;
-    console.log(`  ✓ User: ${u.email} (${u.role})`);
+    createdOrg1Users[u.roles[0]] = created.id;
+    console.log(`  ✓ User: ${u.email} (${u.roles[0]})`);
   }
 
   // Org 2 users
   const org2Users = [
-    { email: 'admin@testbedrijf.nl', firstName: 'Lisa', lastName: 'Mulder', role: Role.ORG_ADMIN },
-    { email: 'inspecteur@testbedrijf.nl', firstName: 'Henk', lastName: 'Groot', role: Role.INSPECTEUR },
+    { email: 'admin@testbedrijf.nl', firstName: 'Lisa', lastName: 'Mulder', roles: [Role.ORG_ADMIN] },
+    { email: 'inspecteur@testbedrijf.nl', firstName: 'Henk', lastName: 'Groot', roles: [Role.INSPECTEUR] },
   ];
 
   const createdOrg2Users: Record<string, string> = {};
@@ -113,8 +121,8 @@ async function main() {
     const created = await prisma.user.create({
       data: { ...u, passwordHash, orgId: org2.id, emailVerifiedAt: new Date() },
     });
-    createdOrg2Users[u.role] = created.id;
-    console.log(`  ✓ User: ${u.email} (${u.role})`);
+    createdOrg2Users[u.roles[0]] = created.id;
+    console.log(`  ✓ User: ${u.email} (${u.roles[0]})`);
   }
 
   // ─── Sample Invitations ────────────────────────────────
@@ -981,6 +989,72 @@ async function main() {
     ],
   });
   console.log('  ✓ 3 sample notificaties');
+
+  // ─── PRD-07: Planning ──────────────────────────────────
+  console.log('\n📅 Seeding Planning items...');
+
+  // Planning item 1: GEPLAND - NEN3140 inspectie bij Pieter Jansen
+  const planning1 = await prisma.planningItem.create({
+    data: {
+      orgId: org1.id,
+      quoteId: quote1.id,
+      contactId: contact2.id,
+      locationId: loc2Woning.id,
+      productId: products1[1].id,
+      productName: 'NEN3140 Inspectie',
+      status: PlanningStatus.GEPLAND,
+      scheduledDate: new Date('2026-03-10T09:00:00Z'),
+      durationHours: 3,
+      endTime: new Date('2026-03-10T12:00:00Z'),
+      internalNotes: 'Toegang via achterdeur, bellen bij buurman',
+      createdBy: createdOrg1Users[Role.BACKOFFICE],
+    },
+  });
+
+  // Inspector: Tom Visser (INSPECTEUR), primary, accepted
+  await prisma.planningInspector.create({
+    data: {
+      planningItemId: planning1.id,
+      userId: createdOrg1Users[Role.INSPECTEUR],
+      isPrimary: true,
+      acceptanceStatus: AcceptanceStatus.ACCEPTED,
+      acceptedAt: new Date('2026-02-27T10:00:00Z'),
+    },
+  });
+
+  await prisma.planningHistory.create({
+    data: {
+      planningItemId: planning1.id,
+      userId: createdOrg1Users[Role.BACKOFFICE],
+      action: 'STATUS_CHANGED',
+      description: 'Alle inspecteurs hebben geaccepteerd — status gewijzigd naar GEPLAND',
+      oldValue: 'CONCEPT',
+      newValue: 'GEPLAND',
+    },
+  });
+
+  console.log(`  ✓ Planregel: NEN3140 inspectie Pieter Jansen (GEPLAND, 10 mrt)`);
+
+  // Planning item 2: NOG_TE_PLANNEN - Thermografisch onderzoek Bouwbedrijf De Vries
+  const planning2 = await prisma.planningItem.create({
+    data: {
+      orgId: org1.id,
+      contactId: contact1.id,
+      locationId: loc1Kantoor.id,
+      productId: products1[2].id,
+      productName: 'Thermografisch onderzoek',
+      status: PlanningStatus.NOG_TE_PLANNEN,
+      internalNotes: 'Afgesproken met klant om in week 12 in te plannen',
+      createdBy: createdOrg1Users[Role.MANAGER],
+    },
+  });
+
+  console.log(`  ✓ Planregel: Thermografisch onderzoek De Vries (NOG_TE_PLANNEN)`);
+
+  // Suppress unused var warning
+  void planning2;
+  void req5;
+  void loc4Magazijn;
 
   console.log('\n✅ Seed completed successfully!');
   console.log('\n📋 Login credentials (all use Password123!):');

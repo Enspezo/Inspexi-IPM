@@ -32,7 +32,7 @@ export class ProductGroupsService {
       isDeleted: false,
     };
 
-    if (user.role !== Role.SUPERUSER) {
+    if (!user.roles.includes(Role.SUPERUSER)) {
       where.orgId = user.orgId!;
     }
 
@@ -73,7 +73,7 @@ export class ProductGroupsService {
       throw new NotFoundException('Productgroep niet gevonden');
     }
 
-    if (user.role !== Role.SUPERUSER && group.orgId !== user.orgId) {
+    if (!user.roles.includes(Role.SUPERUSER) && group.orgId !== user.orgId) {
       throw new ForbiddenException();
     }
 
@@ -82,7 +82,7 @@ export class ProductGroupsService {
 
   async findAllCompact(user: User) {
     const where: Prisma.ProductGroupWhereInput = { isDeleted: false };
-    if (user.role !== Role.SUPERUSER) {
+    if (!user.roles.includes(Role.SUPERUSER)) {
       where.orgId = user.orgId!;
     }
     return this.prisma.productGroup.findMany({
@@ -93,7 +93,7 @@ export class ProductGroupsService {
   }
 
   async create(dto: CreateProductGroupDto, user: User) {
-    if (!user.orgId && user.role !== Role.SUPERUSER) {
+    if (!user.orgId && !user.roles.includes(Role.SUPERUSER)) {
       throw new ForbiddenException('Geen organisatie gekoppeld');
     }
 
@@ -157,7 +157,7 @@ export class ProductGroupsService {
     if (!product) {
       throw new NotFoundException('Product niet gevonden');
     }
-    if (user.role !== Role.SUPERUSER && product.orgId !== user.orgId) {
+    if (!user.roles.includes(Role.SUPERUSER) && product.orgId !== user.orgId) {
       throw new ForbiddenException();
     }
 
@@ -176,7 +176,7 @@ export class ProductGroupsService {
     if (!product || product.productGroupId !== group.id) {
       throw new NotFoundException('Product niet in deze groep gevonden');
     }
-    if (user.role !== Role.SUPERUSER && product.orgId !== user.orgId) {
+    if (!user.roles.includes(Role.SUPERUSER) && product.orgId !== user.orgId) {
       throw new ForbiddenException();
     }
 

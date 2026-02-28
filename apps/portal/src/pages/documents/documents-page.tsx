@@ -102,7 +102,7 @@ function EntityIcon({ type }: { type: DocumentEntityType }) {
 export default function DocumentsPage() {
   const [search, setSearch] = useState('');
   const [entityTypeFilter, setEntityTypeFilter] = useState('');
-  const [onlyMine, setOnlyMine] = useState(false);
+  const [onlyMine, setOnlyMine] = useState(() => localStorage.getItem('inspexi:filter-mine:documents') === 'true');
   const [page, setPage] = useState(1);
   const [previewDoc, setPreviewDoc] = useState<CrmDocument | null>(null);
 
@@ -341,6 +341,7 @@ export default function DocumentsPage() {
               checked={onlyMine}
               onChange={(e) => {
                 setOnlyMine(e.target.checked);
+                localStorage.setItem('inspexi:filter-mine:documents', String(e.target.checked));
                 setPage(1);
               }}
             />

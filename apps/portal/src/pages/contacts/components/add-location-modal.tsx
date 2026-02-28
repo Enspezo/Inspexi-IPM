@@ -1,8 +1,11 @@
+import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Modal, Input, Select, Button, useToast } from '@/components/ui';
+import { AddressSearchInput } from '@/components/ui/address-search-input';
 import { useAddLocation } from '../hooks/use-contacts';
+import type { ParsedAddress } from '@/lib/geocoding';
 
 const locationSchema = z.object({
   name: z.string().min(1, 'Naam is verplicht'),
@@ -38,15 +41,25 @@ export function AddLocationModal({
 }: AddLocationModalProps) {
   const { showToast } = useToast();
   const addMutation = useAddLocation(contactId);
+  const [pdokData, setPdokData] = useState<Record<string, unknown> | null>(null);
 
   const {
     register,
     handleSubmit,
     reset,
+    setValue,
     formState: { errors },
   } = useForm<LocationFormData>({
     resolver: zodResolver(locationSchema),
   });
+
+  const handleAddressSelect = (address: ParsedAddress) => {
+    setValue('street', address.street, { shouldValidate: true });
+    setValue('houseNumber', address.houseNumber, { shouldValidate: true });
+    setValue('postalCode', address.postalCode, { shouldValidate: true });
+    setValue('city', address.city, { shouldValidate: true });
+    setPdokData(address.pdokData);
+  };
 
   const onSubmit = async (data: LocationFormData) => {
     try {
@@ -54,10 +67,12 @@ export function AddLocationModal({
         ...data,
         objectType: data.objectType || undefined,
         notes: data.notes || undefined,
+        pdokData: pdokData ?? undefined,
       };
       await addMutation.mutateAsync(cleaned);
       showToast('Locatie toegevoegd!', 'success');
       reset();
+      setPdokData(null);
       onClose();
     } catch (err) {
       showToast(
@@ -69,6 +84,7 @@ export function AddLocationModal({
 
   const handleClose = () => {
     reset();
+    setPdokData(null);
     onClose();
   };
 
@@ -80,6 +96,12 @@ export function AddLocationModal({
           placeholder="Kantoorpand Zuidas"
           error={errors.name?.message}
           {...register('name')}
+        />
+
+        <AddressSearchInput
+          label="Adres zoeken (PDOK)"
+          placeholder="Zoek een adres…"
+          onSelect={handleAddressSelect}
         />
 
         <div className="grid grid-cols-3 gap-4">

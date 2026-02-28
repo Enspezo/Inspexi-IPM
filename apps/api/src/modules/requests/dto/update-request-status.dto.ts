@@ -1,6 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsEnum, IsOptional, IsString } from 'class-validator';
-import { RequestStatus } from '@prisma/client';
+import { RequestStatus, LostReason } from '@prisma/client';
 
 export class UpdateRequestStatusDto {
   @ApiProperty({ enum: RequestStatus, example: RequestStatus.IN_BEHANDELING })
@@ -11,4 +11,14 @@ export class UpdateRequestStatusDto {
   @IsOptional()
   @IsString()
   note?: string;
+
+  @ApiPropertyOptional({ enum: LostReason, example: LostReason.TE_DUUR })
+  @IsOptional()
+  @IsEnum(LostReason)
+  lostReason?: LostReason;
+
+  @ApiPropertyOptional({ example: 'Klant koos voor een goedkopere aanbieder' })
+  @IsOptional()
+  @IsString()
+  lostNote?: string;
 }

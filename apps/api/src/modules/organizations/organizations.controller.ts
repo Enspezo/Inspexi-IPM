@@ -98,7 +98,7 @@ export class OrganizationsController {
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: User,
   ) {
-    if (user.role !== Role.SUPERUSER && user.orgId !== id) {
+    if (!user.roles.includes(Role.SUPERUSER) && user.orgId !== id) {
       throw new ForbiddenException('Geen toegang tot deze organisatie');
     }
     const org = await this.organizationsService.findOne(id);
@@ -115,7 +115,7 @@ export class OrganizationsController {
     @Body() dto: UpdateOrganizationDto,
     @CurrentUser() user: User,
   ) {
-    if (user.role !== Role.SUPERUSER && user.orgId !== id) {
+    if (!user.roles.includes(Role.SUPERUSER) && user.orgId !== id) {
       throw new ForbiddenException('Geen toegang tot deze organisatie');
     }
     const org = await this.organizationsService.update(id, dto);
@@ -138,7 +138,7 @@ export class OrganizationsController {
     @UploadedFile() file: Express.Multer.File,
     @CurrentUser() user: User,
   ) {
-    if (user.role !== Role.SUPERUSER && user.orgId !== id) {
+    if (!user.roles.includes(Role.SUPERUSER) && user.orgId !== id) {
       throw new ForbiddenException('Geen toegang tot deze organisatie');
     }
     if (!file) {
@@ -175,7 +175,7 @@ export class OrganizationsController {
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: User,
   ) {
-    if (user.role !== Role.SUPERUSER && user.orgId !== id) {
+    if (!user.roles.includes(Role.SUPERUSER) && user.orgId !== id) {
       throw new ForbiddenException('Geen toegang tot deze organisatie');
     }
     await this.organizationsService.deleteLogo(id);

@@ -98,6 +98,15 @@ export class DocumentsController {
     return { success: true, data: document };
   }
 
+  @Get('storage-stats')
+  @Roles(Role.SUPERUSER, Role.ORG_ADMIN)
+  @ApiOperation({ summary: 'Opslag statistieken ophalen voor organisatie' })
+  @ApiResponse({ status: 200, description: 'Opslag quota en gebruik' })
+  async storageStats(@CurrentUser() user: User) {
+    const stats = await this.documentsService.getStorageStats(user.orgId!);
+    return { success: true, data: stats };
+  }
+
   @Get()
   @Roles(
     Role.SUPERUSER,

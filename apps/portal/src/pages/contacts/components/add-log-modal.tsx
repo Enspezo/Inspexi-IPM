@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -26,9 +27,11 @@ interface AddLogModalProps {
   isOpen: boolean;
   onClose: () => void;
   contactId: string;
+  initialType?: LogType;
+  initialLoggedAt?: string;
 }
 
-export function AddLogModal({ isOpen, onClose, contactId }: AddLogModalProps) {
+export function AddLogModal({ isOpen, onClose, contactId, initialType, initialLoggedAt }: AddLogModalProps) {
   const { showToast } = useToast();
   const addMutation = useAddLog(contactId);
 
@@ -43,6 +46,15 @@ export function AddLogModal({ isOpen, onClose, contactId }: AddLogModalProps) {
       type: LogType.PHONE,
     },
   });
+
+  useEffect(() => {
+    if (isOpen) {
+      reset({
+        type: initialType ?? LogType.PHONE,
+        loggedAt: initialLoggedAt ?? '',
+      });
+    }
+  }, [isOpen, initialType, initialLoggedAt, reset]);
 
   const onSubmit = async (data: LogFormData) => {
     try {

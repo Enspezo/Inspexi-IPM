@@ -280,6 +280,64 @@ export class DocumentsService {
     };
   }
 
+  async getStorageStats(orgId: string) {
+    // Total usage and count
+    const totals = await this.prisma.document.aggregate({
+      where: { orgId, isDeleted: false },
+      _sum: { size: true },
+      _count: true,
+    });
+
+    // Breakdown by entity type
+    const byEntityType = await this.prisma.document.groupBy({
+      by: ['entityType'],
+      where: { orgId, isDeleted: false },
+      _sum: { size: true },
+      _count: true,
+    });
+
+    // Breakdown by user
+    const byUser = await this.prisma.document.groupBy({
+      by: ['uploadedById'],
+      where: { orgId, isDeleted: false },
+      _sum: { size: true },
+      _count: true,
+    });
+
+    // Resolve user names
+    const userIds = byUser.map((u) => u.uploadedById);
+    const users = userIds.length > 0
+      ? await this.prisma.user.findMany({
+          where: { id: { in: userIds } },
+          select: { id: true, firstName: true, lastName: true, email: true },
+        })
+      : [];
+    const userMap = new Map(users.map((u) => [u.id, u]));
+
+    return {
+      quotaBytes: 100 * 1024 * 1024, // 100 MB default
+      totalBytes: totals._sum.size ?? 0,
+      totalFiles: totals._count,
+      byEntityType: byEntityType.map((row) => ({
+        entityType: row.entityType,
+        totalBytes: row._sum.size ?? 0,
+        fileCount: row._count,
+      })),
+      byUser: byUser.map((row) => {
+        const u = userMap.get(row.uploadedById);
+        return {
+          userId: row.uploadedById,
+          userName: u
+            ? [u.firstName, u.lastName].filter(Boolean).join(' ') || u.email
+            : 'Onbekend',
+          userEmail: u?.email ?? '',
+          totalBytes: row._sum.size ?? 0,
+          fileCount: row._count,
+        };
+      }),
+    };
+  }
+
   async remove(id: string, user: User) {
     const existing = await this.prisma.document.findUnique({
       where: { id },

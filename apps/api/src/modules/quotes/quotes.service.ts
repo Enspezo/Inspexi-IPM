@@ -14,6 +14,7 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { EmailService } from '@/common/services/email.service';
 import { StorageProvider, STORAGE_PROVIDER } from '@/common/services/storage/storage.interface';
 import { PlanningService } from '../planning/planning.service';
+import { CustomFieldsValidator } from '@/modules/custom-fields/custom-fields.validator';
 import {
   CreateQuoteDto,
   UpdateQuoteDto,
@@ -77,6 +78,7 @@ export class QuotesService {
     private config: ConfigService,
     @Inject(STORAGE_PROVIDER) private storage: StorageProvider,
     private planningService: PlanningService,
+    private customFieldsValidator: CustomFieldsValidator,
   ) {}
 
   private getPublicUrl(path: string): string {
@@ -150,6 +152,10 @@ export class QuotesService {
       validUntil = new Date();
       validUntil.setDate(validUntil.getDate() + days);
     }
+    const customFields = dto.customFields
+      ? await this.customFieldsValidator.validateAndSanitize(orgId!, 'QUOTE', dto.customFields)
+      : null;
+
     return this.prisma.$transaction(async (tx) => {
       const quoteNumber = await this.generateQuoteNumber(orgId!, tx);
       return tx.quote.create({
@@ -169,6 +175,7 @@ export class QuotesService {
           internalNotes: dto.internalNotes || undefined,
           createdBy: user.id,
           publicToken: randomUUID(),
+          customFields: customFields as any,
         },
       });
     });
@@ -177,6 +184,18 @@ export class QuotesService {
   async update(id: string, dto: UpdateQuoteDto, user: User) {
     const quote = await this.findOne(id, user);
     if (quote.status !== QuoteStatus.CONCEPT) throw new BadRequestException('Alleen offertes met status CONCEPT kunnen bewerkt worden');
+
+    let customFieldsData: any = undefined;
+    if (dto.customFields !== undefined) {
+      const merged = {
+        ...((quote.customFields as Record<string, any>) ?? {}),
+        ...dto.customFields,
+      };
+      customFieldsData = await this.customFieldsValidator.validateAndSanitize(
+        quote.orgId, 'QUOTE', merged,
+      );
+    }
+
     return this.prisma.quote.update({
       where: { id: quote.id },
       data: {
@@ -188,6 +207,7 @@ export class QuotesService {
         ...(dto.coverBlocks !== undefined && { coverBlocks: dto.coverBlocks }),
         ...(dto.contentBlocks !== undefined && { contentBlocks: dto.contentBlocks }),
         ...(dto.closingBlocks !== undefined && { closingBlocks: dto.closingBlocks }),
+        ...(customFieldsData !== undefined && { customFields: customFieldsData as any }),
       },
     });
   }
@@ -237,7 +257,7 @@ export class QuotesService {
       await this.prisma.quote.update({ where: { id: quote.id }, data: { publicToken: token } });
     }
     const quoteUrl = this.getPublicUrl(`/offerte/${token}`);
-    await this.emailService.sendQuoteEmail({ to: dto.to, cc: dto.cc, subject: dto.subject, bodyText: dto.bodyText, quoteUrl, orgName: org?.name ?? 'InspeXi', senderName: org?.senderName, senderEmail: org?.senderEmail });
+    await this.emailService.sendQuoteEmail({ to: dto.to, cc: dto.cc, subject: dto.subject, bodyText: dto.bodyText, quoteUrl, orgName: org?.name ?? 'InspeXi', senderName: org?.senderName, senderEmail: org?.senderEmail, orgId: quote.orgId, quoteNumber: quote.quoteNumber });
     const updated = await this.prisma.quote.update({ where: { id: quote.id }, data: { status: QuoteStatus.VERSTUURD, sentAt: new Date() } });
     this.notifications.dispatch({ type: NotificationType.OFFERTE_VERSTUURD, orgId: quote.orgId, recipientUserIds: [quote.createdBy], title: 'Offerte verstuurd', body: `Offerte ${quote.quoteNumber} is naar ${dto.to} verstuurd.`, entityType: 'quote', entityId: quote.id });
     return updated;
@@ -317,7 +337,7 @@ export class QuotesService {
     if (contactEmail && quote.publicToken) {
       const org = await this.prisma.organization.findUnique({ where: { id: quote.orgId }, select: { name: true, senderName: true, senderEmail: true } });
       const quoteUrl = this.getPublicUrl(`/offerte/${quote.publicToken}`);
-      this.emailService.sendQuoteAnswerEmail({ to: contactEmail, quoteNumber: quote.quoteNumber, answer: dto.message, quoteUrl, orgName: org?.name ?? 'InspeXi', senderName: org?.senderName, senderEmail: org?.senderEmail }).catch(() => {});
+      this.emailService.sendQuoteAnswerEmail({ to: contactEmail, quoteNumber: quote.quoteNumber, answer: dto.message, quoteUrl, orgName: org?.name ?? 'InspeXi', senderName: org?.senderName, senderEmail: org?.senderEmail, orgId: quote.orgId }).catch(() => {});
     }
     return answer;
   }

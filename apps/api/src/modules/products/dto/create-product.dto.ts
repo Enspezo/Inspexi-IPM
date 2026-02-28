@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsString, IsOptional, IsNumber, IsBoolean, IsUUID, Min, Max } from 'class-validator';
+import { IsString, IsOptional, IsNumber, IsBoolean, IsUUID, IsObject, Min, Max } from 'class-validator';
 
 export class CreateProductDto {
   @ApiProperty({ example: 'NEN1010 Inspectie' })
@@ -31,4 +31,9 @@ export class CreateProductDto {
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
+
+  @ApiPropertyOptional({ description: 'Eigen velden (key-value JSON)' })
+  @IsOptional()
+  @IsObject()
+  customFields?: Record<string, any>;
 }

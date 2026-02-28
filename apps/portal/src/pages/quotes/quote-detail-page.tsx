@@ -6,6 +6,7 @@ import {
   Role,
   TaskEntityType,
   DocumentEntityType,
+  CustomFieldEntityType,
 } from '@/types';
 import { Button, Card, Spinner, Input, Table, useToast, type Column } from '@/components/ui';
 import { DetailPageLayout } from '@/components/layout/detail-page-layout';
@@ -25,6 +26,7 @@ import type { QuoteLine, QuoteApprovalRequest, QuoteQuestion, QuoteAttachment } 
 import { AuditHistory } from '@/components/audit-history/audit-history';
 import { CreateTaskModal } from '@/pages/tasks/components/create-task-modal';
 import { DocumentsSection } from '@/components/documents';
+import { CustomFieldsDisplay } from '@/components/custom-fields';
 import { SendQuoteModal } from './components/send-quote-modal';
 import { ApproveQuoteModal } from './components/approve-quote-modal';
 import { RichTextViewer } from '@/components/ui';
@@ -408,6 +410,11 @@ export default function QuoteDetailPage() {
             )}
           </div>
         </Card>
+
+        <CustomFieldsDisplay
+          entityType={CustomFieldEntityType.QUOTE}
+          customFields={quote.customFields}
+        />
 
         {/* Financial summary */}
         <Card>

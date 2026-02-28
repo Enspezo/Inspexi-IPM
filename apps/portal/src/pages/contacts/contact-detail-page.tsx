@@ -3,8 +3,8 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { ContactType, ContactPersonRole, LogType, QuoteStatus, RequestStatus, Priority, TaskStatus, Role, TaskEntityType, DocumentEntityType } from '@/types';
-import type { Contact, ContactAddress, ContactLog, ContactEmail, Location, Task, Request as RequestType } from '@/types';
+import { ContactType, ContactPersonRole, LogType, QuoteStatus, RequestStatus, Priority, TaskStatus, PlanningStatus, Role, TaskEntityType, DocumentEntityType, CustomFieldEntityType } from '@/types';
+import type { Contact, ContactAddress, ContactLog, ContactEmail, Location, Task, PlanningItem, Request as RequestType } from '@/types';
 import { Button, Card, Input, Spinner, useToast } from '@/components/ui';
 import { DetailPageLayout } from '@/components/layout/detail-page-layout';
 import { useAuth } from '@/providers/auth-provider';
@@ -12,6 +12,7 @@ import { useContact, useUpdateContact, useDeleteContact, useSetContactGroups, us
 import { useCustomerGroupsCompact } from '@/pages/customer-groups/hooks/use-customer-groups';
 import { useUsers } from '@/pages/users/hooks/use-users';
 import { useTasks, useUpdateTask } from '@/pages/tasks/hooks/use-tasks';
+import { usePlanningItems } from '@/pages/planning/hooks/use-planning';
 import { AddAddressModal } from './components/add-address-modal';
 import { EditAddressModal } from './components/edit-address-modal';
 import { AddContactPersonModal } from './components/add-contact-person-modal';
@@ -23,8 +24,9 @@ import { AuditHistory } from '@/components/audit-history/audit-history';
 import { CreateTaskModal } from '@/pages/tasks/components/create-task-modal';
 import { CreateRequestModal } from '@/pages/requests/components/create-request-modal';
 import { DocumentsSection } from '@/components/documents';
+import { CustomFieldsDisplay, CustomFieldsForm } from '@/components/custom-fields';
 
-type Tab = 'algemeen' | 'adressen' | 'locaties' | 'aanvragen' | 'taken' | 'offertes';
+type Tab = 'algemeen' | 'adressen' | 'locaties' | 'aanvragen' | 'taken' | 'offertes' | 'planning';
 
 const canWrite = [Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE];
 
@@ -160,6 +162,22 @@ const taskStatusColors: Record<string, string> = {
   [TaskStatus.VOLTOOID]: 'bg-green-100 text-green-800',
 };
 
+const planningStatusLabels: Record<string, string> = {
+  [PlanningStatus.NOG_TE_PLANNEN]: 'Nog te plannen',
+  [PlanningStatus.CONCEPT]: 'Concept',
+  [PlanningStatus.GEPLAND]: 'Gepland',
+  [PlanningStatus.AFGEROND]: 'Afgerond',
+  [PlanningStatus.VERVALLEN]: 'Vervallen',
+};
+
+const planningStatusColors: Record<string, string> = {
+  [PlanningStatus.NOG_TE_PLANNEN]: 'bg-gray-100 text-gray-700',
+  [PlanningStatus.CONCEPT]: 'bg-yellow-100 text-yellow-800',
+  [PlanningStatus.GEPLAND]: 'bg-blue-100 text-blue-800',
+  [PlanningStatus.AFGEROND]: 'bg-green-100 text-green-800',
+  [PlanningStatus.VERVALLEN]: 'bg-red-100 text-red-800',
+};
+
 export default function ContactDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -183,6 +201,10 @@ export default function ContactDetailPage() {
   const contactTasks = tasksData?.data || [];
   const incompleteTasks = contactTasks.filter((t) => t.status !== TaskStatus.VOLTOOID);
 
+  // Fetch planning items linked to this contact
+  const { data: planningData } = usePlanningItems({ contactId: id, limit: 100 });
+  const contactPlanningItems = planningData?.data ?? [];
+
   const [isEditing, setIsEditing] = useState(false);
   const [activeTab, setActiveTab] = useState<Tab>('algemeen');
   const [isAddressOpen, setIsAddressOpen] = useState(false);
@@ -191,6 +213,8 @@ export default function ContactDetailPage() {
   const [isLocationOpen, setIsLocationOpen] = useState(false);
   const [editingLocation, setEditingLocation] = useState<Location | null>(null);
   const [isLogOpen, setIsLogOpen] = useState(false);
+  const [logInitialType, setLogInitialType] = useState<LogType | undefined>(undefined);
+  const [logInitialLoggedAt, setLogInitialLoggedAt] = useState<string | undefined>(undefined);
   const [isEmailOpen, setIsEmailOpen] = useState(false);
   const [isTaskOpen, setIsTaskOpen] = useState(false);
   const [isRequestOpen, setIsRequestOpen] = useState(false);
@@ -208,6 +232,7 @@ export default function ContactDetailPage() {
     register,
     handleSubmit,
     reset: resetForm,
+    control,
     formState: { errors: formErrors, isDirty },
   } = useForm<ContactFormData>({ resolver: zodResolver(contactSchema) });
 
@@ -224,7 +249,8 @@ export default function ContactDetailPage() {
         cocNumber: contact.cocNumber || '',
         notes: contact.notes || '',
         ownerId: contact.ownerId || '',
-      });
+        customFields: contact.customFields ?? {},
+      } as any);
     }
   }, [contact, resetForm]);
 
@@ -241,7 +267,8 @@ export default function ContactDetailPage() {
         cocNumber: data.cocNumber || undefined,
         notes: data.notes || undefined,
         ownerId: data.ownerId || undefined,
-      });
+        customFields: (data as any).customFields,
+      } as any);
       showToast('Relatie bijgewerkt', 'success');
       setIsEditing(false);
     } catch {
@@ -262,7 +289,8 @@ export default function ContactDetailPage() {
         cocNumber: contact.cocNumber || '',
         notes: contact.notes || '',
         ownerId: contact.ownerId || '',
-      });
+        customFields: contact.customFields ?? {},
+      } as any);
     }
     setIsEditing(false);
   };
@@ -302,6 +330,7 @@ export default function ContactDetailPage() {
     { key: 'aanvragen', label: `Aanvragen (${contact.requests?.length || 0})` },
     { key: 'taken', label: 'Taken', count: incompleteTasks.length },
     { key: 'offertes', label: `Offertes (${contact.quotes?.length || 0})` },
+    { key: 'planning', label: `Planning (${contactPlanningItems.length})` },
   ];
 
   // Merge logs + emails into timeline
@@ -472,6 +501,12 @@ export default function ContactDetailPage() {
                     className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
                   />
                 </div>
+                <CustomFieldsForm
+                  entityType={CustomFieldEntityType.CONTACT}
+                  register={register}
+                  errors={formErrors}
+                  control={control}
+                />
                 <div className="flex justify-end gap-3 border-t border-gray-100 pt-4">
                   <Button
                     type="button"
@@ -533,8 +568,13 @@ export default function ContactDetailPage() {
                     {contact.phone && (
                       <a
                         href={`tel:${contact.phone}`}
-                        title="Bellen"
+                        title="Bellen & contactmoment loggen"
                         className="rounded p-0.5 text-gray-400 transition-colors hover:bg-primary-50 hover:text-primary-600"
+                        onClick={() => {
+                          setLogInitialType(LogType.PHONE);
+                          setLogInitialLoggedAt(new Date().toISOString().slice(0, 16));
+                          setIsLogOpen(true);
+                        }}
                       >
                         <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
@@ -553,6 +593,11 @@ export default function ContactDetailPage() {
               </div>
             </Card>
           )}
+
+          <CustomFieldsDisplay
+            entityType={CustomFieldEntityType.CONTACT}
+            customFields={contact.customFields}
+          />
 
           {/* Klantgroepen */}
           <ContactCustomerGroups contactId={contact.id} contact={contact} userCanWrite={!!userCanWrite} />
@@ -957,6 +1002,86 @@ export default function ContactDetailPage() {
         />
       )}
 
+      {activeTab === 'planning' && (
+        <div className="space-y-4">
+          {contactPlanningItems.length === 0 ? (
+            <p className="py-8 text-center text-sm text-gray-500">
+              Nog geen planning voor deze relatie
+            </p>
+          ) : (
+            <div className="overflow-hidden rounded-lg border border-gray-200">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                      Dienst
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                      Status
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                      Datum
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                      Locatie
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                      Inspecteur(s)
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200 bg-white">
+                  {contactPlanningItems.map((item) => (
+                    <tr
+                      key={item.id}
+                      className="cursor-pointer hover:bg-gray-50"
+                      onClick={() => navigate(`/planning/${item.id}`)}
+                    >
+                      <td className="px-4 py-3 text-sm font-medium text-primary-600">
+                        {item.productName}
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-3 text-sm">
+                        <span
+                          className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
+                            item.isCancelled
+                              ? 'bg-red-100 text-red-800'
+                              : planningStatusColors[item.status] || 'bg-gray-100 text-gray-800'
+                          }`}
+                        >
+                          {item.isCancelled ? 'Geannuleerd' : planningStatusLabels[item.status] || item.status}
+                        </span>
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-3 text-sm text-gray-500">
+                        <div className="flex items-center gap-1.5">
+                          {item.scheduledDate ? formatShortDate(item.scheduledDate) : '—'}
+                          {item.isMultiDay && (
+                            <span className="rounded bg-purple-100 px-1.5 py-0.5 text-xs font-medium text-purple-700">
+                              Meerdaags
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-sm text-gray-500">
+                        {item.location
+                          ? `${item.location.name}${item.location.city ? `, ${item.location.city}` : ''}`
+                          : '—'}
+                      </td>
+                      <td className="px-4 py-3 text-sm text-gray-500">
+                        {item.inspectors && item.inspectors.length > 0
+                          ? item.inspectors.map((i) =>
+                              i.user ? `${i.user.firstName} ${i.user.lastName}` : '—'
+                            ).join(', ')
+                          : '—'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Verwijderen */}
       {userCanManage && (
         <div className="flex justify-end border-t border-gray-200 pt-6">
@@ -1000,8 +1125,14 @@ export default function ContactDetailPage() {
       )}
       <AddLogModal
         isOpen={isLogOpen}
-        onClose={() => setIsLogOpen(false)}
+        onClose={() => {
+          setIsLogOpen(false);
+          setLogInitialType(undefined);
+          setLogInitialLoggedAt(undefined);
+        }}
         contactId={contact.id}
+        initialType={logInitialType}
+        initialLoggedAt={logInitialLoggedAt}
       />
       <SendEmailModal
         isOpen={isEmailOpen}

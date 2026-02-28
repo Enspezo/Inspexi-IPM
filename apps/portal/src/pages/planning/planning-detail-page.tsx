@@ -113,6 +113,10 @@ function PlanningDetailView({ id }: { id: string }) {
   const [editInternalNotes, setEditInternalNotes] = useState('');
   const [editContactPersonId, setEditContactPersonId] = useState<string | null>(null);
 
+  // Inline contactpersoon bewerken (werkt voor alle statussen)
+  const [editingContactPerson, setEditingContactPerson] = useState(false);
+  const [quickContactPersonId, setQuickContactPersonId] = useState<string | null>(null);
+
   // Verzetten modal (alleen voor GEPLAND)
   const [rescheduleOpen, setRescheduleOpen] = useState(false);
   const [rescheduleReason, setRescheduleReason] = useState('');
@@ -605,9 +609,66 @@ function PlanningDetailView({ id }: { id: string }) {
                   <div>
                     <dt className="text-sm font-medium text-gray-500">Contactpersoon</dt>
                     <dd className="mt-1 text-sm text-gray-900">
-                      {item.contactPerson
-                        ? `${item.contactPerson.firstName} ${item.contactPerson.lastName}`
-                        : '—'}
+                      {editingContactPerson ? (
+                        <div className="flex items-center gap-2">
+                          <select
+                            value={quickContactPersonId ?? ''}
+                            onChange={(e) => setQuickContactPersonId(e.target.value || null)}
+                            className="flex-1 rounded-md border border-gray-300 px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            autoFocus
+                          >
+                            <option value="">— Geen —</option>
+                            {allContactPersons.map((p) => (
+                              <option key={p.id} value={p.id}>
+                                {p.firstName} {p.lastName}
+                              </option>
+                            ))}
+                          </select>
+                          <button
+                            onClick={async () => {
+                              try {
+                                await updateItem.mutateAsync({ contactPersonId: quickContactPersonId });
+                                setEditingContactPerson(false);
+                                showToast('Contactpersoon opgeslagen', 'success');
+                              } catch {
+                                showToast('Fout bij opslaan', 'error');
+                              }
+                            }}
+                            disabled={updateItem.isPending}
+                            className="text-xs font-medium text-blue-600 hover:text-blue-800 whitespace-nowrap"
+                          >
+                            {updateItem.isPending ? '…' : 'Opslaan'}
+                          </button>
+                          <button
+                            onClick={() => setEditingContactPerson(false)}
+                            className="text-xs text-gray-500 hover:text-gray-700"
+                          >
+                            Annuleren
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-2 group">
+                          <span>
+                            {item.contactPerson
+                              ? `${item.contactPerson.firstName} ${item.contactPerson.lastName}`
+                              : '—'}
+                          </span>
+                          {!item.isCancelled && user && user.roles.some(r => canWrite.includes(r)) && (
+                            <button
+                              onClick={() => {
+                                setQuickContactPersonId(item.contactPersonId ?? null);
+                                setEditingContactPerson(true);
+                              }}
+                              className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-gray-600 transition-opacity"
+                              title="Contactpersoon wijzigen"
+                            >
+                              <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                              </svg>
+                            </button>
+                          )}
+                        </div>
+                      )}
                     </dd>
                   </div>
                   <div>

@@ -7,7 +7,8 @@ import { Modal, Input, Select, Button, useToast } from '@/components/ui';
 import { useCreateRequest, useOrgUsers } from '../hooks/use-requests';
 import { useContactLocations } from '@/pages/contacts/hooks/use-contacts';
 import { ContactSearchInput } from '@/components/contacts/contact-search-input';
-import { RequestSource, Priority } from '@/types';
+import { CustomFieldsForm } from '@/components/custom-fields';
+import { RequestSource, Priority, CustomFieldEntityType } from '@/types';
 
 const sourceOptions = [
   { value: RequestSource.MANUAL, label: 'Handmatig' },
@@ -55,13 +56,15 @@ export function CreateRequestModal({ isOpen, onClose, contactId: prefilledContac
     handleSubmit,
     reset,
     setValue,
+    control,
     formState: { errors },
-  } = useForm<FormData>({
+  } = useForm<FormData & { customFields?: Record<string, any> }>({
     resolver: zodResolver(schema),
     defaultValues: {
       contactId: prefilledContactId || '',
       source: RequestSource.MANUAL,
       priority: Priority.NORMAL,
+      customFields: {},
     },
   });
 
@@ -102,7 +105,7 @@ export function CreateRequestModal({ isOpen, onClose, contactId: prefilledContac
     }
   };
 
-  const onSubmit = async (data: FormData) => {
+  const onSubmit = async (data: FormData & { customFields?: Record<string, any> }) => {
     try {
       await createMutation.mutateAsync({
         contactId: data.contactId,
@@ -112,7 +115,8 @@ export function CreateRequestModal({ isOpen, onClose, contactId: prefilledContac
         title: data.title,
         description: data.description || undefined,
         priority: data.priority || undefined,
-      });
+        customFields: data.customFields,
+      } as any);
       showToast('Aanvraag aangemaakt!', 'success');
       // Invalidate contact detail so the aanvragen tab updates
       if (prefilledContactId) {
@@ -182,6 +186,13 @@ export function CreateRequestModal({ isOpen, onClose, contactId: prefilledContac
           label="Toewijzen aan"
           options={userOptions}
           {...register('assignedTo')}
+        />
+
+        <CustomFieldsForm
+          entityType={CustomFieldEntityType.REQUEST}
+          register={register}
+          errors={errors}
+          control={control}
         />
 
         <div className="flex justify-end gap-3 pt-2">

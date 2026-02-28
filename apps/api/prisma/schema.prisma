@@ -172,6 +172,35 @@ enum SessionStatus {
   VERVALLEN
 }
 
+enum CustomFieldType {
+  TEXT
+  NUMBER
+  DATE
+  BOOLEAN
+  SELECT
+}
+
+enum EmailTemplateType {
+  OFFERTE_VERSTUURD
+  OFFERTE_ANTWOORD
+  AFSPRAAK_BEVESTIGING
+  AFSPRAAK_VERPLAATST
+  AFSPRAAK_ACCEPTATIE
+  CONTACT_EMAIL
+  UITNODIGING
+  WACHTWOORD_RESET
+  NOTIFICATIE
+}
+
+enum CustomFieldEntityType {
+  CONTACT
+  CONTACT_ADDRESS
+  LOCATION
+  REQUEST
+  QUOTE
+  PRODUCT
+}
+
 // ─── PRD-01: Foundation Models ───────────────────────────
 
 model Organization {
@@ -206,6 +235,8 @@ model Organization {
   tasks                  Task[]
   documents              Document[]
   planningItems          PlanningItem[]
+  customFieldDefinitions CustomFieldDefinition[]
+  emailTemplates         EmailTemplate[]
 
   @@map("imp_organizations")
 }
@@ -262,6 +293,7 @@ model User {
   planningHistory           PlanningHistory[]
   createdPlanningItems      PlanningItem[]            @relation("PlanningCreatedByUser")
   planningSessionInspectors PlanningSessionInspector[]
+  emailTemplates            EmailTemplate[]            @relation("EmailTemplateCreatedBy")
 
   @@map("imp_users")
 }
@@ -313,6 +345,7 @@ model Contact {
   notes        String?
   priceTableId String?     @map("price_table_id") @db.Uuid
   ownerId      String?     @map("owner_id") @db.Uuid
+  customFields Json?       @map("custom_fields")
   isDeleted    Boolean     @default(false) @map("is_deleted")
   createdAt    DateTime    @default(now()) @map("created_at")
 
@@ -341,9 +374,10 @@ model ContactAddress {
   postalCode  String  @map("postal_code")
   city        String
   country     String  @default("NL")
-  isPrimary   Boolean @default(false) @map("is_primary")
-  isPostal    Boolean @default(false) @map("is_postal")
-  isInvoice   Boolean @default(false) @map("is_invoice")
+  isPrimary    Boolean @default(false) @map("is_primary")
+  isPostal     Boolean @default(false) @map("is_postal")
+  isInvoice    Boolean @default(false) @map("is_invoice")
+  customFields Json?   @map("custom_fields")
 
   contact Contact @relation(fields: [contactId], references: [id])
 
@@ -405,10 +439,11 @@ model Location {
   houseNumber String   @map("house_number")
   postalCode  String   @map("postal_code")
   city        String
-  objectType  String?  @map("object_type")
-  notes       String?
-  pdokData    Json?    @map("pdok_data")
-  createdAt   DateTime @default(now()) @map("created_at")
+  objectType   String?  @map("object_type")
+  notes        String?
+  pdokData     Json?    @map("pdok_data")
+  customFields Json?    @map("custom_fields")
+  createdAt    DateTime @default(now()) @map("created_at")
 
   contact      Contact      @relation(fields: [contactId], references: [id])
   organization Organization @relation(fields: [orgId], references: [id])
@@ -478,6 +513,7 @@ model Product {
   unit           String
   defaultVat     Float   @default(21) @map("default_vat")
   isActive       Boolean @default(true) @map("is_active")
+  customFields   Json?    @map("custom_fields")
   createdAt      DateTime @default(now()) @map("created_at")
 
   organization  Organization  @relation(fields: [orgId], references: [id])
@@ -555,11 +591,12 @@ model Request {
   lostNote    String?       @map("lost_note")
   title       String
   description String?
-  priority    Priority      @default(NORMAL)
-  createdBy   String        @map("created_by") @db.Uuid
-  isDeleted   Boolean       @default(false) @map("is_deleted")
-  createdAt   DateTime      @default(now()) @map("created_at")
-  updatedAt   DateTime      @updatedAt @map("updated_at")
+  priority     Priority      @default(NORMAL)
+  customFields Json?         @map("custom_fields")
+  createdBy    String        @map("created_by") @db.Uuid
+  isDeleted    Boolean       @default(false) @map("is_deleted")
+  createdAt    DateTime      @default(now()) @map("created_at")
+  updatedAt    DateTime      @updatedAt @map("updated_at")
 
   organization  Organization           @relation(fields: [orgId], references: [id])
   contact       Contact                @relation(fields: [contactId], references: [id])
@@ -628,6 +665,7 @@ model Quote {
   validUntil       DateTime?   @map("valid_until")
   requiresApproval Boolean     @default(false) @map("requires_approval")
   internalNotes    String?     @map("internal_notes")
+  customFields     Json?       @map("custom_fields")
   createdBy        String      @map("created_by") @db.Uuid
 
   // Send & client portal fields
@@ -1012,4 +1050,49 @@ model PlanningSessionInspector {
   @@unique([sessionId, userId])
   @@index([sessionId])
   @@map("imp_planning_session_inspectors")
+}
+
+// ─── Custom Fields ──────────────────────────────────────
+
+model CustomFieldDefinition {
+  id          String                @id @default(uuid()) @db.Uuid
+  orgId       String                @map("org_id") @db.Uuid
+  entityType  CustomFieldEntityType @map("entity_type")
+  fieldName   String                @map("field_name")
+  label       String
+  fieldType   CustomFieldType       @map("field_type")
+  options     Json?
+  isRequired  Boolean               @default(false) @map("is_required")
+  sortOrder   Int                   @default(0) @map("sort_order")
+  isDeleted   Boolean               @default(false) @map("is_deleted")
+  createdAt   DateTime              @default(now()) @map("created_at")
+  updatedAt   DateTime              @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [orgId], references: [id])
+
+  @@unique([orgId, entityType, fieldName])
+  @@index([orgId, entityType])
+  @@map("imp_custom_field_definitions")
+}
+
+// ─── Email Templates ────────────────────────────────────
+
+model EmailTemplate {
+  id        String            @id @default(uuid()) @db.Uuid
+  orgId     String            @map("org_id") @db.Uuid
+  type      EmailTemplateType
+  name      String
+  subject   String
+  bodyJson  Json              @map("body_json")
+  bodyHtml  String            @map("body_html") @db.Text
+  isActive  Boolean           @default(true) @map("is_active")
+  createdBy String            @map("created_by") @db.Uuid
+  createdAt DateTime          @default(now()) @map("created_at")
+  updatedAt DateTime          @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [orgId], references: [id])
+  creator      User         @relation("EmailTemplateCreatedBy", fields: [createdBy], references: [id])
+
+  @@index([orgId, type])
+  @@map("imp_email_templates")
 }

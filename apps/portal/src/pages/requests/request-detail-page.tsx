@@ -11,6 +11,7 @@ import {
   TaskEntityType,
   TaskStatus,
   DocumentEntityType,
+  CustomFieldEntityType,
 } from '@/types';
 import type { Task } from '@/types';
 import { Button, Card, Spinner, Select, Input, useToast } from '@/components/ui';
@@ -30,6 +31,7 @@ import { useTasks, useUpdateTask } from '@/pages/tasks/hooks/use-tasks';
 import { AuditHistory } from '@/components/audit-history/audit-history';
 import { CreateTaskModal } from '@/pages/tasks/components/create-task-modal';
 import { DocumentsSection } from '@/components/documents';
+import { CustomFieldsDisplay, CustomFieldsForm } from '@/components/custom-fields';
 
 type Tab = 'algemeen' | 'taken';
 
@@ -170,6 +172,7 @@ export default function RequestDetailPage() {
     handleSubmit,
     reset: resetForm,
     setValue,
+    control,
     formState: { errors: formErrors, isDirty },
   } = useForm<EditFormData>({ resolver: zodResolver(editSchema) });
 
@@ -193,7 +196,8 @@ export default function RequestDetailPage() {
         source: request.source,
         priority: request.priority,
         assignedTo: request.assignedTo || '',
-      });
+        customFields: request.customFields ?? {},
+      } as any);
       setEditContactId(request.contactId);
     }
   }, [request, resetForm]);
@@ -208,7 +212,8 @@ export default function RequestDetailPage() {
         source: data.source,
         priority: data.priority,
         assignedTo: data.assignedTo || undefined,
-      });
+        customFields: (data as any).customFields,
+      } as any);
       showToast('Aanvraag bijgewerkt', 'success');
       setIsEditing(false);
     } catch {
@@ -226,7 +231,8 @@ export default function RequestDetailPage() {
         source: request.source,
         priority: request.priority,
         assignedTo: request.assignedTo || '',
-      });
+        customFields: request.customFields ?? {},
+      } as any);
       setEditContactId(request.contactId);
     }
     setIsEditing(false);
@@ -452,6 +458,12 @@ export default function RequestDetailPage() {
                     </select>
                   </div>
                 </div>
+                <CustomFieldsForm
+                  entityType={CustomFieldEntityType.REQUEST}
+                  register={register}
+                  errors={formErrors}
+                  control={control}
+                />
                 {/* Read-only fields */}
                 <div className="grid grid-cols-2 gap-6 border-t border-gray-100 pt-4 lg:grid-cols-3">
                   <div>
@@ -563,6 +575,11 @@ export default function RequestDetailPage() {
               </div>
             </Card>
           )}
+
+          <CustomFieldsDisplay
+            entityType={CustomFieldEntityType.REQUEST}
+            customFields={request.customFields}
+          />
 
           {/* Status wijzigen */}
           {userCanWrite && (

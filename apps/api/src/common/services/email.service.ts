@@ -1,6 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Resend } from 'resend';
+import { EmailTemplateType } from '@prisma/client';
+import { PrismaService } from '../../prisma/prisma.service';
+import { renderTemplate, wrapInEmailLayout } from '../../modules/email-templates/template-renderer';
 
 @Injectable()
 export class EmailService {
@@ -8,7 +11,10 @@ export class EmailService {
   private resend: Resend;
   private fromEmail: string;
 
-  constructor(private config: ConfigService) {
+  constructor(
+    private config: ConfigService,
+    private prisma: PrismaService,
+  ) {
     this.resend = new Resend(this.config.get<string>('RESEND_API_KEY'));
     this.fromEmail = this.config.get<string>(
       'RESEND_FROM_EMAIL',
@@ -16,8 +22,49 @@ export class EmailService {
     );
   }
 
-  async sendPasswordReset(to: string, resetUrl: string): Promise<void> {
+  /**
+   * Try to use a custom template for this org + type.
+   * Returns rendered { subject, html } or null if no template exists.
+   */
+  private async tryCustomTemplate(
+    orgId: string | undefined | null,
+    type: EmailTemplateType,
+    variables: Record<string, Record<string, string>>,
+    orgName?: string,
+  ): Promise<{ subject: string; html: string } | null> {
+    if (!orgId) return null;
     try {
+      const template = await this.prisma.emailTemplate.findFirst({
+        where: { orgId, type, isActive: true },
+      });
+      if (!template) return null;
+
+      const rendered = renderTemplate(
+        { subject: template.subject, bodyHtml: template.bodyHtml },
+        variables,
+      );
+      return {
+        subject: rendered.subject,
+        html: wrapInEmailLayout(rendered.html, orgName),
+      };
+    } catch (error) {
+      this.logger.error(`Failed to load custom template for ${type}`, error);
+      return null;
+    }
+  }
+
+  async sendPasswordReset(to: string, resetUrl: string, orgId?: string | null): Promise<void> {
+    try {
+      const custom = await this.tryCustomTemplate(orgId, EmailTemplateType.WACHTWOORD_RESET, {
+        wachtwoord: { url: resetUrl },
+        organisatie: { naam: 'InspeXi Beheer', email: this.fromEmail },
+      });
+
+      if (custom) {
+        await this.resend.emails.send({ from: this.fromEmail, to, subject: custom.subject, html: custom.html });
+        return;
+      }
+
       await this.resend.emails.send({
         from: this.fromEmail,
         to,
@@ -64,8 +111,19 @@ export class EmailService {
     inviteUrl: string,
     orgName: string,
     role: string,
+    orgId?: string | null,
   ): Promise<void> {
     try {
+      const custom = await this.tryCustomTemplate(orgId, EmailTemplateType.UITNODIGING, {
+        organisatie: { naam: orgName, email: this.fromEmail },
+        uitnodiging: { rol: role, url: inviteUrl },
+      }, orgName);
+
+      if (custom) {
+        await this.resend.emails.send({ from: this.fromEmail, to, subject: custom.subject, html: custom.html });
+        return;
+      }
+
       await this.resend.emails.send({
         from: this.fromEmail,
         to,
@@ -94,13 +152,29 @@ export class EmailService {
     to: string,
     title: string,
     body: string,
-    opts?: { senderName?: string | null; senderEmail?: string | null; unsubscribeUrl?: string },
+    opts?: {
+      senderName?: string | null;
+      senderEmail?: string | null;
+      unsubscribeUrl?: string;
+      orgId?: string | null;
+      orgName?: string;
+    },
   ): Promise<void> {
     const from = this.buildFrom(opts?.senderName, opts?.senderEmail);
     const unsubscribeFooter = opts?.unsubscribeUrl
       ? `Wilt u geen e-mails meer ontvangen? <a href="${opts.unsubscribeUrl}" style="color:#6B7280;">Klik hier om u af te melden.</a>`
       : 'U kunt uw notificatievoorkeuren aanpassen in uw profielinstellingen.';
     try {
+      const custom = await this.tryCustomTemplate(opts?.orgId, EmailTemplateType.NOTIFICATIE, {
+        organisatie: { naam: opts?.orgName ?? 'InspeXi Beheer', email: opts?.senderEmail ?? this.fromEmail },
+        notificatie: { titel: title, bericht: body },
+      }, opts?.orgName);
+
+      if (custom) {
+        await this.resend.emails.send({ from, to, subject: custom.subject, html: custom.html });
+        return;
+      }
+
       await this.resend.emails.send({
         from,
         to,
@@ -132,9 +206,44 @@ export class EmailService {
     orgName: string;
     senderName?: string | null;
     senderEmail?: string | null;
+    orgId?: string | null;
+    quoteNumber?: string;
+    quoteTotal?: string;
+    quoteValidUntil?: string;
+    contactName?: string;
+    contactEmail?: string;
+    senderFirstName?: string;
+    senderLastName?: string;
   }): Promise<void> {
     const from = this.buildFrom(params.senderName, params.senderEmail);
     try {
+      const custom = await this.tryCustomTemplate(params.orgId, EmailTemplateType.OFFERTE_VERSTUURD, {
+        organisatie: { naam: params.orgName, email: params.senderEmail ?? this.fromEmail },
+        contact: {
+          bedrijfsnaam: params.contactName ?? '',
+          voornaam: '',
+          achternaam: params.contactName ?? '',
+          email: params.contactEmail ?? params.to,
+        },
+        offerte: {
+          nummer: params.quoteNumber ?? '',
+          onderwerp: params.subject,
+          totaal: params.quoteTotal ?? '',
+          vervalDatum: params.quoteValidUntil ?? '',
+          url: params.quoteUrl,
+        },
+        gebruiker: {
+          voornaam: params.senderFirstName ?? '',
+          achternaam: params.senderLastName ?? '',
+          email: params.senderEmail ?? this.fromEmail,
+        },
+      }, params.orgName);
+
+      if (custom) {
+        await this.resend.emails.send({ from, to: params.to, cc: params.cc, subject: custom.subject, html: custom.html });
+        return;
+      }
+
       await this.resend.emails.send({
         from,
         to: params.to,
@@ -170,9 +279,27 @@ export class EmailService {
     orgName: string;
     senderName?: string | null;
     senderEmail?: string | null;
+    orgId?: string | null;
   }): Promise<void> {
     const from = this.buildFrom(params.senderName, params.senderEmail);
     try {
+      const custom = await this.tryCustomTemplate(params.orgId, EmailTemplateType.OFFERTE_ANTWOORD, {
+        organisatie: { naam: params.orgName, email: params.senderEmail ?? this.fromEmail },
+        contact: { bedrijfsnaam: '', voornaam: '', achternaam: '', email: params.to },
+        offerte: {
+          nummer: params.quoteNumber,
+          onderwerp: '',
+          totaal: '',
+          vervalDatum: '',
+          url: params.quoteUrl,
+        },
+      }, params.orgName);
+
+      if (custom) {
+        await this.resend.emails.send({ from, to: params.to, subject: custom.subject, html: custom.html });
+        return;
+      }
+
       await this.resend.emails.send({
         from,
         to: params.to,

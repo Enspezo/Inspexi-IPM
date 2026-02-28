@@ -3,11 +3,12 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { Role, DocumentEntityType } from '@/types';
+import { Role, DocumentEntityType, CustomFieldEntityType } from '@/types';
 import { Button, Card, Spinner, Input, Select, useToast } from '@/components/ui';
 import { DetailPageLayout } from '@/components/layout/detail-page-layout';
 import { AuditHistory } from '@/components/audit-history/audit-history';
 import { DocumentsSection } from '@/components/documents';
+import { CustomFieldsDisplay, CustomFieldsForm } from '@/components/custom-fields';
 import { useAuth } from '@/providers/auth-provider';
 import { useProduct, useUpdateProduct } from './hooks/use-products';
 import { useProductGroupsCompact } from '@/pages/product-groups/hooks/use-product-groups';
@@ -66,6 +67,7 @@ export default function ProductDetailPage() {
     register,
     handleSubmit,
     reset,
+    control,
     formState: { errors, isDirty },
   } = useForm<FormData>({ resolver: zodResolver(schema) });
 
@@ -78,7 +80,8 @@ export default function ProductDetailPage() {
         defaultVat: product.defaultVat,
         productGroupId: product.productGroupId || '',
         isActive: product.isActive,
-      });
+        customFields: product.customFields ?? {},
+      } as any);
     }
   }, [product, reset]);
 
@@ -91,7 +94,8 @@ export default function ProductDetailPage() {
         defaultVat: data.defaultVat,
         productGroupId: data.productGroupId || '',
         isActive: data.isActive,
-      });
+        customFields: (data as any).customFields,
+      } as any);
       showToast('Product bijgewerkt', 'success');
       setIsEditing(false);
     } catch {
@@ -108,7 +112,8 @@ export default function ProductDetailPage() {
         defaultVat: product.defaultVat,
         productGroupId: product.productGroupId || '',
         isActive: product.isActive,
-      });
+        customFields: product.customFields ?? {},
+      } as any);
     }
     setIsEditing(false);
   };
@@ -215,6 +220,12 @@ export default function ProductDetailPage() {
                 />
                 <span className="text-sm text-gray-700">Actief</span>
               </label>
+              <CustomFieldsForm
+                entityType={CustomFieldEntityType.PRODUCT}
+                register={register}
+                errors={errors}
+                control={control}
+              />
               <div className="flex justify-end gap-3 border-t border-gray-100 pt-4">
                 <Button
                   type="button"
@@ -272,6 +283,11 @@ export default function ProductDetailPage() {
             </div>
           </Card>
         )}
+
+        <CustomFieldsDisplay
+          entityType={CustomFieldEntityType.PRODUCT}
+          customFields={product.customFields}
+        />
 
         {/* Documenten */}
         <Card>

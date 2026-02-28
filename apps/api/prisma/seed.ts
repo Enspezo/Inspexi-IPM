@@ -46,6 +46,9 @@ async function main() {
   // Tasks & Documents (dependent on users)
   await prisma.document.deleteMany();
   await prisma.task.deleteMany();
+  // Custom fields & email templates
+  await prisma.customFieldDefinition.deleteMany();
+  await prisma.emailTemplate.deleteMany();
   // Auth/org tables
   await prisma.auditLog.deleteMany();
   await prisma.invitation.deleteMany();
@@ -75,6 +78,46 @@ async function main() {
     },
   });
   console.log(`  ✓ Organization: ${org2.name} (${org2.slug})`);
+
+  // ─── Custom Field Definitions ────────────────────────────
+  await prisma.customFieldDefinition.createMany({
+    data: [
+      {
+        orgId: org1.id,
+        entityType: 'CONTACT',
+        fieldName: 'klantnummer',
+        label: 'Klantnummer',
+        fieldType: 'TEXT',
+        sortOrder: 0,
+      },
+      {
+        orgId: org1.id,
+        entityType: 'CONTACT',
+        fieldName: 'branche',
+        label: 'Branche',
+        fieldType: 'SELECT',
+        options: ['Bouw', 'Industrie', 'Overheid', 'Zorg', 'Onderwijs'],
+        sortOrder: 1,
+      },
+      {
+        orgId: org1.id,
+        entityType: 'LOCATION',
+        fieldName: 'bouwjaar',
+        label: 'Bouwjaar',
+        fieldType: 'NUMBER',
+        sortOrder: 0,
+      },
+      {
+        orgId: org1.id,
+        entityType: 'REQUEST',
+        fieldName: 'extern_referentienummer',
+        label: 'Extern referentienummer',
+        fieldType: 'TEXT',
+        sortOrder: 0,
+      },
+    ],
+  });
+  console.log('  ✓ Custom field definitions (4 voor InspeXi Demo)');
 
   // ─── Users ─────────────────────────────────────────────
   const passwordHash = await bcrypt.hash('Password123!', 10);

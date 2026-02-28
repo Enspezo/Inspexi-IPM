@@ -1,6 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Resend } from 'resend';
+import { EmailTemplateType } from '@prisma/client';
+import { PrismaService } from '../../prisma/prisma.service';
+import { renderTemplate, wrapInEmailLayout } from '../email-templates/template-renderer';
 
 interface ConfirmationEmailParams {
   to: string;
@@ -11,6 +14,7 @@ interface ConfirmationEmailParams {
   locationName?: string;
   orgName: string;
   portalUrl: string;
+  orgId?: string;
 }
 
 interface RescheduleEmailParams {
@@ -20,6 +24,7 @@ interface RescheduleEmailParams {
   reason: string;
   orgName: string;
   newPortalUrl: string;
+  orgId?: string;
 }
 
 interface AcceptationRequestEmailParams {
@@ -30,6 +35,7 @@ interface AcceptationRequestEmailParams {
   orgName: string;
   /** e.g. "Sessie 2/5" — shown in subject and heading for multi-day items */
   sessionLabel?: string;
+  orgId?: string;
 }
 
 interface SessionConfirmationEmailParams {
@@ -43,6 +49,7 @@ interface SessionConfirmationEmailParams {
   locationName?: string;
   orgName: string;
   portalUrl: string;
+  orgId?: string;
 }
 
 @Injectable()
@@ -51,9 +58,39 @@ export class PlanningEmailService {
   private resend: Resend;
   private fromEmail: string;
 
-  constructor(private config: ConfigService) {
+  constructor(
+    private config: ConfigService,
+    private prisma: PrismaService,
+  ) {
     this.resend = new Resend(this.config.get<string>('RESEND_API_KEY'));
     this.fromEmail = this.config.get<string>('RESEND_FROM_EMAIL', 'noreply@inspexi.nl');
+  }
+
+  private async tryCustomTemplate(
+    orgId: string | undefined,
+    type: EmailTemplateType,
+    variables: Record<string, Record<string, string>>,
+    orgName?: string,
+  ): Promise<{ subject: string; html: string } | null> {
+    if (!orgId) return null;
+    try {
+      const template = await this.prisma.emailTemplate.findFirst({
+        where: { orgId, type, isActive: true },
+      });
+      if (!template) return null;
+
+      const rendered = renderTemplate(
+        { subject: template.subject, bodyHtml: template.bodyHtml },
+        variables,
+      );
+      return {
+        subject: rendered.subject,
+        html: wrapInEmailLayout(rendered.html, orgName),
+      };
+    } catch (error) {
+      this.logger.error(`Failed to load custom template for ${type}`, error);
+      return null;
+    }
   }
 
   private formatDate(date: Date | null): string {
@@ -80,13 +117,31 @@ export class PlanningEmailService {
   }
 
   async sendConfirmation(params: ConfirmationEmailParams): Promise<void> {
-    const { to, recipientName, productName, scheduledDate, durationHours, locationName, orgName, portalUrl } = params;
+    const { to, recipientName, productName, scheduledDate, durationHours, locationName, orgName, portalUrl, orgId } = params;
 
     const dateStr = this.formatDate(scheduledDate);
     const timeStr = this.formatTime(scheduledDate);
     const durationStr = this.formatDuration(durationHours);
 
     try {
+      const custom = await this.tryCustomTemplate(orgId, EmailTemplateType.AFSPRAAK_BEVESTIGING, {
+        organisatie: { naam: orgName, email: this.fromEmail },
+        contact: { bedrijfsnaam: '', voornaam: recipientName, achternaam: '', email: to },
+        afspraak: {
+          datum: dateStr,
+          tijd: timeStr,
+          duur: durationStr,
+          locatie: locationName ?? '',
+          product: productName,
+          url: portalUrl,
+        },
+      }, orgName);
+
+      if (custom) {
+        await this.resend.emails.send({ from: this.fromEmail, to, subject: custom.subject, html: custom.html });
+        return;
+      }
+
       await this.resend.emails.send({
         from: this.fromEmail,
         to,
@@ -127,9 +182,27 @@ export class PlanningEmailService {
   }
 
   async sendRescheduleNotification(params: RescheduleEmailParams): Promise<void> {
-    const { to, recipientName, productName, reason, orgName, newPortalUrl } = params;
+    const { to, recipientName, productName, reason, orgName, newPortalUrl, orgId } = params;
 
     try {
+      const custom = await this.tryCustomTemplate(orgId, EmailTemplateType.AFSPRAAK_VERPLAATST, {
+        organisatie: { naam: orgName, email: this.fromEmail },
+        contact: { bedrijfsnaam: '', voornaam: recipientName, achternaam: '', email: to },
+        afspraak: {
+          datum: '',
+          tijd: '',
+          duur: '',
+          locatie: '',
+          product: productName,
+          url: newPortalUrl,
+        },
+      }, orgName);
+
+      if (custom) {
+        await this.resend.emails.send({ from: this.fromEmail, to, subject: custom.subject, html: custom.html });
+        return;
+      }
+
       await this.resend.emails.send({
         from: this.fromEmail,
         to,
@@ -157,13 +230,31 @@ export class PlanningEmailService {
   }
 
   async sendAcceptationRequest(params: AcceptationRequestEmailParams): Promise<void> {
-    const { to, recipientName, productName, scheduledDate, orgName, sessionLabel } = params;
+    const { to, recipientName, productName, scheduledDate, orgName, sessionLabel, orgId } = params;
     const dateStr = this.formatDate(scheduledDate);
     const timeStr = this.formatTime(scheduledDate);
     const subjectPrefix = sessionLabel ? `Acceptatieverzoek ${sessionLabel}: ` : 'Acceptatieverzoek afspraak: ';
     const headingLabel = sessionLabel ? `${sessionLabel}: ` : '';
 
     try {
+      const custom = await this.tryCustomTemplate(orgId, EmailTemplateType.AFSPRAAK_ACCEPTATIE, {
+        organisatie: { naam: orgName, email: this.fromEmail },
+        gebruiker: { voornaam: recipientName, achternaam: '', email: to },
+        afspraak: {
+          datum: dateStr,
+          tijd: timeStr,
+          duur: '',
+          locatie: '',
+          product: productName,
+          url: '',
+        },
+      }, orgName);
+
+      if (custom) {
+        await this.resend.emails.send({ from: this.fromEmail, to, subject: custom.subject, html: custom.html });
+        return;
+      }
+
       await this.resend.emails.send({
         from: this.fromEmail,
         to,
@@ -196,7 +287,7 @@ export class PlanningEmailService {
   }
 
   async sendSessionConfirmation(params: SessionConfirmationEmailParams): Promise<void> {
-    const { to, recipientName, productName, sessionNumber, totalSessions, scheduledDate, durationHours, locationName, orgName, portalUrl } = params;
+    const { to, recipientName, productName, sessionNumber, totalSessions, scheduledDate, durationHours, locationName, orgName, portalUrl, orgId } = params;
 
     const dateStr = this.formatDate(scheduledDate);
     const timeStr = this.formatTime(scheduledDate);
@@ -204,6 +295,24 @@ export class PlanningEmailService {
     const sessionLabel = `Sessie ${sessionNumber}/${totalSessions}`;
 
     try {
+      const custom = await this.tryCustomTemplate(orgId, EmailTemplateType.AFSPRAAK_BEVESTIGING, {
+        organisatie: { naam: orgName, email: this.fromEmail },
+        contact: { bedrijfsnaam: '', voornaam: recipientName, achternaam: '', email: to },
+        afspraak: {
+          datum: dateStr,
+          tijd: timeStr,
+          duur: durationStr,
+          locatie: locationName ?? '',
+          product: `${productName} — ${sessionLabel}`,
+          url: portalUrl,
+        },
+      }, orgName);
+
+      if (custom) {
+        await this.resend.emails.send({ from: this.fromEmail, to, subject: custom.subject, html: custom.html });
+        return;
+      }
+
       await this.resend.emails.send({
         from: this.fromEmail,
         to,

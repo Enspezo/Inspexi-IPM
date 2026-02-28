@@ -8,6 +8,7 @@ import {
 import { User, Role, Prisma } from '@prisma/client';
 import { PrismaService } from '@/prisma';
 import { EmailService } from '@/common/services/email.service';
+import { CustomFieldsValidator } from '@/modules/custom-fields/custom-fields.validator';
 import {
   CreateContactDto,
   UpdateContactDto,
@@ -30,6 +31,7 @@ export class ContactsService {
   constructor(
     private prisma: PrismaService,
     private emailService: EmailService,
+    private customFieldsValidator: CustomFieldsValidator,
   ) {}
 
   /**
@@ -162,6 +164,10 @@ export class ContactsService {
       throw new ForbiddenException('Geen organisatie gekoppeld');
     }
 
+    const customFields = dto.customFields
+      ? await this.customFieldsValidator.validateAndSanitize(orgId!, 'CONTACT', dto.customFields)
+      : null;
+
     return this.prisma.contact.create({
       data: {
         orgId: orgId!,
@@ -176,6 +182,7 @@ export class ContactsService {
         cocNumber: dto.cocNumber,
         notes: dto.notes,
         ownerId: dto.ownerId ?? user.id,
+        customFields: customFields as any,
       },
       include: { addresses: true },
     });
@@ -187,6 +194,17 @@ export class ContactsService {
     // Eigenaar wijzigen: alleen eigenaar, ORG_ADMIN of SUPERUSER
     if (dto.ownerId !== undefined) {
       this.assertOwnerOrAdmin(contact, user);
+    }
+
+    let customFieldsData: any = undefined;
+    if (dto.customFields !== undefined) {
+      const merged = {
+        ...((contact.customFields as Record<string, any>) ?? {}),
+        ...dto.customFields,
+      };
+      customFieldsData = await this.customFieldsValidator.validateAndSanitize(
+        contact.orgId, 'CONTACT', merged,
+      );
     }
 
     return this.prisma.contact.update({
@@ -203,6 +221,7 @@ export class ContactsService {
         ...(dto.cocNumber !== undefined && { cocNumber: dto.cocNumber }),
         ...(dto.notes !== undefined && { notes: dto.notes }),
         ...(dto.ownerId !== undefined && { ownerId: dto.ownerId || null }),
+        ...(customFieldsData !== undefined && { customFields: customFieldsData as any }),
       },
       include: { addresses: true },
     });
@@ -222,6 +241,9 @@ export class ContactsService {
 
   async addAddress(contactId: string, dto: CreateContactAddressDto, user: User) {
     const contact = await this.findOne(contactId, user);
+    const cfData = dto.customFields
+      ? await this.customFieldsValidator.validateAndSanitize(contact.orgId, 'CONTACT_ADDRESS', dto.customFields)
+      : null;
 
     const needsTransaction = dto.isPrimary || dto.isPostal || dto.isInvoice;
 
@@ -261,6 +283,7 @@ export class ContactsService {
             isPrimary: dto.isPrimary ?? false,
             isPostal: dto.isPostal ?? false,
             isInvoice: dto.isInvoice ?? false,
+            customFields: cfData as any,
           },
         });
       });
@@ -278,6 +301,7 @@ export class ContactsService {
         isPrimary: dto.isPrimary ?? false,
         isPostal: dto.isPostal ?? false,
         isInvoice: dto.isInvoice ?? false,
+        customFields: cfData as any,
       },
     });
   }
@@ -298,6 +322,12 @@ export class ContactsService {
 
     // Verify org scoping via contact
     await this.findOne(address.contactId, user);
+
+    let cfData: any = undefined;
+    if (dto.customFields !== undefined) {
+      const merged = { ...((address.customFields as Record<string, any>) ?? {}), ...dto.customFields };
+      cfData = await this.customFieldsValidator.validateAndSanitize(address.contact.orgId, 'CONTACT_ADDRESS', merged);
+    }
 
     const needsTransaction = dto.isPrimary || dto.isPostal || dto.isInvoice;
 
@@ -334,6 +364,7 @@ export class ContactsService {
             ...(dto.isPrimary !== undefined && { isPrimary: dto.isPrimary }),
             ...(dto.isPostal !== undefined && { isPostal: dto.isPostal }),
             ...(dto.isInvoice !== undefined && { isInvoice: dto.isInvoice }),
+            ...(cfData !== undefined && { customFields: cfData as any }),
           },
         });
       });
@@ -351,6 +382,7 @@ export class ContactsService {
         ...(dto.isPrimary !== undefined && { isPrimary: dto.isPrimary }),
         ...(dto.isPostal !== undefined && { isPostal: dto.isPostal }),
         ...(dto.isInvoice !== undefined && { isInvoice: dto.isInvoice }),
+        ...(cfData !== undefined && { customFields: cfData as any }),
       },
     });
   }
@@ -487,6 +519,9 @@ export class ContactsService {
 
   async addLocation(contactId: string, dto: CreateLocationDto, user: User) {
     const contact = await this.findOne(contactId, user);
+    const cfData = dto.customFields
+      ? await this.customFieldsValidator.validateAndSanitize(contact.orgId, 'LOCATION', dto.customFields)
+      : null;
 
     return this.prisma.location.create({
       data: {
@@ -501,6 +536,7 @@ export class ContactsService {
         notes: dto.notes,
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         pdokData: (dto.pdokData ?? null) as any,
+        customFields: cfData as any,
       },
     });
   }
@@ -528,6 +564,12 @@ export class ContactsService {
       throw new ForbiddenException();
     }
 
+    let cfData: any = undefined;
+    if (dto.customFields !== undefined) {
+      const merged = { ...((location.customFields as Record<string, any>) ?? {}), ...dto.customFields };
+      cfData = await this.customFieldsValidator.validateAndSanitize(location.orgId, 'LOCATION', merged);
+    }
+
     return this.prisma.location.update({
       where: { id: locationId },
       data: {
@@ -540,6 +582,7 @@ export class ContactsService {
         ...(dto.notes !== undefined && { notes: dto.notes }),
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         ...(dto.pdokData !== undefined && { pdokData: dto.pdokData as any }),
+        ...(cfData !== undefined && { customFields: cfData as any }),
       },
     });
   }

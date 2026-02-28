@@ -122,6 +122,10 @@ const navItems: NavItem[] = [
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 7v8a2 2 0 002 2h6M8 7V5a2 2 0 012-2h4.586a1 1 0 01.707.293l4.414 4.414a1 1 0 01.293.707V15a2 2 0 01-2 2h-2M8 7H6a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2v-2" />
       </svg>
     ),
+    children: [
+      { to: '/quote-templates', label: 'Offertesjablonen' },
+      { to: '/email-templates', label: 'E-mailsjablonen' },
+    ],
   },
   {
     to: '/products',
@@ -235,7 +239,8 @@ export function Sidebar() {
       {/* Navigation */}
       <nav className="flex-1 space-y-1 px-3 py-4">
         {visibleItems.map((item) => {
-          const isParentActive = location.pathname.startsWith(item.to);
+          const isParentActive = location.pathname.startsWith(item.to) ||
+            (item.children?.some(c => location.pathname.startsWith(c.to)) ?? false);
           const hasChildren = item.children && item.children.length > 0;
           const showChildren = hasChildren && isParentActive;
 

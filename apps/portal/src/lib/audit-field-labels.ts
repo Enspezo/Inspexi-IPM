@@ -37,6 +37,7 @@ const entityLabels: Record<string, Record<string, string>> = {
     cocNumber: 'KvK-nummer',
     priceTableId: 'Prijstabel',
     ownerId: 'Eigenaar',
+    customFields: 'Eigen velden',
   },
   ContactPerson: {
     contactId: 'Relatie',
@@ -45,6 +46,7 @@ const entityLabels: Record<string, Record<string, string>> = {
   Location: {
     contactId: 'Relatie',
     objectType: 'Objecttype',
+    customFields: 'Eigen velden',
   },
   CustomerGroup: {},
   ProductGroup: {
@@ -54,6 +56,7 @@ const entityLabels: Record<string, Record<string, string>> = {
     unit: 'Eenheid',
     defaultVat: 'Standaard BTW',
     productGroupId: 'Productgroep',
+    customFields: 'Eigen velden',
   },
   PriceTable: {
     isDefault: 'Standaard',
@@ -73,6 +76,7 @@ const entityLabels: Record<string, Record<string, string>> = {
     title: 'Titel',
     priority: 'Prioriteit',
     createdBy: 'Aangemaakt door',
+    customFields: 'Eigen velden',
   },
   Quote: {
     quoteNumber: 'Offertenummer',
@@ -90,6 +94,7 @@ const entityLabels: Record<string, Record<string, string>> = {
     requiresApproval: 'Goedkeuring vereist',
     internalNotes: 'Interne notities',
     createdBy: 'Aangemaakt door',
+    customFields: 'Eigen velden',
   },
   QuoteLine: {
     quoteId: 'Offerte',
@@ -116,6 +121,24 @@ const entityLabels: Record<string, Record<string, string>> = {
     primaryColor: 'Primaire kleur',
     defaultVat: 'Standaard BTW',
     defaultValidityDays: 'Standaard geldigheidsdagen',
+  },
+  CustomFieldDefinition: {
+    entityType: 'Entiteitstype',
+    fieldName: 'Veldnaam',
+    label: 'Label',
+    fieldType: 'Veldtype',
+    options: 'Opties',
+    isRequired: 'Verplicht',
+    sortOrder: 'Sortering',
+  },
+  EmailTemplate: {
+    type: 'Type',
+    name: 'Naam',
+    subject: 'Onderwerp',
+    bodyJson: 'Inhoud (JSON)',
+    bodyHtml: 'Inhoud (HTML)',
+    isActive: 'Actief',
+    createdBy: 'Aangemaakt door',
   },
   PlanningItem: {
     status: 'Status',

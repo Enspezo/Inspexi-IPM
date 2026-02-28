@@ -1,4 +1,4 @@
-import { useEditor, EditorContent } from '@tiptap/react';
+import { useEditor, EditorContent, type Editor } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Underline from '@tiptap/extension-underline';
 import TextAlign from '@tiptap/extension-text-align';
@@ -10,7 +10,9 @@ import { useEffect } from 'react';
 interface RichTextEditorProps {
   value: object | null;
   onChange: (json: object) => void;
+  onHtmlChange?: (html: string) => void;
   placeholder?: string;
+  editorRef?: React.MutableRefObject<Editor | null>;
 }
 
 function ToolbarButton({
@@ -43,7 +45,7 @@ function ToolbarButton({
   );
 }
 
-export function RichTextEditor({ value, onChange, placeholder }: RichTextEditorProps) {
+export function RichTextEditor({ value, onChange, onHtmlChange, placeholder, editorRef }: RichTextEditorProps) {
   const editor = useEditor({
     extensions: [
       StarterKit,
@@ -56,8 +58,16 @@ export function RichTextEditor({ value, onChange, placeholder }: RichTextEditorP
     content: value ?? '',
     onUpdate({ editor }) {
       onChange(editor.getJSON());
+      onHtmlChange?.(editor.getHTML());
     },
   });
+
+  // Expose editor instance to parent via ref
+  useEffect(() => {
+    if (editorRef) {
+      editorRef.current = editor;
+    }
+  }, [editor, editorRef]);
 
   // Sync external value changes (e.g. when loading existing quote)
   useEffect(() => {

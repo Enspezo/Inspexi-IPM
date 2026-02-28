@@ -39,4 +39,9 @@ export class CreateQuoteDto {
   @IsOptional()
   @IsObject()
   contentBlocks?: Record<string, any>;
+
+  @ApiPropertyOptional({ description: 'Eigen velden (key-value JSON)' })
+  @IsOptional()
+  @IsObject()
+  customFields?: Record<string, any>;
 }

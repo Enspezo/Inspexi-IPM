@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsEnum, IsOptional, IsString, IsEmail, IsUUID } from 'class-validator';
+import { IsEnum, IsOptional, IsString, IsEmail, IsUUID, IsObject } from 'class-validator';
 import { ContactType } from '@prisma/client';
 
 export class CreateContactDto {
@@ -56,4 +56,9 @@ export class CreateContactDto {
   @IsOptional()
   @IsUUID()
   ownerId?: string;
+
+  @ApiPropertyOptional({ description: 'Eigen velden (key-value JSON)' })
+  @IsOptional()
+  @IsObject()
+  customFields?: Record<string, any>;
 }

@@ -121,6 +121,7 @@ export class UsersService {
       inviteUrl,
       org?.name || 'InspeXi',
       dto.role,
+      orgId,
     );
 
     return invitation;

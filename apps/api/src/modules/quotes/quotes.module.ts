@@ -5,9 +5,10 @@ import { QuotesService } from './quotes.service';
 import { QuoteSchedulerService } from './quote-scheduler.service';
 import { NotificationsModule } from '@/modules/notifications/notifications.module';
 import { PlanningModule } from '@/modules/planning/planning.module';
+import { CustomFieldsModule } from '@/modules/custom-fields/custom-fields.module';
 
 @Module({
-  imports: [ConfigModule, NotificationsModule, PlanningModule],
+  imports: [ConfigModule, NotificationsModule, PlanningModule, CustomFieldsModule],
   controllers: [QuotesController, PublicQuotesController],
   providers: [QuotesService, QuoteSchedulerService],
   exports: [QuotesService],

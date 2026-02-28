@@ -1,10 +1,11 @@
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { ContactType } from '@/types';
+import { ContactType, CustomFieldEntityType } from '@/types';
 import type { Contact } from '@/types';
 import { Modal, Input, Button, useToast } from '@/components/ui';
 import { useCreateContact } from '../hooks/use-contacts';
+import { CustomFieldsForm } from '@/components/custom-fields';
 
 const contactSchema = z.object({
   type: z.nativeEnum(ContactType),
@@ -37,23 +38,29 @@ export function CreateContactModal({ isOpen, onClose, onCreated }: CreateContact
     handleSubmit,
     watch,
     reset,
+    control,
     formState: { errors },
-  } = useForm<ContactFormData>({
+  } = useForm<ContactFormData & { customFields?: Record<string, any> }>({
     resolver: zodResolver(contactSchema),
     defaultValues: {
       type: ContactType.COMPANY,
+      customFields: {},
     },
   });
 
   const contactType = watch('type');
 
-  const onSubmit = async (data: ContactFormData) => {
+  const onSubmit = async (data: ContactFormData & { customFields?: Record<string, any> }) => {
     try {
-      // Remove empty strings
-      const cleaned = Object.fromEntries(
-        Object.entries(data).filter(([, v]) => v !== '' && v !== undefined),
-      ) as ContactFormData;
-      const created = await createMutation.mutateAsync(cleaned);
+      // Remove empty strings (but keep customFields object)
+      const { customFields, ...rest } = data;
+      const cleaned = {
+        ...Object.fromEntries(
+          Object.entries(rest).filter(([, v]) => v !== '' && v !== undefined),
+        ),
+        customFields,
+      };
+      const created = await createMutation.mutateAsync(cleaned as any);
       showToast('Relatie aangemaakt!', 'success');
       reset();
       onCreated?.(created);
@@ -182,6 +189,13 @@ export function CreateContactModal({ isOpen, onClose, onCreated }: CreateContact
             placeholder="Optionele opmerkingen..."
           />
         </div>
+
+        <CustomFieldsForm
+          entityType={CustomFieldEntityType.CONTACT}
+          register={register}
+          errors={errors}
+          control={control}
+        />
 
         <div className="flex justify-end gap-3 pt-2">
           <Button type="button" variant="secondary" onClick={handleClose}>

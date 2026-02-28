@@ -38,4 +38,9 @@ export class CreateLocationDto {
   @IsOptional()
   @IsObject()
   pdokData?: Record<string, unknown>;
+
+  @ApiPropertyOptional({ description: 'Eigen velden (key-value JSON)' })
+  @IsOptional()
+  @IsObject()
+  customFields?: Record<string, any>;
 }

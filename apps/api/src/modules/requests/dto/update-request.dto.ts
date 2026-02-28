@@ -4,6 +4,7 @@ import {
   IsOptional,
   IsUUID,
   IsEnum,
+  IsObject,
 } from 'class-validator';
 import { Priority, RequestSource } from '@prisma/client';
 
@@ -42,4 +43,9 @@ export class UpdateRequestDto {
   @IsOptional()
   @IsEnum(Priority)
   priority?: Priority;
+
+  @ApiPropertyOptional({ description: 'Eigen velden (key-value JSON)' })
+  @IsOptional()
+  @IsObject()
+  customFields?: Record<string, any>;
 }

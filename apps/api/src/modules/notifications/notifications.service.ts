@@ -52,7 +52,7 @@ export class NotificationsService {
     // Fetch org sender config once for all recipients
     const org = await this.prisma.organization.findUnique({
       where: { id: orgId },
-      select: { senderName: true, senderEmail: true },
+      select: { name: true, senderName: true, senderEmail: true },
     });
 
     for (const userId of recipientUserIds) {
@@ -80,6 +80,8 @@ export class NotificationsService {
                 senderName: org?.senderName,
                 senderEmail: org?.senderEmail,
                 unsubscribeUrl,
+                orgId,
+                orgName: org?.name ?? undefined,
               })
               .catch((err) =>
                 this.logger.error('Notification email failed', err),

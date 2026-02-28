@@ -6,6 +6,7 @@ import {
 import { User, Role, Prisma, RequestStatus, NotificationType } from '@prisma/client';
 import { PrismaService } from '@/prisma';
 import { NotificationsService } from '../notifications/notifications.service';
+import { CustomFieldsValidator } from '@/modules/custom-fields/custom-fields.validator';
 import {
   CreateRequestDto,
   UpdateRequestDto,
@@ -20,6 +21,7 @@ export class RequestsService {
     private prisma: PrismaService,
     private quotesService: QuotesService,
     private notifications: NotificationsService,
+    private customFieldsValidator: CustomFieldsValidator,
   ) {}
 
   async findAll(user: User, query: ListRequestsQueryDto) {
@@ -205,6 +207,10 @@ export class RequestsService {
       }
     }
 
+    const customFields = dto.customFields
+      ? await this.customFieldsValidator.validateAndSanitize(orgId!, 'REQUEST', dto.customFields)
+      : null;
+
     return this.prisma.$transaction(async (tx) => {
       const request = await tx.request.create({
         data: {
@@ -217,6 +223,7 @@ export class RequestsService {
           description: dto.description,
           priority: dto.priority ?? 'NORMAL',
           createdBy: user.id,
+          customFields: customFields as any,
         },
       });
 
@@ -271,6 +278,17 @@ export class RequestsService {
     const shouldClearLocation =
       dto.contactId && dto.contactId !== request.contactId && dto.locationId === undefined;
 
+    let customFieldsData: any = undefined;
+    if (dto.customFields !== undefined) {
+      const merged = {
+        ...((request.customFields as Record<string, any>) ?? {}),
+        ...dto.customFields,
+      };
+      customFieldsData = await this.customFieldsValidator.validateAndSanitize(
+        request.orgId, 'REQUEST', merged,
+      );
+    }
+
     const updated = await this.prisma.request.update({
       where: { id: request.id },
       data: {
@@ -282,6 +300,7 @@ export class RequestsService {
         ...(dto.assignedTo !== undefined && { assignedTo: dto.assignedTo }),
         ...(dto.source !== undefined && { source: dto.source }),
         ...(dto.priority !== undefined && { priority: dto.priority }),
+        ...(customFieldsData !== undefined && { customFields: customFieldsData as any }),
       },
     });
 

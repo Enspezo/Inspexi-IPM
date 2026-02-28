@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsString, IsOptional, IsBoolean } from 'class-validator';
+import { IsString, IsOptional, IsBoolean, IsObject } from 'class-validator';
 
 export class CreateContactAddressDto {
   @ApiProperty({ example: 'Factuuradres' })
@@ -41,4 +41,9 @@ export class CreateContactAddressDto {
   @IsOptional()
   @IsBoolean()
   isInvoice?: boolean;
+
+  @ApiPropertyOptional({ description: 'Eigen velden (key-value JSON)' })
+  @IsOptional()
+  @IsObject()
+  customFields?: Record<string, any>;
 }

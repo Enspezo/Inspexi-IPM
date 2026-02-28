@@ -70,6 +70,32 @@ const enumLabels: Record<string, string> = {
   PENDING: 'In afwachting',
   ACCEPTED: 'Geaccepteerd',
   REJECTED: 'Afgewezen',
+
+  // CustomFieldType
+  TEXT: 'Tekst',
+  NUMBER: 'Nummer',
+  DATE: 'Datum',
+  BOOLEAN: 'Ja/Nee',
+  SELECT: 'Selectie',
+
+  // EmailTemplateType
+  OFFERTE_VERSTUURD: 'Offerte verstuurd',
+  OFFERTE_ANTWOORD: 'Offerte antwoord',
+  AFSPRAAK_BEVESTIGING: 'Afspraakbevestiging',
+  AFSPRAAK_VERPLAATST: 'Afspraak verplaatst',
+  AFSPRAAK_ACCEPTATIE: 'Afspraak acceptatie',
+  CONTACT_EMAIL: 'Contact e-mail',
+  UITNODIGING: 'Uitnodiging',
+  WACHTWOORD_RESET: 'Wachtwoord reset',
+  NOTIFICATIE: 'Notificatie',
+
+  // CustomFieldEntityType
+  CONTACT: 'Relatie',
+  CONTACT_ADDRESS: 'Adres',
+  LOCATION: 'Locatie',
+  REQUEST: 'Aanvraag',
+  QUOTE: 'Offerte',
+  PRODUCT: 'Product',
 };
 
 /** Currency fields that should be formatted as EUR */
@@ -181,6 +207,19 @@ export function formatAuditValue(
   }
 
   if (typeof value === 'object') {
+    // Custom fields: show readable key=value pairs instead of raw JSON
+    if (field === 'customFields' && value && !Array.isArray(value)) {
+      const entries = Object.entries(value);
+      if (entries.length === 0) return '(leeg)';
+      return entries
+        .map(([k, v]) => {
+          if (v === true) return `${k}: Ja`;
+          if (v === false) return `${k}: Nee`;
+          if (v === null || v === undefined) return `${k}: (leeg)`;
+          return `${k}: ${v}`;
+        })
+        .join(', ');
+    }
     return JSON.stringify(value);
   }
 

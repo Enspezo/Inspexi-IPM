@@ -1,5 +1,5 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsString, IsOptional, IsUUID, IsDateString } from 'class-validator';
+import { IsString, IsOptional, IsUUID, IsDateString, IsObject } from 'class-validator';
 
 export class UpdateQuoteDto {
   @ApiPropertyOptional({ example: 'NEN1010 inspectie kantoorpand' })
@@ -43,4 +43,9 @@ export class UpdateQuoteDto {
   @ApiPropertyOptional({ description: 'Afsluitende blokken (JSON)' })
   @IsOptional()
   closingBlocks?: any;
+
+  @ApiPropertyOptional({ description: 'Eigen velden (key-value JSON)' })
+  @IsOptional()
+  @IsObject()
+  customFields?: Record<string, any>;
 }

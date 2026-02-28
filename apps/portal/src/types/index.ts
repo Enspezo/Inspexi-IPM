@@ -129,6 +129,7 @@ export interface Contact {
   notes: string | null;
   priceTableId: string | null;
   ownerId: string | null;
+  customFields: Record<string, any> | null;
   isDeleted: boolean;
   createdAt: string;
   owner?: { id: string; firstName: string; lastName: string } | null;
@@ -188,6 +189,7 @@ export interface ContactAddress {
   isPrimary: boolean;
   isPostal: boolean;
   isInvoice: boolean;
+  customFields: Record<string, any> | null;
 }
 
 export interface Location {
@@ -202,6 +204,7 @@ export interface Location {
   objectType: string | null;
   notes: string | null;
   pdokData: Record<string, unknown> | null;
+  customFields: Record<string, any> | null;
   createdAt: string;
 }
 
@@ -270,6 +273,7 @@ export interface Product {
   unit: string;
   defaultVat: number;
   isActive: boolean;
+  customFields: Record<string, any> | null;
   createdAt: string;
   productGroup?: { id: string; name: string } | null;
 }
@@ -366,6 +370,7 @@ export interface Request {
   title: string;
   description: string | null;
   priority: Priority;
+  customFields: Record<string, any> | null;
   createdBy: string;
   isDeleted: boolean;
   createdAt: string;
@@ -441,6 +446,7 @@ export interface Quote {
   validUntil: string | null;
   requiresApproval: boolean;
   internalNotes: string | null;
+  customFields: Record<string, any> | null;
   createdBy: string;
   createdAt: string;
   updatedAt: string;
@@ -945,4 +951,84 @@ export interface SearchGroup {
 
 export interface SearchResponse {
   groups: SearchGroup[];
+}
+
+// ─── Custom Fields ──────────────────────────────────────
+
+export enum CustomFieldType {
+  TEXT = 'TEXT',
+  NUMBER = 'NUMBER',
+  DATE = 'DATE',
+  BOOLEAN = 'BOOLEAN',
+  SELECT = 'SELECT',
+}
+
+export enum CustomFieldEntityType {
+  CONTACT = 'CONTACT',
+  CONTACT_ADDRESS = 'CONTACT_ADDRESS',
+  LOCATION = 'LOCATION',
+  REQUEST = 'REQUEST',
+  QUOTE = 'QUOTE',
+  PRODUCT = 'PRODUCT',
+}
+
+export interface CustomFieldDefinition {
+  id: string;
+  orgId: string;
+  entityType: CustomFieldEntityType;
+  fieldName: string;
+  label: string;
+  fieldType: CustomFieldType;
+  options: string[] | null;
+  isRequired: boolean;
+  sortOrder: number;
+  isDeleted: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// ─── Email Templates ──────────────────────────────────
+
+export enum EmailTemplateType {
+  OFFERTE_VERSTUURD = 'OFFERTE_VERSTUURD',
+  OFFERTE_ANTWOORD = 'OFFERTE_ANTWOORD',
+  AFSPRAAK_BEVESTIGING = 'AFSPRAAK_BEVESTIGING',
+  AFSPRAAK_VERPLAATST = 'AFSPRAAK_VERPLAATST',
+  AFSPRAAK_ACCEPTATIE = 'AFSPRAAK_ACCEPTATIE',
+  CONTACT_EMAIL = 'CONTACT_EMAIL',
+  UITNODIGING = 'UITNODIGING',
+  WACHTWOORD_RESET = 'WACHTWOORD_RESET',
+  NOTIFICATIE = 'NOTIFICATIE',
+}
+
+export interface EmailTemplate {
+  id: string;
+  orgId: string;
+  type: EmailTemplateType;
+  name: string;
+  subject: string;
+  bodyJson: any;
+  bodyHtml: string;
+  isActive: boolean;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+  creator?: { id: string; firstName: string; lastName: string };
+}
+
+export interface PlaceholderField {
+  key: string;
+  label: string;
+}
+
+export interface PlaceholderGroup {
+  entity: string;
+  label: string;
+  fields: PlaceholderField[];
+}
+
+export interface EmailTemplateTypeInfo {
+  type: EmailTemplateType;
+  label: string;
+  placeholders: PlaceholderGroup[];
 }

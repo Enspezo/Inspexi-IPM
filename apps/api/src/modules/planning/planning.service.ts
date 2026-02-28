@@ -446,6 +446,7 @@ export class PlanningService {
             productName: item.productName,
             scheduledDate: item.scheduledDate,
             orgName: org?.name ?? 'InspeXi',
+            orgId: item.orgId,
           })
           .catch((err) => this.logger.error('Acceptation email failed', err));
       }
@@ -722,6 +723,7 @@ export class PlanningService {
         locationName,
         orgName: item.organization?.name ?? 'InspeXi',
         portalUrl,
+        orgId: item.orgId,
       });
     }
   }
@@ -737,6 +739,7 @@ export class PlanningService {
         reason,
         orgName: item.organization?.name ?? 'InspeXi',
         newPortalUrl,
+        orgId: item.orgId,
       });
     }
   }
@@ -1180,6 +1183,7 @@ export class PlanningService {
             scheduledDate: session.scheduledDate,
             orgName: org?.name ?? 'InspeXi',
             sessionLabel: `Sessie ${session.sessionNumber}/${item.sessionCount ?? '?'}`,
+            orgId: item.orgId,
           })
           .catch((err) => this.logger.error('Session acceptation email failed', err));
       }
@@ -1485,6 +1489,7 @@ export class PlanningService {
           locationName,
           orgName: item.organization?.name ?? 'InspeXi',
           portalUrl,
+          orgId: item.orgId,
         })
         .catch((err) => this.logger.error('Session confirmation email failed', err));
     }
@@ -1500,6 +1505,7 @@ export class PlanningService {
         reason,
         orgName: item.organization?.name ?? 'InspeXi',
         newPortalUrl: this.getPublicUrl(`/afspraak/${item.publicToken}`),
+        orgId: item.orgId,
       });
     }
   }

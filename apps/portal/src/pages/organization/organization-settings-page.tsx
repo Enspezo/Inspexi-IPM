@@ -11,6 +11,8 @@ import {
   useDeleteLogo,
   getLogoUrl,
 } from './hooks/use-organization';
+import { CustomFieldsManagement } from './components/custom-fields-management';
+import QuotaTab from './components/quota-tab';
 
 const orgSchema = z.object({
   name: z.string().min(1, 'Organisatienaam is verplicht'),
@@ -44,6 +46,9 @@ export default function OrganizationSettingsPage() {
   const updateMutation = useUpdateOrganization(user?.orgId);
   const uploadLogoMutation = useUploadLogo(user?.orgId);
   const deleteLogoMutation = useDeleteLogo(user?.orgId);
+
+  // Tab state
+  const [activeTab, setActiveTab] = useState<'instellingen' | 'eigen-velden' | 'quota'>('instellingen');
 
   // Logo preview state
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
@@ -168,6 +173,12 @@ export default function OrganizationSettingsPage() {
     );
   }
 
+  const tabs: { key: 'instellingen' | 'eigen-velden' | 'quota'; label: string }[] = [
+    { key: 'instellingen', label: 'Instellingen' },
+    { key: 'eigen-velden', label: 'Eigen velden' },
+    { key: 'quota', label: 'Quota' },
+  ];
+
   return (
     <div className="space-y-6">
       <div>
@@ -179,6 +190,32 @@ export default function OrganizationSettingsPage() {
         </p>
       </div>
 
+      {/* Tab navigation */}
+      <div className="border-b border-gray-200">
+        <nav className="-mb-px flex gap-6">
+          {tabs.map((tab) => (
+            <button
+              key={tab.key}
+              type="button"
+              onClick={() => setActiveTab(tab.key)}
+              className={`inline-flex items-center whitespace-nowrap border-b-2 px-1 py-3 text-sm font-medium transition-colors ${
+                activeTab === tab.key
+                  ? 'border-primary-600 text-primary-600'
+                  : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </nav>
+      </div>
+
+      {activeTab === 'eigen-velden' && <CustomFieldsManagement />}
+
+      {activeTab === 'quota' && <QuotaTab />}
+
+      {activeTab === 'instellingen' && (
+      <>
       {/* Logo sectie */}
       <Card>
         <div className="space-y-4">
@@ -437,6 +474,8 @@ export default function OrganizationSettingsPage() {
           </div>
         </form>
       </Card>
+      </>
+      )}
     </div>
   );
 }

@@ -156,7 +156,7 @@ export class AuthService {
     const publicUrl = this.config.get<string>('PUBLIC_URL');
     const resetUrl = `${publicUrl}/reset-password?token=${resetToken}`;
 
-    await this.emailService.sendPasswordReset(user.email, resetUrl);
+    await this.emailService.sendPasswordReset(user.email, resetUrl, user.orgId);
   }
 
   async resetPassword(dto: ResetPasswordDto) {

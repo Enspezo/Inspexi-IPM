@@ -30,6 +30,8 @@ import { WebhooksModule } from './modules/webhooks/webhooks.module';
 import { PlanningModule } from './modules/planning/planning.module';
 import { SearchModule } from './modules/search/search.module';
 import { GeocodingModule } from './modules/geocoding/geocoding.module';
+import { CustomFieldsModule } from './modules/custom-fields/custom-fields.module';
+import { EmailTemplatesModule } from './modules/email-templates/email-templates.module';
 
 @Module({
   imports: [
@@ -57,6 +59,8 @@ import { GeocodingModule } from './modules/geocoding/geocoding.module';
     PlanningModule,
     SearchModule,
     GeocodingModule,
+    CustomFieldsModule,
+    EmailTemplatesModule,
   ],
   providers: [
     {

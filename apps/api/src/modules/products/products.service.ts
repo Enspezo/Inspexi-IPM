@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { User, Role, Prisma } from '@prisma/client';
 import { PrismaService } from '@/prisma';
+import { CustomFieldsValidator } from '@/modules/custom-fields/custom-fields.validator';
 import {
   CreateProductDto,
   UpdateProductDto,
@@ -13,7 +14,10 @@ import {
 
 @Injectable()
 export class ProductsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private customFieldsValidator: CustomFieldsValidator,
+  ) {}
 
   async findAll(user: User, query: ListProductsQueryDto) {
     const { search, productGroupId, isActive, page = 1, limit = 20 } = query;
@@ -82,6 +86,10 @@ export class ProductsService {
       throw new ForbiddenException('Geen organisatie gekoppeld');
     }
 
+    const customFields = dto.customFields
+      ? await this.customFieldsValidator.validateAndSanitize(orgId!, 'PRODUCT', dto.customFields)
+      : null;
+
     return this.prisma.product.create({
       data: {
         orgId: orgId!,
@@ -91,6 +99,7 @@ export class ProductsService {
         defaultVat: dto.defaultVat ?? 21,
         productGroupId: dto.productGroupId ?? null,
         isActive: dto.isActive ?? true,
+        customFields: customFields as any,
       },
       include: {
         productGroup: { select: { id: true, name: true } },
@@ -101,6 +110,17 @@ export class ProductsService {
   async update(id: string, dto: UpdateProductDto, user: User) {
     const product = await this.findOne(id, user);
 
+    let customFieldsData: any = undefined;
+    if (dto.customFields !== undefined) {
+      const merged = {
+        ...((product.customFields as Record<string, any>) ?? {}),
+        ...dto.customFields,
+      };
+      customFieldsData = await this.customFieldsValidator.validateAndSanitize(
+        product.orgId, 'PRODUCT', merged,
+      );
+    }
+
     return this.prisma.product.update({
       where: { id: product.id },
       data: {
@@ -110,6 +130,7 @@ export class ProductsService {
         ...(dto.defaultVat !== undefined && { defaultVat: dto.defaultVat }),
         ...(dto.productGroupId !== undefined && { productGroupId: dto.productGroupId || null }),
         ...(dto.isActive !== undefined && { isActive: dto.isActive }),
+        ...(customFieldsData !== undefined && { customFields: customFieldsData as any }),
       },
       include: {
         productGroup: { select: { id: true, name: true } },

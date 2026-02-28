@@ -91,6 +91,8 @@ const PlanningPage = lazy(() => import('@/pages/planning/planning-page'));
 const PlanningDetailPage = lazy(() => import('@/pages/planning/planning-detail-page'));
 const PlanningPublicPage = lazy(() => import('@/pages/planning/planning-public-page'));
 const SearchPage = lazy(() => import('@/pages/search/search-page'));
+const EmailTemplatesPage = lazy(() => import('@/pages/email-templates/email-templates-page'));
+const EmailTemplateDetailPage = lazy(() => import('@/pages/email-templates/email-template-detail-page'));
 
 function PageLoader() {
   return (
@@ -141,6 +143,8 @@ export default function App() {
             <Route path="/quotes/:id/edit" element={<QuoteEditorPage />} />
             <Route path="/quotes/:id" element={<QuoteDetailPage />} />
             <Route path="/quote-templates" element={<QuoteTemplatesPage />} />
+            <Route path="/email-templates" element={<EmailTemplatesPage />} />
+            <Route path="/email-templates/:id" element={<EmailTemplateDetailPage />} />
             <Route path="/notifications" element={<NotificationsPage />} />
             <Route path="/organizations" element={<OrganizationsPage />} />
             <Route path="/organizations/:id" element={<OrganizationDetailPage />} />

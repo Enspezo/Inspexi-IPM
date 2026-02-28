@@ -16,6 +16,8 @@ const ALLOWED_ENTITY_TYPES = new Set([
   'User',
   'Organization',
   'PlanningItem',
+  'CustomFieldDefinition',
+  'EmailTemplate',
 ]);
 
 /**

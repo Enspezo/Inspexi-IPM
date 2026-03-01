@@ -254,6 +254,14 @@ export default function QuoteDetailPage() {
                 <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${statusColors[quote.status] || 'bg-gray-100 text-gray-600'}`}>
                   {statusLabels[quote.status] || quote.status}
                 </span>
+                {quote.project && (
+                  <button
+                    onClick={() => navigate(`/projects/${quote.project!.id}`)}
+                    className="inline-flex items-center rounded-full bg-primary-100 px-2.5 py-0.5 text-xs font-medium text-primary-700 hover:bg-primary-200"
+                  >
+                    {quote.project.projectNumber}
+                  </button>
+                )}
               </div>
             </div>
           </div>

@@ -32,6 +32,7 @@ import { AuditHistory } from '@/components/audit-history/audit-history';
 import { CreateTaskModal } from '@/pages/tasks/components/create-task-modal';
 import { DocumentsSection } from '@/components/documents';
 import { CustomFieldsDisplay, CustomFieldsForm } from '@/components/custom-fields';
+import { useCreateProjectFromRequest } from '@/pages/projects/hooks/use-projects';
 
 type Tab = 'algemeen' | 'taken';
 
@@ -142,6 +143,7 @@ export default function RequestDetailPage() {
   const updateStatusMutation = useUpdateRequestStatus(id!);
   const deleteMutation = useDeleteRequest();
   const createQuoteMutation = useCreateQuoteFromRequest();
+  const createProjectMutation = useCreateProjectFromRequest();
   const updateTaskMutation = useUpdateTask();
   const { data: allUsers } = useOrgUsers();
 
@@ -330,6 +332,14 @@ export default function RequestDetailPage() {
               >
                 {priorityLabels[request.priority] || request.priority}
               </span>
+              {request.project && (
+                <button
+                  onClick={() => navigate(`/projects/${request.project!.id}`)}
+                  className="inline-flex items-center rounded-full bg-primary-100 px-2.5 py-0.5 text-xs font-medium text-primary-700 hover:bg-primary-200"
+                >
+                  {request.project.projectNumber}
+                </button>
+              )}
             </div>
             {request.description && (
               <p className="mt-1 text-sm text-gray-500">{request.description}</p>
@@ -346,6 +356,24 @@ export default function RequestDetailPage() {
                 isLoading={createQuoteMutation.isPending}
               >
                 Offerte aanmaken
+              </Button>
+            )}
+            {!request.projectId && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={async () => {
+                  try {
+                    const project = await createProjectMutation.mutateAsync(request.id);
+                    showToast('Project aangemaakt', 'success');
+                    navigate(`/projects/${project.id}`);
+                  } catch {
+                    showToast('Project aanmaken mislukt', 'error');
+                  }
+                }}
+                isLoading={createProjectMutation.isPending}
+              >
+                Maak project
               </Button>
             )}
             <Button variant="secondary" size="sm" onClick={() => setIsTaskOpen(true)}>

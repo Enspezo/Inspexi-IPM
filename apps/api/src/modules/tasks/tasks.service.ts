@@ -92,6 +92,20 @@ export class TasksService {
       }
     }
 
+    const projectIds = tasks
+      .filter((t) => t.entityType === TaskEntityType.PROJECT)
+      .map((t) => t.entityId);
+
+    if (projectIds.length > 0) {
+      const projects = await this.prisma.project.findMany({
+        where: { id: { in: projectIds } },
+        select: { id: true, title: true, projectNumber: true },
+      });
+      for (const p of projects) {
+        nameMap.set(p.id, `${p.projectNumber} — ${p.title}`);
+      }
+    }
+
     return nameMap;
   }
 

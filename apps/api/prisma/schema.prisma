@@ -109,6 +109,8 @@ enum NotificationType {
   AFSPRAAK_VERPLAATST
   AFSPRAAK_VERZETTEN_VERZOEK
   AFSPRAAK_BEVESTIGING_VERSTUURD
+  PROJECT_AANGEMAAKT
+  PROJECT_STATUS_GEWIJZIGD
 }
 
 enum AuditAction {
@@ -128,6 +130,7 @@ enum TaskEntityType {
   REQUEST
   QUOTE
   PLANNING
+  PROJECT
 }
 
 enum DocumentEntityType {
@@ -137,6 +140,7 @@ enum DocumentEntityType {
   PRODUCT
   TASK
   PLANNING
+  PROJECT
 }
 
 enum SignatureType {
@@ -170,6 +174,13 @@ enum SessionStatus {
   DEFINITIEF
   AFGEROND
   VERVALLEN
+}
+
+enum ProjectStatus {
+  ACTIEF
+  ON_HOLD
+  AFGEROND
+  GEANNULEERD
 }
 
 enum CustomFieldType {
@@ -237,6 +248,7 @@ model Organization {
   planningItems          PlanningItem[]
   customFieldDefinitions CustomFieldDefinition[]
   emailTemplates         EmailTemplate[]
+  projects               Project[]
 
   @@map("imp_organizations")
 }
@@ -250,6 +262,8 @@ model User {
   lastName        String    @map("last_name")
   roles           Role[]    @default([])
   isActive        Boolean   @default(true) @map("is_active")
+  isDeleted       Boolean   @default(false) @map("is_deleted")
+  deletedAt       DateTime? @map("deleted_at")
   emailVerifiedAt DateTime? @map("email_verified_at")
   initials        String?   @map("initials")
   avatarUrl       String?   @map("avatar_url")
@@ -294,6 +308,10 @@ model User {
   createdPlanningItems      PlanningItem[]            @relation("PlanningCreatedByUser")
   planningSessionInspectors PlanningSessionInspector[]
   emailTemplates            EmailTemplate[]            @relation("EmailTemplateCreatedBy")
+
+  managedProjects           Project[]                  @relation("ProjectManager")
+  createdProjects           Project[]                  @relation("ProjectCreatedByUser")
+  projectFollowers          ProjectFollower[]
 
   @@map("imp_users")
 }
@@ -361,6 +379,7 @@ model Contact {
   requests           Request[]
   quotes             Quote[]
   planningItems      PlanningItem[]
+  projects           Project[]
 
   @@map("imp_contacts")
 }
@@ -450,6 +469,7 @@ model Location {
   requests     Request[]
   quotes       Quote[]
   planningItems PlanningItem[]
+  projects      Project[]
 
   @@map("imp_locations")
 }
@@ -598,11 +618,14 @@ model Request {
   createdAt    DateTime      @default(now()) @map("created_at")
   updatedAt    DateTime      @updatedAt @map("updated_at")
 
+  projectId     String?                @map("project_id") @db.Uuid
+
   organization  Organization           @relation(fields: [orgId], references: [id])
   contact       Contact                @relation(fields: [contactId], references: [id])
   location      Location?              @relation(fields: [locationId], references: [id])
   assignedUser  User?                  @relation("AssignedToUser", fields: [assignedTo], references: [id])
   createdByUser User                   @relation("CreatedByUser", fields: [createdBy], references: [id])
+  project       Project?               @relation(fields: [projectId], references: [id])
   statusHistory RequestStatusHistory[]
   quotes        Quote[]
 
@@ -682,12 +705,15 @@ model Quote {
   createdAt        DateTime    @default(now()) @map("created_at")
   updatedAt        DateTime    @updatedAt @map("updated_at")
 
+  projectId        String?               @map("project_id") @db.Uuid
+
   organization     Organization          @relation(fields: [orgId], references: [id])
   template         QuoteTemplate?        @relation(fields: [templateId], references: [id])
   request          Request?              @relation(fields: [requestId], references: [id])
   contact          Contact               @relation(fields: [contactId], references: [id])
   location         Location?             @relation(fields: [locationId], references: [id])
   createdByUser    User                  @relation("QuoteCreatedByUser", fields: [createdBy], references: [id])
+  project          Project?              @relation(fields: [projectId], references: [id])
   lines            QuoteLine[]
   approvalRequests QuoteApprovalRequest[]
   questions        QuoteQuestion[]
@@ -923,11 +949,14 @@ model PlanningItem {
   createdAt      DateTime       @default(now()) @map("created_at")
   updatedAt      DateTime       @updatedAt @map("updated_at")
 
+  projectId      String?        @map("project_id") @db.Uuid
+
   organization   Organization   @relation(fields: [orgId], references: [id])
   contact        Contact        @relation(fields: [contactId], references: [id])
   contactPerson  ContactPerson? @relation(fields: [contactPersonId], references: [id])
   location       Location?      @relation(fields: [locationId], references: [id])
   createdByUser  User           @relation("PlanningCreatedByUser", fields: [createdBy], references: [id])
+  project        Project?       @relation(fields: [projectId], references: [id])
   inspectors     PlanningInspector[]
   history        PlanningHistory[]
   rescheduleRequests RescheduleRequest[]
@@ -1050,6 +1079,58 @@ model PlanningSessionInspector {
   @@unique([sessionId, userId])
   @@index([sessionId])
   @@map("imp_planning_session_inspectors")
+}
+
+// ─── Projects (Dossiers) ────────────────────────────────
+
+model Project {
+  id               String        @id @default(uuid()) @db.Uuid
+  orgId            String        @map("org_id") @db.Uuid
+  projectNumber    String        @unique @map("project_number")
+  title            String
+  description      String?
+  status           ProjectStatus @default(ACTIEF)
+  contactId        String        @map("contact_id") @db.Uuid
+  locationId       String?       @map("location_id") @db.Uuid
+  projectManagerId String        @map("project_manager_id") @db.Uuid
+  startDate        DateTime      @default(now()) @map("start_date")
+  expectedEndDate  DateTime?     @map("expected_end_date")
+  endDate          DateTime?     @map("end_date")
+  isDeleted        Boolean       @default(false) @map("is_deleted")
+  deletedAt        DateTime?     @map("deleted_at")
+  createdBy        String        @map("created_by") @db.Uuid
+  createdAt        DateTime      @default(now()) @map("created_at")
+  updatedAt        DateTime      @updatedAt @map("updated_at")
+
+  organization   Organization      @relation(fields: [orgId], references: [id])
+  contact        Contact           @relation(fields: [contactId], references: [id])
+  location       Location?         @relation(fields: [locationId], references: [id])
+  projectManager User              @relation("ProjectManager", fields: [projectManagerId], references: [id])
+  createdByUser  User              @relation("ProjectCreatedByUser", fields: [createdBy], references: [id])
+  followers      ProjectFollower[]
+  requests       Request[]
+  quotes         Quote[]
+  planningItems  PlanningItem[]
+
+  @@index([orgId, status])
+  @@index([contactId])
+  @@index([projectManagerId])
+  @@map("imp_projects")
+}
+
+model ProjectFollower {
+  id        String   @id @default(uuid()) @db.Uuid
+  projectId String   @map("project_id") @db.Uuid
+  userId    String?  @map("user_id") @db.Uuid
+  email     String?
+  name      String?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user    User?   @relation(fields: [userId], references: [id])
+
+  @@index([projectId])
+  @@map("imp_project_followers")
 }
 
 // ─── Custom Fields ──────────────────────────────────────

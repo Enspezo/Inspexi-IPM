@@ -105,3 +105,33 @@ export function useAdminUpdateUser() {
     },
   });
 }
+
+interface UserRecordCounts {
+  contacts: number;
+  requests: number;
+  tasks: number;
+  planningInspectors: number;
+  planningSessionInspectors: number;
+  planningFollowers: number;
+  total: number;
+}
+
+export function useUserRecordCounts(userId: string | null) {
+  return useQuery<UserRecordCounts>({
+    queryKey: ['users', userId, 'record-counts'],
+    queryFn: () => apiClient.get<UserRecordCounts>(`/users/${userId}/record-counts`),
+    enabled: !!userId,
+  });
+}
+
+export function useDeleteUser() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ userId, transferToUserId }: { userId: string; transferToUserId: string }) =>
+      apiClient.post(`/users/${userId}/delete`, { transferToUserId }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['users'] });
+    },
+  });
+}

@@ -90,6 +90,8 @@ const ActivityPage = lazy(() => import('@/pages/activity/activity-page'));
 const PlanningPage = lazy(() => import('@/pages/planning/planning-page'));
 const PlanningDetailPage = lazy(() => import('@/pages/planning/planning-detail-page'));
 const PlanningPublicPage = lazy(() => import('@/pages/planning/planning-public-page'));
+const ProjectsPage = lazy(() => import('@/pages/projects/projects-page'));
+const ProjectDetailPage = lazy(() => import('@/pages/projects/project-detail-page'));
 const SearchPage = lazy(() => import('@/pages/search/search-page'));
 const EmailTemplatesPage = lazy(() => import('@/pages/email-templates/email-templates-page'));
 const EmailTemplateDetailPage = lazy(() => import('@/pages/email-templates/email-template-detail-page'));
@@ -157,6 +159,8 @@ export default function App() {
             <Route path="/activiteiten" element={<ActivityPage />} />
             <Route path="/planning" element={<PlanningPage />} />
             <Route path="/planning/:id" element={<PlanningDetailPage />} />
+            <Route path="/projects" element={<ProjectsPage />} />
+            <Route path="/projects/:id" element={<ProjectDetailPage />} />
             <Route path="/search" element={<SearchPage />} />
           </Route>
         </Route>

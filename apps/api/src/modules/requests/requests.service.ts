@@ -156,6 +156,9 @@ export class RequestsService {
           },
           orderBy: { changedAt: 'desc' },
         },
+        project: {
+          select: { id: true, projectNumber: true },
+        },
       },
     });
 

@@ -1,4 +1,4 @@
-import { PrismaClient, Role, ContactType, LogType, PriceType, RequestSource, RequestStatus, Priority, QuoteStatus, NotificationType, PlanningStatus, AcceptanceStatus } from '@prisma/client';
+import { PrismaClient, Role, ContactType, LogType, PriceType, RequestSource, RequestStatus, Priority, QuoteStatus, NotificationType, PlanningStatus, AcceptanceStatus, ProjectStatus } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 
 const prisma = new PrismaClient();
@@ -34,6 +34,9 @@ async function main() {
   await prisma.planningHistory.deleteMany();
   await prisma.planningInspector.deleteMany();
   await prisma.planningItem.deleteMany();
+  // Projects (dependent on contacts/locations/users; referenced by nullable FK from requests/quotes/planning)
+  await prisma.projectFollower.deleteMany();
+  await prisma.project.deleteMany();
   // CRM tables (dependent on contacts)
   await prisma.contactCustomerGroup.deleteMany();
   await prisma.customerGroup.deleteMany();
@@ -1098,6 +1101,59 @@ async function main() {
   void planning2;
   void req5;
   void loc4Magazijn;
+
+  // ─── Projects ──────────────────────────────────────────────
+  console.log('\n📁 Creating projects...');
+
+  const project1 = await prisma.project.create({
+    data: {
+      orgId: org1.id,
+      projectNumber: 'P-2026-0001',
+      title: 'Periodieke keuring bedrijfshal',
+      description: 'Jaarlijkse keuring van de bedrijfshal inclusief brandveiligheid en constructieve elementen.',
+      status: ProjectStatus.ACTIEF,
+      contactId: contact1.id,
+      locationId: loc1Kantoor.id,
+      projectManagerId: createdOrg1Users[Role.MANAGER],
+      startDate: new Date('2026-01-15'),
+      createdBy: createdOrg1Users[Role.MANAGER],
+    },
+  });
+  console.log(`  ✓ Project: ${project1.projectNumber}`);
+
+  // Link existing request and quote to project
+  await prisma.request.update({
+    where: { id: req1.id },
+    data: { projectId: project1.id },
+  });
+  await prisma.quote.update({
+    where: { id: quote1.id },
+    data: { projectId: project1.id },
+  });
+
+  // Add a follower to project 1
+  await prisma.projectFollower.create({
+    data: {
+      projectId: project1.id,
+      userId: createdOrg1Users[Role.ORG_ADMIN],
+    },
+  });
+
+  const project2 = await prisma.project.create({
+    data: {
+      orgId: org1.id,
+      projectNumber: 'P-2026-0002',
+      title: 'Nieuwbouw inspectie kantoorpand',
+      status: ProjectStatus.ACTIEF,
+      contactId: contact1.id,
+      projectManagerId: createdOrg1Users[Role.ORG_ADMIN],
+      startDate: new Date('2026-02-01'),
+      expectedEndDate: new Date('2026-06-30'),
+      createdBy: createdOrg1Users[Role.ORG_ADMIN],
+    },
+  });
+  console.log(`  ✓ Project: ${project2.projectNumber}`);
+  void project2;
 
   console.log('\n✅ Seed completed successfully!');
   console.log('\n📋 Login credentials (all use Password123!):');

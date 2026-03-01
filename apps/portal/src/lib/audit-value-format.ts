@@ -66,6 +66,12 @@ const enumLabels: Record<string, string> = {
   AFGEROND: 'Afgerond',
   VERVALLEN: 'Vervallen',
 
+  // ProjectStatus
+  ACTIEF: 'Actief',
+  // ON_HOLD already defined above
+  // AFGEROND already defined above
+  GEANNULEERD: 'Geannuleerd',
+
   // AcceptanceStatus
   PENDING: 'In afwachting',
   ACCEPTED: 'Geaccepteerd',
@@ -119,6 +125,9 @@ const dateFields = new Set([
   'loggedAt',
   'dueDate',
   'scheduledDate',
+  'startDate',
+  'expectedEndDate',
+  'endDate',
 ]);
 
 /** UUID v4 pattern — used to detect unresolved UUIDs */
@@ -141,6 +150,8 @@ const FK_FIELDS = new Set([
   'planningItemId',
   'customerGroupId',
   'userId',
+  'projectId',
+  'projectManagerId',
 ]);
 
 const currencyFormatter = new Intl.NumberFormat('nl-NL', {

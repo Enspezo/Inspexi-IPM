@@ -316,8 +316,76 @@ Elke overzichtspagina volgt hetzelfde patroon:
 2. `DetailPageLayout` met `AuditHistory` in sidebar
 3. Terugknop naar overzichtspagina
 4. Tab-navigatie met `useState<Tab>('eerste-tab')`
-5. Tabs: "Algemeen" (read-only Card), domeinspecifiek, "Instellingen" (bewerkformulier)
+5. Tabs: "Overzicht" (inline bewerkbaar), domeinspecifiek, "Instellingen" (gevarenzone)
 6. react-hook-form + zod voor bewerkformulieren
+
+### Inline Editing Patroon (Overzicht-tab)
+
+De Overzicht-tab van elke detailpagina moet **inline bewerkbaar** zijn. Referentie: `contact-detail-page.tsx`.
+
+**State + form setup:**
+```tsx
+const [isEditing, setIsEditing] = useState(false);
+const { register, handleSubmit, reset: resetForm, formState: { errors, isDirty } } = useForm<FormData>({
+  resolver: zodResolver(schema),
+});
+
+// Populate form when data loads
+useEffect(() => {
+  if (entity) {
+    resetForm({ title: entity.title || '', /* ... */ });
+  }
+}, [entity, resetForm]);
+```
+
+**Lees-modus** → `InfoField` componenten in een `<Card>`:
+```tsx
+function InfoField({ label, value }: { label: string; value: string | null | undefined }) {
+  return (
+    <div>
+      <dt className="text-sm font-medium text-gray-500">{label}</dt>
+      <dd className="mt-1 text-sm text-gray-900">{value || '—'}</dd>
+    </div>
+  );
+}
+```
+
+**Bewerk-knop** in de Card header (alleen bij `canWrite`):
+```tsx
+<Button variant="secondary" onClick={() => setIsEditing(true)}>Bewerken</Button>
+```
+
+**Bewerk-modus** → form met `Input`/`Select`/`textarea` in een `<Card>`:
+- "Opslaan" knop: `disabled={!isDirty}` + `isLoading={isUpdating}`
+- "Annuleren" knop: reset form + `setIsEditing(false)`
+
+**Belangrijk**: Geen apart "Instellingen"-tab voor bewerken — bewerken zit in het Overzicht-tab. Het Instellingen-tab bevat alleen de gevarenzone (verwijderen).
+
+### Dropdown Data Laden — Gebruik Bestaande Hooks
+
+**NOOIT `apiClient.get()` met `useEffect` gebruiken** voor het laden van dropdown data. Gebruik altijd bestaande query hooks:
+
+```tsx
+// ✅ GOED — hergebruik bestaande hook
+import { useUsers } from '@/pages/users/hooks/use-users';
+const { data: allUsers } = useUsers();
+// allUsers is User[] (flat array)
+
+// ❌ FOUT — handmatige fetch met verkeerde response shape
+const [users, setUsers] = useState([]);
+useEffect(() => {
+  apiClient.get<{ data: any[] }>('/users?limit=200')  // FOUT: users retourneert flat array
+    .then((res) => setUsers(res.data.map(...)))        // FOUT: res IS al de array
+}, []);
+```
+
+**API response shapes na apiClient unwrap:**
+- `GET /users` → `User[]` (flat array, GEEN paginatie)
+- `GET /contacts` → `{ data: Contact[], total, page, limit }` (gepagineerd)
+- `GET /requests` → `{ data: Request[], total, page, limit }` (gepagineerd)
+- `GET /quotes` → `{ data: Quote[], total, page, limit }` (gepagineerd)
+- `GET /planning` → `PlanningItem[]` (flat array)
+- `GET /products` → `{ data: Product[], total, page, limit }` (gepagineerd)
 
 ### Hooks Patroon (per pagina-domein)
 
@@ -525,3 +593,8 @@ Commits volgen het patroon: `feat: implement PRD-{nr} — {beschrijving}`
 - **curl requests naar API**: vereisen `Host: {slug}.localhost` header (bijv. `Host: inspexidemo.localhost`) vanwege TenantMiddleware. Zonder deze header krijg je "Gebruik het subdomein" error
 - **Bash en speciale tekens**: `Password123!` bevat `!` wat bash history expansion triggert in double-quoted strings. Gebruik heredoc of single quotes
 - **NestJS FileTypeValidator bug**: Built-in `FileTypeValidator` gebruikt `file-type` library (magic bytes) — weigert CSV, SVG, en plain-text bestanden. Gebruik custom `MimeTypeValidator` die `file.mimetype` (multer) checkt
+- **apiClient.get() accepteert maar 1 argument**: `apiClient.get<T>(endpoint: string)` — query params moeten in de URL string zitten (bijv. `'/contacts?limit=200'`), NIET als tweede argument
+- **API response shapes verschillen per endpoint**: Na apiClient unwrap (`{ success, data }` → `data`): `GET /users` retourneert een **flat array** `User[]`, terwijl `GET /contacts`, `GET /requests`, `GET /quotes` gepagineerde objecten `{ data: T[], total, page, limit }` retourneren. Controleer altijd de controller/service van het endpoint
+- **Gebruik bestaande hooks voor dropdown data**: Gebruik `useUsers()` i.p.v. handmatige `apiClient.get` calls in `useEffect`. De hooks zijn al getypt en cachen automatisch via TanStack Query
+- **NestJS controller @Controller prefix**: Gebruik ALLEEN de resource naam (bijv. `@Controller('projects')`), NIET het volledige pad (`@Controller('api/v1/projects')`) — het globale prefix `/api/v1` wordt automatisch toegevoegd
+- **Detail pagina's moeten inline bewerkbaar zijn**: Het Overzicht-tab moet altijd een "Bewerken" knop hebben die wisselt tussen lees-modus (InfoField) en bewerk-modus (form). Zie `contact-detail-page.tsx` als referentie. Geen apart "Instellingen"-tab voor bewerken

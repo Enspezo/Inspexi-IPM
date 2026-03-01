@@ -9,7 +9,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcrypt';
 import { randomUUID } from 'crypto';
-import { User, Role } from '@prisma/client';
+import { User, Role, TaskStatus } from '@prisma/client';
 import { PrismaService } from '@/prisma';
 import { EmailService } from '@/common/services/email.service';
 import {
@@ -37,7 +37,7 @@ export class UsersService {
   async findAllByOrg(orgId: string | null, isSuperuser: boolean) {
     if (isSuperuser) {
       return this.prisma.user.findMany({
-        where: orgId ? { orgId } : undefined,
+        where: orgId ? { orgId, isDeleted: false } : { isDeleted: false },
         include: { organization: true },
         orderBy: { createdAt: 'desc' },
       });
@@ -48,7 +48,7 @@ export class UsersService {
     }
 
     return this.prisma.user.findMany({
-      where: { orgId },
+      where: { orgId, isDeleted: false },
       include: { organization: true },
       orderBy: { createdAt: 'desc' },
     });
@@ -440,6 +440,168 @@ export class UsersService {
       where: { id: userId },
       data: { signatureType: null, signatureData: null },
     });
+  }
+
+  // ─── Soft-delete with record transfer ─────────────────
+
+  async getRecordCounts(id: string, currentUser: User) {
+    const targetUser = await this.findOne(id);
+    this.assertDeletePermission(targetUser, currentUser);
+
+    const [
+      contacts,
+      requests,
+      tasks,
+      planningInspectors,
+      planningSessionInspectors,
+      planningFollowers,
+    ] = await Promise.all([
+      this.prisma.contact.count({ where: { ownerId: id, isDeleted: false } }),
+      this.prisma.request.count({ where: { assignedTo: id, isDeleted: false } }),
+      this.prisma.task.count({ where: { assigneeId: id, status: { not: TaskStatus.VOLTOOID } } }),
+      this.prisma.planningInspector.count({ where: { userId: id } }),
+      this.prisma.planningSessionInspector.count({ where: { userId: id } }),
+      this.prisma.planningFollower.count({ where: { userId: id } }),
+    ]);
+
+    return {
+      contacts,
+      requests,
+      tasks,
+      planningInspectors,
+      planningSessionInspectors,
+      planningFollowers,
+      total: contacts + requests + tasks + planningInspectors + planningSessionInspectors + planningFollowers,
+    };
+  }
+
+  async softDelete(id: string, transferToUserId: string, currentUser: User) {
+    const targetUser = await this.findOne(id);
+    this.assertDeletePermission(targetUser, currentUser);
+
+    // Validate transfer target
+    const transferTo = await this.prisma.user.findUnique({ where: { id: transferToUserId } });
+    if (!transferTo) {
+      throw new BadRequestException('Doelgebruiker niet gevonden');
+    }
+    if (transferTo.isDeleted || !transferTo.isActive) {
+      throw new BadRequestException('Doelgebruiker is niet actief');
+    }
+    if (transferTo.id === id) {
+      throw new BadRequestException('Kan records niet overdragen aan dezelfde gebruiker');
+    }
+    // Tenant isolation for transfer target
+    if (targetUser.orgId && transferTo.orgId !== targetUser.orgId) {
+      throw new BadRequestException('Doelgebruiker moet in dezelfde organisatie zitten');
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      // 1. Transfer ownership records
+      await tx.contact.updateMany({
+        where: { ownerId: id, isDeleted: false },
+        data: { ownerId: transferToUserId },
+      });
+
+      await tx.request.updateMany({
+        where: { assignedTo: id, isDeleted: false },
+        data: { assignedTo: transferToUserId },
+      });
+
+      await tx.task.updateMany({
+        where: { assigneeId: id, status: { not: TaskStatus.VOLTOOID } },
+        data: { assigneeId: transferToUserId },
+      });
+
+      // 2. Transfer planning inspectors (handle unique constraint [planningItemId, userId])
+      const existingTargetInspections = await tx.planningInspector.findMany({
+        where: { userId: transferToUserId },
+        select: { planningItemId: true },
+      });
+      const targetPlanningIds = new Set(existingTargetInspections.map((i) => i.planningItemId));
+
+      // Delete overlapping assignments (target already assigned)
+      if (targetPlanningIds.size > 0) {
+        await tx.planningInspector.deleteMany({
+          where: {
+            userId: id,
+            planningItemId: { in: Array.from(targetPlanningIds) },
+          },
+        });
+      }
+      // Transfer non-overlapping assignments
+      await tx.planningInspector.updateMany({
+        where: { userId: id },
+        data: { userId: transferToUserId },
+      });
+
+      // 3. Transfer planning session inspectors (handle unique constraint [sessionId, userId])
+      const existingTargetSessions = await tx.planningSessionInspector.findMany({
+        where: { userId: transferToUserId },
+        select: { sessionId: true },
+      });
+      const targetSessionIds = new Set(existingTargetSessions.map((s) => s.sessionId));
+
+      if (targetSessionIds.size > 0) {
+        await tx.planningSessionInspector.deleteMany({
+          where: {
+            userId: id,
+            sessionId: { in: Array.from(targetSessionIds) },
+          },
+        });
+      }
+      await tx.planningSessionInspector.updateMany({
+        where: { userId: id },
+        data: { userId: transferToUserId },
+      });
+
+      // 4. Transfer planning followers (no unique constraint on userId)
+      await tx.planningFollower.updateMany({
+        where: { userId: id },
+        data: { userId: transferToUserId },
+      });
+
+      // 5. Cleanup user-specific records
+      await tx.notification.deleteMany({ where: { userId: id } });
+      await tx.notificationPref.deleteMany({ where: { userId: id } });
+
+      // 6. Revoke all refresh tokens
+      await tx.refreshToken.updateMany({
+        where: { userId: id, revokedAt: null },
+        data: { revokedAt: new Date() },
+      });
+
+      // 7. Soft-delete the user
+      await tx.user.update({
+        where: { id },
+        data: { isDeleted: true, deletedAt: new Date(), isActive: false },
+      });
+    });
+  }
+
+  private assertDeletePermission(targetUser: User, currentUser: User) {
+    if (targetUser.id === currentUser.id) {
+      throw new ForbiddenException('Je kunt je eigen account niet verwijderen');
+    }
+
+    if (targetUser.isDeleted) {
+      throw new BadRequestException('Gebruiker is al verwijderd');
+    }
+
+    // Tenant isolation
+    if (
+      !currentUser.roles.includes(Role.SUPERUSER) &&
+      targetUser.orgId !== currentUser.orgId
+    ) {
+      throw new ForbiddenException();
+    }
+
+    // ORG_ADMIN cannot delete SUPERUSER
+    if (
+      targetUser.roles.includes(Role.SUPERUSER) &&
+      !currentUser.roles.includes(Role.SUPERUSER)
+    ) {
+      throw new ForbiddenException('Alleen een superuser kan een superuser verwijderen');
+    }
   }
 
   async updateColor(targetUserId: string, color: string | null | undefined, actor: User) {

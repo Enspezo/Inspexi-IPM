@@ -18,6 +18,7 @@ const ALLOWED_ENTITY_TYPES = new Set([
   'PlanningItem',
   'CustomFieldDefinition',
   'EmailTemplate',
+  'Project',
 ]);
 
 /**
@@ -82,6 +83,14 @@ const FK_FIELD_RESOLVERS: Record<string, RefConfig> = {
     display: (r) => r.name || r.id,
   },
   userId: {
+    model: 'user',
+    display: (r) => `${r.firstName ?? ''} ${r.lastName ?? ''}`.trim() || r.email || r.id,
+  },
+  projectId: {
+    model: 'project',
+    display: (r) => r.projectNumber || r.title || r.id,
+  },
+  projectManagerId: {
     model: 'user',
     display: (r) => `${r.firstName ?? ''} ${r.lastName ?? ''}`.trim() || r.email || r.id,
   },

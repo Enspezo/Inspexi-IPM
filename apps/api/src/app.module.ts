@@ -32,6 +32,7 @@ import { SearchModule } from './modules/search/search.module';
 import { GeocodingModule } from './modules/geocoding/geocoding.module';
 import { CustomFieldsModule } from './modules/custom-fields/custom-fields.module';
 import { EmailTemplatesModule } from './modules/email-templates/email-templates.module';
+import { ProjectsModule } from './modules/projects/projects.module';
 
 @Module({
   imports: [
@@ -61,6 +62,7 @@ import { EmailTemplatesModule } from './modules/email-templates/email-templates.
     GeocodingModule,
     CustomFieldsModule,
     EmailTemplatesModule,
+    ProjectsModule,
   ],
   providers: [
     {

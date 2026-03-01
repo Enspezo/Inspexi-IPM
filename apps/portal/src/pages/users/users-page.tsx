@@ -18,6 +18,7 @@ import { InviteUserModal } from './components/invite-user-modal';
 import { ChangeRoleModal } from './components/change-role-modal';
 import { ResetPasswordModal } from './components/reset-password-modal';
 import { EditUserModal } from './components/edit-user-modal';
+import { DeleteUserModal } from './components/delete-user-modal';
 
 export default function UsersPage() {
   const { data: users, isLoading, error } = useUsers();
@@ -29,6 +30,7 @@ export default function UsersPage() {
   const [editUser, setEditUser] = useState<User | null>(null);
   const [changeRoleUser, setChangeRoleUser] = useState<User | null>(null);
   const [resetPasswordUser, setResetPasswordUser] = useState<User | null>(null);
+  const [deleteUser, setDeleteUser] = useState<User | null>(null);
   const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -213,6 +215,18 @@ export default function UsersPage() {
                   Activeren
                 </button>
               )}
+              <button
+                onClick={() => {
+                  setDeleteUser(user);
+                  setOpenDropdownId(null);
+                }}
+                className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-red-600 hover:bg-red-50"
+              >
+                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                </svg>
+                Verwijderen
+              </button>
             </div>
           )}
         </div>
@@ -318,6 +332,12 @@ export default function UsersPage() {
         isOpen={!!resetPasswordUser}
         onClose={() => setResetPasswordUser(null)}
         user={resetPasswordUser}
+      />
+
+      <DeleteUserModal
+        isOpen={!!deleteUser}
+        onClose={() => setDeleteUser(null)}
+        user={deleteUser}
       />
     </div>
     </DetailPageLayout>

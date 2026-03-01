@@ -465,6 +465,14 @@ function PlanningDetailView({ id }: { id: string }) {
                   {l}
                 </span>
               ))}
+              {item.project && (
+                <button
+                  onClick={() => navigate(`/projects/${item.project!.id}`)}
+                  className="inline-flex items-center rounded-full bg-primary-100 px-2.5 py-0.5 text-xs font-medium text-primary-700 hover:bg-primary-200"
+                >
+                  {item.project.projectNumber}
+                </button>
+              )}
             </div>
           </div>
           <div className="flex gap-2 flex-shrink-0">

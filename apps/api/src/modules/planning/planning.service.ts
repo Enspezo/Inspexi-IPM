@@ -121,6 +121,7 @@ const PLANNING_INCLUDE = {
     },
     orderBy: { sessionNumber: 'asc' as const },
   },
+  project: { select: { id: true, projectNumber: true } },
 };
 
 @Injectable()
@@ -276,6 +277,7 @@ export class PlanningService {
     locationId: string | null;
     createdBy: string;
     quoteNumber: string;
+    projectId?: string;
   }) {
     if (!quote.locationId) {
       this.logger.warn(`Skipping planning item for quote ${quote.id}: no location`);
@@ -298,6 +300,7 @@ export class PlanningService {
         contactId: quote.contactId,
         locationId: quote.locationId,
         quoteId: quote.id,
+        projectId: quote.projectId ?? null,
         productId,
         productName,
         status: PlanningStatus.NOG_TE_PLANNEN,

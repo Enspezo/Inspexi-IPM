@@ -42,6 +42,8 @@ export interface User {
   roles: Role[];
   orgId: string | null;
   isActive: boolean;
+  isDeleted: boolean;
+  deletedAt: string | null;
   emailVerifiedAt: string | null;
   initials: string | null;
   avatarUrl: string | null;
@@ -373,6 +375,7 @@ export interface Request {
   customFields: Record<string, any> | null;
   createdBy: string;
   isDeleted: boolean;
+  projectId: string | null;
   createdAt: string;
   updatedAt: string;
   contact?: ContactSummary;
@@ -380,6 +383,7 @@ export interface Request {
   assignedUser?: UserSummary;
   createdByUser?: UserSummary;
   statusHistory?: RequestStatusHistory[];
+  project?: { id: string; projectNumber: string } | null;
 }
 
 export interface RequestStatusHistory {
@@ -446,6 +450,7 @@ export interface Quote {
   validUntil: string | null;
   requiresApproval: boolean;
   internalNotes: string | null;
+  projectId: string | null;
   customFields: Record<string, any> | null;
   createdBy: string;
   createdAt: string;
@@ -467,6 +472,7 @@ export interface Quote {
   approvalRequests?: QuoteApprovalRequest[];
   questions?: QuoteQuestion[];
   attachments?: QuoteAttachment[];
+  project?: { id: string; projectNumber: string } | null;
 }
 
 export interface QuoteLine {
@@ -548,6 +554,8 @@ export enum NotificationType {
   AFSPRAAK_VERPLAATST = 'AFSPRAAK_VERPLAATST',
   AFSPRAAK_VERZETTEN_VERZOEK = 'AFSPRAAK_VERZETTEN_VERZOEK',
   AFSPRAAK_BEVESTIGING_VERSTUURD = 'AFSPRAAK_BEVESTIGING_VERSTUURD',
+  PROJECT_AANGEMAAKT = 'PROJECT_AANGEMAAKT',
+  PROJECT_STATUS_GEWIJZIGD = 'PROJECT_STATUS_GEWIJZIGD',
 }
 
 export interface Notification {
@@ -618,6 +626,7 @@ export enum TaskEntityType {
   REQUEST = 'REQUEST',
   QUOTE = 'QUOTE',
   PLANNING = 'PLANNING',
+  PROJECT = 'PROJECT',
 }
 
 export interface Task {
@@ -647,6 +656,7 @@ export enum DocumentEntityType {
   PRODUCT = 'PRODUCT',
   TASK = 'TASK',
   PLANNING = 'PLANNING',
+  PROJECT = 'PROJECT',
 }
 
 export interface CrmDocument {
@@ -777,6 +787,7 @@ export interface RescheduleRequest {
 export interface PlanningItem {
   id: string;
   orgId: string;
+  projectId: string | null;
   quoteId: string | null;
   contactId: string;
   contactPersonId: string | null;
@@ -835,6 +846,62 @@ export interface PlanningItem {
     logoUrl: string | null;
     primaryColor: string | null;
   };
+  project?: { id: string; projectNumber: string } | null;
+}
+
+// ─── Projects ────────────────────────────────────────────
+
+export enum ProjectStatus {
+  ACTIEF = 'ACTIEF',
+  ON_HOLD = 'ON_HOLD',
+  AFGEROND = 'AFGEROND',
+  GEANNULEERD = 'GEANNULEERD',
+}
+
+export interface Project {
+  id: string;
+  orgId: string;
+  projectNumber: string;
+  title: string;
+  description: string | null;
+  status: ProjectStatus;
+  contactId: string;
+  locationId: string | null;
+  projectManagerId: string;
+  startDate: string;
+  expectedEndDate: string | null;
+  endDate: string | null;
+  isDeleted: boolean;
+  deletedAt: string | null;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+  contact?: {
+    id: string;
+    type: string;
+    companyName: string | null;
+    firstName: string | null;
+    lastName: string | null;
+    email: string | null;
+  };
+  location?: LocationSummary | null;
+  projectManager?: UserSummary;
+  createdByUser?: UserSummary;
+  _count?: {
+    requests: number;
+    quotes: number;
+    planningItems: number;
+  };
+}
+
+export interface ProjectFollower {
+  id: string;
+  projectId: string;
+  userId: string | null;
+  email: string | null;
+  name: string | null;
+  createdAt: string;
+  user?: UserSummary | null;
 }
 
 // ─── Global Search ────────────────────────────────────────

@@ -34,6 +34,7 @@ import {
   AdminResetPasswordDto,
   UpdateSignatureDto,
   UpdateColorDto,
+  DeleteUserDto,
 } from './dto';
 import { Roles, CurrentUser, Public } from '@/common/decorators';
 
@@ -159,6 +160,31 @@ export class UsersController {
   }
 
   // ─── Parameterized :id routes ─────────────────────────
+  @Get(':id/record-counts')
+  @Roles(Role.SUPERUSER, Role.ORG_ADMIN)
+  @ApiOperation({ summary: 'Aantal records van een gebruiker ophalen voor overdracht' })
+  @ApiResponse({ status: 200, description: 'Record counts' })
+  async getRecordCounts(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: User,
+  ) {
+    const counts = await this.usersService.getRecordCounts(id, user);
+    return { success: true, data: counts };
+  }
+
+  @Post(':id/delete')
+  @Roles(Role.SUPERUSER, Role.ORG_ADMIN)
+  @ApiOperation({ summary: 'Gebruiker verwijderen (soft delete met overdracht)' })
+  @ApiResponse({ status: 200, description: 'Gebruiker verwijderd' })
+  async softDelete(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: DeleteUserDto,
+    @CurrentUser() user: User,
+  ) {
+    await this.usersService.softDelete(id, dto.transferToUserId, user);
+    return { success: true, message: 'Gebruiker verwijderd en records overgedragen' };
+  }
+
   @Get(':id')
   @Roles(Role.SUPERUSER, Role.ORG_ADMIN)
   @ApiOperation({ summary: 'Gebruiker ophalen op ID' })

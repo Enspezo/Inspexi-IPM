@@ -14,6 +14,7 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { EmailService } from '@/common/services/email.service';
 import { StorageProvider, STORAGE_PROVIDER } from '@/common/services/storage/storage.interface';
 import { PlanningService } from '../planning/planning.service';
+import { ProjectsService } from '../projects/projects.service';
 import { CustomFieldsValidator } from '@/modules/custom-fields/custom-fields.validator';
 import {
   CreateQuoteDto,
@@ -65,6 +66,7 @@ const QUOTE_INCLUDE = {
     orderBy: { createdAt: 'asc' as const },
   },
   attachments: { orderBy: { sortOrder: 'asc' as const } },
+  project: { select: { id: true, projectNumber: true } },
 };
 
 @Injectable()
@@ -79,6 +81,7 @@ export class QuotesService {
     @Inject(STORAGE_PROVIDER) private storage: StorageProvider,
     private planningService: PlanningService,
     private customFieldsValidator: CustomFieldsValidator,
+    private projectsService: ProjectsService,
   ) {}
 
   private getPublicUrl(path: string): string {
@@ -424,6 +427,17 @@ export class QuotesService {
     const managers = await this.prisma.user.findMany({ where: { orgId: quote.orgId, roles: { hasSome: [Role.MANAGER, Role.ORG_ADMIN] }, isActive: true }, select: { id: true } });
     const recipientIds = [...new Set([quote.createdBy, ...managers.map((m) => m.id)])];
     this.notifications.dispatch({ type: NotificationType.OFFERTE_ONDERTEKEND, orgId: quote.orgId, recipientUserIds: recipientIds, title: 'Offerte ondertekend', body: `${dto.clientName} heeft offerte ${quote.quoteNumber} ondertekend.`, entityType: 'quote', entityId: quote.id });
+    // Auto-create project on quote acceptance (if not already part of a project)
+    const projectId = await this.projectsService.createFromQuote({
+      id: quote.id,
+      orgId: quote.orgId,
+      contactId: quote.contactId,
+      locationId: quote.locationId ?? null,
+      createdBy: quote.createdBy,
+      quoteNumber: quote.quoteNumber,
+      requestId: quote.requestId ?? null,
+    }).catch((err) => { this.logger.error('Failed to create project for quote', err); return null; });
+
     // Auto-create planning item on quote acceptance
     this.planningService.createFromQuote({
       id: quote.id,
@@ -432,6 +446,7 @@ export class QuotesService {
       locationId: quote.locationId ?? null,
       createdBy: quote.createdBy,
       quoteNumber: quote.quoteNumber,
+      projectId: projectId ?? undefined,
     }).catch((err) => this.logger.error('Failed to create planning item for quote', err));
     return { success: true, signedAt: updated.signedAt };
   }

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { DocumentEntityType } from '@/types';
 import type { CrmDocument } from '@/types';
 import {
+  ActionMenu,
   Spinner,
   Table,
   Input,
@@ -16,7 +17,7 @@ import {
 } from '@/components/table-config';
 import { useDocuments } from './hooks/use-documents';
 import { downloadFile } from '@/lib/download-file';
-import { DocumentPreviewModal } from '@/components/documents';
+import { DocumentPreviewModal, UploadDocumentModal } from '@/components/documents';
 
 const entityTypeFilterOptions = [
   { value: '', label: 'Alle types' },
@@ -25,6 +26,7 @@ const entityTypeFilterOptions = [
   { value: DocumentEntityType.QUOTE, label: 'Offerte' },
   { value: DocumentEntityType.PRODUCT, label: 'Product' },
   { value: DocumentEntityType.TASK, label: 'Taak' },
+  { value: DocumentEntityType.USER, label: 'Gebruiker' },
 ];
 
 const entityTypeLabels: Record<string, string> = {
@@ -33,6 +35,7 @@ const entityTypeLabels: Record<string, string> = {
   [DocumentEntityType.QUOTE]: 'Offerte',
   [DocumentEntityType.PRODUCT]: 'Product',
   [DocumentEntityType.TASK]: 'Taak',
+  [DocumentEntityType.USER]: 'Gebruiker',
 };
 
 const entityTypeRoutes: Record<string, string> = {
@@ -41,6 +44,7 @@ const entityTypeRoutes: Record<string, string> = {
   [DocumentEntityType.QUOTE]: '/quotes',
   [DocumentEntityType.PRODUCT]: '/products',
   [DocumentEntityType.TASK]: '/tasks',
+  [DocumentEntityType.USER]: '/users',
 };
 
 function formatBytes(bytes: number): string {
@@ -100,6 +104,7 @@ function EntityIcon({ type }: { type: DocumentEntityType }) {
 }
 
 export default function DocumentsPage() {
+  const [isUploadOpen, setIsUploadOpen] = useState(false);
   const [search, setSearch] = useState('');
   const [entityTypeFilter, setEntityTypeFilter] = useState('');
   const [onlyMine, setOnlyMine] = useState(() => localStorage.getItem('inspexi:filter-mine:documents') === 'true');
@@ -305,11 +310,26 @@ export default function DocumentsPage() {
       }
     >
       <div className="space-y-6">
-        <div>
-          <h2 className="text-2xl font-bold text-gray-900">Documenten</h2>
-          <p className="mt-1 text-sm text-gray-500">
-            Beheer alle documenten van uw organisatie
-          </p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-2xl font-bold text-gray-900">Documenten</h2>
+            <p className="mt-1 text-sm text-gray-500">
+              Beheer alle documenten van uw organisatie
+            </p>
+          </div>
+          <ActionMenu
+            primaryActions={[
+              {
+                label: 'Document uploaden',
+                icon: (
+                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                  </svg>
+                ),
+                onClick: () => setIsUploadOpen(true),
+              },
+            ]}
+          />
         </div>
 
         {/* Filters */}
@@ -392,6 +412,13 @@ export default function DocumentsPage() {
         onClose={() => setPreviewDoc(null)}
         document={previewDoc}
       />
+
+      {isUploadOpen && (
+        <UploadDocumentModal
+          isOpen={isUploadOpen}
+          onClose={() => setIsUploadOpen(false)}
+        />
+      )}
     </DetailPageLayout>
   );
 }

@@ -3,6 +3,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import {
+  ActionMenu,
   Button,
   Spinner,
   Table,
@@ -207,22 +208,15 @@ export default function QuoteTemplatesPage() {
           </p>
         </div>
         {userIsAdmin && (
-          <Button onClick={() => setIsCreateOpen(true)}>
-            <svg
-              className="h-4 w-4"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M12 4v16m8-8H4"
-              />
-            </svg>
-            Template aanmaken
-          </Button>
+          <ActionMenu
+            primaryActions={[
+              {
+                label: 'Template aanmaken',
+                icon: <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>,
+                onClick: () => setIsCreateOpen(true),
+              },
+            ]}
+          />
         )}
       </div>
 

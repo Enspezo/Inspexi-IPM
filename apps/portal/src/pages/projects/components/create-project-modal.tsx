@@ -1,11 +1,13 @@
+import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Modal, Button, Input, Select, useToast } from '@/components/ui';
 import { useAuth } from '@/providers/auth-provider';
 import { useCreateProject } from '../hooks/use-projects';
-import { useContacts, useContactLocations } from '@/pages/contacts/hooks/use-contacts';
+import { useContactLocations } from '@/pages/contacts/hooks/use-contacts';
 import { useUsers } from '@/pages/users/hooks/use-users';
+import { ContactSearchInput } from '@/components/contacts/contact-search-input';
 import type { Project } from '@/types';
 
 const schema = z.object({
@@ -37,13 +39,14 @@ export function CreateProjectModal({
   const { user } = useAuth();
   const createMutation = useCreateProject();
 
-  const { data: contactsData } = useContacts({ limit: 200 });
   const { data: usersData } = useUsers();
+  const [selectedContactId, setSelectedContactId] = useState(defaultContactId || '');
 
   const {
     register,
     handleSubmit,
     watch,
+    setValue,
     reset,
     formState: { errors },
   } = useForm<FormData>({
@@ -55,28 +58,30 @@ export function CreateProjectModal({
     },
   });
 
-  const selectedContactId = watch('contactId');
+  const { data: locationsData } = useContactLocations(selectedContactId);
 
-  const { data: locationsData } = useContactLocations(selectedContactId || '');
-
-  const contacts = (contactsData?.data ?? []).map((c) => ({
-    value: c.id,
-    label:
-      c.companyName ||
-      [c.firstName, c.lastName].filter(Boolean).join(' ') ||
-      c.email ||
-      c.id,
-  }));
-
-  const users = (usersData ?? []).map((u) => ({
-    value: u.id,
-    label: `${u.firstName} ${u.lastName}`,
-  }));
+  const projectManagerOptions = [
+    { value: '', label: 'Selecteer projectmanager...' },
+    ...(user
+      ? [{ value: user.id, label: `Ikzelf (${user.firstName} ${user.lastName})` }]
+      : []),
+    ...(usersData ?? [])
+      .filter((u) => u.id !== user?.id)
+      .map((u) => ({ value: u.id, label: `${u.firstName} ${u.lastName}` })),
+  ];
 
   const locations = (locationsData ?? []).map((l) => ({
     value: l.id,
     label: l.name || `${l.street} ${l.houseNumber}, ${l.city}`,
   }));
+
+  const handleContactSelect = (contactId: string) => {
+    setValue('contactId', contactId, { shouldValidate: true });
+    if (contactId !== selectedContactId) {
+      setValue('locationId', '');
+      setSelectedContactId(contactId);
+    }
+  };
 
   const onSubmit = async (data: FormData) => {
     try {
@@ -122,24 +127,13 @@ export function CreateProjectModal({
           />
         </div>
 
-        <div>
-          <label className="mb-1 block text-sm font-medium text-gray-700">
-            Relatie *
-          </label>
-          <Select
-            options={[
-              { value: '', label: 'Selecteer relatie...' },
-              ...contacts,
-            ]}
-            value={watch('contactId')}
-            {...register('contactId')}
-          />
-          {errors.contactId && (
-            <p className="mt-1 text-sm text-red-600">
-              {errors.contactId.message}
-            </p>
-          )}
-        </div>
+        <ContactSearchInput
+          label="Relatie *"
+          value={selectedContactId}
+          onSelect={handleContactSelect}
+          error={errors.contactId?.message}
+          disabled={!!defaultContactId}
+        />
 
         {locations.length > 0 && (
           <div>
@@ -161,10 +155,8 @@ export function CreateProjectModal({
             Projectmanager
           </label>
           <Select
-            options={[
-              { value: '', label: 'Selecteer projectmanager...' },
-              ...users,
-            ]}
+            options={projectManagerOptions}
+            value={watch('projectManagerId')}
             {...register('projectManagerId')}
           />
         </div>

@@ -314,6 +314,36 @@ export class ProjectsService {
     });
   }
 
+  async getLinkedLocations(id: string, user: User) {
+    await this.findOne(id, user);
+
+    const locationSelect = {
+      select: { id: true, name: true, street: true, houseNumber: true, postalCode: true, city: true },
+    };
+
+    const [requestLocs, quoteLocs, planningLocs] = await Promise.all([
+      this.prisma.request.findMany({
+        where: { projectId: id, isDeleted: false, locationId: { not: null } },
+        select: { location: locationSelect },
+      }),
+      this.prisma.quote.findMany({
+        where: { projectId: id, locationId: { not: null } },
+        select: { location: locationSelect },
+      }),
+      this.prisma.planningItem.findMany({
+        where: { projectId: id, isCancelled: false, locationId: { not: null } },
+        select: { location: locationSelect },
+      }),
+    ]);
+
+    const locationMap = new Map<string, { id: string; name: string; street: string; houseNumber: string; postalCode: string; city: string }>();
+    for (const item of [...requestLocs, ...quoteLocs, ...planningLocs]) {
+      if (item.location) locationMap.set(item.location.id, item.location);
+    }
+
+    return Array.from(locationMap.values());
+  }
+
   // ─── Followers ────────────────────────────────────────────
 
   async getFollowers(id: string, user: User) {

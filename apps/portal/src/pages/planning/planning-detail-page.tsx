@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, Link } from 'react-router-dom';
 import { PlanningStatus, AcceptanceStatus, SessionStatus, DocumentEntityType, TaskEntityType, TaskStatus, Role } from '@/types';
 import type { PlanningFollower, ContactPerson, Task, PlanningSession } from '@/types';
 import {
+  ActionMenu,
   Button,
   Spinner,
   Card,
@@ -10,9 +11,10 @@ import {
   Input,
   useToast,
 } from '@/components/ui';
-import { DetailPageLayout } from '@/components/layout/detail-page-layout';
+import { DetailPageLayout, SidebarSection } from '@/components/layout/detail-page-layout';
 import { AuditHistory } from '@/components/audit-history/audit-history';
 import { DocumentsSection } from '@/components/documents/documents-section';
+import { UploadDocumentModal } from '@/components/documents';
 import { useAuth } from '@/providers/auth-provider';
 import { useTasks, useUpdateTask } from '@/pages/tasks/hooks/use-tasks';
 import { CreateTaskModal } from '@/pages/tasks/components/create-task-modal';
@@ -40,7 +42,7 @@ import {
   useCompleteSession,
 } from './hooks/use-planning-sessions';
 
-type Tab = 'algemeen' | 'sessies' | 'taken' | 'volgers' | 'geschiedenis';
+type Tab = 'algemeen' | 'sessies' | 'klantportaal' | 'volgers' | 'geschiedenis';
 
 const statusColors: Record<string, string> = {
   [PlanningStatus.NOG_TE_PLANNEN]: 'bg-gray-100 text-gray-700',
@@ -112,6 +114,7 @@ function PlanningDetailView({ id }: { id: string }) {
   const [editDurationHours, setEditDurationHours] = useState('');
   const [editInternalNotes, setEditInternalNotes] = useState('');
   const [editContactPersonId, setEditContactPersonId] = useState<string | null>(null);
+  const [editLocationId, setEditLocationId] = useState<string | null>(null);
 
   // Inline contactpersoon bewerken (werkt voor alle statussen)
   const [editingContactPerson, setEditingContactPerson] = useState(false);
@@ -127,6 +130,7 @@ function PlanningDetailView({ id }: { id: string }) {
 
   // Taak aanmaken modal
   const [isTaskOpen, setIsTaskOpen] = useState(false);
+  const [isDocUploadOpen, setIsDocUploadOpen] = useState(false);
 
   // Volger toevoegen modal
   const [addFollowerOpen, setAddFollowerOpen] = useState(false);
@@ -158,6 +162,10 @@ function PlanningDetailView({ id }: { id: string }) {
     limit: 100,
   });
   const allContactPersons = allContactPersonsData?.data ?? [];
+
+  // Locaties van dezelfde relatie als de opdrachtgever
+  const { data: editLocationsData } = useContactLocations(item?.contactId ?? '');
+  const editLocations = editLocationsData ?? [];
 
   // Session state
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
@@ -191,6 +199,7 @@ function PlanningDetailView({ id }: { id: string }) {
       setEditDurationHours(item.durationHours ? String(item.durationHours) : '');
       setEditInternalNotes(item.internalNotes ?? '');
       setEditContactPersonId(item.contactPersonId ?? null);
+      setEditLocationId(item.locationId ?? null);
     }
   }, [item, editMode]);
 
@@ -253,6 +262,7 @@ function PlanningDetailView({ id }: { id: string }) {
     setEditDurationHours(item.durationHours ? String(item.durationHours) : '');
     setEditInternalNotes(item.internalNotes ?? '');
     setEditContactPersonId(item.contactPersonId ?? null);
+    setEditLocationId(item.locationId ?? null);
     setEditMode(true);
   };
 
@@ -264,6 +274,7 @@ function PlanningDetailView({ id }: { id: string }) {
         durationHours: editDurationHours ? Number(editDurationHours) : null,
         internalNotes: editInternalNotes || null,
         contactPersonId: editContactPersonId ?? null,
+        locationId: editLocationId ?? undefined,
       });
       setEditMode(false);
       showToast('Planregel bijgewerkt', 'success');
@@ -426,20 +437,100 @@ function PlanningDetailView({ id }: { id: string }) {
     }
   };
 
-  const sidebar = <AuditHistory entityType="PlanningItem" entityId={id} />;
+  const incompleteTasks = (tasksData?.data ?? []).filter(t => t.status !== TaskStatus.VOLTOOID);
+  const allTasks = tasksData?.data ?? [];
+
+  const sidebar = (
+    <>
+      <SidebarSection
+        icon={<svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" /></svg>}
+        label="Taken"
+        count={incompleteTasks.length}
+      >
+        <div className="space-y-2">
+          {allTasks.length === 0 ? (
+            <p className="text-sm text-gray-400">Geen taken</p>
+          ) : (
+            allTasks.map((task) => (
+              <div key={task.id} className="group flex items-start gap-2 rounded-lg border border-gray-100 bg-white p-2 shadow-sm">
+                <button
+                  type="button"
+                  onClick={async () => {
+                    const newStatus = task.status === TaskStatus.VOLTOOID ? TaskStatus.TE_DOEN : TaskStatus.VOLTOOID;
+                    try {
+                      await updateTaskMutation.mutateAsync({ id: task.id, data: { status: newStatus } });
+                    } catch {
+                      showToast('Status wijzigen mislukt', 'error');
+                    }
+                  }}
+                  className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors ${
+                    task.status === TaskStatus.VOLTOOID
+                      ? 'border-green-500 bg-green-500 text-white'
+                      : 'border-gray-300 hover:border-primary-400'
+                  }`}
+                >
+                  {task.status === TaskStatus.VOLTOOID && (
+                    <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                    </svg>
+                  )}
+                </button>
+                <div className="min-w-0 flex-1">
+                  <Link
+                    to={`/tasks/${task.id}`}
+                    className={`block text-sm font-medium hover:text-primary-600 ${
+                      task.status === TaskStatus.VOLTOOID ? 'text-gray-400 line-through' : 'text-gray-900'
+                    }`}
+                  >
+                    {task.title}
+                  </Link>
+                  {task.deadline && (
+                    <p className="text-xs text-gray-400">
+                      {new Date(task.deadline).toLocaleDateString('nl-NL', { day: 'numeric', month: 'long', year: 'numeric' })}
+                    </p>
+                  )}
+                </div>
+              </div>
+            ))
+          )}
+          {user && user.roles.some(r => canWrite.includes(r)) && (
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={() => setIsTaskOpen(true)}
+                className="flex items-center gap-1 text-xs font-medium text-primary-600 hover:text-primary-800"
+              >
+                <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                </svg>
+                Nieuwe taak
+              </button>
+            </div>
+          )}
+        </div>
+      </SidebarSection>
+
+      <SidebarSection
+        icon={<svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>}
+        label="Audit"
+      >
+        <AuditHistory entityType="PlanningItem" entityId={id} />
+      </SidebarSection>
+    </>
+  );
 
   const tabLabels: Record<Tab, string> = {
     algemeen: 'Algemeen',
     sessies: item.isMultiDay
       ? `Sessies (${definitiefCount}/${totalActiveCount} definitief)`
       : 'Sessies',
-    taken: tasksData?.total ? `Taken (${tasksData.total})` : 'Taken',
+    klantportaal: 'Klantportaal',
     volgers: followers?.length ? `Volgers (${followers.length})` : 'Volgers',
     geschiedenis: 'Geschiedenis',
   };
 
   return (
-    <DetailPageLayout sidebar={sidebar}>
+    <DetailPageLayout iconStrip sidebar={sidebar}>
       {/* Header */}
       <div className="mb-6">
         <button
@@ -475,43 +566,62 @@ function PlanningDetailView({ id }: { id: string }) {
               )}
             </div>
           </div>
-          <div className="flex gap-2 flex-shrink-0">
-            {canActAsInspector && (
-              <>
-                <Button onClick={handleAccept} disabled={accept.isPending}>
-                  Accepteren
-                </Button>
-                <Button variant="secondary" onClick={() => setRejectOpen(true)}>
-                  Weigeren
-                </Button>
-              </>
-            )}
-            {user && user.roles.some(r => canWrite.includes(r)) && !item.isCancelled && item.status !== PlanningStatus.AFGEROND && (
-              <>
-                {/* Alleen "Verzetten" tonen voor GEPLAND — bij CONCEPT/NOG_TE_PLANNEN kan men direct bewerken */}
-                {canReschedule && (
-                  <Button variant="secondary" onClick={() => setRescheduleOpen(true)}>
-                    Verzetten
-                  </Button>
-                )}
-                {item.status === PlanningStatus.GEPLAND && (
-                  <Button variant="secondary" onClick={handleSendConfirmation} disabled={sendConfirmation.isPending}>
-                    Bevestiging sturen
-                  </Button>
-                )}
-                <Button onClick={handleComplete} disabled={complete.isPending}>
-                  Afronden
-                </Button>
-              </>
-            )}
-          </div>
+          <ActionMenu
+            primaryActions={[
+              ...(canActAsInspector ? [
+                {
+                  label: 'Accepteren',
+                  icon: <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>,
+                  onClick: handleAccept,
+                  disabled: accept.isPending,
+                },
+                {
+                  label: 'Weigeren',
+                  icon: <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>,
+                  onClick: () => setRejectOpen(true),
+                  variant: 'danger' as const,
+                },
+              ] : []),
+              ...(user && user.roles.some(r => canWrite.includes(r)) && !item.isCancelled && item.status !== PlanningStatus.AFGEROND ? [
+                {
+                  label: 'Afronden',
+                  icon: <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>,
+                  onClick: handleComplete,
+                  disabled: complete.isPending,
+                },
+                ...(canReschedule ? [{
+                  label: 'Verzetten',
+                  icon: <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>,
+                  onClick: () => setRescheduleOpen(true),
+                }] : []),
+                ...(item.status === PlanningStatus.GEPLAND ? [{
+                  label: 'Bevestiging sturen',
+                  icon: <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>,
+                  onClick: handleSendConfirmation,
+                  disabled: sendConfirmation.isPending,
+                }] : []),
+              ] : []),
+            ]}
+            secondaryActions={[
+              {
+                label: 'Taak aanmaken',
+                icon: <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" /></svg>,
+                onClick: () => setIsTaskOpen(true),
+              },
+              {
+                label: 'Document uploaden',
+                icon: <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>,
+                onClick: () => setIsDocUploadOpen(true),
+              },
+            ]}
+          />
         </div>
       </div>
 
       {/* Tabs */}
       <div className="border-b border-gray-200 mb-6">
         <nav className="flex gap-6">
-          {(['algemeen', ...(item.isMultiDay ? ['sessies'] : []), 'taken', 'volgers', 'geschiedenis'] as Tab[]).map((t) => (
+          {(['algemeen', ...(item.isMultiDay ? ['sessies'] : []), 'klantportaal', 'volgers', 'geschiedenis'] as Tab[]).map((t) => (
             <button
               key={t}
               onClick={() => setTab(t)}
@@ -559,6 +669,23 @@ function PlanningDetailView({ id }: { id: string }) {
                       ))}
                     </select>
                   </div>
+                  {editLocations.length > 0 && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Locatie (optioneel)</label>
+                      <select
+                        value={editLocationId ?? ''}
+                        onChange={(e) => setEditLocationId(e.target.value || null)}
+                        className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      >
+                        <option value="">— Geen locatie —</option>
+                        {editLocations.map((l: any) => (
+                          <option key={l.id} value={l.id}>
+                            {l.name ? `${l.name} — ` : ''}{[l.street, l.houseNumber, l.city].filter(Boolean).join(' ')}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Dienst / omschrijving</label>
                     <Input
@@ -761,7 +888,37 @@ function PlanningDetailView({ id }: { id: string }) {
             </div>
           </Card>
 
-          {/* Portal link */}
+          <div className="flex items-center justify-between border-t border-gray-200 pt-6">
+            <p className="text-xs text-gray-400">
+              Aangemaakt op {new Date(item.createdAt).toLocaleString('nl-NL', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+              {item.createdByUser && ` door ${item.createdByUser.firstName} ${item.createdByUser.lastName}`}
+            </p>
+            {canEditDirectly && !editMode && (
+              <Button variant="secondary" onClick={handleOpenEdit}>
+                Bewerken
+              </Button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── Sessies ── */}
+      {tab === 'sessies' && item.isMultiDay && (
+        <SessionsTab
+          sessions={activeSessions}
+          userId={user?.id}
+          userCanWrite={!!(user && user.roles.some(r => canWrite.includes(r)))}
+          onOpenReject={handleOpenSessionReject}
+          onOpenReschedule={handleOpenSessionReschedule}
+          onAddSession={handleAddSession}
+          isAddingSession={addSession.isPending}
+          planningItemId={id!}
+        />
+      )}
+
+      {/* ── Klantportaal ── */}
+      {tab === 'klantportaal' && (
+        <div className="space-y-6">
           <Card>
             <div className="p-6">
               <h3 className="font-semibold text-gray-900 mb-2">Klantportaal</h3>
@@ -786,37 +943,6 @@ function PlanningDetailView({ id }: { id: string }) {
             </div>
           </Card>
         </div>
-      )}
-
-      {/* ── Sessies ── */}
-      {tab === 'sessies' && item.isMultiDay && (
-        <SessionsTab
-          sessions={activeSessions}
-          userId={user?.id}
-          userCanWrite={!!(user && user.roles.some(r => canWrite.includes(r)))}
-          onOpenReject={handleOpenSessionReject}
-          onOpenReschedule={handleOpenSessionReschedule}
-          onAddSession={handleAddSession}
-          isAddingSession={addSession.isPending}
-          planningItemId={id!}
-        />
-      )}
-
-      {/* ── Taken ── */}
-      {tab === 'taken' && (
-        <PlanningTasksTab
-          tasks={tasksData?.data ?? []}
-          userCanWrite={!!(user && user.roles.some(r => canWrite.includes(r)))}
-          onCreateTask={() => setIsTaskOpen(true)}
-          onStatusChange={async (taskId, newStatus) => {
-            try {
-              await updateTaskMutation.mutateAsync({ id: taskId, data: { status: newStatus } });
-            } catch {
-              showToast('Fout bij bijwerken taak', 'error');
-            }
-          }}
-          navigate={navigate}
-        />
       )}
 
       {/* ── Volgers ── */}
@@ -903,6 +1029,15 @@ function PlanningDetailView({ id }: { id: string }) {
         entityType={TaskEntityType.PLANNING}
         entityId={id!}
       />
+
+      {isDocUploadOpen && (
+        <UploadDocumentModal
+          isOpen={isDocUploadOpen}
+          onClose={() => setIsDocUploadOpen(false)}
+          entityType={DocumentEntityType.PLANNING}
+          entityId={id!}
+        />
+      )}
 
       {/* ── Verzetten modal (alleen GEPLAND) ── */}
       <Modal

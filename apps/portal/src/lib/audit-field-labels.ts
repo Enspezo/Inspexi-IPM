@@ -34,6 +34,8 @@ const entityLabels: Record<string, Record<string, string>> = {
     companyName: 'Bedrijfsnaam',
     website: 'Website',
     vatNumber: 'BTW-nummer',
+    vatValidation: 'BTW-validatie',
+    viesNaamOverschreven: 'Naam overschreven via VIES',
     cocNumber: 'KvK-nummer',
     priceTableId: 'Prijstabel',
     ownerId: 'Eigenaar',

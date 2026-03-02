@@ -1,3 +1,4 @@
+export { ActionMenu, type ActionMenuItem } from './action-menu';
 export { Button } from './button';
 export { Input } from './input';
 export { Select } from './select';
@@ -13,3 +14,5 @@ export { RichTextViewer } from './rich-text-viewer';
 export { SignatureCanvas } from './signature-canvas';
 export { SignatureEditor } from './signature-editor';
 export { AddressSearchInput, type AddressSearchInputProps } from './address-search-input';
+export { KvkSearchInput, type KvkSearchInputProps } from './kvk-search-input';
+export { VatInput, type VatInputProps } from './vat-input';

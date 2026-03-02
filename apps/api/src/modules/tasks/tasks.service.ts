@@ -106,6 +106,20 @@ export class TasksService {
       }
     }
 
+    const userIds = tasks
+      .filter((t) => t.entityType === TaskEntityType.USER)
+      .map((t) => t.entityId);
+
+    if (userIds.length > 0) {
+      const users = await this.prisma.user.findMany({
+        where: { id: { in: userIds } },
+        select: { id: true, firstName: true, lastName: true },
+      });
+      for (const u of users) {
+        nameMap.set(u.id, [u.firstName, u.lastName].filter(Boolean).join(' ') || '—');
+      }
+    }
+
     return nameMap;
   }
 

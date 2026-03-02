@@ -1,15 +1,18 @@
-import { useState, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import {
   QuoteStatus,
   ApprovalStatus,
   Role,
   TaskEntityType,
+  TaskStatus,
   DocumentEntityType,
   CustomFieldEntityType,
+  LogType,
 } from '@/types';
-import { Button, Card, Spinner, Input, Table, useToast, type Column } from '@/components/ui';
-import { DetailPageLayout } from '@/components/layout/detail-page-layout';
+import type { Task, ContactLog } from '@/types';
+import { ActionMenu, type ActionMenuItem, Button, Card, Spinner, Input, Table, useToast, type Column } from '@/components/ui';
+import { DetailPageLayout, SidebarSection } from '@/components/layout/detail-page-layout';
 import { useAuth } from '@/providers/auth-provider';
 import {
   useQuote,
@@ -23,9 +26,13 @@ import {
   useDeleteQuoteAttachment,
 } from './hooks/use-quotes';
 import type { QuoteLine, QuoteApprovalRequest, QuoteQuestion, QuoteAttachment } from '@/types';
+import { useContactLogs } from '@/pages/contacts/hooks/use-contacts';
+import { AddLogModal } from '@/pages/contacts/components/add-log-modal';
+import { useTasks, useUpdateTask } from '@/pages/tasks/hooks/use-tasks';
 import { AuditHistory } from '@/components/audit-history/audit-history';
 import { CreateTaskModal } from '@/pages/tasks/components/create-task-modal';
-import { DocumentsSection } from '@/components/documents';
+import { EditTaskModal } from '@/pages/tasks/components/edit-task-modal';
+import { DocumentsSection, UploadDocumentModal } from '@/components/documents';
 import { CustomFieldsDisplay } from '@/components/custom-fields';
 import { SendQuoteModal } from './components/send-quote-modal';
 import { ApproveQuoteModal } from './components/approve-quote-modal';
@@ -67,6 +74,20 @@ const approvalStatusColors: Record<string, string> = {
   [ApprovalStatus.PENDING]: 'bg-yellow-100 text-yellow-800',
   [ApprovalStatus.APPROVED]: 'bg-green-100 text-green-800',
   [ApprovalStatus.REJECTED]: 'bg-red-100 text-red-800',
+};
+
+const logTypeLabels: Record<string, string> = {
+  [LogType.EMAIL]: 'E-mail',
+  [LogType.PHONE]: 'Telefoon',
+  [LogType.MEETING]: 'Vergadering',
+  [LogType.NOTE]: 'Notitie',
+};
+
+const logTypeColors: Record<string, string> = {
+  [LogType.EMAIL]: 'bg-blue-100 text-blue-800',
+  [LogType.PHONE]: 'bg-green-100 text-green-800',
+  [LogType.MEETING]: 'bg-purple-100 text-purple-800',
+  [LogType.NOTE]: 'bg-gray-100 text-gray-800',
 };
 
 function formatDate(dateStr: string): string {
@@ -117,9 +138,14 @@ export default function QuoteDetailPage() {
   const uploadAttachmentMutation = useUploadQuoteAttachment(id!);
   const deleteAttachmentMutation = useDeleteQuoteAttachment(id!);
 
+  // Fetch contact logs for this quote's contact
+  const { data: contactLogs } = useContactLogs(quote?.contactId || '');
+
   const [rejectNote, setRejectNote] = useState('');
   const [showRejectInput, setShowRejectInput] = useState(false);
   const [isTaskOpen, setIsTaskOpen] = useState(false);
+  const [isDocUploadOpen, setIsDocUploadOpen] = useState(false);
+  const [isLogOpen, setIsLogOpen] = useState(false);
   const [isSendOpen, setIsSendOpen] = useState(false);
   const [isApproveOpen, setIsApproveOpen] = useState(false);
   const [newQuestion, setNewQuestion] = useState('');
@@ -128,6 +154,10 @@ export default function QuoteDetailPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const answerMutation = useAnswerQuestion(id!, answeringId ?? '');
+
+  const { data: tasksData } = useTasks({ entityType: TaskEntityType.QUOTE, entityId: id, limit: 100 });
+  const quoteTasks = tasksData?.data || [];
+  const incompleteTasks = quoteTasks.filter((t) => t.status !== TaskStatus.VOLTOOID);
 
   const userCanWrite = user && user.roles.some(r => canWrite.includes(r));
   const userCanApprove = user && user.roles.some(r => canApprove.includes(r));
@@ -239,8 +269,57 @@ export default function QuoteDetailPage() {
 
   const canBeSent = quote.status === QuoteStatus.GOEDGEKEURD || quote.status === QuoteStatus.CONCEPT;
 
+  const logs = contactLogs || [];
+
+  const sidebarContent = (
+    <div>
+      <SidebarSection
+        icon={
+          <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+        }
+        label="Contactgeschiedenis"
+        count={logs.length}
+      >
+        <ContactLogsSidebar
+          logs={logs}
+          userCanWrite={!!userCanWrite}
+          onLogOpen={() => setIsLogOpen(true)}
+        />
+      </SidebarSection>
+
+      <SidebarSection
+        icon={
+          <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+          </svg>
+        }
+        label="Taken"
+        count={incompleteTasks.length}
+      >
+        <QuoteTasksSidebar
+          tasks={quoteTasks}
+          userCanWrite={!!userCanWrite}
+          onCreateTask={() => setIsTaskOpen(true)}
+        />
+      </SidebarSection>
+
+      <SidebarSection
+        icon={
+          <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+          </svg>
+        }
+        label="Wijzigingshistorie"
+      >
+        <AuditHistory entityType="Quote" entityId={id} />
+      </SidebarSection>
+    </div>
+  );
+
   return (
-    <DetailPageLayout sidebar={<AuditHistory entityType="Quote" entityId={id} />}>
+    <DetailPageLayout iconStrip sidebar={sidebarContent}>
       <div className="space-y-6">
         {/* Header */}
         <div className="flex items-center justify-between">
@@ -266,60 +345,88 @@ export default function QuoteDetailPage() {
             </div>
           </div>
           {userCanWrite && (
-            <div className="flex flex-wrap gap-2">
-              {/* Approval flow */}
-              {quote.status === QuoteStatus.CONCEPT && quote.requiresApproval && (
-                <Button size="sm" onClick={handleSubmitApproval} isLoading={submitApprovalMutation.isPending}>Ter goedkeuring</Button>
-              )}
-              {quote.status === QuoteStatus.CONCEPT && !quote.requiresApproval && (
-                <Button size="sm" onClick={() => setIsApproveOpen(true)}>Goedkeuren</Button>
-              )}
-              {quote.status === QuoteStatus.TER_GOEDKEURING && userCanApprove && (
-                <>
-                  <Button size="sm" onClick={() => setIsApproveOpen(true)}>Goedkeuren</Button>
-                  <Button variant="danger" size="sm" onClick={() => setShowRejectInput(!showRejectInput)}>Afwijzen</Button>
-                </>
-              )}
-              {/* Send button */}
-              {canBeSent && (
-                <Button size="sm" onClick={() => setIsSendOpen(true)}>
-                  <svg className="mr-1.5 h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
-                  Versturen
-                </Button>
-              )}
-              {/* Status updates for sent quotes */}
-              {quote.status === QuoteStatus.VERSTUURD && (
-                <Button size="sm" variant="secondary" onClick={() => handleStatusUpdate(QuoteStatus.BEKEKEN)} isLoading={updateStatusMutation.isPending}>Markeer als bekeken</Button>
-              )}
-              {quote.status === QuoteStatus.BEKEKEN && (
-                <>
-                  <Button size="sm" onClick={() => handleStatusUpdate(QuoteStatus.GEACCEPTEERD)} isLoading={updateStatusMutation.isPending}>Geaccepteerd</Button>
-                  <Button variant="danger" size="sm" onClick={() => handleStatusUpdate(QuoteStatus.AFGEWEZEN)}>Afgewezen</Button>
-                </>
-              )}
-              {/* Utilities */}
-              <Button variant="secondary" size="sm" onClick={() => setIsTaskOpen(true)}>
-                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" /></svg>
-                Taak
-              </Button>
-              {quote.publicToken && [QuoteStatus.GOEDGEKEURD, QuoteStatus.VERSTUURD, QuoteStatus.BEKEKEN, QuoteStatus.GEACCEPTEERD].includes(quote.status as QuoteStatus) && (
-                <Button variant="secondary" size="sm" onClick={async () => {
-                  try {
-                    const res = await fetch(`/api/v1/quotes/${id}/pdf`, { headers: { Authorization: `Bearer ${getAccessToken() ?? ''}` }, credentials: 'include' });
-                    if (!res.ok) { showToast('PDF genereren mislukt', 'error'); return; }
-                    const blob = await res.blob();
-                    const url = URL.createObjectURL(blob);
-                    const a = document.createElement('a'); a.href = url; a.download = `Offerte-${quote.quoteNumber}.pdf`; a.click(); URL.revokeObjectURL(url);
-                  } catch { showToast('PDF downloaden mislukt', 'error'); }
-                }}>
-                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
-                  PDF
-                </Button>
-              )}
-              {quote.status === QuoteStatus.CONCEPT && (
-                <Button variant="secondary" size="sm" onClick={() => navigate(`/quotes/${quote.id}/edit`)}>Bewerken</Button>
-              )}
-            </div>
+            <ActionMenu
+              primaryActions={[
+                ...(quote.status === QuoteStatus.CONCEPT && quote.requiresApproval ? [{
+                  label: 'Ter goedkeuring',
+                  icon: <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>,
+                  onClick: handleSubmitApproval,
+                  isLoading: submitApprovalMutation.isPending,
+                }] : []),
+                ...(quote.status === QuoteStatus.CONCEPT && !quote.requiresApproval ? [{
+                  label: 'Goedkeuren',
+                  icon: <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>,
+                  onClick: () => setIsApproveOpen(true),
+                }] : []),
+                ...(quote.status === QuoteStatus.TER_GOEDKEURING && userCanApprove ? [
+                  {
+                    label: 'Goedkeuren',
+                    icon: <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>,
+                    onClick: () => setIsApproveOpen(true),
+                  },
+                  {
+                    label: 'Afwijzen',
+                    icon: <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>,
+                    onClick: () => setShowRejectInput(!showRejectInput),
+                    variant: 'danger' as const,
+                  },
+                ] : []),
+                ...(canBeSent ? [{
+                  label: 'Versturen',
+                  icon: <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>,
+                  onClick: () => setIsSendOpen(true),
+                }] : []),
+                ...(quote.status === QuoteStatus.VERSTUURD ? [{
+                  label: 'Markeer als bekeken',
+                  onClick: () => handleStatusUpdate(QuoteStatus.BEKEKEN),
+                  isLoading: updateStatusMutation.isPending,
+                }] : []),
+                ...(quote.status === QuoteStatus.BEKEKEN ? [
+                  {
+                    label: 'Geaccepteerd',
+                    icon: <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>,
+                    onClick: () => handleStatusUpdate(QuoteStatus.GEACCEPTEERD),
+                    isLoading: updateStatusMutation.isPending,
+                  },
+                  {
+                    label: 'Afgewezen',
+                    icon: <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>,
+                    onClick: () => handleStatusUpdate(QuoteStatus.AFGEWEZEN),
+                    variant: 'danger' as const,
+                  },
+                ] : []),
+              ]}
+              secondaryActions={[
+                {
+                  label: 'Contactmoment loggen',
+                  icon: <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>,
+                  onClick: () => setIsLogOpen(true),
+                },
+                {
+                  label: 'Taak aanmaken',
+                  icon: <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" /></svg>,
+                  onClick: () => setIsTaskOpen(true),
+                },
+                ...(quote.publicToken && [QuoteStatus.GOEDGEKEURD, QuoteStatus.VERSTUURD, QuoteStatus.BEKEKEN, QuoteStatus.GEACCEPTEERD].includes(quote.status as QuoteStatus) ? [{
+                  label: 'PDF downloaden',
+                  icon: <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>,
+                  onClick: async () => {
+                    try {
+                      const res = await fetch(`/api/v1/quotes/${id}/pdf`, { headers: { Authorization: `Bearer ${getAccessToken() ?? ''}` }, credentials: 'include' });
+                      if (!res.ok) { showToast('PDF genereren mislukt', 'error'); return; }
+                      const blob = await res.blob();
+                      const url = URL.createObjectURL(blob);
+                      const a = document.createElement('a'); a.href = url; a.download = `Offerte-${quote.quoteNumber}.pdf`; a.click(); URL.revokeObjectURL(url);
+                    } catch { showToast('PDF downloaden mislukt', 'error'); }
+                  },
+                }] : []),
+                {
+                  label: 'Document uploaden',
+                  icon: <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>,
+                  onClick: () => setIsDocUploadOpen(true),
+                },
+              ]}
+            />
           )}
         </div>
 
@@ -601,16 +708,33 @@ export default function QuoteDetailPage() {
           <DocumentsSection entityType={DocumentEntityType.QUOTE} entityId={quote.id} canUpload={!!userCanWrite} />
         </Card>
 
-        {/* Verwijderen */}
-        {userCanWrite && quote.status === QuoteStatus.CONCEPT && (
-          <div className="flex justify-end border-t border-gray-200 pt-6">
-            <Button variant="danger" size="sm" onClick={handleDelete}>Offerte verwijderen</Button>
-          </div>
-        )}
+        {/* Acties onderaan */}
+        <div className="flex items-center justify-between border-t border-gray-200 pt-6">
+          <p className="text-xs text-gray-400">
+            Aangemaakt op {new Date(quote.createdAt).toLocaleString('nl-NL', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+            {quote.createdByUser && ` door ${quote.createdByUser.firstName} ${quote.createdByUser.lastName}`}
+          </p>
+          {userCanWrite && (
+            <div className="flex gap-2">
+              {quote.status === QuoteStatus.CONCEPT && (
+                <Button variant="secondary" size="sm" onClick={() => navigate(`/quotes/${quote.id}/edit`)}>
+                  Bewerken
+                </Button>
+              )}
+              {quote.status === QuoteStatus.CONCEPT && (
+                <Button variant="danger" size="sm" onClick={handleDelete}>Offerte verwijderen</Button>
+              )}
+            </div>
+          )}
+        </div>
 
         {/* Modals */}
         {quote && (
-          <CreateTaskModal isOpen={isTaskOpen} onClose={() => setIsTaskOpen(false)} entityType={TaskEntityType.QUOTE} entityId={quote.id} />
+          <>
+            <CreateTaskModal isOpen={isTaskOpen} onClose={() => setIsTaskOpen(false)} entityType={TaskEntityType.QUOTE} entityId={quote.id} />
+            <UploadDocumentModal isOpen={isDocUploadOpen} onClose={() => setIsDocUploadOpen(false)} entityType={DocumentEntityType.QUOTE} entityId={quote.id} />
+            <AddLogModal isOpen={isLogOpen} onClose={() => setIsLogOpen(false)} contactId={quote.contactId} />
+          </>
         )}
         {quote && isSendOpen && (
           <SendQuoteModal isOpen={isSendOpen} onClose={() => setIsSendOpen(false)} quote={quote} />
@@ -625,5 +749,319 @@ export default function QuoteDetailPage() {
         )}
       </div>
     </DetailPageLayout>
+  );
+}
+
+// ─── QuoteTasksSidebar ────────────────────────────────
+
+function SidebarTaskCard({
+  task,
+  userCanWrite,
+  onStatusChange,
+  onEdit,
+  navigate,
+}: {
+  task: Task;
+  userCanWrite: boolean;
+  onStatusChange: (taskId: string, status: TaskStatus) => void;
+  onEdit: (task: Task) => void;
+  navigate: ReturnType<typeof useNavigate>;
+}) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const isCompleted = task.status === TaskStatus.VOLTOOID;
+  const isOverdue = !isCompleted && task.deadline && new Date(task.deadline) < new Date();
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setMenuOpen(false);
+      }
+    }
+    if (menuOpen) document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [menuOpen]);
+
+  return (
+    <div
+      className={`group flex items-start gap-2.5 rounded-lg border p-2.5 transition-colors hover:bg-gray-50 ${
+        isCompleted ? 'border-gray-100 bg-gray-50' : 'border-gray-200 bg-white'
+      }`}
+    >
+      <button
+        type="button"
+        onClick={() => onStatusChange(task.id, isCompleted ? TaskStatus.TE_DOEN : TaskStatus.VOLTOOID)}
+        style={{ width: 18, height: 18 }}
+        className={`mt-0.5 flex shrink-0 items-center justify-center rounded border transition-colors ${
+          isCompleted ? 'border-green-500 bg-green-500 text-white' : 'border-gray-300 bg-white hover:border-primary-500'
+        }`}
+      >
+        {isCompleted && (
+          <svg className="h-2.5 w-2.5" viewBox="0 0 12 12" fill="none">
+            <path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        )}
+      </button>
+
+      <div className="min-w-0 flex-1">
+        <button
+          onClick={() => navigate(`/tasks/${task.id}`)}
+          className={`text-xs font-medium leading-snug hover:underline ${
+            isCompleted ? 'text-gray-400 line-through' : 'text-gray-900'
+          }`}
+        >
+          {task.title}
+        </button>
+        <div className="mt-0.5 flex items-center gap-2 text-xs text-gray-500">
+          {task.assignee && (
+            <span title={`${task.assignee.firstName} ${task.assignee.lastName}`}>
+              {task.assignee.initials || `${task.assignee.firstName[0]}${task.assignee.lastName[0]}`}
+            </span>
+          )}
+          {task.deadline && (
+            <span className={isOverdue ? 'font-medium text-red-600' : ''}>
+              {new Date(task.deadline).toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' })}
+            </span>
+          )}
+        </div>
+      </div>
+
+      {userCanWrite && (
+        <div className="relative flex-shrink-0" ref={menuRef}>
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); setMenuOpen(!menuOpen); }}
+            className="rounded p-0.5 text-gray-300 opacity-0 transition-opacity group-hover:opacity-100 hover:bg-gray-100 hover:text-gray-600"
+          >
+            <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 20 20">
+              <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" />
+            </svg>
+          </button>
+          {menuOpen && (
+            <div className="absolute right-0 z-20 mt-1 w-36 rounded-lg border border-gray-200 bg-white py-1 shadow-lg">
+              <button
+                type="button"
+                onClick={() => { setMenuOpen(false); onEdit(task); }}
+                className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-gray-700 hover:bg-gray-50"
+              >
+                <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                </svg>
+                Bewerken
+              </button>
+              <button
+                type="button"
+                onClick={() => { setMenuOpen(false); navigate(`/tasks/${task.id}`); }}
+                className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-gray-700 hover:bg-gray-50"
+              >
+                <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                </svg>
+                Ga naar taak
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function QuoteTasksSidebar({
+  tasks,
+  userCanWrite,
+  onCreateTask,
+}: {
+  tasks: Task[];
+  userCanWrite: boolean;
+  onCreateTask: () => void;
+}) {
+  const navigate = useNavigate();
+  const { showToast } = useToast();
+  const updateTaskMutation = useUpdateTask();
+  const [editingTask, setEditingTask] = useState<Task | null>(null);
+  const [showCompleted, setShowCompleted] = useState(false);
+
+  const incomplete = tasks.filter((t) => t.status !== TaskStatus.VOLTOOID);
+  const completed = tasks.filter((t) => t.status === TaskStatus.VOLTOOID);
+
+  const handleStatusChange = async (taskId: string, status: TaskStatus) => {
+    try {
+      await updateTaskMutation.mutateAsync({ id: taskId, data: { status } });
+    } catch {
+      showToast('Status bijwerken mislukt', 'error');
+    }
+  };
+
+  return (
+    <div className="space-y-2">
+      {userCanWrite && (
+        <div className="flex justify-end">
+          <button
+            type="button"
+            onClick={onCreateTask}
+            className="flex items-center gap-1 text-xs font-medium text-primary-600 hover:text-primary-800"
+          >
+            <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            </svg>
+            Nieuwe taak
+          </button>
+        </div>
+      )}
+
+      {tasks.length === 0 ? (
+        <p className="text-xs text-gray-400">Nog geen taken</p>
+      ) : (
+        <>
+          {incomplete.length === 0 && (
+            <p className="text-xs text-gray-400">Geen openstaande taken</p>
+          )}
+          {incomplete.map((task) => (
+            <SidebarTaskCard
+              key={task.id}
+              task={task}
+              userCanWrite={userCanWrite}
+              onStatusChange={handleStatusChange}
+              onEdit={setEditingTask}
+              navigate={navigate}
+            />
+          ))}
+
+          {completed.length > 0 && (
+            <div>
+              <button
+                type="button"
+                onClick={() => setShowCompleted(!showCompleted)}
+                className="flex items-center gap-1 text-xs font-medium text-gray-500 hover:text-gray-700"
+              >
+                <svg
+                  className={`h-3.5 w-3.5 transition-transform ${showCompleted ? 'rotate-90' : ''}`}
+                  fill="none" viewBox="0 0 24 24" stroke="currentColor"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+                Voltooid ({completed.length})
+              </button>
+              {showCompleted && (
+                <div className="mt-2 space-y-2">
+                  {completed.map((task) => (
+                    <SidebarTaskCard
+                      key={task.id}
+                      task={task}
+                      userCanWrite={userCanWrite}
+                      onStatusChange={handleStatusChange}
+                      onEdit={setEditingTask}
+                      navigate={navigate}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </>
+      )}
+
+      {editingTask && (
+        <EditTaskModal
+          isOpen={!!editingTask}
+          onClose={() => setEditingTask(null)}
+          task={editingTask}
+        />
+      )}
+    </div>
+  );
+}
+
+// ─── ContactLogsSidebar ───────────────────────────────
+
+function ContactLogsSidebar({
+  logs,
+  userCanWrite,
+  onLogOpen,
+}: {
+  logs: ContactLog[];
+  userCanWrite: boolean;
+  onLogOpen: () => void;
+}) {
+  const [showAll, setShowAll] = useState(false);
+  const MAX_ITEMS = 5;
+  const sorted = [...logs].sort(
+    (a, b) => new Date(b.loggedAt).getTime() - new Date(a.loggedAt).getTime(),
+  );
+  const visible = showAll ? sorted : sorted.slice(0, MAX_ITEMS);
+
+  return (
+    <div className="space-y-3">
+      {userCanWrite && (
+        <div className="flex justify-end">
+          <button
+            type="button"
+            onClick={onLogOpen}
+            className="flex items-center gap-1 text-xs font-medium text-primary-600 hover:text-primary-800"
+          >
+            <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            </svg>
+            Contactmoment loggen
+          </button>
+        </div>
+      )}
+
+      {logs.length === 0 ? (
+        <p className="text-xs text-gray-400">Nog geen contactmomenten</p>
+      ) : (
+        <div className="space-y-2">
+          {visible.map((item) => (
+            <div
+              key={item.id}
+              className="rounded-lg border border-gray-200 bg-white p-3"
+            >
+              <div className="mb-1 flex items-center justify-between">
+                <span
+                  className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
+                    logTypeColors[item.type] || 'bg-gray-100 text-gray-800'
+                  }`}
+                >
+                  {logTypeLabels[item.type] || item.type}
+                </span>
+                <span className="text-xs text-gray-400">
+                  {new Date(item.loggedAt).toLocaleDateString('nl-NL', {
+                    day: 'numeric',
+                    month: 'short',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                  })}
+                </span>
+              </div>
+              {item.subject && (
+                <p className="text-xs font-medium text-gray-900">{item.subject}</p>
+              )}
+              {item.body && (
+                <p className="mt-0.5 line-clamp-2 text-xs text-gray-600" title={item.body}>
+                  {item.body}
+                </p>
+              )}
+              {item.user && (
+                <p className="mt-1 text-xs text-gray-400">
+                  {item.user.firstName} {item.user.lastName}
+                </p>
+              )}
+            </div>
+          ))}
+
+          {sorted.length > MAX_ITEMS && (
+            <button
+              onClick={() => setShowAll(!showAll)}
+              className="w-full py-1 text-center text-xs font-medium text-primary-600 hover:text-primary-800"
+            >
+              {showAll
+                ? 'Minder tonen'
+                : `Alle ${sorted.length} items tonen`}
+            </button>
+          )}
+        </div>
+      )}
+    </div>
   );
 }

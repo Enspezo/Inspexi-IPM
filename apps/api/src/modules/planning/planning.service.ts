@@ -64,6 +64,8 @@ const PLANNING_INCLUDE = {
       houseNumber: true,
       city: true,
       postalCode: true,
+      lat: true,
+      lng: true,
     },
   },
   createdByUser: {

@@ -80,6 +80,13 @@ export class ProjectsController {
     return this.projectsService.getLinkedPlanning(id, user);
   }
 
+  @Get(':id/locations')
+  @Roles(...CRM_ROLES, Role.INSPECTEUR)
+  @ApiOperation({ summary: 'Get aggregated locations from linked requests, quotes and planning items' })
+  async getLinkedLocations(@CurrentUser() user: User, @Param('id') id: string) {
+    return this.projectsService.getLinkedLocations(id, user);
+  }
+
   @Post(':id/assign')
   @Roles(...WRITE_ROLES)
   @ApiOperation({ summary: 'Assign entities to project' })

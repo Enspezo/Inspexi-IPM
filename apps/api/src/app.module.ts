@@ -33,6 +33,8 @@ import { GeocodingModule } from './modules/geocoding/geocoding.module';
 import { CustomFieldsModule } from './modules/custom-fields/custom-fields.module';
 import { EmailTemplatesModule } from './modules/email-templates/email-templates.module';
 import { ProjectsModule } from './modules/projects/projects.module';
+import { KvkModule } from './modules/kvk/kvk.module';
+import { VatModule } from './modules/vat/vat.module';
 
 @Module({
   imports: [
@@ -63,6 +65,8 @@ import { ProjectsModule } from './modules/projects/projects.module';
     CustomFieldsModule,
     EmailTemplatesModule,
     ProjectsModule,
+    KvkModule,
+    VatModule,
   ],
   providers: [
     {

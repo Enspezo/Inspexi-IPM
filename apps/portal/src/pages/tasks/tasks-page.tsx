@@ -7,6 +7,7 @@ import {
 } from '@/types';
 import type { Task } from '@/types';
 import {
+  ActionMenu,
   Button,
   Spinner,
   Table,
@@ -21,6 +22,7 @@ import {
 } from '@/components/table-config';
 import { useAuth } from '@/providers/auth-provider';
 import { useTasks } from './hooks/use-tasks';
+import { CreateTaskModal } from './components/create-task-modal';
 
 const statusFilterOptions = [
   { value: '', label: 'Alle statussen' },
@@ -45,12 +47,14 @@ const entityTypeLabels: Record<string, string> = {
   [TaskEntityType.CONTACT]: 'Relatie',
   [TaskEntityType.REQUEST]: 'Aanvraag',
   [TaskEntityType.QUOTE]: 'Offerte',
+  [TaskEntityType.USER]: 'Gebruiker',
 };
 
 const entityTypeRoutes: Record<string, string> = {
   [TaskEntityType.CONTACT]: '/contacts',
   [TaskEntityType.REQUEST]: '/requests',
   [TaskEntityType.QUOTE]: '/quotes',
+  [TaskEntityType.USER]: '/users',
 };
 
 function EntityIcon({ type }: { type: TaskEntityType }) {
@@ -68,7 +72,14 @@ function EntityIcon({ type }: { type: TaskEntityType }) {
       </svg>
     );
   }
-  // QUOTE
+  if (type === TaskEntityType.USER) {
+    return (
+      <svg className="h-4 w-4 shrink-0 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+      </svg>
+    );
+  }
+  // QUOTE or fallback
   return (
     <svg className="h-4 w-4 shrink-0 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
@@ -82,6 +93,8 @@ const canWrite = [Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE,
 export default function TasksPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const userCanWrite = user && user.roles.some(r => canWrite.includes(r));
+  const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [onlyMine, setOnlyMine] = useState(() => localStorage.getItem('inspexi:filter-mine:tasks') === 'true');
@@ -272,6 +285,21 @@ export default function TasksPage() {
             Beheer en volg taken op
           </p>
         </div>
+        {userCanWrite && (
+          <ActionMenu
+            primaryActions={[
+              {
+                label: 'Taak aanmaken',
+                icon: (
+                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+                  </svg>
+                ),
+                onClick: () => setIsCreateOpen(true),
+              },
+            ]}
+          />
+        )}
       </div>
 
       {/* Filters */}
@@ -345,6 +373,13 @@ export default function TasksPage() {
         </div>
       )}
     </div>
+
+      {isCreateOpen && (
+        <CreateTaskModal
+          isOpen={isCreateOpen}
+          onClose={() => setIsCreateOpen(false)}
+        />
+      )}
     </DetailPageLayout>
   );
 }

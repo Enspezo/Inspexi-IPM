@@ -14,6 +14,7 @@ import { Type } from 'class-transformer';
 export enum SearchEntityType {
   CONTACT = 'contact',
   CONTACT_PERSON = 'contactPerson',
+  LOCATION = 'location',
   REQUEST = 'request',
   QUOTE = 'quote',
   TASK = 'task',

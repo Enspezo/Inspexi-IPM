@@ -2,7 +2,7 @@ import { useState, useCallback, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { PlanningStatus, Role } from '@/types';
 import type { PlanningItem } from '@/types';
-import { Button, Spinner, Table, Input, Select } from '@/components/ui';
+import { ActionMenu, Button, Spinner, Table, Input, Select } from '@/components/ui';
 import { DetailPageLayout } from '@/components/layout/detail-page-layout';
 import {
   TableConfigSidebar,
@@ -491,9 +491,15 @@ export default function PlanningPage() {
           </button>
 
           {user && user.roles.some(r => canWrite.includes(r)) && (
-            <Button onClick={() => navigate('/planning/new')}>
-              Nieuwe planregel
-            </Button>
+            <ActionMenu
+              primaryActions={[
+                {
+                  label: 'Nieuwe planregel',
+                  icon: <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>,
+                  onClick: () => navigate('/planning/new'),
+                },
+              ]}
+            />
           )}
         </div>
       </div>

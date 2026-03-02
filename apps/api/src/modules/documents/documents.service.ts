@@ -136,6 +136,20 @@ export class DocumentsService {
       }
     }
 
+    const userIds = docs
+      .filter((d) => d.entityType === DocumentEntityType.USER)
+      .map((d) => d.entityId);
+
+    if (userIds.length > 0) {
+      const users = await this.prisma.user.findMany({
+        where: { id: { in: userIds } },
+        select: { id: true, firstName: true, lastName: true },
+      });
+      for (const u of users) {
+        nameMap.set(u.id, [u.firstName, u.lastName].filter(Boolean).join(' ') || '—');
+      }
+    }
+
     return nameMap;
   }
 

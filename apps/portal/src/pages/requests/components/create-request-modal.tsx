@@ -31,6 +31,7 @@ const schema = z.object({
   title: z.string().min(1, 'Titel is verplicht'),
   description: z.string().optional(),
   priority: z.nativeEnum(Priority).optional(),
+  customFields: z.record(z.any()).optional(),
 });
 
 type FormData = z.infer<typeof schema>;

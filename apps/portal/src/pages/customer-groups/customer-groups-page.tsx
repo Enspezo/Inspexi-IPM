@@ -2,6 +2,7 @@ import { useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { CustomerGroup } from '@/types';
 import {
+  ActionMenu,
   Spinner,
   Button,
   Input,
@@ -103,22 +104,15 @@ export default function CustomerGroupsPage() {
             </p>
           </div>
           {userCanCreate && (
-            <Button onClick={() => setIsCreateOpen(true)}>
-              <svg
-                className="h-4 w-4"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M12 4v16m8-8H4"
-                />
-              </svg>
-              Klantgroep aanmaken
-            </Button>
+            <ActionMenu
+              primaryActions={[
+                {
+                  label: 'Klantgroep aanmaken',
+                  icon: <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>,
+                  onClick: () => setIsCreateOpen(true),
+                },
+              ]}
+            />
           )}
         </div>
 

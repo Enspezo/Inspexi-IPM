@@ -7,6 +7,7 @@ import type {
   SearchResultItem,
   SearchContactResult,
   SearchContactPersonResult,
+  SearchLocationResult,
   SearchRequestResult,
   SearchQuoteResult,
   SearchTaskResult,
@@ -22,6 +23,7 @@ interface Props {
 const GROUP_LABELS: Record<SearchEntityType, string> = {
   contact: 'Relaties',
   contactPerson: 'Contactpersonen',
+  location: 'Locaties',
   request: 'Aanvragen',
   quote: 'Offertes',
   task: 'Taken',
@@ -35,6 +37,8 @@ function getItemRoute(type: SearchEntityType, item: SearchResultItem): string {
       return `/contacts/${(item as SearchContactResult).id}`;
     case 'contactPerson':
       return `/contacts/${(item as SearchContactPersonResult).contactId}`;
+    case 'location':
+      return `/contacts/${(item as SearchLocationResult).contactId}`;
     case 'request':
       return `/requests/${(item as SearchRequestResult).id}`;
     case 'quote':
@@ -57,6 +61,10 @@ function getItemLabel(type: SearchEntityType, item: SearchResultItem): string {
     case 'contactPerson': {
       const p = item as SearchContactPersonResult;
       return `${p.firstName} ${p.lastName}`;
+    }
+    case 'location': {
+      const l = item as SearchLocationResult;
+      return l.name;
     }
     case 'request':
       return (item as SearchRequestResult).title;
@@ -85,6 +93,14 @@ function getItemSubtitle(
         [p.contact.firstName, p.contact.lastName].filter(Boolean).join(' ') ||
         null
       );
+    }
+    case 'location': {
+      const l = item as SearchLocationResult;
+      const address = `${l.street} ${l.houseNumber}, ${l.city}`;
+      const contactName =
+        l.contact.companyName ||
+        [l.contact.firstName, l.contact.lastName].filter(Boolean).join(' ');
+      return contactName ? `${address} — ${contactName}` : address;
     }
     case 'request': {
       const r = item as SearchRequestResult;

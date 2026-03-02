@@ -111,12 +111,19 @@ enum NotificationType {
   AFSPRAAK_BEVESTIGING_VERSTUURD
   PROJECT_AANGEMAAKT
   PROJECT_STATUS_GEWIJZIGD
+  FOUTMELDING_INGEDIEND
 }
 
 enum AuditAction {
   CREATE
   UPDATE
   DELETE
+}
+
+enum ErrorReportStatus {
+  OPEN
+  IN_BEHANDELING
+  OPGELOST
 }
 
 enum TaskStatus {
@@ -131,6 +138,7 @@ enum TaskEntityType {
   QUOTE
   PLANNING
   PROJECT
+  USER
 }
 
 enum DocumentEntityType {
@@ -141,6 +149,16 @@ enum DocumentEntityType {
   TASK
   PLANNING
   PROJECT
+  USER
+}
+
+enum NoteEntityType {
+  CONTACT
+  REQUEST
+  QUOTE
+  PLANNING
+  PROJECT
+  USER
 }
 
 enum SignatureType {
@@ -245,10 +263,12 @@ model Organization {
   notificationGroupPrefs NotificationGroupPref[]
   tasks                  Task[]
   documents              Document[]
+  notes                  Note[]
   planningItems          PlanningItem[]
   customFieldDefinitions CustomFieldDefinition[]
   emailTemplates         EmailTemplate[]
   projects               Project[]
+  errorReports           ErrorReport[]
 
   @@map("imp_organizations")
 }
@@ -300,6 +320,7 @@ model User {
 
   assignedTasks          Task[]                 @relation("TaskAssignee")
   createdTasks           Task[]                 @relation("TaskCreatedBy")
+  createdNotes           Note[]                 @relation("NoteCreatedBy")
   uploadedDocuments      Document[]             @relation("DocumentUploadedBy")
 
   planningInspectors        PlanningInspector[]
@@ -312,6 +333,7 @@ model User {
   managedProjects           Project[]                  @relation("ProjectManager")
   createdProjects           Project[]                  @relation("ProjectCreatedByUser")
   projectFollowers          ProjectFollower[]
+  errorReports              ErrorReport[]
 
   @@map("imp_users")
 }
@@ -358,8 +380,9 @@ model Contact {
   email        String?
   phone        String?
   website      String?
-  vatNumber    String?     @map("vat_number")
-  cocNumber    String?     @map("coc_number")
+  vatNumber     String?     @map("vat_number")
+  vatValidation Json?       @map("vat_validation")
+  cocNumber     String?     @map("coc_number")
   notes        String?
   priceTableId String?     @map("price_table_id") @db.Uuid
   ownerId      String?     @map("owner_id") @db.Uuid
@@ -461,6 +484,8 @@ model Location {
   objectType   String?  @map("object_type")
   notes        String?
   pdokData     Json?    @map("pdok_data")
+  lat          Float?
+  lng          Float?
   customFields Json?    @map("custom_fields")
   createdAt    DateTime @default(now()) @map("created_at")
 
@@ -1176,4 +1201,53 @@ model EmailTemplate {
 
   @@index([orgId, type])
   @@map("imp_email_templates")
+}
+
+// ─── Error Reports (Helpdesk Meldingen) ─────────────────
+
+model ErrorReport {
+  id              String            @id @default(uuid()) @db.Uuid
+  orgId           String?           @map("org_id") @db.Uuid
+  userId          String?           @map("user_id") @db.Uuid
+  errorMessage    String            @map("error_message")
+  stackTrace      String?           @map("stack_trace") @db.Text
+  componentStack  String?           @map("component_stack") @db.Text
+  userDescription String?           @map("user_description") @db.Text
+  pageUrl         String?           @map("page_url")
+  userAgent       String?           @map("user_agent")
+  metadata        Json?
+  status          ErrorReportStatus @default(OPEN)
+  createdAt       DateTime          @default(now()) @map("created_at")
+  updatedAt       DateTime          @updatedAt @map("updated_at")
+
+  organization    Organization?     @relation(fields: [orgId], references: [id])
+  user            User?             @relation(fields: [userId], references: [id])
+
+  @@index([status, createdAt])
+  @@map("imp_error_reports")
+}
+
+// ─── Notes (Threaded) ────────────────────────────────────
+
+model Note {
+  id          String         @id @default(uuid()) @db.Uuid
+  orgId       String         @map("org_id") @db.Uuid
+  entityType  NoteEntityType @map("entity_type")
+  entityId    String         @map("entity_id") @db.Uuid
+  content     String
+  createdById String         @map("created_by_id") @db.Uuid
+  parentId    String?        @map("parent_id") @db.Uuid
+  isDeleted   Boolean        @default(false) @map("is_deleted")
+  createdAt   DateTime       @default(now()) @map("created_at")
+  updatedAt   DateTime       @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [orgId], references: [id])
+  createdBy    User         @relation("NoteCreatedBy", fields: [createdById], references: [id])
+  parent       Note?        @relation("NoteReplies", fields: [parentId], references: [id])
+  replies      Note[]       @relation("NoteReplies")
+
+  @@index([orgId, entityType, entityId])
+  @@index([parentId])
+  @@index([createdById])
+  @@map("imp_notes")
 }

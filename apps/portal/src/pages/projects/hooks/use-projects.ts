@@ -126,6 +126,23 @@ export function useProjectPlanning(id: string) {
   });
 }
 
+export interface ProjectLocation {
+  id: string;
+  name: string;
+  street: string;
+  houseNumber: string;
+  postalCode: string;
+  city: string;
+}
+
+export function useProjectLocations(id: string) {
+  return useQuery({
+    queryKey: ['projects', id, 'locations'],
+    queryFn: () => apiClient.get<ProjectLocation[]>(`/projects/${id}/locations`),
+    enabled: !!id,
+  });
+}
+
 export function useAssignToProject(id: string) {
   const queryClient = useQueryClient();
   return useMutation({

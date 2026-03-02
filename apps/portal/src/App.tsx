@@ -17,6 +17,7 @@ const ResetPasswordPage = lazy(
 );
 const DashboardPage = lazy(() => import('@/pages/dashboard/dashboard-page'));
 const UsersPage = lazy(() => import('@/pages/users/users-page'));
+const UserDetailPage = lazy(() => import('@/pages/users/user-detail-page'));
 const OrganizationSettingsPage = lazy(
   () => import('@/pages/organization/organization-settings-page'),
 );
@@ -124,6 +125,7 @@ export default function App() {
           <Route element={<AppLayout />}>
             <Route path="/dashboard" element={<DashboardPage />} />
             <Route path="/users" element={<UsersPage />} />
+            <Route path="/users/:id" element={<UserDetailPage />} />
             <Route
               path="/organization/settings"
               element={<OrganizationSettingsPage />}

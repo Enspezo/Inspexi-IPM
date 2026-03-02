@@ -4,10 +4,10 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Role, DocumentEntityType, CustomFieldEntityType } from '@/types';
-import { Button, Card, Spinner, Input, Select, useToast } from '@/components/ui';
+import { ActionMenu, Button, Card, Spinner, Input, Select, useToast } from '@/components/ui';
 import { DetailPageLayout } from '@/components/layout/detail-page-layout';
 import { AuditHistory } from '@/components/audit-history/audit-history';
-import { DocumentsSection } from '@/components/documents';
+import { DocumentsSection, UploadDocumentModal } from '@/components/documents';
 import { CustomFieldsDisplay, CustomFieldsForm } from '@/components/custom-fields';
 import { useAuth } from '@/providers/auth-provider';
 import { useProduct, useUpdateProduct } from './hooks/use-products';
@@ -32,6 +32,7 @@ const schema = z.object({
   defaultVat: z.coerce.number().min(0).max(100),
   productGroupId: z.string().optional(),
   isActive: z.boolean(),
+  customFields: z.record(z.any()).optional(),
 });
 
 type FormData = z.infer<typeof schema>;
@@ -51,6 +52,7 @@ export default function ProductDetailPage() {
   const { user } = useAuth();
   const { showToast } = useToast();
   const [isEditing, setIsEditing] = useState(false);
+  const [isDocUploadOpen, setIsDocUploadOpen] = useState(false);
 
   const { data: product, isLoading, error } = useProduct(id!);
   const updateMutation = useUpdateProduct(id!);
@@ -94,7 +96,7 @@ export default function ProductDetailPage() {
         defaultVat: data.defaultVat,
         productGroupId: data.productGroupId || '',
         isActive: data.isActive,
-        customFields: (data as any).customFields,
+        customFields: data.customFields,
       } as any);
       showToast('Product bijgewerkt', 'success');
       setIsEditing(false);
@@ -171,12 +173,15 @@ export default function ProductDetailPage() {
           </div>
 
           {userCanWrite && !isEditing && (
-            <Button variant="secondary" size="sm" onClick={() => setIsEditing(true)}>
-              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-              </svg>
-              Bewerken
-            </Button>
+            <ActionMenu
+              secondaryActions={[
+                {
+                  label: 'Document uploaden',
+                  icon: <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>,
+                  onClick: () => setIsDocUploadOpen(true),
+                },
+              ]}
+            />
           )}
         </div>
 
@@ -298,7 +303,28 @@ export default function ProductDetailPage() {
           />
         </Card>
 
+        {/* Acties onderaan */}
+        <div className="flex items-center justify-between border-t border-gray-200 pt-6">
+          <p className="text-xs text-gray-400">
+            Aangemaakt op {new Date(product.createdAt).toLocaleString('nl-NL', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+          </p>
+          {userCanWrite && !isEditing && (
+            <Button variant="secondary" onClick={() => setIsEditing(true)}>
+              Bewerken
+            </Button>
+          )}
+        </div>
+
       </div>
+
+      {isDocUploadOpen && (
+        <UploadDocumentModal
+          isOpen={isDocUploadOpen}
+          onClose={() => setIsDocUploadOpen(false)}
+          entityType={DocumentEntityType.PRODUCT}
+          entityId={id!}
+        />
+      )}
     </DetailPageLayout>
   );
 }

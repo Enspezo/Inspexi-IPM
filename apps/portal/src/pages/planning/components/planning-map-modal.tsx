@@ -4,10 +4,12 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { MapContainer, TileLayer, CircleMarker, Tooltip, Marker } from 'react-leaflet';
 import { Modal } from '@/components/ui';
+import { apiClient } from '@/lib/api-client';
 import type { PlanningItem } from '@/types';
 
 // ─── Geocoding ─────────────────────────────────────────────────────────────
 // Module-level cache survives re-renders and modal re-opens during the session.
+// Items whose coords are stored in the DB are added directly without a cache entry.
 
 type GeoResult = { lat: number; lng: number } | null;
 const geoCache = new Map<string, GeoResult>();
@@ -16,7 +18,7 @@ function getCacheKey(loc: NonNullable<PlanningItem['location']>): string {
   return `${loc.street} ${loc.houseNumber}, ${loc.postalCode} ${loc.city}`;
 }
 
-async function geocodeLocation(loc: NonNullable<PlanningItem['location']>): Promise<GeoResult> {
+async function nominatimGeocode(loc: NonNullable<PlanningItem['location']>): Promise<GeoResult> {
   const key = getCacheKey(loc);
   if (geoCache.has(key)) return geoCache.get(key)!;
 
@@ -36,6 +38,13 @@ async function geocodeLocation(loc: NonNullable<PlanningItem['location']>): Prom
     geoCache.set(key, null);
     return null;
   }
+}
+
+/** Sla geocodeerde coördinaten terug op in de database (fire-and-forget). */
+function saveCoordsToDB(item: PlanningItem, lat: number, lng: number): void {
+  apiClient
+    .patch(`/contacts/${item.contactId}/locations/${item.locationId}`, { lat, lng })
+    .catch(() => {/* stil mislukken — coördinaten zijn al in geheugen gecached */});
 }
 
 function sleep(ms: number) {
@@ -127,27 +136,38 @@ export function PlanningMapModal({ isOpen, onClose, items }: Props) {
       setLoading(true);
       setMarkers([]);
 
-      // Figure out which addresses still need geocoding
-      const uncached = withLocation.filter((i) => !geoCache.has(getCacheKey(i.location!)));
+      // Items met opgeslagen coördinaten gaan direct op de kaart
+      const withStored = withLocation.filter((i) => i.location!.lat != null);
+      const withoutStored = withLocation.filter((i) => i.location!.lat == null);
+
+      // Van de items zonder opgeslagen coords: welke zijn nog niet in de sessiecache?
+      const uncached = withoutStored.filter((i) => !geoCache.has(getCacheKey(i.location!)));
       setGeocodeTotal(uncached.length);
       setGeocodeDone(0);
 
       let count = 0;
-      for (const item of withLocation) {
+      for (const item of withoutStored) {
         if (abortRef.current) break;
         const key = getCacheKey(item.location!);
         if (!geoCache.has(key)) {
-          await geocodeLocation(item.location!);
+          const coords = await nominatimGeocode(item.location!);
           count++;
           setGeocodeDone(count);
-          // Respect Nominatim rate limit: ≤1 req/s
+          // Sla gevonden coords direct terug op in de DB zodat het volgende keer raak is
+          if (coords) saveCoordsToDB(item, coords.lat, coords.lng);
+          // Nominatim rate limit: ≤1 req/s
           if (count < uncached.length && !abortRef.current) await sleep(350);
         }
       }
 
       if (!abortRef.current) {
         const result: MarkerData[] = [];
-        for (const item of withLocation) {
+        // Items met DB-coords
+        for (const item of withStored) {
+          result.push({ item, lat: item.location!.lat!, lng: item.location!.lng! });
+        }
+        // Items die via Nominatim gecoded zijn
+        for (const item of withoutStored) {
           const coords = geoCache.get(getCacheKey(item.location!));
           if (coords) result.push({ item, lat: coords.lat, lng: coords.lng });
         }

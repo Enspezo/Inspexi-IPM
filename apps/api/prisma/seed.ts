@@ -52,6 +52,8 @@ async function main() {
   // Custom fields & email templates
   await prisma.customFieldDefinition.deleteMany();
   await prisma.emailTemplate.deleteMany();
+  // Error reports (dependent on users/organizations)
+  await prisma.errorReport.deleteMany();
   // Auth/org tables
   await prisma.auditLog.deleteMany();
   await prisma.invitation.deleteMany();

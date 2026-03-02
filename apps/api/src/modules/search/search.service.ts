@@ -35,6 +35,7 @@ export class SearchService {
     const [
       contactsResult,
       contactPersonsResult,
+      locationsResult,
       requestsResult,
       quotesResult,
       tasksResult,
@@ -46,6 +47,9 @@ export class SearchService {
         : null,
       runAll || type === SearchEntityType.CONTACT_PERSON
         ? this.searchContactPersons(q, orgScope, limit, skip)
+        : null,
+      runAll || type === SearchEntityType.LOCATION
+        ? this.searchLocations(q, orgScope, limit, skip)
         : null,
       runAll || type === SearchEntityType.REQUEST
         ? this.searchRequests(q, orgScope, limit, skip)
@@ -71,6 +75,9 @@ export class SearchService {
     }
     if (contactPersonsResult) {
       groups.push({ type: SearchEntityType.CONTACT_PERSON, ...contactPersonsResult });
+    }
+    if (locationsResult) {
+      groups.push({ type: SearchEntityType.LOCATION, ...locationsResult });
     }
     if (requestsResult) {
       groups.push({ type: SearchEntityType.REQUEST, ...requestsResult });
@@ -176,6 +183,54 @@ export class SearchService {
         skip,
       }),
       this.prisma.contactPerson.count({ where }),
+    ]);
+
+    return { items, total };
+  }
+
+  private async searchLocations(
+    q: string,
+    orgScope: object,
+    limit: number,
+    skip: number,
+  ) {
+    const where = {
+      ...orgScope,
+      OR: [
+        { name: { contains: q, mode: 'insensitive' as const } },
+        { street: { contains: q, mode: 'insensitive' as const } },
+        { city: { contains: q, mode: 'insensitive' as const } },
+        { postalCode: { contains: q, mode: 'insensitive' as const } },
+        { objectType: { contains: q, mode: 'insensitive' as const } },
+      ],
+    };
+
+    const [items, total] = await Promise.all([
+      this.prisma.location.findMany({
+        where,
+        select: {
+          id: true,
+          contactId: true,
+          name: true,
+          street: true,
+          houseNumber: true,
+          postalCode: true,
+          city: true,
+          objectType: true,
+          contact: {
+            select: {
+              id: true,
+              companyName: true,
+              firstName: true,
+              lastName: true,
+            },
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+        take: limit,
+        skip,
+      }),
+      this.prisma.location.count({ where }),
     ]);
 
     return { items, total };

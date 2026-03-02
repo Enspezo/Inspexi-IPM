@@ -127,6 +127,7 @@ export interface Contact {
   phone: string | null;
   website: string | null;
   vatNumber: string | null;
+  vatValidation: Record<string, unknown> | null;
   cocNumber: string | null;
   notes: string | null;
   priceTableId: string | null;
@@ -206,6 +207,8 @@ export interface Location {
   objectType: string | null;
   notes: string | null;
   pdokData: Record<string, unknown> | null;
+  lat: number | null;
+  lng: number | null;
   customFields: Record<string, any> | null;
   createdAt: string;
 }
@@ -627,6 +630,7 @@ export enum TaskEntityType {
   QUOTE = 'QUOTE',
   PLANNING = 'PLANNING',
   PROJECT = 'PROJECT',
+  USER = 'USER',
 }
 
 export interface Task {
@@ -657,6 +661,7 @@ export enum DocumentEntityType {
   TASK = 'TASK',
   PLANNING = 'PLANNING',
   PROJECT = 'PROJECT',
+  USER = 'USER',
 }
 
 export interface CrmDocument {
@@ -832,6 +837,8 @@ export interface PlanningItem {
     houseNumber: string;
     city: string;
     postalCode: string;
+    lat: number | null;
+    lng: number | null;
   };
   createdByUser?: UserSummary;
   isMultiDay: boolean;
@@ -909,6 +916,7 @@ export interface ProjectFollower {
 export type SearchEntityType =
   | 'contact'
   | 'contactPerson'
+  | 'location'
   | 'request'
   | 'quote'
   | 'task'
@@ -934,6 +942,23 @@ export interface SearchContactPersonResult {
   email: string | null;
   phone: string | null;
   role: ContactPersonRole;
+  contact: {
+    id: string;
+    companyName: string | null;
+    firstName: string | null;
+    lastName: string | null;
+  };
+}
+
+export interface SearchLocationResult {
+  id: string;
+  contactId: string;
+  name: string;
+  street: string;
+  houseNumber: string;
+  postalCode: string;
+  city: string;
+  objectType: string | null;
   contact: {
     id: string;
     companyName: string | null;
@@ -1004,6 +1029,7 @@ export interface SearchProductResult {
 export type SearchResultItem =
   | SearchContactResult
   | SearchContactPersonResult
+  | SearchLocationResult
   | SearchRequestResult
   | SearchQuoteResult
   | SearchTaskResult

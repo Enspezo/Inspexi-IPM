@@ -220,7 +220,7 @@ export class PrismaService
     return model.charAt(0).toLowerCase() + model.slice(1);
   }
 
-  private async writeAuditLog(data: {
+  async writeAuditLog(data: {
     entityType: string;
     entityId: string;
     action: string;

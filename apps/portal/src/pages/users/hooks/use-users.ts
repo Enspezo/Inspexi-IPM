@@ -10,6 +10,14 @@ export function useUsers() {
   });
 }
 
+export function useUser(id: string) {
+  return useQuery<User>({
+    queryKey: ['users', id],
+    queryFn: () => apiClient.get<User>(`/users/${id}`),
+    enabled: !!id,
+  });
+}
+
 interface InviteUserDto {
   email: string;
   role: Role;
@@ -33,8 +41,9 @@ export function useDeactivateUser() {
   return useMutation({
     mutationFn: (userId: string) =>
       apiClient.patch(`/users/${userId}/deactivate`),
-    onSuccess: () => {
+    onSuccess: (_data, userId) => {
       queryClient.invalidateQueries({ queryKey: ['users'] });
+      queryClient.invalidateQueries({ queryKey: ['users', userId] });
     },
   });
 }
@@ -45,8 +54,9 @@ export function useActivateUser() {
   return useMutation({
     mutationFn: (userId: string) =>
       apiClient.patch(`/users/${userId}/activate`),
-    onSuccess: () => {
+    onSuccess: (_data, userId) => {
       queryClient.invalidateQueries({ queryKey: ['users'] });
+      queryClient.invalidateQueries({ queryKey: ['users', userId] });
     },
   });
 }
@@ -100,8 +110,9 @@ export function useAdminUpdateUser() {
   return useMutation({
     mutationFn: ({ userId, data }: { userId: string; data: AdminUpdateUserDto }) =>
       apiClient.patch(`/users/${userId}`, data),
-    onSuccess: () => {
+    onSuccess: (_data, { userId }) => {
       queryClient.invalidateQueries({ queryKey: ['users'] });
+      queryClient.invalidateQueries({ queryKey: ['users', userId] });
     },
   });
 }

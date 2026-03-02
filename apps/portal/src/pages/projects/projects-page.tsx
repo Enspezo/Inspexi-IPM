@@ -2,7 +2,7 @@ import { useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ProjectStatus, Role } from '@/types';
 import type { Project } from '@/types';
-import { Button, Spinner, Table, Input, Select } from '@/components/ui';
+import { ActionMenu, Button, Spinner, Table, Input, Select } from '@/components/ui';
 import { DetailPageLayout } from '@/components/layout/detail-page-layout';
 import {
   TableConfigSidebar,
@@ -233,9 +233,15 @@ export default function ProjectsPage() {
           <div className="flex items-center justify-between">
             <h1 className="text-2xl font-bold text-gray-900">Projecten</h1>
             {hasWrite && (
-              <Button variant="primary" onClick={() => setShowCreate(true)}>
-                Nieuw project
-              </Button>
+              <ActionMenu
+                primaryActions={[
+                  {
+                    label: 'Nieuw project',
+                    icon: <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>,
+                    onClick: () => setShowCreate(true),
+                  },
+                ]}
+              />
             )}
           </div>
 

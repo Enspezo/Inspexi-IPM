@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { ContactPersonRole } from '@/types';
 import type { ContactPerson } from '@/types';
 import {
+  ActionMenu,
   Spinner,
   Button,
   Input,
@@ -157,9 +158,15 @@ export default function ContactPersonsPage() {
               Overzicht van alle contactpersonen
             </p>
           </div>
-          <Button onClick={() => setIsCreateOpen(true)}>
-            Nieuw contactpersoon
-          </Button>
+          <ActionMenu
+            primaryActions={[
+              {
+                label: 'Nieuw contactpersoon',
+                icon: <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>,
+                onClick: () => setIsCreateOpen(true),
+              },
+            ]}
+          />
         </div>
 
         {/* Filters */}

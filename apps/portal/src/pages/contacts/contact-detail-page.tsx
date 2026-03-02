@@ -1,18 +1,21 @@
 import { useState, useRef, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { useForm } from 'react-hook-form';
+import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { ContactType, ContactPersonRole, LogType, QuoteStatus, RequestStatus, Priority, TaskStatus, PlanningStatus, Role, TaskEntityType, DocumentEntityType, CustomFieldEntityType } from '@/types';
+import { ContactType, ContactPersonRole, LogType, QuoteStatus, RequestStatus, Priority, TaskStatus, PlanningStatus, Role, TaskEntityType, DocumentEntityType, CustomFieldEntityType, ProjectStatus } from '@/types';
 import type { Contact, ContactAddress, ContactLog, ContactEmail, Location, Task, PlanningItem, Request as RequestType } from '@/types';
-import { Button, Card, Input, Spinner, useToast } from '@/components/ui';
-import { DetailPageLayout } from '@/components/layout/detail-page-layout';
+import { ActionMenu, type ActionMenuItem, Button, Card, Input, Modal, Spinner, useToast, VatInput } from '@/components/ui';
+import { getKvkProfile } from '@/lib/kvk';
+import { type VatValidationResult } from '@/lib/vat';
+import { DetailPageLayout, SidebarSection } from '@/components/layout/detail-page-layout';
 import { useAuth } from '@/providers/auth-provider';
 import { useContact, useUpdateContact, useDeleteContact, useSetContactGroups, useDeleteAddress, useDeleteLocation } from './hooks/use-contacts';
 import { useCustomerGroupsCompact } from '@/pages/customer-groups/hooks/use-customer-groups';
 import { useUsers } from '@/pages/users/hooks/use-users';
 import { useTasks, useUpdateTask } from '@/pages/tasks/hooks/use-tasks';
 import { usePlanningItems } from '@/pages/planning/hooks/use-planning';
+import { useProjects } from '@/pages/projects/hooks/use-projects';
 import { AddAddressModal } from './components/add-address-modal';
 import { EditAddressModal } from './components/edit-address-modal';
 import { AddContactPersonModal } from './components/add-contact-person-modal';
@@ -22,11 +25,12 @@ import { AddLogModal } from './components/add-log-modal';
 import { SendEmailModal } from './components/send-email-modal';
 import { AuditHistory } from '@/components/audit-history/audit-history';
 import { CreateTaskModal } from '@/pages/tasks/components/create-task-modal';
+import { EditTaskModal } from '@/pages/tasks/components/edit-task-modal';
 import { CreateRequestModal } from '@/pages/requests/components/create-request-modal';
-import { DocumentsSection } from '@/components/documents';
+import { DocumentsSection, UploadDocumentModal } from '@/components/documents';
 import { CustomFieldsDisplay, CustomFieldsForm } from '@/components/custom-fields';
 
-type Tab = 'algemeen' | 'adressen' | 'locaties' | 'aanvragen' | 'taken' | 'offertes' | 'planning';
+type Tab = 'algemeen' | 'adressen' | 'locaties' | 'aanvragen' | 'offertes' | 'planning' | 'projecten';
 
 const canWrite = [Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE];
 
@@ -41,6 +45,7 @@ const contactSchema = z.object({
   cocNumber: z.string().optional(),
   notes: z.string().optional(),
   ownerId: z.string().optional(),
+  customFields: z.record(z.any()).optional(),
 });
 
 type ContactFormData = z.infer<typeof contactSchema>;
@@ -190,8 +195,6 @@ export default function ContactDetailPage() {
 
   const deleteAddressMutation = useDeleteAddress(id!);
   const deleteLocationMutation = useDeleteLocation(id!);
-  const updateTaskMutation = useUpdateTask();
-
   // Fetch tasks linked to this contact
   const { data: tasksData } = useTasks({
     entityType: TaskEntityType.CONTACT,
@@ -205,6 +208,10 @@ export default function ContactDetailPage() {
   const { data: planningData } = usePlanningItems({ contactId: id, limit: 100 });
   const contactPlanningItems = planningData?.data ?? [];
 
+  // Fetch projects linked to this contact
+  const { data: projectsData } = useProjects({ contactId: id, limit: 100 });
+  const contactProjects = projectsData?.data ?? [];
+
   const [isEditing, setIsEditing] = useState(false);
   const [activeTab, setActiveTab] = useState<Tab>('algemeen');
   const [isAddressOpen, setIsAddressOpen] = useState(false);
@@ -217,6 +224,7 @@ export default function ContactDetailPage() {
   const [logInitialLoggedAt, setLogInitialLoggedAt] = useState<string | undefined>(undefined);
   const [isEmailOpen, setIsEmailOpen] = useState(false);
   const [isTaskOpen, setIsTaskOpen] = useState(false);
+  const [isDocUploadOpen, setIsDocUploadOpen] = useState(false);
   const [isRequestOpen, setIsRequestOpen] = useState(false);
 
   const userCanWrite = user && user.roles.some(r => canWrite.includes(r));
@@ -228,13 +236,49 @@ export default function ContactDetailPage() {
       user.roles.includes(Role.ORG_ADMIN) ||
       (contact?.ownerId != null && contact.ownerId === user.id));
 
+  const [isKvkLookingUp, setIsKvkLookingUp] = useState(false);
+  const [vatValidation, setVatValidation] = useState<VatValidationResult | null>(null);
+  const [viesNameSuggestion, setViesNameSuggestion] = useState<string | null>(null);
+  const viesNameApplied = useRef(false);
+
   const {
     register,
     handleSubmit,
     reset: resetForm,
+    setValue: setFormValue,
+    getValues,
     control,
     formState: { errors: formErrors, isDirty },
   } = useForm<ContactFormData>({ resolver: zodResolver(contactSchema) });
+
+  const handleVatValidationResult = (result: VatValidationResult | null) => {
+    setVatValidation(result);
+    if (result?.isValid && result.name) {
+      const currentName = getValues('companyName')?.trim();
+      const viesName = result.name.trim();
+      if (currentName && viesName && currentName.toLowerCase() !== viesName.toLowerCase()) {
+        setViesNameSuggestion(viesName);
+      }
+    }
+  };
+
+  const handleKvkLookup = async () => {
+    const kvkNummer = getValues('cocNumber');
+    if (!kvkNummer) return;
+    setIsKvkLookingUp(true);
+    try {
+      const profile = await getKvkProfile(kvkNummer);
+      setFormValue('companyName', profile.naam, { shouldDirty: true });
+      if (profile.website) {
+        setFormValue('website', profile.website, { shouldDirty: true });
+      }
+      showToast('Gegevens opgehaald uit KvK', 'success');
+    } catch {
+      showToast('KvK-nummer niet gevonden', 'error');
+    } finally {
+      setIsKvkLookingUp(false);
+    }
+  };
 
   useEffect(() => {
     if (contact) {
@@ -264,11 +308,14 @@ export default function ContactDetailPage() {
         phone: data.phone || undefined,
         website: data.website || undefined,
         vatNumber: data.vatNumber || undefined,
+        ...(vatValidation ? { vatValidation: vatValidation as any } : {}),
+        ...(viesNameApplied.current ? { viesNameApplied: true } : {}),
         cocNumber: data.cocNumber || undefined,
         notes: data.notes || undefined,
         ownerId: data.ownerId || undefined,
-        customFields: (data as any).customFields,
+        customFields: data.customFields,
       } as any);
+      viesNameApplied.current = false;
       showToast('Relatie bijgewerkt', 'success');
       setIsEditing(false);
     } catch {
@@ -328,9 +375,9 @@ export default function ContactDetailPage() {
     { key: 'adressen', label: `Adressen (${contact.addresses?.length || 0})` },
     { key: 'locaties', label: `Locaties (${contact.locations?.length || 0})` },
     { key: 'aanvragen', label: `Aanvragen (${contact.requests?.length || 0})` },
-    { key: 'taken', label: 'Taken', count: incompleteTasks.length },
     { key: 'offertes', label: `Offertes (${contact.quotes?.length || 0})` },
     { key: 'planning', label: `Planning (${contactPlanningItems.length})` },
+    { key: 'projecten', label: `Projecten (${contactProjects.length})` },
   ];
 
   // Merge logs + emails into timeline
@@ -347,23 +394,56 @@ export default function ContactDetailPage() {
   });
 
   const sidebarContent = (
-    <div className="space-y-6">
-      {/* Geschiedenis (contactmomenten timeline) */}
-      <ContactHistorySidebar
-        contact={contact}
-        timeline={timeline}
-        userCanWrite={!!userCanWrite}
-        onLogOpen={() => setIsLogOpen(true)}
-        onEmailOpen={() => setIsEmailOpen(true)}
-      />
+    <div>
+      <SidebarSection
+        icon={
+          <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+        }
+        label="Contactgeschiedenis"
+        count={timeline.length}
+      >
+        <ContactHistorySidebar
+          contact={contact}
+          timeline={timeline}
+          userCanWrite={!!userCanWrite}
+          onLogOpen={() => setIsLogOpen(true)}
+          onEmailOpen={() => setIsEmailOpen(true)}
+        />
+      </SidebarSection>
 
-      {/* Audit trail */}
-      <AuditHistory entityType="Contact" entityId={id} />
+      <SidebarSection
+        icon={
+          <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+          </svg>
+        }
+        label="Taken"
+        count={incompleteTasks.length}
+      >
+        <ContactTasksSidebar
+          tasks={contactTasks}
+          userCanWrite={!!userCanWrite}
+          onCreateTask={() => setIsTaskOpen(true)}
+        />
+      </SidebarSection>
+
+      <SidebarSection
+        icon={
+          <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+          </svg>
+        }
+        label="Wijzigingshistorie"
+      >
+        <AuditHistory entityType="Contact" entityId={id} />
+      </SidebarSection>
     </div>
   );
 
   return (
-    <DetailPageLayout sidebar={sidebarContent}>
+    <DetailPageLayout iconStrip sidebar={sidebarContent}>
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
@@ -397,28 +477,32 @@ export default function ContactDetailPage() {
           </div>
         </div>
         {userCanWrite && (
-          <div className="flex items-center gap-2">
-            {!isEditing && (
-              <Button variant="secondary" size="sm" onClick={() => setIsEditing(true)}>
-                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                </svg>
-                Bewerken
-              </Button>
-            )}
-            <Button variant="secondary" size="sm" onClick={() => setIsLogOpen(true)}>
-              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              Moment loggen
-            </Button>
-            <Button variant="secondary" size="sm" onClick={() => setIsTaskOpen(true)}>
-              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
-              </svg>
-              Taak aanmaken
-            </Button>
-          </div>
+          <ActionMenu
+            primaryActions={[
+              {
+                label: 'Moment loggen',
+                icon: <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>,
+                onClick: () => setIsLogOpen(true),
+              },
+              {
+                label: 'E-mail sturen',
+                icon: <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>,
+                onClick: () => setIsEmailOpen(true),
+              },
+            ]}
+            secondaryActions={[
+              {
+                label: 'Taak aanmaken',
+                icon: <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" /></svg>,
+                onClick: () => setIsTaskOpen(true),
+              },
+              {
+                label: 'Document uploaden',
+                icon: <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>,
+                onClick: () => setIsDocUploadOpen(true),
+              },
+            ]}
+          />
         )}
       </div>
 
@@ -456,10 +540,38 @@ export default function ContactDetailPage() {
                   <>
                     <div className="grid grid-cols-2 gap-4">
                       <Input label="Bedrijfsnaam" {...register('companyName')} />
-                      <Input label="KvK-nummer" {...register('cocNumber')} />
+                      <div>
+                        <Input label="KvK-nummer" {...register('cocNumber')} />
+                        <button
+                          type="button"
+                          onClick={handleKvkLookup}
+                          disabled={isKvkLookingUp}
+                          className="mt-1 flex items-center gap-1 text-xs text-primary-600 hover:text-primary-800 disabled:opacity-50"
+                        >
+                          {isKvkLookingUp ? (
+                            <Spinner size="sm" />
+                          ) : (
+                            <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                            </svg>
+                          )}
+                          Gegevens ophalen uit KvK
+                        </button>
+                      </div>
                     </div>
                     <div className="grid grid-cols-2 gap-4">
-                      <Input label="BTW-nummer" {...register('vatNumber')} />
+                      <Controller
+                        name="vatNumber"
+                        control={control}
+                        render={({ field }) => (
+                          <VatInput
+                            label="BTW-nummer"
+                            value={field.value ?? ''}
+                            onChange={field.onChange}
+                            onValidationResult={handleVatValidationResult}
+                          />
+                        )}
+                      />
                       <Input label="Website" {...register('website')} />
                     </div>
                   </>
@@ -985,23 +1097,6 @@ export default function ContactDetailPage() {
         </div>
       )}
 
-      {activeTab === 'taken' && (
-        <ContactTasksTab
-          tasks={contactTasks}
-          userCanWrite={!!userCanWrite}
-          onCreateTask={() => setIsTaskOpen(true)}
-          onStatusChange={async (taskId, newStatus) => {
-            try {
-              await updateTaskMutation.mutateAsync({ id: taskId, data: { status: newStatus } });
-              showToast('Taakstatus bijgewerkt', 'success');
-            } catch {
-              showToast('Status bijwerken mislukt', 'error');
-            }
-          }}
-          navigate={navigate}
-        />
-      )}
-
       {activeTab === 'planning' && (
         <div className="space-y-4">
           {contactPlanningItems.length === 0 ? (
@@ -1082,14 +1177,111 @@ export default function ContactDetailPage() {
         </div>
       )}
 
-      {/* Verwijderen */}
-      {userCanManage && (
-        <div className="flex justify-end border-t border-gray-200 pt-6">
-          <Button variant="danger" size="sm" onClick={handleDelete}>
-            Relatie verwijderen
-          </Button>
+      {activeTab === 'projecten' && (
+        <div className="space-y-4">
+          {contactProjects.length === 0 ? (
+            <p className="py-8 text-center text-sm text-gray-500">
+              Nog geen projecten voor deze relatie
+            </p>
+          ) : (
+            <div className="overflow-hidden rounded-lg border border-gray-200">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                      Nummer
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                      Titel
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                      Status
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                      Projectleider
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                      Startdatum
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200 bg-white">
+                  {contactProjects.map((project) => (
+                    <tr
+                      key={project.id}
+                      className="cursor-pointer hover:bg-gray-50"
+                      onClick={() => navigate(`/projects/${project.id}`)}
+                    >
+                      <td className="whitespace-nowrap px-4 py-3 text-sm font-medium text-primary-600">
+                        {project.projectNumber}
+                      </td>
+                      <td className="px-4 py-3 text-sm text-gray-900">
+                        {project.title}
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-3 text-sm">
+                        <span
+                          className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
+                            project.status === ProjectStatus.ACTIEF
+                              ? 'bg-green-100 text-green-800'
+                              : project.status === ProjectStatus.AFGEROND
+                              ? 'bg-blue-100 text-blue-800'
+                              : project.status === ProjectStatus.ON_HOLD
+                              ? 'bg-yellow-100 text-yellow-800'
+                              : 'bg-red-100 text-red-800'
+                          }`}
+                        >
+                          {project.status === ProjectStatus.ACTIEF
+                            ? 'Actief'
+                            : project.status === ProjectStatus.AFGEROND
+                            ? 'Afgerond'
+                            : project.status === ProjectStatus.ON_HOLD
+                            ? 'On hold'
+                            : 'Geannuleerd'}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-sm text-gray-500">
+                        {project.projectManager
+                          ? `${project.projectManager.firstName} ${project.projectManager.lastName}`
+                          : '—'}
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-3 text-sm text-gray-500">
+                        {project.startDate
+                          ? new Date(project.startDate).toLocaleDateString('nl-NL', {
+                              day: '2-digit',
+                              month: '2-digit',
+                              year: 'numeric',
+                            })
+                          : '—'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       )}
+
+      {/* Acties onderaan */}
+      <div className="flex items-center justify-between border-t border-gray-200 pt-6">
+        <p className="text-xs text-gray-400">
+          Aangemaakt op {new Date(contact.createdAt).toLocaleString('nl-NL', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+        </p>
+        {(userCanWrite || userCanManage) && (
+          <div className="flex gap-2">
+            {userCanWrite && !isEditing && (
+              <Button variant="secondary" size="sm" onClick={() => setIsEditing(true)}>
+                Bewerken
+              </Button>
+            )}
+            {userCanManage && (
+              <Button variant="danger" size="sm" onClick={handleDelete}>
+                Relatie verwijderen
+              </Button>
+            )}
+          </div>
+        )}
+      </div>
 
       {/* Modals */}
       <AddAddressModal
@@ -1151,160 +1343,56 @@ export default function ContactDetailPage() {
         onClose={() => setIsRequestOpen(false)}
         contactId={contact.id}
       />
+      <UploadDocumentModal
+        isOpen={isDocUploadOpen}
+        onClose={() => setIsDocUploadOpen(false)}
+        entityType={DocumentEntityType.CONTACT}
+        entityId={contact.id}
+      />
+
+      {/* VIES naam-mismatch dialoog */}
+      <Modal
+        isOpen={viesNameSuggestion !== null}
+        onClose={() => setViesNameSuggestion(null)}
+        title="Bedrijfsnaam bijwerken?"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-gray-700">
+            De naam in het BTW-register (VIES) verschilt van de huidige bedrijfsnaam:
+          </p>
+          <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 text-sm space-y-1">
+            <div>
+              <span className="font-medium text-gray-500">Huidige naam: </span>
+              <span className="text-gray-900">{getValues('companyName') || '—'}</span>
+            </div>
+            <div>
+              <span className="font-medium text-gray-500">Naam in VIES: </span>
+              <span className="text-gray-900 font-medium">{viesNameSuggestion}</span>
+            </div>
+          </div>
+          <p className="text-sm text-gray-600">
+            Wil je de bedrijfsnaam overschrijven met de naam uit VIES?
+          </p>
+          <div className="flex justify-end gap-3">
+            <Button variant="secondary" onClick={() => setViesNameSuggestion(null)}>
+              Nee, behouden
+            </Button>
+            <Button
+              onClick={() => {
+                if (viesNameSuggestion) {
+                  setFormValue('companyName', viesNameSuggestion, { shouldDirty: true });
+                  viesNameApplied.current = true;
+                }
+                setViesNameSuggestion(null);
+              }}
+            >
+              Ja, bijwerken
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </div>
     </DetailPageLayout>
-  );
-}
-
-function ContactTasksTab({
-  tasks,
-  userCanWrite,
-  onCreateTask,
-  onStatusChange,
-  navigate,
-}: {
-  tasks: Task[];
-  userCanWrite: boolean;
-  onCreateTask: () => void;
-  onStatusChange: (taskId: string, status: TaskStatus) => void;
-  navigate: ReturnType<typeof useNavigate>;
-}) {
-  // Split into incomplete and completed
-  const incomplete = tasks.filter((t) => t.status !== TaskStatus.VOLTOOID);
-  const completed = tasks.filter((t) => t.status === TaskStatus.VOLTOOID);
-
-  return (
-    <div className="space-y-4">
-      {userCanWrite && (
-        <div className="flex justify-end">
-          <Button size="sm" onClick={onCreateTask}>
-            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-            </svg>
-            Taak aanmaken
-          </Button>
-        </div>
-      )}
-      {tasks.length === 0 ? (
-        <p className="py-8 text-center text-sm text-gray-500">
-          Nog geen taken voor deze relatie
-        </p>
-      ) : (
-        <div className="space-y-6">
-          {/* Incomplete tasks */}
-          {incomplete.length > 0 && (
-            <div className="space-y-2">
-              {incomplete.map((task) => (
-                <TaskCard
-                  key={task.id}
-                  task={task}
-                  onStatusChange={onStatusChange}
-                  navigate={navigate}
-                />
-              ))}
-            </div>
-          )}
-
-          {/* Completed tasks */}
-          {completed.length > 0 && (
-            <div className="space-y-2">
-              <h4 className="text-sm font-medium text-gray-500">
-                Voltooid ({completed.length})
-              </h4>
-              {completed.map((task) => (
-                <TaskCard
-                  key={task.id}
-                  task={task}
-                  onStatusChange={onStatusChange}
-                  navigate={navigate}
-                />
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function TaskCard({
-  task,
-  onStatusChange,
-  navigate,
-}: {
-  task: Task;
-  onStatusChange: (taskId: string, status: TaskStatus) => void;
-  navigate: ReturnType<typeof useNavigate>;
-}) {
-  const isCompleted = task.status === TaskStatus.VOLTOOID;
-  const isOverdue = !isCompleted && task.deadline && new Date(task.deadline) < new Date();
-
-  return (
-    <div
-      className={`group flex items-start gap-3 rounded-lg border p-3 transition-colors hover:bg-gray-50 ${
-        isCompleted ? 'border-gray-100 bg-gray-50' : 'border-gray-200 bg-white'
-      }`}
-    >
-      {/* Checkbox for quick status toggle */}
-      <button
-        type="button"
-        onClick={() =>
-          onStatusChange(
-            task.id,
-            isCompleted ? TaskStatus.TE_DOEN : TaskStatus.VOLTOOID,
-          )
-        }
-        className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded border transition-colors ${
-          isCompleted
-            ? 'border-green-500 bg-green-500 text-white'
-            : 'border-gray-300 bg-white hover:border-primary-500'
-        }`}
-      >
-        {isCompleted && (
-          <svg className="h-3 w-3" viewBox="0 0 12 12" fill="none">
-            <path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-        )}
-      </button>
-
-      {/* Task info */}
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => navigate(`/tasks/${task.id}`)}
-            className={`text-sm font-medium hover:underline ${
-              isCompleted ? 'text-gray-400 line-through' : 'text-gray-900'
-            }`}
-          >
-            {task.title}
-          </button>
-          <span
-            className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
-              taskStatusColors[task.status] || 'bg-gray-100 text-gray-600'
-            }`}
-          >
-            {taskStatusLabels[task.status] || task.status}
-          </span>
-        </div>
-        <div className="mt-1 flex items-center gap-3 text-xs text-gray-500">
-          {task.assignee && (
-            <span>
-              {task.assignee.firstName} {task.assignee.lastName}
-            </span>
-          )}
-          {task.deadline && (
-            <span className={isOverdue ? 'font-medium text-red-600' : ''}>
-              {isOverdue && (
-                <svg className="mr-0.5 inline h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
-                </svg>
-              )}
-              {new Date(task.deadline).toLocaleDateString('nl-NL')}
-            </span>
-          )}
-        </div>
-      </div>
-    </div>
   );
 }
 
@@ -1330,10 +1418,6 @@ function ContactHistorySidebar({
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-gray-900">Contactgeschiedenis</h3>
-      </div>
-
       {timeline.length === 0 ? (
         <p className="text-xs text-gray-400">Nog geen contactgeschiedenis</p>
       ) : (
@@ -1416,6 +1500,243 @@ function ContactHistorySidebar({
             </button>
           )}
         </div>
+      )}
+    </div>
+  );
+}
+
+function SidebarTaskCard({
+  task,
+  userCanWrite,
+  onStatusChange,
+  onEdit,
+  navigate,
+}: {
+  task: Task;
+  userCanWrite: boolean;
+  onStatusChange: (taskId: string, status: TaskStatus) => void;
+  onEdit: (task: Task) => void;
+  navigate: ReturnType<typeof useNavigate>;
+}) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const isCompleted = task.status === TaskStatus.VOLTOOID;
+  const isOverdue = !isCompleted && task.deadline && new Date(task.deadline) < new Date();
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setMenuOpen(false);
+      }
+    }
+    if (menuOpen) document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [menuOpen]);
+
+  return (
+    <div
+      className={`group flex items-start gap-2.5 rounded-lg border p-2.5 transition-colors hover:bg-gray-50 ${
+        isCompleted ? 'border-gray-100 bg-gray-50' : 'border-gray-200 bg-white'
+      }`}
+    >
+      {/* Checkbox */}
+      <button
+        type="button"
+        onClick={() =>
+          onStatusChange(task.id, isCompleted ? TaskStatus.TE_DOEN : TaskStatus.VOLTOOID)
+        }
+        className={`mt-0.5 flex h-4.5 w-4.5 shrink-0 items-center justify-center rounded border transition-colors ${
+          isCompleted
+            ? 'border-green-500 bg-green-500 text-white'
+            : 'border-gray-300 bg-white hover:border-primary-500'
+        }`}
+        style={{ width: 18, height: 18 }}
+      >
+        {isCompleted && (
+          <svg className="h-2.5 w-2.5" viewBox="0 0 12 12" fill="none">
+            <path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        )}
+      </button>
+
+      {/* Task info */}
+      <div className="min-w-0 flex-1">
+        <button
+          onClick={() => navigate(`/tasks/${task.id}`)}
+          className={`text-xs font-medium leading-snug hover:underline ${
+            isCompleted ? 'text-gray-400 line-through' : 'text-gray-900'
+          }`}
+        >
+          {task.title}
+        </button>
+        <div className="mt-0.5 flex items-center gap-2 text-xs text-gray-500">
+          {task.assignee && (
+            <span title={`${task.assignee.firstName} ${task.assignee.lastName}`}>
+              {task.assignee.initials || `${task.assignee.firstName[0]}${task.assignee.lastName[0]}`}
+            </span>
+          )}
+          {task.deadline && (
+            <span className={isOverdue ? 'font-medium text-red-600' : ''}>
+              {new Date(task.deadline).toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' })}
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* 3-dot menu (canWrite only) */}
+      {userCanWrite && (
+        <div className="relative flex-shrink-0" ref={menuRef}>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setMenuOpen(!menuOpen);
+            }}
+            className="rounded p-0.5 text-gray-300 opacity-0 transition-opacity group-hover:opacity-100 hover:bg-gray-100 hover:text-gray-600"
+          >
+            <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 20 20">
+              <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" />
+            </svg>
+          </button>
+          {menuOpen && (
+            <div className="absolute right-0 z-20 mt-1 w-36 rounded-lg border border-gray-200 bg-white py-1 shadow-lg">
+              <button
+                type="button"
+                onClick={() => {
+                  setMenuOpen(false);
+                  onEdit(task);
+                }}
+                className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-gray-700 hover:bg-gray-50"
+              >
+                <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                </svg>
+                Bewerken
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setMenuOpen(false);
+                  navigate(`/tasks/${task.id}`);
+                }}
+                className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-gray-700 hover:bg-gray-50"
+              >
+                <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                </svg>
+                Ga naar taak
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ContactTasksSidebar({
+  tasks,
+  userCanWrite,
+  onCreateTask,
+}: {
+  tasks: Task[];
+  userCanWrite: boolean;
+  onCreateTask: () => void;
+}) {
+  const navigate = useNavigate();
+  const { showToast } = useToast();
+  const updateTaskMutation = useUpdateTask();
+  const [editingTask, setEditingTask] = useState<Task | null>(null);
+  const [showCompleted, setShowCompleted] = useState(false);
+
+  const incomplete = tasks.filter((t) => t.status !== TaskStatus.VOLTOOID);
+  const completed = tasks.filter((t) => t.status === TaskStatus.VOLTOOID);
+
+  const handleStatusChange = async (taskId: string, status: TaskStatus) => {
+    try {
+      await updateTaskMutation.mutateAsync({ id: taskId, data: { status } });
+    } catch {
+      showToast('Status bijwerken mislukt', 'error');
+    }
+  };
+
+  return (
+    <div className="space-y-2">
+      {userCanWrite && (
+        <div className="flex justify-end">
+          <button
+            type="button"
+            onClick={onCreateTask}
+            className="flex items-center gap-1 text-xs font-medium text-primary-600 hover:text-primary-800"
+          >
+            <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            </svg>
+            Nieuwe taak
+          </button>
+        </div>
+      )}
+
+      {tasks.length === 0 ? (
+        <p className="text-xs text-gray-400">Nog geen taken</p>
+      ) : (
+        <>
+          {incomplete.length === 0 && (
+            <p className="text-xs text-gray-400">Geen openstaande taken</p>
+          )}
+          {incomplete.map((task) => (
+            <SidebarTaskCard
+              key={task.id}
+              task={task}
+              userCanWrite={userCanWrite}
+              onStatusChange={handleStatusChange}
+              onEdit={setEditingTask}
+              navigate={navigate}
+            />
+          ))}
+
+          {completed.length > 0 && (
+            <div>
+              <button
+                type="button"
+                onClick={() => setShowCompleted(!showCompleted)}
+                className="flex items-center gap-1 text-xs font-medium text-gray-500 hover:text-gray-700"
+              >
+                <svg
+                  className={`h-3.5 w-3.5 transition-transform ${showCompleted ? 'rotate-90' : ''}`}
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+                Voltooid ({completed.length})
+              </button>
+              {showCompleted && (
+                <div className="mt-2 space-y-2">
+                  {completed.map((task) => (
+                    <SidebarTaskCard
+                      key={task.id}
+                      task={task}
+                      userCanWrite={userCanWrite}
+                      onStatusChange={handleStatusChange}
+                      onEdit={setEditingTask}
+                      navigate={navigate}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </>
+      )}
+
+      {editingTask && (
+        <EditTaskModal
+          isOpen={!!editingTask}
+          onClose={() => setEditingTask(null)}
+          task={editingTask}
+        />
       )}
     </div>
   );

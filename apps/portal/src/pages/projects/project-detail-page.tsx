@@ -1,19 +1,20 @@
 import { useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import {
   ProjectStatus,
   TaskEntityType,
+  TaskStatus,
   DocumentEntityType,
   Role,
 } from '@/types';
 import type { Project, ProjectFollower } from '@/types';
-import { Button, Spinner, Input, Select, Card, Modal } from '@/components/ui';
-import { DetailPageLayout } from '@/components/layout/detail-page-layout';
+import { ActionMenu, Button, Spinner, Input, Select, Card, Modal } from '@/components/ui';
+import { DetailPageLayout, SidebarSection } from '@/components/layout/detail-page-layout';
 import { AuditHistory } from '@/components/audit-history/audit-history';
-import { DocumentsSection } from '@/components/documents';
+import { DocumentsSection, UploadDocumentModal } from '@/components/documents';
 import { useAuth } from '@/providers/auth-provider';
 import { useToast } from '@/components/ui';
 import {
@@ -23,14 +24,16 @@ import {
   useProjectRequests,
   useProjectQuotes,
   useProjectPlanning,
+  useProjectLocations,
   useUnassignFromProject,
 } from './hooks/use-projects';
+import type { ProjectLocation } from './hooks/use-projects';
 import {
   useProjectFollowers,
   useAddProjectFollower,
   useRemoveProjectFollower,
 } from './hooks/use-project-followers';
-import { useTasks } from '../tasks/hooks/use-tasks';
+import { useTasks, useUpdateTask } from '../tasks/hooks/use-tasks';
 import { CreateTaskModal } from '@/pages/tasks/components/create-task-modal';
 import { LinkEntitiesModal } from './components/link-entities-modal';
 import { apiClient } from '@/lib/api-client';
@@ -43,10 +46,7 @@ type Tab =
   | 'aanvragen'
   | 'offertes'
   | 'planning'
-  | 'taken'
-  | 'documenten'
-  | 'volgers'
-  | 'instellingen';
+  | 'volgers';
 
 const statusColors: Record<string, string> = {
   [ProjectStatus.ACTIEF]: 'bg-green-100 text-green-800',
@@ -103,6 +103,7 @@ export default function ProjectDetailPage() {
     'requests' | 'quotes' | 'planning' | null
   >(null);
   const [isTaskOpen, setIsTaskOpen] = useState(false);
+  const [isDocUploadOpen, setIsDocUploadOpen] = useState(false);
   const [addFollowerOpen, setAddFollowerOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
@@ -113,12 +114,14 @@ export default function ProjectDetailPage() {
   const { data: requests } = useProjectRequests(id!);
   const { data: quotes } = useProjectQuotes(id!);
   const { data: planning } = useProjectPlanning(id!);
+  const { data: linkedLocations } = useProjectLocations(id!);
   const { data: followers } = useProjectFollowers(id!);
   const { data: tasksData } = useTasks({
     entityType: TaskEntityType.PROJECT,
     entityId: id,
     limit: 100,
   });
+  const updateTaskMutation = useUpdateTask();
   const unassignMutation = useUnassignFromProject(id!);
   const addFollowerMutation = useAddProjectFollower(id!);
   const removeFollowerMutation = useRemoveProjectFollower(id!);
@@ -143,15 +146,14 @@ export default function ProjectDetailPage() {
   const userCanWrite = user?.roles.some((r) => canWrite.includes(r));
   const tasks = tasksData?.data || [];
 
+  const incompleteTasks = tasks.filter(t => t.status !== TaskStatus.VOLTOOID);
+
   const tabs: { key: Tab; label: string; count?: number }[] = [
     { key: 'overzicht', label: 'Overzicht' },
     { key: 'aanvragen', label: 'Aanvragen', count: requests?.length },
     { key: 'offertes', label: 'Offertes', count: quotes?.length },
     { key: 'planning', label: 'Planning', count: planning?.length },
-    { key: 'taken', label: 'Taken', count: tasks.length },
-    { key: 'documenten', label: 'Documenten' },
     { key: 'volgers', label: 'Volgers', count: followers?.length },
-    { key: 'instellingen', label: 'Instellingen' },
   ];
 
   if (isLoading) {
@@ -215,41 +217,131 @@ export default function ProjectDetailPage() {
   return (
     <>
       <DetailPageLayout
-        sidebar={<AuditHistory entityType="Project" entityId={id} />}
+        iconStrip
+        sidebar={
+          <>
+            <SidebarSection
+              icon={<svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" /></svg>}
+              label="Taken"
+              count={incompleteTasks.length}
+            >
+              <div className="space-y-2">
+                {tasks.length === 0 ? (
+                  <p className="text-sm text-gray-400">Geen taken</p>
+                ) : (
+                  tasks.map((task) => (
+                    <div key={task.id} className="group flex items-start gap-2 rounded-lg border border-gray-100 bg-white p-2 shadow-sm">
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          const newStatus = task.status === TaskStatus.VOLTOOID ? TaskStatus.TE_DOEN : TaskStatus.VOLTOOID;
+                          try {
+                            await updateTaskMutation.mutateAsync({ id: task.id, data: { status: newStatus } });
+                          } catch {
+                            showToast('Status wijzigen mislukt', 'error');
+                          }
+                        }}
+                        className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors ${
+                          task.status === TaskStatus.VOLTOOID
+                            ? 'border-green-500 bg-green-500 text-white'
+                            : 'border-gray-300 hover:border-primary-400'
+                        }`}
+                      >
+                        {task.status === TaskStatus.VOLTOOID && (
+                          <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                          </svg>
+                        )}
+                      </button>
+                      <div className="min-w-0 flex-1">
+                        <Link
+                          to={`/tasks/${task.id}`}
+                          className={`block text-sm font-medium hover:text-primary-600 ${
+                            task.status === TaskStatus.VOLTOOID ? 'text-gray-400 line-through' : 'text-gray-900'
+                          }`}
+                        >
+                          {task.title}
+                        </Link>
+                        {task.deadline && (
+                          <p className="text-xs text-gray-400">
+                            {new Date(task.deadline).toLocaleDateString('nl-NL', { day: 'numeric', month: 'long', year: 'numeric' })}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  ))
+                )}
+                {userCanWrite && (
+                  <div className="flex justify-end">
+                    <button
+                      type="button"
+                      onClick={() => setIsTaskOpen(true)}
+                      className="flex items-center gap-1 text-xs font-medium text-primary-600 hover:text-primary-800"
+                    >
+                      <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                      </svg>
+                      Nieuwe taak
+                    </button>
+                  </div>
+                )}
+              </div>
+            </SidebarSection>
+
+            <SidebarSection
+              icon={<svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>}
+              label="Audit"
+            >
+              <AuditHistory entityType="Project" entityId={id} />
+            </SidebarSection>
+          </>
+        }
       >
         <div className="space-y-6">
           {/* Header */}
-          <div>
-            <button
-              onClick={() => navigate('/projects')}
-              className="mb-2 flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700"
-            >
-              <svg
-                className="h-4 w-4"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M15 19l-7-7 7-7"
-                />
-              </svg>
-              Terug naar projecten
-            </button>
-            <div className="flex items-center gap-3">
-              <h1 className="text-2xl font-bold text-gray-900">
-                {project.projectNumber}
-              </h1>
-              <span
-                className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${statusColors[project.status] || 'bg-gray-100 text-gray-800'}`}
-              >
-                {statusLabels[project.status] || project.status}
-              </span>
+          <div className="flex items-start justify-between">
+            <div>
+              <div className="mb-2 flex items-center gap-2">
+                <Link to="/projects" className="text-sm text-gray-500 hover:text-gray-700">
+                  Projecten
+                </Link>
+                <span className="text-sm text-gray-400">/</span>
+              </div>
+              <div className="flex items-center gap-3">
+                <h1 className="text-2xl font-bold text-gray-900">
+                  {project.projectNumber}
+                </h1>
+                <span
+                  className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${statusColors[project.status] || 'bg-gray-100 text-gray-800'}`}
+                >
+                  {statusLabels[project.status] || project.status}
+                </span>
+              </div>
+              <p className="mt-1 text-gray-600">{project.title}</p>
             </div>
-            <p className="mt-1 text-gray-600">{project.title}</p>
+            {userCanWrite && (
+              <ActionMenu
+                primaryActions={[
+                  {
+                    label: 'Volger toevoegen',
+                    icon: <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" /></svg>,
+                    onClick: () => setAddFollowerOpen(true),
+                  },
+                ]}
+                secondaryActions={[
+                  {
+                    label: 'Taak aanmaken',
+                    icon: <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" /></svg>,
+                    onClick: () => setIsTaskOpen(true),
+                  },
+                  {
+                    label: 'Document uploaden',
+                    icon: <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>,
+                    onClick: () => setIsDocUploadOpen(true),
+                  },
+                ]}
+              />
+            )}
           </div>
 
           {/* Tabs */}
@@ -283,6 +375,7 @@ export default function ProjectDetailPage() {
               contactName={contactName}
               canWrite={!!userCanWrite}
               users={users}
+              linkedLocations={linkedLocations ?? []}
               onUpdate={async (data) => {
                 try {
                   await updateMutation.mutateAsync(data);
@@ -292,6 +385,7 @@ export default function ProjectDetailPage() {
                 }
               }}
               isUpdating={updateMutation.isPending}
+              onDelete={() => setConfirmDelete(true)}
             />
           )}
 
@@ -341,56 +435,6 @@ export default function ProjectDetailPage() {
             />
           )}
 
-          {/* Tab: Taken */}
-          {activeTab === 'taken' && (
-            <div>
-              <div className="mb-4 flex items-center justify-between">
-                <h3 className="font-semibold text-gray-900">Taken</h3>
-                {userCanWrite && (
-                  <Button
-                    variant="secondary"
-                    onClick={() => setIsTaskOpen(true)}
-                  >
-                    Taak toevoegen
-                  </Button>
-                )}
-              </div>
-              <div className="space-y-2">
-                {tasks.map((task) => (
-                  <div
-                    key={task.id}
-                    className="flex cursor-pointer items-center justify-between rounded-lg border border-gray-200 p-3 hover:bg-gray-50"
-                    onClick={() => navigate(`/tasks/${task.id}`)}
-                  >
-                    <div>
-                      <div className="text-sm font-medium text-gray-900">
-                        {task.title}
-                      </div>
-                      {task.assignee && (
-                        <div className="text-xs text-gray-500">
-                          {task.assignee.firstName} {task.assignee.lastName}
-                        </div>
-                      )}
-                    </div>
-                    <span className="text-xs text-gray-500">{task.status}</span>
-                  </div>
-                ))}
-                {tasks.length === 0 && (
-                  <p className="text-sm text-gray-500">Geen taken</p>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* Tab: Documenten */}
-          {activeTab === 'documenten' && (
-            <DocumentsSection
-              entityType={DocumentEntityType.PROJECT}
-              entityId={id!}
-              canUpload={!!userCanWrite}
-            />
-          )}
-
           {/* Tab: Volgers */}
           {activeTab === 'volgers' && (
             <FollowersTab
@@ -401,13 +445,6 @@ export default function ProjectDetailPage() {
             />
           )}
 
-          {/* Tab: Instellingen */}
-          {activeTab === 'instellingen' && (
-            <DangerZone
-              canWrite={!!userCanWrite}
-              onDelete={() => setConfirmDelete(true)}
-            />
-          )}
         </div>
       </DetailPageLayout>
 
@@ -426,6 +463,16 @@ export default function ProjectDetailPage() {
           isOpen={isTaskOpen}
           onClose={() => setIsTaskOpen(false)}
           entityType={TaskEntityType.PROJECT}
+          entityId={project.id}
+        />
+      )}
+
+      {/* Upload document modal */}
+      {isDocUploadOpen && (
+        <UploadDocumentModal
+          isOpen={isDocUploadOpen}
+          onClose={() => setIsDocUploadOpen(false)}
+          entityType={DocumentEntityType.PROJECT}
           entityId={project.id}
         />
       )}
@@ -487,15 +534,19 @@ function OverviewTab({
   contactName,
   canWrite,
   users,
+  linkedLocations,
   onUpdate,
   isUpdating,
+  onDelete,
 }: {
   project: Project;
   contactName: string;
   canWrite: boolean;
   users: { value: string; label: string }[];
+  linkedLocations: ProjectLocation[];
   onUpdate: (data: any) => Promise<void>;
   isUpdating: boolean;
+  onDelete: () => void;
 }) {
   const [isEditing, setIsEditing] = useState(false);
 
@@ -545,96 +596,128 @@ function OverviewTab({
     <div className="space-y-6">
       {!isEditing ? (
         /* ── Read-only mode ── */
-        <div className="grid gap-6 lg:grid-cols-2">
+        <div className="space-y-6">
+          <div className="grid gap-6 lg:grid-cols-2">
+            <Card>
+              <h3 className="mb-4 font-semibold text-gray-900">Projectgegevens</h3>
+              <dl className="space-y-3">
+                <InfoField label="Projectnummer" value={project.projectNumber} />
+                <InfoField label="Titel" value={project.title} />
+                <InfoField label="Beschrijving" value={project.description} />
+                <div>
+                  <dt className="text-sm font-medium text-gray-500">Status</dt>
+                  <dd className="mt-1">
+                    <span
+                      className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${statusColors[project.status] || 'bg-gray-100 text-gray-800'}`}
+                    >
+                      {statusLabels[project.status] || project.status}
+                    </span>
+                  </dd>
+                </div>
+              </dl>
+            </Card>
+
+            <Card>
+              <h3 className="mb-4 font-semibold text-gray-900">Details</h3>
+              <dl className="space-y-3">
+                <InfoField label="Relatie" value={contactName} />
+                <InfoField
+                  label="Projectmanager"
+                  value={
+                    project.projectManager
+                      ? `${project.projectManager.firstName} ${project.projectManager.lastName}`
+                      : null
+                  }
+                />
+                <InfoField
+                  label="Startdatum"
+                  value={project.startDate ? new Date(project.startDate).toLocaleDateString('nl-NL') : null}
+                />
+                <InfoField
+                  label="Verwachte einddatum"
+                  value={project.expectedEndDate ? new Date(project.expectedEndDate).toLocaleDateString('nl-NL') : null}
+                />
+                <InfoField
+                  label="Einddatum"
+                  value={project.endDate ? new Date(project.endDate).toLocaleDateString('nl-NL') : null}
+                />
+              </dl>
+            </Card>
+
+            <Card>
+              <h3 className="mb-4 font-semibold text-gray-900">Locaties</h3>
+              {linkedLocations.length > 0 ? (
+                <ul className="space-y-2">
+                  {linkedLocations.map((loc) => (
+                    <li key={loc.id} className="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2">
+                      <div className="text-sm font-medium text-gray-900">{loc.name}</div>
+                      <div className="text-xs text-gray-500">
+                        {loc.street} {loc.houseNumber}, {loc.postalCode} {loc.city}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-sm text-gray-500">
+                  Nog geen locaties gekoppeld via aanvragen, offertes of planregels.
+                </p>
+              )}
+            </Card>
+
+            {/* Quick counts */}
+            {project._count && (
+              <Card>
+                <h3 className="mb-4 font-semibold text-gray-900">Gekoppelde items</h3>
+                <div className="grid grid-cols-3 gap-4 text-center">
+                  <div>
+                    <div className="text-2xl font-bold text-gray-900">
+                      {project._count.requests}
+                    </div>
+                    <div className="text-xs text-gray-500">Aanvragen</div>
+                  </div>
+                  <div>
+                    <div className="text-2xl font-bold text-gray-900">
+                      {project._count.quotes}
+                    </div>
+                    <div className="text-xs text-gray-500">Offertes</div>
+                  </div>
+                  <div>
+                    <div className="text-2xl font-bold text-gray-900">
+                      {project._count.planningItems}
+                    </div>
+                    <div className="text-xs text-gray-500">Planregels</div>
+                  </div>
+                </div>
+              </Card>
+            )}
+          </div>
+
+          {/* Documenten */}
           <Card>
-            <div className="mb-4 flex items-center justify-between">
-              <h3 className="font-semibold text-gray-900">Projectgegevens</h3>
-              {canWrite && (
-                <Button
-                  variant="secondary"
-                  onClick={() => setIsEditing(true)}
-                >
-                  <svg className="mr-1.5 h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-                  </svg>
+            <DocumentsSection
+              entityType={DocumentEntityType.PROJECT}
+              entityId={project.id}
+              canUpload={canWrite}
+            />
+          </Card>
+
+          {/* Bottom actions */}
+          <div className="flex items-center justify-between border-t border-gray-200 pt-6">
+            <p className="text-xs text-gray-400">
+              Aangemaakt op {new Date(project.createdAt).toLocaleString('nl-NL', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+              {project.createdByUser && ` door ${project.createdByUser.firstName} ${project.createdByUser.lastName}`}
+            </p>
+            {canWrite && (
+              <div className="flex gap-3">
+                <Button variant="secondary" onClick={() => setIsEditing(true)}>
                   Bewerken
                 </Button>
-              )}
-            </div>
-            <dl className="space-y-3">
-              <InfoField label="Projectnummer" value={project.projectNumber} />
-              <InfoField label="Titel" value={project.title} />
-              <InfoField label="Beschrijving" value={project.description} />
-              <div>
-                <dt className="text-sm font-medium text-gray-500">Status</dt>
-                <dd className="mt-1">
-                  <span
-                    className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${statusColors[project.status] || 'bg-gray-100 text-gray-800'}`}
-                  >
-                    {statusLabels[project.status] || project.status}
-                  </span>
-                </dd>
+                <Button variant="danger" onClick={onDelete}>
+                  Verwijderen
+                </Button>
               </div>
-            </dl>
-          </Card>
-
-          <Card>
-            <h3 className="mb-4 font-semibold text-gray-900">Details</h3>
-            <dl className="space-y-3">
-              <InfoField label="Relatie" value={contactName} />
-              <InfoField
-                label="Locatie"
-                value={project.location ? `${project.location.name}, ${project.location.city}` : null}
-              />
-              <InfoField
-                label="Projectmanager"
-                value={
-                  project.projectManager
-                    ? `${project.projectManager.firstName} ${project.projectManager.lastName}`
-                    : null
-                }
-              />
-              <InfoField
-                label="Startdatum"
-                value={project.startDate ? new Date(project.startDate).toLocaleDateString('nl-NL') : null}
-              />
-              <InfoField
-                label="Verwachte einddatum"
-                value={project.expectedEndDate ? new Date(project.expectedEndDate).toLocaleDateString('nl-NL') : null}
-              />
-              <InfoField
-                label="Einddatum"
-                value={project.endDate ? new Date(project.endDate).toLocaleDateString('nl-NL') : null}
-              />
-            </dl>
-          </Card>
-
-          {/* Quick counts */}
-          {project._count && (
-            <Card>
-              <h3 className="mb-4 font-semibold text-gray-900">Gekoppelde items</h3>
-              <div className="grid grid-cols-3 gap-4 text-center">
-                <div>
-                  <div className="text-2xl font-bold text-gray-900">
-                    {project._count.requests}
-                  </div>
-                  <div className="text-xs text-gray-500">Aanvragen</div>
-                </div>
-                <div>
-                  <div className="text-2xl font-bold text-gray-900">
-                    {project._count.quotes}
-                  </div>
-                  <div className="text-xs text-gray-500">Offertes</div>
-                </div>
-                <div>
-                  <div className="text-2xl font-bold text-gray-900">
-                    {project._count.planningItems}
-                  </div>
-                  <div className="text-xs text-gray-500">Planregels</div>
-                </div>
-              </div>
-            </Card>
-          )}
+            )}
+          </div>
         </div>
       ) : (
         /* ── Edit mode ── */

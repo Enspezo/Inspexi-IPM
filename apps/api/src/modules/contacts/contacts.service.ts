@@ -7,8 +7,10 @@ import {
 } from '@nestjs/common';
 import { User, Role, Prisma } from '@prisma/client';
 import { PrismaService } from '@/prisma';
+import { requestContext } from '@/common/services/request-context';
 import { EmailService } from '@/common/services/email.service';
 import { CustomFieldsValidator } from '@/modules/custom-fields/custom-fields.validator';
+import { GeocodingService } from '@/modules/geocoding/geocoding.service';
 import {
   CreateContactDto,
   UpdateContactDto,
@@ -32,7 +34,33 @@ export class ContactsService {
     private prisma: PrismaService,
     private emailService: EmailService,
     private customFieldsValidator: CustomFieldsValidator,
+    private geocodingService: GeocodingService,
   ) {}
+
+  /**
+   * Bepaal lat/lng voor een locatie.
+   * Prioriteit: (1) expliciet meegegeven → (2) pdokData centroide → (3) Nominatim fallback.
+   * Retourneert { lat, lng } of { lat: null, lng: null } bij mislukken.
+   */
+  private async resolveCoords(
+    street: string,
+    houseNumber: string,
+    postalCode: string,
+    city: string,
+    pdokData?: Record<string, unknown> | null,
+    explicitLat?: number | null,
+    explicitLng?: number | null,
+  ): Promise<{ lat: number | null; lng: number | null }> {
+    if (explicitLat != null && explicitLng != null) {
+      return { lat: explicitLat, lng: explicitLng };
+    }
+    if (pdokData) {
+      const coords = this.geocodingService.extractCoordsFromPdokData(pdokData);
+      if (coords) return coords;
+    }
+    const coords = await this.geocodingService.nominatimGeocode(street, houseNumber, postalCode, city);
+    return coords ?? { lat: null, lng: null };
+  }
 
   /**
    * Alleen de eigenaar van de relatie, een ORG_ADMIN of SUPERUSER
@@ -179,6 +207,7 @@ export class ContactsService {
         phone: dto.phone,
         website: dto.website,
         vatNumber: dto.vatNumber,
+        vatValidation: (dto.vatValidation ?? null) as any,
         cocNumber: dto.cocNumber,
         notes: dto.notes,
         ownerId: dto.ownerId ?? user.id,
@@ -196,6 +225,8 @@ export class ContactsService {
       this.assertOwnerOrAdmin(contact, user);
     }
 
+    const oldCompanyName = contact.companyName;
+
     let customFieldsData: any = undefined;
     if (dto.customFields !== undefined) {
       const merged = {
@@ -207,7 +238,7 @@ export class ContactsService {
       );
     }
 
-    return this.prisma.contact.update({
+    const updated = await this.prisma.contact.update({
       where: { id: contact.id },
       data: {
         ...(dto.type !== undefined && { type: dto.type }),
@@ -218,6 +249,7 @@ export class ContactsService {
         ...(dto.phone !== undefined && { phone: dto.phone }),
         ...(dto.website !== undefined && { website: dto.website }),
         ...(dto.vatNumber !== undefined && { vatNumber: dto.vatNumber }),
+        ...(dto.vatValidation !== undefined && { vatValidation: dto.vatValidation as any }),
         ...(dto.cocNumber !== undefined && { cocNumber: dto.cocNumber }),
         ...(dto.notes !== undefined && { notes: dto.notes }),
         ...(dto.ownerId !== undefined && { ownerId: dto.ownerId || null }),
@@ -225,6 +257,24 @@ export class ContactsService {
       },
       include: { addresses: true },
     });
+
+    if (dto.viesNameApplied && dto.companyName && oldCompanyName !== dto.companyName) {
+      const ctx = requestContext.getStore();
+      if (ctx?.userId) {
+        this.prisma.writeAuditLog({
+          entityType: 'Contact',
+          entityId: updated.id,
+          action: 'UPDATE',
+          snapshot: null,
+          changes: { viesNaamOverschreven: { from: oldCompanyName ?? null, to: dto.companyName } },
+          userId: ctx.userId,
+          orgId: updated.orgId ?? ctx.orgId,
+          ipAddress: ctx.ipAddress,
+        }).catch((err) => this.logger.error(`VIES audit log error: ${err}`));
+      }
+    }
+
+    return updated;
   }
 
   async softDelete(id: string, user: User) {
@@ -523,6 +573,11 @@ export class ContactsService {
       ? await this.customFieldsValidator.validateAndSanitize(contact.orgId, 'LOCATION', dto.customFields)
       : null;
 
+    const { lat, lng } = await this.resolveCoords(
+      dto.street, dto.houseNumber, dto.postalCode, dto.city,
+      dto.pdokData, dto.lat, dto.lng,
+    );
+
     return this.prisma.location.create({
       data: {
         contactId: contact.id,
@@ -536,6 +591,8 @@ export class ContactsService {
         notes: dto.notes,
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         pdokData: (dto.pdokData ?? null) as any,
+        lat,
+        lng,
         customFields: cfData as any,
       },
     });
@@ -570,6 +627,31 @@ export class ContactsService {
       cfData = await this.customFieldsValidator.validateAndSanitize(location.orgId, 'LOCATION', merged);
     }
 
+    // Determine new coords when relevant fields change
+    let newLat: number | null | undefined = undefined;
+    let newLng: number | null | undefined = undefined;
+
+    if (dto.lat != null && dto.lng != null) {
+      // Explicit coords provided (e.g. saved from frontend Nominatim geocoding)
+      newLat = dto.lat;
+      newLng = dto.lng;
+    } else if (dto.pdokData !== undefined) {
+      // pdokData updated → re-extract coords from WKT centroide
+      const coords = dto.pdokData
+        ? this.geocodingService.extractCoordsFromPdokData(dto.pdokData)
+        : null;
+      newLat = coords?.lat ?? null;
+      newLng = coords?.lng ?? null;
+    } else if (location.lat == null) {
+      // No coords yet and address may have changed → try to geocode
+      const street = dto.street ?? location.street;
+      const houseNumber = dto.houseNumber ?? location.houseNumber;
+      const postalCode = dto.postalCode ?? location.postalCode;
+      const city = dto.city ?? location.city;
+      const coords = await this.geocodingService.nominatimGeocode(street, houseNumber, postalCode, city);
+      if (coords) { newLat = coords.lat; newLng = coords.lng; }
+    }
+
     return this.prisma.location.update({
       where: { id: locationId },
       data: {
@@ -582,6 +664,8 @@ export class ContactsService {
         ...(dto.notes !== undefined && { notes: dto.notes }),
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         ...(dto.pdokData !== undefined && { pdokData: dto.pdokData as any }),
+        ...(newLat !== undefined && { lat: newLat }),
+        ...(newLng !== undefined && { lng: newLng }),
         ...(cfData !== undefined && { customFields: cfData as any }),
       },
     });

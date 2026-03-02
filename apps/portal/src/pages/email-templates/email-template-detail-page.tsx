@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import type { Editor } from '@tiptap/react';
-import { Button, Spinner, Input, RichTextEditor } from '@/components/ui';
+import { ActionMenu, Button, Spinner, Input, RichTextEditor } from '@/components/ui';
 import { DetailPageLayout } from '@/components/layout/detail-page-layout';
 import { AuditHistory } from '@/components/audit-history/audit-history';
 import { useToast } from '@/components/ui';
@@ -173,18 +173,23 @@ export default function EmailTemplateDetailPage() {
               </span>
             </div>
           </div>
-          <div className="flex gap-2">
-            <Button variant="ghost" size="sm" onClick={handleDuplicate}>
-              Dupliceren
-            </Button>
-            <Button
-              variant={template.isActive ? 'danger' : 'secondary'}
-              size="sm"
-              onClick={handleToggleActive}
-            >
-              {template.isActive ? 'Deactiveren' : 'Activeren'}
-            </Button>
-          </div>
+          <ActionMenu
+            primaryActions={[
+              {
+                label: template.isActive ? 'Deactiveren' : 'Activeren',
+                icon: <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={template.isActive ? 'M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636' : 'M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z'} /></svg>,
+                onClick: handleToggleActive,
+                variant: template.isActive ? 'danger' as const : undefined,
+              },
+            ]}
+            secondaryActions={[
+              {
+                label: 'Dupliceren',
+                icon: <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>,
+                onClick: handleDuplicate,
+              },
+            ]}
+          />
         </div>
 
         {/* Tabs */}

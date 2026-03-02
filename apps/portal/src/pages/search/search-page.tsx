@@ -7,6 +7,7 @@ import type {
   SearchEntityType,
   SearchContactResult,
   SearchContactPersonResult,
+  SearchLocationResult,
   SearchRequestResult,
   SearchQuoteResult,
   SearchTaskResult,
@@ -81,6 +82,7 @@ function formatDate(dateStr: string): string {
 const TAB_ORDER: SearchEntityType[] = [
   'contact',
   'contactPerson',
+  'location',
   'request',
   'quote',
   'task',
@@ -91,6 +93,7 @@ const TAB_ORDER: SearchEntityType[] = [
 const TAB_LABELS: Record<SearchEntityType, string> = {
   contact: 'Relaties',
   contactPerson: 'Contactpersonen',
+  location: 'Locaties',
   request: 'Aanvragen',
   quote: 'Offertes',
   task: 'Taken',
@@ -170,6 +173,55 @@ function useContactPersonColumns(): Column<SearchContactPersonResult>[] {
           className="text-primary-600 hover:text-primary-800 hover:underline"
         >
           {contactDisplayName(p.contact)}
+        </Link>
+      ),
+    },
+  ];
+}
+
+function useLocationColumns(): Column<SearchLocationResult>[] {
+  return [
+    {
+      key: 'name',
+      header: 'Naam',
+      render: (l) => (
+        <Link
+          to={`/contacts/${l.contactId}`}
+          className="font-medium text-primary-600 hover:text-primary-800 hover:underline"
+        >
+          {l.name}
+        </Link>
+      ),
+    },
+    {
+      key: 'address',
+      header: 'Adres',
+      render: (l) => `${l.street} ${l.houseNumber}`,
+    },
+    {
+      key: 'postalCode',
+      header: 'Postcode',
+      render: (l) => l.postalCode,
+    },
+    {
+      key: 'city',
+      header: 'Stad',
+      render: (l) => l.city,
+    },
+    {
+      key: 'objectType',
+      header: 'Objecttype',
+      render: (l) => l.objectType ?? '—',
+    },
+    {
+      key: 'contact',
+      header: 'Relatie',
+      render: (l) => (
+        <Link
+          to={`/contacts/${l.contact.id}`}
+          className="text-primary-600 hover:text-primary-800 hover:underline"
+        >
+          {contactDisplayName(l.contact)}
         </Link>
       ),
     },
@@ -383,6 +435,7 @@ function TabContent({
 }) {
   const contactColumns = useContactColumns();
   const contactPersonColumns = useContactPersonColumns();
+  const locationColumns = useLocationColumns();
   const requestColumns = useRequestColumns();
   const quoteColumns = useQuoteColumns();
   const taskColumns = useTaskColumns();
@@ -417,6 +470,15 @@ function TabContent({
             data={items as SearchContactPersonResult[]}
             keyExtractor={(p) => p.id}
             emptyMessage="Geen contactpersonen gevonden"
+          />
+        );
+      case 'location':
+        return (
+          <Table<SearchLocationResult>
+            columns={locationColumns}
+            data={items as SearchLocationResult[]}
+            keyExtractor={(l) => l.id}
+            emptyMessage="Geen locaties gevonden"
           />
         );
       case 'request':

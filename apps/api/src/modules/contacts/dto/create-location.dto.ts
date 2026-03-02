@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsString, IsOptional, IsObject } from 'class-validator';
+import { IsString, IsOptional, IsObject, IsNumber } from 'class-validator';
 
 export class CreateLocationDto {
   @ApiProperty({ example: 'Hoofdkantoor Amsterdam' })
@@ -38,6 +38,16 @@ export class CreateLocationDto {
   @IsOptional()
   @IsObject()
   pdokData?: Record<string, unknown>;
+
+  @ApiPropertyOptional({ example: 52.3676, description: 'Breedtegraad (WGS84)' })
+  @IsOptional()
+  @IsNumber()
+  lat?: number;
+
+  @ApiPropertyOptional({ example: 4.9041, description: 'Lengtegraad (WGS84)' })
+  @IsOptional()
+  @IsNumber()
+  lng?: number;
 
   @ApiPropertyOptional({ description: 'Eigen velden (key-value JSON)' })
   @IsOptional()

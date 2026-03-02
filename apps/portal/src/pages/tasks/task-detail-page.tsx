@@ -1,11 +1,11 @@
 import { useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { TaskStatus, TaskEntityType, DocumentEntityType, Role } from '@/types';
-import { Button, Card, Spinner, Select, useToast } from '@/components/ui';
+import { ActionMenu, Button, Card, Spinner, Select, useToast } from '@/components/ui';
 import { useAuth } from '@/providers/auth-provider';
 import { useTask, useUpdateTask, useDeleteTask } from './hooks/use-tasks';
 import { EditTaskModal } from './components/edit-task-modal';
-import { DocumentsSection } from '@/components/documents';
+import { DocumentsSection, UploadDocumentModal } from '@/components/documents';
 
 const canWrite = [Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE, Role.WERKVOORBEREIDER];
 
@@ -30,12 +30,14 @@ const entityTypeLabels: Record<string, string> = {
   [TaskEntityType.CONTACT]: 'Relatie',
   [TaskEntityType.REQUEST]: 'Aanvraag',
   [TaskEntityType.QUOTE]: 'Offerte',
+  [TaskEntityType.USER]: 'Gebruiker',
 };
 
 const entityTypeRoutes: Record<string, string> = {
   [TaskEntityType.CONTACT]: '/contacts',
   [TaskEntityType.REQUEST]: '/requests',
   [TaskEntityType.QUOTE]: '/quotes',
+  [TaskEntityType.USER]: '/users',
 };
 
 function formatDate(dateStr: string): string {
@@ -56,6 +58,7 @@ export default function TaskDetailPage() {
   const deleteMutation = useDeleteTask();
 
   const [isEditOpen, setIsEditOpen] = useState(false);
+  const [isDocUploadOpen, setIsDocUploadOpen] = useState(false);
   const [newStatus, setNewStatus] = useState('');
 
   const userCanWrite = user && user.roles.some(r => canWrite.includes(r));
@@ -138,24 +141,33 @@ export default function TaskDetailPage() {
           </div>
         </div>
         {userCanWrite && (
-          <div className="flex gap-2">
-            <Button variant="secondary" onClick={() => setIsEditOpen(true)}>
-              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-              </svg>
-              Bewerken
-            </Button>
-            <Button
-              variant="secondary"
-              onClick={handleDelete}
-              isLoading={deleteMutation.isPending}
-            >
-              <svg className="h-4 w-4 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-              </svg>
-              Verwijderen
-            </Button>
-          </div>
+          <ActionMenu
+            primaryActions={
+              task.status !== TaskStatus.VOLTOOID
+                ? [
+                    {
+                      label: 'Taak voltooid',
+                      icon: <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>,
+                      onClick: async () => {
+                        try {
+                          await updateMutation.mutateAsync({ id: task.id, data: { status: TaskStatus.VOLTOOID } });
+                          showToast('Taak voltooid', 'success');
+                        } catch {
+                          showToast('Status wijzigen mislukt', 'error');
+                        }
+                      },
+                    },
+                  ]
+                : []
+            }
+            secondaryActions={[
+              {
+                label: 'Document uploaden',
+                icon: <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>,
+                onClick: () => setIsDocUploadOpen(true),
+              },
+            ]}
+          />
         )}
       </div>
 
@@ -271,12 +283,43 @@ export default function TaskDetailPage() {
         />
       </Card>
 
+      {/* Acties onderaan */}
+      <div className="flex items-center justify-between border-t border-gray-200 pt-6">
+        <p className="text-xs text-gray-400">
+          Aangemaakt op {new Date(task.createdAt).toLocaleString('nl-NL', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+          {task.createdBy && ` door ${task.createdBy.firstName} ${task.createdBy.lastName}`}
+        </p>
+        {userCanWrite && (
+          <div className="flex gap-2">
+            <Button variant="secondary" onClick={() => setIsEditOpen(true)}>
+              Bewerken
+            </Button>
+            <Button
+              variant="danger"
+              onClick={handleDelete}
+              isLoading={deleteMutation.isPending}
+            >
+              Verwijderen
+            </Button>
+          </div>
+        )}
+      </div>
+
       {/* Edit modal */}
       {isEditOpen && (
         <EditTaskModal
           isOpen={isEditOpen}
           onClose={() => setIsEditOpen(false)}
           task={task}
+        />
+      )}
+
+      {isDocUploadOpen && (
+        <UploadDocumentModal
+          isOpen={isDocUploadOpen}
+          onClose={() => setIsDocUploadOpen(false)}
+          entityType={DocumentEntityType.TASK}
+          entityId={task.id}
         />
       )}
     </div>

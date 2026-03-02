@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsEnum, IsOptional, IsString, IsEmail, IsUUID, IsObject } from 'class-validator';
+import { IsEnum, IsOptional, IsString, IsEmail, IsUUID, IsObject, IsBoolean } from 'class-validator';
 import { ContactType } from '@prisma/client';
 
 export class CreateContactDto {
@@ -61,4 +61,14 @@ export class CreateContactDto {
   @IsOptional()
   @IsObject()
   customFields?: Record<string, any>;
+
+  @ApiPropertyOptional({ description: 'VIES BTW-validatieresultaat (automatisch ingevuld)' })
+  @IsOptional()
+  @IsObject()
+  vatValidation?: Record<string, unknown>;
+
+  @ApiPropertyOptional({ description: 'Geeft aan dat de bedrijfsnaam is overschreven met de naam uit VIES' })
+  @IsOptional()
+  @IsBoolean()
+  viesNameApplied?: boolean;
 }

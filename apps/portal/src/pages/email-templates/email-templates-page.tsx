@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Button, Spinner, Table } from '@/components/ui';
+import { ActionMenu, Button, Spinner, Table } from '@/components/ui';
 import { DetailPageLayout } from '@/components/layout/detail-page-layout';
 import {
   TableConfigSidebar,
@@ -185,12 +185,15 @@ export default function EmailTemplatesPage() {
               Beheer de e-mailtemplates voor uw organisatie
             </p>
           </div>
-          <Button onClick={() => setIsCreateOpen(true)}>
-            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-            </svg>
-            Sjabloon aanmaken
-          </Button>
+          <ActionMenu
+            primaryActions={[
+              {
+                label: 'Sjabloon aanmaken',
+                icon: <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>,
+                onClick: () => setIsCreateOpen(true),
+              },
+            ]}
+          />
         </div>
 
         <Table

@@ -1,11 +1,16 @@
+import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Modal, Input, Select, Button, useToast } from '@/components/ui';
 import { useAuth } from '@/providers/auth-provider';
 import { useUsers } from '@/pages/users/hooks/use-users';
+import { useContacts } from '@/pages/contacts/hooks/use-contacts';
+import { useRequests } from '@/pages/requests/hooks/use-requests';
+import { useQuotes } from '@/pages/quotes/hooks/use-quotes';
 import { useCreateTask } from '../hooks/use-tasks';
-import { TaskEntityType } from '@/types';
+import { TaskEntityType, ContactType } from '@/types';
+import type { Contact } from '@/types';
 
 const taskSchema = z.object({
   title: z.string().min(1, 'Titel is verplicht'),
@@ -23,23 +28,47 @@ const statusOptions = [
   { value: 'VOLTOOID', label: 'Voltooid' },
 ];
 
+const entityTypeOptions = [
+  { value: '', label: 'Selecteer type...' },
+  { value: TaskEntityType.CONTACT, label: 'Relatie' },
+  { value: TaskEntityType.REQUEST, label: 'Aanvraag' },
+  { value: TaskEntityType.QUOTE, label: 'Offerte' },
+  { value: TaskEntityType.USER, label: 'Gebruiker' },
+];
+
+function getContactDisplayName(contact: Contact): string {
+  if (contact.type === ContactType.COMPANY) {
+    return contact.companyName || '—';
+  }
+  return [contact.firstName, contact.lastName].filter(Boolean).join(' ') || '—';
+}
+
 interface CreateTaskModalProps {
   isOpen: boolean;
   onClose: () => void;
-  entityType: TaskEntityType;
-  entityId: string;
+  entityType?: TaskEntityType;
+  entityId?: string;
 }
 
 export function CreateTaskModal({
   isOpen,
   onClose,
-  entityType,
-  entityId,
+  entityType: fixedEntityType,
+  entityId: fixedEntityId,
 }: CreateTaskModalProps) {
   const { showToast } = useToast();
   const { user } = useAuth();
   const createMutation = useCreateTask();
   const { data: users } = useUsers();
+
+  const isStandalone = !fixedEntityType || !fixedEntityId;
+  const [selectedEntityType, setSelectedEntityType] = useState('');
+  const [selectedEntityId, setSelectedEntityId] = useState('');
+
+  // Fetch entity lists for standalone mode
+  const { data: contactsData } = useContacts({ limit: 200 });
+  const { data: requestsData } = useRequests({ limit: 200 });
+  const { data: quotesData } = useQuotes({ limit: 200 });
 
   const {
     register,
@@ -54,10 +83,10 @@ export function CreateTaskModal({
     },
   });
 
-  // Build assignee options: "Niet toegewezen" → "Ikzelf" → other users
+  // Build assignee options: "Niet toegewezen" -> "Ikzelf (Naam)" -> other users
   const assigneeOptions = [
     { value: '', label: 'Niet toegewezen' },
-    ...(user ? [{ value: user.id, label: 'Ikzelf' }] : []),
+    ...(user ? [{ value: user.id, label: `Ikzelf (${user.firstName} ${user.lastName})` }] : []),
     ...(users || [])
       .filter((u) => u.id !== user?.id && u.isActive)
       .map((u) => ({
@@ -66,7 +95,40 @@ export function CreateTaskModal({
       })),
   ];
 
+  // Build entity options based on selected type
+  const entityOptions = (() => {
+    if (!isStandalone) return [];
+    const opts = [{ value: '', label: 'Selecteer...' }];
+    if (selectedEntityType === TaskEntityType.CONTACT) {
+      (contactsData?.data || []).forEach((c) =>
+        opts.push({ value: c.id, label: getContactDisplayName(c) }),
+      );
+    } else if (selectedEntityType === TaskEntityType.REQUEST) {
+      (requestsData?.data || []).forEach((r) =>
+        opts.push({ value: r.id, label: r.title }),
+      );
+    } else if (selectedEntityType === TaskEntityType.QUOTE) {
+      (quotesData?.data || []).forEach((q) =>
+        opts.push({ value: q.id, label: q.quoteNumber }),
+      );
+    } else if (selectedEntityType === TaskEntityType.USER) {
+      (users || [])
+        .filter((u) => u.isActive)
+        .forEach((u) =>
+          opts.push({ value: u.id, label: `${u.firstName} ${u.lastName}` }),
+        );
+    }
+    return opts;
+  })();
+
+  const entityType = fixedEntityType || (selectedEntityType as TaskEntityType);
+  const entityId = fixedEntityId || selectedEntityId;
+
   const onSubmit = async (data: TaskFormData) => {
+    if (!entityType || !entityId) {
+      showToast('Selecteer een entiteit om de taak aan te koppelen', 'error');
+      return;
+    }
     try {
       await createMutation.mutateAsync({
         title: data.title,
@@ -79,6 +141,10 @@ export function CreateTaskModal({
       });
       showToast('Taak aangemaakt!', 'success');
       reset();
+      if (isStandalone) {
+        setSelectedEntityType('');
+        setSelectedEntityId('');
+      }
       onClose();
     } catch (err) {
       showToast(
@@ -90,12 +156,46 @@ export function CreateTaskModal({
 
   const handleClose = () => {
     reset();
+    if (isStandalone) {
+      setSelectedEntityType('');
+      setSelectedEntityId('');
+    }
     onClose();
   };
 
   return (
     <Modal isOpen={isOpen} onClose={handleClose} title="Taak aanmaken">
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+        {isStandalone && (
+          <>
+            <Select
+              label="Koppelen aan"
+              options={entityTypeOptions}
+              value={selectedEntityType}
+              onChange={(e) => {
+                setSelectedEntityType(e.target.value);
+                setSelectedEntityId('');
+              }}
+            />
+            {selectedEntityType && (
+              <Select
+                label={
+                  selectedEntityType === TaskEntityType.CONTACT
+                    ? 'Relatie'
+                    : selectedEntityType === TaskEntityType.REQUEST
+                      ? 'Aanvraag'
+                      : selectedEntityType === TaskEntityType.USER
+                        ? 'Gebruiker'
+                        : 'Offerte'
+                }
+                options={entityOptions}
+                value={selectedEntityId}
+                onChange={(e) => setSelectedEntityId(e.target.value)}
+              />
+            )}
+          </>
+        )}
+
         <Input
           label="Titel"
           placeholder="Bijv. NEN1010 keuring plannen"
@@ -137,7 +237,11 @@ export function CreateTaskModal({
           <Button type="button" variant="secondary" onClick={handleClose}>
             Annuleren
           </Button>
-          <Button type="submit" isLoading={createMutation.isPending}>
+          <Button
+            type="submit"
+            isLoading={createMutation.isPending}
+            disabled={isStandalone && (!entityType || !entityId)}
+          >
             Aanmaken
           </Button>
         </div>

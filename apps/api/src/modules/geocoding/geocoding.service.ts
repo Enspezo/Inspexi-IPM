@@ -2,6 +2,7 @@ import {
   Injectable,
   BadGatewayException,
   NotFoundException,
+  Logger,
 } from '@nestjs/common';
 
 export interface AddressSuggestion {
@@ -22,8 +23,10 @@ export interface ParsedAddress {
 
 @Injectable()
 export class GeocodingService {
+  private readonly logger = new Logger(GeocodingService.name);
   private readonly PDOK_BASE =
     'https://api.pdok.nl/bzk/locatieserver/search/v3_1';
+  private readonly NOMINATIM_BASE = 'https://nominatim.openstreetmap.org';
 
   async suggest(q: string): Promise<AddressSuggestion[]> {
     const url = `${this.PDOK_BASE}/suggest?q=${encodeURIComponent(q)}&fq=type:adres&rows=5`;
@@ -81,5 +84,48 @@ export class GeocodingService {
       // (gemeentenaam, provincienaam, BAG-IDs, wijknaam, buurtnaam, etc.)
       pdokData: doc as Record<string, unknown>,
     };
+  }
+
+  /**
+   * Geocodeer een adres via Nominatim (OpenStreetMap) als fallback wanneer
+   * geen PDOK-data beschikbaar is. Retourneert null bij mislukken.
+   */
+  async nominatimGeocode(
+    street: string,
+    houseNumber: string,
+    postalCode: string,
+    city: string,
+  ): Promise<{ lat: number; lng: number } | null> {
+    const q = `${street} ${houseNumber}, ${postalCode} ${city}, Nederland`;
+    try {
+      const res = await fetch(
+        `${this.NOMINATIM_BASE}/search?format=json&q=${encodeURIComponent(q)}&countrycodes=nl&limit=1`,
+        { headers: { 'User-Agent': 'InspeXi-Beheer/1.0' } },
+      );
+      if (!res.ok) return null;
+      const data = (await res.json()) as any[];
+      if (!data[0]) return null;
+      return { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) };
+    } catch (err) {
+      this.logger.warn(`Nominatim geocoding mislukt voor "${q}"`, err);
+      return null;
+    }
+  }
+
+  /**
+   * Extraheer lat/lng uit een opgeslagen PDOK-doc (centroide_ll WKT veld).
+   * Retourneert null als het veld ontbreekt of niet parseerbaar is.
+   */
+  extractCoordsFromPdokData(
+    pdokData: Record<string, unknown>,
+  ): { lat: number; lng: number } | null {
+    const wkt = pdokData['centroide_ll'] as string | undefined;
+    if (!wkt) return null;
+    const match = wkt.match(/POINT\(([^\s]+)\s+([^)]+)\)/);
+    if (!match) return null;
+    const lng = parseFloat(match[1]);
+    const lat = parseFloat(match[2]);
+    if (isNaN(lat) || isNaN(lng)) return null;
+    return { lat, lng };
   }
 }

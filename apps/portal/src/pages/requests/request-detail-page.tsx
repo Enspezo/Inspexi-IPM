@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -12,10 +12,11 @@ import {
   TaskStatus,
   DocumentEntityType,
   CustomFieldEntityType,
+  LogType,
 } from '@/types';
-import type { Task } from '@/types';
-import { Button, Card, Spinner, Select, Input, useToast } from '@/components/ui';
-import { DetailPageLayout } from '@/components/layout/detail-page-layout';
+import type { Task, ContactLog } from '@/types';
+import { ActionMenu, type ActionMenuItem, Button, Card, Spinner, Select, Input, useToast } from '@/components/ui';
+import { DetailPageLayout, SidebarSection } from '@/components/layout/detail-page-layout';
 import { useAuth } from '@/providers/auth-provider';
 import {
   useRequest,
@@ -24,17 +25,19 @@ import {
   useDeleteRequest,
   useOrgUsers,
 } from './hooks/use-requests';
-import { useContactLocations } from '@/pages/contacts/hooks/use-contacts';
+import { useContactLocations, useContactLogs } from '@/pages/contacts/hooks/use-contacts';
+import { AddLogModal } from '@/pages/contacts/components/add-log-modal';
 import { ContactSearchInput } from '@/components/contacts/contact-search-input';
 import { useCreateQuoteFromRequest } from '@/pages/quotes/hooks/use-quotes';
 import { useTasks, useUpdateTask } from '@/pages/tasks/hooks/use-tasks';
 import { AuditHistory } from '@/components/audit-history/audit-history';
 import { CreateTaskModal } from '@/pages/tasks/components/create-task-modal';
-import { DocumentsSection } from '@/components/documents';
+import { EditTaskModal } from '@/pages/tasks/components/edit-task-modal';
+import { DocumentsSection, UploadDocumentModal } from '@/components/documents';
 import { CustomFieldsDisplay, CustomFieldsForm } from '@/components/custom-fields';
 import { useCreateProjectFromRequest } from '@/pages/projects/hooks/use-projects';
 
-type Tab = 'algemeen' | 'taken';
+type Tab = 'overzicht' | 'status';
 
 const canWrite = [Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE];
 
@@ -87,6 +90,20 @@ const taskStatusColors: Record<string, string> = {
   [TaskStatus.VOLTOOID]: 'bg-green-100 text-green-800',
 };
 
+const logTypeLabels: Record<string, string> = {
+  [LogType.EMAIL]: 'E-mail',
+  [LogType.PHONE]: 'Telefoon',
+  [LogType.MEETING]: 'Vergadering',
+  [LogType.NOTE]: 'Notitie',
+};
+
+const logTypeColors: Record<string, string> = {
+  [LogType.EMAIL]: 'bg-blue-100 text-blue-800',
+  [LogType.PHONE]: 'bg-green-100 text-green-800',
+  [LogType.MEETING]: 'bg-purple-100 text-purple-800',
+  [LogType.NOTE]: 'bg-gray-100 text-gray-800',
+};
+
 const statusOptions = Object.values(RequestStatus).map((s) => ({
   value: s,
   label: statusLabels[s] || s,
@@ -113,6 +130,7 @@ const editSchema = z.object({
   source: z.nativeEnum(RequestSource),
   priority: z.nativeEnum(Priority),
   assignedTo: z.string().optional(),
+  customFields: z.record(z.any()).optional(),
 });
 
 type EditFormData = z.infer<typeof editSchema>;
@@ -144,7 +162,6 @@ export default function RequestDetailPage() {
   const deleteMutation = useDeleteRequest();
   const createQuoteMutation = useCreateQuoteFromRequest();
   const createProjectMutation = useCreateProjectFromRequest();
-  const updateTaskMutation = useUpdateTask();
   const { data: allUsers } = useOrgUsers();
 
   // Fetch tasks linked to this request
@@ -156,11 +173,16 @@ export default function RequestDetailPage() {
   const requestTasks = tasksData?.data || [];
   const incompleteTasks = requestTasks.filter((t) => t.status !== TaskStatus.VOLTOOID);
 
-  const [activeTab, setActiveTab] = useState<Tab>('algemeen');
+  // Fetch contact logs for this request's contact
+  const { data: contactLogs } = useContactLogs(request?.contactId || '');
+
+  const [activeTab, setActiveTab] = useState<Tab>('overzicht');
   const [newStatus, setNewStatus] = useState('');
   const [statusNote, setStatusNote] = useState('');
   const [isEditing, setIsEditing] = useState(false);
   const [isTaskOpen, setIsTaskOpen] = useState(false);
+  const [isDocUploadOpen, setIsDocUploadOpen] = useState(false);
+  const [isLogOpen, setIsLogOpen] = useState(false);
   const [editContactId, setEditContactId] = useState('');
 
   const userCanWrite = user && user.roles.some(r => canWrite.includes(r));
@@ -214,7 +236,7 @@ export default function RequestDetailPage() {
         source: data.source,
         priority: data.priority,
         assignedTo: data.assignedTo || undefined,
-        customFields: (data as any).customFields,
+        customFields: data.customFields,
       } as any);
       showToast('Aanvraag bijgewerkt', 'success');
       setIsEditing(false);
@@ -241,11 +263,6 @@ export default function RequestDetailPage() {
   };
 
   const users = Array.isArray(allUsers) ? allUsers : [];
-
-  const tabs: { key: Tab; label: string; count?: number }[] = [
-    { key: 'algemeen', label: 'Algemeen' },
-    { key: 'taken', label: 'Taken', count: incompleteTasks.length },
-  ];
 
   const handleCreateQuote = async () => {
     if (!request) return;
@@ -301,8 +318,57 @@ export default function RequestDetailPage() {
     );
   }
 
+  const logs = contactLogs || [];
+
+  const sidebarContent = (
+    <div>
+      <SidebarSection
+        icon={
+          <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+        }
+        label="Contactgeschiedenis"
+        count={logs.length}
+      >
+        <ContactLogsSidebar
+          logs={logs}
+          userCanWrite={!!userCanWrite}
+          onLogOpen={() => setIsLogOpen(true)}
+        />
+      </SidebarSection>
+
+      <SidebarSection
+        icon={
+          <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+          </svg>
+        }
+        label="Taken"
+        count={incompleteTasks.length}
+      >
+        <RequestTasksSidebar
+          tasks={requestTasks}
+          userCanWrite={!!userCanWrite}
+          onCreateTask={() => setIsTaskOpen(true)}
+        />
+      </SidebarSection>
+
+      <SidebarSection
+        icon={
+          <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+          </svg>
+        }
+        label="Wijzigingshistorie"
+      >
+        <AuditHistory entityType="Request" entityId={id} />
+      </SidebarSection>
+    </div>
+  );
+
   return (
-    <DetailPageLayout sidebar={<AuditHistory entityType="Request" entityId={id} />}>
+    <DetailPageLayout iconStrip sidebar={sidebarContent}>
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
@@ -347,22 +413,18 @@ export default function RequestDetailPage() {
           </div>
         </div>
         {userCanWrite && (
-          <div className="flex gap-2">
-            {(request.status === RequestStatus.NIEUW ||
-              request.status === RequestStatus.IN_BEHANDELING) && (
-              <Button
-                size="sm"
-                onClick={handleCreateQuote}
-                isLoading={createQuoteMutation.isPending}
-              >
-                Offerte aanmaken
-              </Button>
-            )}
-            {!request.projectId && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={async () => {
+          <ActionMenu
+            primaryActions={[
+              {
+                label: 'Offerte aanmaken',
+                icon: <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>,
+                onClick: handleCreateQuote,
+                isLoading: createQuoteMutation.isPending,
+              },
+              ...(!request.projectId ? [{
+                label: 'Project toekennen',
+                icon: <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" /></svg>,
+                onClick: async () => {
                   try {
                     const project = await createProjectMutation.mutateAsync(request.id);
                     showToast('Project aangemaakt', 'success');
@@ -370,34 +432,38 @@ export default function RequestDetailPage() {
                   } catch {
                     showToast('Project aanmaken mislukt', 'error');
                   }
-                }}
-                isLoading={createProjectMutation.isPending}
-              >
-                Maak project
-              </Button>
-            )}
-            <Button variant="secondary" size="sm" onClick={() => setIsTaskOpen(true)}>
-              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
-              </svg>
-              Taak aanmaken
-            </Button>
-            {!isEditing && (
-              <Button variant="secondary" size="sm" onClick={() => setIsEditing(true)}>
-                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                </svg>
-                Bewerken
-              </Button>
-            )}
-          </div>
+                },
+                isLoading: createProjectMutation.isPending,
+              }] : []),
+            ]}
+            secondaryActions={[
+              {
+                label: 'Contactmoment loggen',
+                icon: <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>,
+                onClick: () => setIsLogOpen(true),
+              },
+              {
+                label: 'Taak aanmaken',
+                icon: <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" /></svg>,
+                onClick: () => setIsTaskOpen(true),
+              },
+              {
+                label: 'Document uploaden',
+                icon: <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>,
+                onClick: () => setIsDocUploadOpen(true),
+              },
+            ]}
+          />
         )}
       </div>
 
       {/* Tabs */}
       <div className="border-b border-gray-200">
         <nav className="-mb-px flex gap-6 overflow-x-auto">
-          {tabs.map((tab) => (
+          {([
+            { key: 'overzicht' as Tab, label: 'Overzicht' },
+            { key: 'status' as Tab, label: 'Status', count: request.statusHistory?.length || 0 },
+          ]).map((tab) => (
             <button
               key={tab.key}
               onClick={() => setActiveTab(tab.key)}
@@ -418,8 +484,8 @@ export default function RequestDetailPage() {
         </nav>
       </div>
 
-      {/* Tab content: Algemeen */}
-      {activeTab === 'algemeen' && (
+      {/* Tab: Overzicht */}
+      {activeTab === 'overzicht' && (
         <div className="space-y-6">
           {isEditing ? (
             <Card>
@@ -609,6 +675,34 @@ export default function RequestDetailPage() {
             customFields={request.customFields}
           />
 
+          {/* Documenten */}
+          <Card>
+            <DocumentsSection
+              entityType={DocumentEntityType.REQUEST}
+              entityId={request.id}
+              canUpload={!!userCanWrite}
+            />
+          </Card>
+        </div>
+      )}
+
+      {/* Tab: Status */}
+      {activeTab === 'status' && (
+        <div className="space-y-6">
+          {/* Huidige status */}
+          <Card>
+            <h3 className="text-sm font-semibold text-gray-900 mb-4">Huidige status</h3>
+            <div className="flex items-center gap-3">
+              <span
+                className={`inline-flex items-center rounded-full px-3 py-1 text-sm font-medium ${
+                  statusColors[request.status] || 'bg-gray-100 text-gray-600'
+                }`}
+              >
+                {statusLabels[request.status] || request.status}
+              </span>
+            </div>
+          </Card>
+
           {/* Status wijzigen */}
           {userCanWrite && (
             <Card>
@@ -693,119 +787,162 @@ export default function RequestDetailPage() {
               </div>
             )}
           </div>
-
-          {/* Documenten */}
-          <Card>
-            <DocumentsSection
-              entityType={DocumentEntityType.REQUEST}
-              entityId={request.id}
-              canUpload={!!userCanWrite}
-            />
-          </Card>
-
-          {/* Verwijderen */}
-          {userCanWrite && (
-            <div className="flex justify-end border-t border-gray-200 pt-6">
-              <Button variant="danger" size="sm" onClick={handleDelete}>
-                Aanvraag verwijderen
-              </Button>
-            </div>
-          )}
         </div>
       )}
 
-      {/* Tab content: Taken */}
-      {activeTab === 'taken' && (
-        <RequestTasksTab
-          tasks={requestTasks}
-          userCanWrite={!!userCanWrite}
-          onCreateTask={() => setIsTaskOpen(true)}
-          onStatusChange={async (taskId, newStatus) => {
-            try {
-              await updateTaskMutation.mutateAsync({ id: taskId, data: { status: newStatus } });
-              showToast('Taakstatus bijgewerkt', 'success');
-            } catch {
-              showToast('Status bijwerken mislukt', 'error');
-            }
-          }}
-          navigate={navigate}
-        />
-      )}
+      {/* Acties onderaan */}
+      <div className="flex items-center justify-between border-t border-gray-200 pt-6">
+        <p className="text-xs text-gray-400">
+          Aangemaakt op {formatDate(request.createdAt)}
+          {request.createdByUser && ` door ${request.createdByUser.firstName} ${request.createdByUser.lastName}`}
+        </p>
+        {userCanWrite && (
+          <div className="flex gap-2">
+            {!isEditing && (
+              <Button variant="secondary" size="sm" onClick={() => setIsEditing(true)}>
+                Bewerken
+              </Button>
+            )}
+            <Button variant="danger" size="sm" onClick={handleDelete}>
+              Aanvraag verwijderen
+            </Button>
+          </div>
+        )}
+      </div>
 
       {request && (
-        <CreateTaskModal
-          isOpen={isTaskOpen}
-          onClose={() => setIsTaskOpen(false)}
-          entityType={TaskEntityType.REQUEST}
-          entityId={request.id}
-        />
+        <>
+          <CreateTaskModal
+            isOpen={isTaskOpen}
+            onClose={() => setIsTaskOpen(false)}
+            entityType={TaskEntityType.REQUEST}
+            entityId={request.id}
+          />
+          <UploadDocumentModal
+            isOpen={isDocUploadOpen}
+            onClose={() => setIsDocUploadOpen(false)}
+            entityType={DocumentEntityType.REQUEST}
+            entityId={request.id}
+          />
+          <AddLogModal
+            isOpen={isLogOpen}
+            onClose={() => setIsLogOpen(false)}
+            contactId={request.contactId}
+          />
+        </>
       )}
     </div>
     </DetailPageLayout>
   );
 }
 
-// ─── RequestTasksTab ───────────────────────────────────
+// ─── RequestTasksSidebar ───────────────────────────────
 
-function RequestTasksTab({
-  tasks,
+function SidebarTaskCard({
+  task,
   userCanWrite,
-  onCreateTask,
   onStatusChange,
+  onEdit,
   navigate,
 }: {
-  tasks: Task[];
+  task: Task;
   userCanWrite: boolean;
-  onCreateTask: () => void;
   onStatusChange: (taskId: string, status: TaskStatus) => void;
+  onEdit: (task: Task) => void;
   navigate: ReturnType<typeof useNavigate>;
 }) {
-  const incomplete = tasks.filter((t) => t.status !== TaskStatus.VOLTOOID);
-  const completed = tasks.filter((t) => t.status === TaskStatus.VOLTOOID);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const isCompleted = task.status === TaskStatus.VOLTOOID;
+  const isOverdue = !isCompleted && task.deadline && new Date(task.deadline) < new Date();
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setMenuOpen(false);
+      }
+    }
+    if (menuOpen) document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [menuOpen]);
 
   return (
-    <div className="space-y-4">
-      {userCanWrite && (
-        <div className="flex justify-end">
-          <Button size="sm" onClick={onCreateTask}>
-            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-            </svg>
-            Taak aanmaken
-          </Button>
-        </div>
-      )}
-      {tasks.length === 0 ? (
-        <p className="py-8 text-center text-sm text-gray-500">
-          Nog geen taken voor deze aanvraag
-        </p>
-      ) : (
-        <div className="space-y-6">
-          {incomplete.length > 0 && (
-            <div className="space-y-2">
-              {incomplete.map((task) => (
-                <TaskCard
-                  key={task.id}
-                  task={task}
-                  onStatusChange={onStatusChange}
-                  navigate={navigate}
-                />
-              ))}
-            </div>
+    <div
+      className={`group flex items-start gap-2.5 rounded-lg border p-2.5 transition-colors hover:bg-gray-50 ${
+        isCompleted ? 'border-gray-100 bg-gray-50' : 'border-gray-200 bg-white'
+      }`}
+    >
+      <button
+        type="button"
+        onClick={() => onStatusChange(task.id, isCompleted ? TaskStatus.TE_DOEN : TaskStatus.VOLTOOID)}
+        style={{ width: 18, height: 18 }}
+        className={`mt-0.5 flex shrink-0 items-center justify-center rounded border transition-colors ${
+          isCompleted ? 'border-green-500 bg-green-500 text-white' : 'border-gray-300 bg-white hover:border-primary-500'
+        }`}
+      >
+        {isCompleted && (
+          <svg className="h-2.5 w-2.5" viewBox="0 0 12 12" fill="none">
+            <path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        )}
+      </button>
+
+      <div className="min-w-0 flex-1">
+        <button
+          onClick={() => navigate(`/tasks/${task.id}`)}
+          className={`text-xs font-medium leading-snug hover:underline ${
+            isCompleted ? 'text-gray-400 line-through' : 'text-gray-900'
+          }`}
+        >
+          {task.title}
+        </button>
+        <div className="mt-0.5 flex items-center gap-2 text-xs text-gray-500">
+          {task.assignee && (
+            <span title={`${task.assignee.firstName} ${task.assignee.lastName}`}>
+              {task.assignee.initials || `${task.assignee.firstName[0]}${task.assignee.lastName[0]}`}
+            </span>
           )}
-          {completed.length > 0 && (
-            <div className="space-y-2">
-              <h4 className="text-sm font-medium text-gray-500">
-                Voltooid ({completed.length})
-              </h4>
-              {completed.map((task) => (
-                <TaskCard
-                  key={task.id}
-                  task={task}
-                  onStatusChange={onStatusChange}
-                  navigate={navigate}
-                />
-              ))}
+          {task.deadline && (
+            <span className={isOverdue ? 'font-medium text-red-600' : ''}>
+              {new Date(task.deadline).toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' })}
+            </span>
+          )}
+        </div>
+      </div>
+
+      {userCanWrite && (
+        <div className="relative flex-shrink-0" ref={menuRef}>
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); setMenuOpen(!menuOpen); }}
+            className="rounded p-0.5 text-gray-300 opacity-0 transition-opacity group-hover:opacity-100 hover:bg-gray-100 hover:text-gray-600"
+          >
+            <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 20 20">
+              <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" />
+            </svg>
+          </button>
+          {menuOpen && (
+            <div className="absolute right-0 z-20 mt-1 w-36 rounded-lg border border-gray-200 bg-white py-1 shadow-lg">
+              <button
+                type="button"
+                onClick={() => { setMenuOpen(false); onEdit(task); }}
+                className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-gray-700 hover:bg-gray-50"
+              >
+                <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                </svg>
+                Bewerken
+              </button>
+              <button
+                type="button"
+                onClick={() => { setMenuOpen(false); navigate(`/tasks/${task.id}`); }}
+                className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-gray-700 hover:bg-gray-50"
+              >
+                <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                </svg>
+                Ga naar taak
+              </button>
             </div>
           )}
         </div>
@@ -814,85 +951,201 @@ function RequestTasksTab({
   );
 }
 
-// ─── TaskCard ──────────────────────────────────────────
-
-function TaskCard({
-  task,
-  onStatusChange,
-  navigate,
+function RequestTasksSidebar({
+  tasks,
+  userCanWrite,
+  onCreateTask,
 }: {
-  task: Task;
-  onStatusChange: (taskId: string, status: TaskStatus) => void;
-  navigate: ReturnType<typeof useNavigate>;
+  tasks: Task[];
+  userCanWrite: boolean;
+  onCreateTask: () => void;
 }) {
-  const isCompleted = task.status === TaskStatus.VOLTOOID;
-  const isOverdue = !isCompleted && task.deadline && new Date(task.deadline) < new Date();
+  const navigate = useNavigate();
+  const { showToast } = useToast();
+  const updateTaskMutation = useUpdateTask();
+  const [editingTask, setEditingTask] = useState<Task | null>(null);
+  const [showCompleted, setShowCompleted] = useState(false);
+
+  const incomplete = tasks.filter((t) => t.status !== TaskStatus.VOLTOOID);
+  const completed = tasks.filter((t) => t.status === TaskStatus.VOLTOOID);
+
+  const handleStatusChange = async (taskId: string, status: TaskStatus) => {
+    try {
+      await updateTaskMutation.mutateAsync({ id: taskId, data: { status } });
+    } catch {
+      showToast('Status bijwerken mislukt', 'error');
+    }
+  };
 
   return (
-    <div
-      className={`group flex items-start gap-3 rounded-lg border p-3 transition-colors hover:bg-gray-50 ${
-        isCompleted ? 'border-gray-100 bg-gray-50' : 'border-gray-200 bg-white'
-      }`}
-    >
-      {/* Checkbox for quick status toggle */}
-      <button
-        type="button"
-        onClick={() =>
-          onStatusChange(
-            task.id,
-            isCompleted ? TaskStatus.TE_DOEN : TaskStatus.VOLTOOID,
-          )
-        }
-        className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded border transition-colors ${
-          isCompleted
-            ? 'border-green-500 bg-green-500 text-white'
-            : 'border-gray-300 bg-white hover:border-primary-500'
-        }`}
-      >
-        {isCompleted && (
-          <svg className="h-3 w-3" viewBox="0 0 12 12" fill="none">
-            <path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-        )}
-      </button>
-
-      {/* Task info */}
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
+    <div className="space-y-2">
+      {userCanWrite && (
+        <div className="flex justify-end">
           <button
-            onClick={() => navigate(`/tasks/${task.id}`)}
-            className={`text-sm font-medium hover:underline ${
-              isCompleted ? 'text-gray-400 line-through' : 'text-gray-900'
-            }`}
+            type="button"
+            onClick={onCreateTask}
+            className="flex items-center gap-1 text-xs font-medium text-primary-600 hover:text-primary-800"
           >
-            {task.title}
+            <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            </svg>
+            Nieuwe taak
           </button>
-          <span
-            className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
-              taskStatusColors[task.status] || 'bg-gray-100 text-gray-600'
-            }`}
-          >
-            {taskStatusLabels[task.status] || task.status}
-          </span>
         </div>
-        <div className="mt-1 flex items-center gap-3 text-xs text-gray-500">
-          {task.assignee && (
-            <span>
-              {task.assignee.firstName} {task.assignee.lastName}
-            </span>
+      )}
+
+      {tasks.length === 0 ? (
+        <p className="text-xs text-gray-400">Nog geen taken</p>
+      ) : (
+        <>
+          {incomplete.length === 0 && (
+            <p className="text-xs text-gray-400">Geen openstaande taken</p>
           )}
-          {task.deadline && (
-            <span className={isOverdue ? 'font-medium text-red-600' : ''}>
-              {isOverdue && (
-                <svg className="mr-0.5 inline h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
+          {incomplete.map((task) => (
+            <SidebarTaskCard
+              key={task.id}
+              task={task}
+              userCanWrite={userCanWrite}
+              onStatusChange={handleStatusChange}
+              onEdit={setEditingTask}
+              navigate={navigate}
+            />
+          ))}
+
+          {completed.length > 0 && (
+            <div>
+              <button
+                type="button"
+                onClick={() => setShowCompleted(!showCompleted)}
+                className="flex items-center gap-1 text-xs font-medium text-gray-500 hover:text-gray-700"
+              >
+                <svg
+                  className={`h-3.5 w-3.5 transition-transform ${showCompleted ? 'rotate-90' : ''}`}
+                  fill="none" viewBox="0 0 24 24" stroke="currentColor"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                 </svg>
+                Voltooid ({completed.length})
+              </button>
+              {showCompleted && (
+                <div className="mt-2 space-y-2">
+                  {completed.map((task) => (
+                    <SidebarTaskCard
+                      key={task.id}
+                      task={task}
+                      userCanWrite={userCanWrite}
+                      onStatusChange={handleStatusChange}
+                      onEdit={setEditingTask}
+                      navigate={navigate}
+                    />
+                  ))}
+                </div>
               )}
-              {new Date(task.deadline).toLocaleDateString('nl-NL')}
-            </span>
+            </div>
+          )}
+        </>
+      )}
+
+      {editingTask && (
+        <EditTaskModal
+          isOpen={!!editingTask}
+          onClose={() => setEditingTask(null)}
+          task={editingTask}
+        />
+      )}
+    </div>
+  );
+}
+
+// ─── ContactLogsSidebar ───────────────────────────────
+
+function ContactLogsSidebar({
+  logs,
+  userCanWrite,
+  onLogOpen,
+}: {
+  logs: ContactLog[];
+  userCanWrite: boolean;
+  onLogOpen: () => void;
+}) {
+  const [showAll, setShowAll] = useState(false);
+  const MAX_ITEMS = 5;
+  const sorted = [...logs].sort(
+    (a, b) => new Date(b.loggedAt).getTime() - new Date(a.loggedAt).getTime(),
+  );
+  const visible = showAll ? sorted : sorted.slice(0, MAX_ITEMS);
+
+  return (
+    <div className="space-y-3">
+      {userCanWrite && (
+        <div className="flex justify-end">
+          <button
+            type="button"
+            onClick={onLogOpen}
+            className="flex items-center gap-1 text-xs font-medium text-primary-600 hover:text-primary-800"
+          >
+            <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            </svg>
+            Contactmoment loggen
+          </button>
+        </div>
+      )}
+
+      {logs.length === 0 ? (
+        <p className="text-xs text-gray-400">Nog geen contactmomenten</p>
+      ) : (
+        <div className="space-y-2">
+          {visible.map((item) => (
+            <div
+              key={item.id}
+              className="rounded-lg border border-gray-200 bg-white p-3"
+            >
+              <div className="mb-1 flex items-center justify-between">
+                <span
+                  className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
+                    logTypeColors[item.type] || 'bg-gray-100 text-gray-800'
+                  }`}
+                >
+                  {logTypeLabels[item.type] || item.type}
+                </span>
+                <span className="text-xs text-gray-400">
+                  {new Date(item.loggedAt).toLocaleDateString('nl-NL', {
+                    day: 'numeric',
+                    month: 'short',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                  })}
+                </span>
+              </div>
+              {item.subject && (
+                <p className="text-xs font-medium text-gray-900">{item.subject}</p>
+              )}
+              {item.body && (
+                <p className="mt-0.5 line-clamp-2 text-xs text-gray-600" title={item.body}>
+                  {item.body}
+                </p>
+              )}
+              {item.user && (
+                <p className="mt-1 text-xs text-gray-400">
+                  {item.user.firstName} {item.user.lastName}
+                </p>
+              )}
+            </div>
+          ))}
+
+          {sorted.length > MAX_ITEMS && (
+            <button
+              onClick={() => setShowAll(!showAll)}
+              className="w-full py-1 text-center text-xs font-medium text-primary-600 hover:text-primary-800"
+            >
+              {showAll
+                ? 'Minder tonen'
+                : `Alle ${sorted.length} items tonen`}
+            </button>
           )}
         </div>
-      </div>
+      )}
     </div>
   );
 }

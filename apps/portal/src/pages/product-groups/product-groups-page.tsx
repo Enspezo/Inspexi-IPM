@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { ProductGroup } from '@/types';
-import { Spinner, Button, Input, Table, type Column } from '@/components/ui';
+import { ActionMenu, Spinner, Button, Input, Table, type Column } from '@/components/ui';
 import { DetailPageLayout } from '@/components/layout/detail-page-layout';
 import { useAuth } from '@/providers/auth-provider';
 import { Role } from '@/types';
@@ -95,12 +95,15 @@ export default function ProductGroupsPage() {
             </p>
           </div>
           {userCanCreate && (
-            <Button onClick={() => setIsCreateOpen(true)}>
-              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-              </svg>
-              Productgroep aanmaken
-            </Button>
+            <ActionMenu
+              primaryActions={[
+                {
+                  label: 'Productgroep aanmaken',
+                  icon: <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>,
+                  onClick: () => setIsCreateOpen(true),
+                },
+              ]}
+            />
           )}
         </div>
 

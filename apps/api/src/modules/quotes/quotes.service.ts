@@ -144,7 +144,12 @@ export class QuotesService {
       const template = await this.prisma.quoteTemplate.findUnique({ where: { id: dto.templateId } });
       if (!template || !template.isActive) throw new NotFoundException('Template niet gevonden');
       if (!user.roles.includes(Role.SUPERUSER) && template.orgId !== orgId) throw new ForbiddenException('Template behoort niet tot uw organisatie');
-      templateData = { coverBlocks: template.coverBlocks, contentBlocks: template.contentBlocks, closingBlocks: template.closingBlocks, defaultValidityDays: template.defaultValidityDays, requiresApproval: template.requiresApproval };
+      if (template.templateType === 'RTF') {
+        // RTF templates only contribute metadata — block content is not applicable
+        templateData = { defaultValidityDays: template.defaultValidityDays, requiresApproval: template.requiresApproval };
+      } else {
+        templateData = { coverBlocks: template.coverBlocks, contentBlocks: template.contentBlocks, closingBlocks: template.closingBlocks, defaultValidityDays: template.defaultValidityDays, requiresApproval: template.requiresApproval };
+      }
     }
     let validUntil: Date | undefined;
     if (dto.validUntil) {

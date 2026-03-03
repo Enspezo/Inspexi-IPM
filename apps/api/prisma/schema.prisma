@@ -201,6 +201,11 @@ enum ProjectStatus {
   GEANNULEERD
 }
 
+enum QuoteTemplateType {
+  BLOCKS
+  RTF
+}
+
 enum CustomFieldType {
   TEXT
   NUMBER
@@ -334,6 +339,7 @@ model User {
   createdProjects           Project[]                  @relation("ProjectCreatedByUser")
   projectFollowers          ProjectFollower[]
   errorReports              ErrorReport[]
+  rtfRevisions              QuoteTemplateRtfRevision[]
 
   @@map("imp_users")
 }
@@ -675,22 +681,63 @@ model RequestStatusHistory {
 // ─── PRD-05: Quotes (Offertes) ────────────────────────────
 
 model QuoteTemplate {
-  id                  String   @id @default(uuid()) @db.Uuid
-  orgId               String   @map("org_id") @db.Uuid
+  id                  String             @id @default(uuid()) @db.Uuid
+  orgId               String             @map("org_id") @db.Uuid
   name                String
-  coverBlocks         Json?    @map("cover_blocks")
-  contentBlocks       Json?    @map("content_blocks")
-  closingBlocks       Json?    @map("closing_blocks")
-  defaultValidityDays Int      @default(30) @map("default_validity_days")
-  requiresApproval    Boolean  @default(false) @map("requires_approval")
-  isActive            Boolean  @default(true) @map("is_active")
-  createdAt           DateTime @default(now()) @map("created_at")
-  updatedAt           DateTime @updatedAt @map("updated_at")
+  description         String?            @db.Text
+  templateType        QuoteTemplateType  @default(BLOCKS) @map("template_type")
+  coverBlocks         Json?              @map("cover_blocks")
+  contentBlocks       Json?              @map("content_blocks")
+  closingBlocks       Json?              @map("closing_blocks")
+  rtfStorageKey       String?            @map("rtf_storage_key")
+  rtfFileName         String?            @map("rtf_file_name")
+  rtfFileSize         Int?               @map("rtf_file_size")
+  rtfPreviewHtml      String?            @map("rtf_preview_html") @db.Text
+  defaultValidityDays Int                @default(30) @map("default_validity_days")
+  requiresApproval    Boolean            @default(false) @map("requires_approval")
+  isActive            Boolean            @default(true) @map("is_active")
+  createdAt           DateTime           @default(now()) @map("created_at")
+  updatedAt           DateTime           @updatedAt @map("updated_at")
 
-  organization Organization @relation(fields: [orgId], references: [id])
+  organization Organization              @relation(fields: [orgId], references: [id])
   quotes       Quote[]
+  attachments  QuoteTemplateAttachment[]
+  rtfRevisions QuoteTemplateRtfRevision[]
 
   @@map("imp_quote_templates")
+}
+
+model QuoteTemplateAttachment {
+  id         String   @id @default(uuid()) @db.Uuid
+  templateId String   @map("template_id") @db.Uuid
+  storageKey String   @map("storage_key")
+  fileName   String   @map("file_name")
+  mimeType   String   @map("mime_type")
+  fileSize   Int      @map("file_size")
+  sortOrder  Int      @default(0) @map("sort_order")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  template QuoteTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+
+  @@index([templateId])
+  @@map("imp_quote_template_attachments")
+}
+
+model QuoteTemplateRtfRevision {
+  id           String   @id @default(uuid()) @db.Uuid
+  templateId   String   @map("template_id") @db.Uuid
+  storageKey   String   @map("storage_key")
+  fileName     String   @map("file_name")
+  fileSize     Int      @map("file_size")
+  uploadedById String   @map("uploaded_by_id") @db.Uuid
+  version      Int      @default(1)
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  template   QuoteTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  uploadedBy User          @relation(fields: [uploadedById], references: [id])
+
+  @@index([templateId])
+  @@map("imp_quote_template_rtf_revisions")
 }
 
 model Quote {

@@ -4,23 +4,35 @@ import {
   IsOptional,
   IsBoolean,
   IsInt,
+  IsEnum,
   Min,
 } from 'class-validator';
+import { QuoteTemplateType } from '@prisma/client';
 
 export class CreateQuoteTemplateDto {
   @ApiProperty({ example: 'Standaard Inspectie Offerte' })
   @IsString()
   name: string;
 
-  @ApiPropertyOptional({ description: 'Voorblad blokken (JSON)' })
+  @ApiPropertyOptional({ enum: QuoteTemplateType, default: 'BLOCKS' })
+  @IsOptional()
+  @IsEnum(QuoteTemplateType)
+  templateType?: QuoteTemplateType;
+
+  @ApiPropertyOptional({ description: 'Template beschrijving' })
+  @IsOptional()
+  @IsString()
+  description?: string;
+
+  @ApiPropertyOptional({ description: 'Voorblad blokken (JSON, legacy)' })
   @IsOptional()
   coverBlocks?: any;
 
-  @ApiPropertyOptional({ description: 'Inhoud blokken (JSON)' })
+  @ApiPropertyOptional({ description: 'Content blokken (JSON array van ContentBlock objecten)' })
   @IsOptional()
   contentBlocks?: any;
 
-  @ApiPropertyOptional({ description: 'Afsluitende blokken (JSON)' })
+  @ApiPropertyOptional({ description: 'Afsluitende blokken (JSON, legacy)' })
   @IsOptional()
   closingBlocks?: any;
 

@@ -1,5 +1,6 @@
 import { lazy, Suspense } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
+import ErrorBoundary from '@/components/error-boundary/error-boundary';
 import { ProtectedRoute } from '@/components/auth/protected-route';
 import { AppLayout } from '@/components/layout/app-layout';
 import { Spinner } from '@/components/ui';
@@ -75,6 +76,9 @@ const QuoteEditorPage = lazy(
 const QuoteTemplatesPage = lazy(
   () => import('@/pages/quotes/quote-templates-page'),
 );
+const QuoteTemplateDetailPage = lazy(
+  () => import('@/pages/quotes/quote-template-detail-page'),
+);
 const PublicQuotePage = lazy(
   () => import('@/pages/quotes/public-quote-page'),
 );
@@ -96,6 +100,8 @@ const ProjectDetailPage = lazy(() => import('@/pages/projects/project-detail-pag
 const SearchPage = lazy(() => import('@/pages/search/search-page'));
 const EmailTemplatesPage = lazy(() => import('@/pages/email-templates/email-templates-page'));
 const EmailTemplateDetailPage = lazy(() => import('@/pages/email-templates/email-template-detail-page'));
+const ErrorReportsPage = lazy(() => import('@/pages/error-reports/error-reports-page'));
+const NotesPage = lazy(() => import('@/pages/notes/notes-page'));
 
 function PageLoader() {
   return (
@@ -107,6 +113,7 @@ function PageLoader() {
 
 export default function App() {
   return (
+    <ErrorBoundary>
     <Suspense fallback={<PageLoader />}>
       <Routes>
         {/* Public routes */}
@@ -147,6 +154,7 @@ export default function App() {
             <Route path="/quotes/:id/edit" element={<QuoteEditorPage />} />
             <Route path="/quotes/:id" element={<QuoteDetailPage />} />
             <Route path="/quote-templates" element={<QuoteTemplatesPage />} />
+            <Route path="/quote-templates/:id" element={<QuoteTemplateDetailPage />} />
             <Route path="/email-templates" element={<EmailTemplatesPage />} />
             <Route path="/email-templates/:id" element={<EmailTemplateDetailPage />} />
             <Route path="/notifications" element={<NotificationsPage />} />
@@ -164,6 +172,8 @@ export default function App() {
             <Route path="/projects" element={<ProjectsPage />} />
             <Route path="/projects/:id" element={<ProjectDetailPage />} />
             <Route path="/search" element={<SearchPage />} />
+            <Route path="/error-reports" element={<ErrorReportsPage />} />
+            <Route path="/notities" element={<NotesPage />} />
           </Route>
         </Route>
 
@@ -171,5 +181,6 @@ export default function App() {
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>
     </Suspense>
+    </ErrorBoundary>
   );
 }

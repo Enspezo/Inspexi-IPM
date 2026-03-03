@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
+import { Link, useNavigate } from 'react-router-dom';
 import {
   ActionMenu,
   Button,
@@ -9,9 +10,8 @@ import {
   Table,
   Modal,
   Input,
-  Select,
+  Badge,
   useToast,
-  RichTextEditor,
 } from '@/components/ui';
 import { DetailPageLayout } from '@/components/layout/detail-page-layout';
 import {
@@ -21,33 +21,28 @@ import {
 } from '@/components/table-config';
 import { useAuth } from '@/providers/auth-provider';
 import { Role } from '@/types';
-import type { QuoteTemplate } from '@/types';
+import type { QuoteTemplate, QuoteTemplateType } from '@/types';
 import {
   useQuoteTemplates,
   useCreateQuoteTemplate,
-  useUpdateQuoteTemplate,
   useDeleteQuoteTemplate,
 } from './hooks/use-quote-templates';
 
 const adminRoles = [Role.SUPERUSER, Role.ORG_ADMIN];
 
-const schema = z.object({
+const createSchema = z.object({
   name: z.string().min(1, 'Naam is verplicht'),
-  defaultValidityDays: z.coerce.number().min(1, 'Minimaal 1 dag'),
-  requiresApproval: z.string(),
 });
 
-type FormData = z.infer<typeof schema>;
+type CreateFormData = z.infer<typeof createSchema>;
 
 export default function QuoteTemplatesPage() {
   const { user } = useAuth();
   const { showToast } = useToast();
   const [page, setPage] = useState(1);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
-  const [editingTemplate, setEditingTemplate] = useState<QuoteTemplate | null>(null);
 
   const { data, isLoading, error } = useQuoteTemplates({ page, limit: 20 });
-  const createMutation = useCreateQuoteTemplate();
   const deleteMutation = useDeleteQuoteTemplate();
 
   const userIsAdmin = user && user.roles.some(r => adminRoles.includes(r));
@@ -58,12 +53,39 @@ export default function QuoteTemplatesPage() {
       header: 'Naam',
       pinned: true,
       render: (t) => (
-        <button
-          onClick={() => setEditingTemplate(t)}
+        <Link
+          to={`/quote-templates/${t.id}`}
           className="font-medium text-primary-600 hover:text-primary-800 hover:underline"
         >
           {t.name}
-        </button>
+        </Link>
+      ),
+    },
+    {
+      key: 'templateType',
+      header: 'Type',
+      filterable: true,
+      filterType: 'select',
+      getFilterValue: (t) => t.templateType,
+      render: (t) => (
+        <span
+          className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ring-1 ring-inset ${
+            t.templateType === 'RTF'
+              ? 'bg-amber-50 text-amber-700 ring-amber-600/20'
+              : 'bg-blue-50 text-blue-700 ring-blue-600/20'
+          }`}
+        >
+          {t.templateType === 'RTF' ? 'RTF' : 'Blokken'}
+        </span>
+      ),
+    },
+    {
+      key: 'description',
+      header: 'Beschrijving',
+      render: (t) => (
+        <span className="text-gray-600 text-sm truncate max-w-xs block">
+          {t.description || '—'}
+        </span>
       ),
     },
     {
@@ -262,53 +284,40 @@ export default function QuoteTemplatesPage() {
         isOpen={isCreateOpen}
         onClose={() => setIsCreateOpen(false)}
       />
-
-      {/* Edit modal */}
-      {editingTemplate && (
-        <EditTemplateModal
-          isOpen={!!editingTemplate}
-          onClose={() => setEditingTemplate(null)}
-          template={editingTemplate}
-        />
-      )}
     </div>
     </DetailPageLayout>
   );
 }
 
-// --- Create Template Modal ---
+// --- Create Template Modal (with type selector) ---
 
 function CreateTemplateModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
   const { showToast } = useToast();
+  const navigate = useNavigate();
   const createMutation = useCreateQuoteTemplate();
-  const [contentBlocks, setContentBlocks] = useState<object | null>(null);
+  const [selectedType, setSelectedType] = useState<QuoteTemplateType>('BLOCKS');
 
   const {
     register,
     handleSubmit,
     reset,
     formState: { errors },
-  } = useForm<FormData>({
-    resolver: zodResolver(schema),
-    defaultValues: {
-      name: '',
-      defaultValidityDays: 30,
-      requiresApproval: 'false',
-    },
+  } = useForm<CreateFormData>({
+    resolver: zodResolver(createSchema),
+    defaultValues: { name: '' },
   });
 
-  const onSubmit = async (data: FormData) => {
+  const onSubmit = async (data: CreateFormData) => {
     try {
-      await createMutation.mutateAsync({
+      const template = await createMutation.mutateAsync({
         name: data.name,
-        defaultValidityDays: data.defaultValidityDays,
-        requiresApproval: data.requiresApproval === 'true',
-        contentBlocks: contentBlocks ?? undefined,
+        templateType: selectedType,
       });
       showToast('Template aangemaakt', 'success');
       reset();
-      setContentBlocks(null);
+      setSelectedType('BLOCKS');
       onClose();
+      navigate(`/quote-templates/${template.id}`);
     } catch {
       showToast('Aanmaken mislukt', 'error');
     }
@@ -316,41 +325,62 @@ function CreateTemplateModal({ isOpen, onClose }: { isOpen: boolean; onClose: ()
 
   const handleClose = () => {
     reset();
-    setContentBlocks(null);
+    setSelectedType('BLOCKS');
     onClose();
   };
 
   return (
     <Modal isOpen={isOpen} onClose={handleClose} title="Template aanmaken">
-      <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+      <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
+        {/* Template type selector */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Template type
+          </label>
+          <div className="grid grid-cols-2 gap-3">
+            <button
+              type="button"
+              onClick={() => setSelectedType('BLOCKS')}
+              className={`flex flex-col items-center gap-2 rounded-lg border-2 p-4 text-center transition-colors ${
+                selectedType === 'BLOCKS'
+                  ? 'border-primary-500 bg-primary-50 text-primary-700'
+                  : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300'
+              }`}
+            >
+              <svg className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6A2.25 2.25 0 0 1 6 3.75h2.25A2.25 2.25 0 0 1 10.5 6v2.25a2.25 2.25 0 0 1-2.25 2.25H6a2.25 2.25 0 0 1-2.25-2.25V6ZM3.75 15.75A2.25 2.25 0 0 1 6 13.5h2.25a2.25 2.25 0 0 1 2.25 2.25V18a2.25 2.25 0 0 1-2.25 2.25H6A2.25 2.25 0 0 1 3.75 18v-2.25ZM13.5 6a2.25 2.25 0 0 1 2.25-2.25H18A2.25 2.25 0 0 1 20.25 6v2.25A2.25 2.25 0 0 1 18 10.5h-2.25a2.25 2.25 0 0 1-2.25-2.25V6ZM13.5 15.75a2.25 2.25 0 0 1 2.25-2.25H18a2.25 2.25 0 0 1 2.25 2.25V18A2.25 2.25 0 0 1 18 20.25h-2.25a2.25 2.25 0 0 1-2.25-2.25v-2.25Z" />
+              </svg>
+              <span className="text-sm font-medium">Blokken sjabloon</span>
+              <span className="text-xs text-gray-500">
+                Bouw op met tekst, afbeeldingen en offerteregels
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setSelectedType('RTF')}
+              className={`flex flex-col items-center gap-2 rounded-lg border-2 p-4 text-center transition-colors ${
+                selectedType === 'RTF'
+                  ? 'border-primary-500 bg-primary-50 text-primary-700'
+                  : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300'
+              }`}
+            >
+              <svg className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" />
+              </svg>
+              <span className="text-sm font-medium">RTF Sjabloon</span>
+              <span className="text-xs text-gray-500">
+                Upload een RTF bestand met [[placeholders]]
+              </span>
+            </button>
+          </div>
+        </div>
+
         <Input
           label="Naam"
           placeholder="Naam van het template"
           error={errors.name?.message}
           {...register('name')}
         />
-
-        <Input
-          label="Geldigheidsdagen"
-          type="number"
-          min={1}
-          error={errors.defaultValidityDays?.message}
-          {...register('defaultValidityDays')}
-        />
-
-        <Select
-          label="Goedkeuring vereist"
-          options={[
-            { value: 'false', label: 'Nee' },
-            { value: 'true', label: 'Ja' },
-          ]}
-          {...register('requiresApproval')}
-        />
-
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Standaard inhoud (optioneel)</label>
-          <RichTextEditor value={contentBlocks} onChange={setContentBlocks} placeholder="Standaard tekst voor offertes op basis van dit template..." />
-        </div>
 
         <div className="flex justify-end gap-3 pt-2">
           <Button type="button" variant="secondary" onClick={handleClose}>
@@ -358,102 +388,6 @@ function CreateTemplateModal({ isOpen, onClose }: { isOpen: boolean; onClose: ()
           </Button>
           <Button type="submit" isLoading={createMutation.isPending}>
             Aanmaken
-          </Button>
-        </div>
-      </form>
-    </Modal>
-  );
-}
-
-// --- Edit Template Modal ---
-
-function EditTemplateModal({
-  isOpen,
-  onClose,
-  template,
-}: {
-  isOpen: boolean;
-  onClose: () => void;
-  template: QuoteTemplate;
-}) {
-  const { showToast } = useToast();
-  const updateMutation = useUpdateQuoteTemplate(template.id);
-  const [contentBlocks, setContentBlocks] = useState<object | null>(
-    (template.contentBlocks as object) ?? null
-  );
-
-  const {
-    register,
-    handleSubmit,
-    reset,
-    formState: { errors },
-  } = useForm<FormData>({
-    resolver: zodResolver(schema),
-    defaultValues: {
-      name: template.name,
-      defaultValidityDays: template.defaultValidityDays,
-      requiresApproval: template.requiresApproval ? 'true' : 'false',
-    },
-  });
-
-  const onSubmit = async (data: FormData) => {
-    try {
-      await updateMutation.mutateAsync({
-        name: data.name,
-        defaultValidityDays: data.defaultValidityDays,
-        requiresApproval: data.requiresApproval === 'true',
-        contentBlocks: contentBlocks ?? undefined,
-      });
-      showToast('Template bijgewerkt', 'success');
-      onClose();
-    } catch {
-      showToast('Bijwerken mislukt', 'error');
-    }
-  };
-
-  const handleClose = () => {
-    reset();
-    onClose();
-  };
-
-  return (
-    <Modal isOpen={isOpen} onClose={handleClose} title="Template bewerken">
-      <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-        <Input
-          label="Naam"
-          placeholder="Naam van het template"
-          error={errors.name?.message}
-          {...register('name')}
-        />
-
-        <Input
-          label="Geldigheidsdagen"
-          type="number"
-          min={1}
-          error={errors.defaultValidityDays?.message}
-          {...register('defaultValidityDays')}
-        />
-
-        <Select
-          label="Goedkeuring vereist"
-          options={[
-            { value: 'false', label: 'Nee' },
-            { value: 'true', label: 'Ja' },
-          ]}
-          {...register('requiresApproval')}
-        />
-
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Standaard inhoud (optioneel)</label>
-          <RichTextEditor value={contentBlocks} onChange={setContentBlocks} placeholder="Standaard tekst voor offertes op basis van dit template..." />
-        </div>
-
-        <div className="flex justify-end gap-3 pt-2">
-          <Button type="button" variant="secondary" onClick={handleClose}>
-            Annuleren
-          </Button>
-          <Button type="submit" isLoading={updateMutation.isPending}>
-            Opslaan
           </Button>
         </div>
       </form>

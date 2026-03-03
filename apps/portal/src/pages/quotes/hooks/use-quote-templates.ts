@@ -1,6 +1,13 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api-client';
-import type { QuoteTemplate, PaginatedResponse } from '@/types';
+import type {
+  QuoteTemplate,
+  QuoteTemplateAttachment,
+  QuoteTemplateRtfRevision,
+  QuoteTemplateType,
+  ContentBlock,
+  PaginatedResponse,
+} from '@/types';
 
 interface ListQuoteTemplatesParams {
   search?: string;
@@ -35,9 +42,11 @@ export function useQuoteTemplate(id: string) {
 
 interface CreateQuoteTemplateDto {
   name: string;
+  description?: string;
+  templateType?: QuoteTemplateType;
   defaultValidityDays?: number;
   requiresApproval?: boolean;
-  contentBlocks?: object;
+  contentBlocks?: ContentBlock[];
 }
 
 export function useCreateQuoteTemplate() {
@@ -54,10 +63,11 @@ export function useCreateQuoteTemplate() {
 
 interface UpdateQuoteTemplateDto {
   name?: string;
+  description?: string;
   defaultValidityDays?: number;
   requiresApproval?: boolean;
   isActive?: boolean;
-  contentBlocks?: object;
+  contentBlocks?: ContentBlock[];
 }
 
 export function useUpdateQuoteTemplate(id: string) {
@@ -80,5 +90,113 @@ export function useDeleteQuoteTemplate() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['quote-templates'] });
     },
+  });
+}
+
+// ── Image upload for block editor ──────────────────────────
+
+export function useUploadTemplateImage(templateId: string) {
+  return useMutation({
+    mutationFn: (formData: FormData) =>
+      apiClient.upload<{ storageKey: string; fileName: string }>(
+        `/quote-templates/${templateId}/images`,
+        formData,
+      ),
+  });
+}
+
+// ── Template attachments ───────────────────────────────────
+
+export function useTemplateAttachments(templateId: string) {
+  return useQuery<QuoteTemplateAttachment[]>({
+    queryKey: ['quote-templates', templateId, 'attachments'],
+    queryFn: () =>
+      apiClient.get<QuoteTemplateAttachment[]>(
+        `/quote-templates/${templateId}/attachments`,
+      ),
+    enabled: !!templateId,
+  });
+}
+
+export function useUploadTemplateAttachment(templateId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (formData: FormData) =>
+      apiClient.upload<QuoteTemplateAttachment>(
+        `/quote-templates/${templateId}/attachments`,
+        formData,
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ['quote-templates', templateId, 'attachments'],
+      });
+    },
+  });
+}
+
+export function useDeleteTemplateAttachment(templateId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (attachmentId: string) =>
+      apiClient.delete(
+        `/quote-templates/${templateId}/attachments/${attachmentId}`,
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ['quote-templates', templateId, 'attachments'],
+      });
+    },
+  });
+}
+
+export function useReorderTemplateAttachments(templateId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (attachmentIds: string[]) =>
+      apiClient.patch(
+        `/quote-templates/${templateId}/attachments/reorder`,
+        { attachmentIds },
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ['quote-templates', templateId, 'attachments'],
+      });
+    },
+  });
+}
+
+// ── RTF file management ─────────────────────────────────────
+
+export function useUploadRtfFile(templateId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (formData: FormData) =>
+      apiClient.upload<QuoteTemplate>(
+        `/quote-templates/${templateId}/rtf`,
+        formData,
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ['quote-templates', templateId],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ['quote-templates', templateId, 'rtf-revisions'],
+      });
+    },
+  });
+}
+
+export function useRtfRevisions(templateId: string) {
+  return useQuery<QuoteTemplateRtfRevision[]>({
+    queryKey: ['quote-templates', templateId, 'rtf-revisions'],
+    queryFn: () =>
+      apiClient.get<QuoteTemplateRtfRevision[]>(
+        `/quote-templates/${templateId}/rtf/revisions`,
+      ),
+    enabled: !!templateId,
   });
 }

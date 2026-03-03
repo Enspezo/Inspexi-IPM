@@ -95,6 +95,10 @@ const enumLabels: Record<string, string> = {
   WACHTWOORD_RESET: 'Wachtwoord reset',
   NOTIFICATIE: 'Notificatie',
 
+  // QuoteTemplateType
+  BLOCKS: 'Blokken sjabloon',
+  RTF: 'RTF sjabloon',
+
   // CustomFieldEntityType
   CONTACT: 'Relatie',
   CONTACT_ADDRESS: 'Adres',

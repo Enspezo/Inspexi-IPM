@@ -110,8 +110,12 @@ const entityLabels: Record<string, Record<string, string>> = {
     sortOrder: 'Sortering',
   },
   QuoteTemplate: {
+    templateType: 'Sjabloontype',
     defaultValidityDays: 'Standaard geldigheidsdagen',
     requiresApproval: 'Goedkeuring vereist',
+    rtfFileName: 'RTF bestandsnaam',
+    rtfFileSize: 'RTF bestandsgrootte',
+    rtfStorageKey: 'RTF opslagsleutel',
   },
   User: {
     emailVerifiedAt: 'E-mail geverifieerd op',

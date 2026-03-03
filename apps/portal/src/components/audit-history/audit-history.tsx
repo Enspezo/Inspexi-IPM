@@ -114,8 +114,6 @@ export function AuditHistory({ entityType, entityId }: AuditHistoryProps) {
 
   return (
     <div className="space-y-4">
-      <h3 className="text-sm font-semibold text-gray-900">Geschiedenis</h3>
-
       {isLoading && (
         <div className="flex justify-center py-8">
           <Spinner size="sm" />

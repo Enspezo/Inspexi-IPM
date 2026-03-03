@@ -419,18 +419,71 @@ export enum ApprovalStatus {
   REJECTED = 'REJECTED',
 }
 
+// ── Block editor types ─────────────────────────────────────
+
+export type BlockType = 'rich_text' | 'image' | 'quote_lines';
+export type BlockWidth = 'full' | 'half';
+
+export interface ContentBlock {
+  id: string;
+  type: BlockType;
+  width: BlockWidth;
+  order: number;
+  content: {
+    tiptapJson?: object;
+    storageKey?: string;
+    fileName?: string;
+    alt?: string;
+    title?: string;
+  };
+}
+
+export type QuoteTemplateType = 'BLOCKS' | 'RTF';
+
+export interface QuoteTemplateAttachment {
+  id: string;
+  templateId: string;
+  storageKey: string;
+  fileName: string;
+  mimeType: string;
+  fileSize: number;
+  sortOrder: number;
+  createdAt: string;
+}
+
+export interface QuoteTemplateRtfRevision {
+  id: string;
+  templateId: string;
+  storageKey: string;
+  fileName: string;
+  fileSize: number;
+  uploadedById: string;
+  uploadedBy?: { id: string; firstName: string; lastName: string };
+  version: number;
+  createdAt: string;
+}
+
 export interface QuoteTemplate {
   id: string;
   orgId: string;
   name: string;
+  description: string | null;
+  templateType: QuoteTemplateType;
   coverBlocks: any;
-  contentBlocks: any;
+  contentBlocks: ContentBlock[] | any;
   closingBlocks: any;
+  rtfStorageKey: string | null;
+  rtfFileName: string | null;
+  rtfFileSize: number | null;
+  rtfPreviewHtml: string | null;
   defaultValidityDays: number;
   requiresApproval: boolean;
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
+  attachments?: QuoteTemplateAttachment[];
+  rtfRevisions?: QuoteTemplateRtfRevision[];
+  _count?: { attachments: number };
 }
 
 export interface Quote {
@@ -649,6 +702,34 @@ export interface Task {
   updatedAt: string;
   assignee?: UserSummary;
   createdBy?: UserSummary;
+}
+
+// ─── Notes (Threaded) ────────────────────────────────────
+
+export enum NoteEntityType {
+  CONTACT = 'CONTACT',
+  REQUEST = 'REQUEST',
+  QUOTE = 'QUOTE',
+  PLANNING = 'PLANNING',
+  PROJECT = 'PROJECT',
+  USER = 'USER',
+}
+
+export interface Note {
+  id: string;
+  orgId: string;
+  entityType: NoteEntityType;
+  entityId: string;
+  entityName?: string | null;
+  content: string;
+  createdById: string;
+  createdBy: { id: string; firstName: string; lastName: string };
+  parentId: string | null;
+  isDeleted: boolean;
+  createdAt: string;
+  updatedAt: string;
+  replies?: Note[];
+  replyCount?: number;
 }
 
 // ─── Document Management ────────────────────────────────
@@ -1124,4 +1205,26 @@ export interface EmailTemplateTypeInfo {
   type: EmailTemplateType;
   label: string;
   placeholders: PlaceholderGroup[];
+}
+
+// ─── Error Reports ──────────────────────────────────────
+
+export type ErrorReportStatus = 'OPEN' | 'IN_BEHANDELING' | 'OPGELOST';
+
+export interface ErrorReport {
+  id: string;
+  orgId: string | null;
+  userId: string | null;
+  errorMessage: string;
+  stackTrace: string | null;
+  componentStack: string | null;
+  userDescription: string | null;
+  pageUrl: string | null;
+  userAgent: string | null;
+  metadata: Record<string, unknown> | null;
+  status: ErrorReportStatus;
+  createdAt: string;
+  updatedAt: string;
+  user?: { id: string; firstName: string; lastName: string; email: string } | null;
+  organization?: { id: string; name: string; slug: string } | null;
 }

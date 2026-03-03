@@ -35,6 +35,8 @@ import { EmailTemplatesModule } from './modules/email-templates/email-templates.
 import { ProjectsModule } from './modules/projects/projects.module';
 import { KvkModule } from './modules/kvk/kvk.module';
 import { VatModule } from './modules/vat/vat.module';
+import { ErrorReportsModule } from './modules/error-reports/error-reports.module';
+import { NotesModule } from './modules/notes/notes.module';
 
 @Module({
   imports: [
@@ -67,6 +69,8 @@ import { VatModule } from './modules/vat/vat.module';
     ProjectsModule,
     KvkModule,
     VatModule,
+    ErrorReportsModule,
+    NotesModule,
   ],
   providers: [
     {

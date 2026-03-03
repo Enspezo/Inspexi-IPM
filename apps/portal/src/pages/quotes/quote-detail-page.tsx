@@ -9,10 +9,12 @@ import {
   DocumentEntityType,
   CustomFieldEntityType,
   LogType,
+  NoteEntityType,
 } from '@/types';
 import type { Task, ContactLog } from '@/types';
 import { ActionMenu, type ActionMenuItem, Button, Card, Spinner, Input, Table, useToast, type Column } from '@/components/ui';
 import { DetailPageLayout, SidebarSection } from '@/components/layout/detail-page-layout';
+import { NotesSidebarSection, HistorySidebarSection } from '@/components/layout/sidebar-sections';
 import { useAuth } from '@/providers/auth-provider';
 import {
   useQuote,
@@ -29,7 +31,6 @@ import type { QuoteLine, QuoteApprovalRequest, QuoteQuestion, QuoteAttachment } 
 import { useContactLogs } from '@/pages/contacts/hooks/use-contacts';
 import { AddLogModal } from '@/pages/contacts/components/add-log-modal';
 import { useTasks, useUpdateTask } from '@/pages/tasks/hooks/use-tasks';
-import { AuditHistory } from '@/components/audit-history/audit-history';
 import { CreateTaskModal } from '@/pages/tasks/components/create-task-modal';
 import { EditTaskModal } from '@/pages/tasks/components/edit-task-modal';
 import { DocumentsSection, UploadDocumentModal } from '@/components/documents';
@@ -272,14 +273,14 @@ export default function QuoteDetailPage() {
   const logs = contactLogs || [];
 
   const sidebarContent = (
-    <div>
+    <div className="space-y-8">
       <SidebarSection
         icon={
           <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
         }
-        label="Contactgeschiedenis"
+        label="Contactmomenten"
         count={logs.length}
       >
         <ContactLogsSidebar
@@ -305,16 +306,9 @@ export default function QuoteDetailPage() {
         />
       </SidebarSection>
 
-      <SidebarSection
-        icon={
-          <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-          </svg>
-        }
-        label="Wijzigingshistorie"
-      >
-        <AuditHistory entityType="Quote" entityId={id} />
-      </SidebarSection>
+      <NotesSidebarSection entityType={NoteEntityType.QUOTE} entityId={id!} />
+
+      <HistorySidebarSection entityType="Quote" entityId={id} />
     </div>
   );
 

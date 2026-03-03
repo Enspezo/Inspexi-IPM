@@ -1,5 +1,6 @@
 import { PrismaClient, Role, ContactType, LogType, PriceType, RequestSource, RequestStatus, Priority, QuoteStatus, NotificationType, PlanningStatus, AcceptanceStatus, ProjectStatus } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
+import { randomUUID } from 'crypto';
 
 const prisma = new PrismaClient();
 
@@ -15,6 +16,8 @@ async function main() {
   await prisma.quoteApprovalRequest.deleteMany();
   await prisma.quoteLine.deleteMany();
   await prisma.quote.deleteMany();
+  await prisma.quoteTemplateRtfRevision.deleteMany();
+  await prisma.quoteTemplateAttachment.deleteMany();
   await prisma.quoteTemplate.deleteMany();
   // PRD-04 tables (dependent on products/price-tables)
   await prisma.priceTier.deleteMany();
@@ -46,7 +49,8 @@ async function main() {
   await prisma.location.deleteMany();
   await prisma.contactAddress.deleteMany();
   await prisma.contact.deleteMany();
-  // Tasks & Documents (dependent on users)
+  // Tasks, Documents & Notes (dependent on users)
+  await prisma.note.deleteMany();
   await prisma.document.deleteMany();
   await prisma.task.deleteMany();
   // Custom fields & email templates
@@ -809,17 +813,47 @@ async function main() {
     data: {
       orgId: org1.id,
       name: 'Standaard Inspectie Offerte',
-      coverBlocks: [
-        { type: 'heading', content: 'Offerte Inspectie' },
-        { type: 'text', content: 'Hierbij ontvangt u onze offerte voor de gevraagde inspectie.' },
-      ],
+      description: 'Standaard template voor inspectieopdrachten. Bevat introductietekst, offerteregels en afsluiting.',
       contentBlocks: [
-        { type: 'heading', content: 'Werkzaamheden' },
-        { type: 'text', content: 'De volgende werkzaamheden zijn opgenomen in deze offerte:' },
-      ],
-      closingBlocks: [
-        { type: 'text', content: 'Wij vertrouwen erop u hiermee een passend aanbod te hebben gedaan.' },
-        { type: 'text', content: 'Met vriendelijke groet,\nInspeXi Demo' },
+        {
+          id: randomUUID(),
+          type: 'rich_text',
+          width: 'full',
+          order: 0,
+          content: {
+            tiptapJson: {
+              type: 'doc',
+              content: [
+                { type: 'heading', attrs: { level: 2 }, content: [{ type: 'text', text: 'Offerte Inspectie' }] },
+                { type: 'paragraph', content: [{ type: 'text', text: 'Beste {{contact.voornaam}} {{contact.achternaam}},' }] },
+                { type: 'paragraph', content: [{ type: 'text', text: 'Hierbij ontvangt u onze offerte voor de gevraagde inspectie. De volgende werkzaamheden zijn opgenomen in deze offerte:' }] },
+              ],
+            },
+          },
+        },
+        {
+          id: randomUUID(),
+          type: 'quote_lines',
+          width: 'full',
+          order: 1,
+          content: { title: 'Offerteregels' },
+        },
+        {
+          id: randomUUID(),
+          type: 'rich_text',
+          width: 'full',
+          order: 2,
+          content: {
+            tiptapJson: {
+              type: 'doc',
+              content: [
+                { type: 'paragraph', content: [{ type: 'text', text: 'Wij vertrouwen erop u hiermee een passend aanbod te hebben gedaan.' }] },
+                { type: 'paragraph', content: [{ type: 'text', text: 'Met vriendelijke groet,' }] },
+                { type: 'paragraph', content: [{ type: 'text', text: '{{organisatie.naam}}' }] },
+              ],
+            },
+          },
+        },
       ],
       defaultValidityDays: 30,
       requiresApproval: false,
@@ -831,9 +865,45 @@ async function main() {
     data: {
       orgId: org1.id,
       name: 'Groot Project Offerte (goedkeuring vereist)',
-      coverBlocks: [{ type: 'heading', content: 'Projectofferte' }],
-      contentBlocks: [{ type: 'text', content: 'Projectomschrijving en specificaties:' }],
-      closingBlocks: [{ type: 'text', content: 'Wij zien uw reactie met belangstelling tegemoet.' }],
+      description: 'Template voor grote projectoffertes die goedkeuring vereisen van een manager.',
+      contentBlocks: [
+        {
+          id: randomUUID(),
+          type: 'rich_text',
+          width: 'full',
+          order: 0,
+          content: {
+            tiptapJson: {
+              type: 'doc',
+              content: [
+                { type: 'heading', attrs: { level: 1 }, content: [{ type: 'text', text: 'Projectofferte' }] },
+                { type: 'paragraph', content: [{ type: 'text', text: 'Projectomschrijving en specificaties:' }] },
+              ],
+            },
+          },
+        },
+        {
+          id: randomUUID(),
+          type: 'quote_lines',
+          width: 'full',
+          order: 1,
+          content: { title: 'Uw investering' },
+        },
+        {
+          id: randomUUID(),
+          type: 'rich_text',
+          width: 'full',
+          order: 2,
+          content: {
+            tiptapJson: {
+              type: 'doc',
+              content: [
+                { type: 'paragraph', content: [{ type: 'text', text: 'Wij zien uw reactie met belangstelling tegemoet.' }] },
+              ],
+            },
+          },
+        },
+      ],
       defaultValidityDays: 14,
       requiresApproval: true,
     },

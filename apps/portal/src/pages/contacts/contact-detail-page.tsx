@@ -23,12 +23,13 @@ import { AddLocationModal } from './components/add-location-modal';
 import { EditLocationModal } from './components/edit-location-modal';
 import { AddLogModal } from './components/add-log-modal';
 import { SendEmailModal } from './components/send-email-modal';
-import { AuditHistory } from '@/components/audit-history/audit-history';
 import { CreateTaskModal } from '@/pages/tasks/components/create-task-modal';
 import { EditTaskModal } from '@/pages/tasks/components/edit-task-modal';
 import { CreateRequestModal } from '@/pages/requests/components/create-request-modal';
 import { DocumentsSection, UploadDocumentModal } from '@/components/documents';
 import { CustomFieldsDisplay, CustomFieldsForm } from '@/components/custom-fields';
+import { NoteEntityType } from '@/types';
+import { NotesSidebarSection, HistorySidebarSection } from '@/components/layout/sidebar-sections';
 
 type Tab = 'algemeen' | 'adressen' | 'locaties' | 'aanvragen' | 'offertes' | 'planning' | 'projecten';
 
@@ -394,14 +395,14 @@ export default function ContactDetailPage() {
   });
 
   const sidebarContent = (
-    <div>
+    <div className="space-y-8">
       <SidebarSection
         icon={
           <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
         }
-        label="Contactgeschiedenis"
+        label="Contactmomenten"
         count={timeline.length}
       >
         <ContactHistorySidebar
@@ -429,16 +430,9 @@ export default function ContactDetailPage() {
         />
       </SidebarSection>
 
-      <SidebarSection
-        icon={
-          <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-          </svg>
-        }
-        label="Wijzigingshistorie"
-      >
-        <AuditHistory entityType="Contact" entityId={id} />
-      </SidebarSection>
+      <NotesSidebarSection entityType={NoteEntityType.CONTACT} entityId={id!} />
+
+      <HistorySidebarSection entityType="Contact" entityId={id} />
     </div>
   );
 

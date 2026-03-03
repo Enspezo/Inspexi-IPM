@@ -9,11 +9,12 @@ import {
   TaskStatus,
   DocumentEntityType,
   Role,
+  NoteEntityType,
 } from '@/types';
 import type { Project, ProjectFollower } from '@/types';
 import { ActionMenu, Button, Spinner, Input, Select, Card, Modal } from '@/components/ui';
 import { DetailPageLayout, SidebarSection } from '@/components/layout/detail-page-layout';
-import { AuditHistory } from '@/components/audit-history/audit-history';
+import { NotesSidebarSection, HistorySidebarSection } from '@/components/layout/sidebar-sections';
 import { DocumentsSection, UploadDocumentModal } from '@/components/documents';
 import { useAuth } from '@/providers/auth-provider';
 import { useToast } from '@/components/ui';
@@ -219,7 +220,7 @@ export default function ProjectDetailPage() {
       <DetailPageLayout
         iconStrip
         sidebar={
-          <>
+          <div className="space-y-8">
             <SidebarSection
               icon={<svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" /></svg>}
               label="Taken"
@@ -288,13 +289,10 @@ export default function ProjectDetailPage() {
               </div>
             </SidebarSection>
 
-            <SidebarSection
-              icon={<svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>}
-              label="Audit"
-            >
-              <AuditHistory entityType="Project" entityId={id} />
-            </SidebarSection>
-          </>
+            <NotesSidebarSection entityType={NoteEntityType.PROJECT} entityId={id!} />
+
+            <HistorySidebarSection entityType="Project" entityId={id} />
+          </div>
         }
       >
         <div className="space-y-6">

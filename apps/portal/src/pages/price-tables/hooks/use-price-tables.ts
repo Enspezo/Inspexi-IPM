@@ -6,6 +6,8 @@ interface ListPriceTablesParams {
   search?: string;
   page?: number;
   limit?: number;
+  sortBy?: string;
+  sortOrder?: 'asc' | 'desc';
 }
 
 export function usePriceTables(params: ListPriceTablesParams = {}) {
@@ -13,6 +15,8 @@ export function usePriceTables(params: ListPriceTablesParams = {}) {
   if (params.search) queryParams.set('search', params.search);
   if (params.page) queryParams.set('page', String(params.page));
   if (params.limit) queryParams.set('limit', String(params.limit));
+  if (params.sortBy) queryParams.set('sortBy', params.sortBy);
+  if (params.sortOrder) queryParams.set('sortOrder', params.sortOrder);
 
   const qs = queryParams.toString();
   const endpoint = `/price-tables${qs ? `?${qs}` : ''}`;
@@ -99,5 +103,6 @@ export function usePriceTableForContact(contactId: string) {
     queryFn: () =>
       apiClient.get<PriceTable[]>(`/price-tables/for-contact/${contactId}`),
     enabled: !!contactId,
+    staleTime: 30 * 60 * 1000, // 30 min — pricing assignments rarely change
   });
 }

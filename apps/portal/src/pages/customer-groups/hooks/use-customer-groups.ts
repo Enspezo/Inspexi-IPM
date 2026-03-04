@@ -30,6 +30,7 @@ export function useCustomerGroupsCompact() {
       apiClient.get<{ id: string; name: string }[]>(
         '/customer-groups/compact',
       ),
+    staleTime: 30 * 60 * 1000, // 30 min — dropdown options, admin-only changes
   });
 }
 

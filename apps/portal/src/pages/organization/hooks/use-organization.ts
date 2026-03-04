@@ -7,6 +7,7 @@ export function useOrganization(orgId: string | null | undefined) {
     queryKey: ['organization', orgId],
     queryFn: () => apiClient.get<Organization>(`/organizations/${orgId}`),
     enabled: !!orgId,
+    staleTime: 60 * 60 * 1000, // 1 hour — own org details rarely change
   });
 }
 

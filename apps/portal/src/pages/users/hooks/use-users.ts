@@ -7,6 +7,7 @@ export function useUsers() {
   return useQuery<User[]>({
     queryKey: ['users'],
     queryFn: () => apiClient.get<User[]>('/users'),
+    staleTime: 15 * 60 * 1000, // 15 min — user list for dropdowns, rarely changes
   });
 }
 

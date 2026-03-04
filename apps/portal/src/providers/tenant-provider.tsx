@@ -1,11 +1,11 @@
 import {
   createContext,
   useContext,
-  useState,
   useEffect,
   useMemo,
   type ReactNode,
 } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { getTenantInfo, type TenantInfo } from '@/lib/tenant';
 
 export interface OrgBranding {
@@ -90,58 +90,48 @@ function applyOrgTheme(primaryColor: string) {
   };
 
   Object.entries(shades).forEach(([shade, lightness]) => {
-    const color = `oklch(from hsl(${h}, ${s}%, ${lightness}%) l c h)`;
-    // Fallback to HSL since Tailwind v4 @theme uses direct color values
     const hslColor = `hsl(${h}, ${s}%, ${lightness}%)`;
     root.style.setProperty(`--color-primary-${shade}`, hslColor);
   });
 }
 
+async function fetchBranding(slug: string): Promise<OrgBranding> {
+  const response = await fetch(`/api/v1/organizations/by-slug/${slug}`);
+
+  if (!response.ok) {
+    if (response.status === 404) {
+      throw new Error('Organisatie niet gevonden');
+    }
+    throw new Error('Fout bij het laden van organisatie');
+  }
+
+  const json = await response.json();
+  return json.data;
+}
+
 export function TenantProvider({ children }: TenantProviderProps) {
   const tenantInfo = useMemo(() => getTenantInfo(), []);
-  const [orgBranding, setOrgBranding] = useState<OrgBranding | null>(null);
-  const [isLoading, setIsLoading] = useState(!!tenantInfo.slug);
-  const [error, setError] = useState<string | null>(null);
 
+  const {
+    data: orgBranding = null,
+    isLoading,
+    error: queryError,
+  } = useQuery<OrgBranding>({
+    queryKey: ['org-branding', tenantInfo.slug],
+    queryFn: () => fetchBranding(tenantInfo.slug!),
+    enabled: !!tenantInfo.slug,
+    staleTime: 30 * 60 * 1000, // 30 min — branding rarely changes
+    retry: 1,
+  });
+
+  const error = queryError ? (queryError as Error).message : null;
+
+  // Apply org theme when branding data is available
   useEffect(() => {
-    if (!tenantInfo.slug) {
-      setIsLoading(false);
-      return;
+    if (orgBranding?.primaryColor) {
+      applyOrgTheme(orgBranding.primaryColor);
     }
-
-    const fetchBranding = async () => {
-      try {
-        const response = await fetch(
-          `/api/v1/organizations/by-slug/${tenantInfo.slug}`,
-        );
-
-        if (!response.ok) {
-          if (response.status === 404) {
-            setError('Organisatie niet gevonden');
-          } else {
-            setError('Fout bij het laden van organisatie');
-          }
-          setIsLoading(false);
-          return;
-        }
-
-        const json = await response.json();
-        const data: OrgBranding = json.data;
-        setOrgBranding(data);
-
-        // Apply org theme if primaryColor is set
-        if (data.primaryColor) {
-          applyOrgTheme(data.primaryColor);
-        }
-      } catch {
-        setError('Kan organisatie niet laden');
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    fetchBranding();
-  }, [tenantInfo.slug]);
+  }, [orgBranding]);
 
   return (
     <TenantContext.Provider

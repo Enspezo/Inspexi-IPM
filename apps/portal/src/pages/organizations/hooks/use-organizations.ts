@@ -6,6 +6,7 @@ export function useOrganizations() {
   return useQuery<Organization[]>({
     queryKey: ['organizations'],
     queryFn: () => apiClient.get<Organization[]>('/organizations'),
+    staleTime: 15 * 60 * 1000, // 15 min — org list (superuser), rarely changes
   });
 }
 

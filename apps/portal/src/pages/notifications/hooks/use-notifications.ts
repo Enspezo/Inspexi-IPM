@@ -89,11 +89,14 @@ export function useMarkAllRead() {
 
 // ─── User preferences ───────────────────────────────────
 
+const PREFS_STALE_TIME = 60 * 60 * 1000; // 1 hour — user changes prefs rarely
+
 export function useNotificationPrefs() {
   return useQuery<NotificationPref[]>({
     queryKey: ['notification-prefs'],
     queryFn: () =>
       apiClient.get<NotificationPref[]>('/notification-prefs'),
+    staleTime: PREFS_STALE_TIME,
   });
 }
 
@@ -122,6 +125,7 @@ export function useGroupNotificationPrefs() {
     queryKey: ['notification-prefs', 'group'],
     queryFn: () =>
       apiClient.get<NotificationGroupPref[]>('/notification-prefs/group'),
+    staleTime: PREFS_STALE_TIME,
   });
 }
 

@@ -6,10 +6,13 @@ import type {
   CustomFieldType,
 } from '@/types';
 
+const CUSTOM_FIELDS_STALE_TIME = 60 * 60 * 1000; // 1 hour — schema config, rarely changes
+
 export function useCustomFields() {
   return useQuery<CustomFieldDefinition[]>({
     queryKey: ['custom-fields'],
     queryFn: () => apiClient.get('/custom-fields'),
+    staleTime: CUSTOM_FIELDS_STALE_TIME,
   });
 }
 
@@ -17,6 +20,7 @@ export function useCustomFieldsByEntityType(entityType: CustomFieldEntityType) {
   return useQuery<CustomFieldDefinition[]>({
     queryKey: ['custom-fields', entityType],
     queryFn: () => apiClient.get(`/custom-fields/${entityType}`),
+    staleTime: CUSTOM_FIELDS_STALE_TIME,
   });
 }
 

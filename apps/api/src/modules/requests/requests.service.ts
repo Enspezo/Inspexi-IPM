@@ -25,7 +25,11 @@ export class RequestsService {
   ) {}
 
   async findAll(user: User, query: ListRequestsQueryDto) {
-    const { search, status, priority, assignedTo, page = 1, limit = 20 } = query;
+    const { search, status, priority, assignedTo, page = 1, limit = 20, sortBy, sortOrder = 'desc' } = query;
+    const ALLOWED_SORT_FIELDS = ['title', 'status', 'priority', 'source', 'createdAt'];
+    const orderBy = (sortBy && ALLOWED_SORT_FIELDS.includes(sortBy))
+      ? { [sortBy]: sortOrder }
+      : { createdAt: 'desc' as const };
     const skip = (page - 1) * limit;
 
     const where: Prisma.RequestWhereInput = {
@@ -93,7 +97,7 @@ export class RequestsService {
             },
           },
         },
-        orderBy: { createdAt: 'desc' },
+        orderBy,
         skip,
         take: limit,
       }),

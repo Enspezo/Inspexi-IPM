@@ -1,4 +1,4 @@
-import { IsOptional, IsString, IsUUID, IsInt, Min, Max, IsEnum } from 'class-validator';
+import { IsOptional, IsString, IsUUID, IsInt, Min, Max, IsEnum, IsIn } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import { ProjectStatus } from '@prisma/client';
@@ -38,4 +38,14 @@ export class ListProjectsQueryDto {
   @Min(1)
   @Max(100)
   limit?: number;
+
+  @ApiPropertyOptional({ description: 'Sorteerveld' })
+  @IsOptional()
+  @IsString()
+  sortBy?: string;
+
+  @ApiPropertyOptional({ enum: ['asc', 'desc'], default: 'desc' })
+  @IsOptional()
+  @IsIn(['asc', 'desc'])
+  sortOrder?: 'asc' | 'desc' = 'desc';
 }

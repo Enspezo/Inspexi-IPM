@@ -26,6 +26,9 @@ const commonLabels: Record<string, string> = {
   firstName: 'Voornaam',
   lastName: 'Achternaam',
   role: 'Rol',
+
+  // Taakvelden
+  taskType: 'Taaktype',
 };
 
 const entityLabels: Record<string, Record<string, string>> = {
@@ -97,6 +100,8 @@ const entityLabels: Record<string, Record<string, string>> = {
     internalNotes: 'Interne notities',
     createdBy: 'Aangemaakt door',
     customFields: 'Eigen velden',
+    pdfStorageKey: 'PDF opslagsleutel',
+    signedPdfStorageKey: 'Ondertekende PDF opslagsleutel',
   },
   QuoteLine: {
     quoteId: 'Offerte',
@@ -113,9 +118,9 @@ const entityLabels: Record<string, Record<string, string>> = {
     templateType: 'Sjabloontype',
     defaultValidityDays: 'Standaard geldigheidsdagen',
     requiresApproval: 'Goedkeuring vereist',
-    rtfFileName: 'RTF bestandsnaam',
-    rtfFileSize: 'RTF bestandsgrootte',
-    rtfStorageKey: 'RTF opslagsleutel',
+    docxFileName: 'DOCX bestandsnaam',
+    docxFileSize: 'DOCX bestandsgrootte',
+    docxStorageKey: 'DOCX opslagsleutel',
   },
   User: {
     emailVerifiedAt: 'E-mail geverifieerd op',
@@ -173,6 +178,26 @@ const entityLabels: Record<string, Record<string, string>> = {
     expectedEndDate: 'Verwachte einddatum',
     endDate: 'Einddatum',
     createdBy: 'Aangemaakt door',
+  },
+  WorkOrder: {
+    workOrderNumber: 'Werkbonnummer',
+    planningItemId: 'Planregel',
+    status: 'Status',
+    internalNotes: 'Interne notities',
+    startTime: 'Starttijd',
+    endTime: 'Eindtijd',
+    createdBy: 'Aangemaakt door',
+  },
+  WorkOrderLine: {
+    workOrderId: 'Werkbon',
+    productId: 'Product',
+    description: 'Omschrijving',
+    quantity: 'Aantal',
+    unit: 'Eenheid',
+    unitPrice: 'Stukprijs',
+    vatRate: 'BTW-tarief',
+    lineTotal: 'Regeltotaal',
+    sortOrder: 'Sortering',
   },
 };
 

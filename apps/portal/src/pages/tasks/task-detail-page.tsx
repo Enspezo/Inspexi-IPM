@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { TaskStatus, TaskEntityType, DocumentEntityType, Role } from '@/types';
+import { TaskStatus, TaskType, TaskEntityType, DocumentEntityType, Role } from '@/types';
 import { ActionMenu, Button, Card, Spinner, Select, useToast } from '@/components/ui';
 import { useAuth } from '@/providers/auth-provider';
 import { useTask, useUpdateTask, useDeleteTask } from './hooks/use-tasks';
@@ -25,6 +25,14 @@ const statusOptions = Object.values(TaskStatus).map((s) => ({
   value: s,
   label: statusLabels[s] || s,
 }));
+
+const taskTypeLabels: Record<string, string> = {
+  [TaskType.TO_DO]: 'To-do',
+  [TaskType.EMAIL]: 'E-mail',
+  [TaskType.TELEFOONGESPREK]: 'Telefoongesprek',
+  [TaskType.DOCUMENT]: 'Document',
+  [TaskType.GOEDKEURING]: 'Goedkeuring',
+};
 
 const entityTypeLabels: Record<string, string> = {
   [TaskEntityType.CONTACT]: 'Relatie',
@@ -186,6 +194,12 @@ export default function TaskDetailPage() {
                 >
                   {statusLabels[task.status] || task.status}
                 </span>
+              </dd>
+            </div>
+            <div className="flex justify-between">
+              <dt className="text-sm text-gray-500">Type</dt>
+              <dd className="text-sm text-gray-900">
+                {taskTypeLabels[task.taskType] || 'To-do'}
               </dd>
             </div>
             <div className="flex justify-between">

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import type { ErrorReport, ErrorReportStatus } from '@/types';
 import {
   Button,
@@ -186,17 +186,13 @@ export default function ErrorReportsPage() {
   const [page, setPage] = useState(1);
   const [selectedReport, setSelectedReport] = useState<ErrorReport | null>(null);
 
-  const { data, isLoading, error } = useErrorReports({
-    status: (statusFilter as ErrorReportStatus) || undefined,
-    page,
-    limit: 20,
-  });
-
   const columns: ColumnDef<ErrorReport>[] = [
     {
       key: 'createdAt',
       header: 'Datum',
       pinned: true,
+      sortable: true,
+      sortKey: 'createdAt',
       render: (r) => (
         <button
           onClick={() => setSelectedReport(r)}
@@ -217,6 +213,7 @@ export default function ErrorReportsPage() {
       header: 'Organisatie',
       filterable: true,
       filterType: 'text',
+      sortable: true,
       getFilterValue: (r) => r.organization?.name ?? '',
       render: (r) => (
         <span className="text-sm text-gray-700">
@@ -229,6 +226,7 @@ export default function ErrorReportsPage() {
       header: 'Gebruiker',
       filterable: true,
       filterType: 'text',
+      sortable: true,
       getFilterValue: (r) =>
         r.user ? `${r.user.firstName} ${r.user.lastName}` : '',
       render: (r) =>
@@ -248,6 +246,7 @@ export default function ErrorReportsPage() {
       header: 'Foutmelding',
       filterable: true,
       filterType: 'text',
+      sortable: true,
       getFilterValue: (r) => r.errorMessage,
       render: (r) => (
         <p
@@ -266,6 +265,8 @@ export default function ErrorReportsPage() {
       filterType: 'select',
       filterOptions: statusFilterOptions.filter((o) => o.value !== ''),
       groupable: true,
+      sortable: true,
+      sortKey: 'status',
       getFilterValue: (r) => r.status,
       render: (r) => <StatusBadge status={r.status} />,
     },
@@ -286,7 +287,22 @@ export default function ErrorReportsPage() {
     isColumnsDirty,
     isFiltersDirty,
     allColumns,
+    sort,
+    toggleSort,
+    apiSort,
   } = useTableConfig({ pageKey: 'error-reports', columns });
+
+  useEffect(() => {
+    setPage(1);
+  }, [sort]);
+
+  const { data, isLoading, error } = useErrorReports({
+    status: (statusFilter as ErrorReportStatus) || undefined,
+    page,
+    limit: 20,
+    sortBy: apiSort?.sortBy,
+    sortOrder: apiSort?.sortOrder,
+  });
 
   if (isLoading) {
     return (
@@ -356,6 +372,8 @@ export default function ErrorReportsPage() {
           data={filteredData(reports)}
           keyExtractor={(r) => r.id}
           emptyMessage="Geen foutmeldingen gevonden"
+          sort={sort}
+          onSort={toggleSort}
         />
 
         {totalPages > 1 && (

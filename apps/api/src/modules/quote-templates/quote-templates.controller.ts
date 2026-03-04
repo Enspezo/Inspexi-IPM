@@ -25,6 +25,8 @@ import {
   CreateQuoteTemplateDto,
   UpdateQuoteTemplateDto,
   ListQuoteTemplatesQueryDto,
+  CreateFollowUpDto,
+  UpdateFollowUpDto,
 } from './dto';
 
 @ApiTags('quote-templates')
@@ -52,9 +54,9 @@ export class QuoteTemplatesController {
     return { success: true, data };
   }
 
-  // ── RTF file management ───────────────────────────────────
+  // ── DOCX file management ──────────────────────────────────
 
-  @Post(':id/rtf')
+  @Post(':id/docx')
   @Roles(Role.SUPERUSER, Role.ORG_ADMIN)
   @UseInterceptors(
     FileInterceptor('file', {
@@ -63,7 +65,7 @@ export class QuoteTemplatesController {
     }),
   )
   @ApiConsumes('multipart/form-data')
-  async uploadRtf(
+  async uploadDocx(
     @CurrentUser() user: User,
     @Param('id', ParseUUIDPipe) id: string,
     @UploadedFile() file: Express.Multer.File,
@@ -71,19 +73,19 @@ export class QuoteTemplatesController {
     if (!file) {
       throw new BadRequestException('Geen bestand geüpload');
     }
-    const data = await this.service.uploadRtf(id, file, user);
+    const data = await this.service.uploadDocx(id, file, user);
     return { success: true, data };
   }
 
-  @Get(':id/rtf/download')
+  @Get(':id/docx/download')
   @Roles(Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE)
-  async downloadRtf(
+  async downloadDocx(
     @CurrentUser() user: User,
     @Param('id', ParseUUIDPipe) id: string,
     @Res() res: Response,
   ) {
     const { buffer, fileName, mimeType } =
-      await this.service.downloadRtf(id, user);
+      await this.service.downloadDocx(id, user);
     res.set('Content-Type', mimeType);
     res.set(
       'Content-Disposition',
@@ -92,36 +94,26 @@ export class QuoteTemplatesController {
     res.send(buffer);
   }
 
-  @Get(':id/rtf/preview')
+  @Get(':id/docx/revisions')
   @Roles(Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE)
-  async getRtfPreview(
+  async getDocxRevisions(
     @CurrentUser() user: User,
     @Param('id', ParseUUIDPipe) id: string,
   ) {
-    const data = await this.service.getRtfPreview(id, user);
+    const data = await this.service.getDocxRevisions(id, user);
     return { success: true, data };
   }
 
-  @Get(':id/rtf/revisions')
+  @Get(':id/docx/revisions/:revisionId/download')
   @Roles(Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE)
-  async getRtfRevisions(
-    @CurrentUser() user: User,
-    @Param('id', ParseUUIDPipe) id: string,
-  ) {
-    const data = await this.service.getRtfRevisions(id, user);
-    return { success: true, data };
-  }
-
-  @Get(':id/rtf/revisions/:revisionId/download')
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE)
-  async downloadRtfRevision(
+  async downloadDocxRevision(
     @CurrentUser() user: User,
     @Param('id', ParseUUIDPipe) id: string,
     @Param('revisionId', ParseUUIDPipe) revisionId: string,
     @Res() res: Response,
   ) {
     const { buffer, fileName, mimeType } =
-      await this.service.downloadRtfRevision(id, revisionId, user);
+      await this.service.downloadDocxRevision(id, revisionId, user);
     res.set('Content-Type', mimeType);
     res.set(
       'Content-Disposition',
@@ -252,6 +244,52 @@ export class QuoteTemplatesController {
     @Param('attachmentId', ParseUUIDPipe) attachmentId: string,
   ) {
     await this.service.deleteAttachment(id, attachmentId, user);
+    return { success: true };
+  }
+
+  // ── Follow-up rules ──────────────────────────────────────
+
+  @Get(':id/follow-ups')
+  @Roles(Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE)
+  async getFollowUpRules(
+    @CurrentUser() user: User,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    const data = await this.service.getFollowUpRules(id, user);
+    return { success: true, data };
+  }
+
+  @Post(':id/follow-ups')
+  @Roles(Role.SUPERUSER, Role.ORG_ADMIN)
+  async createFollowUp(
+    @CurrentUser() user: User,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: CreateFollowUpDto,
+  ) {
+    const data = await this.service.createFollowUp(id, dto, user);
+    return { success: true, data };
+  }
+
+  @Patch(':id/follow-ups/:followUpId')
+  @Roles(Role.SUPERUSER, Role.ORG_ADMIN)
+  async updateFollowUp(
+    @CurrentUser() user: User,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('followUpId', ParseUUIDPipe) followUpId: string,
+    @Body() dto: UpdateFollowUpDto,
+  ) {
+    const data = await this.service.updateFollowUp(id, followUpId, dto, user);
+    return { success: true, data };
+  }
+
+  @Delete(':id/follow-ups/:followUpId')
+  @Roles(Role.SUPERUSER, Role.ORG_ADMIN)
+  async deleteFollowUp(
+    @CurrentUser() user: User,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('followUpId', ParseUUIDPipe) followUpId: string,
+  ) {
+    await this.service.deleteFollowUp(id, followUpId, user);
     return { success: true };
   }
 

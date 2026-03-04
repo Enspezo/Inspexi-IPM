@@ -17,6 +17,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '@/prisma';
 import { NotificationsService } from '../notifications/notifications.service';
+import { WorkOrdersService } from '../work-orders/work-orders.service';
 import { PlanningEmailService } from './planning-email.service';
 import {
   CreatePlanningItemDto,
@@ -133,6 +134,7 @@ export class PlanningService {
   constructor(
     private prisma: PrismaService,
     private notifications: NotificationsService,
+    private workOrdersService: WorkOrdersService,
     private planningEmail: PlanningEmailService,
     private config: ConfigService,
   ) {}
@@ -153,6 +155,11 @@ export class PlanningService {
     const page = Number(query.page ?? 1);
     const limit = Math.min(Number(query.limit ?? 25), 100);
     const skip = (page - 1) * limit;
+    const { sortBy, sortOrder = 'desc' } = query;
+    const ALLOWED_SORT_FIELDS = ['scheduledDate', 'status', 'createdAt'];
+    const orderBy: object = (sortBy && ALLOWED_SORT_FIELDS.includes(sortBy))
+      ? [{ [sortBy]: sortOrder }]
+      : [{ scheduledDate: 'asc' }, { createdAt: 'desc' }];
 
     const where: any = {};
     if (!user.roles.includes(Role.SUPERUSER)) where.orgId = user.orgId!;
@@ -198,7 +205,7 @@ export class PlanningService {
       this.prisma.planningItem.findMany({
         where,
         include: PLANNING_INCLUDE,
-        orderBy: [{ scheduledDate: 'asc' }, { createdAt: 'desc' }],
+        orderBy,
         skip,
         take: limit,
       }),
@@ -619,6 +626,41 @@ export class PlanningService {
       data: { status: PlanningStatus.AFGEROND },
     });
     await this.addHistoryEntry(id, user.id, 'AFGEROND', 'Afspraak gemarkeerd als afgerond');
+  }
+
+  // ─── Direct status update ──────────────────────────────────
+
+  async updatePlanningStatus(id: string, dto: { status: PlanningStatus; note?: string }, user: User) {
+    const item = await this.findOne(id, user);
+    const oldStatus = item.status;
+    if (oldStatus === dto.status) {
+      throw new BadRequestException('Status is al ingesteld op de gewenste waarde');
+    }
+    await this.prisma.planningItem.update({
+      where: { id },
+      data: { status: dto.status },
+    });
+    const note = dto.note ? ` — ${dto.note}` : '';
+    await this.addHistoryEntry(
+      id,
+      user.id,
+      'STATUS_GEWIJZIGD',
+      `Status gewijzigd van ${oldStatus} naar ${dto.status}${note}`,
+    );
+
+    // Auto-create work order when status transitions to GEPLAND
+    if (dto.status === PlanningStatus.GEPLAND && oldStatus !== PlanningStatus.GEPLAND) {
+      this.workOrdersService
+        .createFromPlanningItem({
+          id: item.id,
+          orgId: item.orgId,
+          locationId: item.locationId ?? null,
+          createdBy: user.id,
+        })
+        .catch((err) => this.logger.error('Failed to auto-create work order for planning item', err));
+    }
+
+    return this.findOne(id, user);
   }
 
   // ─── Staff reschedule ──────────────────────────────────────

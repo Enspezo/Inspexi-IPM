@@ -20,7 +20,11 @@ export class ProductsService {
   ) {}
 
   async findAll(user: User, query: ListProductsQueryDto) {
-    const { search, productGroupId, isActive, page = 1, limit = 20 } = query;
+    const { search, productGroupId, isActive, page = 1, limit = 20, sortBy, sortOrder = 'desc' } = query;
+    const ALLOWED_SORT_FIELDS = ['name', 'unit', 'defaultVat', 'isActive', 'createdAt'];
+    const orderBy = (sortBy && ALLOWED_SORT_FIELDS.includes(sortBy))
+      ? { [sortBy]: sortOrder }
+      : { name: 'asc' as const };
     const skip = (page - 1) * limit;
 
     const where: Prisma.ProductWhereInput = {};
@@ -51,7 +55,7 @@ export class ProductsService {
         include: {
           productGroup: { select: { id: true, name: true } },
         },
-        orderBy: { name: 'asc' },
+        orderBy,
         skip,
         take: limit,
       }),

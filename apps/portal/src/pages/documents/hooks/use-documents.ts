@@ -13,6 +13,8 @@ interface ListDocumentsParams {
   onlyMine?: boolean;
   page?: number;
   limit?: number;
+  sortBy?: string;
+  sortOrder?: 'asc' | 'desc';
 }
 
 export function useDocuments(params: ListDocumentsParams = {}) {
@@ -23,6 +25,8 @@ export function useDocuments(params: ListDocumentsParams = {}) {
   if (params.onlyMine) queryParams.set('onlyMine', 'true');
   if (params.page) queryParams.set('page', String(params.page));
   if (params.limit) queryParams.set('limit', String(params.limit));
+  if (params.sortBy) queryParams.set('sortBy', params.sortBy);
+  if (params.sortOrder) queryParams.set('sortOrder', params.sortOrder);
 
   const qs = queryParams.toString();
   const endpoint = `/documents${qs ? `?${qs}` : ''}`;

@@ -270,7 +270,7 @@ export default function DashboardPage() {
             {!activityLoading && (
               <div className="mt-3 border-t border-gray-100 pt-3">
                 <Link
-                  to="/activiteiten"
+                  to="/profile?tab=activiteiten"
                   className="flex items-center gap-1 text-sm font-medium text-primary-600 hover:text-primary-700"
                 >
                   Alle activiteiten

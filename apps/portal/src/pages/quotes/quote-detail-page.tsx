@@ -14,7 +14,7 @@ import {
 import type { Task, ContactLog } from '@/types';
 import { ActionMenu, type ActionMenuItem, Button, Card, Spinner, Input, Table, useToast, type Column } from '@/components/ui';
 import { DetailPageLayout, SidebarSection } from '@/components/layout/detail-page-layout';
-import { NotesSidebarSection, HistorySidebarSection } from '@/components/layout/sidebar-sections';
+import { NotesSidebarSection, HistorySidebarSection, DocumentsSidebarSection } from '@/components/layout/sidebar-sections';
 import { useAuth } from '@/providers/auth-provider';
 import {
   useQuote,
@@ -33,10 +33,10 @@ import { AddLogModal } from '@/pages/contacts/components/add-log-modal';
 import { useTasks, useUpdateTask } from '@/pages/tasks/hooks/use-tasks';
 import { CreateTaskModal } from '@/pages/tasks/components/create-task-modal';
 import { EditTaskModal } from '@/pages/tasks/components/edit-task-modal';
-import { DocumentsSection, UploadDocumentModal } from '@/components/documents';
 import { CustomFieldsDisplay } from '@/components/custom-fields';
 import { SendQuoteModal } from './components/send-quote-modal';
 import { ApproveQuoteModal } from './components/approve-quote-modal';
+import { PdfPreviewModal } from './components/pdf-preview-modal';
 import { RichTextViewer } from '@/components/ui';
 import { getAccessToken } from '@/lib/api-client';
 
@@ -145,10 +145,10 @@ export default function QuoteDetailPage() {
   const [rejectNote, setRejectNote] = useState('');
   const [showRejectInput, setShowRejectInput] = useState(false);
   const [isTaskOpen, setIsTaskOpen] = useState(false);
-  const [isDocUploadOpen, setIsDocUploadOpen] = useState(false);
   const [isLogOpen, setIsLogOpen] = useState(false);
   const [isSendOpen, setIsSendOpen] = useState(false);
   const [isApproveOpen, setIsApproveOpen] = useState(false);
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const [newQuestion, setNewQuestion] = useState('');
   const [answeringId, setAnsweringId] = useState<string | null>(null);
   const [answerText, setAnswerText] = useState('');
@@ -308,6 +308,12 @@ export default function QuoteDetailPage() {
 
       <NotesSidebarSection entityType={NoteEntityType.QUOTE} entityId={id!} />
 
+      <DocumentsSidebarSection
+        entityType={DocumentEntityType.QUOTE}
+        entityId={quote.id}
+        canUpload={!!userCanWrite}
+      />
+
       <HistorySidebarSection entityType="Quote" entityId={id} />
     </div>
   );
@@ -401,6 +407,11 @@ export default function QuoteDetailPage() {
                   icon: <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" /></svg>,
                   onClick: () => setIsTaskOpen(true),
                 },
+                ...(quote.template?.templateType === 'DOCX' ? [{
+                  label: 'Voorbeeld bekijken',
+                  icon: <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>,
+                  onClick: () => setIsPreviewOpen(true),
+                }] : []),
                 ...(quote.publicToken && [QuoteStatus.GOEDGEKEURD, QuoteStatus.VERSTUURD, QuoteStatus.BEKEKEN, QuoteStatus.GEACCEPTEERD].includes(quote.status as QuoteStatus) ? [{
                   label: 'PDF downloaden',
                   icon: <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>,
@@ -414,11 +425,6 @@ export default function QuoteDetailPage() {
                     } catch { showToast('PDF downloaden mislukt', 'error'); }
                   },
                 }] : []),
-                {
-                  label: 'Document uploaden',
-                  icon: <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>,
-                  onClick: () => setIsDocUploadOpen(true),
-                },
               ]}
             />
           )}
@@ -697,11 +703,6 @@ export default function QuoteDetailPage() {
           </Card>
         )}
 
-        {/* Algemene documenten (via documenten module) */}
-        <Card>
-          <DocumentsSection entityType={DocumentEntityType.QUOTE} entityId={quote.id} canUpload={!!userCanWrite} />
-        </Card>
-
         {/* Acties onderaan */}
         <div className="flex items-center justify-between border-t border-gray-200 pt-6">
           <p className="text-xs text-gray-400">
@@ -726,7 +727,6 @@ export default function QuoteDetailPage() {
         {quote && (
           <>
             <CreateTaskModal isOpen={isTaskOpen} onClose={() => setIsTaskOpen(false)} entityType={TaskEntityType.QUOTE} entityId={quote.id} />
-            <UploadDocumentModal isOpen={isDocUploadOpen} onClose={() => setIsDocUploadOpen(false)} entityType={DocumentEntityType.QUOTE} entityId={quote.id} />
             <AddLogModal isOpen={isLogOpen} onClose={() => setIsLogOpen(false)} contactId={quote.contactId} />
           </>
         )}
@@ -739,6 +739,14 @@ export default function QuoteDetailPage() {
             quoteNumber={quote.quoteNumber}
             isOpen={isApproveOpen}
             onClose={() => setIsApproveOpen(false)}
+          />
+        )}
+        {quote && isPreviewOpen && (
+          <PdfPreviewModal
+            isOpen={isPreviewOpen}
+            onClose={() => setIsPreviewOpen(false)}
+            quoteId={quote.id}
+            quoteNumber={quote.quoteNumber}
           />
         )}
       </div>

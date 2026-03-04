@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -42,7 +42,6 @@ export default function QuoteTemplatesPage() {
   const [page, setPage] = useState(1);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
 
-  const { data, isLoading, error } = useQuoteTemplates({ page, limit: 20 });
   const deleteMutation = useDeleteQuoteTemplate();
 
   const userIsAdmin = user && user.roles.some(r => adminRoles.includes(r));
@@ -52,6 +51,8 @@ export default function QuoteTemplatesPage() {
       key: 'name',
       header: 'Naam',
       pinned: true,
+      sortable: true,
+      sortKey: 'name',
       render: (t) => (
         <Link
           to={`/quote-templates/${t.id}`}
@@ -66,22 +67,25 @@ export default function QuoteTemplatesPage() {
       header: 'Type',
       filterable: true,
       filterType: 'select',
+      sortable: true,
+      sortKey: 'templateType',
       getFilterValue: (t) => t.templateType,
       render: (t) => (
         <span
           className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ring-1 ring-inset ${
-            t.templateType === 'RTF'
+            t.templateType === 'DOCX'
               ? 'bg-amber-50 text-amber-700 ring-amber-600/20'
               : 'bg-blue-50 text-blue-700 ring-blue-600/20'
           }`}
         >
-          {t.templateType === 'RTF' ? 'RTF' : 'Blokken'}
+          {t.templateType === 'DOCX' ? 'DOCX' : 'Blokken'}
         </span>
       ),
     },
     {
       key: 'description',
       header: 'Beschrijving',
+      sortable: true,
       render: (t) => (
         <span className="text-gray-600 text-sm truncate max-w-xs block">
           {t.description || '—'}
@@ -91,6 +95,8 @@ export default function QuoteTemplatesPage() {
     {
       key: 'defaultValidityDays',
       header: 'Geldigheidsdagen',
+      sortable: true,
+      sortKey: 'defaultValidityDays',
       render: (t) => (
         <span className="text-gray-600">{t.defaultValidityDays}</span>
       ),
@@ -100,6 +106,8 @@ export default function QuoteTemplatesPage() {
       header: 'Goedkeuring vereist',
       filterable: true,
       filterType: 'boolean',
+      sortable: true,
+      sortKey: 'requiresApproval',
       getFilterValue: (t) => String(t.requiresApproval),
       render: (t) => (
         <span className={t.requiresApproval ? 'text-green-600' : 'text-gray-500'}>
@@ -113,6 +121,8 @@ export default function QuoteTemplatesPage() {
       filterable: true,
       filterType: 'boolean',
       groupable: true,
+      sortable: true,
+      sortKey: 'isActive',
       getFilterValue: (t) => String(t.isActive),
       render: (t) => (
         <span className={t.isActive ? 'text-green-600' : 'text-gray-500'}>
@@ -125,6 +135,8 @@ export default function QuoteTemplatesPage() {
       header: 'Aangemaakt',
       filterable: true,
       filterType: 'date',
+      sortable: true,
+      sortKey: 'createdAt',
       getFilterValue: (t) => t.createdAt,
       render: (t) => (
         <span className="text-gray-500 text-xs">
@@ -180,7 +192,21 @@ export default function QuoteTemplatesPage() {
     isColumnsDirty,
     isFiltersDirty,
     allColumns,
+    sort,
+    toggleSort,
+    apiSort,
   } = useTableConfig({ pageKey: 'quote-templates', columns });
+
+  useEffect(() => {
+    setPage(1);
+  }, [sort]);
+
+  const { data, isLoading, error } = useQuoteTemplates({
+    page,
+    limit: 20,
+    sortBy: apiSort?.sortBy,
+    sortOrder: apiSort?.sortOrder,
+  });
 
   if (isLoading) {
     return (
@@ -231,7 +257,7 @@ export default function QuoteTemplatesPage() {
         </div>
         {userIsAdmin && (
           <ActionMenu
-            primaryActions={[
+            secondaryActions={[
               {
                 label: 'Template aanmaken',
                 icon: <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>,
@@ -247,6 +273,8 @@ export default function QuoteTemplatesPage() {
         data={filteredData(templates)}
         keyExtractor={(t) => t.id}
         emptyMessage="Geen templates gevonden"
+        sort={sort}
+        onSort={toggleSort}
       />
 
       {/* Pagination */}
@@ -357,9 +385,9 @@ function CreateTemplateModal({ isOpen, onClose }: { isOpen: boolean; onClose: ()
             </button>
             <button
               type="button"
-              onClick={() => setSelectedType('RTF')}
+              onClick={() => setSelectedType('DOCX')}
               className={`flex flex-col items-center gap-2 rounded-lg border-2 p-4 text-center transition-colors ${
-                selectedType === 'RTF'
+                selectedType === 'DOCX'
                   ? 'border-primary-500 bg-primary-50 text-primary-700'
                   : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300'
               }`}
@@ -367,9 +395,9 @@ function CreateTemplateModal({ isOpen, onClose }: { isOpen: boolean; onClose: ()
               <svg className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" />
               </svg>
-              <span className="text-sm font-medium">RTF Sjabloon</span>
+              <span className="text-sm font-medium">DOCX Sjabloon</span>
               <span className="text-xs text-gray-500">
-                Upload een RTF bestand met [[placeholders]]
+                Upload een DOCX bestand met {'{{placeholders}}'}
               </span>
             </button>
           </div>

@@ -1,16 +1,22 @@
-import { useState, useMemo, useCallback, useRef } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import type { Column } from '@/components/ui';
 import type {
   ColumnDef,
   TableColumnConfig,
   TableFilter,
   TableGrouping,
+  TableSort,
 } from './types';
 import { useTableConfigPersistence } from './use-table-config-persistence';
 
 interface UseTableConfigOptions<T> {
   pageKey: string;
   columns: ColumnDef<T>[];
+}
+
+export interface ApiSort {
+  sortBy: string;
+  sortOrder: 'asc' | 'desc';
 }
 
 interface UseTableConfigReturn<T> {
@@ -30,6 +36,10 @@ interface UseTableConfigReturn<T> {
   allColumns: ColumnDef<T>[];
   appliedFilters: TableFilter[];
   appliedGrouping: TableGrouping | null;
+  sort: TableSort | null;
+  toggleSort: (columnKey: string) => void;
+  /** When the active sort column has a sortKey, contains server-side sort params to pass to the query hook. */
+  apiSort: ApiSort | null;
 }
 
 function buildDefaultConfig<T>(columns: ColumnDef<T>[]): TableColumnConfig {
@@ -83,12 +93,41 @@ function matchFilter(value: unknown, filter: TableFilter): boolean {
   }
 }
 
+function compareValues(
+  a: unknown,
+  b: unknown,
+  direction: 'asc' | 'desc',
+): number {
+  // Nulls always last, regardless of direction
+  if (a == null && b == null) return 0;
+  if (a == null) return 1;
+  if (b == null) return -1;
+
+  let result: number;
+
+  if (typeof a === 'number' && typeof b === 'number') {
+    result = a - b;
+  } else {
+    const strA = String(a);
+    const strB = String(b);
+    // Detect ISO date strings (starts with 4-digit year)
+    const isDateLike = (s: string) =>
+      /^\d{4}-\d{2}-\d{2}/.test(s) && !isNaN(new Date(s).getTime());
+    if (isDateLike(strA) && isDateLike(strB)) {
+      result = new Date(strA).getTime() - new Date(strB).getTime();
+    } else {
+      result = strA.localeCompare(strB, 'nl', { sensitivity: 'base' });
+    }
+  }
+
+  return direction === 'asc' ? result : -result;
+}
+
 export function useTableConfig<T>({
   pageKey,
   columns,
 }: UseTableConfigOptions<T>): UseTableConfigReturn<T> {
   const { load, save, clear } = useTableConfigPersistence(pageKey);
-  const initializedRef = useRef(false);
 
   // Compute initial state
   const defaultConfig = useMemo(() => buildDefaultConfig(columns), [columns]);
@@ -110,6 +149,19 @@ export function useTableConfig<T>({
     const persisted = load();
     return persisted?.grouping ?? null;
   });
+
+  const [sort, setSortRaw] = useState<TableSort | null>(() => {
+    const persisted = load();
+    return persisted?.sort ?? null;
+  });
+
+  // Compute server-side sort params when the sorted column has a sortKey
+  const apiSort = useMemo<ApiSort | null>(() => {
+    if (!sort) return null;
+    const colDef = columns.find((c) => c.key === sort.columnKey);
+    if (!colDef?.sortKey) return null;
+    return { sortBy: colDef.sortKey, sortOrder: sort.direction };
+  }, [sort, columns]);
 
   // Pending (draft) state
   const [pendingColumnConfig, setPendingColumnConfig] = useState<TableColumnConfig>(appliedConfig);
@@ -156,36 +208,80 @@ export function useTableConfig<T>({
     ];
   }, [columns, appliedConfig]);
 
-  // Client-side filtering function
+  // Client-side filtering + sorting
   const filteredData = useCallback(
     (data: T[]): T[] => {
-      if (appliedFilters.length === 0) return data;
-
       const columnMap = new Map(columns.map((c) => [c.key, c]));
 
-      return data.filter((item) =>
-        appliedFilters.every((filter) => {
-          const colDef = columnMap.get(filter.columnKey);
-          if (!colDef?.getFilterValue) return true;
-          const value = colDef.getFilterValue(item);
-          return matchFilter(value, filter);
-        }),
-      );
+      // 1. Filter
+      let result = data;
+      if (appliedFilters.length > 0) {
+        result = data.filter((item) =>
+          appliedFilters.every((filter) => {
+            const colDef = columnMap.get(filter.columnKey);
+            if (!colDef?.getFilterValue) return true;
+            const value = colDef.getFilterValue(item);
+            return matchFilter(value, filter);
+          }),
+        );
+      }
+
+      // 2. Sort — skip client-side sort when server-side is active (apiSort is set)
+      if (sort && !apiSort) {
+        const colDef = columnMap.get(sort.columnKey);
+        result = [...result].sort((a, b) => {
+          let aVal: unknown;
+          let bVal: unknown;
+          if (colDef?.getSortValue) {
+            aVal = colDef.getSortValue(a);
+            bVal = colDef.getSortValue(b);
+          } else if (colDef?.getFilterValue) {
+            aVal = colDef.getFilterValue(a);
+            bVal = colDef.getFilterValue(b);
+          } else {
+            aVal = (a as Record<string, unknown>)[sort.columnKey];
+            bVal = (b as Record<string, unknown>)[sort.columnKey];
+          }
+          return compareValues(aVal, bVal, sort.direction);
+        });
+      }
+
+      return result;
     },
-    [appliedFilters, columns],
+    [appliedFilters, sort, apiSort, columns],
+  );
+
+  // Toggle sort: asc → desc → null (cleared), new column → asc
+  const toggleSort = useCallback(
+    (columnKey: string) => {
+      setSortRaw((prev) => {
+        let newSort: TableSort | null;
+        if (prev?.columnKey === columnKey) {
+          newSort = prev.direction === 'asc'
+            ? { columnKey, direction: 'desc' }
+            : null;
+        } else {
+          newSort = { columnKey, direction: 'asc' };
+        }
+        // Save immediately — sort doesn't go through an "Apply" button
+        save(appliedConfig, appliedFilters, appliedGrouping, newSort);
+        return newSort;
+      });
+    },
+    [appliedConfig, appliedFilters, appliedGrouping, save],
   );
 
   // Apply actions
   const applyColumns = useCallback(() => {
     setAppliedConfig(pendingColumnConfig);
-    save(pendingColumnConfig, appliedFilters, appliedGrouping);
-  }, [pendingColumnConfig, appliedFilters, appliedGrouping, save]);
+    save(pendingColumnConfig, appliedFilters, appliedGrouping, sort);
+  }, [pendingColumnConfig, appliedFilters, appliedGrouping, sort, save]);
 
   const applyFilters = useCallback(() => {
     setAppliedFilters(pendingFilters);
     setAppliedGrouping(pendingGrouping);
-    save(appliedConfig, pendingFilters, pendingGrouping);
-  }, [pendingFilters, pendingGrouping, appliedConfig, save]);
+    save(appliedConfig, pendingFilters, pendingGrouping, sort);
+  }, [pendingFilters, pendingGrouping, appliedConfig, sort, save]);
 
   const resetToDefaults = useCallback(() => {
     setAppliedConfig(defaultConfig);
@@ -194,6 +290,7 @@ export function useTableConfig<T>({
     setPendingColumnConfig(defaultConfig);
     setPendingFilters([]);
     setPendingGrouping(null);
+    setSortRaw(null);
     clear();
   }, [defaultConfig, clear]);
 
@@ -214,5 +311,8 @@ export function useTableConfig<T>({
     allColumns: columns,
     appliedFilters,
     appliedGrouping,
+    sort,
+    toggleSort,
+    apiSort,
   };
 }

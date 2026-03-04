@@ -16,6 +16,8 @@ interface ListProductsParams {
   isActive?: boolean;
   page?: number;
   limit?: number;
+  sortBy?: string;
+  sortOrder?: 'asc' | 'desc';
 }
 
 export function useProducts(params: ListProductsParams = {}) {
@@ -25,6 +27,8 @@ export function useProducts(params: ListProductsParams = {}) {
   if (params.isActive !== undefined) queryParams.set('isActive', String(params.isActive));
   if (params.page) queryParams.set('page', String(params.page));
   if (params.limit) queryParams.set('limit', String(params.limit));
+  if (params.sortBy) queryParams.set('sortBy', params.sortBy);
+  if (params.sortOrder) queryParams.set('sortOrder', params.sortOrder);
 
   const qs = queryParams.toString();
   const endpoint = `/products${qs ? `?${qs}` : ''}`;

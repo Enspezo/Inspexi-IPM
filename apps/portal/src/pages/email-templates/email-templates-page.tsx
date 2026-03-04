@@ -39,6 +39,7 @@ export default function EmailTemplatesPage() {
       pinned: true,
       filterable: true,
       filterType: 'text',
+      sortable: true,
       getFilterValue: (t) => t.name,
       render: (t) => (
         <button
@@ -54,6 +55,7 @@ export default function EmailTemplatesPage() {
       header: 'Type',
       filterable: true,
       filterType: 'select',
+      sortable: true,
       getFilterValue: (t) => t.type,
       render: (t) => (
         <span className="inline-flex items-center rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-700">
@@ -64,6 +66,7 @@ export default function EmailTemplatesPage() {
     {
       key: 'subject',
       header: 'Onderwerp',
+      sortable: true,
       render: (t) => (
         <span className="text-gray-600 text-sm truncate max-w-xs block">{t.subject}</span>
       ),
@@ -73,6 +76,7 @@ export default function EmailTemplatesPage() {
       header: 'Actief',
       filterable: true,
       filterType: 'boolean',
+      sortable: true,
       getFilterValue: (t) => String(t.isActive),
       render: (t) => (
         <span
@@ -91,6 +95,7 @@ export default function EmailTemplatesPage() {
       header: 'Aangemaakt',
       filterable: true,
       filterType: 'date',
+      sortable: true,
       getFilterValue: (t) => t.createdAt,
       render: (t) => (
         <span className="text-gray-500 text-xs">
@@ -136,6 +141,8 @@ export default function EmailTemplatesPage() {
     isColumnsDirty,
     isFiltersDirty,
     allColumns,
+    sort,
+    toggleSort,
   } = useTableConfig({ pageKey: 'email-templates', columns });
 
   if (isLoading) {
@@ -186,7 +193,7 @@ export default function EmailTemplatesPage() {
             </p>
           </div>
           <ActionMenu
-            primaryActions={[
+            secondaryActions={[
               {
                 label: 'Sjabloon aanmaken',
                 icon: <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>,
@@ -201,6 +208,8 @@ export default function EmailTemplatesPage() {
           data={filteredData(templates)}
           keyExtractor={(t) => t.id}
           emptyMessage="Geen e-mailsjablonen gevonden"
+          sort={sort}
+          onSort={toggleSort}
         />
 
         {totalPages > 1 && (

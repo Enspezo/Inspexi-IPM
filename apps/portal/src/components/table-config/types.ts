@@ -19,6 +19,10 @@ export interface ColumnDef<T> extends Column<T> {
   sidebarLabel?: string;
   /** Extract the value from an item for client-side filtering. */
   getFilterValue?: (item: T) => unknown;
+  /** Extract the value from an item for client-side sorting. Falls back to getFilterValue, then item[key]. */
+  getSortValue?: (item: T) => string | number | Date | null | undefined;
+  /** Backend field name for server-side sorting. When set, sort is delegated to the API. */
+  sortKey?: string;
 }
 
 export interface TableColumnConfig {
@@ -43,9 +47,15 @@ export interface TableGrouping {
   columnKey: string;
 }
 
+export interface TableSort {
+  columnKey: string;
+  direction: 'asc' | 'desc';
+}
+
 export interface PersistedTableState {
   config: TableColumnConfig;
   filters: TableFilter[];
   grouping: TableGrouping | null;
+  sort?: TableSort | null;
   version: number;
 }

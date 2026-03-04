@@ -37,13 +37,6 @@ export default function ProductsPage() {
     return () => clearTimeout(timer);
   }, [search]);
 
-  const { data, isLoading, error } = useProducts({
-    search: debouncedSearch.length >= 3 ? debouncedSearch : undefined,
-    isActive: statusFilter === '' ? undefined : statusFilter === 'true',
-    page,
-    limit: 20,
-  });
-
   const handleSearchChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
       setSearch(e.target.value);
@@ -57,6 +50,8 @@ export default function ProductsPage() {
       key: 'name',
       header: 'Naam',
       pinned: true,
+      sortable: true,
+      sortKey: 'name',
       filterable: true,
       filterType: 'text',
       getFilterValue: (product) => product.name,
@@ -72,6 +67,8 @@ export default function ProductsPage() {
     {
       key: 'unit',
       header: 'Eenheid',
+      sortable: true,
+      sortKey: 'unit',
       filterable: true,
       filterType: 'text',
       getFilterValue: (product) => product.unit,
@@ -82,6 +79,8 @@ export default function ProductsPage() {
     {
       key: 'defaultVat',
       header: 'BTW %',
+      sortable: true,
+      sortKey: 'defaultVat',
       render: (product) => (
         <span className="text-gray-600">{product.defaultVat}%</span>
       ),
@@ -89,6 +88,7 @@ export default function ProductsPage() {
     {
       key: 'productGroup',
       header: 'Productgroep',
+      sortable: true,
       filterable: true,
       filterType: 'text',
       groupable: true,
@@ -105,6 +105,8 @@ export default function ProductsPage() {
     {
       key: 'isActive',
       header: 'Status',
+      sortable: true,
+      sortKey: 'isActive',
       filterable: true,
       filterType: 'boolean',
       groupable: true,
@@ -153,7 +155,23 @@ export default function ProductsPage() {
     isColumnsDirty,
     isFiltersDirty,
     allColumns,
+    sort,
+    toggleSort,
+    apiSort,
   } = useTableConfig({ pageKey: 'products', columns });
+
+  useEffect(() => {
+    setPage(1);
+  }, [sort]);
+
+  const { data, isLoading, error } = useProducts({
+    search: debouncedSearch.length >= 3 ? debouncedSearch : undefined,
+    isActive: statusFilter === '' ? undefined : statusFilter === 'true',
+    page,
+    limit: 20,
+    sortBy: apiSort?.sortBy,
+    sortOrder: apiSort?.sortOrder,
+  });
 
   if (isLoading) {
     return (
@@ -203,7 +221,7 @@ export default function ProductsPage() {
           </p>
         </div>
         <ActionMenu
-          primaryActions={[
+          secondaryActions={[
             {
               label: 'Product aanmaken',
               icon: <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>,
@@ -239,6 +257,8 @@ export default function ProductsPage() {
         data={filteredData(products)}
         keyExtractor={(p) => p.id}
         emptyMessage="Geen producten gevonden"
+        sort={sort}
+        onSort={toggleSort}
       />
 
       {/* Pagination */}

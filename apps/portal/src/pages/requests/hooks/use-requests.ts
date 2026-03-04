@@ -15,6 +15,8 @@ interface ListRequestsParams {
   assignedTo?: string;
   page?: number;
   limit?: number;
+  sortBy?: string;
+  sortOrder?: 'asc' | 'desc';
 }
 
 export function useRequests(params: ListRequestsParams = {}) {
@@ -25,6 +27,8 @@ export function useRequests(params: ListRequestsParams = {}) {
   if (params.assignedTo) queryParams.set('assignedTo', params.assignedTo);
   if (params.page) queryParams.set('page', String(params.page));
   if (params.limit) queryParams.set('limit', String(params.limit));
+  if (params.sortBy) queryParams.set('sortBy', params.sortBy);
+  if (params.sortOrder) queryParams.set('sortOrder', params.sortOrder);
 
   const qs = queryParams.toString();
   const endpoint = `/requests${qs ? `?${qs}` : ''}`;

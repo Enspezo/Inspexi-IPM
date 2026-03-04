@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { DocumentEntityType } from '@/types';
 import type { CrmDocument } from '@/types';
 import {
@@ -111,14 +111,6 @@ export default function DocumentsPage() {
   const [page, setPage] = useState(1);
   const [previewDoc, setPreviewDoc] = useState<CrmDocument | null>(null);
 
-  const { data, isLoading, error } = useDocuments({
-    search: search || undefined,
-    entityType: (entityTypeFilter as DocumentEntityType) || undefined,
-    onlyMine: onlyMine || undefined,
-    page,
-    limit: 20,
-  });
-
   const handleDownload = async (doc: CrmDocument) => {
     try {
       await downloadFile(doc.id, doc.originalName);
@@ -133,6 +125,8 @@ export default function DocumentsPage() {
       header: 'Naam',
       filterable: true,
       filterType: 'text',
+      sortable: true,
+      sortKey: 'originalName',
       getFilterValue: (doc) => doc.originalName,
       render: (doc) => (
         <button
@@ -148,6 +142,8 @@ export default function DocumentsPage() {
       header: 'Type',
       filterable: true,
       filterType: 'select',
+      sortable: true,
+      sortKey: 'mimeType',
       filterOptions: [
         { value: 'application/pdf', label: 'PDF' },
         { value: 'image/', label: 'Afbeelding' },
@@ -162,6 +158,8 @@ export default function DocumentsPage() {
     {
       key: 'size',
       header: 'Grootte',
+      sortable: true,
+      sortKey: 'size',
       render: (doc) => (
         <span className="whitespace-nowrap text-xs text-gray-500">
           {formatBytes(doc.size)}
@@ -175,6 +173,8 @@ export default function DocumentsPage() {
       filterType: 'select',
       filterOptions: entityTypeFilterOptions.filter((o) => o.value !== ''),
       groupable: true,
+      sortable: true,
+      sortKey: 'entityType',
       getFilterValue: (doc) => doc.entityType,
       render: (doc) => {
         const route = entityTypeRoutes[doc.entityType];
@@ -200,6 +200,8 @@ export default function DocumentsPage() {
     {
       key: 'uploadedBy',
       header: 'Eigenaar',
+      sortable: true,
+      getSortValue: (doc) => doc.uploadedBy ? `${doc.uploadedBy.firstName} ${doc.uploadedBy.lastName}` : '',
       render: (doc) => (
         <span className="text-xs text-gray-500">
           {doc.uploadedBy
@@ -213,6 +215,8 @@ export default function DocumentsPage() {
       header: 'Datum',
       filterable: true,
       filterType: 'date',
+      sortable: true,
+      sortKey: 'createdAt',
       getFilterValue: (doc) => doc.createdAt,
       render: (doc) => (
         <span className="whitespace-nowrap text-xs text-gray-500">
@@ -268,7 +272,24 @@ export default function DocumentsPage() {
     isColumnsDirty,
     isFiltersDirty,
     allColumns,
+    sort,
+    toggleSort,
+    apiSort,
   } = useTableConfig({ pageKey: 'documents', columns });
+
+  useEffect(() => {
+    setPage(1);
+  }, [sort]);
+
+  const { data, isLoading, error } = useDocuments({
+    search: search || undefined,
+    entityType: (entityTypeFilter as DocumentEntityType) || undefined,
+    onlyMine: onlyMine || undefined,
+    page,
+    limit: 20,
+    sortBy: apiSort?.sortBy,
+    sortOrder: apiSort?.sortOrder,
+  });
 
   if (isLoading) {
     return (
@@ -318,7 +339,7 @@ export default function DocumentsPage() {
             </p>
           </div>
           <ActionMenu
-            primaryActions={[
+            secondaryActions={[
               {
                 label: 'Document uploaden',
                 icon: (
@@ -374,6 +395,8 @@ export default function DocumentsPage() {
           data={filteredData(documents)}
           keyExtractor={(d) => d.id}
           emptyMessage="Geen documenten gevonden"
+          sort={sort}
+          onSort={toggleSort}
         />
 
         {/* Pagination */}

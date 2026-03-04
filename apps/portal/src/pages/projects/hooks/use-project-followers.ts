@@ -11,12 +11,53 @@ export function useProjectFollowers(projectId: string) {
   });
 }
 
+export interface AddProjectFollowerData {
+  userId?: string;
+  email?: string;
+  name?: string;
+  canViewGeneral?: boolean;
+  canViewRequests?: boolean;
+  canViewQuotes?: boolean;
+  canViewPlanning?: boolean;
+  canViewDocuments?: boolean;
+}
+
 export function useAddProjectFollower(projectId: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (data: { userId?: string; email?: string; name?: string }) =>
+    mutationFn: (data: AddProjectFollowerData) =>
       apiClient.post<ProjectFollower>(
         `/projects/${projectId}/followers`,
+        data,
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ['projects', projectId, 'followers'],
+      });
+    },
+  });
+}
+
+export interface UpdateProjectFollowerData {
+  canViewGeneral?: boolean;
+  canViewRequests?: boolean;
+  canViewQuotes?: boolean;
+  canViewPlanning?: boolean;
+  canViewDocuments?: boolean;
+}
+
+export function useUpdateProjectFollower(projectId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      followerId,
+      data,
+    }: {
+      followerId: string;
+      data: UpdateProjectFollowerData;
+    }) =>
+      apiClient.patch<ProjectFollower>(
+        `/projects/${projectId}/followers/${followerId}`,
         data,
       ),
     onSuccess: () => {

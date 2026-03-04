@@ -10,19 +10,54 @@ export interface ActionMenuItem {
 }
 
 interface ActionMenuProps {
-  /** View-specific actions — primary color, shown at top */
+  /** Workflow actions — shown under chevron (>) trigger */
   primaryActions?: ActionMenuItem[];
-  /** General actions (e.g. Taak aanmaken, Bewerken) — grey, shown at bottom */
+  /** Create/add actions — shown under plus (+) trigger */
   secondaryActions?: ActionMenuItem[];
 }
 
 export function ActionMenu({ primaryActions = [], secondaryActions = [] }: ActionMenuProps) {
+  const hasPrimary = primaryActions.length > 0;
+  const hasSecondary = secondaryActions.length > 0;
+
+  if (!hasPrimary && !hasSecondary) return null;
+
+  return (
+    <div className="flex items-center gap-0.5">
+      {hasPrimary && (
+        <ActionMenuTrigger
+          actions={primaryActions}
+          actionVariant="primary"
+          icon="chevron"
+          title="Acties"
+        />
+      )}
+      {hasSecondary && (
+        <ActionMenuTrigger
+          actions={secondaryActions}
+          actionVariant="secondary"
+          icon="plus"
+          title="Aanmaken"
+        />
+      )}
+    </div>
+  );
+}
+
+function ActionMenuTrigger({
+  actions,
+  actionVariant,
+  icon,
+  title,
+}: {
+  actions: ActionMenuItem[];
+  actionVariant: 'primary' | 'secondary';
+  icon: 'chevron' | 'plus';
+  title: string;
+}) {
   const [isOpen, setIsOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const timeoutRef = useRef<ReturnType<typeof setTimeout>>();
-
-  const allActions = [...primaryActions, ...secondaryActions];
-  if (allActions.length === 0) return null;
 
   const handleMouseEnter = () => {
     clearTimeout(timeoutRef.current);
@@ -33,7 +68,6 @@ export function ActionMenu({ primaryActions = [], secondaryActions = [] }: Actio
     timeoutRef.current = setTimeout(() => setIsOpen(false), 150);
   };
 
-  // Close on click outside (for touch devices)
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
@@ -44,7 +78,6 @@ export function ActionMenu({ primaryActions = [], secondaryActions = [] }: Actio
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [isOpen]);
 
-  // Cleanup timeout on unmount
   useEffect(() => {
     return () => clearTimeout(timeoutRef.current);
   }, []);
@@ -56,25 +89,35 @@ export function ActionMenu({ primaryActions = [], secondaryActions = [] }: Actio
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
     >
-      {/* + icon trigger */}
       <button
         type="button"
         onClick={() => setIsOpen(!isOpen)}
         className="flex h-8 w-8 items-center justify-center rounded-lg text-primary-600 transition-colors hover:bg-primary-50"
-        title="Acties"
+        title={title}
       >
-        <svg
-          className={`h-6 w-6 transition-transform duration-200 ${isOpen ? 'rotate-45' : ''}`}
-          fill="none"
-          viewBox="0 0 24 24"
-          stroke="currentColor"
-          strokeWidth={2.5}
-        >
-          <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
-        </svg>
+        {icon === 'chevron' ? (
+          <svg
+            className={`h-5 w-5 transition-transform duration-200 ${isOpen ? 'rotate-90' : ''}`}
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            strokeWidth={2.5}
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
+          </svg>
+        ) : (
+          <svg
+            className={`h-6 w-6 transition-transform duration-200 ${isOpen ? 'rotate-45' : ''}`}
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            strokeWidth={2.5}
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+          </svg>
+        )}
       </button>
 
-      {/* Dropdown */}
       <div
         className={`absolute right-0 top-full z-30 mt-1 min-w-[200px] origin-top-right overflow-hidden rounded-lg border border-gray-200 bg-white shadow-lg transition-all duration-200 ${
           isOpen
@@ -82,28 +125,11 @@ export function ActionMenu({ primaryActions = [], secondaryActions = [] }: Actio
             : 'pointer-events-none scale-95 opacity-0'
         }`}
       >
-        {/* Primary actions (view-specific) — primary color */}
-        {primaryActions.length > 0 && (
-          <div className="py-1">
-            {primaryActions.map((action, i) => (
-              <ActionButton key={i} action={action} variant="primary" onClose={() => setIsOpen(false)} />
-            ))}
-          </div>
-        )}
-
-        {/* Divider between groups */}
-        {primaryActions.length > 0 && secondaryActions.length > 0 && (
-          <div className="border-t border-gray-100" />
-        )}
-
-        {/* Secondary actions (general) — grey */}
-        {secondaryActions.length > 0 && (
-          <div className="py-1">
-            {secondaryActions.map((action, i) => (
-              <ActionButton key={i} action={action} variant="secondary" onClose={() => setIsOpen(false)} />
-            ))}
-          </div>
-        )}
+        <div className="py-1">
+          {actions.map((action, i) => (
+            <ActionButton key={i} action={action} variant={actionVariant} onClose={() => setIsOpen(false)} />
+          ))}
+        </div>
       </div>
     </div>
   );

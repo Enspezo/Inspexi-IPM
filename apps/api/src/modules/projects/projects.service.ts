@@ -13,6 +13,7 @@ import {
   UpdateProjectDto,
   ListProjectsQueryDto,
   AddProjectFollowerDto,
+  UpdateProjectFollowerDto,
   AssignToProjectDto,
 } from './dto';
 import type { User } from '@prisma/client';
@@ -76,6 +77,11 @@ export class ProjectsService {
     const page = Number(query.page ?? 1);
     const limit = Math.min(Number(query.limit ?? 25), 100);
     const skip = (page - 1) * limit;
+    const { sortBy, sortOrder = 'desc' } = query;
+    const ALLOWED_SORT_FIELDS = ['projectNumber', 'title', 'status', 'startDate', 'expectedEndDate', 'createdAt'];
+    const orderBy = (sortBy && ALLOWED_SORT_FIELDS.includes(sortBy))
+      ? { [sortBy]: sortOrder }
+      : { createdAt: 'desc' as const };
 
     const where: any = { isDeleted: false };
     if (!user.roles.includes(Role.SUPERUSER)) where.orgId = user.orgId!;
@@ -98,7 +104,7 @@ export class ProjectsService {
         include: PROJECT_INCLUDE,
         skip,
         take: limit,
-        orderBy: { createdAt: 'desc' },
+        orderBy,
       }),
       this.prisma.project.count({ where }),
     ]);
@@ -350,7 +356,7 @@ export class ProjectsService {
     await this.findOne(id, user);
     return this.prisma.projectFollower.findMany({
       where: { projectId: id },
-      include: { user: { select: { id: true, firstName: true, lastName: true, email: true } } },
+      include: { user: { select: { id: true, firstName: true, lastName: true, email: true, color: true, initials: true } } },
       orderBy: { createdAt: 'asc' },
     });
   }
@@ -374,14 +380,21 @@ export class ProjectsService {
       if (exists) throw new BadRequestException('Dit e-mailadres is al een volger');
     }
 
+    // Internal users get all permissions; external use provided or defaults
+    const isInternal = !!dto.userId;
     return this.prisma.projectFollower.create({
       data: {
         projectId: id,
         userId: dto.userId ?? null,
         email: dto.userId ? null : (dto.email ?? null),
         name: dto.name ?? null,
+        canViewGeneral: isInternal ? true : (dto.canViewGeneral ?? true),
+        canViewRequests: isInternal ? true : (dto.canViewRequests ?? false),
+        canViewQuotes: isInternal ? true : (dto.canViewQuotes ?? true),
+        canViewPlanning: isInternal ? true : (dto.canViewPlanning ?? true),
+        canViewDocuments: isInternal ? true : (dto.canViewDocuments ?? false),
       },
-      include: { user: { select: { id: true, firstName: true, lastName: true, email: true } } },
+      include: { user: { select: { id: true, firstName: true, lastName: true, email: true, color: true, initials: true } } },
     });
   }
 
@@ -394,6 +407,27 @@ export class ProjectsService {
       throw new NotFoundException('Volger niet gevonden');
     }
     await this.prisma.projectFollower.delete({ where: { id: followerId } });
+  }
+
+  async updateFollower(id: string, followerId: string, dto: UpdateProjectFollowerDto, user: User) {
+    await this.findOne(id, user);
+    const follower = await this.prisma.projectFollower.findUnique({
+      where: { id: followerId },
+    });
+    if (!follower || follower.projectId !== id) {
+      throw new NotFoundException('Volger niet gevonden');
+    }
+    return this.prisma.projectFollower.update({
+      where: { id: followerId },
+      data: {
+        ...(dto.canViewGeneral !== undefined && { canViewGeneral: dto.canViewGeneral }),
+        ...(dto.canViewRequests !== undefined && { canViewRequests: dto.canViewRequests }),
+        ...(dto.canViewQuotes !== undefined && { canViewQuotes: dto.canViewQuotes }),
+        ...(dto.canViewPlanning !== undefined && { canViewPlanning: dto.canViewPlanning }),
+        ...(dto.canViewDocuments !== undefined && { canViewDocuments: dto.canViewDocuments }),
+      },
+      include: { user: { select: { id: true, firstName: true, lastName: true, email: true, color: true, initials: true } } },
+    });
   }
 
   // ─── Auto-creation from quote acceptance ──────────────────

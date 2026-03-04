@@ -74,7 +74,11 @@ export class ErrorReportsService {
   }
 
   async findAll(query: ListErrorReportsQueryDto) {
-    const { status, page = 1, limit = 20 } = query;
+    const { status, page = 1, limit = 20, sortBy, sortOrder = 'desc' } = query;
+    const ALLOWED_SORT_FIELDS = ['status', 'createdAt'];
+    const orderBy = (sortBy && ALLOWED_SORT_FIELDS.includes(sortBy))
+      ? { [sortBy]: sortOrder }
+      : { createdAt: 'desc' as const };
     const skip = (page - 1) * limit;
 
     const where = status ? { status } : {};

@@ -37,6 +37,7 @@ import { KvkModule } from './modules/kvk/kvk.module';
 import { VatModule } from './modules/vat/vat.module';
 import { ErrorReportsModule } from './modules/error-reports/error-reports.module';
 import { NotesModule } from './modules/notes/notes.module';
+import { WorkOrdersModule } from './modules/work-orders/work-orders.module';
 
 @Module({
   imports: [
@@ -71,6 +72,7 @@ import { NotesModule } from './modules/notes/notes.module';
     VatModule,
     ErrorReportsModule,
     NotesModule,
+    WorkOrdersModule,
   ],
   providers: [
     {

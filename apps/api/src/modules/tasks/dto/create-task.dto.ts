@@ -6,7 +6,7 @@ import {
   IsEnum,
   IsDateString,
 } from 'class-validator';
-import { TaskStatus, TaskEntityType } from '@prisma/client';
+import { TaskStatus, TaskType, TaskEntityType } from '@prisma/client';
 
 export class CreateTaskDto {
   @ApiProperty({ example: 'NEN1010 keuring plannen' })
@@ -22,6 +22,11 @@ export class CreateTaskDto {
   @IsOptional()
   @IsEnum(TaskStatus)
   status?: TaskStatus;
+
+  @ApiPropertyOptional({ enum: TaskType, default: TaskType.TO_DO })
+  @IsOptional()
+  @IsEnum(TaskType)
+  taskType?: TaskType;
 
   @ApiProperty({ enum: TaskEntityType })
   @IsEnum(TaskEntityType)

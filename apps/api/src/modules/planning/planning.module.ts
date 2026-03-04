@@ -7,9 +7,10 @@ import { PlanningEmailService } from './planning-email.service';
 import { PlanningIcalService } from './planning-ical.service';
 import { NotificationsModule } from '@/modules/notifications/notifications.module';
 import { StorageModule } from '@/common/services/storage/storage.module';
+import { WorkOrdersModule } from '@/modules/work-orders/work-orders.module';
 
 @Module({
-  imports: [ConfigModule, NotificationsModule, StorageModule],
+  imports: [ConfigModule, NotificationsModule, StorageModule, WorkOrdersModule],
   controllers: [PlanningController, PlanningPublicController, PlanningIcalController],
   providers: [PlanningService, PlanningEmailService, PlanningIcalService],
   exports: [PlanningService],

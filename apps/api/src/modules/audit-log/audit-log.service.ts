@@ -19,6 +19,8 @@ const ALLOWED_ENTITY_TYPES = new Set([
   'CustomFieldDefinition',
   'EmailTemplate',
   'Project',
+  'WorkOrder',
+  'WorkOrderLine',
 ]);
 
 /**
@@ -93,6 +95,14 @@ const FK_FIELD_RESOLVERS: Record<string, RefConfig> = {
   projectManagerId: {
     model: 'user',
     display: (r) => `${r.firstName ?? ''} ${r.lastName ?? ''}`.trim() || r.email || r.id,
+  },
+  planningItemId: {
+    model: 'planningItem',
+    display: (r) => r.productName || `Planning #${r.id.substring(0, 8)}`,
+  },
+  workOrderId: {
+    model: 'workOrder',
+    display: (r) => r.workOrderNumber || `Werkbon #${r.id.substring(0, 8)}`,
   },
 };
 

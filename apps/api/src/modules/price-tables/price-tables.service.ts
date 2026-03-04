@@ -18,7 +18,11 @@ export class PriceTablesService {
   constructor(private prisma: PrismaService) {}
 
   async findAll(user: User, query: ListPriceTablesQueryDto) {
-    const { search, page = 1, limit = 20 } = query;
+    const { search, page = 1, limit = 20, sortBy, sortOrder = 'desc' } = query;
+    const ALLOWED_SORT_FIELDS = ['name', 'isDefault', 'createdAt'];
+    const orderBy: object = (sortBy && ALLOWED_SORT_FIELDS.includes(sortBy))
+      ? { [sortBy]: sortOrder }
+      : [{ isDefault: 'desc' }, { name: 'asc' }];
     const skip = (page - 1) * limit;
 
     const where: Prisma.PriceTableWhereInput = {};
@@ -37,7 +41,7 @@ export class PriceTablesService {
         include: {
           _count: { select: { items: true } },
         },
-        orderBy: [{ isDefault: 'desc' }, { name: 'asc' }],
+        orderBy,
         skip,
         take: limit,
       }),

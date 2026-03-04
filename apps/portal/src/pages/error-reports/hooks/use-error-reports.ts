@@ -6,15 +6,19 @@ interface ErrorReportsParams {
   status?: ErrorReportStatus;
   page?: number;
   limit?: number;
+  sortBy?: string;
+  sortOrder?: 'asc' | 'desc';
 }
 
 export function useErrorReports(params: ErrorReportsParams = {}) {
-  const { status, page = 1, limit = 20 } = params;
+  const { status, page = 1, limit = 20, sortBy, sortOrder } = params;
 
   const searchParams = new URLSearchParams();
   if (status) searchParams.set('status', status);
   searchParams.set('page', String(page));
   searchParams.set('limit', String(limit));
+  if (sortBy) searchParams.set('sortBy', sortBy);
+  if (sortOrder) searchParams.set('sortOrder', sortOrder);
 
   return useQuery({
     queryKey: ['error-reports', params],

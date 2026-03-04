@@ -1,8 +1,9 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Inject, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Resend } from 'resend';
 import { EmailTemplateType } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { STORAGE_PROVIDER, type StorageProvider } from '../../common/services/storage/storage.interface';
 import { renderTemplate, wrapInEmailLayout } from '../email-templates/template-renderer';
 
 interface ConfirmationEmailParams {
@@ -61,6 +62,7 @@ export class PlanningEmailService {
   constructor(
     private config: ConfigService,
     private prisma: PrismaService,
+    @Inject(STORAGE_PROVIDER) private storage: StorageProvider,
   ) {
     this.resend = new Resend(this.config.get<string>('RESEND_API_KEY'));
     this.fromEmail = this.config.get<string>('RESEND_FROM_EMAIL', 'noreply@inspexi.nl');
@@ -71,7 +73,7 @@ export class PlanningEmailService {
     type: EmailTemplateType,
     variables: Record<string, Record<string, string>>,
     orgName?: string,
-  ): Promise<{ subject: string; html: string } | null> {
+  ): Promise<{ subject: string; html: string; attachments: Array<{ filename: string; content: Buffer }> } | null> {
     if (!orgId) return null;
     try {
       const template = await this.prisma.emailTemplate.findFirst({
@@ -83,9 +85,26 @@ export class PlanningEmailService {
         { subject: template.subject, bodyHtml: template.bodyHtml },
         variables,
       );
+
+      // Load template attachments
+      const templateAttachments = await this.prisma.emailTemplateAttachment.findMany({
+        where: { emailTemplateId: template.id },
+        orderBy: { sortOrder: 'asc' },
+      });
+      const attachments: Array<{ filename: string; content: Buffer }> = [];
+      for (const att of templateAttachments) {
+        try {
+          const buffer = await this.storage.download(att.storageKey);
+          attachments.push({ filename: att.originalName, content: buffer });
+        } catch (err) {
+          this.logger.error(`Failed to load email template attachment ${att.originalName}`, err);
+        }
+      }
+
       return {
         subject: rendered.subject,
         html: wrapInEmailLayout(rendered.html, orgName),
+        attachments,
       };
     } catch (error) {
       this.logger.error(`Failed to load custom template for ${type}`, error);
@@ -138,7 +157,7 @@ export class PlanningEmailService {
       }, orgName);
 
       if (custom) {
-        await this.resend.emails.send({ from: this.fromEmail, to, subject: custom.subject, html: custom.html });
+        await this.resend.emails.send({ from: this.fromEmail, to, subject: custom.subject, html: custom.html, attachments: custom.attachments.length > 0 ? custom.attachments : undefined });
         return;
       }
 
@@ -199,7 +218,7 @@ export class PlanningEmailService {
       }, orgName);
 
       if (custom) {
-        await this.resend.emails.send({ from: this.fromEmail, to, subject: custom.subject, html: custom.html });
+        await this.resend.emails.send({ from: this.fromEmail, to, subject: custom.subject, html: custom.html, attachments: custom.attachments.length > 0 ? custom.attachments : undefined });
         return;
       }
 
@@ -251,7 +270,7 @@ export class PlanningEmailService {
       }, orgName);
 
       if (custom) {
-        await this.resend.emails.send({ from: this.fromEmail, to, subject: custom.subject, html: custom.html });
+        await this.resend.emails.send({ from: this.fromEmail, to, subject: custom.subject, html: custom.html, attachments: custom.attachments.length > 0 ? custom.attachments : undefined });
         return;
       }
 
@@ -309,7 +328,7 @@ export class PlanningEmailService {
       }, orgName);
 
       if (custom) {
-        await this.resend.emails.send({ from: this.fromEmail, to, subject: custom.subject, html: custom.html });
+        await this.resend.emails.send({ from: this.fromEmail, to, subject: custom.subject, html: custom.html, attachments: custom.attachments.length > 0 ? custom.attachments : undefined });
         return;
       }
 

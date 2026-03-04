@@ -78,7 +78,11 @@ export class ContactsService {
   }
 
   async findAll(user: User, query: ListContactsQueryDto) {
-    const { search, type, onlyMine, page = 1, limit = 20 } = query;
+    const { search, type, onlyMine, page = 1, limit = 20, sortBy, sortOrder = 'desc' } = query;
+    const ALLOWED_SORT_FIELDS = ['type', 'email', 'phone', 'createdAt'];
+    const orderBy = (sortBy && ALLOWED_SORT_FIELDS.includes(sortBy))
+      ? { [sortBy]: sortOrder }
+      : { createdAt: 'desc' as const };
     const skip = (page - 1) * limit;
 
     const where: Prisma.ContactWhereInput = {
@@ -122,7 +126,7 @@ export class ContactsService {
             },
           },
         },
-        orderBy: { createdAt: 'desc' },
+        orderBy,
         skip,
         take: limit,
       }),

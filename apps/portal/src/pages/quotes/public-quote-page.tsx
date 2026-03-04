@@ -33,6 +33,10 @@ export default function PublicQuotePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // PDF viewer state
+  const [pdfBlobUrl, setPdfBlobUrl] = useState<string | null>(null);
+  const [pdfLoading, setPdfLoading] = useState(false);
+
   // Q&A state
   const [question, setQuestion] = useState('');
   const [sending, setSending] = useState(false);
@@ -59,6 +63,30 @@ export default function PublicQuotePage() {
       .catch(() => setError('Offerte kon niet geladen worden'))
       .finally(() => setLoading(false));
   }, [token]);
+
+  // Load PDF when quote has pdfStorageKey
+  useEffect(() => {
+    if (!quote?.pdfStorageKey || !token) return;
+    setPdfLoading(true);
+    fetch(`${API_BASE}/public/quotes/${token}/pdf`)
+      .then((r) => {
+        if (!r.ok) throw new Error('PDF laden mislukt');
+        return r.blob();
+      })
+      .then((blob) => {
+        const url = URL.createObjectURL(blob);
+        setPdfBlobUrl(url);
+      })
+      .catch(() => {
+        // PDF not available, will fall back to blocks view
+      })
+      .finally(() => setPdfLoading(false));
+
+    return () => {
+      if (pdfBlobUrl) URL.revokeObjectURL(pdfBlobUrl);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [quote?.pdfStorageKey, token]);
 
   const handleSendQuestion = async () => {
     if (!question.trim()) return;
@@ -108,6 +136,23 @@ export default function PublicQuotePage() {
     URL.revokeObjectURL(url);
   };
 
+  const handleDownloadPdf = async () => {
+    if (!token) return;
+    try {
+      const r = await fetch(`${API_BASE}/public/quotes/${token}/pdf`);
+      if (!r.ok) return;
+      const blob = await r.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `Offerte-${quote?.quoteNumber || 'document'}.pdf`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      // silently fail
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center">
@@ -131,6 +176,7 @@ export default function PublicQuotePage() {
   const org = (quote as any).organization;
   const primaryColor = org?.primaryColor || '#1E40AF';
   const canSign = (quote.status === QuoteStatus.VERSTUURD || quote.status === QuoteStatus.BEKEKEN) && !quote.signedAt;
+  const isDocxQuote = !!quote.pdfStorageKey;
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -173,65 +219,100 @@ export default function PublicQuotePage() {
           </div>
         )}
 
-        {/* Inhoud (contentBlocks) */}
-        {quote.contentBlocks && (
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-            <RichTextViewer content={quote.contentBlocks as object} />
+        {/* DOCX-based quotes: embedded PDF viewer */}
+        {isDocxQuote ? (
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+            <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center" style={{ backgroundColor: `${primaryColor}10` }}>
+              <h2 className="text-lg font-semibold text-gray-900">Offerte document</h2>
+              <button
+                onClick={handleDownloadPdf}
+                className="text-sm text-primary-600 hover:text-primary-800 flex items-center gap-1"
+              >
+                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                </svg>
+                Download PDF
+              </button>
+            </div>
+            {pdfLoading ? (
+              <div className="flex items-center justify-center h-96">
+                <Spinner size="lg" />
+              </div>
+            ) : pdfBlobUrl ? (
+              <iframe
+                src={pdfBlobUrl}
+                className="w-full h-[800px]"
+                title="Offerte document"
+              />
+            ) : (
+              <div className="flex items-center justify-center h-96 text-gray-400">
+                <p>PDF kon niet geladen worden</p>
+              </div>
+            )}
           </div>
-        )}
+        ) : (
+          <>
+            {/* BLOCKS-based quotes: content blocks + price table */}
+            {quote.contentBlocks && (
+              <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                <RichTextViewer content={quote.contentBlocks as object} />
+              </div>
+            )}
 
-        {/* Prijsoverzicht */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-          <div className="px-6 py-4 border-b border-gray-200" style={{ backgroundColor: `${primaryColor}10` }}>
-            <h2 className="text-lg font-semibold text-gray-900">Prijsoverzicht</h2>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Omschrijving</th>
-                  <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500">Aantal</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Eenheid</th>
-                  <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500">Prijs</th>
-                  <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500">Totaal</th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-100">
-                {quote.lines?.map((line) => (
-                  <tr key={line.id}>
-                    <td className="px-6 py-3 text-sm text-gray-900">{line.description}</td>
-                    <td className="px-4 py-3 text-sm text-gray-600 text-right">{line.quantity}</td>
-                    <td className="px-4 py-3 text-sm text-gray-600">{line.unit}</td>
-                    <td className="px-4 py-3 text-sm text-gray-600 text-right">{formatCurrency(line.unitPrice)}</td>
-                    <td className="px-4 py-3 text-sm font-medium text-gray-900 text-right">{formatCurrency(line.lineTotal)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <div className="px-6 py-4 bg-gray-50 border-t border-gray-200">
-            <div className="flex flex-col items-end space-y-1 max-w-xs ml-auto">
-              <div className="flex justify-between w-full text-sm">
-                <span className="text-gray-500">Subtotaal</span>
-                <span className="text-gray-900">{formatCurrency(quote.subtotal)}</span>
+            {/* Prijsoverzicht */}
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+              <div className="px-6 py-4 border-b border-gray-200" style={{ backgroundColor: `${primaryColor}10` }}>
+                <h2 className="text-lg font-semibold text-gray-900">Prijsoverzicht</h2>
               </div>
-              {quote.discountTotal > 0 && (
-                <div className="flex justify-between w-full text-sm">
-                  <span className="text-gray-500">Korting</span>
-                  <span className="text-green-600">-{formatCurrency(quote.discountTotal)}</span>
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Omschrijving</th>
+                      <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500">Aantal</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Eenheid</th>
+                      <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500">Prijs</th>
+                      <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500">Totaal</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-100">
+                    {quote.lines?.map((line) => (
+                      <tr key={line.id}>
+                        <td className="px-6 py-3 text-sm text-gray-900">{line.description}</td>
+                        <td className="px-4 py-3 text-sm text-gray-600 text-right">{line.quantity}</td>
+                        <td className="px-4 py-3 text-sm text-gray-600">{line.unit}</td>
+                        <td className="px-4 py-3 text-sm text-gray-600 text-right">{formatCurrency(line.unitPrice)}</td>
+                        <td className="px-4 py-3 text-sm font-medium text-gray-900 text-right">{formatCurrency(line.lineTotal)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="px-6 py-4 bg-gray-50 border-t border-gray-200">
+                <div className="flex flex-col items-end space-y-1 max-w-xs ml-auto">
+                  <div className="flex justify-between w-full text-sm">
+                    <span className="text-gray-500">Subtotaal</span>
+                    <span className="text-gray-900">{formatCurrency(quote.subtotal)}</span>
+                  </div>
+                  {quote.discountTotal > 0 && (
+                    <div className="flex justify-between w-full text-sm">
+                      <span className="text-gray-500">Korting</span>
+                      <span className="text-green-600">-{formatCurrency(quote.discountTotal)}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between w-full text-sm">
+                    <span className="text-gray-500">BTW</span>
+                    <span className="text-gray-900">{formatCurrency(quote.vatTotal)}</span>
+                  </div>
+                  <div className="flex justify-between w-full border-t border-gray-300 pt-2">
+                    <span className="text-base font-semibold text-gray-900">Totaal incl. BTW</span>
+                    <span className="text-xl font-bold text-gray-900">{formatCurrency(quote.total)}</span>
+                  </div>
                 </div>
-              )}
-              <div className="flex justify-between w-full text-sm">
-                <span className="text-gray-500">BTW</span>
-                <span className="text-gray-900">{formatCurrency(quote.vatTotal)}</span>
-              </div>
-              <div className="flex justify-between w-full border-t border-gray-300 pt-2">
-                <span className="text-base font-semibold text-gray-900">Totaal incl. BTW</span>
-                <span className="text-xl font-bold text-gray-900">{formatCurrency(quote.total)}</span>
               </div>
             </div>
-          </div>
-        </div>
+          </>
+        )}
 
         {/* Bijlagen */}
         {(quote.attachments?.length || 0) > 0 && (

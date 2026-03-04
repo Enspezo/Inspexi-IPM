@@ -9,6 +9,8 @@ export interface ListProjectsParams {
   projectManagerId?: string;
   page?: number;
   limit?: number;
+  sortBy?: string;
+  sortOrder?: 'asc' | 'desc';
 }
 
 function buildQuery(params: Record<string, any>): string {

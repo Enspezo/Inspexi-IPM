@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api-client';
-import type { EmailTemplate, EmailTemplateType, EmailTemplateTypeInfo, PaginatedResponse } from '@/types';
+import type { EmailTemplate, EmailTemplateAttachment, EmailTemplateType, EmailTemplateTypeInfo, PaginatedResponse } from '@/types';
 
 interface ListEmailTemplatesParams {
   search?: string;
@@ -109,5 +109,55 @@ export function usePreviewEmailTemplate() {
   return useMutation({
     mutationFn: (data: { subject: string; bodyHtml: string; type: EmailTemplateType }) =>
       apiClient.post<{ subject: string; html: string }>('/email-templates/preview', data),
+  });
+}
+
+// ─── Attachment hooks ───────────────────────────────────
+
+export function useEmailTemplateAttachments(templateId: string) {
+  return useQuery<EmailTemplateAttachment[]>({
+    queryKey: ['email-templates', templateId, 'attachments'],
+    queryFn: () =>
+      apiClient.get<EmailTemplateAttachment[]>(
+        `/email-templates/${templateId}/attachments`,
+      ),
+    enabled: !!templateId,
+  });
+}
+
+export function useUploadEmailTemplateAttachment(templateId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (formData: FormData) =>
+      apiClient.upload<EmailTemplateAttachment>(
+        `/email-templates/${templateId}/attachments`,
+        formData,
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ['email-templates', templateId, 'attachments'],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ['email-templates', templateId],
+      });
+    },
+  });
+}
+
+export function useDeleteEmailTemplateAttachment(templateId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (attachmentId: string) =>
+      apiClient.delete(
+        `/email-templates/${templateId}/attachments/${attachmentId}`,
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ['email-templates', templateId, 'attachments'],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ['email-templates', templateId],
+      });
+    },
   });
 }

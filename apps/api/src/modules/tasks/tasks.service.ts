@@ -2,8 +2,9 @@ import {
   Injectable,
   NotFoundException,
   ForbiddenException,
+  Logger,
 } from '@nestjs/common';
-import { User, Role, Prisma, TaskEntityType, NotificationType } from '@prisma/client';
+import { User, Role, Prisma, TaskEntityType, TaskType, TaskStatus, LogType, NotificationType } from '@prisma/client';
 import { PrismaService } from '@/prisma';
 import { NotificationsService } from '../notifications/notifications.service';
 import { CreateTaskDto, UpdateTaskDto, ListTasksQueryDto } from './dto';
@@ -23,6 +24,8 @@ const statusLabels: Record<string, string> = {
 
 @Injectable()
 export class TasksService {
+  private readonly logger = new Logger(TasksService.name);
+
   constructor(
     private prisma: PrismaService,
     private notifications: NotificationsService,
@@ -124,7 +127,11 @@ export class TasksService {
   }
 
   async findAll(user: User, query: ListTasksQueryDto) {
-    const { search, status, entityType, entityId, onlyMine, page = 1, limit = 20 } = query;
+    const { search, status, taskType, entityType, entityId, onlyMine, page = 1, limit = 20, sortBy, sortOrder = 'desc' } = query;
+    const ALLOWED_SORT_FIELDS = ['title', 'status', 'taskType', 'entityType', 'deadline', 'createdAt'];
+    const orderBy = (sortBy && ALLOWED_SORT_FIELDS.includes(sortBy))
+      ? { [sortBy]: sortOrder }
+      : { createdAt: 'desc' as const };
     const skip = (page - 1) * limit;
 
     const where: Prisma.TaskWhereInput = {};
@@ -135,6 +142,10 @@ export class TasksService {
 
     if (status) {
       where.status = status;
+    }
+
+    if (taskType) {
+      where.taskType = taskType;
     }
 
     if (entityType) {
@@ -160,7 +171,7 @@ export class TasksService {
           assignee: { select: userSelect },
           createdBy: { select: userSelect },
         },
-        orderBy: { createdAt: 'desc' },
+        orderBy,
         skip,
         take: limit,
       }),
@@ -208,6 +219,7 @@ export class TasksService {
         title: dto.title,
         description: dto.description,
         status: dto.status,
+        taskType: dto.taskType,
         entityType: dto.entityType,
         entityId: dto.entityId,
         assigneeId: dto.assigneeId || null,
@@ -263,6 +275,7 @@ export class TasksService {
     if (dto.title !== undefined) data.title = dto.title;
     if (dto.description !== undefined) data.description = dto.description || null;
     if (dto.status !== undefined) data.status = dto.status;
+    if (dto.taskType !== undefined) data.taskType = dto.taskType;
     if (dto.assigneeId !== undefined) {
       data.assignee = dto.assigneeId
         ? { connect: { id: dto.assigneeId } }
@@ -318,12 +331,80 @@ export class TasksService {
       }
     }
 
+    // Auto-create ContactLog when EMAIL/TELEFOONGESPREK task is completed
+    if (
+      dto.status === TaskStatus.VOLTOOID &&
+      oldStatus !== TaskStatus.VOLTOOID &&
+      (task.taskType === TaskType.EMAIL || task.taskType === TaskType.TELEFOONGESPREK)
+    ) {
+      this.createContactLogForTask(task, user).catch((err) => {
+        this.logger.error(`Failed to create ContactLog for task ${task.id}: ${err.message}`);
+      });
+    }
+
     // Enrich with entity name
     const nameMap = await this.enrichWithEntityNames([task]);
     return {
       ...task,
       entityName: nameMap.get(task.entityId) || null,
     };
+  }
+
+  private async resolveContactId(
+    entityType: TaskEntityType,
+    entityId: string,
+  ): Promise<string | null> {
+    switch (entityType) {
+      case TaskEntityType.CONTACT:
+        return entityId;
+      case TaskEntityType.REQUEST: {
+        const request = await this.prisma.request.findUnique({
+          where: { id: entityId },
+          select: { contactId: true },
+        });
+        return request?.contactId ?? null;
+      }
+      case TaskEntityType.QUOTE: {
+        const quote = await this.prisma.quote.findUnique({
+          where: { id: entityId },
+          select: { contactId: true },
+        });
+        return quote?.contactId ?? null;
+      }
+      default:
+        return null;
+    }
+  }
+
+  private async createContactLogForTask(
+    task: { id: string; title: string; description: string | null; taskType: TaskType; entityType: TaskEntityType; entityId: string; orgId: string },
+    user: User,
+  ): Promise<void> {
+    const contactId = await this.resolveContactId(task.entityType, task.entityId);
+    if (!contactId) {
+      this.logger.debug(
+        `Skipping ContactLog for task ${task.id}: no contact linked to ${task.entityType} ${task.entityId}`,
+      );
+      return;
+    }
+
+    const logType = task.taskType === TaskType.EMAIL ? LogType.EMAIL : LogType.PHONE;
+
+    await this.prisma.contactLog.create({
+      data: {
+        contactId,
+        orgId: task.orgId,
+        userId: user.id,
+        type: logType,
+        subject: task.title,
+        body: task.description,
+        loggedAt: new Date(),
+      },
+    });
+
+    this.logger.debug(
+      `Created ContactLog (${logType}) for contact ${contactId} from task ${task.id}`,
+    );
   }
 
   async remove(id: string, user: User) {

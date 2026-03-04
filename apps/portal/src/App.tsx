@@ -91,7 +91,6 @@ const OrganizationsPage = lazy(
 const OrganizationDetailPage = lazy(
   () => import('@/pages/organizations/organization-detail-page'),
 );
-const ActivityPage = lazy(() => import('@/pages/activity/activity-page'));
 const PlanningPage = lazy(() => import('@/pages/planning/planning-page'));
 const PlanningDetailPage = lazy(() => import('@/pages/planning/planning-detail-page'));
 const PlanningPublicPage = lazy(() => import('@/pages/planning/planning-public-page'));
@@ -102,6 +101,8 @@ const EmailTemplatesPage = lazy(() => import('@/pages/email-templates/email-temp
 const EmailTemplateDetailPage = lazy(() => import('@/pages/email-templates/email-template-detail-page'));
 const ErrorReportsPage = lazy(() => import('@/pages/error-reports/error-reports-page'));
 const NotesPage = lazy(() => import('@/pages/notes/notes-page'));
+const WorkOrdersPage = lazy(() => import('@/pages/work-orders/work-orders-page'));
+const WorkOrderDetailPage = lazy(() => import('@/pages/work-orders/work-order-detail-page'));
 
 function PageLoader() {
   return (
@@ -166,9 +167,10 @@ export default function App() {
             <Route path="/products/:id" element={<ProductDetailPage />} />
             <Route path="/price-tables" element={<PriceTablesPage />} />
             <Route path="/price-tables/:id" element={<PriceTableDetailPage />} />
-            <Route path="/activiteiten" element={<ActivityPage />} />
             <Route path="/planning" element={<PlanningPage />} />
             <Route path="/planning/:id" element={<PlanningDetailPage />} />
+            <Route path="/work-orders" element={<WorkOrdersPage />} />
+            <Route path="/work-orders/:id" element={<WorkOrderDetailPage />} />
             <Route path="/projects" element={<ProjectsPage />} />
             <Route path="/projects/:id" element={<ProjectDetailPage />} />
             <Route path="/search" element={<SearchPage />} />

@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { apiClient } from '@/lib/api-client';
+import { apiClient, getAccessToken } from '@/lib/api-client';
 import type {
   Quote,
   QuoteLine,
@@ -15,6 +15,8 @@ interface ListQuotesParams {
   createdBy?: string;
   page?: number;
   limit?: number;
+  sortBy?: string;
+  sortOrder?: 'asc' | 'desc';
 }
 
 export function useQuotes(params: ListQuotesParams = {}) {
@@ -25,6 +27,8 @@ export function useQuotes(params: ListQuotesParams = {}) {
   if (params.createdBy) queryParams.set('createdBy', params.createdBy);
   if (params.page) queryParams.set('page', String(params.page));
   if (params.limit) queryParams.set('limit', String(params.limit));
+  if (params.sortBy) queryParams.set('sortBy', params.sortBy);
+  if (params.sortOrder) queryParams.set('sortOrder', params.sortOrder);
 
   const qs = queryParams.toString();
   const endpoint = `/quotes${qs ? `?${qs}` : ''}`;
@@ -40,6 +44,14 @@ export function useQuote(id: string) {
     queryKey: ['quotes', id],
     queryFn: () => apiClient.get<Quote>(`/quotes/${id}`),
     enabled: !!id,
+    // Refetch when returning to the tab (e.g. after client signs on public page)
+    refetchOnWindowFocus: 'always',
+    // Poll every 30s when quote is in a status where external changes can happen
+    refetchInterval: (query) => {
+      const status = query.state.data?.status;
+      if (status === 'VERSTUURD' || status === 'BEKEKEN') return 30_000;
+      return false;
+    },
   });
 }
 
@@ -279,6 +291,25 @@ export function useUploadQuoteAttachment(id: string) {
       queryClient.invalidateQueries({ queryKey: ['quotes', id] });
     },
   });
+}
+
+/**
+ * Preview PDF for a DOCX-template quote.
+ * Fetches the rendered PDF and returns a blob URL for embedding in a modal.
+ */
+export async function previewQuotePdf(id: string): Promise<string> {
+  const token = getAccessToken();
+  const headers: Record<string, string> = {};
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+
+  const response = await fetch(`/api/v1/quotes/${id}/preview-pdf`, {
+    headers,
+    credentials: 'include',
+  });
+  if (!response.ok) throw new Error('PDF preview mislukt');
+
+  const blob = await response.blob();
+  return URL.createObjectURL(blob);
 }
 
 export function useDeleteQuoteAttachment(id: string) {

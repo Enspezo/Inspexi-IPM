@@ -12,10 +12,9 @@ import {
   NoteEntityType,
 } from '@/types';
 import type { Project, ProjectFollower } from '@/types';
-import { ActionMenu, Button, Spinner, Input, Select, Card, Modal } from '@/components/ui';
+import { ActionMenu, Button, Spinner, Input, Select, Card, Modal, Checkbox } from '@/components/ui';
 import { DetailPageLayout, SidebarSection } from '@/components/layout/detail-page-layout';
-import { NotesSidebarSection, HistorySidebarSection } from '@/components/layout/sidebar-sections';
-import { DocumentsSection, UploadDocumentModal } from '@/components/documents';
+import { NotesSidebarSection, HistorySidebarSection, DocumentsSidebarSection } from '@/components/layout/sidebar-sections';
 import { useAuth } from '@/providers/auth-provider';
 import { useToast } from '@/components/ui';
 import {
@@ -32,8 +31,10 @@ import type { ProjectLocation } from './hooks/use-projects';
 import {
   useProjectFollowers,
   useAddProjectFollower,
+  useUpdateProjectFollower,
   useRemoveProjectFollower,
 } from './hooks/use-project-followers';
+import type { AddProjectFollowerData, UpdateProjectFollowerData } from './hooks/use-project-followers';
 import { useTasks, useUpdateTask } from '../tasks/hooks/use-tasks';
 import { CreateTaskModal } from '@/pages/tasks/components/create-task-modal';
 import { LinkEntitiesModal } from './components/link-entities-modal';
@@ -104,7 +105,6 @@ export default function ProjectDetailPage() {
     'requests' | 'quotes' | 'planning' | null
   >(null);
   const [isTaskOpen, setIsTaskOpen] = useState(false);
-  const [isDocUploadOpen, setIsDocUploadOpen] = useState(false);
   const [addFollowerOpen, setAddFollowerOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
@@ -125,6 +125,7 @@ export default function ProjectDetailPage() {
   const updateTaskMutation = useUpdateTask();
   const unassignMutation = useUnassignFromProject(id!);
   const addFollowerMutation = useAddProjectFollower(id!);
+  const updateFollowerMutation = useUpdateProjectFollower(id!);
   const removeFollowerMutation = useRemoveProjectFollower(id!);
 
   // Users for PM dropdown
@@ -291,6 +292,12 @@ export default function ProjectDetailPage() {
 
             <NotesSidebarSection entityType={NoteEntityType.PROJECT} entityId={id!} />
 
+            <DocumentsSidebarSection
+              entityType={DocumentEntityType.PROJECT}
+              entityId={project.id}
+              canUpload={userCanWrite}
+            />
+
             <HistorySidebarSection entityType="Project" entityId={id} />
           </div>
         }
@@ -331,11 +338,6 @@ export default function ProjectDetailPage() {
                     label: 'Taak aanmaken',
                     icon: <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" /></svg>,
                     onClick: () => setIsTaskOpen(true),
-                  },
-                  {
-                    label: 'Document uploaden',
-                    icon: <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>,
-                    onClick: () => setIsDocUploadOpen(true),
                   },
                 ]}
               />
@@ -440,6 +442,9 @@ export default function ProjectDetailPage() {
               canWrite={!!userCanWrite}
               onAdd={() => setAddFollowerOpen(true)}
               onRemove={handleRemoveFollower}
+              onUpdatePermissions={(followerId, data) =>
+                updateFollowerMutation.mutateAsync({ followerId, data })
+              }
             />
           )}
 
@@ -461,16 +466,6 @@ export default function ProjectDetailPage() {
           isOpen={isTaskOpen}
           onClose={() => setIsTaskOpen(false)}
           entityType={TaskEntityType.PROJECT}
-          entityId={project.id}
-        />
-      )}
-
-      {/* Upload document modal */}
-      {isDocUploadOpen && (
-        <UploadDocumentModal
-          isOpen={isDocUploadOpen}
-          onClose={() => setIsDocUploadOpen(false)}
-          entityType={DocumentEntityType.PROJECT}
           entityId={project.id}
         />
       )}
@@ -690,14 +685,6 @@ function OverviewTab({
             )}
           </div>
 
-          {/* Documenten */}
-          <Card>
-            <DocumentsSection
-              entityType={DocumentEntityType.PROJECT}
-              entityId={project.id}
-              canUpload={canWrite}
-            />
-          </Card>
 
           {/* Bottom actions */}
           <div className="flex items-center justify-between border-t border-gray-200 pt-6">
@@ -902,6 +889,16 @@ function LinkedEntitiesTab({
   );
 }
 
+// ─── Permission labels ──────────────────────────────────────
+
+const PERMISSION_FIELDS = [
+  { key: 'canViewGeneral' as const, label: 'Algemeen' },
+  { key: 'canViewRequests' as const, label: 'Aanvragen' },
+  { key: 'canViewQuotes' as const, label: 'Offertes' },
+  { key: 'canViewPlanning' as const, label: 'Planning' },
+  { key: 'canViewDocuments' as const, label: 'Documenten (gedeeld)' },
+];
+
 // ─── Followers Tab ──────────────────────────────────────────
 
 function FollowersTab({
@@ -909,53 +906,127 @@ function FollowersTab({
   canWrite,
   onAdd,
   onRemove,
+  onUpdatePermissions,
 }: {
   followers: ProjectFollower[];
   canWrite: boolean;
   onAdd: () => void;
   onRemove: (id: string) => void;
+  onUpdatePermissions: (followerId: string, data: UpdateProjectFollowerData) => Promise<any>;
 }) {
+  const internalFollowers = followers.filter((f) => !!f.userId);
+  const externalFollowers = followers.filter((f) => !f.userId);
+
   return (
-    <div>
-      <div className="mb-4 flex items-center justify-between">
-        <h3 className="font-semibold text-gray-900">Volgers</h3>
-        {canWrite && (
-          <Button variant="secondary" onClick={onAdd}>
-            Volger toevoegen
-          </Button>
-        )}
-      </div>
-      <div className="space-y-3">
-        {followers.map((f) => {
-          const email = f.user?.email ?? f.email ?? '—';
-          const name = f.user
-            ? `${f.user.firstName} ${f.user.lastName}`
-            : f.name ?? email;
-          return (
-            <div
-              key={f.id}
-              className="flex items-center justify-between rounded-lg border border-gray-200 p-3"
-            >
-              <div>
-                <div className="text-sm font-medium text-gray-900">{name}</div>
-                {!f.user && f.email && (
-                  <div className="text-xs text-gray-500">{email}</div>
+    <div className="space-y-6">
+      {/* Internal followers (Medewerkers) */}
+      <div>
+        <div className="mb-3 flex items-center justify-between">
+          <h3 className="font-semibold text-gray-900">Medewerkers</h3>
+          {canWrite && (
+            <Button variant="secondary" onClick={onAdd}>
+              Volger toevoegen
+            </Button>
+          )}
+        </div>
+        <div className="space-y-2">
+          {internalFollowers.map((f) => {
+            const firstName = f.user?.firstName ?? '';
+            const lastName = f.user?.lastName ?? '';
+            const name = `${firstName} ${lastName}`.trim() || f.user?.email || '—';
+            const initials =
+              f.user?.initials ??
+              `${firstName[0] ?? ''}${lastName[0] ?? ''}`.toUpperCase();
+            const color = f.user?.color ?? '#6B7280';
+
+            return (
+              <div
+                key={f.id}
+                className="flex items-center justify-between rounded-lg border border-gray-200 p-3"
+              >
+                <div className="flex items-center gap-3">
+                  <span
+                    className="inline-flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full text-xs font-bold text-white"
+                    style={{ backgroundColor: color }}
+                    title={name}
+                  >
+                    {initials}
+                  </span>
+                  <div>
+                    <div className="text-sm font-medium text-gray-900">{name}</div>
+                    <div className="text-xs text-gray-500">{f.user?.email}</div>
+                  </div>
+                </div>
+                {canWrite && (
+                  <Button variant="ghost" onClick={() => onRemove(f.id)}>
+                    Verwijderen
+                  </Button>
                 )}
               </div>
-              {canWrite && (
-                <Button
-                  variant="ghost"
-                  onClick={() => onRemove(f.id)}
-                >
-                  Verwijderen
-                </Button>
-              )}
-            </div>
-          );
-        })}
-        {followers.length === 0 && (
-          <p className="text-sm text-gray-500">Geen volgers toegevoegd</p>
-        )}
+            );
+          })}
+          {internalFollowers.length === 0 && (
+            <p className="text-sm text-gray-500">Geen medewerkers als volger</p>
+          )}
+        </div>
+      </div>
+
+      {/* External followers */}
+      <div>
+        <h3 className="mb-3 font-semibold text-gray-900">Externe volgers</h3>
+        <div className="space-y-3">
+          {externalFollowers.map((f) => {
+            const email = f.email ?? '—';
+            const name = f.name ?? email;
+
+            return (
+              <div
+                key={f.id}
+                className="rounded-lg border border-gray-200 p-3"
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <span className="inline-flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-gray-200 text-xs font-bold text-gray-600">
+                      <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                      </svg>
+                    </span>
+                    <div>
+                      <div className="text-sm font-medium text-gray-900">{name}</div>
+                      {f.name && <div className="text-xs text-gray-500">{email}</div>}
+                    </div>
+                  </div>
+                  {canWrite && (
+                    <Button variant="ghost" onClick={() => onRemove(f.id)}>
+                      Verwijderen
+                    </Button>
+                  )}
+                </div>
+
+                {/* Permissions */}
+                <div className="mt-3 border-t border-gray-100 pt-3">
+                  <p className="mb-2 text-xs font-medium text-gray-500">Zichtbare informatie</p>
+                  <div className="flex flex-wrap gap-x-4 gap-y-1.5">
+                    {PERMISSION_FIELDS.map(({ key, label }) => (
+                      <Checkbox
+                        key={key}
+                        label={label}
+                        checked={f[key]}
+                        disabled={!canWrite}
+                        onChange={(e) => {
+                          onUpdatePermissions(f.id, { [key]: e.target.checked });
+                        }}
+                      />
+                    ))}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+          {externalFollowers.length === 0 && (
+            <p className="text-sm text-gray-500">Geen externe volgers</p>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -1001,7 +1072,7 @@ function AddFollowerModal({
 }: {
   projectId: string;
   onClose: () => void;
-  onAdd: (data: { userId?: string; email?: string; name?: string }) => void;
+  onAdd: (data: AddProjectFollowerData) => void;
   isAdding: boolean;
 }) {
   const [mode, setMode] = useState<'user' | 'external'>('user');
@@ -1009,6 +1080,13 @@ function AddFollowerModal({
   const [email, setEmail] = useState('');
   const [name, setName] = useState('');
   const [users, setUsers] = useState<{ value: string; label: string }[]>([]);
+
+  // Permission defaults for external followers
+  const [canViewGeneral, setCanViewGeneral] = useState(true);
+  const [canViewRequests, setCanViewRequests] = useState(false);
+  const [canViewQuotes, setCanViewQuotes] = useState(true);
+  const [canViewPlanning, setCanViewPlanning] = useState(true);
+  const [canViewDocuments, setCanViewDocuments] = useState(false);
 
   useEffect(() => {
     apiClient
@@ -1029,7 +1107,15 @@ function AddFollowerModal({
     if (mode === 'user' && userId) {
       onAdd({ userId });
     } else if (mode === 'external' && email) {
-      onAdd({ email, name: name || undefined });
+      onAdd({
+        email,
+        name: name || undefined,
+        canViewGeneral,
+        canViewRequests,
+        canViewQuotes,
+        canViewPlanning,
+        canViewDocuments,
+      });
     }
   };
 
@@ -1087,6 +1173,40 @@ function AddFollowerModal({
                 onChange={(e) => setName(e.target.value)}
                 placeholder="Naam (optioneel)"
               />
+            </div>
+
+            {/* Permission checkboxes */}
+            <div>
+              <label className="mb-2 block text-sm font-medium text-gray-700">
+                Zichtbare informatie
+              </label>
+              <div className="space-y-2">
+                <Checkbox
+                  label="Algemeen"
+                  checked={canViewGeneral}
+                  onChange={(e) => setCanViewGeneral(e.target.checked)}
+                />
+                <Checkbox
+                  label="Aanvragen"
+                  checked={canViewRequests}
+                  onChange={(e) => setCanViewRequests(e.target.checked)}
+                />
+                <Checkbox
+                  label="Offertes"
+                  checked={canViewQuotes}
+                  onChange={(e) => setCanViewQuotes(e.target.checked)}
+                />
+                <Checkbox
+                  label="Planning"
+                  checked={canViewPlanning}
+                  onChange={(e) => setCanViewPlanning(e.target.checked)}
+                />
+                <Checkbox
+                  label="Documenten (enkel gedeelde)"
+                  checked={canViewDocuments}
+                  onChange={(e) => setCanViewDocuments(e.target.checked)}
+                />
+              </div>
             </div>
           </>
         )}

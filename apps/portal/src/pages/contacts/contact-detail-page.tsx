@@ -26,10 +26,9 @@ import { SendEmailModal } from './components/send-email-modal';
 import { CreateTaskModal } from '@/pages/tasks/components/create-task-modal';
 import { EditTaskModal } from '@/pages/tasks/components/edit-task-modal';
 import { CreateRequestModal } from '@/pages/requests/components/create-request-modal';
-import { DocumentsSection, UploadDocumentModal } from '@/components/documents';
 import { CustomFieldsDisplay, CustomFieldsForm } from '@/components/custom-fields';
 import { NoteEntityType } from '@/types';
-import { NotesSidebarSection, HistorySidebarSection } from '@/components/layout/sidebar-sections';
+import { NotesSidebarSection, HistorySidebarSection, DocumentsSidebarSection } from '@/components/layout/sidebar-sections';
 
 type Tab = 'algemeen' | 'adressen' | 'locaties' | 'aanvragen' | 'offertes' | 'planning' | 'projecten';
 
@@ -225,7 +224,6 @@ export default function ContactDetailPage() {
   const [logInitialLoggedAt, setLogInitialLoggedAt] = useState<string | undefined>(undefined);
   const [isEmailOpen, setIsEmailOpen] = useState(false);
   const [isTaskOpen, setIsTaskOpen] = useState(false);
-  const [isDocUploadOpen, setIsDocUploadOpen] = useState(false);
   const [isRequestOpen, setIsRequestOpen] = useState(false);
 
   const userCanWrite = user && user.roles.some(r => canWrite.includes(r));
@@ -432,6 +430,12 @@ export default function ContactDetailPage() {
 
       <NotesSidebarSection entityType={NoteEntityType.CONTACT} entityId={id!} />
 
+      <DocumentsSidebarSection
+        entityType={DocumentEntityType.CONTACT}
+        entityId={contact.id}
+        canUpload={!!userCanWrite}
+      />
+
       <HistorySidebarSection entityType="Contact" entityId={id} />
     </div>
   );
@@ -489,11 +493,6 @@ export default function ContactDetailPage() {
                 label: 'Taak aanmaken',
                 icon: <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" /></svg>,
                 onClick: () => setIsTaskOpen(true),
-              },
-              {
-                label: 'Document uploaden',
-                icon: <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>,
-                onClick: () => setIsDocUploadOpen(true),
               },
             ]}
           />
@@ -779,14 +778,6 @@ export default function ContactDetailPage() {
             )}
           </div>
 
-          {/* Documenten */}
-          <Card>
-            <DocumentsSection
-              entityType={DocumentEntityType.CONTACT}
-              entityId={contact.id}
-              canUpload={!!userCanWrite}
-            />
-          </Card>
         </div>
       )}
 
@@ -1336,12 +1327,6 @@ export default function ContactDetailPage() {
         isOpen={isRequestOpen}
         onClose={() => setIsRequestOpen(false)}
         contactId={contact.id}
-      />
-      <UploadDocumentModal
-        isOpen={isDocUploadOpen}
-        onClose={() => setIsDocUploadOpen(false)}
-        entityType={DocumentEntityType.CONTACT}
-        entityId={contact.id}
       />
 
       {/* VIES naam-mismatch dialoog */}

@@ -6,7 +6,7 @@ import {
   BadRequestException,
   Inject,
 } from '@nestjs/common';
-import { User, Role, Prisma, QuoteStatus, RequestStatus, NotificationType } from '@prisma/client';
+import { User, Role, Prisma, QuoteStatus, RequestStatus, NotificationType, TaskType, TaskEntityType, TaskStatus, FollowUpAssigneeType } from '@prisma/client';
 import { ConfigService } from '@nestjs/config';
 import { randomUUID } from 'crypto';
 import { PrismaService } from '@/prisma';
@@ -16,6 +16,10 @@ import { StorageProvider, STORAGE_PROVIDER } from '@/common/services/storage/sto
 import { PlanningService } from '../planning/planning.service';
 import { ProjectsService } from '../projects/projects.service';
 import { CustomFieldsValidator } from '@/modules/custom-fields/custom-fields.validator';
+import { DocxRendererService } from '../quote-templates/docx-renderer.service';
+import { EmailTemplatesService } from '../email-templates/email-templates.service';
+import { TasksService } from '../tasks/tasks.service';
+import { PdfService } from './pdf.service';
 import {
   CreateQuoteDto,
   UpdateQuoteDto,
@@ -48,7 +52,7 @@ const QUOTE_INCLUDE = {
   contact: { select: { id: true, type: true, companyName: true, firstName: true, lastName: true, email: true } },
   location: { select: { id: true, name: true, city: true, street: true, houseNumber: true, postalCode: true } },
   request: { select: { id: true, title: true } },
-  template: { select: { id: true, name: true } },
+  template: { select: { id: true, name: true, templateType: true, docxStorageKey: true, sendEmailTemplateId: true, sendEmailEnabled: true, acceptedEmailTemplateId: true, acceptedEmailEnabled: true } },
   createdByUser: { select: { id: true, firstName: true, lastName: true, email: true } },
   lines: {
     include: { product: { select: { id: true, name: true, unit: true, productGroupId: true } } },
@@ -82,6 +86,10 @@ export class QuotesService {
     private planningService: PlanningService,
     private customFieldsValidator: CustomFieldsValidator,
     private projectsService: ProjectsService,
+    private docxRenderer: DocxRendererService,
+    private pdfService: PdfService,
+    private emailTemplatesService: EmailTemplatesService,
+    private tasksService: TasksService,
   ) {}
 
   private getPublicUrl(path: string): string {
@@ -90,7 +98,11 @@ export class QuotesService {
   }
 
   async findAll(user: User, query: ListQuotesQueryDto) {
-    const { search, status, contactId, createdBy, page = 1, limit = 20 } = query;
+    const { search, status, contactId, createdBy, page = 1, limit = 20, sortBy, sortOrder = 'desc' } = query;
+    const ALLOWED_SORT_FIELDS = ['quoteNumber', 'subject', 'status', 'total', 'validUntil', 'createdAt'];
+    const orderBy = (sortBy && ALLOWED_SORT_FIELDS.includes(sortBy))
+      ? { [sortBy]: sortOrder }
+      : { createdAt: 'desc' as const };
     const skip = (page - 1) * limit;
     const where: Prisma.QuoteWhereInput = {};
     if (!user.roles.includes(Role.SUPERUSER)) where.orgId = user.orgId!;
@@ -111,7 +123,7 @@ export class QuotesService {
           contact: { select: { id: true, type: true, companyName: true, firstName: true, lastName: true, email: true } },
           createdByUser: { select: { id: true, firstName: true, lastName: true, email: true } },
         },
-        orderBy: { createdAt: 'desc' },
+        orderBy,
         skip,
         take: limit,
       }),
@@ -144,8 +156,8 @@ export class QuotesService {
       const template = await this.prisma.quoteTemplate.findUnique({ where: { id: dto.templateId } });
       if (!template || !template.isActive) throw new NotFoundException('Template niet gevonden');
       if (!user.roles.includes(Role.SUPERUSER) && template.orgId !== orgId) throw new ForbiddenException('Template behoort niet tot uw organisatie');
-      if (template.templateType === 'RTF') {
-        // RTF templates only contribute metadata — block content is not applicable
+      if (template.templateType === 'DOCX') {
+        // DOCX templates only contribute metadata — block content is not applicable
         templateData = { defaultValidityDays: template.defaultValidityDays, requiresApproval: template.requiresApproval };
       } else {
         templateData = { coverBlocks: template.coverBlocks, contentBlocks: template.contentBlocks, closingBlocks: template.closingBlocks, defaultValidityDays: template.defaultValidityDays, requiresApproval: template.requiresApproval };
@@ -265,10 +277,137 @@ export class QuotesService {
       await this.prisma.quote.update({ where: { id: quote.id }, data: { publicToken: token } });
     }
     const quoteUrl = this.getPublicUrl(`/offerte/${token}`);
-    await this.emailService.sendQuoteEmail({ to: dto.to, cc: dto.cc, subject: dto.subject, bodyText: dto.bodyText, quoteUrl, orgName: org?.name ?? 'InspeXi', senderName: org?.senderName, senderEmail: org?.senderEmail, orgId: quote.orgId, quoteNumber: quote.quoteNumber });
-    const updated = await this.prisma.quote.update({ where: { id: quote.id }, data: { status: QuoteStatus.VERSTUURD, sentAt: new Date() } });
+
+    // For DOCX templates: render template → PDF → store
+    const template = quote.template as { id: string; name: string; templateType: string; docxStorageKey: string | null; sendEmailTemplateId: string | null; sendEmailEnabled: boolean; acceptedEmailTemplateId: string | null; acceptedEmailEnabled: boolean } | null;
+    if (template?.templateType === 'DOCX' && template.docxStorageKey) {
+      try {
+        const { buffer: docxBuf } = await this.renderQuoteDocx(id, user);
+        const pdfBuf = await this.pdfService.convertDocxToPdf(docxBuf);
+        const pdfKey = `${quote.orgId}/quotes/${quote.id}/offerte-${quote.quoteNumber}.pdf`;
+        await this.storage.upload(pdfKey, pdfBuf, 'application/pdf');
+        await this.prisma.quote.update({ where: { id: quote.id }, data: { pdfStorageKey: pdfKey } });
+      } catch (err) {
+        this.logger.error('Failed to generate PDF for DOCX quote', err);
+      }
+    }
+
+    // Copy template attachments to quote (if not already done)
+    await this.copyTemplateAttachments(quote);
+
+    // Build email attachments (PDF + quote attachments)
+    const updatedQuote = await this.prisma.quote.findUnique({ where: { id: quote.id }, select: { pdfStorageKey: true } });
+    const emailAttachments = await this.buildEmailAttachments(quote.id, quote.quoteNumber, updatedQuote?.pdfStorageKey ?? null);
+
+    // Check for per-template email template override
+    const contactName = quote.contact?.companyName || `${quote.contact?.firstName ?? ''} ${quote.contact?.lastName ?? ''}`.trim();
+    if (template?.sendEmailTemplateId && template.sendEmailEnabled) {
+      const emailVars = {
+        organisatie: { naam: org?.name ?? 'InspeXi', email: org?.senderEmail ?? '' },
+        contact: { bedrijfsnaam: quote.contact?.companyName ?? '', voornaam: quote.contact?.firstName ?? '', achternaam: quote.contact?.lastName ?? '', email: quote.contact?.email ?? dto.to },
+        offerte: { nummer: quote.quoteNumber, onderwerp: dto.subject, totaal: `€ ${quote.total.toFixed(2)}`, vervalDatum: quote.validUntil ? new Date(quote.validUntil).toLocaleDateString('nl-NL') : '', url: quoteUrl },
+        gebruiker: { voornaam: user.firstName ?? '', achternaam: user.lastName ?? '', email: user.email },
+      };
+      const rendered = await this.emailTemplatesService.tryRenderById(template.sendEmailTemplateId, emailVars, org?.name);
+      if (rendered) {
+        await this.emailService.sendQuoteEmail({
+          to: dto.to, cc: dto.cc, subject: rendered.subject, bodyText: dto.bodyText, quoteUrl,
+          orgName: org?.name ?? 'InspeXi', senderName: org?.senderName, senderEmail: org?.senderEmail,
+          orgId: quote.orgId, quoteNumber: quote.quoteNumber, contactName,
+          customHtml: rendered.html,
+          attachments: emailAttachments.length > 0 ? emailAttachments : undefined,
+        });
+      } else {
+        // Template not found or inactive, fall back to default
+        await this.emailService.sendQuoteEmail({
+          to: dto.to, cc: dto.cc, subject: dto.subject, bodyText: dto.bodyText, quoteUrl,
+          orgName: org?.name ?? 'InspeXi', senderName: org?.senderName, senderEmail: org?.senderEmail,
+          orgId: quote.orgId, quoteNumber: quote.quoteNumber, contactName,
+          attachments: emailAttachments.length > 0 ? emailAttachments : undefined,
+        });
+      }
+    } else {
+      await this.emailService.sendQuoteEmail({
+        to: dto.to, cc: dto.cc, subject: dto.subject, bodyText: dto.bodyText, quoteUrl,
+        orgName: org?.name ?? 'InspeXi', senderName: org?.senderName, senderEmail: org?.senderEmail,
+        orgId: quote.orgId, quoteNumber: quote.quoteNumber, contactName,
+        attachments: emailAttachments.length > 0 ? emailAttachments : undefined,
+      });
+    }
+    const sentAt = new Date();
+    const updated = await this.prisma.quote.update({ where: { id: quote.id }, data: { status: QuoteStatus.VERSTUURD, sentAt } });
     this.notifications.dispatch({ type: NotificationType.OFFERTE_VERSTUURD, orgId: quote.orgId, recipientUserIds: [quote.createdBy], title: 'Offerte verstuurd', body: `Offerte ${quote.quoteNumber} is naar ${dto.to} verstuurd.`, entityType: 'quote', entityId: quote.id });
+
+    // Fire-and-forget: create follow-up tasks from template rules
+    if (quote.templateId) {
+      this.createFollowUpTasks(quote.id, quote.templateId, quote.quoteNumber, quote.orgId, quote.createdBy, sentAt, user).catch((err) =>
+        this.logger.error('Failed to create follow-up tasks', err),
+      );
+    }
+
     return updated;
+  }
+
+  private async createFollowUpTasks(
+    quoteId: string,
+    templateId: string,
+    quoteNumber: string,
+    orgId: string,
+    createdBy: string,
+    sentAt: Date,
+    user: User,
+  ): Promise<void> {
+    const followUpRules = await this.prisma.quoteTemplateFollowUp.findMany({
+      where: { templateId, isActive: true },
+      include: {
+        emailTemplate: { select: { id: true, name: true } },
+      },
+      orderBy: { sortOrder: 'asc' },
+    });
+
+    for (const rule of followUpRules) {
+      const deadline = new Date(sentAt);
+      deadline.setDate(deadline.getDate() + rule.delayDays);
+
+      let assigneeId: string | null = null;
+      if (rule.assigneeType === FollowUpAssigneeType.QUOTE_OWNER) {
+        assigneeId = createdBy;
+      } else if (rule.assigneeType === FollowUpAssigneeType.SPECIFIC_USER && rule.assigneeUserId) {
+        assigneeId = rule.assigneeUserId;
+      }
+      // SYSTEM → null (will be processed by cron)
+
+      const taskType = rule.type === 'EMAIL' ? TaskType.EMAIL : TaskType.TELEFOONGESPREK;
+
+      let title: string;
+      let description: string | undefined;
+
+      if (rule.type === 'EMAIL') {
+        const templateName = rule.emailTemplate?.name ?? 'onbekend';
+        title = `Follow-up e-mail: ${templateName} (${quoteNumber})`;
+        description = rule.emailTemplateId
+          ? `E-mailsjabloon: ${templateName}\nAutomatisch aangemaakt bij versturen offerte ${quoteNumber}.`
+          : `Automatisch aangemaakt bij versturen offerte ${quoteNumber}.`;
+      } else {
+        title = `Follow-up telefoongesprek: ${quoteNumber}`;
+        description = rule.defaultNotes || `Automatisch aangemaakt bij versturen offerte ${quoteNumber}.`;
+      }
+
+      await this.prisma.task.create({
+        data: {
+          title,
+          description,
+          status: TaskStatus.TE_DOEN,
+          taskType,
+          entityType: TaskEntityType.QUOTE,
+          entityId: quoteId,
+          assigneeId,
+          deadline,
+          orgId,
+          createdById: user.id,
+        },
+      });
+    }
   }
 
   async submitForApproval(id: string, dto: SubmitApprovalDto, user: User) {
@@ -421,17 +560,75 @@ export class QuotesService {
   }
 
   async signQuote(token: string, dto: SignQuoteDto, clientIp?: string, userAgent?: string) {
-    const quote = await this.prisma.quote.findUnique({ where: { publicToken: token }, include: { organization: { select: { name: true } } } });
+    const quote = await this.prisma.quote.findUnique({
+      where: { publicToken: token },
+      include: {
+        organization: { select: { name: true, senderName: true, senderEmail: true } },
+        contact: { select: { id: true, email: true, companyName: true, firstName: true, lastName: true } },
+        template: { select: { acceptedEmailTemplateId: true, acceptedEmailEnabled: true } },
+      },
+    });
     if (!quote) throw new NotFoundException('Offerte niet gevonden');
     if (quote.status !== QuoteStatus.VERSTUURD && quote.status !== QuoteStatus.BEKEKEN) throw new BadRequestException('Offerte kan niet worden ondertekend in de huidige status');
     if (quote.signedAt) throw new BadRequestException('Offerte is al ondertekend');
+    const signedAt = new Date();
     const updated = await this.prisma.quote.update({
       where: { id: quote.id },
-      data: { status: QuoteStatus.GEACCEPTEERD, signedAt: new Date(), clientName: dto.clientName, clientSignature: dto.signature || null, clientIp: clientIp || null, clientUserAgent: userAgent || null, viewedAt: quote.viewedAt ?? new Date() },
+      data: { status: QuoteStatus.GEACCEPTEERD, signedAt, clientName: dto.clientName, clientSignature: dto.signature || null, clientIp: clientIp || null, clientUserAgent: userAgent || null, viewedAt: quote.viewedAt ?? new Date() },
     });
     const managers = await this.prisma.user.findMany({ where: { orgId: quote.orgId, roles: { hasSome: [Role.MANAGER, Role.ORG_ADMIN] }, isActive: true }, select: { id: true } });
     const recipientIds = [...new Set([quote.createdBy, ...managers.map((m) => m.id)])];
     this.notifications.dispatch({ type: NotificationType.OFFERTE_ONDERTEKEND, orgId: quote.orgId, recipientUserIds: recipientIds, title: 'Offerte ondertekend', body: `${dto.clientName} heeft offerte ${quote.quoteNumber} ondertekend.`, entityType: 'quote', entityId: quote.id });
+
+    // Generate signed PDF with signature stamp
+    if (quote.pdfStorageKey && dto.signature) {
+      try {
+        const pdfBuf = await this.storage.download(quote.pdfStorageKey);
+        const signedPdf = await this.pdfService.stampSignature(pdfBuf, dto.signature, dto.clientName, signedAt, clientIp);
+        const signedKey = `${quote.orgId}/quotes/${quote.id}/offerte-${quote.quoteNumber}-ondertekend.pdf`;
+        await this.storage.upload(signedKey, signedPdf, 'application/pdf');
+        await this.prisma.quote.update({ where: { id: quote.id }, data: { signedPdfStorageKey: signedKey } });
+
+        // Send confirmation email with signed PDF
+        const contactEmail = (quote as any).contact?.email;
+        if (contactEmail) {
+          // Check for per-template email template
+          let customHtml: string | undefined;
+          let customSubject: string | undefined;
+          const acceptedTemplateId = (quote as any).template?.acceptedEmailTemplateId;
+          const acceptedEmailEnabled = (quote as any).template?.acceptedEmailEnabled !== false;
+          if (acceptedTemplateId && acceptedEmailEnabled) {
+            const orgName = (quote as any).organization?.name ?? 'InspeXi';
+            const emailVars = {
+              organisatie: { naam: orgName, email: (quote as any).organization?.senderEmail ?? '' },
+              contact: { bedrijfsnaam: (quote as any).contact?.companyName ?? '', voornaam: (quote as any).contact?.firstName ?? '', achternaam: (quote as any).contact?.lastName ?? '', email: contactEmail },
+              offerte: { nummer: quote.quoteNumber, onderwerp: '', totaal: '', vervalDatum: '', url: '' },
+              gebruiker: { voornaam: dto.clientName, achternaam: '', email: contactEmail },
+            };
+            const rendered = await this.emailTemplatesService.tryRenderById(acceptedTemplateId, emailVars, orgName);
+            if (rendered) {
+              customHtml = rendered.html;
+              customSubject = rendered.subject;
+            }
+          }
+          this.emailService.sendSignedQuoteEmail({
+            to: contactEmail,
+            quoteNumber: quote.quoteNumber,
+            clientName: dto.clientName,
+            orgName: (quote as any).organization?.name ?? 'InspeXi',
+            senderName: (quote as any).organization?.senderName,
+            senderEmail: (quote as any).organization?.senderEmail,
+            orgId: quote.orgId,
+            attachment: { filename: `Offerte-${quote.quoteNumber}-ondertekend.pdf`, content: signedPdf },
+            customHtml,
+            customSubject,
+          }).catch((err) => this.logger.error('Failed to send signed quote email', err));
+        }
+      } catch (err) {
+        this.logger.error('Failed to generate signed PDF', err);
+      }
+    }
+
     // Auto-create project on quote acceptance (if not already part of a project)
     const projectId = await this.projectsService.createFromQuote({
       id: quote.id,
@@ -515,8 +712,68 @@ export class QuotesService {
     });
   }
 
+  // ─── DOCX Rendering ──────────────────────────────────
+
+  async renderQuoteDocx(id: string, user: User): Promise<{ buffer: Buffer; quoteNumber: string }> {
+    const quote = await this.prisma.quote.findUnique({
+      where: { id },
+      include: {
+        template: true,
+        contact: { select: { companyName: true, firstName: true, lastName: true, email: true } },
+        lines: { orderBy: { sortOrder: 'asc' as const } },
+      },
+    });
+    if (!quote) throw new NotFoundException('Offerte niet gevonden');
+    if (!user.roles.includes(Role.SUPERUSER) && quote.orgId !== user.orgId) throw new ForbiddenException();
+
+    const template = quote.template;
+    if (!template || template.templateType !== 'DOCX' || !template.docxStorageKey) {
+      throw new BadRequestException('Offerte heeft geen DOCX sjabloon');
+    }
+
+    const org = await this.prisma.organization.findUnique({ where: { id: quote.orgId }, select: { name: true } });
+    const createdByUser = await this.prisma.user.findUnique({ where: { id: quote.createdBy }, select: { firstName: true, lastName: true, email: true } });
+
+    const templateBuffer = await this.storage.download(template.docxStorageKey);
+    const renderData = this.docxRenderer.buildRenderData({
+      quote: {
+        quoteNumber: quote.quoteNumber,
+        subject: quote.subject,
+        subtotal: quote.subtotal,
+        discountTotal: quote.discountTotal,
+        vatTotal: quote.vatTotal,
+        total: quote.total,
+        validUntil: quote.validUntil,
+        createdAt: quote.createdAt,
+        lines: quote.lines,
+      },
+      contact: quote.contact,
+      organization: { name: org?.name ?? 'InspeXi' },
+      user: { firstName: createdByUser?.firstName, lastName: createdByUser?.lastName, email: createdByUser?.email ?? '' },
+    });
+
+    const renderedBuffer = this.docxRenderer.renderTemplate(templateBuffer, renderData);
+    return { buffer: renderedBuffer, quoteNumber: quote.quoteNumber };
+  }
+
+  async renderQuotePdf(id: string, user: User): Promise<{ buffer: Buffer; quoteNumber: string }> {
+    const { buffer: docxBuffer, quoteNumber } = await this.renderQuoteDocx(id, user);
+    const pdfBuffer = await this.pdfService.convertDocxToPdf(docxBuffer);
+    return { buffer: pdfBuffer, quoteNumber };
+  }
+
+  // ─── PDF Generation ─────────────────────────────────
+
   async generatePdf(id: string, user: User): Promise<{ buffer: Buffer; quoteNumber: string }> {
     const quote = await this.findOne(id, user);
+
+    // For DOCX templates, use LibreOffice conversion
+    const template = quote.template as { templateType: string; docxStorageKey: string | null } | null;
+    if (template?.templateType === 'DOCX' && template.docxStorageKey) {
+      return this.renderQuotePdf(id, user);
+    }
+
+    // For BLOCKS templates, use Puppeteer
     if (!quote.publicToken) throw new BadRequestException('Offerte heeft geen publiek token. Verstuur de offerte eerst.');
     const puppeteer = await import('puppeteer');
     const publicUrl = this.getPublicUrl(`/offerte/${quote.publicToken}`);
@@ -529,6 +786,119 @@ export class QuotesService {
     } finally {
       await browser.close();
     }
+  }
+
+  // ─── Public PDF download ────────────────────────────
+
+  async downloadPublicPdf(token: string) {
+    const quote = await this.prisma.quote.findUnique({
+      where: { publicToken: token },
+      select: {
+        id: true, orgId: true, status: true, pdfStorageKey: true, quoteNumber: true,
+        templateId: true,
+        template: { select: { id: true, templateType: true, docxStorageKey: true } },
+      },
+    });
+    if (!quote) throw new NotFoundException('PDF niet gevonden');
+    const unavailable: QuoteStatus[] = [QuoteStatus.CONCEPT, QuoteStatus.TER_GOEDKEURING, QuoteStatus.GOEDGEKEURD];
+    if (unavailable.includes(quote.status)) throw new ForbiddenException('Offerte is niet beschikbaar');
+
+    // If a stored PDF exists, serve it directly
+    if (quote.pdfStorageKey) {
+      const buffer = await this.storage.download(quote.pdfStorageKey);
+      return { buffer, quoteNumber: quote.quoteNumber };
+    }
+
+    // Fallback: generate on-the-fly for DOCX templates without stored PDF
+    if (quote.template?.templateType === 'DOCX' && quote.template.docxStorageKey) {
+      const fullQuote = await this.prisma.quote.findUnique({
+        where: { id: quote.id },
+        include: { ...QUOTE_INCLUDE, organization: { select: { id: true, name: true } } },
+      });
+      if (!fullQuote) throw new NotFoundException();
+      const templateBuffer = await this.storage.download(quote.template.docxStorageKey);
+      const renderData = this.docxRenderer.buildRenderData({
+        quote: { quoteNumber: fullQuote.quoteNumber, subject: fullQuote.subject, subtotal: fullQuote.subtotal, discountTotal: fullQuote.discountTotal, vatTotal: fullQuote.vatTotal, total: fullQuote.total, validUntil: fullQuote.validUntil, createdAt: fullQuote.createdAt, lines: fullQuote.lines },
+        contact: fullQuote.contact ?? { companyName: '', firstName: '', lastName: '', email: '' },
+        organization: fullQuote.organization ?? { name: '' },
+        user: { firstName: '', lastName: '', email: '' },
+      });
+      const renderedDocx = this.docxRenderer.renderTemplate(templateBuffer, renderData);
+      const pdfBuffer = await this.pdfService.convertDocxToPdf(renderedDocx);
+
+      // Store for future requests
+      const pdfKey = `${fullQuote.orgId}/quotes/${fullQuote.id}/offerte-${fullQuote.quoteNumber}.pdf`;
+      await this.storage.upload(pdfKey, pdfBuffer, 'application/pdf');
+      await this.prisma.quote.update({ where: { id: fullQuote.id }, data: { pdfStorageKey: pdfKey } });
+
+      return { buffer: pdfBuffer, quoteNumber: fullQuote.quoteNumber };
+    }
+
+    throw new NotFoundException('PDF niet gevonden');
+  }
+
+  // ─── Template attachment helpers ────────────────────
+
+  private async copyTemplateAttachments(quote: { id: string; templateId: string | null; orgId: string }) {
+    if (!quote.templateId) return;
+    const existing = await this.prisma.quoteAttachment.count({ where: { quoteId: quote.id, isStandard: true } });
+    if (existing > 0) return; // already copied
+
+    const templateAtts = await this.prisma.quoteTemplateAttachment.findMany({
+      where: { templateId: quote.templateId },
+      orderBy: { sortOrder: 'asc' },
+    });
+
+    for (const att of templateAtts) {
+      try {
+        const buffer = await this.storage.download(att.storageKey);
+        const newKey = `${quote.orgId}/quotes/${quote.id}/${randomUUID()}-${att.fileName}`;
+        await this.storage.upload(newKey, buffer, att.mimeType);
+        await this.prisma.quoteAttachment.create({
+          data: {
+            quoteId: quote.id, storageKey: newKey, fileName: att.fileName,
+            mimeType: att.mimeType, fileSize: att.fileSize,
+            isStandard: true, sortOrder: att.sortOrder,
+          },
+        });
+      } catch (err) {
+        this.logger.error(`Failed to copy template attachment ${att.fileName}`, err);
+      }
+    }
+  }
+
+  private async buildEmailAttachments(
+    quoteId: string,
+    quoteNumber: string,
+    pdfStorageKey: string | null,
+  ): Promise<Array<{ filename: string; content: Buffer }>> {
+    const attachments: Array<{ filename: string; content: Buffer }> = [];
+
+    // Add PDF if available
+    if (pdfStorageKey) {
+      try {
+        const pdfBuf = await this.storage.download(pdfStorageKey);
+        attachments.push({ filename: `Offerte-${quoteNumber}.pdf`, content: pdfBuf });
+      } catch (err) {
+        this.logger.error('Failed to load PDF for email attachment', err);
+      }
+    }
+
+    // Add quote attachments (including standard/template attachments)
+    const quoteAtts = await this.prisma.quoteAttachment.findMany({
+      where: { quoteId },
+      orderBy: { sortOrder: 'asc' },
+    });
+    for (const att of quoteAtts) {
+      try {
+        const buf = await this.storage.download(att.storageKey);
+        attachments.push({ filename: att.fileName, content: buf });
+      } catch (err) {
+        this.logger.error(`Failed to load attachment ${att.fileName} for email`, err);
+      }
+    }
+
+    return attachments;
   }
 
   private async generateQuoteNumber(orgId: string, tx: Prisma.TransactionClient): Promise<string> {

@@ -107,6 +107,20 @@ export class NotesService {
       }
     }
 
+    const workOrderIds = notes
+      .filter((n) => n.entityType === NoteEntityType.WORK_ORDER)
+      .map((n) => n.entityId);
+
+    if (workOrderIds.length > 0) {
+      const workOrders = await this.prisma.workOrder.findMany({
+        where: { id: { in: workOrderIds } },
+        select: { id: true, workOrderNumber: true },
+      });
+      for (const wo of workOrders) {
+        nameMap.set(wo.id, wo.workOrderNumber);
+      }
+    }
+
     return nameMap;
   }
 
@@ -147,7 +161,11 @@ export class NotesService {
    * Includes reply count and entity name enrichment.
    */
   async findAll(user: User, query: ListNotesQueryDto) {
-    const { search, entityType, entityId, page = 1, limit = 20 } = query;
+    const { search, entityType, entityId, page = 1, limit = 20, sortBy, sortOrder = 'desc' } = query;
+    const ALLOWED_SORT_FIELDS = ['entityType', 'createdAt'];
+    const orderBy = (sortBy && ALLOWED_SORT_FIELDS.includes(sortBy))
+      ? { [sortBy]: sortOrder }
+      : { createdAt: 'desc' as const };
     const skip = (page - 1) * limit;
 
     const where: Prisma.NoteWhereInput = {
@@ -180,7 +198,7 @@ export class NotesService {
             select: { replies: { where: { isDeleted: false } } },
           },
         },
-        orderBy: { createdAt: 'desc' },
+        orderBy,
         skip,
         take: limit,
       }),

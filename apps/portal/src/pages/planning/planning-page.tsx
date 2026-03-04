@@ -169,59 +169,6 @@ export default function PlanningPage() {
     return () => clearTimeout(timer);
   }, [search]);
 
-  // ─── Query params ───────────────────────────────────────────────────────────
-  const queryParams = useMemo(() => {
-    if (view === 'list') {
-      return {
-        search: debouncedSearch.length >= 3 ? debouncedSearch : undefined,
-        status: statusFilter || undefined,
-        page,
-        limit: 25,
-      };
-    }
-    return {
-      ...getCalendarRange(view, calendarDate),
-      limit: 300,
-      page: 1,
-    };
-  }, [view, debouncedSearch, statusFilter, page, calendarDate]);
-
-  const { data, isLoading } = usePlanningItems(queryParams);
-
-  // ─── Inspector list derived from loaded items ───────────────────────────────
-  const allItems: PlanningItem[] = data?.data ?? [];
-
-  const inspectors = useMemo((): InspectorOption[] => {
-    const map = new Map<string, InspectorOption>();
-    allItems.forEach((item) => {
-      item.inspectors?.forEach((i) => {
-        if (i.userId && i.user && !map.has(i.userId)) {
-          const firstName = i.user.firstName ?? '';
-          const lastName = i.user.lastName ?? '';
-          map.set(i.userId, {
-            id: i.userId,
-            name: `${firstName} ${lastName}`.trim() || (i.user.email ?? '?'),
-            color: i.user.color ?? '#6B7280',
-            initials:
-              i.user.initials ??
-              `${firstName[0] ?? ''}${lastName[0] ?? ''}`.toUpperCase(),
-          });
-        }
-      });
-    });
-    return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
-  }, [allItems]);
-
-  // ─── Client-side inspector filter ──────────────────────────────────────────
-  const filteredByInspector = useMemo((): PlanningItem[] => {
-    if (selectedInspectorIds.length === 0) return allItems;
-    return allItems.filter((item) =>
-      item.inspectors?.some(
-        (i) => i.userId && selectedInspectorIds.includes(i.userId),
-      ),
-    );
-  }, [allItems, selectedInspectorIds]);
-
   // ─── Table config (list view) ───────────────────────────────────────────────
   const columns: ColumnDef<PlanningItem>[] = [
     {
@@ -235,6 +182,8 @@ export default function PlanningPage() {
         label: o.label,
       })),
       pinned: true,
+      sortable: true,
+      sortKey: 'status',
       render: (item) => (
         <span
           className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
@@ -251,6 +200,9 @@ export default function PlanningPage() {
       sidebarLabel: 'Geplande datum',
       filterable: true,
       filterType: 'date',
+      sortable: true,
+      sortKey: 'scheduledDate',
+      getSortValue: (item) => item.scheduledDate ?? null,
       render: (item) => {
         if (item.isMultiDay) {
           const sessionDates = (item.sessions ?? [])
@@ -291,6 +243,7 @@ export default function PlanningPage() {
       sidebarLabel: 'Dienst / product',
       filterable: true,
       filterType: 'text',
+      sortable: true,
       render: (item) => (
         <div>
           <div className="flex items-center gap-1.5 flex-wrap">
@@ -323,6 +276,8 @@ export default function PlanningPage() {
       key: 'contact',
       header: 'Opdrachtgever',
       sidebarLabel: 'Opdrachtgever',
+      sortable: true,
+      getSortValue: (item) => item.contact ? (item.contact.companyName || `${item.contact.firstName ?? ''} ${item.contact.lastName ?? ''}`.trim()) : '',
       render: (item) => {
         const c = item.contact;
         if (!c) return <span className="text-gray-400">—</span>;
@@ -339,6 +294,8 @@ export default function PlanningPage() {
       key: 'location',
       header: 'Locatie',
       sidebarLabel: 'Locatie',
+      sortable: true,
+      getSortValue: (item) => item.location?.city ?? '',
       render: (item) => {
         const l = item.location;
         if (!l) return <span className="text-gray-400">—</span>;
@@ -393,7 +350,69 @@ export default function PlanningPage() {
     isColumnsDirty,
     isFiltersDirty,
     allColumns,
+    sort,
+    toggleSort,
+    apiSort,
   } = useTableConfig({ pageKey: PAGE_KEY, columns });
+
+  useEffect(() => {
+    setPage(1);
+  }, [sort]);
+
+  // ─── Query params ───────────────────────────────────────────────────────────
+  const queryParams = useMemo(() => {
+    if (view === 'list') {
+      return {
+        search: debouncedSearch.length >= 3 ? debouncedSearch : undefined,
+        status: statusFilter || undefined,
+        page,
+        limit: 25,
+        sortBy: apiSort?.sortBy,
+        sortOrder: apiSort?.sortOrder,
+      };
+    }
+    return {
+      ...getCalendarRange(view, calendarDate),
+      limit: 300,
+      page: 1,
+    };
+  }, [view, debouncedSearch, statusFilter, page, calendarDate, apiSort]);
+
+  const { data, isLoading } = usePlanningItems(queryParams);
+
+  // ─── Inspector list derived from loaded items ───────────────────────────────
+  const allItems: PlanningItem[] = data?.data ?? [];
+
+  const inspectors = useMemo((): InspectorOption[] => {
+    const map = new Map<string, InspectorOption>();
+    allItems.forEach((item) => {
+      item.inspectors?.forEach((i) => {
+        if (i.userId && i.user && !map.has(i.userId)) {
+          const firstName = i.user.firstName ?? '';
+          const lastName = i.user.lastName ?? '';
+          map.set(i.userId, {
+            id: i.userId,
+            name: `${firstName} ${lastName}`.trim() || (i.user.email ?? '?'),
+            color: i.user.color ?? '#6B7280',
+            initials:
+              i.user.initials ??
+              `${firstName[0] ?? ''}${lastName[0] ?? ''}`.toUpperCase(),
+          });
+        }
+      });
+    });
+    return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
+  }, [allItems]);
+
+  // ─── Client-side inspector filter ──────────────────────────────────────────
+  const filteredByInspector = useMemo((): PlanningItem[] => {
+    if (selectedInspectorIds.length === 0) return allItems;
+    return allItems.filter((item) =>
+      item.inspectors?.some(
+        (i) => i.userId && selectedInspectorIds.includes(i.userId),
+      ),
+    );
+  }, [allItems, selectedInspectorIds]);
 
   const handleSearch = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     setSearch(e.target.value);
@@ -492,7 +511,7 @@ export default function PlanningPage() {
 
           {user && user.roles.some(r => canWrite.includes(r)) && (
             <ActionMenu
-              primaryActions={[
+              secondaryActions={[
                 {
                   label: 'Nieuwe planregel',
                   icon: <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>,
@@ -581,6 +600,8 @@ export default function PlanningPage() {
             data={filteredData(filteredByInspector)}
             emptyMessage="Geen planregels gevonden"
             keyExtractor={(item) => item.id}
+            sort={sort}
+            onSort={toggleSort}
           />
           {data && data.total > data.limit && (
             <div className="mt-4 flex items-center justify-between text-sm text-gray-600">

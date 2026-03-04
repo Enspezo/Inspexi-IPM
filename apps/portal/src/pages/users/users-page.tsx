@@ -27,6 +27,7 @@ export default function UsersPage() {
       pinned: true,
       filterable: true,
       filterType: 'text',
+      sortable: true,
       getFilterValue: (user) => `${user.firstName} ${user.lastName}`,
       render: (user) => (
         <Link
@@ -42,6 +43,7 @@ export default function UsersPage() {
       header: 'E-mail',
       filterable: true,
       filterType: 'text',
+      sortable: true,
       getFilterValue: (user) => user.email,
       render: (user) => (
         <span className="text-gray-600">{user.email}</span>
@@ -50,6 +52,7 @@ export default function UsersPage() {
     {
       key: 'initials',
       header: 'Initialen',
+      sortable: true,
       render: (user) => (
         <span className="font-mono text-sm text-gray-700">
           {user.initials || <span className="text-gray-400">—</span>}
@@ -62,6 +65,7 @@ export default function UsersPage() {
       filterable: true,
       filterType: 'text',
       groupable: true,
+      sortable: true,
       getFilterValue: (user) => user.roles.join(', '),
       render: (user) => (
         <div className="flex flex-wrap gap-1">
@@ -77,6 +81,7 @@ export default function UsersPage() {
       filterable: true,
       filterType: 'boolean',
       groupable: true,
+      sortable: true,
       getFilterValue: (user) => String(user.isActive),
       render: (user) => (
         <span
@@ -110,6 +115,8 @@ export default function UsersPage() {
     isColumnsDirty,
     isFiltersDirty,
     allColumns,
+    sort,
+    toggleSort,
   } = useTableConfig({ pageKey: 'users', columns });
 
   if (isLoading) {
@@ -171,6 +178,8 @@ export default function UsersPage() {
         data={filteredData(users || [])}
         keyExtractor={(user) => user.id}
         emptyMessage="Geen gebruikers gevonden"
+        sort={sort}
+        onSort={toggleSort}
       />
 
       <InviteUserModal

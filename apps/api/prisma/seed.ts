@@ -16,7 +16,8 @@ async function main() {
   await prisma.quoteApprovalRequest.deleteMany();
   await prisma.quoteLine.deleteMany();
   await prisma.quote.deleteMany();
-  await prisma.quoteTemplateRtfRevision.deleteMany();
+  await prisma.quoteTemplateFollowUp.deleteMany();
+  await prisma.quoteTemplateDocxRevision.deleteMany();
   await prisma.quoteTemplateAttachment.deleteMany();
   await prisma.quoteTemplate.deleteMany();
   // PRD-04 tables (dependent on products/price-tables)
@@ -29,6 +30,9 @@ async function main() {
   // PRD-03 tables (dependent on requests → contacts/locations)
   await prisma.requestStatusHistory.deleteMany();
   await prisma.request.deleteMany();
+  // Work orders (dependent on planning items)
+  await prisma.workOrderLine.deleteMany();
+  await prisma.workOrder.deleteMany();
   // PRD-07 tables (dependent on contacts/locations)
   await prisma.planningSessionInspector.deleteMany();
   await prisma.planningSession.deleteMany();
@@ -55,6 +59,7 @@ async function main() {
   await prisma.task.deleteMany();
   // Custom fields & email templates
   await prisma.customFieldDefinition.deleteMany();
+  await prisma.emailTemplateAttachment.deleteMany();
   await prisma.emailTemplate.deleteMany();
   // Error reports (dependent on users/organizations)
   await prisma.errorReport.deleteMany();
@@ -480,7 +485,10 @@ async function main() {
     prisma.productGroup.create({ data: { orgId: org1.id, name: 'Administratie' } }),
     prisma.productGroup.create({ data: { orgId: org1.id, name: 'Overig' } }),
   ]);
-  console.log(`  ✓ 3 productgroepen voor ${org1.name}`);
+  const grpMeerwerk1 = await prisma.productGroup.create({
+    data: { orgId: org1.id, name: 'Meerwerk' },
+  });
+  console.log(`  ✓ 4 productgroepen voor ${org1.name}`);
 
   // --- Org 1: Products ---
   const products1 = await Promise.all([
@@ -504,6 +512,23 @@ async function main() {
     }),
   ]);
   console.log(`  ✓ ${products1.length} producten voor ${org1.name}`);
+
+  // --- Org 1: Meerwerk Products ---
+  const meerwerkProduct1 = await prisma.product.create({
+    data: { orgId: org1.id, name: 'Extra inspectieuur', unit: 'uur', productGroupId: grpMeerwerk1.id, description: 'Aanvullend inspectiewerk buiten scope' },
+  });
+  const meerwerkProduct2 = await prisma.product.create({
+    data: { orgId: org1.id, name: 'Herstelling ter plaatse', unit: 'stuks', productGroupId: grpMeerwerk1.id, description: 'Kleine herstellingen tijdens inspectie' },
+  });
+  const meerwerkProduct3 = await prisma.product.create({
+    data: { orgId: org1.id, name: 'Extra meetpunt', unit: 'stuks', productGroupId: grpMeerwerk1.id, description: 'Aanvullend meetpunt voor inspectie' },
+  });
+  console.log(`  ✓ 3 meerwerkproducten voor ${org1.name}`);
+
+  // Suppress unused var warnings for meerwerk products
+  void meerwerkProduct1;
+  void meerwerkProduct2;
+  void meerwerkProduct3;
 
   // --- Org 1: Standaard prijstabel ---
   const stdTable = await prisma.priceTable.create({

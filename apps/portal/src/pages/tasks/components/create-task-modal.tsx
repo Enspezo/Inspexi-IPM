@@ -9,12 +9,13 @@ import { useContacts } from '@/pages/contacts/hooks/use-contacts';
 import { useRequests } from '@/pages/requests/hooks/use-requests';
 import { useQuotes } from '@/pages/quotes/hooks/use-quotes';
 import { useCreateTask } from '../hooks/use-tasks';
-import { TaskEntityType, ContactType } from '@/types';
+import { TaskEntityType, TaskType, ContactType } from '@/types';
 import type { Contact } from '@/types';
 
 const taskSchema = z.object({
   title: z.string().min(1, 'Titel is verplicht'),
   status: z.string().optional(),
+  taskType: z.string().optional(),
   assigneeId: z.string().optional(),
   deadline: z.string().optional(),
   description: z.string().optional(),
@@ -26,6 +27,14 @@ const statusOptions = [
   { value: 'TE_DOEN', label: 'Te doen' },
   { value: 'MEE_BEZIG', label: 'Mee bezig' },
   { value: 'VOLTOOID', label: 'Voltooid' },
+];
+
+const taskTypeOptions = [
+  { value: 'TO_DO', label: 'To-do' },
+  { value: 'EMAIL', label: 'E-mail' },
+  { value: 'TELEFOONGESPREK', label: 'Telefoongesprek' },
+  { value: 'DOCUMENT', label: 'Document' },
+  { value: 'GOEDKEURING', label: 'Goedkeuring' },
 ];
 
 const entityTypeOptions = [
@@ -79,6 +88,7 @@ export function CreateTaskModal({
     resolver: zodResolver(taskSchema),
     defaultValues: {
       status: 'TE_DOEN',
+      taskType: 'TO_DO',
       assigneeId: '',
     },
   });
@@ -134,6 +144,7 @@ export function CreateTaskModal({
         title: data.title,
         description: data.description || undefined,
         status: (data.status as any) || undefined,
+        taskType: (data.taskType as TaskType) || undefined,
         entityType,
         entityId,
         assigneeId: data.assigneeId || undefined,
@@ -207,6 +218,12 @@ export function CreateTaskModal({
           label="Status"
           options={statusOptions}
           {...register('status')}
+        />
+
+        <Select
+          label="Type"
+          options={taskTypeOptions}
+          {...register('taskType')}
         />
 
         <Select

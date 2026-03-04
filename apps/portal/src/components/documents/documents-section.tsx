@@ -203,19 +203,16 @@ export function DocumentsSection({
 
   return (
     <div>
-      <div className="mb-3 flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-gray-900">
-          Documenten{documents.length > 0 ? ` (${documents.length})` : ''}
-        </h3>
-        {canUpload && (
+      {canUpload && (
+        <div className="mb-3 flex justify-end">
           <Button size="sm" variant="secondary" onClick={() => setIsUploadOpen(true)}>
             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
             </svg>
             Uploaden
           </Button>
-        )}
-      </div>
+        </div>
+      )}
 
       {isLoading ? (
         <div className="flex justify-center py-6">

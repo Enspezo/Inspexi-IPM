@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ProjectStatus, Role } from '@/types';
 import type { Project } from '@/types';
@@ -12,6 +12,7 @@ import {
 import { useAuth } from '@/providers/auth-provider';
 import { useProjects } from './hooks/use-projects';
 import { CreateProjectModal } from './components/create-project-modal';
+import { ProjectManagerFilter, type ProjectManagerOption } from './components/project-manager-filter';
 
 const statusFilterOptions = [
   { value: '', label: 'Alle statussen' },
@@ -52,13 +53,7 @@ export default function ProjectsPage() {
   const [statusFilter, setStatusFilter] = useState('');
   const [page, setPage] = useState(1);
   const [showCreate, setShowCreate] = useState(false);
-
-  const { data, isLoading, error } = useProjects({
-    search: search || undefined,
-    status: (statusFilter as ProjectStatus) || undefined,
-    page,
-    limit: 20,
-  });
+  const [selectedManagerIds, setSelectedManagerIds] = useState<string[]>([]);
 
   const handleSearchChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -78,6 +73,8 @@ export default function ProjectsPage() {
       pinnedPosition: 'start',
       filterable: true,
       filterType: 'text',
+      sortable: true,
+      sortKey: 'projectNumber',
       sidebarLabel: 'Projectnummer',
       render: (row) => (
         <button
@@ -93,6 +90,8 @@ export default function ProjectsPage() {
       header: 'Titel',
       filterable: true,
       filterType: 'text',
+      sortable: true,
+      sortKey: 'title',
       sidebarLabel: 'Titel',
       render: (row) => (
         <span className="font-medium text-gray-900">{row.title}</span>
@@ -103,6 +102,7 @@ export default function ProjectsPage() {
       header: 'Relatie',
       filterable: true,
       filterType: 'text',
+      sortable: true,
       sidebarLabel: 'Relatie',
       getFilterValue: (row) =>
         row.contact?.companyName ||
@@ -127,6 +127,7 @@ export default function ProjectsPage() {
       header: 'Projectmanager',
       filterable: true,
       filterType: 'text',
+      sortable: true,
       sidebarLabel: 'Projectmanager',
       getFilterValue: (row) =>
         row.projectManager
@@ -147,6 +148,8 @@ export default function ProjectsPage() {
       header: 'Status',
       filterable: true,
       filterType: 'select',
+      sortable: true,
+      sortKey: 'status',
       sidebarLabel: 'Status',
       getFilterValue: (row) => row.status,
       render: (row) => (
@@ -162,6 +165,8 @@ export default function ProjectsPage() {
       header: 'Startdatum',
       filterable: true,
       filterType: 'date',
+      sortable: true,
+      sortKey: 'startDate',
       sidebarLabel: 'Startdatum',
       render: (row) =>
         row.startDate
@@ -173,6 +178,8 @@ export default function ProjectsPage() {
       header: 'Verwachte einddatum',
       filterable: true,
       filterType: 'date',
+      sortable: true,
+      sortKey: 'expectedEndDate',
       sidebarLabel: 'Verwachte einddatum',
       render: (row) =>
         row.expectedEndDate
@@ -196,9 +203,55 @@ export default function ProjectsPage() {
     resetToDefaults,
     isColumnsDirty,
     isFiltersDirty,
+    sort,
+    toggleSort,
+    apiSort,
   } = useTableConfig({ pageKey: PAGE_KEY, columns });
 
-  const tableData = data ? filteredData(data.data) : [];
+  useEffect(() => {
+    setPage(1);
+  }, [sort]);
+
+  const { data, isLoading, error } = useProjects({
+    search: search || undefined,
+    status: (statusFilter as ProjectStatus) || undefined,
+    page,
+    limit: 20,
+    sortBy: apiSort?.sortBy,
+    sortOrder: apiSort?.sortOrder,
+  });
+
+  // Derive unique project managers from loaded data
+  const allProjects: Project[] = data?.data ?? [];
+
+  const projectManagers = useMemo((): ProjectManagerOption[] => {
+    const map = new Map<string, ProjectManagerOption>();
+    allProjects.forEach((p) => {
+      if (p.projectManager && !map.has(p.projectManager.id)) {
+        const firstName = p.projectManager.firstName ?? '';
+        const lastName = p.projectManager.lastName ?? '';
+        map.set(p.projectManager.id, {
+          id: p.projectManager.id,
+          name: `${firstName} ${lastName}`.trim() || (p.projectManager.email ?? '?'),
+          color: p.projectManager.color ?? '#6B7280',
+          initials:
+            p.projectManager.initials ??
+            `${firstName[0] ?? ''}${lastName[0] ?? ''}`.toUpperCase(),
+        });
+      }
+    });
+    return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
+  }, [allProjects]);
+
+  // Client-side project manager filter
+  const filteredByManager = useMemo((): Project[] => {
+    if (selectedManagerIds.length === 0) return allProjects;
+    return allProjects.filter(
+      (p) => p.projectManager && selectedManagerIds.includes(p.projectManager.id),
+    );
+  }, [allProjects, selectedManagerIds]);
+
+  const tableData = filteredData(filteredByManager);
 
   if (error) {
     return (
@@ -234,7 +287,7 @@ export default function ProjectsPage() {
             <h1 className="text-2xl font-bold text-gray-900">Projecten</h1>
             {hasWrite && (
               <ActionMenu
-                primaryActions={[
+                secondaryActions={[
                   {
                     label: 'Nieuw project',
                     icon: <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>,
@@ -264,6 +317,13 @@ export default function ProjectsPage() {
                 }}
               />
             </div>
+            <div className="ml-auto">
+              <ProjectManagerFilter
+                managers={projectManagers}
+                selectedIds={selectedManagerIds}
+                onChange={setSelectedManagerIds}
+              />
+            </div>
           </div>
 
           {/* Table */}
@@ -277,6 +337,8 @@ export default function ProjectsPage() {
               data={tableData}
               keyExtractor={(row) => row.id}
               emptyMessage="Geen projecten gevonden"
+              sort={sort}
+              onSort={toggleSort}
             />
           )}
 

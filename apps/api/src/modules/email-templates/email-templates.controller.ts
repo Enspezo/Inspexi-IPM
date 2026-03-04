@@ -7,10 +7,17 @@ import {
   Body,
   Param,
   Query,
+  Res,
   ParseUUIDPipe,
+  BadRequestException,
+  UseInterceptors,
+  UploadedFile,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation } from '@nestjs/swagger';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { memoryStorage } from 'multer';
+import { ApiTags, ApiOperation, ApiConsumes } from '@nestjs/swagger';
 import { User, Role, EmailTemplateType } from '@prisma/client';
+import type { Response } from 'express';
 import { Roles } from '@/common/decorators/roles.decorator';
 import { CurrentUser } from '@/common/decorators/current-user.decorator';
 import { EmailTemplatesService } from './email-templates.service';
@@ -59,6 +66,61 @@ export class EmailTemplatesController {
   ) {
     const data = this.service.preview(body);
     return { success: true, data };
+  }
+
+  // ── Attachments (before :id to avoid route conflicts) ──
+
+  @Get(':id/attachments')
+  @Roles(Role.SUPERUSER, Role.ORG_ADMIN)
+  @ApiOperation({ summary: 'Bijlagen van e-mailsjabloon ophalen' })
+  async getAttachments(
+    @CurrentUser() user: User,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    const data = await this.service.getAttachments(id, user);
+    return { success: true, data };
+  }
+
+  @Post(':id/attachments')
+  @Roles(Role.SUPERUSER, Role.ORG_ADMIN)
+  @UseInterceptors(FileInterceptor('file', { storage: memoryStorage(), limits: { fileSize: 25 * 1024 * 1024 } }))
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({ summary: 'Bijlage toevoegen aan e-mailsjabloon' })
+  async uploadAttachment(
+    @CurrentUser() user: User,
+    @Param('id', ParseUUIDPipe) id: string,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    if (!file) throw new BadRequestException('Geen bestand geüpload');
+    const data = await this.service.uploadAttachment(id, file, user);
+    return { success: true, data };
+  }
+
+  @Get(':id/attachments/:attachmentId/download')
+  @Roles(Role.SUPERUSER, Role.ORG_ADMIN)
+  @ApiOperation({ summary: 'Bijlage downloaden' })
+  async downloadAttachment(
+    @CurrentUser() user: User,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('attachmentId', ParseUUIDPipe) attachmentId: string,
+    @Res() res: Response,
+  ) {
+    const { buffer, attachment } = await this.service.downloadAttachment(id, attachmentId, user);
+    res.set('Content-Type', attachment.mimeType);
+    res.set('Content-Disposition', `attachment; filename="${encodeURIComponent(attachment.originalName)}"`);
+    res.send(buffer);
+  }
+
+  @Delete(':id/attachments/:attachmentId')
+  @Roles(Role.SUPERUSER, Role.ORG_ADMIN)
+  @ApiOperation({ summary: 'Bijlage verwijderen' })
+  async deleteAttachment(
+    @CurrentUser() user: User,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('attachmentId', ParseUUIDPipe) attachmentId: string,
+  ) {
+    await this.service.deleteAttachment(id, attachmentId, user);
+    return { success: true };
   }
 
   @Get(':id')

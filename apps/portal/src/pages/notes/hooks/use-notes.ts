@@ -8,6 +8,8 @@ interface ListNotesParams {
   entityId?: string;
   page?: number;
   limit?: number;
+  sortBy?: string;
+  sortOrder?: 'asc' | 'desc';
 }
 
 export function useNotes(params: ListNotesParams = {}) {
@@ -17,6 +19,8 @@ export function useNotes(params: ListNotesParams = {}) {
   if (params.entityId) searchParams.set('entityId', params.entityId);
   if (params.page) searchParams.set('page', String(params.page));
   if (params.limit) searchParams.set('limit', String(params.limit));
+  if (params.sortBy) searchParams.set('sortBy', params.sortBy);
+  if (params.sortOrder) searchParams.set('sortOrder', params.sortOrder);
 
   const qs = searchParams.toString();
 

@@ -1,7 +1,8 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   TaskStatus,
+  TaskType,
   TaskEntityType,
   Role,
 } from '@/types';
@@ -41,6 +42,22 @@ const statusLabels: Record<string, string> = {
   [TaskStatus.TE_DOEN]: 'Te doen',
   [TaskStatus.MEE_BEZIG]: 'Mee bezig',
   [TaskStatus.VOLTOOID]: 'Voltooid',
+};
+
+const taskTypeLabels: Record<string, string> = {
+  [TaskType.TO_DO]: 'To-do',
+  [TaskType.EMAIL]: 'E-mail',
+  [TaskType.TELEFOONGESPREK]: 'Telefoongesprek',
+  [TaskType.DOCUMENT]: 'Document',
+  [TaskType.GOEDKEURING]: 'Goedkeuring',
+};
+
+const taskTypeColors: Record<string, string> = {
+  [TaskType.TO_DO]: 'bg-gray-100 text-gray-700',
+  [TaskType.EMAIL]: 'bg-indigo-100 text-indigo-800',
+  [TaskType.TELEFOONGESPREK]: 'bg-orange-100 text-orange-800',
+  [TaskType.DOCUMENT]: 'bg-purple-100 text-purple-800',
+  [TaskType.GOEDKEURING]: 'bg-pink-100 text-pink-800',
 };
 
 const entityTypeLabels: Record<string, string> = {
@@ -100,14 +117,6 @@ export default function TasksPage() {
   const [onlyMine, setOnlyMine] = useState(() => localStorage.getItem('inspexi:filter-mine:tasks') === 'true');
   const [page, setPage] = useState(1);
 
-  const { data, isLoading, error } = useTasks({
-    search: search || undefined,
-    status: (statusFilter as TaskStatus) || undefined,
-    onlyMine: onlyMine || undefined,
-    page,
-    limit: 20,
-  });
-
   const handleSearchChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
       setSearch(e.target.value);
@@ -121,6 +130,8 @@ export default function TasksPage() {
       key: 'title',
       header: 'Titel',
       pinned: true,
+      sortable: true,
+      sortKey: 'title',
       render: (task) => (
         <button
           onClick={() => navigate(`/tasks/${task.id}`)}
@@ -137,6 +148,8 @@ export default function TasksPage() {
       filterType: 'select',
       filterOptions: statusFilterOptions.filter((o) => o.value !== ''),
       groupable: true,
+      sortable: true,
+      sortKey: 'status',
       getFilterValue: (task) => task.status,
       render: (task) => (
         <span
@@ -145,6 +158,29 @@ export default function TasksPage() {
           }`}
         >
           {statusLabels[task.status] || task.status}
+        </span>
+      ),
+    },
+    {
+      key: 'taskType',
+      header: 'Type',
+      filterable: true,
+      filterType: 'select',
+      filterOptions: Object.entries(taskTypeLabels).map(([value, label]) => ({
+        value,
+        label,
+      })),
+      groupable: true,
+      sortable: true,
+      sortKey: 'taskType',
+      getFilterValue: (task) => task.taskType,
+      render: (task) => (
+        <span
+          className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
+            taskTypeColors[task.taskType] || 'bg-gray-100 text-gray-600'
+          }`}
+        >
+          {taskTypeLabels[task.taskType] || task.taskType}
         </span>
       ),
     },
@@ -158,6 +194,8 @@ export default function TasksPage() {
         label,
       })),
       groupable: true,
+      sortable: true,
+      sortKey: 'entityType',
       getFilterValue: (task) => task.entityType,
       render: (task) => (
         <button
@@ -177,6 +215,7 @@ export default function TasksPage() {
       header: 'Toegewezen aan',
       filterable: true,
       filterType: 'text',
+      sortable: true,
       getFilterValue: (task) =>
         task.assignee
           ? `${task.assignee.firstName} ${task.assignee.lastName}`
@@ -195,6 +234,8 @@ export default function TasksPage() {
       header: 'Deadline',
       filterable: true,
       filterType: 'date',
+      sortable: true,
+      sortKey: 'deadline',
       getFilterValue: (task) => task.deadline,
       render: (task) => {
         if (!task.deadline) return <span className="text-gray-400">—</span>;
@@ -212,6 +253,8 @@ export default function TasksPage() {
       header: 'Aangemaakt',
       filterable: true,
       filterType: 'date',
+      sortable: true,
+      sortKey: 'createdAt',
       getFilterValue: (task) => task.createdAt,
       render: (task) => (
         <span className="text-gray-500 text-xs">
@@ -236,7 +279,24 @@ export default function TasksPage() {
     isColumnsDirty,
     isFiltersDirty,
     allColumns,
+    sort,
+    toggleSort,
+    apiSort,
   } = useTableConfig({ pageKey: 'tasks', columns });
+
+  useEffect(() => {
+    setPage(1);
+  }, [sort]);
+
+  const { data, isLoading, error } = useTasks({
+    search: search || undefined,
+    status: (statusFilter as TaskStatus) || undefined,
+    onlyMine: onlyMine || undefined,
+    page,
+    limit: 20,
+    sortBy: apiSort?.sortBy,
+    sortOrder: apiSort?.sortOrder,
+  });
 
   if (isLoading) {
     return (
@@ -287,7 +347,7 @@ export default function TasksPage() {
         </div>
         {userCanWrite && (
           <ActionMenu
-            primaryActions={[
+            secondaryActions={[
               {
                 label: 'Taak aanmaken',
                 icon: (
@@ -341,6 +401,8 @@ export default function TasksPage() {
         data={filteredData(tasks)}
         keyExtractor={(t) => t.id}
         emptyMessage="Geen taken gevonden"
+        sort={sort}
+        onSort={toggleSort}
       />
 
       {/* Pagination */}

@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -9,9 +10,18 @@ import { Card, Input, Button, Badge, Spinner, useToast, SignatureEditor, Address
 import type { ParsedAddress } from '@/lib/geocoding';
 import { useUploadAvatar, useDeleteAvatar, getAvatarUrl } from './hooks/use-avatar';
 import { useSignature, useSaveSignature, useDeleteSignature } from './hooks/use-signature';
-import { NotificationType, Role, SignatureType } from '@/types';
+import { NotificationType, Role, SignatureType, AuditAction } from '@/types';
 import { hasRole } from '@/lib/has-role';
-import type { User, NotificationPref, NotificationGroupPref, Session } from '@/types';
+import type { User, NotificationPref, Session, AuditLogEntry } from '@/types';
+import { useMyActivity } from '@/hooks/use-my-activity';
+import {
+  ENTITY_TYPE_LABELS,
+  getEntityTypeLabel,
+  getEntityLink,
+  getEntityDisplayName,
+} from '@/lib/audit-entity-helpers';
+import { getFieldLabel } from '@/lib/audit-field-labels';
+import { formatAuditValue, isHiddenAuditField } from '@/lib/audit-value-format';
 
 // ─── Inspector Color & iCal Card ──────────────────────────
 
@@ -126,8 +136,6 @@ function InspectorCard() {
 import {
   useNotificationPrefs,
   useSaveNotificationPrefs,
-  useGroupNotificationPrefs,
-  useSaveGroupNotificationPrefs,
 } from '@/pages/notifications/hooks/use-notifications';
 
 const profileSchema = z.object({
@@ -156,23 +164,19 @@ const notifTypeLabels: Record<string, string> = {
   [NotificationType.ANTWOORD_OP_VRAAG]: 'Antwoord op vraag',
   [NotificationType.AANVRAAG_TOEGEWEZEN]: 'Aanvraag toegewezen',
   [NotificationType.AANVRAAG_STATUS_GEWIJZIGD]: 'Aanvraag status gewijzigd',
+  [NotificationType.TAAK_TOEGEWEZEN]: 'Taak toegewezen',
+  [NotificationType.TAAK_STATUS_GEWIJZIGD]: 'Taak status gewijzigd',
+  [NotificationType.DOCUMENT_GEUPLOAD]: 'Document geüpload',
+  [NotificationType.AFSPRAAK_ACCEPTATIE_VERZOEK]: 'Afspraak acceptatieverzoek',
+  [NotificationType.AFSPRAAK_GEACCEPTEERD]: 'Afspraak geaccepteerd',
+  [NotificationType.AFSPRAAK_GEWEIGERD]: 'Afspraak geweigerd',
+  [NotificationType.AFSPRAAK_VERPLAATST]: 'Afspraak verplaatst',
+  [NotificationType.AFSPRAAK_VERZETTEN_VERZOEK]: 'Afspraak verzetverzoek',
+  [NotificationType.AFSPRAAK_BEVESTIGING_VERSTUURD]: 'Afspraak bevestiging verstuurd',
+  [NotificationType.PROJECT_AANGEMAAKT]: 'Project aangemaakt',
+  [NotificationType.PROJECT_STATUS_GEWIJZIGD]: 'Project status gewijzigd',
 };
 
-const roleLabels: Record<string, string> = {
-  [Role.ORG_ADMIN]: 'Org Admin',
-  [Role.MANAGER]: 'Manager',
-  [Role.BACKOFFICE]: 'Backoffice',
-  [Role.WERKVOORBEREIDER]: 'Werkvoorbereider',
-  [Role.INSPECTEUR]: 'Inspecteur',
-};
-
-const assignableRoles = [
-  Role.ORG_ADMIN,
-  Role.MANAGER,
-  Role.BACKOFFICE,
-  Role.WERKVOORBEREIDER,
-  Role.INSPECTEUR,
-];
 
 // ─── Notification Preferences Component ───────────────────
 
@@ -294,176 +298,6 @@ function NotificationPrefsCard() {
         <Button
           onClick={handleSave}
           isLoading={savePrefs.isPending}
-        >
-          Opslaan
-        </Button>
-      </div>
-    </Card>
-  );
-}
-
-// ─── Group Notification Preferences Component ─────────────
-
-interface GroupPrefRow {
-  role: Role;
-  type: NotificationType;
-  channelInApp: boolean;
-  channelEmail: boolean;
-}
-
-function GroupNotificationPrefsCard() {
-  const { showToast } = useToast();
-  const { data: groupPrefs, isLoading } = useGroupNotificationPrefs();
-  const saveGroupPrefs = useSaveGroupNotificationPrefs();
-  const [rows, setRows] = useState<GroupPrefRow[]>([]);
-  const [initialized, setInitialized] = useState(false);
-  const [selectedRole, setSelectedRole] = useState<Role>(Role.MANAGER);
-
-  useEffect(() => {
-    if (groupPrefs && !initialized) {
-      const prefMap = new Map(
-        groupPrefs.map((p) => [`${p.role}_${p.notificationType}`, p]),
-      );
-      const allRows: GroupPrefRow[] = [];
-      for (const role of assignableRoles) {
-        for (const type of Object.values(NotificationType)) {
-          const key = `${role}_${type}`;
-          const existing = prefMap.get(key);
-          allRows.push({
-            role,
-            type,
-            channelInApp: existing?.channelInApp ?? true,
-            channelEmail: existing?.channelEmail ?? true,
-          });
-        }
-      }
-      setRows(allRows);
-      setInitialized(true);
-    }
-  }, [groupPrefs, initialized]);
-
-  const toggleGroupPref = useCallback(
-    (
-      role: Role,
-      type: NotificationType,
-      channel: 'channelInApp' | 'channelEmail',
-    ) => {
-      setRows((prev) =>
-        prev.map((r) =>
-          r.role === role && r.type === type
-            ? { ...r, [channel]: !r[channel] }
-            : r,
-        ),
-      );
-    },
-    [],
-  );
-
-  const handleSave = async () => {
-    try {
-      await saveGroupPrefs.mutateAsync(
-        rows.map((r) => ({
-          role: r.role,
-          type: r.type,
-          channelInApp: r.channelInApp,
-          channelEmail: r.channelEmail,
-        })),
-      );
-      showToast('Standaard notificatie-instellingen opgeslagen', 'success');
-    } catch {
-      showToast('Opslaan mislukt', 'error');
-    }
-  };
-
-  const filteredRows = rows.filter((r) => r.role === selectedRole);
-
-  if (isLoading) {
-    return (
-      <Card title="Standaard notificatie-instellingen per rol">
-        <div className="flex h-32 items-center justify-center text-sm text-gray-400">
-          Laden...
-        </div>
-      </Card>
-    );
-  }
-
-  return (
-    <Card title="Standaard notificatie-instellingen per rol">
-      <p className="mb-4 text-sm text-gray-500">
-        Deze instellingen gelden als standaard voor nieuwe gebruikers per rol.
-        Gebruikers kunnen hun eigen voorkeuren aanpassen.
-      </p>
-
-      {/* Role tabs */}
-      <div className="mb-4 flex flex-wrap gap-2">
-        {assignableRoles.map((role) => (
-          <button
-            key={role}
-            onClick={() => setSelectedRole(role)}
-            className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
-              selectedRole === role
-                ? 'bg-primary-100 text-primary-700'
-                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-            }`}
-          >
-            {roleLabels[role] || role}
-          </button>
-        ))}
-      </div>
-
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-gray-200">
-              <th className="py-2 pr-4 text-left font-medium text-gray-700">
-                Type
-              </th>
-              <th className="px-4 py-2 text-center font-medium text-gray-700">
-                In-app
-              </th>
-              <th className="px-4 py-2 text-center font-medium text-gray-700">
-                E-mail
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {filteredRows.map((row) => (
-              <tr
-                key={`${row.role}_${row.type}`}
-                className="border-b border-gray-100 last:border-0"
-              >
-                <td className="py-2.5 pr-4 text-gray-700">
-                  {notifTypeLabels[row.type] || row.type}
-                </td>
-                <td className="px-4 py-2.5 text-center">
-                  <input
-                    type="checkbox"
-                    checked={row.channelInApp}
-                    onChange={() =>
-                      toggleGroupPref(row.role, row.type, 'channelInApp')
-                    }
-                    className="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
-                  />
-                </td>
-                <td className="px-4 py-2.5 text-center">
-                  <input
-                    type="checkbox"
-                    checked={row.channelEmail}
-                    onChange={() =>
-                      toggleGroupPref(row.role, row.type, 'channelEmail')
-                    }
-                    className="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
-                  />
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      <div className="mt-4 flex justify-end border-t border-gray-200 pt-4">
-        <Button
-          onClick={handleSave}
-          isLoading={saveGroupPrefs.isPending}
         >
           Opslaan
         </Button>
@@ -1172,11 +1006,309 @@ function HomeAddressCard() {
   );
 }
 
+// ─── Activity Tab ────────────────────────────────────────
+
+const ITEMS_PER_PAGE = 20;
+
+const actionBadgeClasses: Record<AuditAction, string> = {
+  [AuditAction.CREATE]: 'bg-green-100 text-green-800',
+  [AuditAction.UPDATE]: 'bg-blue-100 text-blue-800',
+  [AuditAction.DELETE]: 'bg-red-100 text-red-800',
+};
+
+const actionLabels: Record<AuditAction, string> = {
+  [AuditAction.CREATE]: 'Aangemaakt',
+  [AuditAction.UPDATE]: 'Bijgewerkt',
+  [AuditAction.DELETE]: 'Verwijderd',
+};
+
+function formatActivityDateTime(dateStr: string): string {
+  return new Date(dateStr).toLocaleString('nl-NL', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+function formatRelativeTime(dateStr: string): string {
+  const now = Date.now();
+  const diff = now - new Date(dateStr).getTime();
+  const minutes = Math.floor(diff / 60000);
+  if (minutes < 1) return 'Zojuist';
+  if (minutes < 60) return `${minutes} min geleden`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} uur geleden`;
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `${days} ${days === 1 ? 'dag' : 'dagen'} geleden`;
+  return formatActivityDateTime(dateStr);
+}
+
+function ChangesSummary({ entry }: { entry: AuditLogEntry }) {
+  if (entry.action === AuditAction.CREATE) {
+    return <p className="text-sm text-gray-500">Record aangemaakt</p>;
+  }
+  if (entry.action === AuditAction.DELETE) {
+    return <p className="text-sm text-gray-500">Record verwijderd</p>;
+  }
+  if (!entry.changes) {
+    return <p className="text-sm text-gray-500">Gegevens bijgewerkt</p>;
+  }
+  const visibleEntries = Object.entries(entry.changes).filter(
+    ([field]) => !isHiddenAuditField(field),
+  );
+  if (visibleEntries.length === 0) {
+    return <p className="text-sm text-gray-500">Gegevens bijgewerkt</p>;
+  }
+  return (
+    <ul className="space-y-0.5">
+      {visibleEntries.slice(0, 3).map(([field, change]) => (
+        <li key={field} className="text-sm text-gray-600">
+          <span className="font-medium text-gray-700">
+            {getFieldLabel(entry.entityType, field)}
+          </span>{' '}
+          gewijzigd van{' '}
+          <span className="rounded bg-red-50 px-1 text-xs text-red-700">
+            {formatAuditValue(change.from, field)}
+          </span>{' '}
+          naar{' '}
+          <span className="rounded bg-green-50 px-1 text-xs text-green-700">
+            {formatAuditValue(change.to, field)}
+          </span>
+        </li>
+      ))}
+      {visibleEntries.length > 3 && (
+        <li className="text-xs text-gray-400">
+          en {visibleEntries.length - 3} andere{' '}
+          {visibleEntries.length - 3 === 1 ? 'wijziging' : 'wijzigingen'}
+        </li>
+      )}
+    </ul>
+  );
+}
+
+function ActivityItem({ entry }: { entry: AuditLogEntry }) {
+  const link = getEntityLink(entry.entityType, entry.entityId, entry.snapshot);
+  const name = getEntityDisplayName(entry.entityType, entry.snapshot);
+  const typeLabel = getEntityTypeLabel(entry.entityType);
+
+  return (
+    <div className="flex gap-4 py-4">
+      <div className="relative flex flex-col items-center">
+        <div
+          className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-bold ${actionBadgeClasses[entry.action]}`}
+        >
+          {entry.action === AuditAction.CREATE ? '+' : entry.action === AuditAction.DELETE ? '×' : '~'}
+        </div>
+      </div>
+      <div className="min-w-0 flex-1 pb-4">
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <span
+              className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${actionBadgeClasses[entry.action]}`}
+            >
+              {actionLabels[entry.action]}
+            </span>
+            <span className="text-sm font-medium text-gray-900">{typeLabel}</span>
+            {name !== typeLabel && (
+              <>
+                <span className="text-gray-400">&mdash;</span>
+                {link ? (
+                  <Link to={link} className="text-sm text-primary-600 hover:underline">
+                    {name}
+                  </Link>
+                ) : (
+                  <span className="text-sm text-gray-600">{name}</span>
+                )}
+              </>
+            )}
+            {name === typeLabel && link && (
+              <Link to={link} className="text-sm text-primary-600 hover:underline">
+                Bekijk record
+              </Link>
+            )}
+          </div>
+          <div className="flex shrink-0 flex-col items-end">
+            <span className="text-xs font-medium text-gray-500">
+              {formatRelativeTime(entry.createdAt)}
+            </span>
+            <span className="text-xs text-gray-400" title={formatActivityDateTime(entry.createdAt)}>
+              {formatActivityDateTime(entry.createdAt)}
+            </span>
+          </div>
+        </div>
+        <div className="mt-1.5">
+          <ChangesSummary entry={entry} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const entityTypeOptions = [
+  { value: '', label: 'Alle types' },
+  ...Object.entries(ENTITY_TYPE_LABELS).map(([value, label]) => ({ value, label })),
+];
+
+const actionOptions = [
+  { value: '', label: 'Alle acties' },
+  { value: 'CREATE', label: 'Aangemaakt' },
+  { value: 'UPDATE', label: 'Bijgewerkt' },
+  { value: 'DELETE', label: 'Verwijderd' },
+];
+
+function ActivityTab() {
+  const [page, setPage] = useState(1);
+  const [entityType, setEntityType] = useState('');
+  const [action, setAction] = useState('');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+
+  const { data, isLoading, error } = useMyActivity({
+    entityType: entityType || undefined,
+    action: action || undefined,
+    dateFrom: dateFrom || undefined,
+    dateTo: dateTo || undefined,
+    page,
+    limit: ITEMS_PER_PAGE,
+  });
+
+  const totalPages = data ? Math.ceil(data.total / ITEMS_PER_PAGE) : 0;
+
+  function handleFilterChange() {
+    setPage(1);
+  }
+
+  function resetFilters() {
+    setEntityType('');
+    setAction('');
+    setDateFrom('');
+    setDateTo('');
+    setPage(1);
+  }
+
+  const hasActiveFilters = !!(entityType || action || dateFrom || dateTo);
+
+  return (
+    <div className="space-y-6">
+      {/* Filters */}
+      <Card>
+        <div className="flex flex-wrap items-end gap-4">
+          <div className="min-w-[160px] flex-1">
+            <label className="mb-1 block text-xs font-medium text-gray-700">Type</label>
+            <select
+              value={entityType}
+              onChange={(e) => { setEntityType(e.target.value); handleFilterChange(); }}
+              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
+            >
+              {entityTypeOptions.map((opt) => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
+          </div>
+          <div className="min-w-[140px] flex-1">
+            <label className="mb-1 block text-xs font-medium text-gray-700">Actie</label>
+            <select
+              value={action}
+              onChange={(e) => { setAction(e.target.value); handleFilterChange(); }}
+              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
+            >
+              {actionOptions.map((opt) => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
+          </div>
+          <div className="min-w-[140px] flex-1">
+            <label className="mb-1 block text-xs font-medium text-gray-700">Datum vanaf</label>
+            <input
+              type="date"
+              value={dateFrom}
+              onChange={(e) => { setDateFrom(e.target.value); handleFilterChange(); }}
+              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
+            />
+          </div>
+          <div className="min-w-[140px] flex-1">
+            <label className="mb-1 block text-xs font-medium text-gray-700">Datum tot</label>
+            <input
+              type="date"
+              value={dateTo}
+              onChange={(e) => { setDateTo(e.target.value); handleFilterChange(); }}
+              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
+            />
+          </div>
+          {hasActiveFilters && (
+            <Button variant="secondary" size="sm" onClick={resetFilters}>Wissen</Button>
+          )}
+        </div>
+      </Card>
+
+      {/* Activity list */}
+      <Card>
+        {isLoading && (
+          <div className="flex h-48 items-center justify-center">
+            <Spinner size="md" />
+          </div>
+        )}
+        {error && (
+          <div className="flex h-48 items-center justify-center">
+            <p className="text-sm text-red-600">Fout bij laden activiteiten</p>
+          </div>
+        )}
+        {!isLoading && data && data.data.length === 0 && (
+          <div className="flex h-48 items-center justify-center">
+            <div className="text-center">
+              <svg className="mx-auto mb-3 h-10 w-10 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <p className="text-sm text-gray-500">
+                {hasActiveFilters ? 'Geen activiteiten gevonden met deze filters' : 'Nog geen activiteiten'}
+              </p>
+            </div>
+          </div>
+        )}
+        {!isLoading && data && data.data.length > 0 && (
+          <>
+            <div className="divide-y divide-gray-100">
+              {data.data.map((entry) => (
+                <ActivityItem key={entry.id} entry={entry} />
+              ))}
+            </div>
+            {totalPages > 1 && (
+              <div className="mt-2 flex items-center justify-between border-t border-gray-200 pt-4">
+                <p className="text-sm text-gray-500">
+                  Pagina {page} van {totalPages} &nbsp;&middot;&nbsp; {data.total.toLocaleString('nl-NL')} resultaten
+                </p>
+                <div className="flex items-center gap-2">
+                  <Button variant="secondary" size="sm" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1}>
+                    Vorige
+                  </Button>
+                  <Button variant="secondary" size="sm" onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page >= totalPages}>
+                    Volgende
+                  </Button>
+                </div>
+              </div>
+            )}
+          </>
+        )}
+      </Card>
+    </div>
+  );
+}
+
 // ──────────────────────────────────────────────────────────
+
+type ProfileTab = 'profiel' | 'notificaties' | 'activiteiten';
+
+const VALID_TABS: ProfileTab[] = ['profiel', 'notificaties', 'activiteiten'];
 
 export default function ProfilePage() {
   const { user, refreshUser } = useAuth();
   const { showToast } = useToast();
+  const [searchParams] = useSearchParams();
+  const tabParam = searchParams.get('tab') as ProfileTab | null;
+  const initialTab = tabParam && VALID_TABS.includes(tabParam) ? tabParam : 'profiel';
+  const [activeTab, setActiveTab] = useState<ProfileTab>(initialTab);
 
   const updateProfileMutation = useMutation({
     mutationFn: (data: ProfileFormData) =>
@@ -1227,6 +1359,12 @@ export default function ProfilePage() {
     });
   };
 
+  const tabs: { key: ProfileTab; label: string }[] = [
+    { key: 'profiel', label: 'Profiel' },
+    { key: 'notificaties', label: 'Notificaties' },
+    { key: 'activiteiten', label: 'Activiteiten' },
+  ];
+
   return (
     <div className="space-y-6">
       <div>
@@ -1236,152 +1374,171 @@ export default function ProfilePage() {
         </p>
       </div>
 
-      {/* Avatar */}
-      <AvatarCard />
-
-      {/* Inspector color + iCal (only for inspectors) */}
-      {user && hasRole(user, Role.INSPECTEUR) && <InspectorCard />}
-
-      {/* Signature */}
-      <SignatureCard />
-
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-        {/* Edit form */}
-        <div className="lg:col-span-2">
-          <Card title="Persoonlijke gegevens">
-            <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
-              <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
-                <Input
-                  label="Voornaam"
-                  error={errors.firstName?.message}
-                  {...register('firstName')}
-                />
-                <Input
-                  label="Achternaam"
-                  error={errors.lastName?.message}
-                  {...register('lastName')}
-                />
-              </div>
-
-              <Input
-                label="E-mailadres"
-                type="email"
-                error={errors.email?.message}
-                {...register('email')}
-              />
-
-              <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
-                <div>
-                  <Input
-                    label="Initialen"
-                    placeholder="bv. JDV"
-                    maxLength={4}
-                    error={errors.initials?.message}
-                    {...register('initials', {
-                      onChange: (e) => {
-                        e.target.value = e.target.value.toUpperCase().replace(/[^A-Z]/g, '');
-                      },
-                    })}
-                  />
-                  <p className="mt-1 text-xs text-gray-500">
-                    Max. 4 hoofdletters (A–Z). Wordt gebruikt bij offertes en documentnaamgeving.
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex justify-end border-t border-gray-200 pt-4">
-                <Button
-                  type="submit"
-                  isLoading={updateProfileMutation.isPending}
-                  disabled={!isDirty}
-                >
-                  Opslaan
-                </Button>
-              </div>
-            </form>
-          </Card>
-        </div>
-
-        {/* Read-only info */}
-        <div className="space-y-6">
-          <Card title="Accountgegevens">
-            <div className="space-y-4">
-              <div>
-                <p className="text-sm font-medium text-gray-500">Rol</p>
-                <div className="mt-1">
-                  {user && (
-                    <div className="flex flex-wrap gap-1">
-                      {user.roles.map((r) => (
-                        <Badge key={r} role={r} />
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              <div>
-                <p className="text-sm font-medium text-gray-500">Organisatie</p>
-                <p className="mt-1 text-sm text-gray-900">
-                  {user?.organization?.name || '-'}
-                </p>
-              </div>
-
-              <div>
-                <p className="text-sm font-medium text-gray-500">
-                  Account aangemaakt
-                </p>
-                <p className="mt-1 text-sm text-gray-900">
-                  {formatDate(user?.createdAt)}
-                </p>
-              </div>
-
-              <div>
-                <p className="text-sm font-medium text-gray-500">
-                  E-mail geverifieerd
-                </p>
-                <p className="mt-1 text-sm text-gray-900">
-                  {user?.emailVerifiedAt
-                    ? formatDate(user.emailVerifiedAt)
-                    : 'Niet geverifieerd'}
-                </p>
-              </div>
-
-              <div>
-                <p className="text-sm font-medium text-gray-500">Status</p>
-                <p className="mt-1">
-                  <span
-                    className={`inline-flex items-center gap-1.5 text-sm ${
-                      user?.isActive ? 'text-green-700' : 'text-gray-500'
-                    }`}
-                  >
-                    <span
-                      className={`h-2 w-2 rounded-full ${
-                        user?.isActive ? 'bg-green-500' : 'bg-gray-300'
-                      }`}
-                    />
-                    {user?.isActive ? 'Actief' : 'Inactief'}
-                  </span>
-                </p>
-              </div>
-            </div>
-          </Card>
-        </div>
+      {/* Tabs */}
+      <div className="border-b border-gray-200">
+        <nav className="-mb-px flex gap-6">
+          {tabs.map((tab) => (
+            <button
+              key={tab.key}
+              type="button"
+              onClick={() => setActiveTab(tab.key)}
+              className={`whitespace-nowrap border-b-2 px-1 pb-3 text-sm font-medium transition-colors ${
+                activeTab === tab.key
+                  ? 'border-primary-500 text-primary-600'
+                  : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </nav>
       </div>
 
-      {/* Home address */}
-      <HomeAddressCard />
+      {activeTab === 'profiel' && (
+        <>
+          {/* Avatar */}
+          <AvatarCard />
 
-      {/* Notification preferences */}
-      <NotificationPrefsCard />
+          {/* Inspector color + iCal (only for inspectors) */}
+          {user && hasRole(user, Role.INSPECTEUR) && <InspectorCard />}
 
-      {/* Group preferences (OA/SU only) */}
-      {user &&
-        hasRole(user, [Role.SUPERUSER, Role.ORG_ADMIN]) && (
-          <GroupNotificationPrefsCard />
-        )}
+          {/* Signature */}
+          <SignatureCard />
 
-      {/* Sessions */}
-      <SessionsCard />
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+            {/* Edit form */}
+            <div className="lg:col-span-2">
+              <Card title="Persoonlijke gegevens">
+                <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+                  <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
+                    <Input
+                      label="Voornaam"
+                      error={errors.firstName?.message}
+                      {...register('firstName')}
+                    />
+                    <Input
+                      label="Achternaam"
+                      error={errors.lastName?.message}
+                      {...register('lastName')}
+                    />
+                  </div>
+
+                  <Input
+                    label="E-mailadres"
+                    type="email"
+                    error={errors.email?.message}
+                    {...register('email')}
+                  />
+
+                  <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
+                    <div>
+                      <Input
+                        label="Initialen"
+                        placeholder="bv. JDV"
+                        maxLength={4}
+                        error={errors.initials?.message}
+                        {...register('initials', {
+                          onChange: (e) => {
+                            e.target.value = e.target.value.toUpperCase().replace(/[^A-Z]/g, '');
+                          },
+                        })}
+                      />
+                      <p className="mt-1 text-xs text-gray-500">
+                        Max. 4 hoofdletters (A–Z). Wordt gebruikt bij offertes en documentnaamgeving.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex justify-end border-t border-gray-200 pt-4">
+                    <Button
+                      type="submit"
+                      isLoading={updateProfileMutation.isPending}
+                      disabled={!isDirty}
+                    >
+                      Opslaan
+                    </Button>
+                  </div>
+                </form>
+              </Card>
+            </div>
+
+            {/* Read-only info */}
+            <div className="space-y-6">
+              <Card title="Accountgegevens">
+                <div className="space-y-4">
+                  <div>
+                    <p className="text-sm font-medium text-gray-500">Rol</p>
+                    <div className="mt-1">
+                      {user && (
+                        <div className="flex flex-wrap gap-1">
+                          {user.roles.map((r) => (
+                            <Badge key={r} role={r} />
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div>
+                    <p className="text-sm font-medium text-gray-500">Organisatie</p>
+                    <p className="mt-1 text-sm text-gray-900">
+                      {user?.organization?.name || '-'}
+                    </p>
+                  </div>
+
+                  <div>
+                    <p className="text-sm font-medium text-gray-500">
+                      Account aangemaakt
+                    </p>
+                    <p className="mt-1 text-sm text-gray-900">
+                      {formatDate(user?.createdAt)}
+                    </p>
+                  </div>
+
+                  <div>
+                    <p className="text-sm font-medium text-gray-500">
+                      E-mail geverifieerd
+                    </p>
+                    <p className="mt-1 text-sm text-gray-900">
+                      {user?.emailVerifiedAt
+                        ? formatDate(user.emailVerifiedAt)
+                        : 'Niet geverifieerd'}
+                    </p>
+                  </div>
+
+                  <div>
+                    <p className="text-sm font-medium text-gray-500">Status</p>
+                    <p className="mt-1">
+                      <span
+                        className={`inline-flex items-center gap-1.5 text-sm ${
+                          user?.isActive ? 'text-green-700' : 'text-gray-500'
+                        }`}
+                      >
+                        <span
+                          className={`h-2 w-2 rounded-full ${
+                            user?.isActive ? 'bg-green-500' : 'bg-gray-300'
+                          }`}
+                        />
+                        {user?.isActive ? 'Actief' : 'Inactief'}
+                      </span>
+                    </p>
+                  </div>
+                </div>
+              </Card>
+            </div>
+          </div>
+
+          {/* Home address */}
+          <HomeAddressCard />
+
+          {/* Sessions */}
+          <SessionsCard />
+        </>
+      )}
+
+      {activeTab === 'notificaties' && <NotificationPrefsCard />}
+
+      {activeTab === 'activiteiten' && <ActivityTab />}
     </div>
   );
 }

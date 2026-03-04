@@ -14,9 +14,16 @@ export const ENTITY_TYPE_LABELS: Record<string, string> = {
   Request: 'Aanvraag',
   Quote: 'Offerte',
   QuoteLine: 'Offerteregel',
-  QuoteTemplate: 'Sjabloon',
+  QuoteTemplate: 'Offertesjabloon',
+  EmailTemplate: 'E-mailsjabloon',
   User: 'Gebruiker',
   Organization: 'Organisatie',
+  Document: 'Document',
+  PlanningItem: 'Planregel',
+  Project: 'Project',
+  WorkOrder: 'Werkbon',
+  WorkOrderLine: 'Werkbonregel',
+  CustomFieldDefinition: 'Aangepast veld',
 };
 
 /** Returns the Dutch display label for an entity type. */
@@ -53,11 +60,25 @@ export function getEntityLink(
     case 'QuoteLine':
       return snapshot?.quoteId ? `/quotes/${snapshot.quoteId}` : null;
     case 'QuoteTemplate':
-      return `/quote-templates`;
+      return `/quote-templates/${entityId}`;
+    case 'EmailTemplate':
+      return `/email-templates/${entityId}`;
     case 'User':
-      return `/users`;
+      return `/users/${entityId}`;
     case 'Organization':
       return `/organizations/${entityId}`;
+    case 'Document':
+      return `/documents`;
+    case 'PlanningItem':
+      return `/planning/${entityId}`;
+    case 'Project':
+      return `/projects/${entityId}`;
+    case 'WorkOrder':
+      return `/work-orders/${entityId}`;
+    case 'WorkOrderLine':
+      return snapshot?.workOrderId ? `/work-orders/${snapshot.workOrderId}` : null;
+    case 'CustomFieldDefinition':
+      return null;
     default:
       return null;
   }
@@ -99,7 +120,9 @@ export function getEntityDisplayName(
     case 'QuoteLine':
       return snapshot.description || 'Offerteregel';
     case 'QuoteTemplate':
-      return snapshot.name || 'Sjabloon';
+      return snapshot.name || 'Offertesjabloon';
+    case 'EmailTemplate':
+      return snapshot.name || 'E-mailsjabloon';
     case 'User':
       return (
         `${snapshot.firstName ?? ''} ${snapshot.lastName ?? ''}`.trim() ||
@@ -108,6 +131,18 @@ export function getEntityDisplayName(
       );
     case 'Organization':
       return snapshot.name || 'Organisatie';
+    case 'Document':
+      return snapshot.originalName || snapshot.fileName || 'Document';
+    case 'PlanningItem':
+      return snapshot.productName || 'Planregel';
+    case 'Project':
+      return snapshot.title || snapshot.projectNumber || 'Project';
+    case 'WorkOrder':
+      return snapshot.workOrderNumber || 'Werkbon';
+    case 'WorkOrderLine':
+      return snapshot.description || 'Werkbonregel';
+    case 'CustomFieldDefinition':
+      return snapshot.label || snapshot.name || 'Aangepast veld';
     default:
       return getEntityTypeLabel(entityType);
   }

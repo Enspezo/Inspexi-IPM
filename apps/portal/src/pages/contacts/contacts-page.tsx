@@ -54,13 +54,6 @@ export default function ContactsPage() {
     return () => clearTimeout(timer);
   }, [search]);
 
-  const { data, isLoading, error } = useContacts({
-    search: debouncedSearch.length >= 3 ? debouncedSearch : undefined,
-    onlyMine: onlyMine || undefined,
-    page,
-    limit: 20,
-  });
-
   const handleSearchChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
       setSearch(e.target.value);
@@ -76,6 +69,8 @@ export default function ContactsPage() {
       key: 'name',
       header: 'Naam',
       pinned: true,
+      sortable: true,
+      getSortValue: getContactDisplayName,
       render: (contact) => (
         <button
           onClick={() => navigate(`/contacts/${contact.id}`)}
@@ -88,6 +83,8 @@ export default function ContactsPage() {
     {
       key: 'type',
       header: 'Type',
+      sortable: true,
+      sortKey: 'type',
       filterable: true,
       filterType: 'select',
       filterOptions: [
@@ -111,6 +108,8 @@ export default function ContactsPage() {
     {
       key: 'email',
       header: 'E-mail',
+      sortable: true,
+      sortKey: 'email',
       filterable: true,
       filterType: 'text',
       getFilterValue: (contact) => contact.email,
@@ -121,6 +120,8 @@ export default function ContactsPage() {
     {
       key: 'phone',
       header: 'Telefoon',
+      sortable: true,
+      sortKey: 'phone',
       filterable: true,
       filterType: 'text',
       getFilterValue: (contact) => contact.phone,
@@ -131,6 +132,7 @@ export default function ContactsPage() {
     {
       key: 'city',
       header: 'Stad',
+      sortable: true,
       filterable: true,
       filterType: 'text',
       groupable: true,
@@ -142,6 +144,7 @@ export default function ContactsPage() {
     {
       key: 'owner',
       header: 'Eigenaar',
+      sortable: true,
       filterable: true,
       filterType: 'text',
       groupable: true,
@@ -194,7 +197,23 @@ export default function ContactsPage() {
     isColumnsDirty,
     isFiltersDirty,
     allColumns,
+    sort,
+    toggleSort,
+    apiSort,
   } = useTableConfig({ pageKey: 'contacts', columns });
+
+  useEffect(() => {
+    setPage(1);
+  }, [sort]);
+
+  const { data, isLoading, error } = useContacts({
+    search: debouncedSearch.length >= 3 ? debouncedSearch : undefined,
+    onlyMine: onlyMine || undefined,
+    page,
+    limit: 20,
+    sortBy: apiSort?.sortBy,
+    sortOrder: apiSort?.sortOrder,
+  });
 
   if (isLoading) {
     return (
@@ -245,7 +264,7 @@ export default function ContactsPage() {
         </div>
         {userCanWrite && (
           <ActionMenu
-            primaryActions={[
+            secondaryActions={[
               {
                 label: 'Relatie aanmaken',
                 icon: <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>,
@@ -285,6 +304,8 @@ export default function ContactsPage() {
         data={filteredData(contacts)}
         keyExtractor={(c) => c.id}
         emptyMessage="Geen relaties gevonden"
+        sort={sort}
+        onSort={toggleSort}
       />
 
       {/* Pagination */}

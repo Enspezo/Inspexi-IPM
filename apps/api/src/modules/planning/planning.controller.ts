@@ -29,6 +29,7 @@ import {
   AssignSessionInspectorsDto,
   RejectSessionDto,
   RescheduleSessionDto,
+  UpdatePlanningStatusDto,
 } from './dto';
 
 @ApiTags('Planning')
@@ -215,6 +216,18 @@ export class PlanningController {
   @ApiOperation({ summary: 'Planregel ophalen' })
   async findOne(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: User) {
     const data = await this.service.findOne(id, user);
+    return { success: true, data };
+  }
+
+  @Patch(':id/status')
+  @Roles(Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE, Role.WERKVOORBEREIDER)
+  @ApiOperation({ summary: 'Status van planregel direct wijzigen' })
+  async updateStatus(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdatePlanningStatusDto,
+    @CurrentUser() user: User,
+  ) {
+    const data = await this.service.updatePlanningStatus(id, dto, user);
     return { success: true, data };
   }
 

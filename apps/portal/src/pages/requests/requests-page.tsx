@@ -143,15 +143,6 @@ export default function RequestsPage() {
     setViewMode(mode);
   };
 
-  const { data, isLoading, error } = useRequests({
-    search: debouncedSearch.length >= 3 ? debouncedSearch : undefined,
-    status: (statusFilter as RequestStatus) || undefined,
-    priority: (priorityFilter as Priority) || undefined,
-    assignedTo: onlyMine ? user?.id : undefined,
-    page,
-    limit: 20,
-  });
-
   const handleSearchChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
       setSearch(e.target.value);
@@ -167,6 +158,8 @@ export default function RequestsPage() {
       key: 'title',
       header: 'Titel',
       pinned: true,
+      sortable: true,
+      sortKey: 'title',
       render: (req) => (
         <button
           onClick={() => navigate(`/requests/${req.id}`)}
@@ -179,6 +172,7 @@ export default function RequestsPage() {
     {
       key: 'contact',
       header: 'Relatie',
+      sortable: true,
       filterable: true,
       filterType: 'text',
       getFilterValue: (req) => getContactName(req),
@@ -189,6 +183,8 @@ export default function RequestsPage() {
     {
       key: 'status',
       header: 'Status',
+      sortable: true,
+      sortKey: 'status',
       filterable: true,
       filterType: 'select',
       filterOptions: statusFilterOptions.filter((o) => o.value !== ''),
@@ -207,6 +203,8 @@ export default function RequestsPage() {
     {
       key: 'priority',
       header: 'Prioriteit',
+      sortable: true,
+      sortKey: 'priority',
       filterable: true,
       filterType: 'select',
       filterOptions: priorityFilterOptions.filter((o) => o.value !== ''),
@@ -225,6 +223,7 @@ export default function RequestsPage() {
     {
       key: 'assignedUser',
       header: 'Toegewezen aan',
+      sortable: true,
       filterable: true,
       filterType: 'text',
       getFilterValue: (req) =>
@@ -243,6 +242,8 @@ export default function RequestsPage() {
     {
       key: 'source',
       header: 'Bron',
+      sortable: true,
+      sortKey: 'source',
       filterable: true,
       filterType: 'select',
       filterOptions: Object.entries(sourceLabels).map(([value, label]) => ({
@@ -260,6 +261,8 @@ export default function RequestsPage() {
     {
       key: 'createdAt',
       header: 'Aangemaakt',
+      sortable: true,
+      sortKey: 'createdAt',
       filterable: true,
       filterType: 'date',
       getFilterValue: (req) => req.createdAt,
@@ -286,7 +289,25 @@ export default function RequestsPage() {
     isColumnsDirty,
     isFiltersDirty,
     allColumns,
+    sort,
+    toggleSort,
+    apiSort,
   } = useTableConfig({ pageKey: 'requests', columns });
+
+  useEffect(() => {
+    setPage(1);
+  }, [sort]);
+
+  const { data, isLoading, error } = useRequests({
+    search: debouncedSearch.length >= 3 ? debouncedSearch : undefined,
+    status: (statusFilter as RequestStatus) || undefined,
+    priority: (priorityFilter as Priority) || undefined,
+    assignedTo: onlyMine ? user?.id : undefined,
+    page,
+    limit: 20,
+    sortBy: apiSort?.sortBy,
+    sortOrder: apiSort?.sortOrder,
+  });
 
   if (isLoading && viewMode === 'table') {
     return (
@@ -388,7 +409,7 @@ export default function RequestsPage() {
 
             {userCanWrite && (
               <ActionMenu
-                primaryActions={[
+                secondaryActions={[
                   {
                     label: 'Aanvraag aanmaken',
                     icon: <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>,
@@ -446,6 +467,8 @@ export default function RequestsPage() {
               data={filteredData(requests)}
               keyExtractor={(r) => r.id}
               emptyMessage="Geen aanvragen gevonden"
+              sort={sort}
+              onSort={toggleSort}
             />
 
             {/* Paginering */}

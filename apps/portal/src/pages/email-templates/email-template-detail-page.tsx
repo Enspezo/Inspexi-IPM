@@ -5,17 +5,27 @@ import { ActionMenu, Button, Spinner, Input, RichTextEditor } from '@/components
 import { DetailPageLayout } from '@/components/layout/detail-page-layout';
 import { AuditHistory } from '@/components/audit-history/audit-history';
 import { useToast } from '@/components/ui';
+import { getAccessToken } from '@/lib/api-client';
 import {
   useEmailTemplate,
   useUpdateEmailTemplate,
   usePreviewEmailTemplate,
   useDuplicateEmailTemplate,
+  useEmailTemplateAttachments,
+  useUploadEmailTemplateAttachment,
+  useDeleteEmailTemplateAttachment,
 } from './hooks/use-email-templates';
 import { PlaceholderPanel } from './components/placeholder-panel';
 import { EMAIL_TYPE_LABELS } from './components/email-type-labels';
-import type { EmailTemplateType } from '@/types';
+import type { EmailTemplateType, EmailTemplateAttachment } from '@/types';
 
-type Tab = 'bewerken' | 'voorbeeld';
+type Tab = 'bewerken' | 'voorbeeld' | 'bijlagen';
+
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
 
 export default function EmailTemplateDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -26,6 +36,10 @@ export default function EmailTemplateDetailPage() {
   const updateMutation = useUpdateEmailTemplate(id!);
   const previewMutation = usePreviewEmailTemplate();
   const duplicateMutation = useDuplicateEmailTemplate();
+
+  const { data: attachments } = useEmailTemplateAttachments(id!);
+  const uploadAttachmentMutation = useUploadEmailTemplateAttachment(id!);
+  const deleteAttachmentMutation = useDeleteEmailTemplateAttachment(id!);
 
   const [activeTab, setActiveTab] = useState<Tab>('bewerken');
   const [name, setName] = useState('');
@@ -120,6 +134,57 @@ export default function EmailTemplateDetailPage() {
     }, 0);
   };
 
+  // ─── Attachment handlers ──────────────────────────────
+
+  const handleAttachmentUpload = () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.pdf,.jpg,.jpeg,.png,.svg,.webp,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.csv,.zip';
+    input.onchange = async (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (!file) return;
+      const formData = new FormData();
+      formData.append('file', file);
+      try {
+        await uploadAttachmentMutation.mutateAsync(formData);
+        showToast('Bijlage toegevoegd', 'success');
+      } catch {
+        showToast('Upload mislukt', 'error');
+      }
+    };
+    input.click();
+  };
+
+  const handleAttachmentDownload = async (att: EmailTemplateAttachment) => {
+    const token = getAccessToken();
+    try {
+      const res = await fetch(
+        `/api/v1/email-templates/${id}/attachments/${att.id}/download`,
+        { headers: token ? { Authorization: `Bearer ${token}` } : {} },
+      );
+      if (!res.ok) throw new Error();
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = att.originalName;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      showToast('Download mislukt', 'error');
+    }
+  };
+
+  const handleAttachmentDelete = async (attachmentId: string) => {
+    if (!window.confirm('Bijlage verwijderen?')) return;
+    try {
+      await deleteAttachmentMutation.mutateAsync(attachmentId);
+      showToast('Bijlage verwijderd', 'success');
+    } catch {
+      showToast('Verwijderen mislukt', 'error');
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="flex h-64 items-center justify-center">
@@ -139,6 +204,7 @@ export default function EmailTemplateDetailPage() {
   const tabs: { key: Tab; label: string }[] = [
     { key: 'bewerken', label: 'Bewerken' },
     { key: 'voorbeeld', label: 'Voorbeeld' },
+    { key: 'bijlagen', label: `Bijlagen${attachments?.length ? ` (${attachments.length})` : ''}` },
   ];
 
   return (
@@ -327,6 +393,83 @@ export default function EmailTemplateDetailPage() {
             {previewMutation.error && (
               <div className="rounded-lg bg-danger-50 p-4 text-sm text-danger-600">
                 Fout bij genereren preview
+              </div>
+            )}
+          </div>
+        )}
+
+        {activeTab === 'bijlagen' && (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-medium text-gray-900">Standaard bijlagen</h3>
+                <p className="text-sm text-gray-500">
+                  Deze bestanden worden automatisch bijgevoegd wanneer dit e-mailsjabloon wordt gebruikt.
+                </p>
+              </div>
+              <Button
+                variant="secondary"
+                onClick={handleAttachmentUpload}
+                isLoading={uploadAttachmentMutation.isPending}
+              >
+                Bijlage toevoegen
+              </Button>
+            </div>
+
+            {attachments && attachments.length > 0 ? (
+              <div className="divide-y divide-gray-200 rounded-lg border border-gray-200">
+                {attachments.map((att) => (
+                  <div key={att.id} className="flex items-center justify-between px-4 py-3">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-gray-100">
+                        <svg className="h-5 w-5 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+                        </svg>
+                      </div>
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium text-gray-900">{att.originalName}</p>
+                        <p className="text-xs text-gray-500">{formatFileSize(att.fileSize)}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0 ml-4">
+                      <button
+                        onClick={() => handleAttachmentDownload(att)}
+                        className="rounded p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+                        title="Downloaden"
+                      >
+                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                        </svg>
+                      </button>
+                      <button
+                        onClick={() => handleAttachmentDelete(att.id)}
+                        className="rounded p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-600"
+                        title="Verwijderen"
+                      >
+                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="rounded-lg border-2 border-dashed border-gray-200 p-8 text-center">
+                <svg className="mx-auto h-12 w-12 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+                </svg>
+                <p className="mt-2 text-sm text-gray-500">
+                  Geen standaard bijlagen. Voeg bestanden toe die automatisch meegezonden worden met e-mails van dit type.
+                </p>
+                <Button
+                  variant="secondary"
+                  className="mt-4"
+                  onClick={handleAttachmentUpload}
+                  isLoading={uploadAttachmentMutation.isPending}
+                >
+                  Bijlage toevoegen
+                </Button>
               </div>
             )}
           </div>

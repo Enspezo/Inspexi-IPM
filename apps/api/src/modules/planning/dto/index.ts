@@ -12,3 +12,4 @@ export { UpdateSessionDto } from './update-session.dto';
 export { AssignSessionInspectorsDto } from './assign-session-inspectors.dto';
 export { RejectSessionDto } from './reject-session.dto';
 export { RescheduleSessionDto } from './reschedule-session.dto';
+export { UpdatePlanningStatusDto } from './update-planning-status.dto';

@@ -3,10 +3,13 @@ import { apiClient } from '@/lib/api-client';
 import type {
   QuoteTemplate,
   QuoteTemplateAttachment,
-  QuoteTemplateRtfRevision,
+  QuoteTemplateDocxRevision,
+  QuoteTemplateFollowUp,
   QuoteTemplateType,
   ContentBlock,
   PaginatedResponse,
+  FollowUpType,
+  FollowUpAssigneeType,
 } from '@/types';
 
 interface ListQuoteTemplatesParams {
@@ -14,6 +17,8 @@ interface ListQuoteTemplatesParams {
   isActive?: boolean;
   page?: number;
   limit?: number;
+  sortBy?: string;
+  sortOrder?: 'asc' | 'desc';
 }
 
 export function useQuoteTemplates(params: ListQuoteTemplatesParams = {}) {
@@ -22,6 +27,8 @@ export function useQuoteTemplates(params: ListQuoteTemplatesParams = {}) {
   if (params.isActive !== undefined) queryParams.set('isActive', String(params.isActive));
   if (params.page) queryParams.set('page', String(params.page));
   if (params.limit) queryParams.set('limit', String(params.limit));
+  if (params.sortBy) queryParams.set('sortBy', params.sortBy);
+  if (params.sortOrder) queryParams.set('sortOrder', params.sortOrder);
 
   const qs = queryParams.toString();
   const endpoint = `/quote-templates${qs ? `?${qs}` : ''}`;
@@ -68,6 +75,10 @@ interface UpdateQuoteTemplateDto {
   requiresApproval?: boolean;
   isActive?: boolean;
   contentBlocks?: ContentBlock[];
+  sendEmailTemplateId?: string | null;
+  sendEmailEnabled?: boolean;
+  acceptedEmailTemplateId?: string | null;
+  acceptedEmailEnabled?: boolean;
 }
 
 export function useUpdateQuoteTemplate(id: string) {
@@ -168,15 +179,15 @@ export function useReorderTemplateAttachments(templateId: string) {
   });
 }
 
-// ── RTF file management ─────────────────────────────────────
+// ── DOCX file management ────────────────────────────────────
 
-export function useUploadRtfFile(templateId: string) {
+export function useUploadDocxFile(templateId: string) {
   const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: (formData: FormData) =>
       apiClient.upload<QuoteTemplate>(
-        `/quote-templates/${templateId}/rtf`,
+        `/quote-templates/${templateId}/docx`,
         formData,
       ),
     onSuccess: () => {
@@ -184,19 +195,111 @@ export function useUploadRtfFile(templateId: string) {
         queryKey: ['quote-templates', templateId],
       });
       queryClient.invalidateQueries({
-        queryKey: ['quote-templates', templateId, 'rtf-revisions'],
+        queryKey: ['quote-templates', templateId, 'docx-revisions'],
       });
     },
   });
 }
 
-export function useRtfRevisions(templateId: string) {
-  return useQuery<QuoteTemplateRtfRevision[]>({
-    queryKey: ['quote-templates', templateId, 'rtf-revisions'],
+export function useDocxRevisions(templateId: string) {
+  return useQuery<QuoteTemplateDocxRevision[]>({
+    queryKey: ['quote-templates', templateId, 'docx-revisions'],
     queryFn: () =>
-      apiClient.get<QuoteTemplateRtfRevision[]>(
-        `/quote-templates/${templateId}/rtf/revisions`,
+      apiClient.get<QuoteTemplateDocxRevision[]>(
+        `/quote-templates/${templateId}/docx/revisions`,
       ),
     enabled: !!templateId,
+  });
+}
+
+// ── Follow-up rules ───────────────────────────────────────
+
+export function useFollowUpRules(templateId: string) {
+  return useQuery<QuoteTemplateFollowUp[]>({
+    queryKey: ['quote-templates', templateId, 'follow-ups'],
+    queryFn: () =>
+      apiClient.get<QuoteTemplateFollowUp[]>(
+        `/quote-templates/${templateId}/follow-ups`,
+      ),
+    enabled: !!templateId,
+  });
+}
+
+interface CreateFollowUpDto {
+  type: FollowUpType;
+  delayDays: number;
+  isActive?: boolean;
+  emailTemplateId?: string | null;
+  defaultNotes?: string;
+  assigneeType?: FollowUpAssigneeType;
+  assigneeUserId?: string | null;
+}
+
+export function useCreateFollowUp(templateId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (data: CreateFollowUpDto) =>
+      apiClient.post<QuoteTemplateFollowUp>(
+        `/quote-templates/${templateId}/follow-ups`,
+        data,
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ['quote-templates', templateId, 'follow-ups'],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ['quote-templates', templateId],
+      });
+    },
+  });
+}
+
+interface UpdateFollowUpDto {
+  type?: FollowUpType;
+  delayDays?: number;
+  isActive?: boolean;
+  emailTemplateId?: string | null;
+  defaultNotes?: string;
+  assigneeType?: FollowUpAssigneeType;
+  assigneeUserId?: string | null;
+}
+
+export function useUpdateFollowUp(templateId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ followUpId, data }: { followUpId: string; data: UpdateFollowUpDto }) =>
+      apiClient.patch<QuoteTemplateFollowUp>(
+        `/quote-templates/${templateId}/follow-ups/${followUpId}`,
+        data,
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ['quote-templates', templateId, 'follow-ups'],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ['quote-templates', templateId],
+      });
+    },
+  });
+}
+
+export function useDeleteFollowUp(templateId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (followUpId: string) =>
+      apiClient.delete(
+        `/quote-templates/${templateId}/follow-ups/${followUpId}`,
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ['quote-templates', templateId, 'follow-ups'],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ['quote-templates', templateId],
+      });
+    },
   });
 }

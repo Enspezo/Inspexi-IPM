@@ -23,6 +23,8 @@ const AUDITED_MODELS = new Set([
   'CustomFieldDefinition',
   'EmailTemplate',
   'Project',
+  'WorkOrder',
+  'WorkOrderLine',
 ]);
 
 /** Fields excluded from change tracking */
@@ -53,6 +55,8 @@ const MODEL_TABLE_MAP: Record<string, string> = {
   CustomFieldDefinition: 'imp_custom_field_definitions',
   EmailTemplate: 'imp_email_templates',
   Project: 'imp_projects',
+  WorkOrder: 'imp_work_orders',
+  WorkOrderLine: 'imp_work_order_lines',
 };
 
 function sanitize(obj: Record<string, any>): Record<string, any> {

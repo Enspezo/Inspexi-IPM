@@ -55,16 +55,27 @@ const enumLabels: Record<string, string> = {
   INSPECTEUR: 'Inspecteur',
 
   // TaskStatus
-  OPEN: 'Open',
-  IN_PROGRESS: 'In uitvoering',
-  DONE: 'Afgerond',
-  CANCELLED: 'Geannuleerd',
+  TE_DOEN: 'Te doen',
+  MEE_BEZIG: 'Mee bezig',
+  VOLTOOID: 'Voltooid',
+
+  // TaskType
+  TO_DO: 'To-do',
+  TELEFOONGESPREK: 'Telefoongesprek',
+  DOCUMENT: 'Document',
+  GOEDKEURING: 'Goedkeuring',
 
   // PlanningStatus
   NOG_TE_PLANNEN: 'Nog te plannen',
   GEPLAND: 'Gepland',
   AFGEROND: 'Afgerond',
   VERVALLEN: 'Vervallen',
+
+  // WorkOrderStatus
+  IN_VOORBEREIDING: 'In voorbereiding',
+  IN_UITVOERING: 'In uitvoering',
+  UITGEVOERD: 'Uitgevoerd',
+  WACHT_OP_KLANT: 'Wacht op klant',
 
   // ProjectStatus
   ACTIEF: 'Actief',
@@ -97,7 +108,7 @@ const enumLabels: Record<string, string> = {
 
   // QuoteTemplateType
   BLOCKS: 'Blokken sjabloon',
-  RTF: 'RTF sjabloon',
+  DOCX: 'DOCX sjabloon',
 
   // CustomFieldEntityType
   CONTACT: 'Relatie',
@@ -132,6 +143,8 @@ const dateFields = new Set([
   'startDate',
   'expectedEndDate',
   'endDate',
+  'startTime',
+  'endTime',
 ]);
 
 /** UUID v4 pattern — used to detect unresolved UUIDs */
@@ -156,6 +169,7 @@ const FK_FIELDS = new Set([
   'userId',
   'projectId',
   'projectManagerId',
+  'workOrderId',
 ]);
 
 const currencyFormatter = new Intl.NumberFormat('nl-NL', {

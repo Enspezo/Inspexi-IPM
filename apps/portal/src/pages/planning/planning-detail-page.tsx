@@ -9,12 +9,11 @@ import {
   Card,
   Modal,
   Input,
+  Select,
   useToast,
 } from '@/components/ui';
 import { DetailPageLayout, SidebarSection } from '@/components/layout/detail-page-layout';
-import { NotesSidebarSection, HistorySidebarSection } from '@/components/layout/sidebar-sections';
-import { DocumentsSection } from '@/components/documents/documents-section';
-import { UploadDocumentModal } from '@/components/documents';
+import { NotesSidebarSection, HistorySidebarSection, DocumentsSidebarSection } from '@/components/layout/sidebar-sections';
 import { useAuth } from '@/providers/auth-provider';
 import { useTasks, useUpdateTask } from '@/pages/tasks/hooks/use-tasks';
 import { CreateTaskModal } from '@/pages/tasks/components/create-task-modal';
@@ -23,12 +22,15 @@ import {
   usePlanningItem,
   useCreatePlanningItem,
   useUpdatePlanningItem,
+  useUpdatePlanningStatus,
   useCompletePlanningItem,
   useReschedulePlanningItem,
   useSendConfirmation,
   useAcceptPlanningItem,
   useRejectPlanningItem,
 } from './hooks/use-planning';
+import { usePlanningWorkOrders, useCreateWorkOrder } from '@/pages/work-orders/hooks/use-work-orders';
+import { WorkOrderStatus } from '@/types';
 import { usePlanningFollowers, useAddFollower, useRemoveFollower } from './hooks/use-planning-followers';
 import { usePlanningQuestions, useAddPlanningQuestion } from './hooks/use-planning-questions';
 import {
@@ -42,7 +44,7 @@ import {
   useCompleteSession,
 } from './hooks/use-planning-sessions';
 
-type Tab = 'algemeen' | 'sessies' | 'klantportaal' | 'volgers' | 'geschiedenis';
+type Tab = 'algemeen' | 'sessies' | 'klantportaal' | 'volgers' | 'status' | 'geschiedenis';
 
 const statusColors: Record<string, string> = {
   [PlanningStatus.NOG_TE_PLANNEN]: 'bg-gray-100 text-gray-700',
@@ -130,8 +132,6 @@ function PlanningDetailView({ id }: { id: string }) {
 
   // Taak aanmaken modal
   const [isTaskOpen, setIsTaskOpen] = useState(false);
-  const [isDocUploadOpen, setIsDocUploadOpen] = useState(false);
-
   // Volger toevoegen modal
   const [addFollowerOpen, setAddFollowerOpen] = useState(false);
   const [followerSearch, setFollowerSearch] = useState('');
@@ -147,6 +147,8 @@ function PlanningDetailView({ id }: { id: string }) {
   const { data: followers } = usePlanningFollowers(id);
   const { data: questions } = usePlanningQuestions(id);
   const { data: tasksData } = useTasks({ entityType: TaskEntityType.PLANNING, entityId: id });
+  const { data: workOrdersData } = usePlanningWorkOrders(id);
+  const createWorkOrder = useCreateWorkOrder();
 
   // Contactpersonen van dezelfde relatie als de opdrachtgever (voor volgers-dropdown en bewerkformulier)
   const { data: contactPersonsData } = useContactPersons({
@@ -185,6 +187,11 @@ function PlanningDetailView({ id }: { id: string }) {
   const addFollower = useAddFollower(id!);
   const removeFollower = useRemoveFollower(id!);
   const addQuestion = useAddPlanningQuestion(id!);
+  const updateStatus = useUpdatePlanningStatus(id!);
+
+  // Status tab state
+  const [newStatus, setNewStatus] = useState('');
+  const [statusNote, setStatusNote] = useState('');
 
   // Session mutations
   const addSession = useCreatePlanningSession(id!);
@@ -388,6 +395,18 @@ function PlanningDetailView({ id }: { id: string }) {
     }
   };
 
+  const handleStatusUpdate = async () => {
+    if (!newStatus || newStatus === item.status) return;
+    try {
+      await updateStatus.mutateAsync({ status: newStatus, note: statusNote || undefined });
+      showToast('Status bijgewerkt', 'success');
+      setNewStatus('');
+      setStatusNote('');
+    } catch {
+      showToast('Status wijzigen mislukt', 'error');
+    }
+  };
+
   // Reeds bestaande volger-emails om duplicaten te tonen
   const existingFollowerEmails = new Set(
     followers?.map((f: PlanningFollower) => f.user?.email ?? f.email ?? '').filter(Boolean)
@@ -512,9 +531,26 @@ function PlanningDetailView({ id }: { id: string }) {
 
       <NotesSidebarSection entityType={NoteEntityType.PLANNING} entityId={id!} />
 
+      <DocumentsSidebarSection
+        entityType={DocumentEntityType.PLANNING}
+        entityId={id!}
+        canUpload={!!(user && user.roles.some(r => canWrite.includes(r)))}
+        showSharedWithClient
+      />
+
       <HistorySidebarSection entityType="PlanningItem" entityId={id} />
     </div>
   );
+
+  const STATUS_ACTIONS = new Set([
+    'AANGEMAAKT', 'GEACCEPTEERD', 'GEWEIGERD', 'GEPLAND', 'AFGEROND', 'VERPLAATST', 'STATUS_GEWIJZIGD',
+  ]);
+  const statusHistory = (item.history ?? []).filter((e) => STATUS_ACTIONS.has(e.action));
+
+  const statusOptions = Object.values(PlanningStatus).map((s) => ({
+    value: s,
+    label: statusLabels[s] || s,
+  }));
 
   const tabLabels: Record<Tab, string> = {
     algemeen: 'Algemeen',
@@ -523,6 +559,7 @@ function PlanningDetailView({ id }: { id: string }) {
       : 'Sessies',
     klantportaal: 'Klantportaal',
     volgers: followers?.length ? `Volgers (${followers.length})` : 'Volgers',
+    status: 'Status',
     geschiedenis: 'Geschiedenis',
   };
 
@@ -605,11 +642,6 @@ function PlanningDetailView({ id }: { id: string }) {
                 icon: <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" /></svg>,
                 onClick: () => setIsTaskOpen(true),
               },
-              {
-                label: 'Document uploaden',
-                icon: <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>,
-                onClick: () => setIsDocUploadOpen(true),
-              },
             ]}
           />
         </div>
@@ -617,18 +649,23 @@ function PlanningDetailView({ id }: { id: string }) {
 
       {/* Tabs */}
       <div className="border-b border-gray-200 mb-6">
-        <nav className="flex gap-6">
-          {(['algemeen', ...(item.isMultiDay ? ['sessies'] : []), 'klantportaal', 'volgers', 'geschiedenis'] as Tab[]).map((t) => (
+        <nav className="-mb-px flex gap-6 overflow-x-auto">
+          {(['algemeen', ...(item.isMultiDay ? ['sessies'] : []), 'klantportaal', 'volgers', 'status', 'geschiedenis'] as Tab[]).map((t) => (
             <button
               key={t}
               onClick={() => setTab(t)}
-              className={`pb-3 text-sm font-medium capitalize border-b-2 transition-colors ${
+              className={`inline-flex items-center gap-1.5 whitespace-nowrap border-b-2 px-1 py-3 text-sm font-medium transition-colors ${
                 tab === t
-                  ? 'border-blue-600 text-blue-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700'
+                  ? 'border-primary-600 text-primary-600'
+                  : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'
               }`}
             >
               {tabLabels[t]}
+              {t === 'status' && statusHistory.length > 0 && (
+                <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-primary-100 px-1.5 text-xs font-semibold text-primary-700">
+                  {statusHistory.length}
+                </span>
+              )}
             </button>
           ))}
         </nav>
@@ -873,17 +910,67 @@ function PlanningDetailView({ id }: { id: string }) {
             </div>
           </Card>
 
-          {/* Documenten */}
-          <Card>
-            <div className="p-6">
-              <DocumentsSection
-                entityType={DocumentEntityType.PLANNING}
-                entityId={id!}
-                canUpload={!!(user && user.roles.some(r => canWrite.includes(r)))}
-                showSharedWithClient
-              />
-            </div>
-          </Card>
+          {/* Werkbonnen */}
+          {(item.status === PlanningStatus.GEPLAND || item.status === PlanningStatus.AFGEROND) && (
+            <Card>
+              <div className="p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="font-semibold text-gray-900">Werkbonnen</h3>
+                  <Button
+                    variant="secondary"
+                    onClick={() => {
+                      createWorkOrder.mutate({ planningItemId: item.id });
+                    }}
+                    disabled={createWorkOrder.isPending}
+                  >
+                    Werkbon aanmaken
+                  </Button>
+                </div>
+                {workOrdersData?.data && workOrdersData.data.length > 0 ? (
+                  <div className="space-y-3">
+                    {workOrdersData.data.map((wo) => (
+                      <Link
+                        key={wo.id}
+                        to={`/work-orders/${wo.id}`}
+                        className="flex items-center justify-between hover:bg-gray-50 rounded-lg -mx-2 px-2 py-1 transition-colors"
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className="h-9 w-9 rounded-full flex items-center justify-center text-sm font-medium text-white flex-shrink-0 bg-primary-600">
+                            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                            </svg>
+                          </div>
+                          <div>
+                            <div className="text-sm font-medium text-gray-900">
+                              {wo.workOrderNumber}
+                            </div>
+                            <div className="text-xs text-gray-500">
+                              {wo.startTime
+                                ? new Date(wo.startTime).toLocaleString('nl-NL', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+                                : 'Geen starttijd'}
+                            </div>
+                          </div>
+                        </div>
+                        <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
+                          wo.status === WorkOrderStatus.IN_VOORBEREIDING ? 'bg-yellow-100 text-yellow-800' :
+                          wo.status === WorkOrderStatus.IN_UITVOERING ? 'bg-blue-100 text-blue-800' :
+                          wo.status === WorkOrderStatus.UITGEVOERD ? 'bg-green-100 text-green-800' :
+                          'bg-orange-100 text-orange-800'
+                        }`}>
+                          {wo.status === WorkOrderStatus.IN_VOORBEREIDING ? 'In voorbereiding' :
+                           wo.status === WorkOrderStatus.IN_UITVOERING ? 'In uitvoering' :
+                           wo.status === WorkOrderStatus.UITGEVOERD ? 'Uitgevoerd' :
+                           'Wacht op klant'}
+                        </span>
+                      </Link>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm text-gray-500">Nog geen werkbonnen</p>
+                )}
+              </div>
+            </Card>
+          )}
 
           <div className="flex items-center justify-between border-t border-gray-200 pt-6">
             <p className="text-xs text-gray-400">
@@ -984,6 +1071,82 @@ function PlanningDetailView({ id }: { id: string }) {
         </div>
       )}
 
+      {/* ── Status ── */}
+      {tab === 'status' && (
+        <div className="space-y-6">
+          {/* Huidige status */}
+          <Card>
+            <h3 className="text-sm font-semibold text-gray-900 mb-4">Huidige status</h3>
+            <div className="flex items-center gap-3">
+              <span className={`inline-flex items-center rounded-full px-3 py-1 text-sm font-medium ${statusColors[item.status] ?? 'bg-gray-100 text-gray-700'}`}>
+                {statusLabels[item.status] ?? item.status}
+              </span>
+            </div>
+          </Card>
+
+          {/* Status wijzigen */}
+          {user && user.roles.some(r => canWrite.includes(r)) && (
+            <Card>
+              <h3 className="text-sm font-semibold text-gray-900 mb-4">Status wijzigen</h3>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+                <div className="w-56">
+                  <Select
+                    label="Nieuwe status"
+                    options={statusOptions}
+                    value={newStatus}
+                    onChange={(e) => setNewStatus(e.target.value)}
+                  />
+                </div>
+                <div className="flex-1">
+                  <Input
+                    label="Notitie (optioneel)"
+                    placeholder="Toelichting bij statuswijziging..."
+                    value={statusNote}
+                    onChange={(e) => setStatusNote(e.target.value)}
+                  />
+                </div>
+                <Button
+                  onClick={handleStatusUpdate}
+                  isLoading={updateStatus.isPending}
+                  disabled={!newStatus || newStatus === item.status}
+                >
+                  Bijwerken
+                </Button>
+              </div>
+            </Card>
+          )}
+
+          {/* Statushistorie */}
+          <div>
+            <h3 className="text-sm font-semibold text-gray-900 mb-3">Statushistorie</h3>
+            {statusHistory.length === 0 ? (
+              <p className="py-4 text-center text-sm text-gray-500">Geen statushistorie beschikbaar</p>
+            ) : (
+              <div className="space-y-3">
+                {statusHistory.map((entry) => (
+                  <Card key={entry.id}>
+                    <div className="flex items-start justify-between">
+                      <p className="text-sm text-gray-900">{entry.description}</p>
+                      <span className="ml-4 shrink-0 text-xs text-gray-400">
+                        {new Date(entry.createdAt).toLocaleString('nl-NL')}
+                      </span>
+                    </div>
+                    {entry.user && (
+                      <p className="mt-1 text-xs text-gray-400">
+                        Door {entry.user.firstName} {entry.user.lastName}
+                      </p>
+                    )}
+                    {!entry.user && (
+                      <p className="mt-1 text-xs text-gray-400">Systeem / automatisch</p>
+                    )}
+                  </Card>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* ── Geschiedenis ── */}
       {tab === 'geschiedenis' && (
         <div>
@@ -1026,15 +1189,6 @@ function PlanningDetailView({ id }: { id: string }) {
         entityType={TaskEntityType.PLANNING}
         entityId={id!}
       />
-
-      {isDocUploadOpen && (
-        <UploadDocumentModal
-          isOpen={isDocUploadOpen}
-          onClose={() => setIsDocUploadOpen(false)}
-          entityType={DocumentEntityType.PLANNING}
-          entityId={id!}
-        />
-      )}
 
       {/* ── Verzetten modal (alleen GEPLAND) ── */}
       <Modal

@@ -150,6 +150,20 @@ export class DocumentsService {
       }
     }
 
+    const workOrderIds = docs
+      .filter((d) => d.entityType === DocumentEntityType.WORK_ORDER)
+      .map((d) => d.entityId);
+
+    if (workOrderIds.length > 0) {
+      const workOrders = await this.prisma.workOrder.findMany({
+        where: { id: { in: workOrderIds } },
+        select: { id: true, workOrderNumber: true },
+      });
+      for (const wo of workOrders) {
+        nameMap.set(wo.id, wo.workOrderNumber);
+      }
+    }
+
     return nameMap;
   }
 
@@ -189,7 +203,11 @@ export class DocumentsService {
   }
 
   async findAll(user: User, query: ListDocumentsQueryDto) {
-    const { search, entityType, entityId, onlyMine, page = 1, limit = 20 } = query;
+    const { search, entityType, entityId, onlyMine, page = 1, limit = 20, sortBy, sortOrder = 'desc' } = query;
+    const ALLOWED_SORT_FIELDS = ['originalName', 'mimeType', 'size', 'entityType', 'createdAt'];
+    const orderBy = (sortBy && ALLOWED_SORT_FIELDS.includes(sortBy))
+      ? { [sortBy]: sortOrder }
+      : { createdAt: 'desc' as const };
     const skip = (page - 1) * limit;
 
     const where: Prisma.DocumentWhereInput = { isDeleted: false };
@@ -220,7 +238,7 @@ export class DocumentsService {
         include: {
           uploadedBy: { select: userSelect },
         },
-        orderBy: { createdAt: 'desc' },
+        orderBy,
         skip,
         take: limit,
       }),

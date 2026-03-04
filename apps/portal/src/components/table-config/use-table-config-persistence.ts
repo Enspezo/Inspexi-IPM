@@ -1,5 +1,11 @@
 import { useCallback } from 'react';
-import type { TableColumnConfig, TableFilter, TableGrouping, PersistedTableState } from './types';
+import type {
+  TableColumnConfig,
+  TableFilter,
+  TableGrouping,
+  TableSort,
+  PersistedTableState,
+} from './types';
 
 const STORAGE_PREFIX = 'inspexi-table-config:';
 const SCHEMA_VERSION = 1;
@@ -20,8 +26,19 @@ export function useTableConfigPersistence(pageKey: string) {
   }, [storageKey]);
 
   const save = useCallback(
-    (config: TableColumnConfig, filters: TableFilter[], grouping: TableGrouping | null) => {
-      const state: PersistedTableState = { config, filters, grouping, version: SCHEMA_VERSION };
+    (
+      config: TableColumnConfig,
+      filters: TableFilter[],
+      grouping: TableGrouping | null,
+      sort?: TableSort | null,
+    ) => {
+      const state: PersistedTableState = {
+        config,
+        filters,
+        grouping,
+        sort: sort ?? null,
+        version: SCHEMA_VERSION,
+      };
       try {
         localStorage.setItem(storageKey, JSON.stringify(state));
       } catch {

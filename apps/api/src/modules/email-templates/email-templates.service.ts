@@ -1,18 +1,30 @@
 import {
   Injectable,
+  Inject,
+  Logger,
   NotFoundException,
   ForbiddenException,
+  BadRequestException,
 } from '@nestjs/common';
+import { randomUUID } from 'crypto';
 import { User, Role, Prisma, EmailTemplateType } from '@prisma/client';
 import { PrismaService } from '@/prisma';
+import { STORAGE_PROVIDER, type StorageProvider } from '@/common/services/storage/storage.interface';
 import { CreateEmailTemplateDto } from './dto/create-email-template.dto';
 import { UpdateEmailTemplateDto } from './dto/update-email-template.dto';
 import { TEMPLATE_TYPE_PLACEHOLDERS, EMAIL_TEMPLATE_TYPE_LABELS } from './placeholder.config';
 import { renderTemplate, wrapInEmailLayout } from './template-renderer';
 
+const ALLOWED_ATTACHMENT_MIMES = /^(application\/pdf|image\/(jpeg|png|svg\+xml|webp)|application\/vnd\.(ms-excel|ms-powerpoint|openxmlformats-officedocument\.(spreadsheetml\.sheet|wordprocessingml\.document|presentationml\.presentation))|application\/msword|application\/zip|text\/csv)$/;
+
 @Injectable()
 export class EmailTemplatesService {
-  constructor(private prisma: PrismaService) {}
+  private readonly logger = new Logger(EmailTemplatesService.name);
+
+  constructor(
+    private prisma: PrismaService,
+    @Inject(STORAGE_PROVIDER) private storage: StorageProvider,
+  ) {}
 
   async findAll(
     user: User,
@@ -60,6 +72,7 @@ export class EmailTemplatesService {
       where: { id },
       include: {
         creator: { select: { id: true, firstName: true, lastName: true } },
+        attachments: { orderBy: { sortOrder: 'asc' } },
       },
     });
 
@@ -147,7 +160,7 @@ export class EmailTemplatesService {
   async duplicate(id: string, user: User) {
     const template = await this.findOne(id, user);
 
-    return this.prisma.emailTemplate.create({
+    const newTemplate = await this.prisma.emailTemplate.create({
       data: {
         orgId: template.orgId,
         type: template.type,
@@ -160,8 +173,35 @@ export class EmailTemplatesService {
       },
       include: {
         creator: { select: { id: true, firstName: true, lastName: true } },
+        attachments: { orderBy: { sortOrder: 'asc' } },
       },
     });
+
+    // Copy attachments to new template
+    if (template.attachments?.length) {
+      for (const att of template.attachments) {
+        try {
+          const buffer = await this.storage.download(att.storageKey);
+          const newKey = `${template.orgId}/et/${newTemplate.id}/${randomUUID()}-${att.originalName}`;
+          await this.storage.upload(newKey, buffer, att.mimeType);
+          await this.prisma.emailTemplateAttachment.create({
+            data: {
+              emailTemplateId: newTemplate.id,
+              orgId: template.orgId,
+              storageKey: newKey,
+              originalName: att.originalName,
+              mimeType: att.mimeType,
+              fileSize: att.fileSize,
+              sortOrder: att.sortOrder,
+            },
+          });
+        } catch (err) {
+          this.logger.error(`Failed to copy attachment ${att.originalName}`, err);
+        }
+      }
+    }
+
+    return this.findOne(newTemplate.id, user);
   }
 
   getTypes() {
@@ -218,6 +258,31 @@ export class EmailTemplatesService {
     };
   }
 
+  /**
+   * Render a specific template by ID, wrapped in email layout.
+   * Returns null if template does not exist or is not active.
+   */
+  async tryRenderById(
+    id: string,
+    variables: Record<string, Record<string, string>>,
+    orgName?: string,
+  ): Promise<{ subject: string; html: string } | null> {
+    const template = await this.prisma.emailTemplate.findUnique({
+      where: { id },
+    });
+    if (!template || !template.isActive) return null;
+
+    const rendered = renderTemplate(
+      { subject: template.subject, bodyHtml: template.bodyHtml },
+      variables,
+    );
+
+    return {
+      subject: rendered.subject,
+      html: wrapInEmailLayout(rendered.html, orgName),
+    };
+  }
+
   private getSampleVariables(type: EmailTemplateType): Record<string, Record<string, string>> {
     const vars: Record<string, Record<string, string>> = {};
 
@@ -245,5 +310,102 @@ export class EmailTemplatesService {
       wachtwoord: { url: 'https://voorbeeld.nl/reset/xyz' },
     };
     return samples[entity]?.[field] ?? `[${entity}.${field}]`;
+  }
+
+  // ─── Attachment CRUD ────────────────────────────────────
+
+  async getAttachments(id: string, user: User) {
+    await this.findOne(id, user); // tenant check
+    return this.prisma.emailTemplateAttachment.findMany({
+      where: { emailTemplateId: id },
+      orderBy: { sortOrder: 'asc' },
+    });
+  }
+
+  async uploadAttachment(id: string, file: Express.Multer.File, user: User) {
+    const template = await this.findOne(id, user);
+
+    if (!ALLOWED_ATTACHMENT_MIMES.test(file.mimetype)) {
+      throw new BadRequestException('Bestandstype niet toegestaan');
+    }
+
+    const storageKey = `${template.orgId}/et/${template.id}/${randomUUID()}-${file.originalname}`;
+    await this.storage.upload(storageKey, file.buffer, file.mimetype);
+
+    const maxSort = await this.prisma.emailTemplateAttachment.aggregate({
+      where: { emailTemplateId: id },
+      _max: { sortOrder: true },
+    });
+
+    return this.prisma.emailTemplateAttachment.create({
+      data: {
+        emailTemplateId: id,
+        orgId: template.orgId,
+        storageKey,
+        originalName: file.originalname,
+        mimeType: file.mimetype,
+        fileSize: file.size,
+        sortOrder: (maxSort._max.sortOrder ?? -1) + 1,
+      },
+    });
+  }
+
+  async downloadAttachment(id: string, attachmentId: string, user: User) {
+    await this.findOne(id, user); // tenant check
+
+    const attachment = await this.prisma.emailTemplateAttachment.findUnique({
+      where: { id: attachmentId },
+    });
+
+    if (!attachment || attachment.emailTemplateId !== id) {
+      throw new NotFoundException('Bijlage niet gevonden');
+    }
+
+    const buffer = await this.storage.download(attachment.storageKey);
+    return { buffer, attachment };
+  }
+
+  async deleteAttachment(id: string, attachmentId: string, user: User) {
+    await this.findOne(id, user); // tenant check
+
+    const attachment = await this.prisma.emailTemplateAttachment.findUnique({
+      where: { id: attachmentId },
+    });
+
+    if (!attachment || attachment.emailTemplateId !== id) {
+      throw new NotFoundException('Bijlage niet gevonden');
+    }
+
+    try {
+      await this.storage.delete(attachment.storageKey);
+    } catch (err) {
+      this.logger.error(`Failed to delete attachment file ${attachment.storageKey}`, err);
+    }
+
+    await this.prisma.emailTemplateAttachment.delete({
+      where: { id: attachmentId },
+    });
+  }
+
+  /**
+   * Load all attachments for an email template as Resend-compatible buffers.
+   * Used by EmailService when sending emails with template attachments.
+   */
+  async getAttachmentsForSending(emailTemplateId: string): Promise<Array<{ filename: string; content: Buffer }>> {
+    const attachments = await this.prisma.emailTemplateAttachment.findMany({
+      where: { emailTemplateId },
+      orderBy: { sortOrder: 'asc' },
+    });
+
+    const results: Array<{ filename: string; content: Buffer }> = [];
+    for (const att of attachments) {
+      try {
+        const buffer = await this.storage.download(att.storageKey);
+        results.push({ filename: att.originalName, content: buffer });
+      } catch (err) {
+        this.logger.error(`Failed to load email template attachment ${att.originalName}`, err);
+      }
+    }
+    return results;
   }
 }

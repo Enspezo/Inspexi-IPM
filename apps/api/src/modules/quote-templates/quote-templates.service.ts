@@ -8,7 +8,7 @@ import {
 } from '@nestjs/common';
 import { User, Role, Prisma } from '@prisma/client';
 import { randomUUID } from 'crypto';
-import { Readable } from 'stream';
+import * as mammoth from 'mammoth';
 import { PrismaService } from '@/prisma';
 import {
   STORAGE_PROVIDER,
@@ -18,6 +18,8 @@ import {
   CreateQuoteTemplateDto,
   UpdateQuoteTemplateDto,
   ListQuoteTemplatesQueryDto,
+  CreateFollowUpDto,
+  UpdateFollowUpDto,
 } from './dto';
 
 const IMAGE_MIME_TYPES = [
@@ -43,7 +45,9 @@ const ATTACHMENT_MIME_TYPES = [
   'application/zip',
 ];
 
-const RTF_MIME_TYPES = ['application/rtf', 'text/rtf'];
+const DOCX_MIME_TYPES = [
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+];
 
 @Injectable()
 export class QuoteTemplatesService {
@@ -55,7 +59,11 @@ export class QuoteTemplatesService {
   ) {}
 
   async findAll(user: User, query: ListQuoteTemplatesQueryDto) {
-    const { search, isActive, page = 1, limit = 20 } = query;
+    const { search, isActive, page = 1, limit = 20, sortBy, sortOrder = 'desc' } = query;
+    const ALLOWED_SORT_FIELDS = ['name', 'templateType', 'defaultValidityDays', 'requiresApproval', 'isActive', 'createdAt'];
+    const orderBy = (sortBy && ALLOWED_SORT_FIELDS.includes(sortBy))
+      ? { [sortBy]: sortOrder }
+      : { name: 'asc' as const };
     const skip = (page - 1) * limit;
 
     const where: Prisma.QuoteTemplateWhereInput = {};
@@ -75,7 +83,7 @@ export class QuoteTemplatesService {
     const [data, total] = await Promise.all([
       this.prisma.quoteTemplate.findMany({
         where,
-        orderBy: { name: 'asc' },
+        orderBy,
         skip,
         take: limit,
         include: {
@@ -93,11 +101,28 @@ export class QuoteTemplatesService {
       where: { id },
       include: {
         attachments: { orderBy: { sortOrder: 'asc' } },
-        rtfRevisions: {
+        docxRevisions: {
           orderBy: { version: 'desc' },
           take: 20,
           include: {
             uploadedBy: {
+              select: { id: true, firstName: true, lastName: true },
+            },
+          },
+        },
+        sendEmailTemplate: {
+          select: { id: true, name: true, type: true, subject: true, isActive: true },
+        },
+        acceptedEmailTemplate: {
+          select: { id: true, name: true, type: true, subject: true, isActive: true },
+        },
+        followUpRules: {
+          orderBy: { sortOrder: 'asc' },
+          include: {
+            emailTemplate: {
+              select: { id: true, name: true, type: true, subject: true, isActive: true },
+            },
+            assigneeUser: {
               select: { id: true, firstName: true, lastName: true },
             },
           },
@@ -170,14 +195,43 @@ export class QuoteTemplatesService {
         ...(dto.requiresApproval !== undefined && {
           requiresApproval: dto.requiresApproval,
         }),
+        ...(dto.sendEmailTemplateId !== undefined && {
+          sendEmailTemplateId: dto.sendEmailTemplateId,
+        }),
+        ...(dto.sendEmailEnabled !== undefined && {
+          sendEmailEnabled: dto.sendEmailEnabled,
+        }),
+        ...(dto.acceptedEmailTemplateId !== undefined && {
+          acceptedEmailTemplateId: dto.acceptedEmailTemplateId,
+        }),
+        ...(dto.acceptedEmailEnabled !== undefined && {
+          acceptedEmailEnabled: dto.acceptedEmailEnabled,
+        }),
       },
       include: {
         attachments: { orderBy: { sortOrder: 'asc' } },
-        rtfRevisions: {
+        docxRevisions: {
           orderBy: { version: 'desc' },
           take: 20,
           include: {
             uploadedBy: {
+              select: { id: true, firstName: true, lastName: true },
+            },
+          },
+        },
+        sendEmailTemplate: {
+          select: { id: true, name: true, type: true, subject: true, isActive: true },
+        },
+        acceptedEmailTemplate: {
+          select: { id: true, name: true, type: true, subject: true, isActive: true },
+        },
+        followUpRules: {
+          orderBy: { sortOrder: 'asc' },
+          include: {
+            emailTemplate: {
+              select: { id: true, name: true, type: true, subject: true, isActive: true },
+            },
+            assigneeUser: {
               select: { id: true, firstName: true, lastName: true },
             },
           },
@@ -195,54 +249,50 @@ export class QuoteTemplatesService {
     });
   }
 
-  // ── RTF file management ─────────────────────────────────
+  // ── DOCX file management ────────────────────────────────
 
-  async uploadRtf(id: string, file: Express.Multer.File, user: User) {
+  async uploadDocx(id: string, file: Express.Multer.File, user: User) {
     const template = await this.findOne(id, user);
 
-    if (template.templateType !== 'RTF') {
-      throw new BadRequestException('Dit is geen RTF template');
+    if (template.templateType !== 'DOCX') {
+      throw new BadRequestException('Dit is geen DOCX template');
     }
 
-    if (!RTF_MIME_TYPES.includes(file.mimetype)) {
+    if (!DOCX_MIME_TYPES.includes(file.mimetype)) {
       throw new BadRequestException(
-        'Alleen RTF bestanden zijn toegestaan (.rtf)',
+        'Alleen DOCX bestanden zijn toegestaan (.docx)',
       );
     }
 
-    // Validate that required shortcode is present
-    const rtfContent = file.buffer.toString('latin1');
-    const hasOfferteregels = rtfContent.includes('[[offerteregels]]');
-    const hasQuoteLines = rtfContent.includes('[[quote_lines]]');
-    if (!hasOfferteregels && !hasQuoteLines) {
+    // Validate that required placeholder is present using text extraction
+    // Supports both loop syntax ({{#offerteregels}}) and simple placeholder ({{offerteregels}})
+    const { value: textContent } = await mammoth.extractRawText({
+      buffer: file.buffer,
+    });
+    const hasPlaceholder =
+      textContent.includes('{{#offerteregels}}') ||
+      textContent.includes('{{#quote_lines}}') ||
+      textContent.includes('{{offerteregels}}') ||
+      textContent.includes('{{quote_lines}}');
+    if (!hasPlaceholder) {
       throw new BadRequestException(
-        'Het RTF bestand moet de shortcode [[offerteregels]] of [[quote_lines]] bevatten voor de offerteregels',
+        'Het DOCX bestand moet {{offerteregels}} of {{#offerteregels}}...{{/offerteregels}} bevatten voor de offerteregels',
       );
     }
 
-    // Convert RTF to HTML for preview
-    let previewHtml: string;
-    try {
-      previewHtml = await this.convertRtfToHtml(file.buffer);
-    } catch (err) {
-      this.logger.warn(`RTF to HTML conversion failed: ${err}`);
-      previewHtml =
-        '<div style="padding:1rem;color:#666;">Preview kon niet gegenereerd worden</div>';
-    }
-
-    // If there is already an RTF file, archive it as a revision
-    if (template.rtfStorageKey) {
+    // If there is already a DOCX file, archive it as a revision
+    if (template.docxStorageKey) {
       const maxVersion =
-        await this.prisma.quoteTemplateRtfRevision.aggregate({
+        await this.prisma.quoteTemplateDocxRevision.aggregate({
           where: { templateId: template.id },
           _max: { version: true },
         });
-      await this.prisma.quoteTemplateRtfRevision.create({
+      await this.prisma.quoteTemplateDocxRevision.create({
         data: {
           templateId: template.id,
-          storageKey: template.rtfStorageKey,
-          fileName: template.rtfFileName!,
-          fileSize: template.rtfFileSize!,
+          storageKey: template.docxStorageKey,
+          fileName: template.docxFileName!,
+          fileSize: template.docxFileSize!,
           uploadedById: user.id,
           version: (maxVersion._max.version ?? 0) + 1,
         },
@@ -250,21 +300,20 @@ export class QuoteTemplatesService {
     }
 
     // Upload new file to storage
-    const storageKey = `${template.orgId}/qt/${template.id}/rtf/${randomUUID()}-${file.originalname}`;
+    const storageKey = `${template.orgId}/qt/${template.id}/docx/${randomUUID()}-${file.originalname}`;
     await this.storage.upload(storageKey, file.buffer, file.mimetype);
 
-    // Update template with new RTF metadata
+    // Update template with new DOCX metadata
     return this.prisma.quoteTemplate.update({
       where: { id: template.id },
       data: {
-        rtfStorageKey: storageKey,
-        rtfFileName: file.originalname,
-        rtfFileSize: file.size,
-        rtfPreviewHtml: previewHtml,
+        docxStorageKey: storageKey,
+        docxFileName: file.originalname,
+        docxFileSize: file.size,
       },
       include: {
         attachments: { orderBy: { sortOrder: 'asc' } },
-        rtfRevisions: {
+        docxRevisions: {
           orderBy: { version: 'desc' },
           take: 20,
           include: {
@@ -277,35 +326,26 @@ export class QuoteTemplatesService {
     });
   }
 
-  async downloadRtf(id: string, user: User) {
+  async downloadDocx(id: string, user: User) {
     const template = await this.findOne(id, user);
 
-    if (!template.rtfStorageKey) {
-      throw new NotFoundException('Geen RTF bestand gevonden');
+    if (!template.docxStorageKey) {
+      throw new NotFoundException('Geen DOCX bestand gevonden');
     }
 
-    const buffer = await this.storage.download(template.rtfStorageKey);
+    const buffer = await this.storage.download(template.docxStorageKey);
     return {
       buffer,
-      fileName: template.rtfFileName!,
-      mimeType: 'application/rtf',
+      fileName: template.docxFileName!,
+      mimeType:
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
     };
   }
 
-  async getRtfPreview(id: string, user: User) {
+  async getDocxRevisions(id: string, user: User) {
     const template = await this.findOne(id, user);
 
-    if (!template.rtfPreviewHtml) {
-      throw new NotFoundException('Geen RTF preview beschikbaar');
-    }
-
-    return { html: template.rtfPreviewHtml };
-  }
-
-  async getRtfRevisions(id: string, user: User) {
-    const template = await this.findOne(id, user);
-
-    return this.prisma.quoteTemplateRtfRevision.findMany({
+    return this.prisma.quoteTemplateDocxRevision.findMany({
       where: { templateId: template.id },
       orderBy: { version: 'desc' },
       include: {
@@ -316,7 +356,7 @@ export class QuoteTemplatesService {
     });
   }
 
-  async downloadRtfRevision(
+  async downloadDocxRevision(
     id: string,
     revisionId: string,
     user: User,
@@ -324,7 +364,7 @@ export class QuoteTemplatesService {
     await this.findOne(id, user);
 
     const revision =
-      await this.prisma.quoteTemplateRtfRevision.findUnique({
+      await this.prisma.quoteTemplateDocxRevision.findUnique({
         where: { id: revisionId },
       });
 
@@ -336,32 +376,9 @@ export class QuoteTemplatesService {
     return {
       buffer,
       fileName: revision.fileName,
-      mimeType: 'application/rtf',
+      mimeType:
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
     };
-  }
-
-  private convertRtfToHtml(buffer: Buffer): Promise<string> {
-    return new Promise((resolve, reject) => {
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
-      const rtfToHtml = require('@iarna/rtf-to-html');
-
-      const stream = new Readable();
-      stream.push(buffer);
-      stream.push(null);
-
-      rtfToHtml.fromStream(
-        stream,
-        {
-          template: (_doc: any, _defaults: any, content: string) => {
-            return `<div class="rtf-preview">${content}</div>`;
-          },
-        },
-        (err: Error | null, html: string) => {
-          if (err) return reject(err);
-          resolve(html);
-        },
-      );
-    });
   }
 
   // ── Image upload for block editor ────────────────────────
@@ -503,5 +520,106 @@ export class QuoteTemplatesService {
       where: { templateId: id },
       orderBy: { sortOrder: 'asc' },
     });
+  }
+
+  // ── Follow-up rules ─────────────────────────────────────
+
+  private readonly FOLLOW_UP_INCLUDE = {
+    emailTemplate: {
+      select: { id: true, name: true, type: true, subject: true, isActive: true },
+    },
+    assigneeUser: {
+      select: { id: true, firstName: true, lastName: true },
+    },
+  };
+
+  async getFollowUpRules(id: string, user: User) {
+    const template = await this.findOne(id, user);
+    return this.prisma.quoteTemplateFollowUp.findMany({
+      where: { templateId: template.id },
+      orderBy: { sortOrder: 'asc' },
+      include: this.FOLLOW_UP_INCLUDE,
+    });
+  }
+
+  async createFollowUp(id: string, dto: CreateFollowUpDto, user: User) {
+    const template = await this.findOne(id, user);
+
+    const maxOrder = await this.prisma.quoteTemplateFollowUp.aggregate({
+      where: { templateId: template.id },
+      _max: { sortOrder: true },
+    });
+
+    return this.prisma.quoteTemplateFollowUp.create({
+      data: {
+        templateId: template.id,
+        type: dto.type,
+        delayDays: dto.delayDays,
+        isActive: dto.isActive ?? true,
+        emailTemplateId: dto.emailTemplateId ?? null,
+        defaultNotes: dto.defaultNotes ?? null,
+        assigneeType: dto.assigneeType ?? 'QUOTE_OWNER',
+        assigneeUserId: dto.assigneeUserId ?? null,
+        sortOrder: (maxOrder._max.sortOrder ?? -1) + 1,
+      },
+      include: this.FOLLOW_UP_INCLUDE,
+    });
+  }
+
+  async updateFollowUp(
+    id: string,
+    followUpId: string,
+    dto: UpdateFollowUpDto,
+    user: User,
+  ) {
+    await this.findOne(id, user);
+
+    const followUp = await this.prisma.quoteTemplateFollowUp.findUnique({
+      where: { id: followUpId },
+    });
+
+    if (!followUp || followUp.templateId !== id) {
+      throw new NotFoundException('Follow-up regel niet gevonden');
+    }
+
+    return this.prisma.quoteTemplateFollowUp.update({
+      where: { id: followUpId },
+      data: {
+        ...(dto.type !== undefined && { type: dto.type }),
+        ...(dto.delayDays !== undefined && { delayDays: dto.delayDays }),
+        ...(dto.isActive !== undefined && { isActive: dto.isActive }),
+        ...(dto.emailTemplateId !== undefined && {
+          emailTemplateId: dto.emailTemplateId,
+        }),
+        ...(dto.defaultNotes !== undefined && {
+          defaultNotes: dto.defaultNotes,
+        }),
+        ...(dto.assigneeType !== undefined && {
+          assigneeType: dto.assigneeType,
+        }),
+        ...(dto.assigneeUserId !== undefined && {
+          assigneeUserId: dto.assigneeUserId,
+        }),
+      },
+      include: this.FOLLOW_UP_INCLUDE,
+    });
+  }
+
+  async deleteFollowUp(id: string, followUpId: string, user: User) {
+    await this.findOne(id, user);
+
+    const followUp = await this.prisma.quoteTemplateFollowUp.findUnique({
+      where: { id: followUpId },
+    });
+
+    if (!followUp || followUp.templateId !== id) {
+      throw new NotFoundException('Follow-up regel niet gevonden');
+    }
+
+    await this.prisma.quoteTemplateFollowUp.delete({
+      where: { id: followUpId },
+    });
+
+    return { success: true };
   }
 }

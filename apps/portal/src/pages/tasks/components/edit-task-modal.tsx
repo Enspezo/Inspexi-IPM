@@ -5,11 +5,12 @@ import { Modal, Input, Select, Button, useToast } from '@/components/ui';
 import { useAuth } from '@/providers/auth-provider';
 import { useUsers } from '@/pages/users/hooks/use-users';
 import { useUpdateTask } from '../hooks/use-tasks';
-import type { Task } from '@/types';
+import type { Task, TaskType } from '@/types';
 
 const taskSchema = z.object({
   title: z.string().min(1, 'Titel is verplicht'),
   status: z.string().optional(),
+  taskType: z.string().optional(),
   assigneeId: z.string().optional(),
   deadline: z.string().optional(),
   description: z.string().optional(),
@@ -21,6 +22,14 @@ const statusOptions = [
   { value: 'TE_DOEN', label: 'Te doen' },
   { value: 'MEE_BEZIG', label: 'Mee bezig' },
   { value: 'VOLTOOID', label: 'Voltooid' },
+];
+
+const taskTypeOptions = [
+  { value: 'TO_DO', label: 'To-do' },
+  { value: 'EMAIL', label: 'E-mail' },
+  { value: 'TELEFOONGESPREK', label: 'Telefoongesprek' },
+  { value: 'DOCUMENT', label: 'Document' },
+  { value: 'GOEDKEURING', label: 'Goedkeuring' },
 ];
 
 interface EditTaskModalProps {
@@ -48,6 +57,7 @@ export function EditTaskModal({
     defaultValues: {
       title: task.title,
       status: task.status,
+      taskType: task.taskType || 'TO_DO',
       assigneeId: task.assigneeId || '',
       deadline: task.deadline ? task.deadline.split('T')[0] : '',
       description: task.description || '',
@@ -74,6 +84,7 @@ export function EditTaskModal({
           title: data.title,
           description: data.description || undefined,
           status: (data.status as any) || undefined,
+          taskType: (data.taskType as TaskType) || undefined,
           assigneeId: data.assigneeId || null,
           deadline: data.deadline || null,
         },
@@ -102,6 +113,12 @@ export function EditTaskModal({
           label="Status"
           options={statusOptions}
           {...register('status')}
+        />
+
+        <Select
+          label="Type"
+          options={taskTypeOptions}
+          {...register('taskType')}
         />
 
         <Select

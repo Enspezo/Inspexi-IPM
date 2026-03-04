@@ -438,7 +438,35 @@ export interface ContentBlock {
   };
 }
 
-export type QuoteTemplateType = 'BLOCKS' | 'RTF';
+export type QuoteTemplateType = 'BLOCKS' | 'DOCX';
+
+export enum FollowUpType {
+  EMAIL = 'EMAIL',
+  TELEFOONGESPREK = 'TELEFOONGESPREK',
+}
+
+export enum FollowUpAssigneeType {
+  SYSTEM = 'SYSTEM',
+  QUOTE_OWNER = 'QUOTE_OWNER',
+  SPECIFIC_USER = 'SPECIFIC_USER',
+}
+
+export interface QuoteTemplateFollowUp {
+  id: string;
+  templateId: string;
+  type: FollowUpType;
+  delayDays: number;
+  isActive: boolean;
+  emailTemplateId: string | null;
+  defaultNotes: string | null;
+  assigneeType: FollowUpAssigneeType;
+  assigneeUserId: string | null;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+  emailTemplate?: { id: string; name: string; type: EmailTemplateType; subject: string; isActive: boolean } | null;
+  assigneeUser?: { id: string; firstName: string; lastName: string; email: string } | null;
+}
 
 export interface QuoteTemplateAttachment {
   id: string;
@@ -451,7 +479,7 @@ export interface QuoteTemplateAttachment {
   createdAt: string;
 }
 
-export interface QuoteTemplateRtfRevision {
+export interface QuoteTemplateDocxRevision {
   id: string;
   templateId: string;
   storageKey: string;
@@ -472,17 +500,23 @@ export interface QuoteTemplate {
   coverBlocks: any;
   contentBlocks: ContentBlock[] | any;
   closingBlocks: any;
-  rtfStorageKey: string | null;
-  rtfFileName: string | null;
-  rtfFileSize: number | null;
-  rtfPreviewHtml: string | null;
+  docxStorageKey: string | null;
+  docxFileName: string | null;
+  docxFileSize: number | null;
   defaultValidityDays: number;
   requiresApproval: boolean;
   isActive: boolean;
+  sendEmailTemplateId?: string | null;
+  sendEmailEnabled: boolean;
+  acceptedEmailTemplateId?: string | null;
+  acceptedEmailEnabled: boolean;
+  sendEmailTemplate?: { id: string; name: string; type: EmailTemplateType; subject: string; isActive: boolean } | null;
+  acceptedEmailTemplate?: { id: string; name: string; type: EmailTemplateType; subject: string; isActive: boolean } | null;
   createdAt: string;
   updatedAt: string;
   attachments?: QuoteTemplateAttachment[];
-  rtfRevisions?: QuoteTemplateRtfRevision[];
+  docxRevisions?: QuoteTemplateDocxRevision[];
+  followUpRules?: QuoteTemplateFollowUp[];
   _count?: { attachments: number };
 }
 
@@ -521,7 +555,9 @@ export interface Quote {
   contact?: { id: string; type: string; companyName: string | null; firstName: string | null; lastName: string | null; email: string | null };
   location?: LocationSummary;
   request?: { id: string; title: string };
-  template?: { id: string; name: string };
+  pdfStorageKey?: string | null;
+  signedPdfStorageKey?: string | null;
+  template?: { id: string; name: string; templateType?: string };
   createdByUser?: UserSummary;
   organization?: { id: string; name: string; logoUrl: string | null; primaryColor: string | null };
   lines?: QuoteLine[];
@@ -677,6 +713,14 @@ export enum TaskStatus {
   VOLTOOID = 'VOLTOOID',
 }
 
+export enum TaskType {
+  TO_DO = 'TO_DO',
+  EMAIL = 'EMAIL',
+  TELEFOONGESPREK = 'TELEFOONGESPREK',
+  DOCUMENT = 'DOCUMENT',
+  GOEDKEURING = 'GOEDKEURING',
+}
+
 export enum TaskEntityType {
   CONTACT = 'CONTACT',
   REQUEST = 'REQUEST',
@@ -692,6 +736,7 @@ export interface Task {
   title: string;
   description: string | null;
   status: TaskStatus;
+  taskType: TaskType;
   entityType: TaskEntityType;
   entityId: string;
   entityName: string | null;
@@ -713,6 +758,7 @@ export enum NoteEntityType {
   PLANNING = 'PLANNING',
   PROJECT = 'PROJECT',
   USER = 'USER',
+  WORK_ORDER = 'WORK_ORDER',
 }
 
 export interface Note {
@@ -743,6 +789,7 @@ export enum DocumentEntityType {
   PLANNING = 'PLANNING',
   PROJECT = 'PROJECT',
   USER = 'USER',
+  WORK_ORDER = 'WORK_ORDER',
 }
 
 export interface CrmDocument {
@@ -937,6 +984,74 @@ export interface PlanningItem {
   project?: { id: string; projectNumber: string } | null;
 }
 
+// ─── Werkbonnen (Work Orders) ────────────────────────────
+
+export enum WorkOrderStatus {
+  IN_VOORBEREIDING = 'IN_VOORBEREIDING',
+  IN_UITVOERING = 'IN_UITVOERING',
+  UITGEVOERD = 'UITGEVOERD',
+  WACHT_OP_KLANT = 'WACHT_OP_KLANT',
+}
+
+export interface WorkOrder {
+  id: string;
+  orgId: string;
+  planningItemId: string | null;
+  workOrderNumber: string;
+  status: WorkOrderStatus;
+  internalNotes: string | null;
+  startTime: string | null;
+  endTime: string | null;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+  planningItem?: {
+    id: string;
+    productName: string;
+    scheduledDate: string | null;
+    status: string;
+    contactId: string;
+    locationId: string | null;
+    contact?: {
+      id: string;
+      type: string;
+      companyName: string | null;
+      firstName: string | null;
+      lastName: string | null;
+    };
+    location?: {
+      id: string;
+      name: string;
+      street: string;
+      houseNumber: string;
+      city: string;
+      postalCode: string;
+    };
+    inspectors?: PlanningInspector[];
+  };
+  createdByUser?: UserSummary;
+  lines?: WorkOrderLine[];
+}
+
+export interface WorkOrderLine {
+  id: string;
+  workOrderId: string;
+  productId: string | null;
+  description: string;
+  quantity: number;
+  unit: string;
+  unitPrice: number;
+  vatRate: number;
+  lineTotal: number;
+  sortOrder: number;
+  product?: {
+    id: string;
+    name: string;
+    unit: string;
+    productGroupId: string | null;
+  };
+}
+
 // ─── Projects ────────────────────────────────────────────
 
 export enum ProjectStatus {
@@ -988,6 +1103,11 @@ export interface ProjectFollower {
   userId: string | null;
   email: string | null;
   name: string | null;
+  canViewGeneral: boolean;
+  canViewRequests: boolean;
+  canViewQuotes: boolean;
+  canViewPlanning: boolean;
+  canViewDocuments: boolean;
   createdAt: string;
   user?: UserSummary | null;
 }
@@ -1165,6 +1285,7 @@ export interface CustomFieldDefinition {
 
 export enum EmailTemplateType {
   OFFERTE_VERSTUURD = 'OFFERTE_VERSTUURD',
+  OFFERTE_GEACCEPTEERD = 'OFFERTE_GEACCEPTEERD',
   OFFERTE_ANTWOORD = 'OFFERTE_ANTWOORD',
   AFSPRAAK_BEVESTIGING = 'AFSPRAAK_BEVESTIGING',
   AFSPRAAK_VERPLAATST = 'AFSPRAAK_VERPLAATST',
@@ -1173,6 +1294,18 @@ export enum EmailTemplateType {
   UITNODIGING = 'UITNODIGING',
   WACHTWOORD_RESET = 'WACHTWOORD_RESET',
   NOTIFICATIE = 'NOTIFICATIE',
+  OFFERTE_FOLLOW_UP = 'OFFERTE_FOLLOW_UP',
+}
+
+export interface EmailTemplateAttachment {
+  id: string;
+  emailTemplateId: string;
+  orgId: string;
+  originalName: string;
+  mimeType: string;
+  fileSize: number;
+  sortOrder: number;
+  createdAt: string;
 }
 
 export interface EmailTemplate {
@@ -1188,6 +1321,7 @@ export interface EmailTemplate {
   createdAt: string;
   updatedAt: string;
   creator?: { id: string; firstName: string; lastName: string };
+  attachments?: EmailTemplateAttachment[];
 }
 
 export interface PlaceholderField {

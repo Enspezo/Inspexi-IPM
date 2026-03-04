@@ -1,8 +1,9 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Inject, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Resend } from 'resend';
 import { EmailTemplateType } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { STORAGE_PROVIDER, type StorageProvider } from '../services/storage/storage.interface';
 import { renderTemplate, wrapInEmailLayout } from '../../modules/email-templates/template-renderer';
 
 @Injectable()
@@ -14,6 +15,7 @@ export class EmailService {
   constructor(
     private config: ConfigService,
     private prisma: PrismaService,
+    @Inject(STORAGE_PROVIDER) private storage: StorageProvider,
   ) {
     this.resend = new Resend(this.config.get<string>('RESEND_API_KEY'));
     this.fromEmail = this.config.get<string>(
@@ -24,14 +26,14 @@ export class EmailService {
 
   /**
    * Try to use a custom template for this org + type.
-   * Returns rendered { subject, html } or null if no template exists.
+   * Returns rendered { subject, html, attachments } or null if no template exists.
    */
   private async tryCustomTemplate(
     orgId: string | undefined | null,
     type: EmailTemplateType,
     variables: Record<string, Record<string, string>>,
     orgName?: string,
-  ): Promise<{ subject: string; html: string } | null> {
+  ): Promise<{ subject: string; html: string; attachments: Array<{ filename: string; content: Buffer }> } | null> {
     if (!orgId) return null;
     try {
       const template = await this.prisma.emailTemplate.findFirst({
@@ -43,9 +45,26 @@ export class EmailService {
         { subject: template.subject, bodyHtml: template.bodyHtml },
         variables,
       );
+
+      // Load template attachments
+      const templateAttachments = await this.prisma.emailTemplateAttachment.findMany({
+        where: { emailTemplateId: template.id },
+        orderBy: { sortOrder: 'asc' },
+      });
+      const attachments: Array<{ filename: string; content: Buffer }> = [];
+      for (const att of templateAttachments) {
+        try {
+          const buffer = await this.storage.download(att.storageKey);
+          attachments.push({ filename: att.originalName, content: buffer });
+        } catch (err) {
+          this.logger.error(`Failed to load email template attachment ${att.originalName}`, err);
+        }
+      }
+
       return {
         subject: rendered.subject,
         html: wrapInEmailLayout(rendered.html, orgName),
+        attachments,
       };
     } catch (error) {
       this.logger.error(`Failed to load custom template for ${type}`, error);
@@ -61,7 +80,7 @@ export class EmailService {
       });
 
       if (custom) {
-        await this.resend.emails.send({ from: this.fromEmail, to, subject: custom.subject, html: custom.html });
+        await this.resend.emails.send({ from: this.fromEmail, to, subject: custom.subject, html: custom.html, attachments: custom.attachments.length > 0 ? custom.attachments : undefined });
         return;
       }
 
@@ -120,7 +139,7 @@ export class EmailService {
       }, orgName);
 
       if (custom) {
-        await this.resend.emails.send({ from: this.fromEmail, to, subject: custom.subject, html: custom.html });
+        await this.resend.emails.send({ from: this.fromEmail, to, subject: custom.subject, html: custom.html, attachments: custom.attachments.length > 0 ? custom.attachments : undefined });
         return;
       }
 
@@ -171,7 +190,7 @@ export class EmailService {
       }, opts?.orgName);
 
       if (custom) {
-        await this.resend.emails.send({ from, to, subject: custom.subject, html: custom.html });
+        await this.resend.emails.send({ from, to, subject: custom.subject, html: custom.html, attachments: custom.attachments.length > 0 ? custom.attachments : undefined });
         return;
       }
 
@@ -214,9 +233,18 @@ export class EmailService {
     contactEmail?: string;
     senderFirstName?: string;
     senderLastName?: string;
+    attachments?: Array<{ filename: string; content: Buffer }>;
+    customHtml?: string;
   }): Promise<void> {
     const from = this.buildFrom(params.senderName, params.senderEmail);
     try {
+      // If pre-rendered custom HTML is provided (from per-template email), use it directly
+      if (params.customHtml) {
+        const resendAttachments = params.attachments?.map((a) => ({ filename: a.filename, content: a.content }));
+        await this.resend.emails.send({ from, to: params.to, cc: params.cc, subject: params.subject, html: params.customHtml, attachments: resendAttachments });
+        return;
+      }
+
       const custom = await this.tryCustomTemplate(params.orgId, EmailTemplateType.OFFERTE_VERSTUURD, {
         organisatie: { naam: params.orgName, email: params.senderEmail ?? this.fromEmail },
         contact: {
@@ -239,8 +267,14 @@ export class EmailService {
         },
       }, params.orgName);
 
+      const resendAttachments = params.attachments?.map((a) => ({
+        filename: a.filename,
+        content: a.content,
+      }));
+
       if (custom) {
-        await this.resend.emails.send({ from, to: params.to, cc: params.cc, subject: custom.subject, html: custom.html });
+        const allAttachments = [...(params.attachments ?? []), ...custom.attachments];
+        await this.resend.emails.send({ from, to: params.to, cc: params.cc, subject: custom.subject, html: custom.html, attachments: allAttachments.length > 0 ? allAttachments : undefined });
         return;
       }
 
@@ -264,6 +298,7 @@ export class EmailService {
             </p>
           </div>
         `,
+        attachments: resendAttachments,
       });
     } catch (error) {
       this.logger.error(`Failed to send quote email to ${params.to}`, error);
@@ -296,7 +331,7 @@ export class EmailService {
       }, params.orgName);
 
       if (custom) {
-        await this.resend.emails.send({ from, to: params.to, subject: custom.subject, html: custom.html });
+        await this.resend.emails.send({ from, to: params.to, subject: custom.subject, html: custom.html, attachments: custom.attachments.length > 0 ? custom.attachments : undefined });
         return;
       }
 
@@ -321,6 +356,43 @@ export class EmailService {
       });
     } catch (error) {
       this.logger.error(`Failed to send quote answer email to ${params.to}`, error);
+    }
+  }
+
+  async sendSignedQuoteEmail(params: {
+    to: string;
+    quoteNumber: string;
+    clientName: string;
+    orgName: string;
+    attachment: { filename: string; content: Buffer };
+    orgId?: string | null;
+    senderName?: string | null;
+    senderEmail?: string | null;
+    customHtml?: string;
+    customSubject?: string;
+  }): Promise<void> {
+    const from = this.buildFrom(params.senderName, params.senderEmail);
+    try {
+      const subject = params.customSubject ?? `Bevestiging ondertekening offerte ${params.quoteNumber}`;
+      const html = params.customHtml ?? `
+          <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
+            <h2 style="color: #111827;">Bevestiging ondertekening</h2>
+            <p style="color: #374151;">Geachte ${params.clientName},</p>
+            <p style="color: #374151;">Hierbij ontvangt u de bevestiging van uw ondertekening van offerte <strong>${params.quoteNumber}</strong>.</p>
+            <p style="color: #374151;">De ondertekende offerte is als bijlage bij deze e-mail gevoegd.</p>
+            <hr style="border: none; border-top: 1px solid #E5E7EB; margin: 24px 0;" />
+            <p style="color: #6B7280; font-size: 12px;">Verstuurd door ${params.orgName} via InspeXi Beheer</p>
+          </div>
+        `;
+      await this.resend.emails.send({
+        from,
+        to: params.to,
+        subject,
+        html,
+        attachments: [{ filename: params.attachment.filename, content: params.attachment.content }],
+      });
+    } catch (error) {
+      this.logger.error(`Failed to send signed quote email to ${params.to}`, error);
     }
   }
 

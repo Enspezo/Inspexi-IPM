@@ -36,6 +36,7 @@ export default function OrganizationsPage() {
       pinned: true,
       filterable: true,
       filterType: 'text',
+      sortable: true,
       getFilterValue: (org) => org.name,
       render: (org) => (
         <button
@@ -51,6 +52,7 @@ export default function OrganizationsPage() {
       header: 'Slug',
       filterable: true,
       filterType: 'text',
+      sortable: true,
       getFilterValue: (org) => org.slug,
       render: (org) => (
         <span className="font-mono text-sm text-gray-600">{org.slug}</span>
@@ -59,6 +61,7 @@ export default function OrganizationsPage() {
     {
       key: 'primaryColor',
       header: 'Kleur',
+      sortable: true,
       render: (org) =>
         org.primaryColor ? (
           <div className="flex items-center gap-2">
@@ -77,6 +80,7 @@ export default function OrganizationsPage() {
     {
       key: 'defaultVat',
       header: 'BTW',
+      sortable: true,
       render: (org) => (
         <span className="text-gray-700">{org.defaultVat}%</span>
       ),
@@ -84,6 +88,7 @@ export default function OrganizationsPage() {
     {
       key: 'defaultValidityDays',
       header: 'Geldigheid',
+      sortable: true,
       render: (org) => (
         <span className="text-gray-700">
           {org.defaultValidityDays} dagen
@@ -93,6 +98,8 @@ export default function OrganizationsPage() {
     {
       key: 'userCount',
       header: 'Gebruikers',
+      sortable: true,
+      getSortValue: (org) => org._count?.users ?? 0,
       render: (org) => (
         <span className="text-gray-700">{org._count?.users ?? 0}</span>
       ),
@@ -102,6 +109,7 @@ export default function OrganizationsPage() {
       header: 'Aangemaakt',
       filterable: true,
       filterType: 'date',
+      sortable: true,
       getFilterValue: (org) => org.createdAt,
       render: (org) => (
         <span className="text-gray-500">{formatDate(org.createdAt)}</span>
@@ -140,6 +148,8 @@ export default function OrganizationsPage() {
     isColumnsDirty,
     isFiltersDirty,
     allColumns,
+    sort,
+    toggleSort,
   } = useTableConfig({ pageKey: 'organizations', columns });
 
   if (isLoading) {
@@ -201,6 +211,8 @@ export default function OrganizationsPage() {
           data={filteredData(organizations || [])}
           keyExtractor={(org) => org.id}
           emptyMessage="Geen organisaties gevonden"
+          sort={sort}
+          onSort={toggleSort}
         />
 
         <CreateOrganizationModal

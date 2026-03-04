@@ -4,7 +4,7 @@ export { Input } from './input';
 export { Select } from './select';
 export { Badge } from './badge';
 export { Checkbox } from './checkbox';
-export { Table, type Column } from './table';
+export { Table, type Column, type TableSort } from './table';
 export { Modal } from './modal';
 export { Card } from './card';
 export { Spinner } from './spinner';

@@ -96,7 +96,7 @@ export default function ProductGroupsPage() {
           </div>
           {userCanCreate && (
             <ActionMenu
-              primaryActions={[
+              secondaryActions={[
                 {
                   label: 'Productgroep aanmaken',
                   icon: <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>,

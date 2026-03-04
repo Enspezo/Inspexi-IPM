@@ -132,6 +132,14 @@ enum TaskStatus {
   VOLTOOID
 }
 
+enum TaskType {
+  TO_DO
+  EMAIL
+  TELEFOONGESPREK
+  DOCUMENT
+  GOEDKEURING
+}
+
 enum TaskEntityType {
   CONTACT
   REQUEST
@@ -139,6 +147,17 @@ enum TaskEntityType {
   PLANNING
   PROJECT
   USER
+}
+
+enum FollowUpType {
+  EMAIL
+  TELEFOONGESPREK
+}
+
+enum FollowUpAssigneeType {
+  SYSTEM
+  QUOTE_OWNER
+  SPECIFIC_USER
 }
 
 enum DocumentEntityType {
@@ -150,6 +169,7 @@ enum DocumentEntityType {
   PLANNING
   PROJECT
   USER
+  WORK_ORDER
 }
 
 enum NoteEntityType {
@@ -159,6 +179,7 @@ enum NoteEntityType {
   PLANNING
   PROJECT
   USER
+  WORK_ORDER
 }
 
 enum SignatureType {
@@ -201,9 +222,16 @@ enum ProjectStatus {
   GEANNULEERD
 }
 
+enum WorkOrderStatus {
+  IN_VOORBEREIDING
+  IN_UITVOERING
+  UITGEVOERD
+  WACHT_OP_KLANT
+}
+
 enum QuoteTemplateType {
   BLOCKS
-  RTF
+  DOCX
 }
 
 enum CustomFieldType {
@@ -216,6 +244,7 @@ enum CustomFieldType {
 
 enum EmailTemplateType {
   OFFERTE_VERSTUURD
+  OFFERTE_GEACCEPTEERD
   OFFERTE_ANTWOORD
   AFSPRAAK_BEVESTIGING
   AFSPRAAK_VERPLAATST
@@ -224,6 +253,7 @@ enum EmailTemplateType {
   UITNODIGING
   WACHTWOORD_RESET
   NOTIFICATIE
+  OFFERTE_FOLLOW_UP
 }
 
 enum CustomFieldEntityType {
@@ -272,8 +302,10 @@ model Organization {
   planningItems          PlanningItem[]
   customFieldDefinitions CustomFieldDefinition[]
   emailTemplates         EmailTemplate[]
+  emailTemplateAttachments EmailTemplateAttachment[]
   projects               Project[]
   errorReports           ErrorReport[]
+  workOrders             WorkOrder[]
 
   @@map("imp_organizations")
 }
@@ -325,6 +357,7 @@ model User {
 
   assignedTasks          Task[]                 @relation("TaskAssignee")
   createdTasks           Task[]                 @relation("TaskCreatedBy")
+  followUpAssignments    QuoteTemplateFollowUp[] @relation("FollowUpAssignee")
   createdNotes           Note[]                 @relation("NoteCreatedBy")
   uploadedDocuments      Document[]             @relation("DocumentUploadedBy")
 
@@ -339,7 +372,8 @@ model User {
   createdProjects           Project[]                  @relation("ProjectCreatedByUser")
   projectFollowers          ProjectFollower[]
   errorReports              ErrorReport[]
-  rtfRevisions              QuoteTemplateRtfRevision[]
+  docxRevisions             QuoteTemplateDocxRevision[]
+  createdWorkOrders         WorkOrder[]                    @relation("WorkOrderCreatedByUser")
 
   @@map("imp_users")
 }
@@ -571,6 +605,7 @@ model Product {
   productGroup  ProductGroup? @relation(fields: [productGroupId], references: [id])
   priceTableItems PriceTableItem[]
   quoteLines      QuoteLine[]
+  workOrderLines  WorkOrderLine[]
 
   @@map("imp_products")
 }
@@ -689,20 +724,26 @@ model QuoteTemplate {
   coverBlocks         Json?              @map("cover_blocks")
   contentBlocks       Json?              @map("content_blocks")
   closingBlocks       Json?              @map("closing_blocks")
-  rtfStorageKey       String?            @map("rtf_storage_key")
-  rtfFileName         String?            @map("rtf_file_name")
-  rtfFileSize         Int?               @map("rtf_file_size")
-  rtfPreviewHtml      String?            @map("rtf_preview_html") @db.Text
+  docxStorageKey      String?            @map("docx_storage_key")
+  docxFileName        String?            @map("docx_file_name")
+  docxFileSize        Int?               @map("docx_file_size")
   defaultValidityDays Int                @default(30) @map("default_validity_days")
   requiresApproval    Boolean            @default(false) @map("requires_approval")
   isActive            Boolean            @default(true) @map("is_active")
+  sendEmailTemplateId     String?        @map("send_email_template_id") @db.Uuid
+  sendEmailEnabled        Boolean        @default(true) @map("send_email_enabled")
+  acceptedEmailTemplateId String?        @map("accepted_email_template_id") @db.Uuid
+  acceptedEmailEnabled    Boolean        @default(true) @map("accepted_email_enabled")
   createdAt           DateTime           @default(now()) @map("created_at")
   updatedAt           DateTime           @updatedAt @map("updated_at")
 
-  organization Organization              @relation(fields: [orgId], references: [id])
-  quotes       Quote[]
-  attachments  QuoteTemplateAttachment[]
-  rtfRevisions QuoteTemplateRtfRevision[]
+  organization          Organization              @relation(fields: [orgId], references: [id])
+  quotes                Quote[]
+  attachments           QuoteTemplateAttachment[]
+  docxRevisions         QuoteTemplateDocxRevision[]
+  sendEmailTemplate     EmailTemplate?             @relation("QuoteTemplateSendEmail", fields: [sendEmailTemplateId], references: [id], onDelete: SetNull)
+  acceptedEmailTemplate EmailTemplate?             @relation("QuoteTemplateAcceptedEmail", fields: [acceptedEmailTemplateId], references: [id], onDelete: SetNull)
+  followUpRules         QuoteTemplateFollowUp[]
 
   @@map("imp_quote_templates")
 }
@@ -723,7 +764,7 @@ model QuoteTemplateAttachment {
   @@map("imp_quote_template_attachments")
 }
 
-model QuoteTemplateRtfRevision {
+model QuoteTemplateDocxRevision {
   id           String   @id @default(uuid()) @db.Uuid
   templateId   String   @map("template_id") @db.Uuid
   storageKey   String   @map("storage_key")
@@ -737,7 +778,29 @@ model QuoteTemplateRtfRevision {
   uploadedBy User          @relation(fields: [uploadedById], references: [id])
 
   @@index([templateId])
-  @@map("imp_quote_template_rtf_revisions")
+  @@map("imp_quote_template_docx_revisions")
+}
+
+model QuoteTemplateFollowUp {
+  id              String               @id @default(uuid()) @db.Uuid
+  templateId      String               @map("template_id") @db.Uuid
+  type            FollowUpType
+  delayDays       Int                  @map("delay_days")
+  isActive        Boolean              @default(true) @map("is_active")
+  emailTemplateId String?              @map("email_template_id") @db.Uuid
+  defaultNotes    String?              @map("default_notes") @db.Text
+  assigneeType    FollowUpAssigneeType @default(QUOTE_OWNER) @map("assignee_type")
+  assigneeUserId  String?              @map("assignee_user_id") @db.Uuid
+  sortOrder       Int                  @default(0) @map("sort_order")
+  createdAt       DateTime             @default(now()) @map("created_at")
+  updatedAt       DateTime             @updatedAt @map("updated_at")
+
+  template      QuoteTemplate  @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  emailTemplate EmailTemplate? @relation("FollowUpEmailTemplate", fields: [emailTemplateId], references: [id], onDelete: SetNull)
+  assigneeUser  User?          @relation("FollowUpAssignee", fields: [assigneeUserId], references: [id], onDelete: SetNull)
+
+  @@index([templateId])
+  @@map("imp_quote_template_follow_ups")
 }
 
 model Quote {
@@ -771,8 +834,12 @@ model Quote {
   clientSignature  String?     @map("client_signature")
   clientIp         String?     @map("client_ip")
   clientUserAgent  String?     @map("client_user_agent")
-  managerSignature String?     @map("manager_signature")
-  publicToken      String?     @unique @map("public_token")
+  managerSignature    String?     @map("manager_signature")
+  publicToken         String?     @unique @map("public_token")
+
+  // Generated PDF fields
+  pdfStorageKey       String?     @map("pdf_storage_key")
+  signedPdfStorageKey String?     @map("signed_pdf_storage_key")
 
   createdAt        DateTime    @default(now()) @map("created_at")
   updatedAt        DateTime    @updatedAt @map("updated_at")
@@ -940,6 +1007,7 @@ model Task {
   title       String
   description String?
   status      TaskStatus     @default(TE_DOEN)
+  taskType    TaskType       @default(TO_DO) @map("task_type")
   entityType  TaskEntityType @map("entity_type")
   entityId    String         @map("entity_id") @db.Uuid
   assigneeId  String?        @map("assignee_id") @db.Uuid
@@ -1034,6 +1102,7 @@ model PlanningItem {
   rescheduleRequests RescheduleRequest[]
   followers      PlanningFollower[]
   sessions       PlanningSession[]
+  workOrders     WorkOrder[]
 
   @@index([orgId, status])
   @@index([orgId, scheduledDate])
@@ -1191,12 +1260,17 @@ model Project {
 }
 
 model ProjectFollower {
-  id        String   @id @default(uuid()) @db.Uuid
-  projectId String   @map("project_id") @db.Uuid
-  userId    String?  @map("user_id") @db.Uuid
-  email     String?
-  name      String?
-  createdAt DateTime @default(now()) @map("created_at")
+  id               String   @id @default(uuid()) @db.Uuid
+  projectId        String   @map("project_id") @db.Uuid
+  userId           String?  @map("user_id") @db.Uuid
+  email            String?
+  name             String?
+  canViewGeneral   Boolean  @default(true) @map("can_view_general")
+  canViewRequests  Boolean  @default(false) @map("can_view_requests")
+  canViewQuotes    Boolean  @default(true) @map("can_view_quotes")
+  canViewPlanning  Boolean  @default(true) @map("can_view_planning")
+  canViewDocuments Boolean  @default(false) @map("can_view_documents")
+  createdAt        DateTime @default(now()) @map("created_at")
 
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
   user    User?   @relation(fields: [userId], references: [id])
@@ -1243,11 +1317,33 @@ model EmailTemplate {
   createdAt DateTime          @default(now()) @map("created_at")
   updatedAt DateTime          @updatedAt @map("updated_at")
 
-  organization Organization @relation(fields: [orgId], references: [id])
-  creator      User         @relation("EmailTemplateCreatedBy", fields: [createdBy], references: [id])
+  organization           Organization    @relation(fields: [orgId], references: [id])
+  creator                User            @relation("EmailTemplateCreatedBy", fields: [createdBy], references: [id])
+  quoteTemplatesSend     QuoteTemplate[] @relation("QuoteTemplateSendEmail")
+  quoteTemplatesAccepted QuoteTemplate[] @relation("QuoteTemplateAcceptedEmail")
+  followUpRules          QuoteTemplateFollowUp[] @relation("FollowUpEmailTemplate")
+  attachments            EmailTemplateAttachment[]
 
   @@index([orgId, type])
   @@map("imp_email_templates")
+}
+
+model EmailTemplateAttachment {
+  id              String   @id @default(uuid()) @db.Uuid
+  emailTemplateId String   @map("email_template_id") @db.Uuid
+  orgId           String   @map("org_id") @db.Uuid
+  storageKey      String   @map("storage_key")
+  originalName    String   @map("original_name")
+  mimeType        String   @map("mime_type")
+  fileSize        Int      @map("file_size")
+  sortOrder       Int      @default(0) @map("sort_order")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  emailTemplate EmailTemplate @relation(fields: [emailTemplateId], references: [id], onDelete: Cascade)
+  organization  Organization  @relation(fields: [orgId], references: [id])
+
+  @@index([emailTemplateId])
+  @@map("imp_email_template_attachments")
 }
 
 // ─── Error Reports (Helpdesk Meldingen) ─────────────────
@@ -1297,4 +1393,47 @@ model Note {
   @@index([parentId])
   @@index([createdById])
   @@map("imp_notes")
+}
+
+// ─── Work Orders (Werkbonnen) ─────────────────────────────
+
+model WorkOrder {
+  id              String          @id @default(uuid()) @db.Uuid
+  orgId           String          @map("org_id") @db.Uuid
+  planningItemId  String?         @map("planning_item_id") @db.Uuid
+  workOrderNumber String          @unique @map("work_order_number")
+  status          WorkOrderStatus @default(IN_VOORBEREIDING)
+  internalNotes   String?         @map("internal_notes")
+  startTime       DateTime?       @map("start_time")
+  endTime         DateTime?       @map("end_time")
+  createdBy       String          @map("created_by") @db.Uuid
+  createdAt       DateTime        @default(now()) @map("created_at")
+  updatedAt       DateTime        @updatedAt @map("updated_at")
+
+  organization    Organization    @relation(fields: [orgId], references: [id])
+  planningItem    PlanningItem?   @relation(fields: [planningItemId], references: [id])
+  createdByUser   User            @relation("WorkOrderCreatedByUser", fields: [createdBy], references: [id])
+  lines           WorkOrderLine[]
+
+  @@index([orgId, status])
+  @@index([orgId, planningItemId])
+  @@map("imp_work_orders")
+}
+
+model WorkOrderLine {
+  id          String    @id @default(uuid()) @db.Uuid
+  workOrderId String    @map("work_order_id") @db.Uuid
+  productId   String?   @map("product_id") @db.Uuid
+  description String
+  quantity    Float
+  unit        String
+  unitPrice   Float     @map("unit_price")
+  vatRate     Float     @default(21) @map("vat_rate")
+  lineTotal   Float     @map("line_total")
+  sortOrder   Int       @default(0) @map("sort_order")
+
+  workOrder   WorkOrder @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
+  product     Product?  @relation(fields: [productId], references: [id])
+
+  @@map("imp_work_order_lines")
 }

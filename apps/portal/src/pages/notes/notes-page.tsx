@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { NoteEntityType } from '@/types';
 import type { Note } from '@/types';
@@ -51,13 +51,6 @@ export default function NotesPage() {
   const [entityTypeFilter, setEntityTypeFilter] = useState('');
   const [page, setPage] = useState(1);
 
-  const { data, isLoading, error } = useNotes({
-    search: search || undefined,
-    entityType: (entityTypeFilter as NoteEntityType) || undefined,
-    page,
-    limit: 20,
-  });
-
   const handleSearchChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
       setSearch(e.target.value);
@@ -71,6 +64,7 @@ export default function NotesPage() {
       key: 'content',
       header: 'Notitie',
       pinned: true,
+      sortable: true,
       render: (note) => (
         <span className="block max-w-xs truncate text-sm text-gray-900" title={note.content}>
           {note.content.length > 80 ? note.content.slice(0, 80) + '…' : note.content}
@@ -89,6 +83,8 @@ export default function NotesPage() {
       filterType: 'select',
       filterOptions: entityTypeFilterOptions.filter((o) => o.value !== ''),
       groupable: true,
+      sortable: true,
+      sortKey: 'entityType',
       getFilterValue: (note) => note.entityType,
       render: (note) => (
         <button
@@ -112,6 +108,7 @@ export default function NotesPage() {
       header: 'Aangemaakt door',
       filterable: true,
       filterType: 'text',
+      sortable: true,
       getFilterValue: (note) =>
         `${note.createdBy.firstName} ${note.createdBy.lastName}`,
       render: (note) => (
@@ -125,6 +122,8 @@ export default function NotesPage() {
       header: 'Aangemaakt',
       filterable: true,
       filterType: 'date',
+      sortable: true,
+      sortKey: 'createdAt',
       getFilterValue: (note) => note.createdAt,
       render: (note) => (
         <span className="text-xs text-gray-500">
@@ -149,7 +148,23 @@ export default function NotesPage() {
     isColumnsDirty,
     isFiltersDirty,
     allColumns,
+    sort,
+    toggleSort,
+    apiSort,
   } = useTableConfig({ pageKey: 'notes', columns });
+
+  useEffect(() => {
+    setPage(1);
+  }, [sort]);
+
+  const { data, isLoading, error } = useNotes({
+    search: search || undefined,
+    entityType: (entityTypeFilter as NoteEntityType) || undefined,
+    page,
+    limit: 20,
+    sortBy: apiSort?.sortBy,
+    sortOrder: apiSort?.sortOrder,
+  });
 
   if (isLoading) {
     return (
@@ -226,6 +241,8 @@ export default function NotesPage() {
           data={filteredData(notes)}
           keyExtractor={(n) => n.id}
           emptyMessage="Geen notities gevonden"
+          sort={sort}
+          onSort={toggleSort}
         />
 
         {/* Pagination */}

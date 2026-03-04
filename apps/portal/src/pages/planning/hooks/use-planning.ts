@@ -12,6 +12,8 @@ interface ListPlanningParams {
   showCancelled?: boolean;
   page?: number;
   limit?: number;
+  sortBy?: string;
+  sortOrder?: 'asc' | 'desc';
 }
 
 interface PlanningListResponse {
@@ -32,6 +34,8 @@ export function usePlanningItems(params: ListPlanningParams = {}) {
   if (params.showCancelled) queryParams.set('showCancelled', 'true');
   if (params.page) queryParams.set('page', String(params.page));
   if (params.limit) queryParams.set('limit', String(params.limit));
+  if (params.sortBy) queryParams.set('sortBy', params.sortBy);
+  if (params.sortOrder) queryParams.set('sortOrder', params.sortOrder);
 
   const qs = queryParams.toString();
   return useQuery<PlanningListResponse>({
@@ -60,6 +64,18 @@ export function useUpdatePlanningItem(id: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (dto: any) => apiClient.patch<PlanningItem>(`/planning/${id}`, dto),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['planning', id] });
+      qc.invalidateQueries({ queryKey: ['planning'] });
+    },
+  });
+}
+
+export function useUpdatePlanningStatus(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (dto: { status: string; note?: string }) =>
+      apiClient.patch<PlanningItem>(`/planning/${id}/status`, dto),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['planning', id] });
       qc.invalidateQueries({ queryKey: ['planning'] });

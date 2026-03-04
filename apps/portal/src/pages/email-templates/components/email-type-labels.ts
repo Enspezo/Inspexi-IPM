@@ -2,6 +2,7 @@ import { EmailTemplateType } from '@/types';
 
 export const EMAIL_TYPE_LABELS: Record<EmailTemplateType, string> = {
   [EmailTemplateType.OFFERTE_VERSTUURD]: 'Offerte verstuurd',
+  [EmailTemplateType.OFFERTE_GEACCEPTEERD]: 'Offerte geaccepteerd',
   [EmailTemplateType.OFFERTE_ANTWOORD]: 'Offerte antwoord',
   [EmailTemplateType.AFSPRAAK_BEVESTIGING]: 'Afspraakbevestiging',
   [EmailTemplateType.AFSPRAAK_VERPLAATST]: 'Afspraak verplaatst',
@@ -10,4 +11,5 @@ export const EMAIL_TYPE_LABELS: Record<EmailTemplateType, string> = {
   [EmailTemplateType.UITNODIGING]: 'Uitnodiging',
   [EmailTemplateType.WACHTWOORD_RESET]: 'Wachtwoord reset',
   [EmailTemplateType.NOTIFICATIE]: 'Notificatie',
+  [EmailTemplateType.OFFERTE_FOLLOW_UP]: 'Follow-up offerte',
 };

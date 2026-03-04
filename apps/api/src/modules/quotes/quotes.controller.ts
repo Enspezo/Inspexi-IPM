@@ -202,6 +202,22 @@ export class QuotesController {
   }
 
   // ─── PDF ──────────────────────────────────────────────
+  @Get(':id/preview-pdf')
+  @Roles(Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE)
+  async previewPdf(
+    @CurrentUser() user: User,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Res() res: Response,
+  ) {
+    const { buffer, quoteNumber } = await this.service.renderQuotePdf(id, user);
+    res.set({
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `inline; filename="Preview-${quoteNumber}.pdf"`,
+      'Content-Length': buffer.length,
+    });
+    res.send(buffer);
+  }
+
   @Get(':id/pdf')
   @Roles(Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE)
   async downloadPdf(
@@ -239,6 +255,18 @@ export class PublicQuotesController {
   async getByToken(@Param('token') token: string) {
     const data = await this.service.findByPublicToken(token);
     return { success: true, data };
+  }
+
+  @Get(':token/pdf')
+  @Public()
+  async downloadPdf(@Param('token') token: string, @Res() res: Response) {
+    const { buffer, quoteNumber } = await this.service.downloadPublicPdf(token);
+    res.set({
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `inline; filename="Offerte-${quoteNumber}.pdf"`,
+      'Content-Length': buffer.length,
+    });
+    res.send(buffer);
   }
 
   @Post(':token/questions')

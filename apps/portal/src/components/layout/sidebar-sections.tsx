@@ -10,8 +10,11 @@
  *   <HistorySidebarSection entityType="Request" entityId={id} />
  */
 import { NoteEntityType } from '@/types';
+import type { DocumentEntityType } from '@/types';
 import { useEntityNotes } from '@/pages/notes/hooks/use-notes';
+import { useEntityDocuments } from '@/pages/documents/hooks/use-documents';
 import { NotesSection } from '@/components/notes/notes-section';
+import { DocumentsSection } from '@/components/documents/documents-section';
 import { AuditHistory } from '@/components/audit-history/audit-history';
 import { SidebarSection } from './detail-page-layout';
 
@@ -60,6 +63,49 @@ export function NotesSidebarSection({ entityType, entityId }: NotesSidebarSectio
   return (
     <SidebarSection icon={<NotesIcon />} label="Notities" count={count}>
       <NotesSection entityType={entityType} entityId={entityId} />
+    </SidebarSection>
+  );
+}
+
+// ─── DocumentsSidebarSection ─────────────────────────────────────────────────
+
+function DocumentsIcon() {
+  return (
+    <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2}
+        d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"
+      />
+    </svg>
+  );
+}
+
+interface DocumentsSidebarSectionProps {
+  entityType: DocumentEntityType;
+  entityId: string;
+  canUpload?: boolean;
+  showSharedWithClient?: boolean;
+}
+
+export function DocumentsSidebarSection({
+  entityType,
+  entityId,
+  canUpload = false,
+  showSharedWithClient = false,
+}: DocumentsSidebarSectionProps) {
+  const { data } = useEntityDocuments(entityType, entityId);
+  const count = data?.data?.length ?? 0;
+
+  return (
+    <SidebarSection icon={<DocumentsIcon />} label="Documenten" count={count}>
+      <DocumentsSection
+        entityType={entityType}
+        entityId={entityId}
+        canUpload={canUpload}
+        showSharedWithClient={showSharedWithClient}
+      />
     </SidebarSection>
   );
 }

@@ -16,7 +16,7 @@ import { ResetPasswordModal } from './components/reset-password-modal';
 import { DeleteUserModal } from './components/delete-user-modal';
 import { CreateTaskModal } from '@/pages/tasks/components/create-task-modal';
 import { EditTaskModal } from '@/pages/tasks/components/edit-task-modal';
-import { DocumentsSection, UploadDocumentModal } from '@/components/documents';
+import { DocumentsSidebarSection } from '@/components/layout/sidebar-sections';
 import { AddressSearchInput } from '@/components/ui';
 import type { ParsedAddress } from '@/lib/geocoding';
 
@@ -76,7 +76,6 @@ export default function UserDetailPage() {
   const [resetPasswordUser, setResetPasswordUser] = useState<User | null>(null);
   const [deleteUser, setDeleteUser] = useState<User | null>(null);
   const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
-  const [isDocUploadOpen, setIsDocUploadOpen] = useState(false);
   const [editTask, setEditTask] = useState<any>(null);
   const [homeLat, setHomeLat] = useState<number | null>(null);
   const [homeLng, setHomeLng] = useState<number | null>(null);
@@ -285,6 +284,12 @@ export default function UserDetailPage() {
             </div>
           </SidebarSection>
 
+          <DocumentsSidebarSection
+            entityType={DocumentEntityType.USER}
+            entityId={userRecord.id}
+            canUpload={!!userCanWrite}
+          />
+
           <SidebarSection
             icon={<svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>}
             label="Audit"
@@ -348,11 +353,6 @@ export default function UserDetailPage() {
                   label: 'Taak aanmaken',
                   icon: <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" /></svg>,
                   onClick: () => setIsTaskModalOpen(true),
-                },
-                {
-                  label: 'Document uploaden',
-                  icon: <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>,
-                  onClick: () => setIsDocUploadOpen(true),
                 },
               ]}
             />
@@ -508,15 +508,6 @@ export default function UserDetailPage() {
               </Card>
             )}
 
-            {/* Documenten */}
-            <Card>
-              <DocumentsSection
-                entityType={DocumentEntityType.USER}
-                entityId={userRecord.id}
-                canUpload={!!userCanWrite}
-              />
-            </Card>
-
             <div className="flex items-center justify-between border-t border-gray-200 pt-6">
               <p className="text-xs text-gray-400">
                 Aangemaakt op {new Date(userRecord.createdAt).toLocaleString('nl-NL', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
@@ -620,15 +611,6 @@ export default function UserDetailPage() {
           isOpen={isTaskModalOpen}
           onClose={() => setIsTaskModalOpen(false)}
           entityType={TaskEntityType.USER}
-          entityId={userRecord.id}
-        />
-      )}
-
-      {isDocUploadOpen && (
-        <UploadDocumentModal
-          isOpen={isDocUploadOpen}
-          onClose={() => setIsDocUploadOpen(false)}
-          entityType={DocumentEntityType.USER}
           entityId={userRecord.id}
         />
       )}

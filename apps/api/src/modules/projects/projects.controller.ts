@@ -18,6 +18,7 @@ import {
   UpdateProjectDto,
   ListProjectsQueryDto,
   AddProjectFollowerDto,
+  UpdateProjectFollowerDto,
   AssignToProjectDto,
 } from './dto';
 
@@ -125,6 +126,18 @@ export class ProjectsController {
     @Body() dto: AddProjectFollowerDto,
   ) {
     return this.projectsService.addFollower(id, dto, user);
+  }
+
+  @Patch(':id/followers/:followerId')
+  @Roles(...WRITE_ROLES)
+  @ApiOperation({ summary: 'Update project follower permissions' })
+  async updateFollower(
+    @CurrentUser() user: User,
+    @Param('id') id: string,
+    @Param('followerId') followerId: string,
+    @Body() dto: UpdateProjectFollowerDto,
+  ) {
+    return this.projectsService.updateFollower(id, followerId, dto, user);
   }
 
   @Delete(':id/followers/:followerId')

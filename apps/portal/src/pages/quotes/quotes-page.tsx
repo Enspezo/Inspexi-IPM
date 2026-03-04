@@ -82,14 +82,6 @@ export default function QuotesPage() {
     return () => clearTimeout(timer);
   }, [search]);
 
-  const { data, isLoading, error } = useQuotes({
-    search: debouncedSearch.length >= 3 ? debouncedSearch : undefined,
-    status: (statusFilter as QuoteStatus) || undefined,
-    createdBy: onlyMine ? user?.id : undefined,
-    page,
-    limit: 20,
-  });
-
   const handleSearchChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
       setSearch(e.target.value);
@@ -105,6 +97,8 @@ export default function QuotesPage() {
       key: 'quoteNumber',
       header: 'Offertenummer',
       pinned: true,
+      sortable: true,
+      sortKey: 'quoteNumber',
       render: (quote) => (
         <button
           onClick={() => navigate(`/quotes/${quote.id}`)}
@@ -117,6 +111,8 @@ export default function QuotesPage() {
     {
       key: 'subject',
       header: 'Onderwerp',
+      sortable: true,
+      sortKey: 'subject',
       filterable: true,
       filterType: 'text',
       getFilterValue: (quote) => quote.subject,
@@ -127,6 +123,7 @@ export default function QuotesPage() {
     {
       key: 'contact',
       header: 'Relatie',
+      sortable: true,
       filterable: true,
       filterType: 'text',
       getFilterValue: (quote) => getContactName(quote),
@@ -137,6 +134,8 @@ export default function QuotesPage() {
     {
       key: 'status',
       header: 'Status',
+      sortable: true,
+      sortKey: 'status',
       filterable: true,
       filterType: 'select',
       filterOptions: statusFilterOptions.filter((o) => o.value !== ''),
@@ -155,6 +154,8 @@ export default function QuotesPage() {
     {
       key: 'total',
       header: 'Totaal',
+      sortable: true,
+      sortKey: 'total',
       render: (quote) => (
         <span className="text-gray-900 font-medium">
           {formatCurrency(quote.total)}
@@ -164,6 +165,8 @@ export default function QuotesPage() {
     {
       key: 'validUntil',
       header: 'Geldig tot',
+      sortable: true,
+      sortKey: 'validUntil',
       filterable: true,
       filterType: 'date',
       getFilterValue: (quote) => quote.validUntil,
@@ -178,6 +181,8 @@ export default function QuotesPage() {
     {
       key: 'createdAt',
       header: 'Aangemaakt',
+      sortable: true,
+      sortKey: 'createdAt',
       filterable: true,
       filterType: 'date',
       getFilterValue: (quote) => quote.createdAt,
@@ -204,7 +209,24 @@ export default function QuotesPage() {
     isColumnsDirty,
     isFiltersDirty,
     allColumns,
+    sort,
+    toggleSort,
+    apiSort,
   } = useTableConfig({ pageKey: 'quotes', columns });
+
+  useEffect(() => {
+    setPage(1);
+  }, [sort]);
+
+  const { data, isLoading, error } = useQuotes({
+    search: debouncedSearch.length >= 3 ? debouncedSearch : undefined,
+    status: (statusFilter as QuoteStatus) || undefined,
+    createdBy: onlyMine ? user?.id : undefined,
+    page,
+    limit: 20,
+    sortBy: apiSort?.sortBy,
+    sortOrder: apiSort?.sortOrder,
+  });
 
   if (isLoading) {
     return (
@@ -255,7 +277,7 @@ export default function QuotesPage() {
         </div>
         {userCanWrite && (
           <ActionMenu
-            primaryActions={[
+            secondaryActions={[
               {
                 label: 'Offerte aanmaken',
                 icon: <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>,
@@ -305,6 +327,8 @@ export default function QuotesPage() {
         data={filteredData(quotes)}
         keyExtractor={(q) => q.id}
         emptyMessage="Geen offertes gevonden"
+        sort={sort}
+        onSort={toggleSort}
       />
 
       {/* Pagination */}

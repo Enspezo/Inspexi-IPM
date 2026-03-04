@@ -18,7 +18,7 @@ import {
 import type { Task, ContactLog } from '@/types';
 import { ActionMenu, type ActionMenuItem, Button, Card, Spinner, Select, Input, useToast } from '@/components/ui';
 import { DetailPageLayout, SidebarSection } from '@/components/layout/detail-page-layout';
-import { NotesSidebarSection, HistorySidebarSection } from '@/components/layout/sidebar-sections';
+import { NotesSidebarSection, HistorySidebarSection, DocumentsSidebarSection } from '@/components/layout/sidebar-sections';
 import { useAuth } from '@/providers/auth-provider';
 import {
   useRequest,
@@ -34,7 +34,6 @@ import { useCreateQuoteFromRequest } from '@/pages/quotes/hooks/use-quotes';
 import { useTasks, useUpdateTask } from '@/pages/tasks/hooks/use-tasks';
 import { CreateTaskModal } from '@/pages/tasks/components/create-task-modal';
 import { EditTaskModal } from '@/pages/tasks/components/edit-task-modal';
-import { DocumentsSection, UploadDocumentModal } from '@/components/documents';
 import { CustomFieldsDisplay, CustomFieldsForm } from '@/components/custom-fields';
 import { useCreateProjectFromRequest } from '@/pages/projects/hooks/use-projects';
 
@@ -182,7 +181,6 @@ export default function RequestDetailPage() {
   const [statusNote, setStatusNote] = useState('');
   const [isEditing, setIsEditing] = useState(false);
   const [isTaskOpen, setIsTaskOpen] = useState(false);
-  const [isDocUploadOpen, setIsDocUploadOpen] = useState(false);
   const [isLogOpen, setIsLogOpen] = useState(false);
   const [editContactId, setEditContactId] = useState('');
 
@@ -357,6 +355,12 @@ export default function RequestDetailPage() {
 
       <NotesSidebarSection entityType={NoteEntityType.REQUEST} entityId={id!} />
 
+      <DocumentsSidebarSection
+        entityType={DocumentEntityType.REQUEST}
+        entityId={request.id}
+        canUpload={!!userCanWrite}
+      />
+
       <HistorySidebarSection entityType="Request" entityId={id} />
     </div>
   );
@@ -440,11 +444,6 @@ export default function RequestDetailPage() {
                 label: 'Taak aanmaken',
                 icon: <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" /></svg>,
                 onClick: () => setIsTaskOpen(true),
-              },
-              {
-                label: 'Document uploaden',
-                icon: <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>,
-                onClick: () => setIsDocUploadOpen(true),
               },
             ]}
           />
@@ -669,14 +668,6 @@ export default function RequestDetailPage() {
             customFields={request.customFields}
           />
 
-          {/* Documenten */}
-          <Card>
-            <DocumentsSection
-              entityType={DocumentEntityType.REQUEST}
-              entityId={request.id}
-              canUpload={!!userCanWrite}
-            />
-          </Card>
         </div>
       )}
 
@@ -810,12 +801,6 @@ export default function RequestDetailPage() {
             isOpen={isTaskOpen}
             onClose={() => setIsTaskOpen(false)}
             entityType={TaskEntityType.REQUEST}
-            entityId={request.id}
-          />
-          <UploadDocumentModal
-            isOpen={isDocUploadOpen}
-            onClose={() => setIsDocUploadOpen(false)}
-            entityType={DocumentEntityType.REQUEST}
             entityId={request.id}
           />
           <AddLogModal

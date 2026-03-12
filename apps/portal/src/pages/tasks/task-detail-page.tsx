@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { TaskStatus, TaskType, TaskEntityType, DocumentEntityType, Role } from '@/types';
 import { ActionMenu, Button, Card, Spinner, Select, useToast } from '@/components/ui';
+import { DetailPageLayout } from '@/components/layout/detail-page-layout';
+import { HistorySidebarSection } from '@/components/layout/sidebar-sections';
 import { useAuth } from '@/providers/auth-provider';
 import { useTask, useUpdateTask, useDeleteTask } from './hooks/use-tasks';
 import { EditTaskModal } from './components/edit-task-modal';
@@ -123,7 +125,12 @@ export default function TaskDetailPage() {
     }
   };
 
+  const sidebarContent = (
+    <HistorySidebarSection entityType="Task" entityId={id} />
+  );
+
   return (
+    <DetailPageLayout iconStrip sidebar={sidebarContent}>
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-start justify-between">
@@ -337,5 +344,6 @@ export default function TaskDetailPage() {
         />
       )}
     </div>
+    </DetailPageLayout>
   );
 }

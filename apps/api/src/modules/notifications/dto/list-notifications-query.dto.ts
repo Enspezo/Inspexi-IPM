@@ -1,16 +1,10 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import {
-  IsOptional,
-  IsEnum,
-  IsBoolean,
-  IsInt,
-  Min,
-  Max,
-} from 'class-validator';
-import { Type, Transform } from 'class-transformer';
+import { IsOptional, IsEnum, IsBoolean } from 'class-validator';
+import { Transform } from 'class-transformer';
 import { NotificationType } from '@prisma/client';
+import { BasePaginationQueryDto } from '@/common/dto';
 
-export class ListNotificationsQueryDto {
+export class ListNotificationsQueryDto extends BasePaginationQueryDto {
   @ApiPropertyOptional({ enum: NotificationType })
   @IsOptional()
   @IsEnum(NotificationType)
@@ -25,19 +19,4 @@ export class ListNotificationsQueryDto {
   })
   @IsBoolean()
   unread?: boolean;
-
-  @ApiPropertyOptional({ default: 1 })
-  @IsOptional()
-  @Type(() => Number)
-  @IsInt()
-  @Min(1)
-  page?: number;
-
-  @ApiPropertyOptional({ default: 20 })
-  @IsOptional()
-  @Type(() => Number)
-  @IsInt()
-  @Min(1)
-  @Max(100)
-  limit?: number;
 }

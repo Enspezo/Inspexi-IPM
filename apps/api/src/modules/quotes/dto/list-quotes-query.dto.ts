@@ -1,9 +1,9 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsOptional, IsString, IsEnum, IsUUID, IsInt, Min, Max, IsIn } from 'class-validator';
-import { Type } from 'class-transformer';
+import { IsOptional, IsString, IsEnum, IsUUID } from 'class-validator';
 import { QuoteStatus } from '@prisma/client';
+import { BasePaginationQueryDto } from '@/common/dto';
 
-export class ListQuotesQueryDto {
+export class ListQuotesQueryDto extends BasePaginationQueryDto {
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
@@ -23,29 +23,4 @@ export class ListQuotesQueryDto {
   @IsOptional()
   @IsUUID()
   createdBy?: string;
-
-  @ApiPropertyOptional({ default: 1 })
-  @IsOptional()
-  @Type(() => Number)
-  @IsInt()
-  @Min(1)
-  page?: number;
-
-  @ApiPropertyOptional({ default: 20 })
-  @IsOptional()
-  @Type(() => Number)
-  @IsInt()
-  @Min(1)
-  @Max(100)
-  limit?: number;
-
-  @ApiPropertyOptional({ description: 'Sorteerveld' })
-  @IsOptional()
-  @IsString()
-  sortBy?: string;
-
-  @ApiPropertyOptional({ enum: ['asc', 'desc'], default: 'desc' })
-  @IsOptional()
-  @IsIn(['asc', 'desc'])
-  sortOrder?: 'asc' | 'desc' = 'desc';
 }

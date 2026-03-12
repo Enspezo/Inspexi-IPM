@@ -1,19 +1,13 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { IsOptional, IsString, IsInt, Min, Max } from 'class-validator';
 import { Type } from 'class-transformer';
+import { BasePaginationQueryDto } from '@/common/dto';
 
-export class ListProductGroupsQueryDto {
+export class ListProductGroupsQueryDto extends BasePaginationQueryDto {
   @ApiPropertyOptional({ description: 'Zoeken op naam' })
   @IsOptional()
   @IsString()
   search?: string;
-
-  @ApiPropertyOptional({ default: 1 })
-  @IsOptional()
-  @Type(() => Number)
-  @IsInt()
-  @Min(1)
-  page?: number = 1;
 
   @ApiPropertyOptional({ default: 50 })
   @IsOptional()
@@ -21,5 +15,5 @@ export class ListProductGroupsQueryDto {
   @IsInt()
   @Min(1)
   @Max(100)
-  limit?: number = 50;
+  override limit?: number = 50;
 }

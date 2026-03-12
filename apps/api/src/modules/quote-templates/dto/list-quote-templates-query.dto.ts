@@ -1,8 +1,9 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsOptional, IsString, IsInt, Min, Max, IsIn } from 'class-validator';
-import { Type, Transform } from 'class-transformer';
+import { IsOptional, IsString } from 'class-validator';
+import { Transform } from 'class-transformer';
+import { BasePaginationQueryDto } from '@/common/dto';
 
-export class ListQuoteTemplatesQueryDto {
+export class ListQuoteTemplatesQueryDto extends BasePaginationQueryDto {
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
@@ -16,29 +17,4 @@ export class ListQuoteTemplatesQueryDto {
     return value;
   })
   isActive?: boolean;
-
-  @ApiPropertyOptional({ default: 1 })
-  @IsOptional()
-  @Type(() => Number)
-  @IsInt()
-  @Min(1)
-  page?: number;
-
-  @ApiPropertyOptional({ default: 20 })
-  @IsOptional()
-  @Type(() => Number)
-  @IsInt()
-  @Min(1)
-  @Max(100)
-  limit?: number;
-
-  @ApiPropertyOptional({ description: 'Sorteerveld' })
-  @IsOptional()
-  @IsString()
-  sortBy?: string;
-
-  @ApiPropertyOptional({ enum: ['asc', 'desc'], default: 'desc' })
-  @IsOptional()
-  @IsIn(['asc', 'desc'])
-  sortOrder?: 'asc' | 'desc' = 'desc';
 }

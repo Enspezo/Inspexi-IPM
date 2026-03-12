@@ -1,9 +1,9 @@
-import { IsOptional, IsString, IsUUID, IsInt, Min, Max, IsEnum, IsIn } from 'class-validator';
+import { IsOptional, IsString, IsUUID, IsEnum } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { Type } from 'class-transformer';
 import { ProjectStatus } from '@prisma/client';
+import { BasePaginationQueryDto } from '@/common/dto';
 
-export class ListProjectsQueryDto {
+export class ListProjectsQueryDto extends BasePaginationQueryDto {
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
@@ -23,29 +23,4 @@ export class ListProjectsQueryDto {
   @IsOptional()
   @IsUUID()
   projectManagerId?: string;
-
-  @ApiPropertyOptional()
-  @IsOptional()
-  @Type(() => Number)
-  @IsInt()
-  @Min(1)
-  page?: number;
-
-  @ApiPropertyOptional()
-  @IsOptional()
-  @Type(() => Number)
-  @IsInt()
-  @Min(1)
-  @Max(100)
-  limit?: number;
-
-  @ApiPropertyOptional({ description: 'Sorteerveld' })
-  @IsOptional()
-  @IsString()
-  sortBy?: string;
-
-  @ApiPropertyOptional({ enum: ['asc', 'desc'], default: 'desc' })
-  @IsOptional()
-  @IsIn(['asc', 'desc'])
-  sortOrder?: 'asc' | 'desc' = 'desc';
 }

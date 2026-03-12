@@ -1,9 +1,10 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsOptional, IsString, IsInt, Min, Max, IsEnum, IsUUID, IsIn } from 'class-validator';
+import { IsOptional, IsString, IsEnum, IsUUID, IsInt, Min, Max } from 'class-validator';
 import { Type } from 'class-transformer';
 import { RequestStatus, Priority } from '@prisma/client';
+import { BasePaginationQueryDto } from '@/common/dto';
 
-export class ListRequestsQueryDto {
+export class ListRequestsQueryDto extends BasePaginationQueryDto {
   @ApiPropertyOptional({ description: 'Zoeken op titel of relatie naam' })
   @IsOptional()
   @IsString()
@@ -24,28 +25,11 @@ export class ListRequestsQueryDto {
   @IsUUID()
   assignedTo?: string;
 
-  @ApiPropertyOptional({ default: 1 })
-  @IsOptional()
-  @Type(() => Number)
-  @IsInt()
-  @Min(1)
-  page?: number = 1;
-
   @ApiPropertyOptional({ default: 20 })
   @IsOptional()
   @Type(() => Number)
   @IsInt()
   @Min(1)
   @Max(500)
-  limit?: number = 20;
-
-  @ApiPropertyOptional({ description: 'Sorteerveld' })
-  @IsOptional()
-  @IsString()
-  sortBy?: string;
-
-  @ApiPropertyOptional({ enum: ['asc', 'desc'], default: 'desc' })
-  @IsOptional()
-  @IsIn(['asc', 'desc'])
-  sortOrder?: 'asc' | 'desc' = 'desc';
+  override limit?: number = 20;
 }

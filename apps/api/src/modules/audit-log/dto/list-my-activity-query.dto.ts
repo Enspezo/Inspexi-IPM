@@ -1,7 +1,7 @@
-import { IsOptional, IsString, IsInt, Min, Max, IsIn, IsDateString } from 'class-validator';
-import { Type } from 'class-transformer';
+import { IsOptional, IsString, IsIn, IsDateString } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { AuditAction } from '@prisma/client';
+import { BasePaginationQueryDto } from '@/common/dto';
 
 const VALID_ENTITY_TYPES = [
   'Contact', 'ContactPerson', 'Location', 'CustomerGroup',
@@ -10,7 +10,7 @@ const VALID_ENTITY_TYPES = [
   'User', 'Organization',
 ];
 
-export class ListMyActivityQueryDto {
+export class ListMyActivityQueryDto extends BasePaginationQueryDto {
   @ApiPropertyOptional({ description: 'Filter op entiteitstype', enum: VALID_ENTITY_TYPES })
   @IsOptional()
   @IsString()
@@ -30,19 +30,4 @@ export class ListMyActivityQueryDto {
   @IsOptional()
   @IsDateString()
   dateTo?: string;
-
-  @ApiPropertyOptional({ default: 1 })
-  @IsOptional()
-  @Type(() => Number)
-  @IsInt()
-  @Min(1)
-  page?: number = 1;
-
-  @ApiPropertyOptional({ default: 20 })
-  @IsOptional()
-  @Type(() => Number)
-  @IsInt()
-  @Min(1)
-  @Max(100)
-  limit?: number = 20;
 }

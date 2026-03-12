@@ -1,8 +1,9 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsOptional, IsUUID, IsDateString, IsEnum, IsNumberString, IsString, IsIn } from 'class-validator';
+import { IsOptional, IsUUID, IsDateString, IsEnum, IsString } from 'class-validator';
 import { PlanningStatus } from '@prisma/client';
+import { BasePaginationQueryDto } from '@/common/dto';
 
-export class ListPlanningQueryDto {
+export class ListPlanningQueryDto extends BasePaginationQueryDto {
   @ApiPropertyOptional({ example: 'NEN1010' })
   @IsOptional()
   @IsString()
@@ -37,24 +38,4 @@ export class ListPlanningQueryDto {
   @IsOptional()
   @IsString()
   showCancelled?: string;
-
-  @ApiPropertyOptional({ example: '1' })
-  @IsOptional()
-  @IsNumberString()
-  page?: string;
-
-  @ApiPropertyOptional({ example: '25' })
-  @IsOptional()
-  @IsNumberString()
-  limit?: string;
-
-  @ApiPropertyOptional({ description: 'Sorteerveld' })
-  @IsOptional()
-  @IsString()
-  sortBy?: string;
-
-  @ApiPropertyOptional({ enum: ['asc', 'desc'], default: 'desc' })
-  @IsOptional()
-  @IsIn(['asc', 'desc'])
-  sortOrder?: 'asc' | 'desc' = 'desc';
 }

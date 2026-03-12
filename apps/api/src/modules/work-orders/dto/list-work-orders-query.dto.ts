@@ -1,9 +1,9 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsOptional, IsString, IsEnum, IsUUID, IsInt, Min } from 'class-validator';
-import { Type } from 'class-transformer';
+import { IsOptional, IsString, IsEnum, IsUUID } from 'class-validator';
 import { WorkOrderStatus } from '@prisma/client';
+import { BasePaginationQueryDto } from '@/common/dto';
 
-export class ListWorkOrdersQueryDto {
+export class ListWorkOrdersQueryDto extends BasePaginationQueryDto {
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
@@ -23,18 +23,4 @@ export class ListWorkOrdersQueryDto {
   @IsOptional()
   @IsUUID()
   inspectorId?: string;
-
-  @ApiPropertyOptional()
-  @IsOptional()
-  @Type(() => Number)
-  @IsInt()
-  @Min(1)
-  page?: number;
-
-  @ApiPropertyOptional()
-  @IsOptional()
-  @Type(() => Number)
-  @IsInt()
-  @Min(1)
-  limit?: number;
 }

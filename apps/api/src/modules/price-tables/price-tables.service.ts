@@ -1,5 +1,6 @@
 import {
   Injectable,
+  Logger,
   NotFoundException,
   ForbiddenException,
   BadRequestException,
@@ -15,6 +16,8 @@ import {
 
 @Injectable()
 export class PriceTablesService {
+  private readonly logger = new Logger(PriceTablesService.name);
+
   constructor(private prisma: PrismaService) {}
 
   async findAll(user: User, query: ListPriceTablesQueryDto) {

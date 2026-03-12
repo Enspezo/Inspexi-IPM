@@ -1,5 +1,6 @@
 import {
   Injectable,
+  Logger,
   BadGatewayException,
   BadRequestException,
 } from '@nestjs/common';
@@ -37,6 +38,7 @@ function parseVatNumber(raw: string): { countryCode: string; number: string } | 
 
 @Injectable()
 export class VatService {
+  private readonly logger = new Logger(VatService.name);
   private readonly VIES_BASE =
     'https://ec.europa.eu/taxation_customs/vies/rest-api/ms';
 
@@ -56,7 +58,8 @@ export class VatService {
       res = await fetch(url, {
         headers: { Accept: 'application/json' },
       });
-    } catch {
+    } catch (err) {
+      this.logger.error('VIES API unreachable', err);
       throw new BadGatewayException('VIES API onbereikbaar');
     }
 

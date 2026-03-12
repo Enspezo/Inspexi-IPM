@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '@/prisma';
 import { AcceptanceStatus, SessionStatus } from '@prisma/client';
 
@@ -14,6 +14,8 @@ interface IcalSession {
 
 @Injectable()
 export class PlanningIcalService {
+  private readonly logger = new Logger(PlanningIcalService.name);
+
   constructor(private prisma: PrismaService) {}
 
   private formatDate(date: Date): string {

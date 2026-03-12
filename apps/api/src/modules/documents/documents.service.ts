@@ -1,5 +1,6 @@
 import {
   Injectable,
+  Logger,
   Inject,
   NotFoundException,
   ForbiddenException,
@@ -23,6 +24,8 @@ const userSelect = {
 
 @Injectable()
 export class DocumentsService {
+  private readonly logger = new Logger(DocumentsService.name);
+
   constructor(
     private prisma: PrismaService,
     private notifications: NotificationsService,

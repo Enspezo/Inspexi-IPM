@@ -1,0 +1,3 @@
+-- AlterTable
+ALTER TABLE "imp_locations" ADD COLUMN "lat" DOUBLE PRECISION,
+ADD COLUMN "lng" DOUBLE PRECISION;

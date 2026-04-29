@@ -1,0 +1,36 @@
+version: "3.8"
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: inspexi-beheer-postgres
+    restart: unless-stopped
+    ports:
+      - "5433:5432"
+    environment:
+      POSTGRES_DB: inspectie
+      POSTGRES_USER: inspectie
+      POSTGRES_PASSWORD: inspectie_dev_password
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U inspectie -d inspectie"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  convert-api:
+    build:
+      context: .
+      dockerfile: apps/convert-api/Dockerfile
+    container_name: inspexi-convert-api
+    restart: unless-stopped
+    ports:
+      - "3002:3002"
+    environment:
+      CONVERT_API_PORT: 3002
+      CONVERT_API_KEY: ${CONVERT_API_KEY:-dev-convert-secret}
+      CONVERT_TIMEOUT_MS: 60000
+
+volumes:
+  pgdata:

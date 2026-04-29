@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { User, Role, NotificationType } from '@prisma/client';
 import { PrismaService } from '@/prisma';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -23,6 +23,8 @@ const orgSelect = {
 
 @Injectable()
 export class ErrorReportsService {
+  private readonly logger = new Logger(ErrorReportsService.name);
+
   constructor(
     private prisma: PrismaService,
     private notifications: NotificationsService,

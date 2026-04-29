@@ -1,5 +1,6 @@
 import {
   Injectable,
+  Logger,
   NotFoundException,
   BadRequestException,
   ConflictException,
@@ -10,6 +11,8 @@ import { CreateCustomFieldDto, UpdateCustomFieldDto } from './dto';
 
 @Injectable()
 export class CustomFieldsService {
+  private readonly logger = new Logger(CustomFieldsService.name);
+
   constructor(private prisma: PrismaService) {}
 
   async findAll(orgId: string) {

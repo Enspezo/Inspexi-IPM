@@ -8,10 +8,14 @@ import {
   Button,
   Input,
   Table,
-  type Column,
 } from '@/components/ui';
 import { DetailPageLayout } from '@/components/layout/detail-page-layout';
 import { PageHeader } from '@/components/layout/page-header';
+import {
+  TableConfigSidebar,
+  useTableConfig,
+  type ColumnDef,
+} from '@/components/table-config';
 import { useAuth } from '@/providers/auth-provider';
 import { Role } from '@/types';
 import { useCustomerGroups } from './hooks/use-customer-groups';
@@ -42,10 +46,15 @@ export default function CustomerGroupsPage() {
 
   const userCanCreate = user && user.roles.some(r => canCreate.includes(r));
 
-  const columns: Column<CustomerGroup>[] = [
+  const columns: ColumnDef<CustomerGroup>[] = [
     {
       key: 'name',
       header: 'Naam',
+      pinned: true,
+      sortable: true,
+      filterable: true,
+      filterType: 'text',
+      getFilterValue: (group) => group.name,
       render: (group) => (
         <button
           onClick={() => navigate(`/contacts/groups/${group.id}`)}
@@ -58,6 +67,8 @@ export default function CustomerGroupsPage() {
     {
       key: 'contacts',
       header: 'Aantal relaties',
+      sortable: true,
+      getSortValue: (group) => group._count?.contacts ?? 0,
       render: (group) => (
         <span className="text-gray-600">
           {group._count?.contacts ?? 0}
@@ -67,6 +78,10 @@ export default function CustomerGroupsPage() {
     {
       key: 'notes',
       header: 'Notities',
+      sortable: true,
+      filterable: true,
+      filterType: 'text',
+      getFilterValue: (group) => group.notes,
       render: (group) => (
         <span className="text-gray-500 truncate max-w-xs block">
           {group.notes || '—'}
@@ -74,6 +89,25 @@ export default function CustomerGroupsPage() {
       ),
     },
   ];
+
+  const {
+    activeColumns,
+    filteredData,
+    pendingColumnConfig,
+    setPendingColumnConfig,
+    pendingFilters,
+    setPendingFilters,
+    pendingGrouping,
+    setPendingGrouping,
+    applyColumns,
+    applyFilters,
+    resetToDefaults,
+    isColumnsDirty,
+    isFiltersDirty,
+    allColumns,
+    sort,
+    toggleSort,
+  } = useTableConfig({ pageKey: 'customer-groups', columns });
 
   if (isLoading) {
     return (
@@ -94,7 +128,24 @@ export default function CustomerGroupsPage() {
   const totalPages = Math.ceil(total / 20);
 
   return (
-    <DetailPageLayout>
+    <DetailPageLayout
+      sidebar={
+        <TableConfigSidebar
+          columns={allColumns}
+          pendingColumnConfig={pendingColumnConfig}
+          onColumnConfigChange={setPendingColumnConfig}
+          pendingFilters={pendingFilters}
+          onFiltersChange={setPendingFilters}
+          pendingGrouping={pendingGrouping}
+          onGroupingChange={setPendingGrouping}
+          onApplyColumns={applyColumns}
+          onApplyFilters={applyFilters}
+          onReset={resetToDefaults}
+          isColumnsDirty={isColumnsDirty}
+          isFiltersDirty={isFiltersDirty}
+        />
+      }
+    >
       <div className="space-y-6">
         <PageHeader
           title="Klantgroepen"
@@ -124,10 +175,12 @@ export default function CustomerGroupsPage() {
         </div>
 
         <Table
-          columns={columns}
-          data={groups}
+          columns={activeColumns}
+          data={filteredData(groups)}
           keyExtractor={(g) => g.id}
           emptyMessage="Geen klantgroepen gevonden"
+          sort={sort}
+          onSort={toggleSort}
         />
 
         {/* Pagination */}

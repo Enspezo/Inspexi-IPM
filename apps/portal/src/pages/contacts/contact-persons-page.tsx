@@ -7,12 +7,15 @@ import {
   Spinner,
   Button,
   Input,
-  Select,
   Table,
-  type Column,
 } from '@/components/ui';
 import { DetailPageLayout } from '@/components/layout/detail-page-layout';
 import { PageHeader } from '@/components/layout/page-header';
+import {
+  TableConfigSidebar,
+  useTableConfig,
+  type ColumnDef,
+} from '@/components/table-config';
 import { useContactPersons, useContactPersonRoles } from './hooks/use-contacts';
 import { CreateContactPersonModal } from './components/create-contact-person-modal';
 import { roleColors } from '@/lib/contact-person-role';
@@ -31,19 +34,13 @@ function getContactName(contact?: {
 export default function ContactPersonsPage() {
   const navigate = useNavigate();
   const [search, setSearch] = useState('');
-  const [roleFilter, setRoleFilter] = useState('');
   const [page, setPage] = useState(1);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
 
   const { data: roleOptions } = useContactPersonRoles();
-  const roleFilterOptions = [
-    { value: '', label: 'Alle rollen' },
-    ...(roleOptions ?? []).map((r) => ({ value: r.id, label: r.label })),
-  ];
 
   const { data, isLoading, error } = useContactPersons({
     search: search || undefined,
-    roleId: roleFilter || undefined,
     page,
     limit: 20,
   });
@@ -56,10 +53,16 @@ export default function ContactPersonsPage() {
     [],
   );
 
-  const columns: Column<ContactPerson>[] = [
+  const columns: ColumnDef<ContactPerson>[] = [
     {
       key: 'name',
       header: 'Naam',
+      pinned: true,
+      sortable: true,
+      filterable: true,
+      filterType: 'text',
+      getFilterValue: (person) =>
+        [person.firstName, person.lastName].filter(Boolean).join(' '),
       render: (person) => (
         <button
           onClick={() => navigate(`/contacts/persons/${person.id}`)}
@@ -72,6 +75,15 @@ export default function ContactPersonsPage() {
     {
       key: 'role',
       header: 'Rol',
+      sortable: true,
+      filterable: true,
+      filterType: 'select',
+      filterOptions: (roleOptions ?? []).map((r) => ({
+        value: r.label,
+        label: r.label,
+      })),
+      groupable: true,
+      getFilterValue: (person) => person.role?.label ?? '',
       render: (person) => (
         <span
           className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
@@ -85,6 +97,10 @@ export default function ContactPersonsPage() {
     {
       key: 'email',
       header: 'E-mail',
+      sortable: true,
+      filterable: true,
+      filterType: 'text',
+      getFilterValue: (person) => person.email,
       render: (person) => (
         <span className="text-gray-600">{person.email || '—'}</span>
       ),
@@ -92,6 +108,10 @@ export default function ContactPersonsPage() {
     {
       key: 'phone',
       header: 'Telefoon',
+      sortable: true,
+      filterable: true,
+      filterType: 'text',
+      getFilterValue: (person) => person.phone,
       render: (person) => (
         <span className="text-gray-600">{person.phone || '—'}</span>
       ),
@@ -99,6 +119,11 @@ export default function ContactPersonsPage() {
     {
       key: 'contact',
       header: 'Relatie',
+      sortable: true,
+      filterable: true,
+      filterType: 'text',
+      groupable: true,
+      getFilterValue: (person) => getContactName(person.contact),
       render: (person) => (
         <button
           onClick={(e) => {
@@ -107,11 +132,30 @@ export default function ContactPersonsPage() {
           }}
           className="text-sm text-primary-600 hover:text-primary-800 hover:underline"
         >
-          {getContactName((person as any).contact)}
+          {getContactName(person.contact)}
         </button>
       ),
     },
   ];
+
+  const {
+    activeColumns,
+    filteredData,
+    pendingColumnConfig,
+    setPendingColumnConfig,
+    pendingFilters,
+    setPendingFilters,
+    pendingGrouping,
+    setPendingGrouping,
+    applyColumns,
+    applyFilters,
+    resetToDefaults,
+    isColumnsDirty,
+    isFiltersDirty,
+    allColumns,
+    sort,
+    toggleSort,
+  } = useTableConfig({ pageKey: 'contact-persons', columns });
 
   if (isLoading) {
     return (
@@ -133,7 +177,24 @@ export default function ContactPersonsPage() {
 
   return (
     <>
-    <DetailPageLayout>
+    <DetailPageLayout
+      sidebar={
+        <TableConfigSidebar
+          columns={allColumns}
+          pendingColumnConfig={pendingColumnConfig}
+          onColumnConfigChange={setPendingColumnConfig}
+          pendingFilters={pendingFilters}
+          onFiltersChange={setPendingFilters}
+          pendingGrouping={pendingGrouping}
+          onGroupingChange={setPendingGrouping}
+          onApplyColumns={applyColumns}
+          onApplyFilters={applyFilters}
+          onReset={resetToDefaults}
+          isColumnsDirty={isColumnsDirty}
+          isFiltersDirty={isFiltersDirty}
+        />
+      }
+    >
       <div className="space-y-6">
         <PageHeader
           title="Contactpersonen"
@@ -151,32 +212,22 @@ export default function ContactPersonsPage() {
           }
         />
 
-        {/* Filters */}
-        <div className="flex flex-col gap-4 sm:flex-row">
-          <div className="flex-1">
-            <Input
-              placeholder="Zoeken op naam, e-mail..."
-              value={search}
-              onChange={handleSearchChange}
-            />
-          </div>
-          <div className="w-48">
-            <Select
-              options={roleFilterOptions}
-              value={roleFilter}
-              onChange={(e) => {
-                setRoleFilter(e.target.value);
-                setPage(1);
-              }}
-            />
-          </div>
+        {/* Search */}
+        <div className="max-w-md">
+          <Input
+            placeholder="Zoeken op naam, e-mail..."
+            value={search}
+            onChange={handleSearchChange}
+          />
         </div>
 
         <Table
-          columns={columns}
-          data={persons}
+          columns={activeColumns}
+          data={filteredData(persons)}
           keyExtractor={(p) => p.id}
           emptyMessage="Geen contactpersonen gevonden"
+          sort={sort}
+          onSort={toggleSort}
         />
 
         {/* Pagination */}

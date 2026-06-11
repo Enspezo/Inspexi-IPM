@@ -8,18 +8,20 @@ import {
   Spinner,
   Button,
   Input,
-  Select,
   Table,
   Modal,
-  type Column,
 } from '@/components/ui';
 import { DetailPageLayout } from '@/components/layout/detail-page-layout';
 import { PageHeader } from '@/components/layout/page-header';
+import {
+  TableConfigSidebar,
+  useTableConfig,
+  type ColumnDef,
+} from '@/components/table-config';
 import { useLocations, useContacts } from './hooks/use-contacts';
 import { AddLocationModal } from './components/add-location-modal';
 
-const objectTypeFilterOptions = [
-  { value: '', label: 'Alle typen' },
+const objectTypeOptions = [
   { value: 'woning', label: 'Woning' },
   { value: 'kantoor', label: 'Kantoor' },
   { value: 'industrieel', label: 'Industrieel' },
@@ -51,17 +53,19 @@ function getContactName(contact?: LocationWithContact['contact']): string {
   return [contact.firstName, contact.lastName].filter(Boolean).join(' ') || '—';
 }
 
+function getLocationAddress(location: LocationWithContact): string {
+  return `${location.street} ${location.houseNumber}, ${location.postalCode} ${location.city}`;
+}
+
 export default function LocationsPage() {
   const navigate = useNavigate();
   const [search, setSearch] = useState('');
-  const [objectTypeFilter, setObjectTypeFilter] = useState('');
   const [page, setPage] = useState(1);
   const [isSelectContactOpen, setIsSelectContactOpen] = useState(false);
   const [createContactId, setCreateContactId] = useState<string | null>(null);
 
   const { data, isLoading, error } = useLocations({
     search: search || undefined,
-    objectType: objectTypeFilter || undefined,
     page,
     limit: 20,
   });
@@ -74,10 +78,15 @@ export default function LocationsPage() {
     [],
   );
 
-  const columns: Column<LocationWithContact>[] = [
+  const columns: ColumnDef<LocationWithContact>[] = [
     {
       key: 'name',
       header: 'Naam',
+      pinned: true,
+      sortable: true,
+      filterable: true,
+      filterType: 'text',
+      getFilterValue: (location) => location.name,
       render: (location) => (
         <button
           onClick={() => navigate(`/contacts/locations/${location.id}`)}
@@ -90,6 +99,10 @@ export default function LocationsPage() {
     {
       key: 'address',
       header: 'Adres',
+      sortable: true,
+      filterable: true,
+      filterType: 'text',
+      getFilterValue: (location) => getLocationAddress(location),
       render: (location) => (
         <span className="text-gray-600">
           {location.street} {location.houseNumber}, {location.postalCode} {location.city}
@@ -97,8 +110,27 @@ export default function LocationsPage() {
       ),
     },
     {
+      key: 'city',
+      header: 'Stad',
+      defaultVisible: false,
+      sortable: true,
+      filterable: true,
+      filterType: 'text',
+      groupable: true,
+      getFilterValue: (location) => location.city,
+      render: (location) => (
+        <span className="text-gray-600">{location.city || '—'}</span>
+      ),
+    },
+    {
       key: 'objectType',
       header: 'Type',
+      sortable: true,
+      filterable: true,
+      filterType: 'select',
+      filterOptions: objectTypeOptions,
+      groupable: true,
+      getFilterValue: (location) => location.objectType ?? '',
       render: (location) =>
         location.objectType ? (
           <span
@@ -115,6 +147,12 @@ export default function LocationsPage() {
     {
       key: 'contact',
       header: 'Relatie',
+      sortable: true,
+      filterable: true,
+      filterType: 'text',
+      groupable: true,
+      getFilterValue: (location) =>
+        location.contact ? getContactName(location.contact) : '',
       render: (location) => (
         <button
           onClick={(e) => {
@@ -128,6 +166,25 @@ export default function LocationsPage() {
       ),
     },
   ];
+
+  const {
+    activeColumns,
+    filteredData,
+    pendingColumnConfig,
+    setPendingColumnConfig,
+    pendingFilters,
+    setPendingFilters,
+    pendingGrouping,
+    setPendingGrouping,
+    applyColumns,
+    applyFilters,
+    resetToDefaults,
+    isColumnsDirty,
+    isFiltersDirty,
+    allColumns,
+    sort,
+    toggleSort,
+  } = useTableConfig({ pageKey: 'locations', columns });
 
   if (isLoading) {
     return (
@@ -149,7 +206,24 @@ export default function LocationsPage() {
 
   return (
     <>
-      <DetailPageLayout>
+      <DetailPageLayout
+        sidebar={
+          <TableConfigSidebar
+            columns={allColumns}
+            pendingColumnConfig={pendingColumnConfig}
+            onColumnConfigChange={setPendingColumnConfig}
+            pendingFilters={pendingFilters}
+            onFiltersChange={setPendingFilters}
+            pendingGrouping={pendingGrouping}
+            onGroupingChange={setPendingGrouping}
+            onApplyColumns={applyColumns}
+            onApplyFilters={applyFilters}
+            onReset={resetToDefaults}
+            isColumnsDirty={isColumnsDirty}
+            isFiltersDirty={isFiltersDirty}
+          />
+        }
+      >
         <div className="space-y-6">
           <PageHeader
             title="Locaties"
@@ -171,32 +245,22 @@ export default function LocationsPage() {
             }
           />
 
-          {/* Filters */}
-          <div className="flex flex-col gap-4 sm:flex-row">
-            <div className="flex-1">
-              <Input
-                placeholder="Zoeken op naam, adres, stad..."
-                value={search}
-                onChange={handleSearchChange}
-              />
-            </div>
-            <div className="w-48">
-              <Select
-                options={objectTypeFilterOptions}
-                value={objectTypeFilter}
-                onChange={(e) => {
-                  setObjectTypeFilter(e.target.value);
-                  setPage(1);
-                }}
-              />
-            </div>
+          {/* Search */}
+          <div className="max-w-md">
+            <Input
+              placeholder="Zoeken op naam, adres, stad..."
+              value={search}
+              onChange={handleSearchChange}
+            />
           </div>
 
           <Table
-            columns={columns}
-            data={locations}
+            columns={activeColumns}
+            data={filteredData(locations)}
             keyExtractor={(l) => l.id}
             emptyMessage="Geen locaties gevonden"
+            sort={sort}
+            onSort={toggleSort}
           />
 
           {/* Pagination */}

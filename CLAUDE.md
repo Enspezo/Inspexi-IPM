@@ -34,7 +34,7 @@ pnpm dev                      # Start API (3000) + Portal (5173)
 │   │   │   ├── common/       # Guards, middleware, decorators, filters, interfaces
 │   │   │   ├── modules/      # 15 feature modules
 │   │   │   └── prisma/       # PrismaService
-│   │   └── test/             # 9 E2E test suites
+│   │   └── test/             # 12 E2E test suites
 │   └── portal/               # React 18 frontend (poort 5173)
 │       └── src/
 │           ├── main.tsx       # React root, providers
@@ -160,6 +160,17 @@ src/modules/contacts/
 - **Entity Name Enrichment**: Services (tasks, documents) gebruiken `enrichWithEntityNames()` — batch-lookup per entityType (Contact, Request, Quote, Product, Task) → `Map<entityId, displayName>` → voegt `entityName` veld toe aan response. Contact: bedrijfsnaam of "voornaam achternaam"; Request: titel; Quote: offertenummer; Task: titel
 - **Notification dispatch bij upload/toewijzing**: Asynchroon (fire-and-forget), ontvangers worden bepaald op basis van entity eigenaarschap, creator wordt uitgesloten
 
+### Shared API Utilities (`apps/api/src/common/utils/`)
+
+Gebruik deze helpers in **alle** services — geen inline skip/take/count, org-scope ifs of not-found checks meer:
+
+- `paginate<T>(model, { where, include, select, orderBy, page, limit })` → `Promise<{ data, total, page, limit }>` — vervangt het `Promise.all([findMany, count])` patroon. Voorbeeld: `return paginate(this.prisma.task, { where, include, orderBy, page, limit });`
+- `buildOrderBy(sortBy, sortOrder, allowedFields, defaultOrderBy?)` — bouwt veilige orderBy uit user input; onbekende velden vallen terug op default (`{ createdAt: 'desc' }`). Let op: kan geen array-orderBy uitdrukken (price-tables/planning houden eigen orderBy)
+- `orgScope(user)` → `{ orgId?: string }` — SUPERUSER (orgId null) krijgt `{}` (geen filter), anders `{ orgId: user.orgId }`. Spread in where: `{ ...orgScope(user), isDeleted: false }`
+- `assertFound(entity, 'Relatie')` → returnt entity of gooit `NotFoundException('Relatie niet gevonden')` (NL melding)
+
+Alles geëxporteerd via `@/common` (`src/common/index.ts` → `utils/index.ts`). **`isDeleted: false` blijft expliciet per query** — er is GEEN soft-delete middleware; deze filters nooit verwijderen.
+
 ### Storage Abstractielaag
 
 **Locatie:** `apps/api/src/common/services/storage/`
@@ -242,6 +253,24 @@ Bash script dat dummy documenten (PDF, PNG, CSV, SVG, DOCX, XLSX) genereert en u
 ### UI Component Patterns
 
 **Componenten (`components/ui/`)**: Button, Input, Select, Badge, Checkbox, Table, Modal, Card, Spinner, ToastProvider/useToast. Allemaal custom Tailwind — geen externe component library.
+
+### Shared Portal Lib & Components (verplicht gebruiken — geen lokale duplicaten)
+
+**`lib/format.ts`** — alle datum/valuta/bestandsgrootte formatting; null/undefined → `'—'`:
+- `formatDate(value)` → "8 juni 2026", `formatShortDate(value)` → "08-06-2026", `formatDateTime(value)` → datum + tijd
+- `formatCurrency(value)` → "€ 1.234,56" (Intl nl-NL EUR), `formatFileSize(bytes)` → "2,4 MB"
+
+**`lib/status.ts`** — canonieke status-mappings, NOOIT lokaal opnieuw definiëren:
+- `StatusMap = Record<string, { label, classes }>`; `getStatusConfig(map, value)` met grijze fallback voor onbekende waarden
+- Maps: `TASK_STATUS`, `TASK_TYPE`, `REQUEST_STATUS`, `PRIORITY`, `QUOTE_STATUS`, `APPROVAL_STATUS`, `PLANNING_STATUS`, `SESSION_STATUS`, `ACCEPTANCE_STATUS`, `WORK_ORDER_STATUS`, `PROJECT_STATUS`, `LOG_TYPE`, `ERROR_REPORT_STATUS`, `CONTACT_TYPE`, `AUDIT_ACTION` + `REQUEST_SOURCE_LABELS`, `ENTITY_TYPE_LABELS`
+
+**Shared UI (via `@/components/ui` barrel)**:
+- `<StatusBadge map={QUOTE_STATUS} value={quote.status} />` — status-pill op basis van `lib/status.ts`
+- `<ErrorBox>foutmelding</ErrorBox>` — rode error-box (vervangt lokale `bg-danger-50` divs)
+- `<InfoField label="..." value={...} />` — lees-modus veld op detailpagina's (dt/dd, `'—'` fallback)
+- `<Tabs tabs={TabDef[]} active={tab} onChange={setTab} />` — `TabDef = { key, label, count?, icon? }`
+- `useConfirm()` — promise-based confirm-modal: `const confirmed = await confirm({ title, message, confirmLabel })`. **NOOIT `window.confirm`**. `ConfirmProvider` staat in `main.tsx`
+- `<PageHeader title="..." description="..." actions={...} />` (`components/layout/page-header.tsx`) — header van elke overzichtspagina
 
 **DetailPageLayout** (`components/layout/detail-page-layout.tsx`):
 - Props: `children` (main content) + `sidebar?` (ReactNode)
@@ -416,7 +445,7 @@ Extra hooks patroon voor organisatie-instellingen:
 
 ```bash
 cd apps/api
-pnpm test                     # 163 tests
+pnpm test                     # 587 tests, 36 suites
 pnpm test:watch               # Watch mode
 pnpm test:cov                 # Met coverage
 ```
@@ -429,7 +458,7 @@ pnpm test:cov                 # Met coverage
 
 ```bash
 cd apps/api
-pnpm test:e2e                 # 107 tests, 9 suites
+pnpm test:e2e                 # 139 tests, 12 suites
 ```
 
 - Config: `test/jest-e2e.json`
@@ -580,6 +609,7 @@ Commits volgen het patroon: `feat: implement PRD-{nr} — {beschrijving}`
 - **"Mijn X" filter patroon**: Checkbox "Mijn taken" / "Mijn documenten" → `onlyMine` boolean state → query param → backend filtert op `uploadedById = user.id` of `assignedToId = user.id`
 - **Auto-slug in modals**: slug wordt automatisch afgeleid van naam (lowercase, strip non-alphanumeric) met `slugTouched` state flag — stopt zodra gebruiker slug handmatig bewerkt
 - **Geen delete voor organisaties**: te destructief (cascade over alle tenant-data); eventueel later via soft-delete
+- **Grote pagina's splitsen**: detailpagina's blijven `export default function` op het originele pad (React.lazy); secties/tabs/modals gaan naar een co-located `components/` map naast de pagina. Data via props doorgeven — extracted components fetchen niet opnieuw
 
 ## Bekende Gotchas
 

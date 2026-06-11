@@ -1,14 +1,17 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { TaskStatus, TaskEntityType, DocumentEntityType, Role } from '@/types';
-import { ActionMenu, Button, Card, ErrorBox, Spinner, StatusBadge, Select, useConfirm, useToast } from '@/components/ui';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
+import { TaskStatus, TaskType, TaskEntityType, DocumentEntityType, Role } from '@/types';
+import { ActionMenu, Button, Card, ErrorBox, Input, Spinner, StatusBadge, Select, useConfirm, useToast } from '@/components/ui';
 import { formatDate } from '@/lib/format';
 import { ENTITY_TYPE_LABELS, TASK_STATUS, TASK_TYPE } from '@/lib/status';
 import { DetailPageLayout } from '@/components/layout/detail-page-layout';
 import { HistorySidebarSection } from '@/components/layout/sidebar-sections';
 import { useAuth } from '@/providers/auth-provider';
+import { useUsers } from '@/pages/users/hooks/use-users';
 import { useTask, useUpdateTask, useDeleteTask } from './hooks/use-tasks';
-import { EditTaskModal } from './components/edit-task-modal';
 import { DocumentsSection, UploadDocumentModal } from '@/components/documents';
 
 const canWrite = [Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE, Role.WERKVOORBEREIDER];
@@ -17,6 +20,21 @@ const statusOptions = Object.values(TaskStatus).map((s) => ({
   value: s,
   label: TASK_STATUS[s]?.label || s,
 }));
+
+const taskTypeOptions = Object.values(TaskType).map((t) => ({
+  value: t,
+  label: TASK_TYPE[t]?.label || t,
+}));
+
+const taskSchema = z.object({
+  title: z.string().min(1, 'Titel is verplicht'),
+  taskType: z.string().optional(),
+  assigneeId: z.string().optional(),
+  deadline: z.string().optional(),
+  description: z.string().optional(),
+});
+
+type TaskFormData = z.infer<typeof taskSchema>;
 
 const entityTypeRoutes: Record<string, string> = {
   [TaskEntityType.CONTACT]: '/contacts',
@@ -34,12 +52,41 @@ export default function TaskDetailPage() {
   const { data: task, isLoading, error } = useTask(id!);
   const updateMutation = useUpdateTask();
   const deleteMutation = useDeleteTask();
+  const { data: users } = useUsers();
 
-  const [isEditOpen, setIsEditOpen] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
   const [isDocUploadOpen, setIsDocUploadOpen] = useState(false);
   const [newStatus, setNewStatus] = useState('');
 
   const userCanWrite = user && user.roles.some(r => canWrite.includes(r));
+
+  const {
+    register,
+    handleSubmit,
+    reset: resetForm,
+    formState: { errors: formErrors, isDirty },
+  } = useForm<TaskFormData>({ resolver: zodResolver(taskSchema) });
+
+  useEffect(() => {
+    if (task) {
+      resetForm({
+        title: task.title,
+        taskType: task.taskType || 'TO_DO',
+        assigneeId: task.assigneeId || '',
+        deadline: task.deadline ? task.deadline.split('T')[0] : '',
+        description: task.description || '',
+      });
+    }
+  }, [task, resetForm]);
+
+  // Opties voor "Toegewezen aan": Niet toegewezen → Ikzelf → overige actieve gebruikers
+  const assigneeOptions = [
+    { value: '', label: 'Niet toegewezen' },
+    ...(user ? [{ value: user.id, label: 'Ikzelf' }] : []),
+    ...(users || [])
+      .filter((u) => u.id !== user?.id && u.isActive)
+      .map((u) => ({ value: u.id, label: `${u.firstName} ${u.lastName}` })),
+  ];
 
   if (isLoading) {
     return (
@@ -61,6 +108,39 @@ export default function TaskDetailPage() {
     task.deadline &&
     task.status !== TaskStatus.VOLTOOID &&
     new Date(task.deadline) < new Date();
+
+  const onSubmitTask = async (data: TaskFormData) => {
+    try {
+      await updateMutation.mutateAsync({
+        id: task.id,
+        data: {
+          title: data.title,
+          description: data.description || undefined,
+          taskType: (data.taskType as TaskType) || undefined,
+          assigneeId: data.assigneeId || null,
+          deadline: data.deadline || null,
+        },
+      });
+      showToast('Taak bijgewerkt', 'success');
+      setIsEditing(false);
+    } catch (err) {
+      showToast(
+        err instanceof Error ? err.message : 'Bijwerken mislukt',
+        'error',
+      );
+    }
+  };
+
+  const handleCancelEdit = () => {
+    resetForm({
+      title: task.title,
+      taskType: task.taskType || 'TO_DO',
+      assigneeId: task.assigneeId || '',
+      deadline: task.deadline ? task.deadline.split('T')[0] : '',
+      description: task.description || '',
+    });
+    setIsEditing(false);
+  };
 
   const handleStatusUpdate = async () => {
     if (!newStatus) return;
@@ -156,7 +236,57 @@ export default function TaskDetailPage() {
       {/* Info cards */}
       <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
         <Card>
-          <h3 className="mb-4 text-sm font-semibold text-gray-900">Details</h3>
+          <div className="mb-4 flex items-center justify-between">
+            <h3 className="text-sm font-semibold text-gray-900">Details</h3>
+            {userCanWrite && !isEditing && (
+              <Button variant="secondary" size="sm" onClick={() => setIsEditing(true)}>
+                Bewerken
+              </Button>
+            )}
+          </div>
+          {isEditing ? (
+            <form onSubmit={handleSubmit(onSubmitTask)} className="space-y-4">
+              <Input
+                label="Titel"
+                error={formErrors.title?.message}
+                {...register('title')}
+              />
+              <Select
+                label="Type"
+                options={taskTypeOptions}
+                {...register('taskType')}
+              />
+              <Select
+                label="Toegewezen aan"
+                options={assigneeOptions}
+                {...register('assigneeId')}
+              />
+              <Input
+                label="Deadline"
+                type="date"
+                {...register('deadline')}
+              />
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-gray-700">
+                  Omschrijving
+                </label>
+                <textarea
+                  {...register('description')}
+                  rows={3}
+                  className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
+                  placeholder="Optionele omschrijving..."
+                />
+              </div>
+              <div className="flex justify-end gap-3 pt-2">
+                <Button type="button" variant="secondary" onClick={handleCancelEdit}>
+                  Annuleren
+                </Button>
+                <Button type="submit" disabled={!isDirty} isLoading={updateMutation.isPending}>
+                  Opslaan
+                </Button>
+              </div>
+            </form>
+          ) : (
           <dl className="space-y-3">
             <div className="flex justify-between">
               <dt className="text-sm text-gray-500">Status</dt>
@@ -198,6 +328,7 @@ export default function TaskDetailPage() {
               <dd className="text-sm text-gray-900">{formatDate(task.createdAt)}</dd>
             </div>
           </dl>
+          )}
         </Card>
 
         <Card>
@@ -273,7 +404,7 @@ export default function TaskDetailPage() {
         </p>
         {userCanWrite && (
           <div className="flex gap-2">
-            <Button variant="secondary" onClick={() => setIsEditOpen(true)}>
+            <Button variant="secondary" onClick={() => setIsEditing(true)}>
               Bewerken
             </Button>
             <Button
@@ -286,15 +417,6 @@ export default function TaskDetailPage() {
           </div>
         )}
       </div>
-
-      {/* Edit modal */}
-      {isEditOpen && (
-        <EditTaskModal
-          isOpen={isEditOpen}
-          onClose={() => setIsEditOpen(false)}
-          task={task}
-        />
-      )}
 
       {isDocUploadOpen && (
         <UploadDocumentModal

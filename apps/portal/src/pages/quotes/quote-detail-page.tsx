@@ -1,5 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
 import {
   QuoteStatus,
   Role,
@@ -10,7 +13,7 @@ import {
   NoteEntityType,
 } from '@/types';
 import type { Task, ContactLog } from '@/types';
-import { ActionMenu, type ActionMenuItem, Button, Card, ErrorBox, Spinner, StatusBadge, Input, Table, useConfirm, useToast, type Column } from '@/components/ui';
+import { ActionMenu, type ActionMenuItem, Button, Card, ErrorBox, InfoField, Spinner, StatusBadge, Input, Table, useConfirm, useToast, type Column } from '@/components/ui';
 import { formatCurrency, formatDate, formatFileSize } from '@/lib/format';
 import { APPROVAL_STATUS, getStatusConfig, LOG_TYPE, QUOTE_STATUS } from '@/lib/status';
 import { DetailPageLayout, SidebarSection } from '@/components/layout/detail-page-layout';
@@ -18,6 +21,7 @@ import { NotesSidebarSection, HistorySidebarSection, DocumentsSidebarSection } f
 import { useAuth } from '@/providers/auth-provider';
 import {
   useQuote,
+  useUpdateQuote,
   useSubmitApproval,
   useRejectQuote,
   useUpdateQuoteStatus,
@@ -43,6 +47,14 @@ import { getAccessToken } from '@/lib/api-client';
 const canWrite = [Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE];
 const canApprove = [Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER];
 
+const quoteSchema = z.object({
+  subject: z.string().min(1, 'Onderwerp is verplicht'),
+  validUntil: z.string().optional(),
+  internalNotes: z.string().optional(),
+});
+
+type QuoteFormData = z.infer<typeof quoteSchema>;
+
 // Lokale variant: lange maand mét tijd — wijkt af van de gedeelde formatDateTime (korte maand)
 function formatDateTimeLong(dateStr: string): string {
   return new Date(dateStr).toLocaleDateString('nl-NL', {
@@ -67,6 +79,7 @@ export default function QuoteDetailPage() {
   const { showToast } = useToast();
   const confirm = useConfirm();
   const { data: quote, isLoading, error } = useQuote(id!);
+  const updateQuoteMutation = useUpdateQuote(id!);
   const submitApprovalMutation = useSubmitApproval(id!);
   const rejectMutation = useRejectQuote(id!);
   const updateStatusMutation = useUpdateQuoteStatus(id!);
@@ -78,6 +91,7 @@ export default function QuoteDetailPage() {
   // Fetch contact logs for this quote's contact
   const { data: contactLogs } = useContactLogs(quote?.contactId || '');
 
+  const [isEditing, setIsEditing] = useState(false);
   const [rejectNote, setRejectNote] = useState('');
   const [showRejectInput, setShowRejectInput] = useState(false);
   const [isTaskOpen, setIsTaskOpen] = useState(false);
@@ -98,6 +112,50 @@ export default function QuoteDetailPage() {
 
   const userCanWrite = user && user.roles.some(r => canWrite.includes(r));
   const userCanApprove = user && user.roles.some(r => canApprove.includes(r));
+  // Backend staat bewerken alleen toe bij status CONCEPT (quotes.service.ts update())
+  const canEditQuote = !!userCanWrite && quote?.status === QuoteStatus.CONCEPT;
+
+  const {
+    register,
+    handleSubmit,
+    reset: resetForm,
+    formState: { errors: formErrors, isDirty },
+  } = useForm<QuoteFormData>({ resolver: zodResolver(quoteSchema) });
+
+  useEffect(() => {
+    if (quote) {
+      resetForm({
+        subject: quote.subject || '',
+        validUntil: quote.validUntil ? quote.validUntil.split('T')[0] : '',
+        internalNotes: quote.internalNotes || '',
+      });
+    }
+  }, [quote, resetForm]);
+
+  const onSubmitQuote = async (data: QuoteFormData) => {
+    try {
+      await updateQuoteMutation.mutateAsync({
+        subject: data.subject,
+        validUntil: data.validUntil || undefined,
+        internalNotes: data.internalNotes || undefined,
+      });
+      showToast('Offerte bijgewerkt', 'success');
+      setIsEditing(false);
+    } catch {
+      showToast('Bijwerken mislukt', 'error');
+    }
+  };
+
+  const handleCancelEdit = () => {
+    if (quote) {
+      resetForm({
+        subject: quote.subject || '',
+        validUntil: quote.validUntil ? quote.validUntil.split('T')[0] : '',
+        internalNotes: quote.internalNotes || '',
+      });
+    }
+    setIsEditing(false);
+  };
 
   const handleSubmitApproval = async () => {
     try {
@@ -401,7 +459,50 @@ export default function QuoteDetailPage() {
 
         {/* Info grid */}
         <Card>
+          <div className="mb-4 flex items-center justify-between">
+            <h3 className="text-sm font-semibold text-gray-900">Offertegegevens</h3>
+            {canEditQuote && !isEditing && (
+              <Button variant="secondary" size="sm" onClick={() => setIsEditing(true)}>
+                Bewerken
+              </Button>
+            )}
+          </div>
+          {isEditing ? (
+            <form onSubmit={handleSubmit(onSubmitQuote)} className="space-y-4">
+              <Input
+                label="Onderwerp"
+                error={formErrors.subject?.message}
+                {...register('subject')}
+              />
+              <Input
+                label="Geldig tot"
+                type="date"
+                error={formErrors.validUntil?.message}
+                {...register('validUntil')}
+              />
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-gray-700">
+                  Interne notities
+                </label>
+                <textarea
+                  {...register('internalNotes')}
+                  rows={3}
+                  className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
+                  placeholder="Interne notities (niet zichtbaar voor klant)..."
+                />
+              </div>
+              <div className="flex justify-end gap-3 pt-2">
+                <Button type="button" variant="secondary" onClick={handleCancelEdit}>
+                  Annuleren
+                </Button>
+                <Button type="submit" disabled={!isDirty} isLoading={updateQuoteMutation.isPending}>
+                  Opslaan
+                </Button>
+              </div>
+            </form>
+          ) : (
           <div className="grid grid-cols-2 gap-6 lg:grid-cols-3">
+            <InfoField label="Onderwerp" value={quote.subject} />
             <div>
               <dt className="text-sm font-medium text-gray-500">Relatie</dt>
               <dd className="mt-1 text-sm text-gray-900">
@@ -468,6 +569,7 @@ export default function QuoteDetailPage() {
               </div>
             )}
           </div>
+          )}
         </Card>
 
         <CustomFieldsDisplay

@@ -1,8 +1,5 @@
-import { useState, useEffect, useRef } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
-import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import { z } from 'zod';
+import { useState } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
 import {
   QuoteStatus,
   Role,
@@ -12,10 +9,9 @@ import {
   CustomFieldEntityType,
   NoteEntityType,
 } from '@/types';
-import type { Task, ContactLog } from '@/types';
-import { ActionMenu, type ActionMenuItem, Button, Card, ErrorBox, InfoField, Spinner, StatusBadge, Input, Table, useConfirm, useToast, type Column } from '@/components/ui';
-import { formatCurrency, formatDate, formatFileSize } from '@/lib/format';
-import { APPROVAL_STATUS, getStatusConfig, LOG_TYPE, QUOTE_STATUS } from '@/lib/status';
+import { ActionMenu, Button, Card, ErrorBox, Spinner, StatusBadge, Input, Table, useConfirm, useToast, type Column } from '@/components/ui';
+import { formatCurrency, formatDate } from '@/lib/format';
+import { APPROVAL_STATUS, getStatusConfig, QUOTE_STATUS } from '@/lib/status';
 import { DetailPageLayout, SidebarSection } from '@/components/layout/detail-page-layout';
 import { NotesSidebarSection, HistorySidebarSection, DocumentsSidebarSection } from '@/components/layout/sidebar-sections';
 import { useAuth } from '@/providers/auth-provider';
@@ -26,51 +22,27 @@ import {
   useRejectQuote,
   useUpdateQuoteStatus,
   useDeleteQuote,
-  useAddQuestion,
-  useAnswerQuestion,
-  useUploadQuoteAttachment,
-  useDeleteQuoteAttachment,
 } from './hooks/use-quotes';
-import type { QuoteLine, QuoteApprovalRequest, QuoteQuestion, QuoteAttachment } from '@/types';
+import type { QuoteLine, QuoteApprovalRequest } from '@/types';
 import { useContactLogs } from '@/pages/contacts/hooks/use-contacts';
 import { AddLogModal } from '@/pages/contacts/components/add-log-modal';
-import { useTasks, useUpdateTask } from '@/pages/tasks/hooks/use-tasks';
+import { useTasks } from '@/pages/tasks/hooks/use-tasks';
 import { CreateTaskModal } from '@/pages/tasks/components/create-task-modal';
-import { EditTaskModal } from '@/pages/tasks/components/edit-task-modal';
 import { CustomFieldsDisplay } from '@/components/custom-fields';
 import { SendQuoteModal } from './components/send-quote-modal';
 import { ApproveQuoteModal } from './components/approve-quote-modal';
 import { PdfPreviewModal } from './components/pdf-preview-modal';
+import { QuoteInfoCard } from './components/quote-detail-info-card';
+import { QuoteQuestionsCard } from './components/quote-detail-questions-card';
+import { QuoteAttachmentsCard } from './components/quote-detail-attachments-card';
+import { QuoteTasksSidebar } from './components/quote-detail-tasks-sidebar';
+import { ContactLogsSidebar } from './components/quote-detail-contact-logs-sidebar';
+import { formatDateTimeLong } from './components/quote-detail-helpers';
 import { RichTextViewer } from '@/components/ui';
 import { getAccessToken } from '@/lib/api-client';
 
 const canWrite = [Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE];
 const canApprove = [Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER];
-
-const quoteSchema = z.object({
-  subject: z.string().min(1, 'Onderwerp is verplicht'),
-  validUntil: z.string().optional(),
-  internalNotes: z.string().optional(),
-});
-
-type QuoteFormData = z.infer<typeof quoteSchema>;
-
-// Lokale variant: lange maand mét tijd — wijkt af van de gedeelde formatDateTime (korte maand)
-function formatDateTimeLong(dateStr: string): string {
-  return new Date(dateStr).toLocaleDateString('nl-NL', {
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-}
-
-function getContactName(contact?: { companyName?: string | null; firstName?: string | null; lastName?: string | null }): string {
-  if (!contact) return '—';
-  if (contact.companyName) return contact.companyName;
-  return [contact.firstName, contact.lastName].filter(Boolean).join(' ') || '—';
-}
 
 export default function QuoteDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -84,14 +56,10 @@ export default function QuoteDetailPage() {
   const rejectMutation = useRejectQuote(id!);
   const updateStatusMutation = useUpdateQuoteStatus(id!);
   const deleteMutation = useDeleteQuote();
-  const addQuestionMutation = useAddQuestion(id!);
-  const uploadAttachmentMutation = useUploadQuoteAttachment(id!);
-  const deleteAttachmentMutation = useDeleteQuoteAttachment(id!);
 
   // Fetch contact logs for this quote's contact
   const { data: contactLogs } = useContactLogs(quote?.contactId || '');
 
-  const [isEditing, setIsEditing] = useState(false);
   const [rejectNote, setRejectNote] = useState('');
   const [showRejectInput, setShowRejectInput] = useState(false);
   const [isTaskOpen, setIsTaskOpen] = useState(false);
@@ -99,12 +67,6 @@ export default function QuoteDetailPage() {
   const [isSendOpen, setIsSendOpen] = useState(false);
   const [isApproveOpen, setIsApproveOpen] = useState(false);
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
-  const [newQuestion, setNewQuestion] = useState('');
-  const [answeringId, setAnsweringId] = useState<string | null>(null);
-  const [answerText, setAnswerText] = useState('');
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
-  const answerMutation = useAnswerQuestion(id!, answeringId ?? '');
 
   const { data: tasksData } = useTasks({ entityType: TaskEntityType.QUOTE, entityId: id, limit: 100 });
   const quoteTasks = tasksData?.data || [];
@@ -114,48 +76,6 @@ export default function QuoteDetailPage() {
   const userCanApprove = user && user.roles.some(r => canApprove.includes(r));
   // Backend staat bewerken alleen toe bij status CONCEPT (quotes.service.ts update())
   const canEditQuote = !!userCanWrite && quote?.status === QuoteStatus.CONCEPT;
-
-  const {
-    register,
-    handleSubmit,
-    reset: resetForm,
-    formState: { errors: formErrors, isDirty },
-  } = useForm<QuoteFormData>({ resolver: zodResolver(quoteSchema) });
-
-  useEffect(() => {
-    if (quote) {
-      resetForm({
-        subject: quote.subject || '',
-        validUntil: quote.validUntil ? quote.validUntil.split('T')[0] : '',
-        internalNotes: quote.internalNotes || '',
-      });
-    }
-  }, [quote, resetForm]);
-
-  const onSubmitQuote = async (data: QuoteFormData) => {
-    try {
-      await updateQuoteMutation.mutateAsync({
-        subject: data.subject,
-        validUntil: data.validUntil || undefined,
-        internalNotes: data.internalNotes || undefined,
-      });
-      showToast('Offerte bijgewerkt', 'success');
-      setIsEditing(false);
-    } catch {
-      showToast('Bijwerken mislukt', 'error');
-    }
-  };
-
-  const handleCancelEdit = () => {
-    if (quote) {
-      resetForm({
-        subject: quote.subject || '',
-        validUntil: quote.validUntil ? quote.validUntil.split('T')[0] : '',
-        internalNotes: quote.internalNotes || '',
-      });
-    }
-    setIsEditing(false);
-  };
 
   const handleSubmitApproval = async () => {
     try {
@@ -193,65 +113,6 @@ export default function QuoteDetailPage() {
       showToast('Offerte verwijderd', 'success');
       navigate('/quotes');
     } catch { showToast('Verwijderen mislukt', 'error'); }
-  };
-
-  const handleAddQuestion = async () => {
-    if (!newQuestion.trim()) return;
-    try {
-      await addQuestionMutation.mutateAsync({ message: newQuestion });
-      setNewQuestion('');
-      showToast('Bericht toegevoegd', 'success');
-    } catch { showToast('Toevoegen mislukt', 'error'); }
-  };
-
-  const handleAnswer = async () => {
-    if (!answerText.trim() || !answeringId) return;
-    try {
-      await answerMutation.mutateAsync({ message: answerText });
-      setAnswerText('');
-      setAnsweringId(null);
-      showToast('Antwoord verstuurd', 'success');
-    } catch { showToast('Versturen mislukt', 'error'); }
-  };
-
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    try {
-      await uploadAttachmentMutation.mutateAsync(file);
-      showToast('Bijlage geüpload', 'success');
-    } catch { showToast('Uploaden mislukt', 'error'); }
-    if (fileInputRef.current) fileInputRef.current.value = '';
-  };
-
-  const handleDeleteAttachment = async (attachmentId: string) => {
-    const confirmed = await confirm({
-      title: 'Bijlage verwijderen',
-      message: 'Bijlage verwijderen?',
-      confirmLabel: 'Verwijderen',
-    });
-    if (!confirmed) return;
-    try {
-      await deleteAttachmentMutation.mutateAsync(attachmentId);
-      showToast('Bijlage verwijderd', 'success');
-    } catch { showToast('Verwijderen mislukt', 'error'); }
-  };
-
-  const handleDownloadAttachment = async (attachment: QuoteAttachment) => {
-    try {
-      const response = await fetch(`/api/v1/quotes/${id}/attachments/${attachment.id}/download`, {
-        headers: { Authorization: `Bearer ${localStorage.getItem('accessToken') ?? ''}` },
-        credentials: 'include',
-      });
-      // Use apiClient approach: fetch with auth
-      const blob = await response.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = attachment.fileName;
-      a.click();
-      URL.revokeObjectURL(url);
-    } catch { showToast('Downloaden mislukt', 'error'); }
   };
 
   if (isLoading) {
@@ -458,119 +319,12 @@ export default function QuoteDetailPage() {
         )}
 
         {/* Info grid */}
-        <Card>
-          <div className="mb-4 flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-gray-900">Offertegegevens</h3>
-            {canEditQuote && !isEditing && (
-              <Button variant="secondary" size="sm" onClick={() => setIsEditing(true)}>
-                Bewerken
-              </Button>
-            )}
-          </div>
-          {isEditing ? (
-            <form onSubmit={handleSubmit(onSubmitQuote)} className="space-y-4">
-              <Input
-                label="Onderwerp"
-                error={formErrors.subject?.message}
-                {...register('subject')}
-              />
-              <Input
-                label="Geldig tot"
-                type="date"
-                error={formErrors.validUntil?.message}
-                {...register('validUntil')}
-              />
-              <div>
-                <label className="mb-1.5 block text-sm font-medium text-gray-700">
-                  Interne notities
-                </label>
-                <textarea
-                  {...register('internalNotes')}
-                  rows={3}
-                  className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
-                  placeholder="Interne notities (niet zichtbaar voor klant)..."
-                />
-              </div>
-              <div className="flex justify-end gap-3 pt-2">
-                <Button type="button" variant="secondary" onClick={handleCancelEdit}>
-                  Annuleren
-                </Button>
-                <Button type="submit" disabled={!isDirty} isLoading={updateQuoteMutation.isPending}>
-                  Opslaan
-                </Button>
-              </div>
-            </form>
-          ) : (
-          <div className="grid grid-cols-2 gap-6 lg:grid-cols-3">
-            <InfoField label="Onderwerp" value={quote.subject} />
-            <div>
-              <dt className="text-sm font-medium text-gray-500">Relatie</dt>
-              <dd className="mt-1 text-sm text-gray-900">
-                {quote.contact ? (
-                  <Link to={`/contacts/${quote.contactId}`} className="text-primary-600 hover:text-primary-800 hover:underline">
-                    {getContactName(quote.contact)}
-                  </Link>
-                ) : '—'}
-              </dd>
-            </div>
-            <div>
-              <dt className="text-sm font-medium text-gray-500">Locatie</dt>
-              <dd className="mt-1 text-sm text-gray-900">{quote.location ? `${quote.location.name} — ${quote.location.city}` : '—'}</dd>
-            </div>
-            <div>
-              <dt className="text-sm font-medium text-gray-500">Aanvraag</dt>
-              <dd className="mt-1 text-sm text-gray-900">
-                {quote.request ? (
-                  <Link to={`/requests/${quote.requestId}`} className="text-primary-600 hover:text-primary-800 hover:underline">{quote.request.title}</Link>
-                ) : '—'}
-              </dd>
-            </div>
-            <div>
-              <dt className="text-sm font-medium text-gray-500">Template</dt>
-              <dd className="mt-1 text-sm text-gray-900">{quote.template ? quote.template.name : '—'}</dd>
-            </div>
-            <div>
-              <dt className="text-sm font-medium text-gray-500">Geldig tot</dt>
-              <dd className="mt-1 text-sm text-gray-900">
-                {quote.validUntil ? new Date(quote.validUntil).toLocaleDateString('nl-NL', { day: 'numeric', month: 'long', year: 'numeric' }) : '—'}
-              </dd>
-            </div>
-            <div>
-              <dt className="text-sm font-medium text-gray-500">Aangemaakt door</dt>
-              <dd className="mt-1 text-sm text-gray-900">
-                {quote.createdByUser ? `${quote.createdByUser.firstName} ${quote.createdByUser.lastName}` : '—'}
-              </dd>
-            </div>
-            {quote.sentAt && (
-              <div>
-                <dt className="text-sm font-medium text-gray-500">Verstuurd op</dt>
-                <dd className="mt-1 text-sm text-gray-900">{formatDate(quote.sentAt)}</dd>
-              </div>
-            )}
-            {quote.viewedAt && (
-              <div>
-                <dt className="text-sm font-medium text-gray-500">Geopend op</dt>
-                <dd className="mt-1 text-sm text-gray-900">{formatDate(quote.viewedAt)}</dd>
-              </div>
-            )}
-            {quote.publicToken && (
-              <div>
-                <dt className="text-sm font-medium text-gray-500">Publieke link</dt>
-                <dd className="mt-1 text-sm">
-                  <a
-                    href={`/offerte/${quote.publicToken}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-primary-600 hover:text-primary-800 hover:underline text-xs"
-                  >
-                    Klantportaal bekijken →
-                  </a>
-                </dd>
-              </div>
-            )}
-          </div>
-          )}
-        </Card>
+        <QuoteInfoCard
+          quote={quote}
+          canEditQuote={canEditQuote}
+          updateQuoteMutation={updateQuoteMutation}
+          showToast={showToast}
+        />
 
         <CustomFieldsDisplay
           entityType={CustomFieldEntityType.QUOTE}
@@ -634,112 +388,18 @@ export default function QuoteDetailPage() {
         )}
 
         {/* Bijlagen (quote-specifieke bestanden, los van algemene documenten) */}
-        <Card>
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-sm font-semibold text-gray-900">Bijlagen bij offerte</h3>
-            {userCanWrite && (
-              <>
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  onClick={() => fileInputRef.current?.click()}
-                  isLoading={uploadAttachmentMutation.isPending}
-                >
-                  <svg className="mr-1.5 h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" /></svg>
-                  Bijlage uploaden
-                </Button>
-                <input ref={fileInputRef} type="file" className="hidden" onChange={handleFileUpload} accept=".pdf,.jpg,.jpeg,.png,.docx,.xlsx,.csv,.zip" />
-              </>
-            )}
-          </div>
-          {(quote.attachments?.length || 0) === 0 ? (
-            <p className="text-sm text-gray-500">Geen bijlagen</p>
-          ) : (
-            <div className="space-y-2">
-              {quote.attachments?.map((att: QuoteAttachment) => (
-                <div key={att.id} className="flex items-center justify-between rounded-lg border border-gray-200 px-3 py-2">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <svg className="h-4 w-4 flex-shrink-0 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" /></svg>
-                    <span className="truncate text-sm text-gray-900">{att.fileName}</span>
-                    <span className="text-xs text-gray-400 flex-shrink-0">{formatFileSize(att.fileSize)}</span>
-                  </div>
-                  <div className="flex items-center gap-1 flex-shrink-0">
-                    <button onClick={() => handleDownloadAttachment(att)} className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600" title="Downloaden">
-                      <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
-                    </button>
-                    {userCanWrite && (
-                      <button onClick={() => handleDeleteAttachment(att.id)} className="rounded p-1 text-gray-400 hover:bg-red-50 hover:text-red-600" title="Verwijderen">
-                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                      </button>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </Card>
+        <QuoteAttachmentsCard
+          quoteId={id!}
+          attachments={quote.attachments}
+          userCanWrite={!!userCanWrite}
+        />
 
         {/* Q&A sectie */}
-        <Card>
-          <h3 className="text-sm font-semibold text-gray-900 mb-4">Vragen & Antwoorden</h3>
-          {(quote.questions?.length || 0) === 0 ? (
-            <p className="text-sm text-gray-500 mb-4">Nog geen vragen</p>
-          ) : (
-            <div className="space-y-3 mb-4">
-              {quote.questions?.map((q: QuoteQuestion) => (
-                <div
-                  key={q.id}
-                  className={`rounded-lg p-3 ${q.isFromClient ? 'bg-blue-50 border border-blue-100' : 'bg-gray-50 border border-gray-100'}`}
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${q.isFromClient ? 'bg-blue-100 text-blue-700' : 'bg-gray-200 text-gray-700'}`}>
-                        {q.isFromClient ? 'Klant' : (q.user ? `${q.user.firstName} ${q.user.lastName}` : 'Medewerker')}
-                      </span>
-                      <span className="text-xs text-gray-400">{formatDateTimeLong(q.createdAt)}</span>
-                    </div>
-                    {userCanWrite && q.isFromClient && answeringId !== q.id && (
-                      <button onClick={() => { setAnsweringId(q.id); setAnswerText(''); }} className="text-xs text-primary-600 hover:text-primary-800">
-                        Beantwoorden
-                      </button>
-                    )}
-                  </div>
-                  <p className="text-sm text-gray-800 whitespace-pre-wrap">{q.message}</p>
-                  {answeringId === q.id && (
-                    <div className="mt-3 flex gap-2">
-                      <textarea
-                        className="flex-1 rounded border border-gray-300 px-2 py-1.5 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500/20"
-                        rows={3}
-                        placeholder="Uw antwoord..."
-                        value={answerText}
-                        onChange={(e) => setAnswerText(e.target.value)}
-                      />
-                      <div className="flex flex-col gap-1">
-                        <Button size="sm" onClick={handleAnswer} isLoading={answerMutation.isPending} disabled={!answerText.trim()}>Sturen</Button>
-                        <Button size="sm" variant="secondary" onClick={() => setAnsweringId(null)}>Annuleer</Button>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-          {/* Medewerker toevoegt een bericht */}
-          {userCanWrite && (
-            <div className="flex gap-2 border-t border-gray-100 pt-4">
-              <textarea
-                className="flex-1 rounded border border-gray-300 px-2 py-1.5 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500/20"
-                rows={2}
-                placeholder="Voeg een opmerking of vraag toe..."
-                value={newQuestion}
-                onChange={(e) => setNewQuestion(e.target.value)}
-              />
-              <Button size="sm" onClick={handleAddQuestion} isLoading={addQuestionMutation.isPending} disabled={!newQuestion.trim()}>
-                Toevoegen
-              </Button>
-            </div>
-          )}
-        </Card>
+        <QuoteQuestionsCard
+          quoteId={id!}
+          questions={quote.questions}
+          userCanWrite={!!userCanWrite}
+        />
 
         {/* Internal notes */}
         {quote.internalNotes && (
@@ -797,319 +457,5 @@ export default function QuoteDetailPage() {
         )}
       </div>
     </DetailPageLayout>
-  );
-}
-
-// ─── QuoteTasksSidebar ────────────────────────────────
-
-function SidebarTaskCard({
-  task,
-  userCanWrite,
-  onStatusChange,
-  onEdit,
-  navigate,
-}: {
-  task: Task;
-  userCanWrite: boolean;
-  onStatusChange: (taskId: string, status: TaskStatus) => void;
-  onEdit: (task: Task) => void;
-  navigate: ReturnType<typeof useNavigate>;
-}) {
-  const [menuOpen, setMenuOpen] = useState(false);
-  const menuRef = useRef<HTMLDivElement>(null);
-  const isCompleted = task.status === TaskStatus.VOLTOOID;
-  const isOverdue = !isCompleted && task.deadline && new Date(task.deadline) < new Date();
-
-  useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
-        setMenuOpen(false);
-      }
-    }
-    if (menuOpen) document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [menuOpen]);
-
-  return (
-    <div
-      className={`group flex items-start gap-2.5 rounded-lg border p-2.5 transition-colors hover:bg-gray-50 ${
-        isCompleted ? 'border-gray-100 bg-gray-50' : 'border-gray-200 bg-white'
-      }`}
-    >
-      <button
-        type="button"
-        onClick={() => onStatusChange(task.id, isCompleted ? TaskStatus.TE_DOEN : TaskStatus.VOLTOOID)}
-        style={{ width: 18, height: 18 }}
-        className={`mt-0.5 flex shrink-0 items-center justify-center rounded border transition-colors ${
-          isCompleted ? 'border-green-500 bg-green-500 text-white' : 'border-gray-300 bg-white hover:border-primary-500'
-        }`}
-      >
-        {isCompleted && (
-          <svg className="h-2.5 w-2.5" viewBox="0 0 12 12" fill="none">
-            <path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-        )}
-      </button>
-
-      <div className="min-w-0 flex-1">
-        <button
-          onClick={() => navigate(`/tasks/${task.id}`)}
-          className={`text-xs font-medium leading-snug hover:underline ${
-            isCompleted ? 'text-gray-400 line-through' : 'text-gray-900'
-          }`}
-        >
-          {task.title}
-        </button>
-        <div className="mt-0.5 flex items-center gap-2 text-xs text-gray-500">
-          {task.assignee && (
-            <span title={`${task.assignee.firstName} ${task.assignee.lastName}`}>
-              {task.assignee.initials || `${task.assignee.firstName[0]}${task.assignee.lastName[0]}`}
-            </span>
-          )}
-          {task.deadline && (
-            <span className={isOverdue ? 'font-medium text-red-600' : ''}>
-              {new Date(task.deadline).toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' })}
-            </span>
-          )}
-        </div>
-      </div>
-
-      {userCanWrite && (
-        <div className="relative flex-shrink-0" ref={menuRef}>
-          <button
-            type="button"
-            onClick={(e) => { e.stopPropagation(); setMenuOpen(!menuOpen); }}
-            className="rounded p-0.5 text-gray-300 opacity-0 transition-opacity group-hover:opacity-100 hover:bg-gray-100 hover:text-gray-600"
-          >
-            <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 20 20">
-              <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" />
-            </svg>
-          </button>
-          {menuOpen && (
-            <div className="absolute right-0 z-20 mt-1 w-36 rounded-lg border border-gray-200 bg-white py-1 shadow-lg">
-              <button
-                type="button"
-                onClick={() => { setMenuOpen(false); onEdit(task); }}
-                className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-gray-700 hover:bg-gray-50"
-              >
-                <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                </svg>
-                Bewerken
-              </button>
-              <button
-                type="button"
-                onClick={() => { setMenuOpen(false); navigate(`/tasks/${task.id}`); }}
-                className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-gray-700 hover:bg-gray-50"
-              >
-                <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                </svg>
-                Ga naar taak
-              </button>
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function QuoteTasksSidebar({
-  tasks,
-  userCanWrite,
-  onCreateTask,
-}: {
-  tasks: Task[];
-  userCanWrite: boolean;
-  onCreateTask: () => void;
-}) {
-  const navigate = useNavigate();
-  const { showToast } = useToast();
-  const updateTaskMutation = useUpdateTask();
-  const [editingTask, setEditingTask] = useState<Task | null>(null);
-  const [showCompleted, setShowCompleted] = useState(false);
-
-  const incomplete = tasks.filter((t) => t.status !== TaskStatus.VOLTOOID);
-  const completed = tasks.filter((t) => t.status === TaskStatus.VOLTOOID);
-
-  const handleStatusChange = async (taskId: string, status: TaskStatus) => {
-    try {
-      await updateTaskMutation.mutateAsync({ id: taskId, data: { status } });
-    } catch {
-      showToast('Status bijwerken mislukt', 'error');
-    }
-  };
-
-  return (
-    <div className="space-y-2">
-      {userCanWrite && (
-        <div className="flex justify-end">
-          <button
-            type="button"
-            onClick={onCreateTask}
-            className="flex items-center gap-1 text-xs font-medium text-primary-600 hover:text-primary-800"
-          >
-            <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-            </svg>
-            Nieuwe taak
-          </button>
-        </div>
-      )}
-
-      {tasks.length === 0 ? (
-        <p className="text-xs text-gray-400">Nog geen taken</p>
-      ) : (
-        <>
-          {incomplete.length === 0 && (
-            <p className="text-xs text-gray-400">Geen openstaande taken</p>
-          )}
-          {incomplete.map((task) => (
-            <SidebarTaskCard
-              key={task.id}
-              task={task}
-              userCanWrite={userCanWrite}
-              onStatusChange={handleStatusChange}
-              onEdit={setEditingTask}
-              navigate={navigate}
-            />
-          ))}
-
-          {completed.length > 0 && (
-            <div>
-              <button
-                type="button"
-                onClick={() => setShowCompleted(!showCompleted)}
-                className="flex items-center gap-1 text-xs font-medium text-gray-500 hover:text-gray-700"
-              >
-                <svg
-                  className={`h-3.5 w-3.5 transition-transform ${showCompleted ? 'rotate-90' : ''}`}
-                  fill="none" viewBox="0 0 24 24" stroke="currentColor"
-                >
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                </svg>
-                Voltooid ({completed.length})
-              </button>
-              {showCompleted && (
-                <div className="mt-2 space-y-2">
-                  {completed.map((task) => (
-                    <SidebarTaskCard
-                      key={task.id}
-                      task={task}
-                      userCanWrite={userCanWrite}
-                      onStatusChange={handleStatusChange}
-                      onEdit={setEditingTask}
-                      navigate={navigate}
-                    />
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-        </>
-      )}
-
-      {editingTask && (
-        <EditTaskModal
-          isOpen={!!editingTask}
-          onClose={() => setEditingTask(null)}
-          task={editingTask}
-        />
-      )}
-    </div>
-  );
-}
-
-// ─── ContactLogsSidebar ───────────────────────────────
-
-function ContactLogsSidebar({
-  logs,
-  userCanWrite,
-  onLogOpen,
-}: {
-  logs: ContactLog[];
-  userCanWrite: boolean;
-  onLogOpen: () => void;
-}) {
-  const [showAll, setShowAll] = useState(false);
-  const MAX_ITEMS = 5;
-  const sorted = [...logs].sort(
-    (a, b) => new Date(b.loggedAt).getTime() - new Date(a.loggedAt).getTime(),
-  );
-  const visible = showAll ? sorted : sorted.slice(0, MAX_ITEMS);
-
-  return (
-    <div className="space-y-3">
-      {userCanWrite && (
-        <div className="flex justify-end">
-          <button
-            type="button"
-            onClick={onLogOpen}
-            className="flex items-center gap-1 text-xs font-medium text-primary-600 hover:text-primary-800"
-          >
-            <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-            </svg>
-            Contactmoment loggen
-          </button>
-        </div>
-      )}
-
-      {logs.length === 0 ? (
-        <p className="text-xs text-gray-400">Nog geen contactmomenten</p>
-      ) : (
-        <div className="space-y-2">
-          {visible.map((item) => (
-            <div
-              key={item.id}
-              className="rounded-lg border border-gray-200 bg-white p-3"
-            >
-              <div className="mb-1 flex items-center justify-between">
-                <span
-                  className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
-                    getStatusConfig(LOG_TYPE, item.type).classes
-                  }`}
-                >
-                  {getStatusConfig(LOG_TYPE, item.type).label}
-                </span>
-                <span className="text-xs text-gray-400">
-                  {new Date(item.loggedAt).toLocaleDateString('nl-NL', {
-                    day: 'numeric',
-                    month: 'short',
-                    hour: '2-digit',
-                    minute: '2-digit',
-                  })}
-                </span>
-              </div>
-              {item.subject && (
-                <p className="text-xs font-medium text-gray-900">{item.subject}</p>
-              )}
-              {item.body && (
-                <p className="mt-0.5 line-clamp-2 text-xs text-gray-600" title={item.body}>
-                  {item.body}
-                </p>
-              )}
-              {item.user && (
-                <p className="mt-1 text-xs text-gray-400">
-                  {item.user.firstName} {item.user.lastName}
-                </p>
-              )}
-            </div>
-          ))}
-
-          {sorted.length > MAX_ITEMS && (
-            <button
-              onClick={() => setShowAll(!showAll)}
-              className="w-full py-1 text-center text-xs font-medium text-primary-600 hover:text-primary-800"
-            >
-              {showAll
-                ? 'Minder tonen'
-                : `Alle ${sorted.length} items tonen`}
-            </button>
-          )}
-        </div>
-      )}
-    </div>
   );
 }

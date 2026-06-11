@@ -5,7 +5,8 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Role } from '@/types';
 import type { User } from '@/types';
-import { Button, Card, Input, Spinner, Badge, useToast } from '@/components/ui';
+import { Button, Card, ErrorBox, Input, Spinner, Badge, useToast } from '@/components/ui';
+import { formatDate, formatDateTime } from '@/lib/format';
 import { DetailPageLayout } from '@/components/layout/detail-page-layout';
 import { AuditHistory } from '@/components/audit-history/audit-history';
 import {
@@ -31,24 +32,6 @@ const settingsSchema = z.object({
 });
 
 type SettingsFormData = z.infer<typeof settingsSchema>;
-
-function formatDate(dateStr: string): string {
-  return new Date(dateStr).toLocaleDateString('nl-NL', {
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-  });
-}
-
-function formatDateTime(dateStr: string): string {
-  return new Date(dateStr).toLocaleDateString('nl-NL', {
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-}
 
 const roleOrder: Role[] = [
   Role.ORG_ADMIN,
@@ -116,9 +99,7 @@ export default function OrganizationDetailPage() {
 
   if (error || !org) {
     return (
-      <div className="rounded-lg bg-danger-50 p-4 text-sm text-danger-600">
-        {error?.message || 'Organisatie niet gevonden'}
-      </div>
+      <ErrorBox>{error?.message || 'Organisatie niet gevonden'}</ErrorBox>
     );
   }
 

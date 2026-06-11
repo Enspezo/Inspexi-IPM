@@ -5,7 +5,8 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Role, TaskEntityType, DocumentEntityType, TaskStatus } from '@/types';
 import type { User } from '@/types';
-import { ActionMenu, Button, Card, Input, Spinner, Badge, useToast } from '@/components/ui';
+import { ActionMenu, Button, Card, ErrorBox, Input, Spinner, Badge, useToast } from '@/components/ui';
+import { formatDate } from '@/lib/format';
 import { DetailPageLayout, SidebarSection } from '@/components/layout/detail-page-layout';
 import { AuditHistory } from '@/components/audit-history/audit-history';
 import { useAuth } from '@/providers/auth-provider';
@@ -49,14 +50,6 @@ function InfoField({ label, value }: { label: string; value: string | null | und
       <dd className="mt-1 text-sm text-gray-900">{value || '—'}</dd>
     </div>
   );
-}
-
-function formatDate(dateStr: string): string {
-  return new Date(dateStr).toLocaleDateString('nl-NL', {
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-  });
 }
 
 export default function UserDetailPage() {
@@ -127,9 +120,7 @@ export default function UserDetailPage() {
 
   if (error || !userRecord) {
     return (
-      <div className="rounded-lg bg-danger-50 p-4 text-sm text-danger-600">
-        Gebruiker niet gevonden of fout bij het laden.
-      </div>
+      <ErrorBox>Gebruiker niet gevonden of fout bij het laden.</ErrorBox>
     );
   }
 

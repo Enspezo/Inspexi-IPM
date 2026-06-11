@@ -2,7 +2,7 @@ import { useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { NotificationType } from '@/types';
 import type { Notification } from '@/types';
-import { Button, Spinner, Table, Select } from '@/components/ui';
+import { Button, ErrorBox, Spinner, Table, Select } from '@/components/ui';
 import { DetailPageLayout } from '@/components/layout/detail-page-layout';
 import {
   TableConfigSidebar,
@@ -194,9 +194,7 @@ export default function NotificationsPage() {
 
   if (error) {
     return (
-      <div className="rounded-lg bg-danger-50 p-4 text-sm text-danger-600">
-        Fout bij het laden van notificaties: {error.message}
-      </div>
+      <ErrorBox>Fout bij het laden van notificaties: {error.message}</ErrorBox>
     );
   }
 

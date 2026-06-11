@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import type { ContactPerson } from '@/types';
 import {
   ActionMenu,
+  ErrorBox,
   Spinner,
   Button,
   Input,
@@ -121,9 +122,7 @@ export default function ContactPersonsPage() {
 
   if (error) {
     return (
-      <div className="rounded-lg bg-danger-50 p-4 text-sm text-danger-600">
-        Fout bij het laden van contactpersonen: {error.message}
-      </div>
+      <ErrorBox>Fout bij het laden van contactpersonen: {error.message}</ErrorBox>
     );
   }
 

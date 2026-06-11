@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { ProductGroup } from '@/types';
-import { ActionMenu, Spinner, Button, Input, Table, type Column } from '@/components/ui';
+import { ActionMenu, ErrorBox, Spinner, Button, Input, Table, type Column } from '@/components/ui';
 import { DetailPageLayout } from '@/components/layout/detail-page-layout';
 import { useAuth } from '@/providers/auth-provider';
 import { Role } from '@/types';
@@ -74,9 +74,7 @@ export default function ProductGroupsPage() {
 
   if (error) {
     return (
-      <div className="rounded-lg bg-danger-50 p-4 text-sm text-danger-600">
-        Fout bij het laden van productgroepen: {error.message}
-      </div>
+      <ErrorBox>Fout bij het laden van productgroepen: {error.message}</ErrorBox>
     );
   }
 

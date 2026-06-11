@@ -5,11 +5,14 @@ import type { WorkOrder } from '@/types';
 import {
   ActionMenu,
   Button,
+  ErrorBox,
   Spinner,
+  StatusBadge,
   Table,
   Input,
   Select,
 } from '@/components/ui';
+import { WORK_ORDER_STATUS } from '@/lib/status';
 import { DetailPageLayout } from '@/components/layout/detail-page-layout';
 import {
   TableConfigSidebar,
@@ -19,20 +22,6 @@ import {
 import { useAuth } from '@/providers/auth-provider';
 import { useWorkOrders } from './hooks/use-work-orders';
 import { CreateWorkOrderModal } from './components/create-work-order-modal';
-
-const statusLabels: Record<WorkOrderStatus, string> = {
-  [WorkOrderStatus.IN_VOORBEREIDING]: 'In voorbereiding',
-  [WorkOrderStatus.IN_UITVOERING]: 'In uitvoering',
-  [WorkOrderStatus.UITGEVOERD]: 'Uitgevoerd',
-  [WorkOrderStatus.WACHT_OP_KLANT]: 'Wacht op klant',
-};
-
-const statusColors: Record<WorkOrderStatus, string> = {
-  [WorkOrderStatus.IN_VOORBEREIDING]: 'bg-yellow-100 text-yellow-800',
-  [WorkOrderStatus.IN_UITVOERING]: 'bg-blue-100 text-blue-800',
-  [WorkOrderStatus.UITGEVOERD]: 'bg-green-100 text-green-800',
-  [WorkOrderStatus.WACHT_OP_KLANT]: 'bg-orange-100 text-orange-800',
-};
 
 const statusFilterOptions = [
   { value: '', label: 'Alle statussen' },
@@ -96,15 +85,7 @@ export default function WorkOrdersPage() {
       groupable: true,
       sortable: true,
       getFilterValue: (wo) => wo.status,
-      render: (wo) => (
-        <span
-          className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
-            statusColors[wo.status] || 'bg-gray-100 text-gray-600'
-          }`}
-        >
-          {statusLabels[wo.status] || wo.status}
-        </span>
-      ),
+      render: (wo) => <StatusBadge status={wo.status} map={WORK_ORDER_STATUS} />,
     },
     {
       key: 'product',
@@ -244,9 +225,7 @@ export default function WorkOrdersPage() {
 
   if (error) {
     return (
-      <div className="rounded-lg bg-danger-50 p-4 text-sm text-danger-600">
-        Fout bij het laden van werkbonnen: {error.message}
-      </div>
+      <ErrorBox>Fout bij het laden van werkbonnen: {error.message}</ErrorBox>
     );
   }
 

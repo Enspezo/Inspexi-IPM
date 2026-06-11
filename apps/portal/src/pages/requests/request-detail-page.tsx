@@ -12,11 +12,11 @@ import {
   TaskStatus,
   DocumentEntityType,
   CustomFieldEntityType,
-  LogType,
   NoteEntityType,
 } from '@/types';
 import type { Task, ContactLog } from '@/types';
-import { ActionMenu, type ActionMenuItem, Button, Card, Spinner, Select, Input, useToast } from '@/components/ui';
+import { ActionMenu, type ActionMenuItem, Button, Card, ErrorBox, Spinner, StatusBadge, Select, Input, useToast } from '@/components/ui';
+import { getStatusConfig, LOG_TYPE, PRIORITY, REQUEST_SOURCE_LABELS, REQUEST_STATUS } from '@/lib/status';
 import { DetailPageLayout, SidebarSection } from '@/components/layout/detail-page-layout';
 import { NotesSidebarSection, HistorySidebarSection, DocumentsSidebarSection } from '@/components/layout/sidebar-sections';
 import { useAuth } from '@/providers/auth-provider';
@@ -41,72 +41,9 @@ type Tab = 'overzicht' | 'status';
 
 const canWrite = [Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE];
 
-const statusColors: Record<string, string> = {
-  [RequestStatus.NIEUW]: 'bg-blue-100 text-blue-800',
-  [RequestStatus.IN_BEHANDELING]: 'bg-yellow-100 text-yellow-800',
-  [RequestStatus.OFFERTE_GEMAAKT]: 'bg-purple-100 text-purple-800',
-  [RequestStatus.GEWONNEN]: 'bg-green-100 text-green-800',
-  [RequestStatus.VERLOREN]: 'bg-red-100 text-red-800',
-  [RequestStatus.ON_HOLD]: 'bg-gray-100 text-gray-600',
-};
-
-const statusLabels: Record<string, string> = {
-  [RequestStatus.NIEUW]: 'Nieuw',
-  [RequestStatus.IN_BEHANDELING]: 'In behandeling',
-  [RequestStatus.OFFERTE_GEMAAKT]: 'Offerte gemaakt',
-  [RequestStatus.GEWONNEN]: 'Gewonnen',
-  [RequestStatus.VERLOREN]: 'Verloren',
-  [RequestStatus.ON_HOLD]: 'On hold',
-};
-
-const priorityColors: Record<string, string> = {
-  [Priority.HIGH]: 'bg-red-100 text-red-800',
-  [Priority.NORMAL]: 'bg-yellow-100 text-yellow-800',
-  [Priority.LOW]: 'bg-gray-100 text-gray-600',
-};
-
-const priorityLabels: Record<string, string> = {
-  [Priority.HIGH]: 'Hoog',
-  [Priority.NORMAL]: 'Normaal',
-  [Priority.LOW]: 'Laag',
-};
-
-const sourceLabels: Record<string, string> = {
-  MANUAL: 'Handmatig',
-  WEB_FORM: 'Webformulier',
-  EMAIL: 'E-mail',
-  PHONE: 'Telefoon',
-};
-
-const taskStatusLabels: Record<string, string> = {
-  [TaskStatus.TE_DOEN]: 'Te doen',
-  [TaskStatus.MEE_BEZIG]: 'Mee bezig',
-  [TaskStatus.VOLTOOID]: 'Voltooid',
-};
-
-const taskStatusColors: Record<string, string> = {
-  [TaskStatus.TE_DOEN]: 'bg-blue-100 text-blue-800',
-  [TaskStatus.MEE_BEZIG]: 'bg-yellow-100 text-yellow-800',
-  [TaskStatus.VOLTOOID]: 'bg-green-100 text-green-800',
-};
-
-const logTypeLabels: Record<string, string> = {
-  [LogType.EMAIL]: 'E-mail',
-  [LogType.PHONE]: 'Telefoon',
-  [LogType.MEETING]: 'Vergadering',
-  [LogType.NOTE]: 'Notitie',
-};
-
-const logTypeColors: Record<string, string> = {
-  [LogType.EMAIL]: 'bg-blue-100 text-blue-800',
-  [LogType.PHONE]: 'bg-green-100 text-green-800',
-  [LogType.MEETING]: 'bg-purple-100 text-purple-800',
-  [LogType.NOTE]: 'bg-gray-100 text-gray-800',
-};
-
 const statusOptions = Object.values(RequestStatus).map((s) => ({
   value: s,
-  label: statusLabels[s] || s,
+  label: REQUEST_STATUS[s]?.label || s,
 }));
 
 const priorityOptions = [
@@ -311,9 +248,9 @@ export default function RequestDetailPage() {
 
   if (error || !request) {
     return (
-      <div className="rounded-lg bg-danger-50 p-4 text-sm text-danger-600">
+      <ErrorBox>
         {error?.message || 'Aanvraag niet gevonden'}
-      </div>
+      </ErrorBox>
     );
   }
 
@@ -382,20 +319,8 @@ export default function RequestDetailPage() {
           <div>
             <div className="flex items-center gap-3">
               <h2 className="text-2xl font-bold text-gray-900">{request.title}</h2>
-              <span
-                className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                  statusColors[request.status] || 'bg-gray-100 text-gray-600'
-                }`}
-              >
-                {statusLabels[request.status] || request.status}
-              </span>
-              <span
-                className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                  priorityColors[request.priority] || 'bg-gray-100 text-gray-600'
-                }`}
-              >
-                {priorityLabels[request.priority] || request.priority}
-              </span>
+              <StatusBadge status={request.status} map={REQUEST_STATUS} />
+              <StatusBadge status={request.priority} map={PRIORITY} />
               {request.project && (
                 <button
                   onClick={() => navigate(`/projects/${request.project!.id}`)}
@@ -603,10 +528,10 @@ export default function RequestDetailPage() {
                   <dd className="mt-1">
                     <span
                       className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
-                        priorityColors[request.priority] || 'bg-gray-100 text-gray-600'
+                        getStatusConfig(PRIORITY, request.priority).classes
                       }`}
                     >
-                      {priorityLabels[request.priority] || request.priority}
+                      {getStatusConfig(PRIORITY, request.priority).label}
                     </span>
                   </dd>
                 </div>
@@ -634,7 +559,7 @@ export default function RequestDetailPage() {
                 <div>
                   <dt className="text-sm font-medium text-gray-500">Bron</dt>
                   <dd className="mt-1 text-sm text-gray-900">
-                    {sourceLabels[request.source] || request.source}
+                    {REQUEST_SOURCE_LABELS[request.source] || request.source}
                   </dd>
                 </div>
                 <div>
@@ -680,10 +605,10 @@ export default function RequestDetailPage() {
             <div className="flex items-center gap-3">
               <span
                 className={`inline-flex items-center rounded-full px-3 py-1 text-sm font-medium ${
-                  statusColors[request.status] || 'bg-gray-100 text-gray-600'
+                  getStatusConfig(REQUEST_STATUS, request.status).classes
                 }`}
               >
-                {statusLabels[request.status] || request.status}
+                {getStatusConfig(REQUEST_STATUS, request.status).label}
               </span>
             </div>
           </Card>
@@ -737,10 +662,10 @@ export default function RequestDetailPage() {
                           <>
                             <span
                               className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
-                                statusColors[entry.fromStatus] || 'bg-gray-100 text-gray-600'
+                                getStatusConfig(REQUEST_STATUS, entry.fromStatus).classes
                               }`}
                             >
-                              {statusLabels[entry.fromStatus] || entry.fromStatus}
+                              {getStatusConfig(REQUEST_STATUS, entry.fromStatus).label}
                             </span>
                             <svg className="h-4 w-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
@@ -749,10 +674,10 @@ export default function RequestDetailPage() {
                         )}
                         <span
                           className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
-                            statusColors[entry.toStatus] || 'bg-gray-100 text-gray-600'
+                            getStatusConfig(REQUEST_STATUS, entry.toStatus).classes
                           }`}
                         >
-                          {statusLabels[entry.toStatus] || entry.toStatus}
+                          {getStatusConfig(REQUEST_STATUS, entry.toStatus).label}
                         </span>
                       </div>
                       <span className="text-xs text-gray-400">
@@ -1083,10 +1008,10 @@ function ContactLogsSidebar({
               <div className="mb-1 flex items-center justify-between">
                 <span
                   className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
-                    logTypeColors[item.type] || 'bg-gray-100 text-gray-800'
+                    getStatusConfig(LOG_TYPE, item.type).classes
                   }`}
                 >
-                  {logTypeLabels[item.type] || item.type}
+                  {getStatusConfig(LOG_TYPE, item.type).label}
                 </span>
                 <span className="text-xs text-gray-400">
                   {new Date(item.loggedAt).toLocaleDateString('nl-NL', {

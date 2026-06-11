@@ -17,6 +17,7 @@ import {
   useResolvePrice,
 } from './hooks/use-quotes';
 import { apiClient } from '@/lib/api-client';
+import { formatCurrency } from '@/lib/format';
 import type { ResolvedPrice } from '@/types';
 
 const schema = z.object({
@@ -44,13 +45,6 @@ interface EditorLine {
 
 function calcLineTotal(line: EditorLine): number {
   return line.quantity * line.unitPrice * (1 - line.discountPct / 100);
-}
-
-function formatCurrency(amount: number): string {
-  return new Intl.NumberFormat('nl-NL', {
-    style: 'currency',
-    currency: 'EUR',
-  }).format(amount);
 }
 
 let lineKeyCounter = 0;

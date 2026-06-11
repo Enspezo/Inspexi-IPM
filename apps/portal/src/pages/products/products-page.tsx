@@ -4,6 +4,7 @@ import type { Product } from '@/types';
 import {
   ActionMenu,
   Button,
+  ErrorBox,
   Spinner,
   Table,
   Input,
@@ -183,9 +184,7 @@ export default function ProductsPage() {
 
   if (error) {
     return (
-      <div className="rounded-lg bg-danger-50 p-4 text-sm text-danger-600">
-        Fout bij het laden van producten: {error.message}
-      </div>
+      <ErrorBox>Fout bij het laden van producten: {error.message}</ErrorBox>
     );
   }
 

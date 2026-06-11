@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { TaskStatus, TaskType, TaskEntityType, DocumentEntityType, Role } from '@/types';
-import { ActionMenu, Button, Card, Spinner, Select, useToast } from '@/components/ui';
+import { TaskStatus, TaskEntityType, DocumentEntityType, Role } from '@/types';
+import { ActionMenu, Button, Card, ErrorBox, Spinner, StatusBadge, Select, useToast } from '@/components/ui';
+import { formatDate } from '@/lib/format';
+import { ENTITY_TYPE_LABELS, TASK_STATUS, TASK_TYPE } from '@/lib/status';
 import { DetailPageLayout } from '@/components/layout/detail-page-layout';
 import { HistorySidebarSection } from '@/components/layout/sidebar-sections';
 import { useAuth } from '@/providers/auth-provider';
@@ -11,37 +13,10 @@ import { DocumentsSection, UploadDocumentModal } from '@/components/documents';
 
 const canWrite = [Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE, Role.WERKVOORBEREIDER];
 
-const statusColors: Record<string, string> = {
-  [TaskStatus.TE_DOEN]: 'bg-blue-100 text-blue-800',
-  [TaskStatus.MEE_BEZIG]: 'bg-yellow-100 text-yellow-800',
-  [TaskStatus.VOLTOOID]: 'bg-green-100 text-green-800',
-};
-
-const statusLabels: Record<string, string> = {
-  [TaskStatus.TE_DOEN]: 'Te doen',
-  [TaskStatus.MEE_BEZIG]: 'Mee bezig',
-  [TaskStatus.VOLTOOID]: 'Voltooid',
-};
-
 const statusOptions = Object.values(TaskStatus).map((s) => ({
   value: s,
-  label: statusLabels[s] || s,
+  label: TASK_STATUS[s]?.label || s,
 }));
-
-const taskTypeLabels: Record<string, string> = {
-  [TaskType.TO_DO]: 'To-do',
-  [TaskType.EMAIL]: 'E-mail',
-  [TaskType.TELEFOONGESPREK]: 'Telefoongesprek',
-  [TaskType.DOCUMENT]: 'Document',
-  [TaskType.GOEDKEURING]: 'Goedkeuring',
-};
-
-const entityTypeLabels: Record<string, string> = {
-  [TaskEntityType.CONTACT]: 'Relatie',
-  [TaskEntityType.REQUEST]: 'Aanvraag',
-  [TaskEntityType.QUOTE]: 'Offerte',
-  [TaskEntityType.USER]: 'Gebruiker',
-};
 
 const entityTypeRoutes: Record<string, string> = {
   [TaskEntityType.CONTACT]: '/contacts',
@@ -49,14 +24,6 @@ const entityTypeRoutes: Record<string, string> = {
   [TaskEntityType.QUOTE]: '/quotes',
   [TaskEntityType.USER]: '/users',
 };
-
-function formatDate(dateStr: string): string {
-  return new Date(dateStr).toLocaleDateString('nl-NL', {
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-  });
-}
 
 export default function TaskDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -83,9 +50,9 @@ export default function TaskDetailPage() {
 
   if (error || !task) {
     return (
-      <div className="rounded-lg bg-danger-50 p-4 text-sm text-danger-600">
+      <ErrorBox>
         Taak niet gevonden of fout bij het laden.
-      </div>
+      </ErrorBox>
     );
   }
 
@@ -146,13 +113,7 @@ export default function TaskDetailPage() {
           </div>
           <div className="flex items-center gap-3">
             <h2 className="text-2xl font-bold text-gray-900">{task.title}</h2>
-            <span
-              className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                statusColors[task.status] || 'bg-gray-100 text-gray-600'
-              }`}
-            >
-              {statusLabels[task.status] || task.status}
-            </span>
+            <StatusBadge status={task.status} map={TASK_STATUS} />
           </div>
         </div>
         {userCanWrite && (
@@ -194,19 +155,13 @@ export default function TaskDetailPage() {
             <div className="flex justify-between">
               <dt className="text-sm text-gray-500">Status</dt>
               <dd>
-                <span
-                  className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                    statusColors[task.status] || 'bg-gray-100 text-gray-600'
-                  }`}
-                >
-                  {statusLabels[task.status] || task.status}
-                </span>
+                <StatusBadge status={task.status} map={TASK_STATUS} />
               </dd>
             </div>
             <div className="flex justify-between">
               <dt className="text-sm text-gray-500">Type</dt>
               <dd className="text-sm text-gray-900">
-                {taskTypeLabels[task.taskType] || 'To-do'}
+                {TASK_TYPE[task.taskType]?.label || 'To-do'}
               </dd>
             </div>
             <div className="flex justify-between">
@@ -245,18 +200,18 @@ export default function TaskDetailPage() {
             <div className="flex items-center justify-between">
               <span className="text-sm text-gray-500">Type</span>
               <span className="text-sm text-gray-900">
-                {entityTypeLabels[task.entityType] || task.entityType}
+                {ENTITY_TYPE_LABELS[task.entityType] || task.entityType}
               </span>
             </div>
             <div className="flex items-center justify-between">
               <span className="text-sm text-gray-500">
-                {entityTypeLabels[task.entityType] || 'Entiteit'}
+                {ENTITY_TYPE_LABELS[task.entityType] || 'Entiteit'}
               </span>
               <Link
                 to={`${entityTypeRoutes[task.entityType]}/${task.entityId}`}
                 className="text-sm text-primary-600 hover:text-primary-800 hover:underline"
               >
-                {task.entityName || `Bekijk ${entityTypeLabels[task.entityType]?.toLowerCase() || 'entiteit'}`}
+                {task.entityName || `Bekijk ${ENTITY_TYPE_LABELS[task.entityType]?.toLowerCase() || 'entiteit'}`}
               </Link>
             </div>
           </div>

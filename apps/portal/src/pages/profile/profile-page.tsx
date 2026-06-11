@@ -6,7 +6,9 @@ import { z } from 'zod';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/providers/auth-provider';
 import { apiClient } from '@/lib/api-client';
-import { Card, Input, Button, Badge, Spinner, useToast, SignatureEditor, AddressSearchInput } from '@/components/ui';
+import { Card, Input, Button, Badge, Spinner, StatusBadge, useToast, SignatureEditor, AddressSearchInput } from '@/components/ui';
+import { formatDateTime } from '@/lib/format';
+import { AUDIT_ACTION } from '@/lib/status';
 import type { ParsedAddress } from '@/lib/geocoding';
 import { useUploadAvatar, useDeleteAvatar, getAvatarUrl } from './hooks/use-avatar';
 import { useSignature, useSaveSignature, useDeleteSignature } from './hooks/use-signature';
@@ -359,15 +361,6 @@ function SessionsCard() {
     },
   });
 
-  const formatDate = (dateStr: string) =>
-    new Date(dateStr).toLocaleDateString('nl-NL', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-
   const activeSessions = sessions?.filter((s) => !s.revokedAt && new Date(s.expiresAt) > new Date()) ?? [];
   const historicalSessions = sessions?.filter((s) => s.revokedAt || new Date(s.expiresAt) <= new Date()) ?? [];
   const hasOtherActive = activeSessions.filter((s) => !s.isCurrent).length > 0;
@@ -420,8 +413,8 @@ function SessionsCard() {
                     {session.ipAddress && (
                       <span>IP: {session.ipAddress}</span>
                     )}
-                    <span>Ingelogd: {formatDate(session.createdAt)}</span>
-                    <span>Verloopt: {formatDate(session.expiresAt)}</span>
+                    <span>Ingelogd: {formatDateTime(session.createdAt)}</span>
+                    <span>Verloopt: {formatDateTime(session.expiresAt)}</span>
                   </div>
                 </div>
                 {!session.isCurrent && (
@@ -488,7 +481,7 @@ function SessionsCard() {
                       {session.ipAddress || '-'}
                     </td>
                     <td className="px-4 py-2.5 text-gray-500">
-                      {formatDate(session.createdAt)}
+                      {formatDateTime(session.createdAt)}
                     </td>
                     <td className="px-4 py-2.5">
                       {session.revokedAt ? (
@@ -1016,22 +1009,6 @@ const actionBadgeClasses: Record<AuditAction, string> = {
   [AuditAction.DELETE]: 'bg-red-100 text-red-800',
 };
 
-const actionLabels: Record<AuditAction, string> = {
-  [AuditAction.CREATE]: 'Aangemaakt',
-  [AuditAction.UPDATE]: 'Bijgewerkt',
-  [AuditAction.DELETE]: 'Verwijderd',
-};
-
-function formatActivityDateTime(dateStr: string): string {
-  return new Date(dateStr).toLocaleString('nl-NL', {
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-}
-
 function formatRelativeTime(dateStr: string): string {
   const now = Date.now();
   const diff = now - new Date(dateStr).getTime();
@@ -1042,7 +1019,7 @@ function formatRelativeTime(dateStr: string): string {
   if (hours < 24) return `${hours} uur geleden`;
   const days = Math.floor(hours / 24);
   if (days < 7) return `${days} ${days === 1 ? 'dag' : 'dagen'} geleden`;
-  return formatActivityDateTime(dateStr);
+  return formatDateTime(dateStr);
 }
 
 function ChangesSummary({ entry }: { entry: AuditLogEntry }) {
@@ -1105,11 +1082,7 @@ function ActivityItem({ entry }: { entry: AuditLogEntry }) {
       <div className="min-w-0 flex-1 pb-4">
         <div className="flex flex-wrap items-start justify-between gap-2">
           <div className="flex flex-wrap items-center gap-2">
-            <span
-              className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${actionBadgeClasses[entry.action]}`}
-            >
-              {actionLabels[entry.action]}
-            </span>
+            <StatusBadge status={entry.action} map={AUDIT_ACTION} />
             <span className="text-sm font-medium text-gray-900">{typeLabel}</span>
             {name !== typeLabel && (
               <>
@@ -1133,8 +1106,8 @@ function ActivityItem({ entry }: { entry: AuditLogEntry }) {
             <span className="text-xs font-medium text-gray-500">
               {formatRelativeTime(entry.createdAt)}
             </span>
-            <span className="text-xs text-gray-400" title={formatActivityDateTime(entry.createdAt)}>
-              {formatActivityDateTime(entry.createdAt)}
+            <span className="text-xs text-gray-400" title={formatDateTime(entry.createdAt)}>
+              {formatDateTime(entry.createdAt)}
             </span>
           </div>
         </div>

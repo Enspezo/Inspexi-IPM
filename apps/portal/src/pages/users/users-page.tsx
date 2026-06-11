@@ -5,6 +5,7 @@ import {
   ActionMenu,
   Table,
   Badge,
+  ErrorBox,
   Spinner,
 } from '@/components/ui';
 import { DetailPageLayout } from '@/components/layout/detail-page-layout';
@@ -129,9 +130,7 @@ export default function UsersPage() {
 
   if (error) {
     return (
-      <div className="rounded-lg bg-danger-50 p-4 text-sm text-danger-600">
-        Fout bij het laden van gebruikers: {error.message}
-      </div>
+      <ErrorBox>Fout bij het laden van gebruikers: {error.message}</ErrorBox>
     );
   }
 

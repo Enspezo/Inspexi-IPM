@@ -8,10 +8,13 @@ import {
   Button,
   Input,
   Spinner,
+  StatusBadge,
   Modal,
   Select,
   useToast,
 } from '@/components/ui';
+import { formatCurrency } from '@/lib/format';
+import { WORK_ORDER_STATUS, getStatusConfig } from '@/lib/status';
 import { DetailPageLayout } from '@/components/layout/detail-page-layout';
 import {
   NotesSidebarSection,
@@ -37,20 +40,6 @@ import {
 
 // ─── Constants ───────────────────────────────────────────────
 
-const statusLabels: Record<WorkOrderStatus, string> = {
-  [WorkOrderStatus.IN_VOORBEREIDING]: 'In voorbereiding',
-  [WorkOrderStatus.IN_UITVOERING]: 'In uitvoering',
-  [WorkOrderStatus.UITGEVOERD]: 'Uitgevoerd',
-  [WorkOrderStatus.WACHT_OP_KLANT]: 'Wacht op klant',
-};
-
-const statusColors: Record<WorkOrderStatus, string> = {
-  [WorkOrderStatus.IN_VOORBEREIDING]: 'bg-yellow-100 text-yellow-800',
-  [WorkOrderStatus.IN_UITVOERING]: 'bg-blue-100 text-blue-800',
-  [WorkOrderStatus.UITGEVOERD]: 'bg-green-100 text-green-800',
-  [WorkOrderStatus.WACHT_OP_KLANT]: 'bg-orange-100 text-orange-800',
-};
-
 const statusTransitions: Record<WorkOrderStatus, WorkOrderStatus[]> = {
   [WorkOrderStatus.IN_VOORBEREIDING]: [WorkOrderStatus.IN_UITVOERING, WorkOrderStatus.WACHT_OP_KLANT],
   [WorkOrderStatus.IN_UITVOERING]: [WorkOrderStatus.UITGEVOERD, WorkOrderStatus.WACHT_OP_KLANT],
@@ -67,13 +56,6 @@ function toDatetimeLocal(iso: string | null | undefined): string {
   const d = new Date(iso);
   const pad = (n: number) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
-
-function formatCurrency(amount: number): string {
-  return new Intl.NumberFormat('nl-NL', {
-    style: 'currency',
-    currency: 'EUR',
-  }).format(amount);
 }
 
 function InfoField({
@@ -385,13 +367,7 @@ export default function WorkOrderDetailPage() {
               <h2 className="text-2xl font-bold text-gray-900">
                 {workOrder.workOrderNumber}
               </h2>
-              <span
-                className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                  statusColors[workOrder.status] || 'bg-gray-100 text-gray-600'
-                }`}
-              >
-                {statusLabels[workOrder.status] || workOrder.status}
-              </span>
+              <StatusBadge status={workOrder.status} map={WORK_ORDER_STATUS} />
             </div>
             {userCanWrite && availableTransitions.length > 0 && (
               <Button
@@ -460,7 +436,7 @@ export default function WorkOrderDetailPage() {
                     />
                     <InfoField
                       label="Status"
-                      value={statusLabels[workOrder.status]}
+                      value={getStatusConfig(WORK_ORDER_STATUS, workOrder.status).label}
                     />
                     <div>
                       <dt className="text-sm font-medium text-gray-500">
@@ -917,7 +893,7 @@ export default function WorkOrderDetailPage() {
                   { value: '', label: 'Selecteer status...' },
                   ...availableTransitions.map((s) => ({
                     value: s,
-                    label: statusLabels[s],
+                    label: getStatusConfig(WORK_ORDER_STATUS, s).label,
                   })),
                 ]}
                 value={newStatus}

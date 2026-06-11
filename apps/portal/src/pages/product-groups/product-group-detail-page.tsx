@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Role } from '@/types';
-import { Button, Spinner, useToast } from '@/components/ui';
+import { Button, ErrorBox, Spinner, useToast } from '@/components/ui';
 import { DetailPageLayout } from '@/components/layout/detail-page-layout';
 import { useAuth } from '@/providers/auth-provider';
 import {
@@ -78,9 +78,7 @@ export default function ProductGroupDetailPage() {
 
   if (error || !group) {
     return (
-      <div className="rounded-lg bg-danger-50 p-4 text-sm text-danger-600">
-        {error?.message || 'Productgroep niet gevonden'}
-      </div>
+      <ErrorBox>{error?.message || 'Productgroep niet gevonden'}</ErrorBox>
     );
   }
 

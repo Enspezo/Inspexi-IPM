@@ -4,11 +4,13 @@ import type { Editor } from '@tiptap/react';
 import { renderAsync as renderDocx } from 'docx-preview';
 import {
   Button,
+  ErrorBox,
   Input,
   Select,
   Spinner,
   useToast,
 } from '@/components/ui';
+import { formatFileSize } from '@/lib/format';
 import { DetailPageLayout } from '@/components/layout/detail-page-layout';
 import { AuditHistory } from '@/components/audit-history/audit-history';
 import { BlockEditor } from '@/components/block-editor/block-editor';
@@ -370,9 +372,9 @@ export default function QuoteTemplateDetailPage() {
 
   if (error || !template) {
     return (
-      <div className="rounded-lg bg-danger-50 p-4 text-sm text-danger-600">
+      <ErrorBox>
         Template niet gevonden.
-      </div>
+      </ErrorBox>
     );
   }
 
@@ -1195,9 +1197,3 @@ function EmailTemplateSection({
 }
 
 // ── Helpers ──────────────────────────────────────────────
-
-function formatFileSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}

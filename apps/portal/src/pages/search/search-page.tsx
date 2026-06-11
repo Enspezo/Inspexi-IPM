@@ -15,36 +15,12 @@ import type {
   SearchProductResult,
   SearchResultItem,
 } from '@/types';
-import { Role, RequestStatus, QuoteStatus, TaskStatus } from '@/types';
+import { Role } from '@/types';
 import { hasRole } from '@/lib/has-role';
+import { formatCurrency } from '@/lib/format';
+import { getStatusConfig, QUOTE_STATUS, REQUEST_STATUS, TASK_STATUS } from '@/lib/status';
 
 // ─── Status / label helpers ──────────────────────────────
-
-const REQUEST_STATUS_LABELS: Record<RequestStatus, string> = {
-  NIEUW: 'Nieuw',
-  IN_BEHANDELING: 'In behandeling',
-  OFFERTE_GEMAAKT: 'Offerte gemaakt',
-  GEWONNEN: 'Gewonnen',
-  VERLOREN: 'Verloren',
-  ON_HOLD: 'On hold',
-};
-
-const QUOTE_STATUS_LABELS: Record<QuoteStatus, string> = {
-  CONCEPT: 'Concept',
-  TER_GOEDKEURING: 'Ter goedkeuring',
-  GOEDGEKEURD: 'Goedgekeurd',
-  VERSTUURD: 'Verstuurd',
-  BEKEKEN: 'Bekeken',
-  GEACCEPTEERD: 'Geaccepteerd',
-  AFGEWEZEN: 'Afgewezen',
-  VERLOPEN: 'Verlopen',
-};
-
-const TASK_STATUS_LABELS: Record<TaskStatus, string> = {
-  TE_DOEN: 'Te doen',
-  MEE_BEZIG: 'Mee bezig',
-  VOLTOOID: 'Voltooid',
-};
 
 function contactDisplayName(c: {
   companyName: string | null;
@@ -56,13 +32,6 @@ function contactDisplayName(c: {
     [c.firstName, c.lastName].filter(Boolean).join(' ') ||
     '—'
   );
-}
-
-function formatCurrency(amount: number): string {
-  return new Intl.NumberFormat('nl-NL', {
-    style: 'currency',
-    currency: 'EUR',
-  }).format(amount);
 }
 
 function formatDate(dateStr: string): string {
@@ -242,7 +211,7 @@ function useRequestColumns(): Column<SearchRequestResult>[] {
     {
       key: 'status',
       header: 'Status',
-      render: (r) => REQUEST_STATUS_LABELS[r.status] ?? r.status,
+      render: (r) => getStatusConfig(REQUEST_STATUS, r.status).label,
     },
     {
       key: 'createdAt',
@@ -279,7 +248,7 @@ function useQuoteColumns(): Column<SearchQuoteResult>[] {
     {
       key: 'status',
       header: 'Status',
-      render: (q) => QUOTE_STATUS_LABELS[q.status] ?? q.status,
+      render: (q) => getStatusConfig(QUOTE_STATUS, q.status).label,
     },
     {
       key: 'total',
@@ -311,7 +280,7 @@ function useTaskColumns(): Column<SearchTaskResult>[] {
     {
       key: 'status',
       header: 'Status',
-      render: (t) => TASK_STATUS_LABELS[t.status] ?? t.status,
+      render: (t) => getStatusConfig(TASK_STATUS, t.status).label,
     },
     {
       key: 'entity',

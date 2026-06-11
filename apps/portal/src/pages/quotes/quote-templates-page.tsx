@@ -6,6 +6,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import {
   ActionMenu,
   Button,
+  ErrorBox,
   Spinner,
   Table,
   Modal,
@@ -218,9 +219,9 @@ export default function QuoteTemplatesPage() {
 
   if (error) {
     return (
-      <div className="rounded-lg bg-danger-50 p-4 text-sm text-danger-600">
+      <ErrorBox>
         Fout bij het laden van templates: {error.message}
-      </div>
+      </ErrorBox>
     );
   }
 

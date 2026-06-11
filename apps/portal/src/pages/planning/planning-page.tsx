@@ -2,7 +2,8 @@ import { useState, useCallback, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { PlanningStatus, Role } from '@/types';
 import type { PlanningItem } from '@/types';
-import { ActionMenu, Button, Spinner, Table, Input, Select } from '@/components/ui';
+import { ActionMenu, Button, Spinner, StatusBadge, Table, Input, Select } from '@/components/ui';
+import { PLANNING_STATUS } from '@/lib/status';
 import { DetailPageLayout } from '@/components/layout/detail-page-layout';
 import {
   TableConfigSidebar,
@@ -36,22 +37,6 @@ const statusFilterOptions = [
   { value: PlanningStatus.AFGEROND, label: 'Afgerond' },
   { value: PlanningStatus.VERVALLEN, label: 'Vervallen' },
 ];
-
-const statusColors: Record<string, string> = {
-  [PlanningStatus.NOG_TE_PLANNEN]: 'bg-gray-100 text-gray-700',
-  [PlanningStatus.CONCEPT]: 'bg-yellow-100 text-yellow-800',
-  [PlanningStatus.GEPLAND]: 'bg-blue-100 text-blue-800',
-  [PlanningStatus.AFGEROND]: 'bg-green-100 text-green-800',
-  [PlanningStatus.VERVALLEN]: 'bg-red-100 text-red-800',
-};
-
-const statusLabels: Record<string, string> = {
-  [PlanningStatus.NOG_TE_PLANNEN]: 'Nog te plannen',
-  [PlanningStatus.CONCEPT]: 'Concept',
-  [PlanningStatus.GEPLAND]: 'Gepland',
-  [PlanningStatus.AFGEROND]: 'Afgerond',
-  [PlanningStatus.VERVALLEN]: 'Vervallen',
-};
 
 const canWrite = [
   Role.SUPERUSER,
@@ -184,15 +169,7 @@ export default function PlanningPage() {
       pinned: true,
       sortable: true,
       sortKey: 'status',
-      render: (item) => (
-        <span
-          className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
-            statusColors[item.status] ?? 'bg-gray-100 text-gray-700'
-          }`}
-        >
-          {statusLabels[item.status] ?? item.status}
-        </span>
-      ),
+      render: (item) => <StatusBadge status={item.status} map={PLANNING_STATUS} />,
     },
     {
       key: 'scheduledDate',

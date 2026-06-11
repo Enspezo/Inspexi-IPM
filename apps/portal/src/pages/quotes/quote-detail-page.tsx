@@ -2,17 +2,17 @@ import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import {
   QuoteStatus,
-  ApprovalStatus,
   Role,
   TaskEntityType,
   TaskStatus,
   DocumentEntityType,
   CustomFieldEntityType,
-  LogType,
   NoteEntityType,
 } from '@/types';
 import type { Task, ContactLog } from '@/types';
-import { ActionMenu, type ActionMenuItem, Button, Card, Spinner, Input, Table, useToast, type Column } from '@/components/ui';
+import { ActionMenu, type ActionMenuItem, Button, Card, ErrorBox, Spinner, StatusBadge, Input, Table, useToast, type Column } from '@/components/ui';
+import { formatCurrency, formatDate, formatFileSize } from '@/lib/format';
+import { APPROVAL_STATUS, getStatusConfig, LOG_TYPE, QUOTE_STATUS } from '@/lib/status';
 import { DetailPageLayout, SidebarSection } from '@/components/layout/detail-page-layout';
 import { NotesSidebarSection, HistorySidebarSection, DocumentsSidebarSection } from '@/components/layout/sidebar-sections';
 import { useAuth } from '@/providers/auth-provider';
@@ -43,55 +43,8 @@ import { getAccessToken } from '@/lib/api-client';
 const canWrite = [Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE];
 const canApprove = [Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER];
 
-const statusColors: Record<string, string> = {
-  [QuoteStatus.CONCEPT]: 'bg-gray-100 text-gray-800',
-  [QuoteStatus.TER_GOEDKEURING]: 'bg-yellow-100 text-yellow-800',
-  [QuoteStatus.GOEDGEKEURD]: 'bg-green-100 text-green-800',
-  [QuoteStatus.VERSTUURD]: 'bg-blue-100 text-blue-800',
-  [QuoteStatus.BEKEKEN]: 'bg-purple-100 text-purple-800',
-  [QuoteStatus.GEACCEPTEERD]: 'bg-emerald-100 text-emerald-800',
-  [QuoteStatus.AFGEWEZEN]: 'bg-red-100 text-red-800',
-  [QuoteStatus.VERLOPEN]: 'bg-orange-100 text-orange-800',
-};
-
-const statusLabels: Record<string, string> = {
-  [QuoteStatus.CONCEPT]: 'Concept',
-  [QuoteStatus.TER_GOEDKEURING]: 'Ter goedkeuring',
-  [QuoteStatus.GOEDGEKEURD]: 'Goedgekeurd',
-  [QuoteStatus.VERSTUURD]: 'Verstuurd',
-  [QuoteStatus.BEKEKEN]: 'Bekeken',
-  [QuoteStatus.GEACCEPTEERD]: 'Geaccepteerd',
-  [QuoteStatus.AFGEWEZEN]: 'Afgewezen',
-  [QuoteStatus.VERLOPEN]: 'Verlopen',
-};
-
-const approvalStatusLabels: Record<string, string> = {
-  [ApprovalStatus.PENDING]: 'In afwachting',
-  [ApprovalStatus.APPROVED]: 'Goedgekeurd',
-  [ApprovalStatus.REJECTED]: 'Afgewezen',
-};
-
-const approvalStatusColors: Record<string, string> = {
-  [ApprovalStatus.PENDING]: 'bg-yellow-100 text-yellow-800',
-  [ApprovalStatus.APPROVED]: 'bg-green-100 text-green-800',
-  [ApprovalStatus.REJECTED]: 'bg-red-100 text-red-800',
-};
-
-const logTypeLabels: Record<string, string> = {
-  [LogType.EMAIL]: 'E-mail',
-  [LogType.PHONE]: 'Telefoon',
-  [LogType.MEETING]: 'Vergadering',
-  [LogType.NOTE]: 'Notitie',
-};
-
-const logTypeColors: Record<string, string> = {
-  [LogType.EMAIL]: 'bg-blue-100 text-blue-800',
-  [LogType.PHONE]: 'bg-green-100 text-green-800',
-  [LogType.MEETING]: 'bg-purple-100 text-purple-800',
-  [LogType.NOTE]: 'bg-gray-100 text-gray-800',
-};
-
-function formatDate(dateStr: string): string {
+// Lokale variant: lange maand mét tijd — wijkt af van de gedeelde formatDateTime (korte maand)
+function formatDateTimeLong(dateStr: string): string {
   return new Date(dateStr).toLocaleDateString('nl-NL', {
     day: 'numeric',
     month: 'long',
@@ -99,24 +52,6 @@ function formatDate(dateStr: string): string {
     hour: '2-digit',
     minute: '2-digit',
   });
-}
-
-function formatDateShort(dateStr: string): string {
-  return new Date(dateStr).toLocaleDateString('nl-NL', {
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-  });
-}
-
-function formatCurrency(amount: number): string {
-  return new Intl.NumberFormat('nl-NL', { style: 'currency', currency: 'EUR' }).format(amount);
-}
-
-function formatFileSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 function getContactName(contact?: { companyName?: string | null; firstName?: string | null; lastName?: string | null }): string {
@@ -255,7 +190,7 @@ export default function QuoteDetailPage() {
   }
 
   if (error || !quote) {
-    return <div className="rounded-lg bg-danger-50 p-4 text-sm text-danger-600">{error?.message || 'Offerte niet gevonden'}</div>;
+    return <ErrorBox>{error?.message || 'Offerte niet gevonden'}</ErrorBox>;
   }
 
   const lineColumns: Column<QuoteLine>[] = [
@@ -330,9 +265,7 @@ export default function QuoteDetailPage() {
             <div>
               <div className="flex items-center gap-3">
                 <h2 className="text-2xl font-bold text-gray-900">{quote.quoteNumber} &mdash; {quote.subject}</h2>
-                <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${statusColors[quote.status] || 'bg-gray-100 text-gray-600'}`}>
-                  {statusLabels[quote.status] || quote.status}
-                </span>
+                <StatusBadge status={quote.status} map={QUOTE_STATUS} />
                 {quote.project && (
                   <button
                     onClick={() => navigate(`/projects/${quote.project!.id}`)}
@@ -449,7 +382,7 @@ export default function QuoteDetailPage() {
             <div className="flex items-center gap-2">
               <svg className="h-5 w-5 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
               <span className="text-sm font-medium text-emerald-800">
-                Digitaal ondertekend door {quote.clientName || 'klant'} op {formatDateShort(quote.signedAt)}
+                Digitaal ondertekend door {quote.clientName || 'klant'} op {formatDate(quote.signedAt)}
               </span>
             </div>
           </div>
@@ -499,13 +432,13 @@ export default function QuoteDetailPage() {
             {quote.sentAt && (
               <div>
                 <dt className="text-sm font-medium text-gray-500">Verstuurd op</dt>
-                <dd className="mt-1 text-sm text-gray-900">{formatDateShort(quote.sentAt)}</dd>
+                <dd className="mt-1 text-sm text-gray-900">{formatDate(quote.sentAt)}</dd>
               </div>
             )}
             {quote.viewedAt && (
               <div>
                 <dt className="text-sm font-medium text-gray-500">Geopend op</dt>
-                <dd className="mt-1 text-sm text-gray-900">{formatDateShort(quote.viewedAt)}</dd>
+                <dd className="mt-1 text-sm text-gray-900">{formatDate(quote.viewedAt)}</dd>
               </div>
             )}
             {quote.publicToken && (
@@ -571,15 +504,15 @@ export default function QuoteDetailPage() {
               {quote.approvalRequests?.map((approval: QuoteApprovalRequest) => (
                 <Card key={approval.id}>
                   <div className="flex items-start justify-between">
-                    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${approvalStatusColors[approval.status] || 'bg-gray-100 text-gray-600'}`}>
-                      {approvalStatusLabels[approval.status] || approval.status}
+                    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${getStatusConfig(APPROVAL_STATUS, approval.status).classes}`}>
+                      {getStatusConfig(APPROVAL_STATUS, approval.status).label}
                     </span>
-                    <span className="text-xs text-gray-400">{formatDate(approval.requestedAt)}</span>
+                    <span className="text-xs text-gray-400">{formatDateTimeLong(approval.requestedAt)}</span>
                   </div>
                   {approval.note && <p className="mt-2 text-sm text-gray-600">{approval.note}</p>}
                   <div className="mt-1 text-xs text-gray-400">
                     {approval.requestedByUser && <span>Aangevraagd door {approval.requestedByUser.firstName} {approval.requestedByUser.lastName}</span>}
-                    {approval.reviewedByUser && <span>{' — '}Beoordeeld door {approval.reviewedByUser.firstName} {approval.reviewedByUser.lastName}{approval.reviewedAt ? ` op ${formatDate(approval.reviewedAt)}` : ''}</span>}
+                    {approval.reviewedByUser && <span>{' — '}Beoordeeld door {approval.reviewedByUser.firstName} {approval.reviewedByUser.lastName}{approval.reviewedAt ? ` op ${formatDateTimeLong(approval.reviewedAt)}` : ''}</span>}
                   </div>
                 </Card>
               ))}
@@ -650,7 +583,7 @@ export default function QuoteDetailPage() {
                       <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${q.isFromClient ? 'bg-blue-100 text-blue-700' : 'bg-gray-200 text-gray-700'}`}>
                         {q.isFromClient ? 'Klant' : (q.user ? `${q.user.firstName} ${q.user.lastName}` : 'Medewerker')}
                       </span>
-                      <span className="text-xs text-gray-400">{formatDate(q.createdAt)}</span>
+                      <span className="text-xs text-gray-400">{formatDateTimeLong(q.createdAt)}</span>
                     </div>
                     {userCanWrite && q.isFromClient && answeringId !== q.id && (
                       <button onClick={() => { setAnsweringId(q.id); setAnswerText(''); }} className="text-xs text-primary-600 hover:text-primary-800">
@@ -1022,10 +955,10 @@ function ContactLogsSidebar({
               <div className="mb-1 flex items-center justify-between">
                 <span
                   className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
-                    logTypeColors[item.type] || 'bg-gray-100 text-gray-800'
+                    getStatusConfig(LOG_TYPE, item.type).classes
                   }`}
                 >
-                  {logTypeLabels[item.type] || item.type}
+                  {getStatusConfig(LOG_TYPE, item.type).label}
                 </span>
                 <span className="text-xs text-gray-400">
                   {new Date(item.loggedAt).toLocaleDateString('nl-NL', {

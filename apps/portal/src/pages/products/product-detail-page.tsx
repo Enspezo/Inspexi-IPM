@@ -4,7 +4,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Role, DocumentEntityType, CustomFieldEntityType } from '@/types';
-import { ActionMenu, Button, Card, Spinner, Input, Select, useToast } from '@/components/ui';
+import { ActionMenu, Button, Card, ErrorBox, Spinner, Input, Select, useToast } from '@/components/ui';
 import { DetailPageLayout } from '@/components/layout/detail-page-layout';
 import { AuditHistory } from '@/components/audit-history/audit-history';
 import { DocumentsSection, UploadDocumentModal } from '@/components/documents';
@@ -130,9 +130,7 @@ export default function ProductDetailPage() {
 
   if (error || !product) {
     return (
-      <div className="rounded-lg bg-danger-50 p-4 text-sm text-danger-600">
-        {error?.message || 'Product niet gevonden'}
-      </div>
+      <ErrorBox>{error?.message || 'Product niet gevonden'}</ErrorBox>
     );
   }
 

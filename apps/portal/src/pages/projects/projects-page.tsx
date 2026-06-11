@@ -2,7 +2,8 @@ import { useState, useCallback, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ProjectStatus, Role } from '@/types';
 import type { Project } from '@/types';
-import { ActionMenu, Button, Spinner, Table, Input, Select } from '@/components/ui';
+import { ActionMenu, Button, Spinner, StatusBadge, Table, Input, Select } from '@/components/ui';
+import { PROJECT_STATUS } from '@/lib/status';
 import { DetailPageLayout } from '@/components/layout/detail-page-layout';
 import {
   TableConfigSidebar,
@@ -21,20 +22,6 @@ const statusFilterOptions = [
   { value: ProjectStatus.AFGEROND, label: 'Afgerond' },
   { value: ProjectStatus.GEANNULEERD, label: 'Geannuleerd' },
 ];
-
-const statusColors: Record<string, string> = {
-  [ProjectStatus.ACTIEF]: 'bg-green-100 text-green-800',
-  [ProjectStatus.ON_HOLD]: 'bg-yellow-100 text-yellow-800',
-  [ProjectStatus.AFGEROND]: 'bg-blue-100 text-blue-800',
-  [ProjectStatus.GEANNULEERD]: 'bg-red-100 text-red-800',
-};
-
-const statusLabels: Record<string, string> = {
-  [ProjectStatus.ACTIEF]: 'Actief',
-  [ProjectStatus.ON_HOLD]: 'On hold',
-  [ProjectStatus.AFGEROND]: 'Afgerond',
-  [ProjectStatus.GEANNULEERD]: 'Geannuleerd',
-};
 
 const canWrite = [
   Role.SUPERUSER,
@@ -152,13 +139,7 @@ export default function ProjectsPage() {
       sortKey: 'status',
       sidebarLabel: 'Status',
       getFilterValue: (row) => row.status,
-      render: (row) => (
-        <span
-          className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${statusColors[row.status] || 'bg-gray-100 text-gray-800'}`}
-        >
-          {statusLabels[row.status] || row.status}
-        </span>
-      ),
+      render: (row) => <StatusBadge status={row.status} map={PROJECT_STATUS} />,
     },
     {
       key: 'startDate',

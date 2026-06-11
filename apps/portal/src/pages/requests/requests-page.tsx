@@ -9,11 +9,14 @@ import type { Request } from '@/types';
 import {
   ActionMenu,
   Button,
+  ErrorBox,
   Spinner,
+  StatusBadge,
   Table,
   Input,
   Select,
 } from '@/components/ui';
+import { PRIORITY, REQUEST_SOURCE_LABELS, REQUEST_STATUS } from '@/lib/status';
 import { DetailPageLayout } from '@/components/layout/detail-page-layout';
 import {
   TableConfigSidebar,
@@ -43,43 +46,6 @@ const priorityFilterOptions = [
   { value: Priority.NORMAL, label: 'Normaal' },
   { value: Priority.LOW, label: 'Laag' },
 ];
-
-const statusColors: Record<string, string> = {
-  [RequestStatus.NIEUW]: 'bg-blue-100 text-blue-800',
-  [RequestStatus.IN_BEHANDELING]: 'bg-yellow-100 text-yellow-800',
-  [RequestStatus.OFFERTE_GEMAAKT]: 'bg-purple-100 text-purple-800',
-  [RequestStatus.GEWONNEN]: 'bg-green-100 text-green-800',
-  [RequestStatus.VERLOREN]: 'bg-red-100 text-red-800',
-  [RequestStatus.ON_HOLD]: 'bg-gray-100 text-gray-600',
-};
-
-const statusLabels: Record<string, string> = {
-  [RequestStatus.NIEUW]: 'Nieuw',
-  [RequestStatus.IN_BEHANDELING]: 'In behandeling',
-  [RequestStatus.OFFERTE_GEMAAKT]: 'Offerte gemaakt',
-  [RequestStatus.GEWONNEN]: 'Gewonnen',
-  [RequestStatus.VERLOREN]: 'Verloren',
-  [RequestStatus.ON_HOLD]: 'On hold',
-};
-
-const priorityColors: Record<string, string> = {
-  [Priority.HIGH]: 'bg-red-100 text-red-800',
-  [Priority.NORMAL]: 'bg-yellow-100 text-yellow-800',
-  [Priority.LOW]: 'bg-gray-100 text-gray-600',
-};
-
-const priorityLabels: Record<string, string> = {
-  [Priority.HIGH]: 'Hoog',
-  [Priority.NORMAL]: 'Normaal',
-  [Priority.LOW]: 'Laag',
-};
-
-const sourceLabels: Record<string, string> = {
-  MANUAL: 'Handmatig',
-  WEB_FORM: 'Webformulier',
-  EMAIL: 'E-mail',
-  PHONE: 'Telefoon',
-};
 
 const canWrite = [Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE];
 
@@ -190,15 +156,7 @@ export default function RequestsPage() {
       filterOptions: statusFilterOptions.filter((o) => o.value !== ''),
       groupable: true,
       getFilterValue: (req) => req.status,
-      render: (req) => (
-        <span
-          className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
-            statusColors[req.status] || 'bg-gray-100 text-gray-600'
-          }`}
-        >
-          {statusLabels[req.status] || req.status}
-        </span>
-      ),
+      render: (req) => <StatusBadge status={req.status} map={REQUEST_STATUS} />,
     },
     {
       key: 'priority',
@@ -210,15 +168,7 @@ export default function RequestsPage() {
       filterOptions: priorityFilterOptions.filter((o) => o.value !== ''),
       groupable: true,
       getFilterValue: (req) => req.priority,
-      render: (req) => (
-        <span
-          className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
-            priorityColors[req.priority] || 'bg-gray-100 text-gray-600'
-          }`}
-        >
-          {priorityLabels[req.priority] || req.priority}
-        </span>
-      ),
+      render: (req) => <StatusBadge status={req.priority} map={PRIORITY} />,
     },
     {
       key: 'assignedUser',
@@ -246,7 +196,7 @@ export default function RequestsPage() {
       sortKey: 'source',
       filterable: true,
       filterType: 'select',
-      filterOptions: Object.entries(sourceLabels).map(([value, label]) => ({
+      filterOptions: Object.entries(REQUEST_SOURCE_LABELS).map(([value, label]) => ({
         value,
         label,
       })),
@@ -254,7 +204,7 @@ export default function RequestsPage() {
       getFilterValue: (req) => req.source,
       render: (req) => (
         <span className="text-gray-600">
-          {sourceLabels[req.source] || req.source}
+          {REQUEST_SOURCE_LABELS[req.source] || req.source}
         </span>
       ),
     },
@@ -319,9 +269,9 @@ export default function RequestsPage() {
 
   if (error && viewMode === 'table') {
     return (
-      <div className="rounded-lg bg-danger-50 p-4 text-sm text-danger-600">
+      <ErrorBox>
         Fout bij het laden van aanvragen: {error.message}
-      </div>
+      </ErrorBox>
     );
   }
 

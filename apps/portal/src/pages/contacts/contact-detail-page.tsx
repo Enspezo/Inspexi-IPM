@@ -3,10 +3,12 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { ContactType, LogType, QuoteStatus, RequestStatus, Priority, TaskStatus, PlanningStatus, Role, TaskEntityType, DocumentEntityType, CustomFieldEntityType, ProjectStatus } from '@/types';
+import { ContactType, LogType, TaskStatus, Role, TaskEntityType, DocumentEntityType, CustomFieldEntityType } from '@/types';
 import { roleColors } from '@/lib/contact-person-role';
+import { formatCurrency, formatShortDate } from '@/lib/format';
+import { getStatusConfig, LOG_TYPE, PLANNING_STATUS, PRIORITY, PROJECT_STATUS, QUOTE_STATUS, REQUEST_STATUS } from '@/lib/status';
 import type { Contact, ContactAddress, ContactLog, ContactEmail, Location, Task, PlanningItem, Request as RequestType } from '@/types';
-import { ActionMenu, type ActionMenuItem, Button, Card, Input, Modal, Spinner, useToast, VatInput } from '@/components/ui';
+import { ActionMenu, type ActionMenuItem, Button, Card, ErrorBox, Input, Modal, Spinner, StatusBadge, useToast, VatInput } from '@/components/ui';
 import { getKvkProfile } from '@/lib/kvk';
 import { type VatValidationResult } from '@/lib/vat';
 import { DetailPageLayout, SidebarSection } from '@/components/layout/detail-page-layout';
@@ -58,119 +60,7 @@ function getContactDisplayName(contact: Contact): string {
   return [contact.firstName, contact.lastName].filter(Boolean).join(' ') || '—';
 }
 
-function formatDate(dateStr: string): string {
-  return new Date(dateStr).toLocaleDateString('nl-NL', {
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-}
-
-function formatShortDate(dateStr: string): string {
-  return new Date(dateStr).toLocaleDateString('nl-NL', {
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-  });
-}
-
-const logTypeLabels: Record<string, string> = {
-  [LogType.EMAIL]: 'E-mail',
-  [LogType.PHONE]: 'Telefoon',
-  [LogType.MEETING]: 'Vergadering',
-  [LogType.NOTE]: 'Notitie',
-};
-
-const logTypeColors: Record<string, string> = {
-  [LogType.EMAIL]: 'bg-blue-100 text-blue-800',
-  [LogType.PHONE]: 'bg-green-100 text-green-800',
-  [LogType.MEETING]: 'bg-purple-100 text-purple-800',
-  [LogType.NOTE]: 'bg-gray-100 text-gray-800',
-};
-
 const contactPersonRoleColors = roleColors;
-
-const quoteStatusLabels: Record<string, string> = {
-  [QuoteStatus.CONCEPT]: 'Concept',
-  [QuoteStatus.TER_GOEDKEURING]: 'Ter goedkeuring',
-  [QuoteStatus.GOEDGEKEURD]: 'Goedgekeurd',
-  [QuoteStatus.VERSTUURD]: 'Verstuurd',
-  [QuoteStatus.BEKEKEN]: 'Bekeken',
-  [QuoteStatus.GEACCEPTEERD]: 'Geaccepteerd',
-  [QuoteStatus.AFGEWEZEN]: 'Afgewezen',
-  [QuoteStatus.VERLOPEN]: 'Verlopen',
-};
-
-const quoteStatusColors: Record<string, string> = {
-  [QuoteStatus.CONCEPT]: 'bg-gray-100 text-gray-800',
-  [QuoteStatus.TER_GOEDKEURING]: 'bg-yellow-100 text-yellow-800',
-  [QuoteStatus.GOEDGEKEURD]: 'bg-green-100 text-green-800',
-  [QuoteStatus.VERSTUURD]: 'bg-blue-100 text-blue-800',
-  [QuoteStatus.BEKEKEN]: 'bg-purple-100 text-purple-800',
-  [QuoteStatus.GEACCEPTEERD]: 'bg-emerald-100 text-emerald-800',
-  [QuoteStatus.AFGEWEZEN]: 'bg-red-100 text-red-800',
-  [QuoteStatus.VERLOPEN]: 'bg-orange-100 text-orange-800',
-};
-
-const requestStatusLabels: Record<string, string> = {
-  [RequestStatus.NIEUW]: 'Nieuw',
-  [RequestStatus.IN_BEHANDELING]: 'In behandeling',
-  [RequestStatus.OFFERTE_GEMAAKT]: 'Offerte gemaakt',
-  [RequestStatus.GEWONNEN]: 'Gewonnen',
-  [RequestStatus.VERLOREN]: 'Verloren',
-  [RequestStatus.ON_HOLD]: 'On hold',
-};
-
-const requestStatusColors: Record<string, string> = {
-  [RequestStatus.NIEUW]: 'bg-blue-100 text-blue-800',
-  [RequestStatus.IN_BEHANDELING]: 'bg-yellow-100 text-yellow-800',
-  [RequestStatus.OFFERTE_GEMAAKT]: 'bg-purple-100 text-purple-800',
-  [RequestStatus.GEWONNEN]: 'bg-green-100 text-green-800',
-  [RequestStatus.VERLOREN]: 'bg-red-100 text-red-800',
-  [RequestStatus.ON_HOLD]: 'bg-orange-100 text-orange-800',
-};
-
-const priorityLabels: Record<string, string> = {
-  [Priority.LOW]: 'Laag',
-  [Priority.NORMAL]: 'Normaal',
-  [Priority.HIGH]: 'Hoog',
-};
-
-const priorityColors: Record<string, string> = {
-  [Priority.LOW]: 'bg-gray-100 text-gray-700',
-  [Priority.NORMAL]: 'bg-blue-100 text-blue-700',
-  [Priority.HIGH]: 'bg-orange-100 text-orange-700',
-};
-
-const taskStatusLabels: Record<string, string> = {
-  [TaskStatus.TE_DOEN]: 'Te doen',
-  [TaskStatus.MEE_BEZIG]: 'Mee bezig',
-  [TaskStatus.VOLTOOID]: 'Voltooid',
-};
-
-const taskStatusColors: Record<string, string> = {
-  [TaskStatus.TE_DOEN]: 'bg-blue-100 text-blue-800',
-  [TaskStatus.MEE_BEZIG]: 'bg-yellow-100 text-yellow-800',
-  [TaskStatus.VOLTOOID]: 'bg-green-100 text-green-800',
-};
-
-const planningStatusLabels: Record<string, string> = {
-  [PlanningStatus.NOG_TE_PLANNEN]: 'Nog te plannen',
-  [PlanningStatus.CONCEPT]: 'Concept',
-  [PlanningStatus.GEPLAND]: 'Gepland',
-  [PlanningStatus.AFGEROND]: 'Afgerond',
-  [PlanningStatus.VERVALLEN]: 'Vervallen',
-};
-
-const planningStatusColors: Record<string, string> = {
-  [PlanningStatus.NOG_TE_PLANNEN]: 'bg-gray-100 text-gray-700',
-  [PlanningStatus.CONCEPT]: 'bg-yellow-100 text-yellow-800',
-  [PlanningStatus.GEPLAND]: 'bg-blue-100 text-blue-800',
-  [PlanningStatus.AFGEROND]: 'bg-green-100 text-green-800',
-  [PlanningStatus.VERVALLEN]: 'bg-red-100 text-red-800',
-};
 
 export default function ContactDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -352,9 +242,7 @@ export default function ContactDetailPage() {
 
   if (error || !contact) {
     return (
-      <div className="rounded-lg bg-danger-50 p-4 text-sm text-danger-600">
-        {error?.message || 'Relatie niet gevonden'}
-      </div>
+      <ErrorBox>{error?.message || 'Relatie niet gevonden'}</ErrorBox>
     );
   }
 
@@ -962,22 +850,10 @@ export default function ContactDetailPage() {
                         {request.title}
                       </td>
                       <td className="whitespace-nowrap px-4 py-3 text-sm">
-                        <span
-                          className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
-                            requestStatusColors[request.status] || 'bg-gray-100 text-gray-800'
-                          }`}
-                        >
-                          {requestStatusLabels[request.status] || request.status}
-                        </span>
+                        <StatusBadge status={request.status} map={REQUEST_STATUS} />
                       </td>
                       <td className="whitespace-nowrap px-4 py-3 text-sm">
-                        <span
-                          className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
-                            priorityColors[request.priority] || 'bg-gray-100 text-gray-800'
-                          }`}
-                        >
-                          {priorityLabels[request.priority] || request.priority}
-                        </span>
+                        <StatusBadge status={request.priority} map={PRIORITY} />
                       </td>
                       <td className="whitespace-nowrap px-4 py-3 text-sm text-gray-500">
                         {request.assignedUser
@@ -1048,19 +924,10 @@ export default function ContactDetailPage() {
                         {quote.subject}
                       </td>
                       <td className="whitespace-nowrap px-4 py-3 text-sm">
-                        <span
-                          className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
-                            quoteStatusColors[quote.status] || 'bg-gray-100 text-gray-800'
-                          }`}
-                        >
-                          {quoteStatusLabels[quote.status] || quote.status}
-                        </span>
+                        <StatusBadge status={quote.status} map={QUOTE_STATUS} />
                       </td>
                       <td className="whitespace-nowrap px-4 py-3 text-right text-sm text-gray-900">
-                        {new Intl.NumberFormat('nl-NL', {
-                          style: 'currency',
-                          currency: 'EUR',
-                        }).format(quote.total)}
+                        {formatCurrency(quote.total)}
                       </td>
                       <td className="whitespace-nowrap px-4 py-3 text-sm text-gray-500">
                         {formatShortDate(quote.createdAt)}
@@ -1117,10 +984,10 @@ export default function ContactDetailPage() {
                           className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
                             item.isCancelled
                               ? 'bg-red-100 text-red-800'
-                              : planningStatusColors[item.status] || 'bg-gray-100 text-gray-800'
+                              : getStatusConfig(PLANNING_STATUS, item.status).classes
                           }`}
                         >
-                          {item.isCancelled ? 'Geannuleerd' : planningStatusLabels[item.status] || item.status}
+                          {item.isCancelled ? 'Geannuleerd' : getStatusConfig(PLANNING_STATUS, item.status).label}
                         </span>
                       </td>
                       <td className="whitespace-nowrap px-4 py-3 text-sm text-gray-500">
@@ -1196,25 +1063,7 @@ export default function ContactDetailPage() {
                         {project.title}
                       </td>
                       <td className="whitespace-nowrap px-4 py-3 text-sm">
-                        <span
-                          className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
-                            project.status === ProjectStatus.ACTIEF
-                              ? 'bg-green-100 text-green-800'
-                              : project.status === ProjectStatus.AFGEROND
-                              ? 'bg-blue-100 text-blue-800'
-                              : project.status === ProjectStatus.ON_HOLD
-                              ? 'bg-yellow-100 text-yellow-800'
-                              : 'bg-red-100 text-red-800'
-                          }`}
-                        >
-                          {project.status === ProjectStatus.ACTIEF
-                            ? 'Actief'
-                            : project.status === ProjectStatus.AFGEROND
-                            ? 'Afgerond'
-                            : project.status === ProjectStatus.ON_HOLD
-                            ? 'On hold'
-                            : 'Geannuleerd'}
-                        </span>
+                        <StatusBadge status={project.status} map={PROJECT_STATUS} />
                       </td>
                       <td className="px-4 py-3 text-sm text-gray-500">
                         {project.projectManager
@@ -1401,13 +1250,7 @@ function ContactHistorySidebar({
                   className="rounded-lg border border-gray-200 bg-white p-3"
                 >
                   <div className="mb-1 flex items-center justify-between">
-                    <span
-                      className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
-                        logTypeColors[item.type] || 'bg-gray-100 text-gray-800'
-                      }`}
-                    >
-                      {logTypeLabels[item.type] || item.type}
-                    </span>
+                    <StatusBadge status={item.type} map={LOG_TYPE} />
                     <span className="text-xs text-gray-400">
                       {formatShortDate(item.loggedAt)}
                     </span>

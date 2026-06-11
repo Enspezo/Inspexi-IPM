@@ -12,7 +12,8 @@ import {
   NoteEntityType,
 } from '@/types';
 import type { Project, ProjectFollower } from '@/types';
-import { ActionMenu, Button, Spinner, Input, Select, Card, Modal, Checkbox } from '@/components/ui';
+import { ActionMenu, Button, Spinner, StatusBadge, Input, Select, Card, Modal, Checkbox } from '@/components/ui';
+import { PROJECT_STATUS } from '@/lib/status';
 import { DetailPageLayout, SidebarSection } from '@/components/layout/detail-page-layout';
 import { NotesSidebarSection, HistorySidebarSection, DocumentsSidebarSection } from '@/components/layout/sidebar-sections';
 import { useAuth } from '@/providers/auth-provider';
@@ -49,20 +50,6 @@ type Tab =
   | 'offertes'
   | 'planning'
   | 'volgers';
-
-const statusColors: Record<string, string> = {
-  [ProjectStatus.ACTIEF]: 'bg-green-100 text-green-800',
-  [ProjectStatus.ON_HOLD]: 'bg-yellow-100 text-yellow-800',
-  [ProjectStatus.AFGEROND]: 'bg-blue-100 text-blue-800',
-  [ProjectStatus.GEANNULEERD]: 'bg-red-100 text-red-800',
-};
-
-const statusLabels: Record<string, string> = {
-  [ProjectStatus.ACTIEF]: 'Actief',
-  [ProjectStatus.ON_HOLD]: 'On hold',
-  [ProjectStatus.AFGEROND]: 'Afgerond',
-  [ProjectStatus.GEANNULEERD]: 'Geannuleerd',
-};
 
 const statusOptions = [
   { value: ProjectStatus.ACTIEF, label: 'Actief' },
@@ -341,11 +328,7 @@ export default function ProjectDetailPage() {
                 <h1 className="text-2xl font-bold text-gray-900">
                   {project.projectNumber}
                 </h1>
-                <span
-                  className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${statusColors[project.status] || 'bg-gray-100 text-gray-800'}`}
-                >
-                  {statusLabels[project.status] || project.status}
-                </span>
+                <StatusBadge status={project.status} map={PROJECT_STATUS} />
               </div>
               <p className="mt-1 text-gray-600">{project.title}</p>
             </div>
@@ -681,11 +664,7 @@ function OverviewTab({
                 <div>
                   <dt className="text-sm font-medium text-gray-500">Status</dt>
                   <dd className="mt-1">
-                    <span
-                      className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${statusColors[project.status] || 'bg-gray-100 text-gray-800'}`}
-                    >
-                      {statusLabels[project.status] || project.status}
-                    </span>
+                    <StatusBadge status={project.status} map={PROJECT_STATUS} />
                   </dd>
                 </div>
               </dl>

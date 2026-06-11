@@ -5,10 +5,13 @@ import { ContactType } from '@/types';
 import {
   ActionMenu,
   Button,
+  ErrorBox,
   Spinner,
+  StatusBadge,
   Table,
   Input,
 } from '@/components/ui';
+import { CONTACT_TYPE } from '@/lib/status';
 import { DetailPageLayout } from '@/components/layout/detail-page-layout';
 import {
   TableConfigSidebar,
@@ -93,17 +96,7 @@ export default function ContactsPage() {
       ],
       groupable: true,
       getFilterValue: (contact) => contact.type,
-      render: (contact) => (
-        <span
-          className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
-            contact.type === ContactType.COMPANY
-              ? 'bg-blue-100 text-blue-800'
-              : 'bg-purple-100 text-purple-800'
-          }`}
-        >
-          {contact.type === ContactType.COMPANY ? 'Bedrijf' : 'Particulier'}
-        </span>
-      ),
+      render: (contact) => <StatusBadge status={contact.type} map={CONTACT_TYPE} />,
     },
     {
       key: 'email',
@@ -225,9 +218,7 @@ export default function ContactsPage() {
 
   if (error) {
     return (
-      <div className="rounded-lg bg-danger-50 p-4 text-sm text-danger-600">
-        Fout bij het laden van relaties: {error.message}
-      </div>
+      <ErrorBox>Fout bij het laden van relaties: {error.message}</ErrorBox>
     );
   }
 

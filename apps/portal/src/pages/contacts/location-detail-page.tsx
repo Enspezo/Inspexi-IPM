@@ -5,7 +5,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { ContactType, Role } from '@/types';
 import { roleColors as contactPersonRoleColors } from '@/lib/contact-person-role';
-import { Button, Card, Input, Select, Spinner, useToast } from '@/components/ui';
+import { Button, Card, ErrorBox, Input, Select, Spinner, useToast } from '@/components/ui';
 import { AddressSearchInput } from '@/components/ui/address-search-input';
 import { DetailPageLayout } from '@/components/layout/detail-page-layout';
 import { useAuth } from '@/providers/auth-provider';
@@ -159,9 +159,7 @@ export default function LocationDetailPage() {
 
   if (error || !location) {
     return (
-      <div className="rounded-lg bg-danger-50 p-4 text-sm text-danger-600">
-        {error?.message || 'Locatie niet gevonden'}
-      </div>
+      <ErrorBox>{error?.message || 'Locatie niet gevonden'}</ErrorBox>
     );
   }
 

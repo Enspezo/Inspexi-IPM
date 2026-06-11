@@ -4,7 +4,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { ContactType, Role } from '@/types';
-import { Button, Card, Input, Select, Spinner, useToast } from '@/components/ui';
+import { Button, Card, ErrorBox, Input, Select, Spinner, useToast } from '@/components/ui';
 import { DetailPageLayout } from '@/components/layout/detail-page-layout';
 import { useAuth } from '@/providers/auth-provider';
 import {
@@ -121,9 +121,7 @@ export default function ContactPersonDetailPage() {
 
   if (error || !person) {
     return (
-      <div className="rounded-lg bg-danger-50 p-4 text-sm text-danger-600">
-        {error?.message || 'Contactpersoon niet gevonden'}
-      </div>
+      <ErrorBox>{error?.message || 'Contactpersoon niet gevonden'}</ErrorBox>
     );
   }
 

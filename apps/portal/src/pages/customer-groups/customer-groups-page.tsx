@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import type { CustomerGroup } from '@/types';
 import {
   ActionMenu,
+  ErrorBox,
   Spinner,
   Button,
   Input,
@@ -83,9 +84,7 @@ export default function CustomerGroupsPage() {
 
   if (error) {
     return (
-      <div className="rounded-lg bg-danger-50 p-4 text-sm text-danger-600">
-        Fout bij het laden van klantgroepen: {error.message}
-      </div>
+      <ErrorBox>Fout bij het laden van klantgroepen: {error.message}</ErrorBox>
     );
   }
 

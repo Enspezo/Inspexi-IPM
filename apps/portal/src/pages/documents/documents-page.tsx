@@ -3,12 +3,14 @@ import { DocumentEntityType } from '@/types';
 import type { CrmDocument } from '@/types';
 import {
   ActionMenu,
+  ErrorBox,
   Spinner,
   Table,
   Input,
   Select,
   Button,
 } from '@/components/ui';
+import { ENTITY_TYPE_LABELS } from '@/lib/status';
 import { DetailPageLayout } from '@/components/layout/detail-page-layout';
 import {
   TableConfigSidebar,
@@ -28,15 +30,6 @@ const entityTypeFilterOptions = [
   { value: DocumentEntityType.TASK, label: 'Taak' },
   { value: DocumentEntityType.USER, label: 'Gebruiker' },
 ];
-
-const entityTypeLabels: Record<string, string> = {
-  [DocumentEntityType.CONTACT]: 'Relatie',
-  [DocumentEntityType.REQUEST]: 'Aanvraag',
-  [DocumentEntityType.QUOTE]: 'Offerte',
-  [DocumentEntityType.PRODUCT]: 'Product',
-  [DocumentEntityType.TASK]: 'Taak',
-  [DocumentEntityType.USER]: 'Gebruiker',
-};
 
 const entityTypeRoutes: Record<string, string> = {
   [DocumentEntityType.CONTACT]: '/contacts',
@@ -190,7 +183,7 @@ export default function DocumentsPage() {
               </a>
             ) : (
               <span className="text-xs text-gray-500">
-                {entityTypeLabels[doc.entityType] || doc.entityType}
+                {ENTITY_TYPE_LABELS[doc.entityType] || doc.entityType}
               </span>
             )}
           </div>
@@ -301,9 +294,7 @@ export default function DocumentsPage() {
 
   if (error) {
     return (
-      <div className="rounded-lg bg-danger-50 p-4 text-sm text-danger-600">
-        Fout bij het laden van documenten: {error.message}
-      </div>
+      <ErrorBox>Fout bij het laden van documenten: {error.message}</ErrorBox>
     );
   }
 

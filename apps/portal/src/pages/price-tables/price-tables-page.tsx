@@ -4,6 +4,7 @@ import type { PriceTable } from '@/types';
 import {
   ActionMenu,
   Button,
+  ErrorBox,
   Spinner,
   Table,
 } from '@/components/ui';
@@ -115,9 +116,7 @@ export default function PriceTablesPage() {
 
   if (error) {
     return (
-      <div className="rounded-lg bg-danger-50 p-4 text-sm text-danger-600">
-        Fout bij het laden van prijstabellen: {error.message}
-      </div>
+      <ErrorBox>Fout bij het laden van prijstabellen: {error.message}</ErrorBox>
     );
   }
 

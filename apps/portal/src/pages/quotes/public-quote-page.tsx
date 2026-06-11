@@ -3,22 +3,9 @@ import { useParams } from 'react-router-dom';
 import type { Quote, QuoteQuestion, QuoteAttachment } from '@/types';
 import { QuoteStatus } from '@/types';
 import { Spinner, SignatureCanvas, RichTextViewer } from '@/components/ui';
+import { formatCurrency, formatDate, formatFileSize } from '@/lib/format';
 
 const API_BASE = '/api/v1';
-
-function formatCurrency(amount: number): string {
-  return new Intl.NumberFormat('nl-NL', { style: 'currency', currency: 'EUR' }).format(amount);
-}
-
-function formatDate(dateStr: string): string {
-  return new Date(dateStr).toLocaleDateString('nl-NL', { day: 'numeric', month: 'long', year: 'numeric' });
-}
-
-function formatFileSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
 
 function getContactName(contact?: { companyName?: string | null; firstName?: string | null; lastName?: string | null }): string {
   if (!contact) return '';

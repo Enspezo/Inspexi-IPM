@@ -4,9 +4,11 @@ import type { Organization } from '@/types';
 import {
   ActionMenu,
   Button,
+  ErrorBox,
   Table,
   Spinner,
 } from '@/components/ui';
+import { formatShortDate } from '@/lib/format';
 import { DetailPageLayout } from '@/components/layout/detail-page-layout';
 import {
   TableConfigSidebar,
@@ -15,14 +17,6 @@ import {
 } from '@/components/table-config';
 import { useOrganizations } from './hooks/use-organizations';
 import { CreateOrganizationModal } from './components/create-organization-modal';
-
-function formatDate(dateStr: string): string {
-  return new Date(dateStr).toLocaleDateString('nl-NL', {
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-  });
-}
 
 export default function OrganizationsPage() {
   const navigate = useNavigate();
@@ -112,7 +106,7 @@ export default function OrganizationsPage() {
       sortable: true,
       getFilterValue: (org) => org.createdAt,
       render: (org) => (
-        <span className="text-gray-500">{formatDate(org.createdAt)}</span>
+        <span className="text-gray-500">{formatShortDate(org.createdAt)}</span>
       ),
     },
     {
@@ -162,9 +156,7 @@ export default function OrganizationsPage() {
 
   if (error) {
     return (
-      <div className="rounded-lg bg-danger-50 p-4 text-sm text-danger-600">
-        Fout bij het laden van organisaties: {error.message}
-      </div>
+      <ErrorBox>Fout bij het laden van organisaties: {error.message}</ErrorBox>
     );
   }
 

@@ -6,12 +6,21 @@ import {
   ActionMenu,
   Button,
   Spinner,
+  StatusBadge,
   Card,
   Modal,
   Input,
   Select,
   useToast,
 } from '@/components/ui';
+import {
+  ACCEPTANCE_STATUS,
+  PLANNING_STATUS,
+  SESSION_STATUS,
+  TASK_STATUS,
+  WORK_ORDER_STATUS,
+  getStatusConfig,
+} from '@/lib/status';
 import { DetailPageLayout, SidebarSection } from '@/components/layout/detail-page-layout';
 import { NotesSidebarSection, HistorySidebarSection, DocumentsSidebarSection } from '@/components/layout/sidebar-sections';
 import { useAuth } from '@/providers/auth-provider';
@@ -46,49 +55,11 @@ import {
 
 type Tab = 'algemeen' | 'sessies' | 'klantportaal' | 'volgers' | 'status' | 'geschiedenis';
 
-const statusColors: Record<string, string> = {
-  [PlanningStatus.NOG_TE_PLANNEN]: 'bg-gray-100 text-gray-700',
-  [PlanningStatus.CONCEPT]: 'bg-yellow-100 text-yellow-800',
-  [PlanningStatus.GEPLAND]: 'bg-blue-100 text-blue-800',
-  [PlanningStatus.AFGEROND]: 'bg-green-100 text-green-800',
-  [PlanningStatus.VERVALLEN]: 'bg-red-100 text-red-800',
-};
-
-const statusLabels: Record<string, string> = {
-  [PlanningStatus.NOG_TE_PLANNEN]: 'Nog te plannen',
-  [PlanningStatus.CONCEPT]: 'Concept — wacht op acceptatie',
-  [PlanningStatus.GEPLAND]: 'Gepland',
-  [PlanningStatus.AFGEROND]: 'Afgerond',
-  [PlanningStatus.VERVALLEN]: 'Vervallen',
-};
-
-const sessionStatusColors: Record<string, string> = {
-  [SessionStatus.NOG_TE_PLANNEN]: 'bg-gray-100 text-gray-700',
-  [SessionStatus.CONCEPT]: 'bg-blue-100 text-blue-800',
-  [SessionStatus.DEFINITIEF]: 'bg-green-100 text-green-800',
-  [SessionStatus.AFGEROND]: 'bg-green-200 text-green-900',
-  [SessionStatus.VERVALLEN]: 'bg-red-100 text-red-800',
-};
-
-const sessionStatusLabels: Record<string, string> = {
-  [SessionStatus.NOG_TE_PLANNEN]: 'Nog te plannen',
-  [SessionStatus.CONCEPT]: 'Concept',
-  [SessionStatus.DEFINITIEF]: 'Definitief',
-  [SessionStatus.AFGEROND]: 'Afgerond',
-  [SessionStatus.VERVALLEN]: 'Vervallen',
-};
-
-const acceptanceColors: Record<string, string> = {
-  [AcceptanceStatus.PENDING]: 'bg-yellow-100 text-yellow-800',
-  [AcceptanceStatus.ACCEPTED]: 'bg-green-100 text-green-800',
-  [AcceptanceStatus.REJECTED]: 'bg-red-100 text-red-800',
-};
-
-const acceptanceLabels: Record<string, string> = {
-  [AcceptanceStatus.PENDING]: 'In afwachting',
-  [AcceptanceStatus.ACCEPTED]: 'Geaccepteerd',
-  [AcceptanceStatus.REJECTED]: 'Geweigerd',
-};
+/** Pagina-specifiek label: CONCEPT krijgt hier een uitgebreider label dan de canonieke map. */
+function planningStatusLabel(status: string): string {
+  if (status === PlanningStatus.CONCEPT) return 'Concept — wacht op acceptatie';
+  return getStatusConfig(PLANNING_STATUS, status).label;
+}
 
 const canWrite = [Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE, Role.WERKVOORBEREIDER];
 
@@ -549,7 +520,7 @@ function PlanningDetailView({ id }: { id: string }) {
 
   const statusOptions = Object.values(PlanningStatus).map((s) => ({
     value: s,
-    label: statusLabels[s] || s,
+    label: planningStatusLabel(s),
   }));
 
   const tabLabels: Record<Tab, string> = {
@@ -577,8 +548,8 @@ function PlanningDetailView({ id }: { id: string }) {
           <div>
             <h1 className="text-2xl font-bold text-gray-900">{item.productName}</h1>
             <div className="flex items-center gap-2 mt-1 flex-wrap">
-              <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${statusColors[item.status] ?? 'bg-gray-100 text-gray-700'}`}>
-                {statusLabels[item.status] ?? item.status}
+              <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${getStatusConfig(PLANNING_STATUS, item.status).classes}`}>
+                {planningStatusLabel(item.status)}
               </span>
               {item.isMultiDay && (
                 <span className="inline-flex items-center rounded-full bg-indigo-100 px-2.5 py-0.5 text-xs font-medium text-indigo-800">
@@ -898,9 +869,7 @@ function PlanningDetailView({ id }: { id: string }) {
                           <div className="text-xs text-gray-500">{inspector.user?.email}</div>
                         </div>
                       </div>
-                      <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${acceptanceColors[inspector.acceptanceStatus]}`}>
-                        {acceptanceLabels[inspector.acceptanceStatus]}
-                      </span>
+                      <StatusBadge status={inspector.acceptanceStatus} map={ACCEPTANCE_STATUS} />
                     </div>
                   ))}
                 </div>
@@ -951,17 +920,7 @@ function PlanningDetailView({ id }: { id: string }) {
                             </div>
                           </div>
                         </div>
-                        <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
-                          wo.status === WorkOrderStatus.IN_VOORBEREIDING ? 'bg-yellow-100 text-yellow-800' :
-                          wo.status === WorkOrderStatus.IN_UITVOERING ? 'bg-blue-100 text-blue-800' :
-                          wo.status === WorkOrderStatus.UITGEVOERD ? 'bg-green-100 text-green-800' :
-                          'bg-orange-100 text-orange-800'
-                        }`}>
-                          {wo.status === WorkOrderStatus.IN_VOORBEREIDING ? 'In voorbereiding' :
-                           wo.status === WorkOrderStatus.IN_UITVOERING ? 'In uitvoering' :
-                           wo.status === WorkOrderStatus.UITGEVOERD ? 'Uitgevoerd' :
-                           'Wacht op klant'}
-                        </span>
+                        <StatusBadge status={wo.status} map={WORK_ORDER_STATUS} />
                       </Link>
                     ))}
                   </div>
@@ -1078,8 +1037,8 @@ function PlanningDetailView({ id }: { id: string }) {
           <Card>
             <h3 className="text-sm font-semibold text-gray-900 mb-4">Huidige status</h3>
             <div className="flex items-center gap-3">
-              <span className={`inline-flex items-center rounded-full px-3 py-1 text-sm font-medium ${statusColors[item.status] ?? 'bg-gray-100 text-gray-700'}`}>
-                {statusLabels[item.status] ?? item.status}
+              <span className={`inline-flex items-center rounded-full px-3 py-1 text-sm font-medium ${getStatusConfig(PLANNING_STATUS, item.status).classes}`}>
+                {planningStatusLabel(item.status)}
               </span>
             </div>
           </Card>
@@ -1426,18 +1385,6 @@ function PlanningDetailView({ id }: { id: string }) {
 
 // ─── Taken tab ─────────────────────────────────────────────────────────────
 
-const taskStatusLabels: Record<string, string> = {
-  [TaskStatus.TE_DOEN]: 'Te doen',
-  [TaskStatus.MEE_BEZIG]: 'Mee bezig',
-  [TaskStatus.VOLTOOID]: 'Voltooid',
-};
-
-const taskStatusColors: Record<string, string> = {
-  [TaskStatus.TE_DOEN]: 'bg-blue-100 text-blue-800',
-  [TaskStatus.MEE_BEZIG]: 'bg-yellow-100 text-yellow-800',
-  [TaskStatus.VOLTOOID]: 'bg-green-100 text-green-800',
-};
-
 function PlanningTasksTab({
   tasks,
   userCanWrite,
@@ -1537,9 +1484,7 @@ function PlanningTaskCard({
           >
             {task.title}
           </button>
-          <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${taskStatusColors[task.status] ?? 'bg-gray-100 text-gray-600'}`}>
-            {taskStatusLabels[task.status] ?? task.status}
-          </span>
+          <StatusBadge status={task.status} map={TASK_STATUS} />
         </div>
         <div className="mt-1 flex items-center gap-3 text-xs text-gray-500">
           {task.assignee && (
@@ -1644,8 +1589,7 @@ function SessionCard({
   const mySessionInspector = session.sessionInspectors?.find(si => si.userId === userId);
   const canActAsInspector = mySessionInspector?.acceptanceStatus === AcceptanceStatus.PENDING;
 
-  const statusColor = sessionStatusColors[session.status] ?? 'bg-gray-100 text-gray-700';
-  const statusLabel = sessionStatusLabels[session.status] ?? session.status;
+  const { classes: statusColor, label: statusLabel } = getStatusConfig(SESSION_STATUS, session.status);
 
   const scheduledDate = session.scheduledDate ? new Date(session.scheduledDate) : null;
   const dateStr = scheduledDate

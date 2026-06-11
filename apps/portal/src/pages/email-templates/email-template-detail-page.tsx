@@ -1,7 +1,8 @@
 import { useState, useRef, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import type { Editor } from '@tiptap/react';
-import { ActionMenu, Button, Spinner, Input, RichTextEditor } from '@/components/ui';
+import { ActionMenu, Button, ErrorBox, Spinner, Input, RichTextEditor } from '@/components/ui';
+import { formatFileSize } from '@/lib/format';
 import { DetailPageLayout } from '@/components/layout/detail-page-layout';
 import { AuditHistory } from '@/components/audit-history/audit-history';
 import { useToast } from '@/components/ui';
@@ -20,12 +21,6 @@ import { EMAIL_TYPE_LABELS } from './components/email-type-labels';
 import type { EmailTemplateType, EmailTemplateAttachment } from '@/types';
 
 type Tab = 'bewerken' | 'voorbeeld' | 'bijlagen';
-
-function formatFileSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
 
 export default function EmailTemplateDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -195,9 +190,7 @@ export default function EmailTemplateDetailPage() {
 
   if (error || !template) {
     return (
-      <div className="rounded-lg bg-danger-50 p-4 text-sm text-danger-600">
-        Sjabloon niet gevonden
-      </div>
+      <ErrorBox>Sjabloon niet gevonden</ErrorBox>
     );
   }
 
@@ -391,9 +384,7 @@ export default function EmailTemplateDetailPage() {
               </div>
             )}
             {previewMutation.error && (
-              <div className="rounded-lg bg-danger-50 p-4 text-sm text-danger-600">
-                Fout bij genereren preview
-              </div>
+              <ErrorBox>Fout bij genereren preview</ErrorBox>
             )}
           </div>
         )}

@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { PriceType, ContactType } from '@/types';
 import type { PriceTableItem, PriceTier, Product, ContactSummary } from '@/types';
-import { Button, Card, Spinner, Select, useToast } from '@/components/ui';
+import { Button, Card, ErrorBox, Spinner, Select, useToast } from '@/components/ui';
 import { DetailPageLayout } from '@/components/layout/detail-page-layout';
 import { usePriceTable, useSetPriceTableItems, useRemovePriceTableAssignment } from './hooks/use-price-tables';
 import { useProducts } from '../products/hooks/use-products';
@@ -150,9 +150,7 @@ export default function PriceTableDetailPage() {
 
   if (error || !priceTable) {
     return (
-      <div className="rounded-lg bg-danger-50 p-4 text-sm text-danger-600">
-        {error?.message || 'Prijstabel niet gevonden'}
-      </div>
+      <ErrorBox>{error?.message || 'Prijstabel niet gevonden'}</ErrorBox>
     );
   }
 

@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { DetailPageLayout } from '@/components/layout/detail-page-layout';
-import { Card, Spinner, Button } from '@/components/ui';
+import { Card, Spinner, Button, StatusBadge } from '@/components/ui';
+import { formatDateTime } from '@/lib/format';
+import { AUDIT_ACTION } from '@/lib/status';
 import { useMyActivity } from '@/hooks/use-my-activity';
 import { AuditAction } from '@/types';
 import type { AuditLogEntry } from '@/types';
@@ -21,22 +23,6 @@ const actionBadgeClasses: Record<AuditAction, string> = {
   [AuditAction.UPDATE]: 'bg-blue-100 text-blue-800',
   [AuditAction.DELETE]: 'bg-red-100 text-red-800',
 };
-
-const actionLabels: Record<AuditAction, string> = {
-  [AuditAction.CREATE]: 'Aangemaakt',
-  [AuditAction.UPDATE]: 'Bijgewerkt',
-  [AuditAction.DELETE]: 'Verwijderd',
-};
-
-function formatDateTime(dateStr: string): string {
-  return new Date(dateStr).toLocaleString('nl-NL', {
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-}
 
 function formatRelativeTime(dateStr: string): string {
   const now = Date.now();
@@ -120,11 +106,7 @@ function ActivityItem({ entry }: { entry: AuditLogEntry }) {
         {/* Header row */}
         <div className="flex flex-wrap items-start justify-between gap-2">
           <div className="flex flex-wrap items-center gap-2">
-            <span
-              className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${actionBadgeClasses[entry.action]}`}
-            >
-              {actionLabels[entry.action]}
-            </span>
+            <StatusBadge status={entry.action} map={AUDIT_ACTION} />
             <span className="text-sm font-medium text-gray-900">{typeLabel}</span>
             {name !== typeLabel && (
               <>

@@ -4,6 +4,7 @@ import { ContactType } from '@/types';
 import type { Location } from '@/types';
 import {
   ActionMenu,
+  ErrorBox,
   Spinner,
   Button,
   Input,
@@ -137,9 +138,7 @@ export default function LocationsPage() {
 
   if (error) {
     return (
-      <div className="rounded-lg bg-danger-50 p-4 text-sm text-danger-600">
-        Fout bij het laden van locaties: {error.message}
-      </div>
+      <ErrorBox>Fout bij het laden van locaties: {error.message}</ErrorBox>
     );
   }
 

@@ -1,4 +1,9 @@
 export { ActionMenu, type ActionMenuItem } from './action-menu';
+export { StatusBadge } from './status-badge';
+export { ErrorBox } from './error-box';
+export { InfoField } from './info-field';
+export { Tabs, type TabDef } from './tabs';
+export { ConfirmProvider, useConfirm, type ConfirmOptions } from './confirm-dialog';
 export { Button } from './button';
 export { Input } from './input';
 export { Select } from './select';

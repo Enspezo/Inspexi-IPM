@@ -1,10 +1,12 @@
 import {
   Injectable,
+  Logger,
   NotFoundException,
   ForbiddenException,
 } from '@nestjs/common';
 import { User, Role, Prisma, RequestStatus, NotificationType } from '@prisma/client';
 import { PrismaService } from '@/prisma';
+import { paginate, buildOrderBy, orgScope, assertFound } from '@/common';
 import { NotificationsService } from '../notifications/notifications.service';
 import { CustomFieldsValidator } from '@/modules/custom-fields/custom-fields.validator';
 import {
@@ -17,6 +19,8 @@ import { QuotesService } from '../quotes/quotes.service';
 
 @Injectable()
 export class RequestsService {
+  private readonly logger = new Logger(RequestsService.name);
+
   constructor(
     private prisma: PrismaService,
     private quotesService: QuotesService,
@@ -27,18 +31,12 @@ export class RequestsService {
   async findAll(user: User, query: ListRequestsQueryDto) {
     const { search, status, priority, assignedTo, page = 1, limit = 20, sortBy, sortOrder = 'desc' } = query;
     const ALLOWED_SORT_FIELDS = ['title', 'status', 'priority', 'source', 'createdAt'];
-    const orderBy = (sortBy && ALLOWED_SORT_FIELDS.includes(sortBy))
-      ? { [sortBy]: sortOrder }
-      : { createdAt: 'desc' as const };
-    const skip = (page - 1) * limit;
+    const orderBy = buildOrderBy(sortBy, sortOrder, ALLOWED_SORT_FIELDS);
 
     const where: Prisma.RequestWhereInput = {
+      ...orgScope(user),
       isDeleted: false,
     };
-
-    if (!user.roles.includes(Role.SUPERUSER)) {
-      where.orgId = user.orgId!;
-    }
 
     if (status) {
       where.status = status;
@@ -67,44 +65,39 @@ export class RequestsService {
       ];
     }
 
-    const [data, total] = await Promise.all([
-      this.prisma.request.findMany({
-        where,
-        include: {
-          contact: {
-            select: {
-              id: true,
-              type: true,
-              companyName: true,
-              firstName: true,
-              lastName: true,
-              email: true,
-            },
-          },
-          location: {
-            select: {
-              id: true,
-              name: true,
-              city: true,
-            },
-          },
-          assignedUser: {
-            select: {
-              id: true,
-              firstName: true,
-              lastName: true,
-              email: true,
-            },
+    return paginate(this.prisma.request, {
+      where,
+      include: {
+        contact: {
+          select: {
+            id: true,
+            type: true,
+            companyName: true,
+            firstName: true,
+            lastName: true,
+            email: true,
           },
         },
-        orderBy,
-        skip,
-        take: limit,
-      }),
-      this.prisma.request.count({ where }),
-    ]);
-
-    return { data, total, page, limit };
+        location: {
+          select: {
+            id: true,
+            name: true,
+            city: true,
+          },
+        },
+        assignedUser: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            email: true,
+          },
+        },
+      },
+      orderBy,
+      page,
+      limit,
+    });
   }
 
   async findOne(id: string, user: User) {
@@ -203,12 +196,12 @@ export class RequestsService {
 
     // Verify location if provided
     if (dto.locationId) {
-      const location = await this.prisma.location.findUnique({
-        where: { id: dto.locationId },
-      });
-      if (!location) {
-        throw new NotFoundException('Locatie niet gevonden');
-      }
+      const location = assertFound(
+        await this.prisma.location.findUnique({
+          where: { id: dto.locationId },
+        }),
+        'Locatie',
+      );
       if (location.contactId !== dto.contactId) {
         throw new ForbiddenException('Locatie behoort niet tot deze relatie');
       }
@@ -270,12 +263,12 @@ export class RequestsService {
 
     // Verify location if provided — must belong to the (possibly new) contact
     if (dto.locationId) {
-      const location = await this.prisma.location.findUnique({
-        where: { id: dto.locationId },
-      });
-      if (!location) {
-        throw new NotFoundException('Locatie niet gevonden');
-      }
+      const location = assertFound(
+        await this.prisma.location.findUnique({
+          where: { id: dto.locationId },
+        }),
+        'Locatie',
+      );
       if (location.contactId !== effectiveContactId) {
         throw new ForbiddenException('Locatie behoort niet tot deze relatie');
       }
@@ -327,14 +320,46 @@ export class RequestsService {
     return updated;
   }
 
+  /** Lijst van actieve "reden verloren" opties (globaal + org-specifiek). */
+  async findLostReasons(user: User) {
+    const scope = user.orgId
+      ? [{ orgId: null }, { orgId: user.orgId }]
+      : [{ orgId: null }];
+    return this.prisma.lostReason.findMany({
+      where: { isActive: true, OR: scope },
+      orderBy: [{ sortOrder: 'asc' }, { label: 'asc' }],
+    });
+  }
+
+  /** Valideert dat een reden-ID bestaat en globaal of van de eigen org is. */
+  private async resolveLostReasonId(
+    lostReasonId: string | undefined,
+    orgId: string | null,
+  ): Promise<string | null> {
+    if (!lostReasonId) return null;
+    const scope = orgId ? [{ orgId: null }, { orgId }] : [{ orgId: null }];
+    const reason = assertFound(
+      await this.prisma.lostReason.findFirst({
+        where: { id: lostReasonId, OR: scope },
+      }),
+      'Reden verloren',
+    );
+    return reason.id;
+  }
+
   async updateStatus(id: string, dto: UpdateRequestStatusDto, user: User) {
     const request = await this.findOne(id, user);
+
+    const lostReasonId =
+      dto.status === 'VERLOREN'
+        ? await this.resolveLostReasonId(dto.lostReasonId, request.orgId)
+        : null;
 
     const updated = await this.prisma.$transaction(async (tx) => {
       const lostFields =
         dto.status === 'VERLOREN'
-          ? { lostReason: dto.lostReason ?? null, lostNote: dto.lostNote ?? null }
-          : { lostReason: null, lostNote: null };
+          ? { lostReasonId, lostNote: dto.lostNote ?? null }
+          : { lostReasonId: null, lostNote: null };
 
       const result = await tx.request.update({
         where: { id: request.id },

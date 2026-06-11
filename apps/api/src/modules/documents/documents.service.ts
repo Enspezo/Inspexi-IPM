@@ -1,5 +1,6 @@
 import {
   Injectable,
+  Logger,
   Inject,
   NotFoundException,
   ForbiddenException,
@@ -12,6 +13,7 @@ import {
   STORAGE_PROVIDER,
   type StorageProvider,
 } from '@/common/services/storage/storage.interface';
+import { paginate, buildOrderBy, orgScope } from '@/common';
 import { UploadDocumentDto, ListDocumentsQueryDto, UpdateDocumentDto } from './dto';
 
 const userSelect = {
@@ -23,6 +25,8 @@ const userSelect = {
 
 @Injectable()
 export class DocumentsService {
+  private readonly logger = new Logger(DocumentsService.name);
+
   constructor(
     private prisma: PrismaService,
     private notifications: NotificationsService,
@@ -205,16 +209,9 @@ export class DocumentsService {
   async findAll(user: User, query: ListDocumentsQueryDto) {
     const { search, entityType, entityId, onlyMine, page = 1, limit = 20, sortBy, sortOrder = 'desc' } = query;
     const ALLOWED_SORT_FIELDS = ['originalName', 'mimeType', 'size', 'entityType', 'createdAt'];
-    const orderBy = (sortBy && ALLOWED_SORT_FIELDS.includes(sortBy))
-      ? { [sortBy]: sortOrder }
-      : { createdAt: 'desc' as const };
-    const skip = (page - 1) * limit;
+    const orderBy = buildOrderBy(sortBy, sortOrder, ALLOWED_SORT_FIELDS, { createdAt: 'desc' });
 
-    const where: Prisma.DocumentWhereInput = { isDeleted: false };
-
-    if (!user.roles.includes(Role.SUPERUSER)) {
-      where.orgId = user.orgId!;
-    }
+    const where: Prisma.DocumentWhereInput = { ...orgScope(user), isDeleted: false };
 
     if (onlyMine === 'true') {
       where.uploadedById = user.id;
@@ -232,27 +229,24 @@ export class DocumentsService {
       where.originalName = { contains: search, mode: 'insensitive' };
     }
 
-    const [data, total] = await Promise.all([
-      this.prisma.document.findMany({
-        where,
-        include: {
-          uploadedBy: { select: userSelect },
-        },
-        orderBy,
-        skip,
-        take: limit,
-      }),
-      this.prisma.document.count({ where }),
-    ]);
+    const result = await paginate(this.prisma.document, {
+      where,
+      include: {
+        uploadedBy: { select: userSelect },
+      },
+      orderBy,
+      page,
+      limit,
+    });
 
     // Enrich with entity names
-    const nameMap = await this.enrichWithEntityNames(data);
-    const enrichedData = data.map((doc) => ({
+    const nameMap = await this.enrichWithEntityNames(result.data);
+    const enrichedData = result.data.map((doc) => ({
       ...doc,
       entityName: nameMap.get(doc.entityId) || null,
     }));
 
-    return { data: enrichedData, total, page, limit };
+    return { ...result, data: enrichedData };
   }
 
   async findOne(id: string, user: User) {

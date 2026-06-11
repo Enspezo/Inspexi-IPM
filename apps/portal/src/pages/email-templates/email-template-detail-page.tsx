@@ -1,7 +1,11 @@
 import { useState, useRef, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
 import type { Editor } from '@tiptap/react';
-import { ActionMenu, Button, Spinner, Input, RichTextEditor } from '@/components/ui';
+import { ActionMenu, Button, Card, ErrorBox, InfoField, Spinner, Input, RichTextEditor, useConfirm } from '@/components/ui';
+import { formatFileSize } from '@/lib/format';
 import { DetailPageLayout } from '@/components/layout/detail-page-layout';
 import { AuditHistory } from '@/components/audit-history/audit-history';
 import { useToast } from '@/components/ui';
@@ -21,16 +25,18 @@ import type { EmailTemplateType, EmailTemplateAttachment } from '@/types';
 
 type Tab = 'bewerken' | 'voorbeeld' | 'bijlagen';
 
-function formatFileSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
+const templateMetaSchema = z.object({
+  name: z.string().min(1, 'Naam is verplicht'),
+  subject: z.string().min(1, 'Onderwerp is verplicht'),
+});
+
+type TemplateMetaFormData = z.infer<typeof templateMetaSchema>;
 
 export default function EmailTemplateDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { showToast } = useToast();
+  const confirm = useConfirm();
 
   const { data: template, isLoading, error } = useEmailTemplate(id!);
   const updateMutation = useUpdateEmailTemplate(id!);
@@ -42,36 +48,62 @@ export default function EmailTemplateDetailPage() {
   const deleteAttachmentMutation = useDeleteEmailTemplateAttachment(id!);
 
   const [activeTab, setActiveTab] = useState<Tab>('bewerken');
-  const [name, setName] = useState('');
-  const [subject, setSubject] = useState('');
+  const [isEditing, setIsEditing] = useState(false);
   const [bodyJson, setBodyJson] = useState<object | null>(null);
   const [bodyHtml, setBodyHtml] = useState('');
-  const [isDirty, setIsDirty] = useState(false);
+  const [isBodyDirty, setIsBodyDirty] = useState(false);
 
   const editorRef = useRef<Editor | null>(null);
   const subjectRef = useRef<HTMLInputElement | null>(null);
 
+  // Metadata-formulier (naam + onderwerp)
+  const {
+    register,
+    handleSubmit,
+    reset: resetForm,
+    setValue: setFormValue,
+    getValues,
+    formState: { errors: formErrors, isDirty: isMetaDirty },
+  } = useForm<TemplateMetaFormData>({ resolver: zodResolver(templateMetaSchema) });
+
   // Initialize form state when template loads
   useEffect(() => {
     if (template) {
-      setName(template.name);
-      setSubject(template.subject);
+      resetForm({ name: template.name, subject: template.subject });
       setBodyJson(template.bodyJson);
       setBodyHtml(template.bodyHtml);
-      setIsDirty(false);
+      setIsBodyDirty(false);
     }
-  }, [template]);
+  }, [template, resetForm]);
+
+  const onSubmitMeta = async (data: TemplateMetaFormData) => {
+    try {
+      await updateMutation.mutateAsync({
+        name: data.name,
+        subject: data.subject,
+      });
+      showToast('Sjabloongegevens opgeslagen', 'success');
+      setIsEditing(false);
+    } catch {
+      showToast('Opslaan mislukt', 'error');
+    }
+  };
+
+  const handleCancelEdit = () => {
+    if (template) {
+      resetForm({ name: template.name, subject: template.subject });
+    }
+    setIsEditing(false);
+  };
 
   const handleSave = async () => {
     try {
       await updateMutation.mutateAsync({
-        name,
-        subject,
         bodyJson: bodyJson ?? undefined,
         bodyHtml,
       });
       showToast('Sjabloon opgeslagen', 'success');
-      setIsDirty(false);
+      setIsBodyDirty(false);
     } catch {
       showToast('Opslaan mislukt', 'error');
     }
@@ -81,7 +113,13 @@ export default function EmailTemplateDetailPage() {
     if (!template) return;
     const newActive = !template.isActive;
     const msg = newActive ? 'activeren' : 'deactiveren';
-    if (!window.confirm(`Weet u zeker dat u dit sjabloon wilt ${msg}?`)) return;
+    const confirmed = await confirm({
+      title: newActive ? 'Sjabloon activeren' : 'Sjabloon deactiveren',
+      message: `Weet u zeker dat u dit sjabloon wilt ${msg}?`,
+      confirmLabel: newActive ? 'Activeren' : 'Deactiveren',
+      ...(newActive ? { variant: 'primary' as const } : {}),
+    });
+    if (!confirmed) return;
     try {
       await updateMutation.mutateAsync({ isActive: newActive });
       showToast(`Sjabloon ${newActive ? 'geactiveerd' : 'gedeactiveerd'}`, 'success');
@@ -104,7 +142,7 @@ export default function EmailTemplateDetailPage() {
     if (!template) return;
     setActiveTab('voorbeeld');
     previewMutation.mutate({
-      subject,
+      subject: getValues('subject') || template.subject,
       bodyHtml,
       type: template.type,
     });
@@ -114,18 +152,18 @@ export default function EmailTemplateDetailPage() {
     // Try inserting into the rich text editor
     if (editorRef.current) {
       editorRef.current.chain().focus().insertContent(placeholder).run();
-      setIsDirty(true);
+      setIsBodyDirty(true);
     }
   };
 
   const handleInsertPlaceholderInSubject = (placeholder: string) => {
     const input = subjectRef.current;
     if (!input) return;
+    const subject = getValues('subject') ?? '';
     const start = input.selectionStart ?? subject.length;
     const end = input.selectionEnd ?? subject.length;
     const newSubject = subject.slice(0, start) + placeholder + subject.slice(end);
-    setSubject(newSubject);
-    setIsDirty(true);
+    setFormValue('subject', newSubject, { shouldDirty: true });
     // Restore cursor position after React re-render
     setTimeout(() => {
       input.focus();
@@ -176,7 +214,12 @@ export default function EmailTemplateDetailPage() {
   };
 
   const handleAttachmentDelete = async (attachmentId: string) => {
-    if (!window.confirm('Bijlage verwijderen?')) return;
+    const confirmed = await confirm({
+      title: 'Bijlage verwijderen',
+      message: 'Bijlage verwijderen?',
+      confirmLabel: 'Verwijderen',
+    });
+    if (!confirmed) return;
     try {
       await deleteAttachmentMutation.mutateAsync(attachmentId);
       showToast('Bijlage verwijderd', 'success');
@@ -195,9 +238,7 @@ export default function EmailTemplateDetailPage() {
 
   if (error || !template) {
     return (
-      <div className="rounded-lg bg-danger-50 p-4 text-sm text-danger-600">
-        Sjabloon niet gevonden
-      </div>
+      <ErrorBox>Sjabloon niet gevonden</ErrorBox>
     );
   }
 
@@ -288,37 +329,74 @@ export default function EmailTemplateDetailPage() {
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             {/* Editor (left 2/3) */}
             <div className="lg:col-span-2 space-y-4">
-              <Input
-                label="Naam"
-                value={name}
-                onChange={(e) => { setName(e.target.value); setIsDirty(true); }}
-              />
-
-              <div>
-                <div className="flex items-center justify-between mb-1">
-                  <label className="block text-sm font-medium text-gray-700">
-                    Onderwerp
-                  </label>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      // Focus subject input so next placeholder insert goes there
-                      subjectRef.current?.focus();
-                    }}
-                    className="text-xs text-primary-600 hover:text-primary-800"
-                  >
-                    Variabele invoegen in onderwerp
-                  </button>
+              {/* Sjabloongegevens (naam + onderwerp) */}
+              <Card>
+                <div className="mb-4 flex items-center justify-between">
+                  <h3 className="text-sm font-semibold text-gray-900">Sjabloongegevens</h3>
+                  {!isEditing && (
+                    <Button variant="secondary" size="sm" onClick={() => setIsEditing(true)}>
+                      Bewerken
+                    </Button>
+                  )}
                 </div>
-                <input
-                  ref={subjectRef}
-                  type="text"
-                  value={subject}
-                  onChange={(e) => { setSubject(e.target.value); setIsDirty(true); }}
-                  className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
-                  placeholder="Onderwerp van de e-mail..."
-                />
-              </div>
+                {isEditing ? (
+                  <form onSubmit={handleSubmit(onSubmitMeta)} className="space-y-4">
+                    <Input
+                      label="Naam"
+                      error={formErrors.name?.message}
+                      {...register('name')}
+                    />
+                    <div>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="block text-sm font-medium text-gray-700">
+                          Onderwerp
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            // Focus subject input so next placeholder insert goes there
+                            subjectRef.current?.focus();
+                          }}
+                          className="text-xs text-primary-600 hover:text-primary-800"
+                        >
+                          Variabele invoegen in onderwerp
+                        </button>
+                      </div>
+                      {(() => {
+                        const { ref: subjectFieldRef, ...subjectField } = register('subject');
+                        return (
+                          <input
+                            {...subjectField}
+                            ref={(el) => {
+                              subjectFieldRef(el);
+                              subjectRef.current = el;
+                            }}
+                            type="text"
+                            className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
+                            placeholder="Onderwerp van de e-mail..."
+                          />
+                        );
+                      })()}
+                      {formErrors.subject?.message && (
+                        <p className="mt-1 text-sm text-red-600">{formErrors.subject.message}</p>
+                      )}
+                    </div>
+                    <div className="flex justify-end gap-3 pt-2">
+                      <Button type="button" variant="secondary" onClick={handleCancelEdit}>
+                        Annuleren
+                      </Button>
+                      <Button type="submit" disabled={!isMetaDirty} isLoading={updateMutation.isPending}>
+                        Opslaan
+                      </Button>
+                    </div>
+                  </form>
+                ) : (
+                  <dl className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <InfoField label="Naam" value={template.name} />
+                    <InfoField label="Onderwerp" value={template.subject} />
+                  </dl>
+                )}
+              </Card>
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -326,7 +404,7 @@ export default function EmailTemplateDetailPage() {
                 </label>
                 <RichTextEditor
                   value={bodyJson}
-                  onChange={(json) => { setBodyJson(json); setIsDirty(true); }}
+                  onChange={(json) => { setBodyJson(json); setIsBodyDirty(true); }}
                   onHtmlChange={setBodyHtml}
                   placeholder="Schrijf hier de inhoud van de e-mail..."
                   editorRef={editorRef}
@@ -342,7 +420,7 @@ export default function EmailTemplateDetailPage() {
                 </Button>
                 <Button
                   onClick={handleSave}
-                  disabled={!isDirty || updateMutation.isPending}
+                  disabled={!isBodyDirty || updateMutation.isPending}
                   isLoading={updateMutation.isPending}
                 >
                   Opslaan
@@ -391,9 +469,7 @@ export default function EmailTemplateDetailPage() {
               </div>
             )}
             {previewMutation.error && (
-              <div className="rounded-lg bg-danger-50 p-4 text-sm text-danger-600">
-                Fout bij genereren preview
-              </div>
+              <ErrorBox>Fout bij genereren preview</ErrorBox>
             )}
           </div>
         )}

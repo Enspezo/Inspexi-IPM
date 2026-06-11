@@ -15,7 +15,7 @@ import {
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
-import { ApiTags, ApiConsumes } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiConsumes } from '@nestjs/swagger';
 import { User, Role } from '@prisma/client';
 import { Response } from 'express';
 import { Roles } from '@/common/decorators/roles.decorator';
@@ -35,6 +35,7 @@ export class QuoteTemplatesController {
   constructor(private readonly service: QuoteTemplatesService) {}
 
   @Get()
+  @ApiOperation({ summary: 'Offertesjablonen ophalen' })
   @Roles(Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE)
   async findAll(
     @CurrentUser() user: User,
@@ -45,6 +46,7 @@ export class QuoteTemplatesController {
   }
 
   @Post()
+  @ApiOperation({ summary: 'Nieuw offertesjabloon aanmaken' })
   @Roles(Role.SUPERUSER, Role.ORG_ADMIN)
   async create(
     @CurrentUser() user: User,
@@ -57,6 +59,7 @@ export class QuoteTemplatesController {
   // ── DOCX file management ──────────────────────────────────
 
   @Post(':id/docx')
+  @ApiOperation({ summary: 'DOCX-sjabloon uploaden' })
   @Roles(Role.SUPERUSER, Role.ORG_ADMIN)
   @UseInterceptors(
     FileInterceptor('file', {
@@ -78,6 +81,7 @@ export class QuoteTemplatesController {
   }
 
   @Get(':id/docx/download')
+  @ApiOperation({ summary: 'DOCX-sjabloon downloaden' })
   @Roles(Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE)
   async downloadDocx(
     @CurrentUser() user: User,
@@ -95,6 +99,7 @@ export class QuoteTemplatesController {
   }
 
   @Get(':id/docx/revisions')
+  @ApiOperation({ summary: 'DOCX-revisies ophalen' })
   @Roles(Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE)
   async getDocxRevisions(
     @CurrentUser() user: User,
@@ -105,6 +110,7 @@ export class QuoteTemplatesController {
   }
 
   @Get(':id/docx/revisions/:revisionId/download')
+  @ApiOperation({ summary: 'DOCX-revisie downloaden' })
   @Roles(Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE)
   async downloadDocxRevision(
     @CurrentUser() user: User,
@@ -125,6 +131,7 @@ export class QuoteTemplatesController {
   // ── Image upload for block editor ────────────────────────
 
   @Post(':id/images')
+  @ApiOperation({ summary: 'Afbeelding bij sjabloon uploaden' })
   @Roles(Role.SUPERUSER, Role.ORG_ADMIN)
   @UseInterceptors(
     FileInterceptor('file', {
@@ -146,6 +153,7 @@ export class QuoteTemplatesController {
   }
 
   @Get(':id/images/:key(*)')
+  @ApiOperation({ summary: 'Sjabloonafbeelding ophalen' })
   @Roles(Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE)
   async getImage(
     @CurrentUser() user: User,
@@ -170,6 +178,7 @@ export class QuoteTemplatesController {
   // ── Template attachments ─────────────────────────────────
 
   @Get(':id/attachments')
+  @ApiOperation({ summary: 'Standaardbijlagen ophalen' })
   @Roles(Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE)
   async getAttachments(
     @CurrentUser() user: User,
@@ -180,6 +189,7 @@ export class QuoteTemplatesController {
   }
 
   @Post(':id/attachments')
+  @ApiOperation({ summary: 'Standaardbijlage uploaden' })
   @Roles(Role.SUPERUSER, Role.ORG_ADMIN)
   @UseInterceptors(
     FileInterceptor('file', {
@@ -201,6 +211,7 @@ export class QuoteTemplatesController {
   }
 
   @Patch(':id/attachments/reorder')
+  @ApiOperation({ summary: 'Standaardbijlagen herordenen' })
   @Roles(Role.SUPERUSER, Role.ORG_ADMIN)
   async reorderAttachments(
     @CurrentUser() user: User,
@@ -216,6 +227,7 @@ export class QuoteTemplatesController {
   }
 
   @Get(':id/attachments/:attachmentId/download')
+  @ApiOperation({ summary: 'Standaardbijlage downloaden' })
   @Roles(Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE)
   async downloadAttachment(
     @CurrentUser() user: User,
@@ -237,6 +249,7 @@ export class QuoteTemplatesController {
   }
 
   @Delete(':id/attachments/:attachmentId')
+  @ApiOperation({ summary: 'Standaardbijlage verwijderen' })
   @Roles(Role.SUPERUSER, Role.ORG_ADMIN)
   async deleteAttachment(
     @CurrentUser() user: User,
@@ -250,6 +263,7 @@ export class QuoteTemplatesController {
   // ── Follow-up rules ──────────────────────────────────────
 
   @Get(':id/follow-ups')
+  @ApiOperation({ summary: 'Follow-up regels ophalen' })
   @Roles(Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE)
   async getFollowUpRules(
     @CurrentUser() user: User,
@@ -260,6 +274,7 @@ export class QuoteTemplatesController {
   }
 
   @Post(':id/follow-ups')
+  @ApiOperation({ summary: 'Follow-up regel toevoegen' })
   @Roles(Role.SUPERUSER, Role.ORG_ADMIN)
   async createFollowUp(
     @CurrentUser() user: User,
@@ -271,6 +286,7 @@ export class QuoteTemplatesController {
   }
 
   @Patch(':id/follow-ups/:followUpId')
+  @ApiOperation({ summary: 'Follow-up regel bijwerken' })
   @Roles(Role.SUPERUSER, Role.ORG_ADMIN)
   async updateFollowUp(
     @CurrentUser() user: User,
@@ -283,6 +299,7 @@ export class QuoteTemplatesController {
   }
 
   @Delete(':id/follow-ups/:followUpId')
+  @ApiOperation({ summary: 'Follow-up regel verwijderen' })
   @Roles(Role.SUPERUSER, Role.ORG_ADMIN)
   async deleteFollowUp(
     @CurrentUser() user: User,
@@ -296,6 +313,7 @@ export class QuoteTemplatesController {
   // ── Base CRUD (specific routes ABOVE :id) ────────────────
 
   @Get(':id')
+  @ApiOperation({ summary: 'Offertesjabloon ophalen' })
   @Roles(Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE)
   async findOne(
     @CurrentUser() user: User,
@@ -306,6 +324,7 @@ export class QuoteTemplatesController {
   }
 
   @Patch(':id')
+  @ApiOperation({ summary: 'Offertesjabloon bijwerken' })
   @Roles(Role.SUPERUSER, Role.ORG_ADMIN)
   async update(
     @CurrentUser() user: User,
@@ -317,6 +336,7 @@ export class QuoteTemplatesController {
   }
 
   @Delete(':id')
+  @ApiOperation({ summary: 'Offertesjabloon verwijderen (soft delete)' })
   @Roles(Role.SUPERUSER, Role.ORG_ADMIN)
   async deactivate(
     @CurrentUser() user: User,

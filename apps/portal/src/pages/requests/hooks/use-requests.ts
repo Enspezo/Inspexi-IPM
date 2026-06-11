@@ -6,7 +6,17 @@ import type {
   RequestStatus,
   Priority,
   UserSummary,
+  LostReason,
 } from '@/types';
+
+/** Lookup: actieve "reden verloren" opties (globaal + org-specifiek). */
+export function useLostReasons() {
+  return useQuery<LostReason[]>({
+    queryKey: ['lost-reasons'],
+    queryFn: () => apiClient.get<LostReason[]>('/requests/lost-reasons'),
+    staleTime: 5 * 60 * 1000,
+  });
+}
 
 interface ListRequestsParams {
   search?: string;

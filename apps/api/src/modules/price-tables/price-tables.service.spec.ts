@@ -12,44 +12,44 @@ describe('PriceTablesService', () => {
   let service: PriceTablesService;
   let prisma: PrismaService;
 
-  const mockUser: User = {
+  const mockUser = {
     id: 'user-1',
     orgId: 'org-1',
     email: 'admin@test.com',
     passwordHash: '$2b$10$hashedpassword',
     firstName: 'Admin',
     lastName: 'User',
-    role: Role.ORG_ADMIN,
+    roles: [Role.ORG_ADMIN],
     isActive: true,
     emailVerifiedAt: new Date('2025-01-01'),
     createdAt: new Date('2025-01-01'),
-  };
+  } as any;
 
-  const mockSuperuser: User = {
+  const mockSuperuser = {
     id: 'su-1',
     orgId: null,
     email: 'superuser@test.com',
     passwordHash: '$2b$10$hashedpassword',
     firstName: 'Super',
     lastName: 'User',
-    role: Role.SUPERUSER,
+    roles: [Role.SUPERUSER],
     isActive: true,
     emailVerifiedAt: new Date('2025-01-01'),
     createdAt: new Date('2025-01-01'),
-  };
+  } as any;
 
-  const mockOtherOrgUser: User = {
+  const mockOtherOrgUser = {
     id: 'user-other',
     orgId: 'org-2',
     email: 'other@test.com',
     passwordHash: '$2b$10$hashedpassword',
     firstName: 'Other',
     lastName: 'User',
-    role: Role.ORG_ADMIN,
+    roles: [Role.ORG_ADMIN],
     isActive: true,
     emailVerifiedAt: new Date('2025-01-01'),
     createdAt: new Date('2025-01-01'),
-  };
+  } as any;
 
   const mockPriceTable = {
     id: 'pt-1',
@@ -294,12 +294,12 @@ describe('PriceTablesService', () => {
     });
 
     it('should throw ForbiddenException if no orgId and not SUPERUSER', async () => {
-      const userNoOrg: User = {
+      const userNoOrg = {
         ...mockUser,
         id: 'user-no-org',
         orgId: null,
-        role: Role.ORG_ADMIN,
-      };
+        roles: [Role.ORG_ADMIN],
+      } as any;
 
       await expect(
         service.create({ name: 'Test' }, userNoOrg),

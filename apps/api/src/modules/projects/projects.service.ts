@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { Role, ProjectStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { paginate, buildOrderBy, orgScope, assertFound } from '@/common';
 import { NotificationsService } from '@/modules/notifications/notifications.service';
 import {
   CreateProjectDto,
@@ -76,15 +77,11 @@ export class ProjectsService {
   async findAll(user: User, query: ListProjectsQueryDto) {
     const page = Number(query.page ?? 1);
     const limit = Math.min(Number(query.limit ?? 25), 100);
-    const skip = (page - 1) * limit;
     const { sortBy, sortOrder = 'desc' } = query;
     const ALLOWED_SORT_FIELDS = ['projectNumber', 'title', 'status', 'startDate', 'expectedEndDate', 'createdAt'];
-    const orderBy = (sortBy && ALLOWED_SORT_FIELDS.includes(sortBy))
-      ? { [sortBy]: sortOrder }
-      : { createdAt: 'desc' as const };
+    const orderBy = buildOrderBy(sortBy, sortOrder, ALLOWED_SORT_FIELDS, { createdAt: 'desc' });
 
-    const where: any = { isDeleted: false };
-    if (!user.roles.includes(Role.SUPERUSER)) where.orgId = user.orgId!;
+    const where: any = { ...orgScope(user), isDeleted: false };
     if (query.status) where.status = query.status;
     if (query.contactId) where.contactId = query.contactId;
     if (query.projectManagerId) where.projectManagerId = query.projectManagerId;
@@ -98,18 +95,13 @@ export class ProjectsService {
       ];
     }
 
-    const [data, total] = await Promise.all([
-      this.prisma.project.findMany({
-        where,
-        include: PROJECT_INCLUDE,
-        skip,
-        take: limit,
-        orderBy,
-      }),
-      this.prisma.project.count({ where }),
-    ]);
-
-    return { data, total, page, limit };
+    return paginate(this.prisma.project, {
+      where,
+      include: PROJECT_INCLUDE,
+      orderBy,
+      page,
+      limit,
+    });
   }
 
   async findOne(id: string, user: User) {
@@ -510,13 +502,15 @@ export class ProjectsService {
   // ─── Auto-creation from request ───────────────────────────
 
   async createFromRequest(requestId: string, user: User) {
-    const request = await this.prisma.request.findUnique({
-      where: { id: requestId },
-      include: {
-        contact: { select: { id: true, companyName: true, firstName: true, lastName: true } },
-      },
-    });
-    if (!request) throw new NotFoundException('Aanvraag niet gevonden');
+    const request = assertFound(
+      await this.prisma.request.findUnique({
+        where: { id: requestId },
+        include: {
+          contact: { select: { id: true, companyName: true, firstName: true, lastName: true } },
+        },
+      }),
+      'Aanvraag',
+    );
     this.checkOrgAccess(user, request.orgId);
     if (request.projectId) throw new BadRequestException('Aanvraag is al gekoppeld aan een project');
 

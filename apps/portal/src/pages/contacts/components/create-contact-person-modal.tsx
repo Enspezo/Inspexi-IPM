@@ -2,29 +2,19 @@ import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { ContactPersonRole } from '@/types';
 import { Modal, Input, Select, Button, useToast } from '@/components/ui';
-import { useContacts, useAddContactPerson } from '../hooks/use-contacts';
+import { useContacts, useAddContactPerson, useContactPersonRoles } from '../hooks/use-contacts';
 
 const schema = z.object({
   firstName: z.string().min(1, 'Voornaam is verplicht'),
   lastName: z.string().min(1, 'Achternaam is verplicht'),
   email: z.string().email('Ongeldig e-mailadres').or(z.literal('')).optional(),
   phone: z.string().optional(),
-  role: z.nativeEnum(ContactPersonRole, {
-    errorMap: () => ({ message: 'Selecteer een rol' }),
-  }),
+  roleId: z.string().optional(),
   notes: z.string().optional(),
 });
 
 type FormData = z.infer<typeof schema>;
-
-const roleOptions = [
-  { value: ContactPersonRole.ALGEMEEN, label: 'Algemeen' },
-  { value: ContactPersonRole.TECHNISCH, label: 'Technisch' },
-  { value: ContactPersonRole.ADMINISTRATIEF, label: 'Administratief' },
-  { value: ContactPersonRole.ANDERS, label: 'Anders' },
-];
 
 interface Props {
   isOpen: boolean;
@@ -51,6 +41,8 @@ export function CreateContactPersonModal({ isOpen, onClose }: Props) {
   ];
 
   const addMutation = useAddContactPerson(selectedContactId);
+  const { data: roles } = useContactPersonRoles();
+  const roleOptions = (roles ?? []).map((r) => ({ value: r.id, label: r.label }));
 
   const {
     register,
@@ -59,7 +51,6 @@ export function CreateContactPersonModal({ isOpen, onClose }: Props) {
     formState: { errors },
   } = useForm<FormData>({
     resolver: zodResolver(schema),
-    defaultValues: { role: ContactPersonRole.ALGEMEEN },
   });
 
   const handleContactChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -76,7 +67,7 @@ export function CreateContactPersonModal({ isOpen, onClose }: Props) {
       await addMutation.mutateAsync({
         firstName: data.firstName,
         lastName: data.lastName,
-        role: data.role,
+        roleId: data.roleId || undefined,
         email: data.email || undefined,
         phone: data.phone || undefined,
         notes: data.notes || undefined,
@@ -142,8 +133,8 @@ export function CreateContactPersonModal({ isOpen, onClose }: Props) {
         <Select
           label="Rol"
           options={roleOptions}
-          error={errors.role?.message}
-          {...register('role')}
+          error={errors.roleId?.message}
+          {...register('roleId')}
         />
 
         <div>

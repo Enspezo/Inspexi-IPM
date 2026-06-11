@@ -36,12 +36,6 @@ const enumLabels: Record<string, string> = {
   AFGEWEZEN: 'Afgewezen',
   VERLOPEN: 'Verlopen',
 
-  // ContactPersonRole
-  ALGEMEEN: 'Algemeen',
-  TECHNISCH: 'Technisch',
-  ADMINISTRATIEF: 'Administratief',
-  ANDERS: 'Anders',
-
   // PriceType
   FIXED: 'Vast',
   TIERED: 'Gestaffeld',
@@ -170,6 +164,8 @@ const FK_FIELDS = new Set([
   'projectId',
   'projectManagerId',
   'workOrderId',
+  'lostReasonId',
+  'roleId',
 ]);
 
 const currencyFormatter = new Intl.NumberFormat('nl-NL', {

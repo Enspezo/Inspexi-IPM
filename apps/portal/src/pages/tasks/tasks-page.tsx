@@ -2,7 +2,6 @@ import { useState, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   TaskStatus,
-  TaskType,
   TaskEntityType,
   Role,
 } from '@/types';
@@ -10,12 +9,16 @@ import type { Task } from '@/types';
 import {
   ActionMenu,
   Button,
+  ErrorBox,
   Spinner,
+  StatusBadge,
   Table,
   Input,
   Select,
 } from '@/components/ui';
+import { ENTITY_TYPE_LABELS, TASK_STATUS, TASK_TYPE } from '@/lib/status';
 import { DetailPageLayout } from '@/components/layout/detail-page-layout';
+import { PageHeader } from '@/components/layout/page-header';
 import {
   TableConfigSidebar,
   useTableConfig,
@@ -32,40 +35,13 @@ const statusFilterOptions = [
   { value: TaskStatus.VOLTOOID, label: 'Voltooid' },
 ];
 
-const statusColors: Record<string, string> = {
-  [TaskStatus.TE_DOEN]: 'bg-blue-100 text-blue-800',
-  [TaskStatus.MEE_BEZIG]: 'bg-yellow-100 text-yellow-800',
-  [TaskStatus.VOLTOOID]: 'bg-green-100 text-green-800',
-};
-
-const statusLabels: Record<string, string> = {
-  [TaskStatus.TE_DOEN]: 'Te doen',
-  [TaskStatus.MEE_BEZIG]: 'Mee bezig',
-  [TaskStatus.VOLTOOID]: 'Voltooid',
-};
-
-const taskTypeLabels: Record<string, string> = {
-  [TaskType.TO_DO]: 'To-do',
-  [TaskType.EMAIL]: 'E-mail',
-  [TaskType.TELEFOONGESPREK]: 'Telefoongesprek',
-  [TaskType.DOCUMENT]: 'Document',
-  [TaskType.GOEDKEURING]: 'Goedkeuring',
-};
-
-const taskTypeColors: Record<string, string> = {
-  [TaskType.TO_DO]: 'bg-gray-100 text-gray-700',
-  [TaskType.EMAIL]: 'bg-indigo-100 text-indigo-800',
-  [TaskType.TELEFOONGESPREK]: 'bg-orange-100 text-orange-800',
-  [TaskType.DOCUMENT]: 'bg-purple-100 text-purple-800',
-  [TaskType.GOEDKEURING]: 'bg-pink-100 text-pink-800',
-};
-
-const entityTypeLabels: Record<string, string> = {
-  [TaskEntityType.CONTACT]: 'Relatie',
-  [TaskEntityType.REQUEST]: 'Aanvraag',
-  [TaskEntityType.QUOTE]: 'Offerte',
-  [TaskEntityType.USER]: 'Gebruiker',
-};
+// Taken kunnen alleen aan deze 4 entiteitstypen gekoppeld worden (zie entityTypeRoutes)
+const taskEntityTypes = [
+  TaskEntityType.CONTACT,
+  TaskEntityType.REQUEST,
+  TaskEntityType.QUOTE,
+  TaskEntityType.USER,
+];
 
 const entityTypeRoutes: Record<string, string> = {
   [TaskEntityType.CONTACT]: '/contacts',
@@ -151,22 +127,14 @@ export default function TasksPage() {
       sortable: true,
       sortKey: 'status',
       getFilterValue: (task) => task.status,
-      render: (task) => (
-        <span
-          className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
-            statusColors[task.status] || 'bg-gray-100 text-gray-600'
-          }`}
-        >
-          {statusLabels[task.status] || task.status}
-        </span>
-      ),
+      render: (task) => <StatusBadge status={task.status} map={TASK_STATUS} />,
     },
     {
       key: 'taskType',
       header: 'Type',
       filterable: true,
       filterType: 'select',
-      filterOptions: Object.entries(taskTypeLabels).map(([value, label]) => ({
+      filterOptions: Object.entries(TASK_TYPE).map(([value, { label }]) => ({
         value,
         label,
       })),
@@ -174,24 +142,16 @@ export default function TasksPage() {
       sortable: true,
       sortKey: 'taskType',
       getFilterValue: (task) => task.taskType,
-      render: (task) => (
-        <span
-          className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
-            taskTypeColors[task.taskType] || 'bg-gray-100 text-gray-600'
-          }`}
-        >
-          {taskTypeLabels[task.taskType] || task.taskType}
-        </span>
-      ),
+      render: (task) => <StatusBadge status={task.taskType} map={TASK_TYPE} />,
     },
     {
       key: 'entityType',
       header: 'Gekoppeld aan',
       filterable: true,
       filterType: 'select',
-      filterOptions: Object.entries(entityTypeLabels).map(([value, label]) => ({
+      filterOptions: taskEntityTypes.map((value) => ({
         value,
-        label,
+        label: ENTITY_TYPE_LABELS[value],
       })),
       groupable: true,
       sortable: true,
@@ -201,11 +161,11 @@ export default function TasksPage() {
         <button
           onClick={() => navigate(`${entityTypeRoutes[task.entityType]}/${task.entityId}`)}
           className="inline-flex items-center gap-1.5 text-sm text-primary-600 hover:text-primary-800 hover:underline"
-          title={entityTypeLabels[task.entityType] || task.entityType}
+          title={ENTITY_TYPE_LABELS[task.entityType] || task.entityType}
         >
           <EntityIcon type={task.entityType} />
           <span className="truncate max-w-[200px]">
-            {task.entityName || entityTypeLabels[task.entityType] || task.entityType}
+            {task.entityName || ENTITY_TYPE_LABELS[task.entityType] || task.entityType}
           </span>
         </button>
       ),
@@ -308,9 +268,9 @@ export default function TasksPage() {
 
   if (error) {
     return (
-      <div className="rounded-lg bg-danger-50 p-4 text-sm text-danger-600">
+      <ErrorBox>
         Fout bij het laden van taken: {error.message}
-      </div>
+      </ErrorBox>
     );
   }
 
@@ -338,29 +298,27 @@ export default function TasksPage() {
       }
     >
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-bold text-gray-900">Taken</h2>
-          <p className="mt-1 text-sm text-gray-500">
-            Beheer en volg taken op
-          </p>
-        </div>
-        {userCanWrite && (
-          <ActionMenu
-            secondaryActions={[
-              {
-                label: 'Taak aanmaken',
-                icon: (
-                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
-                  </svg>
-                ),
-                onClick: () => setIsCreateOpen(true),
-              },
-            ]}
-          />
-        )}
-      </div>
+      <PageHeader
+        title="Taken"
+        description="Beheer en volg taken op"
+        actions={
+          userCanWrite && (
+            <ActionMenu
+              secondaryActions={[
+                {
+                  label: 'Taak aanmaken',
+                  icon: (
+                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+                    </svg>
+                  ),
+                  onClick: () => setIsCreateOpen(true),
+                },
+              ]}
+            />
+          )
+        }
+      />
 
       {/* Filters */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center">

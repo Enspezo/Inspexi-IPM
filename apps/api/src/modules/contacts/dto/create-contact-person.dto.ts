@@ -1,6 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsEnum, IsOptional, IsString, IsEmail } from 'class-validator';
-import { ContactPersonRole } from '@prisma/client';
+import { IsOptional, IsString, IsEmail, IsUUID } from 'class-validator';
 
 export class CreateContactPersonDto {
   @ApiProperty({ example: 'Jan' })
@@ -21,9 +20,13 @@ export class CreateContactPersonDto {
   @IsString()
   phone?: string;
 
-  @ApiProperty({ enum: ContactPersonRole, example: ContactPersonRole.ALGEMEEN })
-  @IsEnum(ContactPersonRole)
-  role: ContactPersonRole;
+  @ApiPropertyOptional({
+    description: 'ID van de rol (lookup). Leeg = standaardrol "Algemeen".',
+    format: 'uuid',
+  })
+  @IsOptional()
+  @IsUUID()
+  roleId?: string;
 
   @ApiPropertyOptional({ example: 'Hoofdcontact voor inspecties' })
   @IsOptional()

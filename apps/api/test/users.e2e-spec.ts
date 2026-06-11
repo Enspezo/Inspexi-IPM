@@ -49,7 +49,7 @@ describe('Users (e2e)', () => {
         passwordHash,
         firstName: 'Super',
         lastName: 'User',
-        role: 'SUPERUSER',
+        roles: ['SUPERUSER'],
         emailVerifiedAt: new Date(),
       },
     });
@@ -62,7 +62,7 @@ describe('Users (e2e)', () => {
         passwordHash,
         firstName: 'Org',
         lastName: 'Admin',
-        role: 'ORG_ADMIN',
+        roles: ['ORG_ADMIN'],
         orgId: org.id,
         emailVerifiedAt: new Date(),
       },
@@ -76,7 +76,7 @@ describe('Users (e2e)', () => {
         passwordHash,
         firstName: 'Target',
         lastName: 'User',
-        role: 'BACKOFFICE',
+        roles: ['BACKOFFICE'],
         orgId: org.id,
         emailVerifiedAt: new Date(),
       },
@@ -198,7 +198,7 @@ describe('Users (e2e)', () => {
 
       expect(res.body.success).toBe(true);
       expect(res.body.data.email).toBe('e2e-invite-accept@test.nl');
-      expect(res.body.data.role).toBe('INSPECTEUR');
+      expect(res.body.data.roles).toEqual(['INSPECTEUR']);
       expect(res.body.data.passwordHash).toBeUndefined();
     });
   });
@@ -241,7 +241,7 @@ describe('Users (e2e)', () => {
       const res = await request(app.getHttpServer())
         .patch(`/api/v1/users/${targetUserId}/role`)
         .set('Authorization', `Bearer ${orgAdminToken}`)
-        .send({ role: 'MANAGER' })
+        .send({ roles: ['MANAGER'] })
         .expect(200);
 
       expect(res.body.success).toBe(true);
@@ -249,14 +249,14 @@ describe('Users (e2e)', () => {
       const user = await prisma.user.findUnique({
         where: { id: targetUserId },
       });
-      expect(user?.role).toBe('MANAGER');
+      expect(user?.roles).toEqual(['MANAGER']);
     });
 
     it('should reject SUPERUSER role from Org Admin', async () => {
       await request(app.getHttpServer())
         .patch(`/api/v1/users/${targetUserId}/role`)
         .set('Authorization', `Bearer ${orgAdminToken}`)
-        .send({ role: 'SUPERUSER' })
+        .send({ roles: ['SUPERUSER'] })
         .expect(403);
     });
   });

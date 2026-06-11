@@ -4,12 +4,14 @@ import type { Product } from '@/types';
 import {
   ActionMenu,
   Button,
+  ErrorBox,
   Spinner,
   Table,
   Input,
   Select,
 } from '@/components/ui';
 import { DetailPageLayout } from '@/components/layout/detail-page-layout';
+import { PageHeader } from '@/components/layout/page-header';
 import {
   TableConfigSidebar,
   useTableConfig,
@@ -183,9 +185,7 @@ export default function ProductsPage() {
 
   if (error) {
     return (
-      <div className="rounded-lg bg-danger-50 p-4 text-sm text-danger-600">
-        Fout bij het laden van producten: {error.message}
-      </div>
+      <ErrorBox>Fout bij het laden van producten: {error.message}</ErrorBox>
     );
   }
 
@@ -213,23 +213,21 @@ export default function ProductsPage() {
       }
     >
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-bold text-gray-900">Producten</h2>
-          <p className="mt-1 text-sm text-gray-500">
-            Beheer uw productcatalogus en diensten
-          </p>
-        </div>
-        <ActionMenu
-          secondaryActions={[
-            {
-              label: 'Product aanmaken',
-              icon: <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>,
-              onClick: () => setIsCreateOpen(true),
-            },
-          ]}
-        />
-      </div>
+      <PageHeader
+        title="Producten"
+        description="Beheer uw productcatalogus en diensten"
+        actions={
+          <ActionMenu
+            secondaryActions={[
+              {
+                label: 'Product aanmaken',
+                icon: <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>,
+                onClick: () => setIsCreateOpen(true),
+              },
+            ]}
+          />
+        }
+      />
 
       {/* Filters */}
       <div className="flex flex-col gap-4 sm:flex-row">

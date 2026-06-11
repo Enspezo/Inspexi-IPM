@@ -17,7 +17,7 @@ describe('ENTITY_TYPE_LABELS', () => {
     expect(ENTITY_TYPE_LABELS.Request).toBe('Aanvraag');
     expect(ENTITY_TYPE_LABELS.Quote).toBe('Offerte');
     expect(ENTITY_TYPE_LABELS.QuoteLine).toBe('Offerteregel');
-    expect(ENTITY_TYPE_LABELS.QuoteTemplate).toBe('Sjabloon');
+    expect(ENTITY_TYPE_LABELS.QuoteTemplate).toBe('Offertesjabloon');
     expect(ENTITY_TYPE_LABELS.User).toBe('Gebruiker');
     expect(ENTITY_TYPE_LABELS.Organization).toBe('Organisatie');
   });
@@ -77,12 +77,12 @@ describe('getEntityLink', () => {
     );
   });
 
-  it('should return /quote-templates for QuoteTemplate', () => {
-    expect(getEntityLink('QuoteTemplate', 'qt-1')).toBe('/quote-templates');
+  it('should return detail URL for QuoteTemplate', () => {
+    expect(getEntityLink('QuoteTemplate', 'qt-1')).toBe('/quote-templates/qt-1');
   });
 
-  it('should return /users for User', () => {
-    expect(getEntityLink('User', 'u-1')).toBe('/users');
+  it('should return detail URL for User', () => {
+    expect(getEntityLink('User', 'u-1')).toBe('/users/u-1');
   });
 
   it('should return correct URL for Organization', () => {

@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { User, Role, Prisma } from '@prisma/client';
 import { PrismaService } from '@/prisma';
+import { paginate, buildOrderBy, orgScope, assertFound } from '@/common';
 import { requestContext } from '@/common/services/request-context';
 import { EmailService } from '@/common/services/email.service';
 import { CustomFieldsValidator } from '@/modules/custom-fields/custom-fields.validator';
@@ -24,6 +25,9 @@ import {
   SendContactEmailDto,
   ListContactsQueryDto,
   ListContactPersonsQueryDto,
+  ListLocationsQueryDto,
+  CreateLocationContactPersonDto,
+  UpdateLocationContactPersonDto,
 } from './dto';
 
 @Injectable()
@@ -80,19 +84,13 @@ export class ContactsService {
   async findAll(user: User, query: ListContactsQueryDto) {
     const { search, type, onlyMine, page = 1, limit = 20, sortBy, sortOrder = 'desc' } = query;
     const ALLOWED_SORT_FIELDS = ['type', 'email', 'phone', 'createdAt'];
-    const orderBy = (sortBy && ALLOWED_SORT_FIELDS.includes(sortBy))
-      ? { [sortBy]: sortOrder }
-      : { createdAt: 'desc' as const };
-    const skip = (page - 1) * limit;
-
-    const where: Prisma.ContactWhereInput = {
-      isDeleted: false,
-    };
+    const orderBy = buildOrderBy(sortBy, sortOrder, ALLOWED_SORT_FIELDS);
 
     // Org scoping — SUPERUSER sees all, others scoped to own org
-    if (!user.roles.includes(Role.SUPERUSER)) {
-      where.orgId = user.orgId!;
-    }
+    const where: Prisma.ContactWhereInput = {
+      ...orgScope(user),
+      isDeleted: false,
+    };
 
     if (type) {
       where.type = type;
@@ -114,26 +112,21 @@ export class ContactsService {
       ];
     }
 
-    const [data, total] = await Promise.all([
-      this.prisma.contact.findMany({
-        where,
-        include: {
-          addresses: true,
-          owner: { select: { id: true, firstName: true, lastName: true } },
-          customerGroups: {
-            include: {
-              customerGroup: { select: { id: true, name: true } },
-            },
+    return paginate(this.prisma.contact, {
+      where,
+      include: {
+        addresses: true,
+        owner: { select: { id: true, firstName: true, lastName: true } },
+        customerGroups: {
+          include: {
+            customerGroup: { select: { id: true, name: true } },
           },
         },
-        orderBy,
-        skip,
-        take: limit,
-      }),
-      this.prisma.contact.count({ where }),
-    ]);
-
-    return { data, total, page, limit };
+      },
+      orderBy,
+      page,
+      limit,
+    });
   }
 
   async findOne(id: string, user: User) {
@@ -145,6 +138,9 @@ export class ContactsService {
         contactPersons: {
           where: { isDeleted: false },
           orderBy: { createdAt: 'desc' },
+          include: {
+            role: { select: { id: true, code: true, label: true } },
+          },
         },
         customerGroups: {
           include: {
@@ -365,14 +361,13 @@ export class ContactsService {
     dto: UpdateContactAddressDto,
     user: User,
   ) {
-    const address = await this.prisma.contactAddress.findUnique({
-      where: { id: addressId },
-      include: { contact: true },
-    });
-
-    if (!address) {
-      throw new NotFoundException('Adres niet gevonden');
-    }
+    const address = assertFound(
+      await this.prisma.contactAddress.findUnique({
+        where: { id: addressId },
+        include: { contact: true },
+      }),
+      'Adres',
+    );
 
     // Verify org scoping via contact
     await this.findOne(address.contactId, user);
@@ -442,13 +437,12 @@ export class ContactsService {
   }
 
   async deleteAddress(addressId: string, user: User) {
-    const address = await this.prisma.contactAddress.findUnique({
-      where: { id: addressId },
-    });
-
-    if (!address) {
-      throw new NotFoundException('Adres niet gevonden');
-    }
+    const address = assertFound(
+      await this.prisma.contactAddress.findUnique({
+        where: { id: addressId },
+      }),
+      'Adres',
+    );
 
     // Verify org scoping via contact
     await this.findOne(address.contactId, user);
@@ -461,23 +455,19 @@ export class ContactsService {
   // ─── Contact Persons ───────────────────────────────────
 
   async findAllContactPersons(user: User, query: ListContactPersonsQueryDto) {
-    const { search, role, contactId, page = 1, limit = 20 } = query;
-    const skip = (page - 1) * limit;
+    const { search, roleId, contactId, page = 1, limit = 20 } = query;
 
     const where: Prisma.ContactPersonWhereInput = {
+      ...orgScope(user),
       isDeleted: false,
     };
-
-    if (!user.roles.includes(Role.SUPERUSER)) {
-      where.orgId = user.orgId!;
-    }
 
     if (contactId) {
       where.contactId = contactId;
     }
 
-    if (role) {
-      where.role = role;
+    if (roleId) {
+      where.roleId = roleId;
     }
 
     if (search) {
@@ -488,32 +478,59 @@ export class ContactsService {
       ];
     }
 
-    const [data, total] = await Promise.all([
-      this.prisma.contactPerson.findMany({
-        where,
-        include: {
-          contact: {
-            select: {
-              id: true,
-              type: true,
-              companyName: true,
-              firstName: true,
-              lastName: true,
-            },
+    return paginate(this.prisma.contactPerson, {
+      where,
+      include: {
+        role: { select: { id: true, code: true, label: true } },
+        contact: {
+          select: {
+            id: true,
+            type: true,
+            companyName: true,
+            firstName: true,
+            lastName: true,
           },
         },
-        orderBy: { createdAt: 'desc' },
-        skip,
-        take: limit,
-      }),
-      this.prisma.contactPerson.count({ where }),
-    ]);
+      },
+      orderBy: { createdAt: 'desc' },
+      page,
+      limit,
+    });
+  }
 
-    return { data, total, page, limit };
+  /**
+   * Valideert dat een rol-ID bestaat en hoort bij de org van de gebruiker
+   * of een globale default is. Geeft de rol-ID terug, of de "Algemeen"-default
+   * wanneer er geen is opgegeven.
+   */
+  private async resolveContactPersonRoleId(
+    roleId: string | undefined,
+    orgId: string | null,
+  ): Promise<string | null> {
+    // Bouw de scope expliciet zodat een null orgId niet per ongeluk alle orgs matcht
+    const scope = orgId ? [{ orgId: null }, { orgId }] : [{ orgId: null }];
+
+    if (roleId) {
+      const role = assertFound(
+        await this.prisma.contactPersonRoleOption.findFirst({
+          where: { id: roleId, OR: scope },
+        }),
+        'Rol',
+      );
+      return role.id;
+    }
+
+    // Geen rol opgegeven → val terug op de "Algemeen"-default (org-specifiek of globaal)
+    const fallback = await this.prisma.contactPersonRoleOption.findFirst({
+      where: { code: 'ALGEMEEN', OR: scope },
+      orderBy: { orgId: { sort: 'desc', nulls: 'last' } },
+    });
+    return fallback?.id ?? null;
   }
 
   async addContactPerson(contactId: string, dto: CreateContactPersonDto, user: User) {
     const contact = await this.findOne(contactId, user);
+    const roleId = await this.resolveContactPersonRoleId(dto.roleId, contact.orgId);
 
     return this.prisma.contactPerson.create({
       data: {
@@ -523,8 +540,11 @@ export class ContactsService {
         lastName: dto.lastName,
         email: dto.email,
         phone: dto.phone,
-        role: dto.role,
+        roleId,
         notes: dto.notes,
+      },
+      include: {
+        role: { select: { id: true, code: true, label: true } },
       },
     });
   }
@@ -532,7 +552,10 @@ export class ContactsService {
   async findContactPerson(id: string, user: User) {
     const person = await this.prisma.contactPerson.findUnique({
       where: { id },
-      include: { contact: true },
+      include: {
+        contact: true,
+        role: { select: { id: true, code: true, label: true } },
+      },
     });
 
     if (!person || person.isDeleted) {
@@ -549,6 +572,11 @@ export class ContactsService {
   async updateContactPerson(id: string, dto: UpdateContactPersonDto, user: User) {
     const person = await this.findContactPerson(id, user);
 
+    const roleId =
+      dto.roleId !== undefined
+        ? await this.resolveContactPersonRoleId(dto.roleId, person.orgId)
+        : undefined;
+
     return this.prisma.contactPerson.update({
       where: { id: person.id },
       data: {
@@ -556,9 +584,23 @@ export class ContactsService {
         ...(dto.lastName !== undefined && { lastName: dto.lastName }),
         ...(dto.email !== undefined && { email: dto.email }),
         ...(dto.phone !== undefined && { phone: dto.phone }),
-        ...(dto.role !== undefined && { role: dto.role }),
+        ...(roleId !== undefined && { roleId }),
         ...(dto.notes !== undefined && { notes: dto.notes }),
       },
+      include: {
+        role: { select: { id: true, code: true, label: true } },
+      },
+    });
+  }
+
+  /** Lijst van actieve contactpersoon-rollen (globaal + org-specifiek). */
+  async findContactPersonRoles(user: User) {
+    const scope = user.orgId
+      ? [{ orgId: null }, { orgId: user.orgId }]
+      : [{ orgId: null }];
+    return this.prisma.contactPersonRoleOption.findMany({
+      where: { isActive: true, OR: scope },
+      orderBy: [{ sortOrder: 'asc' }, { label: 'asc' }],
     });
   }
 
@@ -602,6 +644,73 @@ export class ContactsService {
     });
   }
 
+  async findAllLocations(user: User, query: ListLocationsQueryDto) {
+    const { search, contactId, objectType, page = 1, limit = 20 } = query;
+
+    const where: Prisma.LocationWhereInput = { ...orgScope(user) };
+
+    if (contactId) {
+      where.contactId = contactId;
+    }
+
+    if (objectType) {
+      where.objectType = objectType;
+    }
+
+    if (search) {
+      where.OR = [
+        { name: { contains: search, mode: 'insensitive' } },
+        { street: { contains: search, mode: 'insensitive' } },
+        { city: { contains: search, mode: 'insensitive' } },
+        { postalCode: { contains: search, mode: 'insensitive' } },
+      ];
+    }
+
+    return paginate(this.prisma.location, {
+      where,
+      include: {
+        contact: {
+          select: {
+            id: true,
+            type: true,
+            companyName: true,
+            firstName: true,
+            lastName: true,
+          },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+      page,
+      limit,
+    });
+  }
+
+  async findLocation(locationId: string, user: User) {
+    const location = assertFound(
+      await this.prisma.location.findUnique({
+        where: { id: locationId },
+        include: {
+          contact: {
+            select: {
+              id: true,
+              type: true,
+              companyName: true,
+              firstName: true,
+              lastName: true,
+            },
+          },
+        },
+      }),
+      'Locatie',
+    );
+
+    if (!user.roles.includes(Role.SUPERUSER) && location.orgId !== user.orgId) {
+      throw new ForbiddenException();
+    }
+
+    return location;
+  }
+
   async findLocations(contactId: string, user: User) {
     const contact = await this.findOne(contactId, user);
 
@@ -612,13 +721,12 @@ export class ContactsService {
   }
 
   async updateLocation(locationId: string, dto: UpdateLocationDto, user: User) {
-    const location = await this.prisma.location.findUnique({
-      where: { id: locationId },
-    });
-
-    if (!location) {
-      throw new NotFoundException('Locatie niet gevonden');
-    }
+    const location = assertFound(
+      await this.prisma.location.findUnique({
+        where: { id: locationId },
+      }),
+      'Locatie',
+    );
 
     // Verify org scoping
     if (!user.roles.includes(Role.SUPERUSER) && location.orgId !== user.orgId) {
@@ -675,14 +783,136 @@ export class ContactsService {
     });
   }
 
-  async deleteLocation(locationId: string, user: User) {
-    const location = await this.prisma.location.findUnique({
-      where: { id: locationId },
+  async findContactPersonLocations(contactPersonId: string, user: User) {
+    const person = await this.findContactPerson(contactPersonId, user);
+
+    return this.prisma.locationContactPerson.findMany({
+      where: { contactPersonId: person.id },
+      include: {
+        location: {
+          select: {
+            id: true,
+            name: true,
+            street: true,
+            houseNumber: true,
+            postalCode: true,
+            city: true,
+            objectType: true,
+            contactId: true,
+            contact: {
+              select: { id: true, type: true, companyName: true, firstName: true, lastName: true },
+            },
+          },
+        },
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+  }
+
+  async addLocationContactPerson(locationId: string, dto: CreateLocationContactPersonDto, user: User) {
+    const location = await this.findLocation(locationId, user);
+
+    const contactPerson = await this.prisma.contactPerson.findUnique({
+      where: { id: dto.contactPersonId },
     });
 
-    if (!location) {
-      throw new NotFoundException('Locatie niet gevonden');
+    if (!contactPerson || contactPerson.isDeleted) {
+      throw new NotFoundException('Contactpersoon niet gevonden');
     }
+
+    if (!user.roles.includes(Role.SUPERUSER) && contactPerson.orgId !== user.orgId) {
+      throw new ForbiddenException();
+    }
+
+    return this.prisma.locationContactPerson.create({
+      data: {
+        locationId: location.id,
+        contactPersonId: dto.contactPersonId,
+        orgId: location.orgId,
+        notes: dto.notes,
+      },
+      include: {
+        contactPerson: {
+          include: {
+            role: { select: { id: true, code: true, label: true } },
+            contact: {
+              select: { id: true, type: true, companyName: true, firstName: true, lastName: true },
+            },
+          },
+        },
+      },
+    });
+  }
+
+  async findLocationContactPersons(locationId: string, user: User) {
+    const location = await this.findLocation(locationId, user);
+
+    return this.prisma.locationContactPerson.findMany({
+      where: { locationId: location.id },
+      include: {
+        contactPerson: {
+          include: {
+            role: { select: { id: true, code: true, label: true } },
+            contact: {
+              select: { id: true, type: true, companyName: true, firstName: true, lastName: true },
+            },
+          },
+        },
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+  }
+
+  async updateLocationContactPerson(linkId: string, dto: UpdateLocationContactPersonDto, user: User) {
+    const link = assertFound(
+      await this.prisma.locationContactPerson.findUnique({
+        where: { id: linkId },
+      }),
+      'Koppeling',
+    );
+
+    if (!user.roles.includes(Role.SUPERUSER) && link.orgId !== user.orgId) {
+      throw new ForbiddenException();
+    }
+
+    return this.prisma.locationContactPerson.update({
+      where: { id: linkId },
+      data: { notes: dto.notes ?? null },
+      include: {
+        contactPerson: {
+          include: {
+            role: { select: { id: true, code: true, label: true } },
+            contact: {
+              select: { id: true, type: true, companyName: true, firstName: true, lastName: true },
+            },
+          },
+        },
+      },
+    });
+  }
+
+  async removeLocationContactPerson(linkId: string, user: User) {
+    const link = assertFound(
+      await this.prisma.locationContactPerson.findUnique({
+        where: { id: linkId },
+      }),
+      'Koppeling',
+    );
+
+    if (!user.roles.includes(Role.SUPERUSER) && link.orgId !== user.orgId) {
+      throw new ForbiddenException();
+    }
+
+    await this.prisma.locationContactPerson.delete({ where: { id: linkId } });
+  }
+
+  async deleteLocation(locationId: string, user: User) {
+    const location = assertFound(
+      await this.prisma.location.findUnique({
+        where: { id: locationId },
+      }),
+      'Locatie',
+    );
 
     // Verify org scoping
     if (!user.roles.includes(Role.SUPERUSER) && location.orgId !== user.orgId) {

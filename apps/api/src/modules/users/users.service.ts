@@ -1,5 +1,6 @@
 import {
   Injectable,
+  Logger,
   NotFoundException,
   ConflictException,
   ForbiddenException,
@@ -11,6 +12,7 @@ import * as bcrypt from 'bcrypt';
 import { randomUUID } from 'crypto';
 import { User, Role, TaskStatus } from '@prisma/client';
 import { PrismaService } from '@/prisma';
+import { assertFound } from '@/common';
 import { EmailService } from '@/common/services/email.service';
 import {
   STORAGE_PROVIDER,
@@ -27,6 +29,8 @@ import {
 
 @Injectable()
 export class UsersService {
+  private readonly logger = new Logger(UsersService.name);
+
   constructor(
     private prisma: PrismaService,
     private emailService: EmailService,
@@ -55,14 +59,13 @@ export class UsersService {
   }
 
   async findOne(id: string) {
-    const user = await this.prisma.user.findUnique({
-      where: { id },
-      include: { organization: true },
-    });
-    if (!user) {
-      throw new NotFoundException('Gebruiker niet gevonden');
-    }
-    return user;
+    return assertFound(
+      await this.prisma.user.findUnique({
+        where: { id },
+        include: { organization: true },
+      }),
+      'Gebruiker',
+    );
   }
 
   async invite(orgId: string | null, dto: InviteUserDto, invitedBy: User) {
@@ -377,8 +380,10 @@ export class UsersService {
       throw new BadRequestException('Alleen PNG, JPEG en WebP afbeeldingen zijn toegestaan');
     }
 
-    const user = await this.prisma.user.findUnique({ where: { id: userId } });
-    if (!user) throw new NotFoundException('Gebruiker niet gevonden');
+    const user = assertFound(
+      await this.prisma.user.findUnique({ where: { id: userId } }),
+      'Gebruiker',
+    );
 
     // Delete old avatar if exists
     if (user.avatarUrl) {
@@ -416,11 +421,13 @@ export class UsersService {
   }
 
   async getSignature(userId: string) {
-    const user = await this.prisma.user.findUnique({
-      where: { id: userId },
-      select: { signatureType: true, signatureData: true },
-    });
-    if (!user) throw new NotFoundException('Gebruiker niet gevonden');
+    const user = assertFound(
+      await this.prisma.user.findUnique({
+        where: { id: userId },
+        select: { signatureType: true, signatureData: true },
+      }),
+      'Gebruiker',
+    );
     return { signatureType: user.signatureType, signatureData: user.signatureData };
   }
 

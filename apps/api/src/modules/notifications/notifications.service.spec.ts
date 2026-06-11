@@ -3,6 +3,8 @@ import {
   NotFoundException,
   ForbiddenException,
 } from '@nestjs/common';
+import { JwtService } from '@nestjs/jwt';
+import { ConfigService } from '@nestjs/config';
 import { Role, NotificationType, User } from '@prisma/client';
 import { NotificationsService } from './notifications.service';
 import { PrismaService } from '@/prisma';
@@ -11,31 +13,31 @@ import { EmailService } from '@/common/services/email.service';
 describe('NotificationsService', () => {
   let service: NotificationsService;
 
-  const mockUser: User = {
+  const mockUser = {
     id: 'user-1',
     orgId: 'org-1',
     email: 'admin@test.com',
     passwordHash: '$2b$10$hashedpassword',
     firstName: 'Admin',
     lastName: 'User',
-    role: Role.ORG_ADMIN,
+    roles: [Role.ORG_ADMIN],
     isActive: true,
     emailVerifiedAt: new Date('2025-01-01'),
     createdAt: new Date('2025-01-01'),
-  };
+  } as any;
 
-  const mockOtherUser: User = {
+  const mockOtherUser = {
     id: 'user-other',
     orgId: 'org-1',
     email: 'other@test.com',
     passwordHash: '$2b$10$hashedpassword',
     firstName: 'Other',
     lastName: 'User',
-    role: Role.MANAGER,
+    roles: [Role.MANAGER],
     isActive: true,
     emailVerifiedAt: new Date('2025-01-01'),
     createdAt: new Date('2025-01-01'),
-  };
+  } as any;
 
   const mockNotification = {
     id: 'notif-1',
@@ -74,20 +76,46 @@ describe('NotificationsService', () => {
       findUnique: jest.fn(),
       findMany: jest.fn(),
     },
+    organization: {
+      findUnique: jest.fn(),
+    },
   };
 
   const mockEmailService = {
     sendNotificationEmail: jest.fn().mockResolvedValue(undefined),
   };
 
+  const mockJwtService = {
+    sign: jest.fn().mockReturnValue('mock-unsubscribe-token'),
+    verify: jest.fn(),
+  };
+
+  const mockConfigService = {
+    get: jest.fn((key: string, defaultValue?: string) => {
+      const config: Record<string, string> = {
+        JWT_SECRET: 'test-secret',
+        API_PORT: '3000',
+      };
+      return config[key] ?? defaultValue;
+    }),
+  };
+
   beforeEach(async () => {
     jest.clearAllMocks();
+    mockJwtService.sign.mockReturnValue('mock-unsubscribe-token');
+    mockPrismaService.organization.findUnique.mockResolvedValue({
+      name: 'Test Org',
+      senderName: null,
+      senderEmail: null,
+    });
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         NotificationsService,
         { provide: PrismaService, useValue: mockPrismaService },
         { provide: EmailService, useValue: mockEmailService },
+        { provide: JwtService, useValue: mockJwtService },
+        { provide: ConfigService, useValue: mockConfigService },
       ],
     }).compile();
 
@@ -217,9 +245,9 @@ describe('NotificationsService', () => {
       // No user pref → no group pref → defaults to both true
       mockPrismaService.notificationPref.findUnique.mockResolvedValue(null);
       mockPrismaService.user.findUnique
-        .mockResolvedValueOnce({ role: Role.MANAGER }) // for resolvePreference
+        .mockResolvedValueOnce({ roles: [Role.MANAGER] }) // for resolvePreference
         .mockResolvedValueOnce({ email: 'manager@test.com' }); // for email
-      mockPrismaService.notificationGroupPref.findUnique.mockResolvedValue(null);
+      mockPrismaService.notificationGroupPref.findMany.mockResolvedValue([]);
       mockPrismaService.notification.create.mockResolvedValue(mockNotification);
 
       service.dispatch({
@@ -251,9 +279,9 @@ describe('NotificationsService', () => {
     it('should send email notification when channelEmail is true (default)', async () => {
       mockPrismaService.notificationPref.findUnique.mockResolvedValue(null);
       mockPrismaService.user.findUnique
-        .mockResolvedValueOnce({ role: Role.MANAGER })
+        .mockResolvedValueOnce({ roles: [Role.MANAGER] })
         .mockResolvedValueOnce({ email: 'manager@test.com' });
-      mockPrismaService.notificationGroupPref.findUnique.mockResolvedValue(null);
+      mockPrismaService.notificationGroupPref.findMany.mockResolvedValue([]);
       mockPrismaService.notification.create.mockResolvedValue(mockNotification);
 
       service.dispatch({
@@ -270,6 +298,11 @@ describe('NotificationsService', () => {
         'manager@test.com',
         'Email Test',
         'Email test body',
+        expect.objectContaining({
+          orgId: 'org-1',
+          orgName: 'Test Org',
+          unsubscribeUrl: expect.stringContaining('mock-unsubscribe-token'),
+        }),
       );
     });
 
@@ -295,11 +328,10 @@ describe('NotificationsService', () => {
 
     it('should fallback to group pref when no user pref exists', async () => {
       mockPrismaService.notificationPref.findUnique.mockResolvedValue(null);
-      mockPrismaService.user.findUnique.mockResolvedValue({ role: Role.MANAGER });
-      mockPrismaService.notificationGroupPref.findUnique.mockResolvedValue({
-        channelInApp: true,
-        channelEmail: false,
-      });
+      mockPrismaService.user.findUnique.mockResolvedValue({ roles: [Role.MANAGER] });
+      mockPrismaService.notificationGroupPref.findMany.mockResolvedValue([
+        { channelInApp: true, channelEmail: false },
+      ]);
       mockPrismaService.notification.create.mockResolvedValue(mockNotification);
 
       service.dispatch({
@@ -321,9 +353,9 @@ describe('NotificationsService', () => {
         .mockRejectedValueOnce(new Error('DB error'))
         .mockResolvedValueOnce(null);
       mockPrismaService.user.findUnique
-        .mockResolvedValueOnce({ role: Role.MANAGER })
+        .mockResolvedValueOnce({ roles: [Role.MANAGER] })
         .mockResolvedValueOnce({ email: 'user2@test.com' });
-      mockPrismaService.notificationGroupPref.findUnique.mockResolvedValue(null);
+      mockPrismaService.notificationGroupPref.findMany.mockResolvedValue([]);
       mockPrismaService.notification.create.mockResolvedValue(mockNotification);
 
       service.dispatch({

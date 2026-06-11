@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Button, Spinner, useToast } from '@/components/ui';
+import { Button, Spinner, useConfirm, useToast } from '@/components/ui';
 import { CustomFieldEntityType, CustomFieldType } from '@/types';
 import type { CustomFieldDefinition } from '@/types';
 import {
@@ -30,6 +30,7 @@ const MAX_TOTAL = 10;
 
 export function CustomFieldsManagement() {
   const { showToast } = useToast();
+  const confirm = useConfirm();
   const { data: allFields, isLoading } = useCustomFields();
   const deleteMutation = useDeleteCustomField();
 
@@ -57,9 +58,11 @@ export function CustomFieldsManagement() {
   };
 
   const handleDelete = async (field: CustomFieldDefinition) => {
-    const confirmed = window.confirm(
-      `Weet u zeker dat u het veld "${field.label}" wilt verwijderen?`,
-    );
+    const confirmed = await confirm({
+      title: 'Eigen veld verwijderen',
+      message: `Weet u zeker dat u het veld "${field.label}" wilt verwijderen?`,
+      confirmLabel: 'Verwijderen',
+    });
     if (!confirmed) return;
 
     try {

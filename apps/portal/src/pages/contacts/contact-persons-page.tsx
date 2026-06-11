@@ -1,41 +1,24 @@
 import { useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ContactPersonRole } from '@/types';
 import type { ContactPerson } from '@/types';
 import {
   ActionMenu,
+  ErrorBox,
   Spinner,
   Button,
   Input,
-  Select,
   Table,
-  type Column,
 } from '@/components/ui';
 import { DetailPageLayout } from '@/components/layout/detail-page-layout';
-import { useContactPersons } from './hooks/use-contacts';
+import { PageHeader } from '@/components/layout/page-header';
+import {
+  TableConfigSidebar,
+  useTableConfig,
+  type ColumnDef,
+} from '@/components/table-config';
+import { useContactPersons, useContactPersonRoles } from './hooks/use-contacts';
 import { CreateContactPersonModal } from './components/create-contact-person-modal';
-
-const roleFilterOptions = [
-  { value: '', label: 'Alle rollen' },
-  { value: ContactPersonRole.ALGEMEEN, label: 'Algemeen' },
-  { value: ContactPersonRole.TECHNISCH, label: 'Technisch' },
-  { value: ContactPersonRole.ADMINISTRATIEF, label: 'Administratief' },
-  { value: ContactPersonRole.ANDERS, label: 'Anders' },
-];
-
-const roleLabels: Record<string, string> = {
-  [ContactPersonRole.ALGEMEEN]: 'Algemeen',
-  [ContactPersonRole.TECHNISCH]: 'Technisch',
-  [ContactPersonRole.ADMINISTRATIEF]: 'Administratief',
-  [ContactPersonRole.ANDERS]: 'Anders',
-};
-
-const roleColors: Record<string, string> = {
-  [ContactPersonRole.ALGEMEEN]: 'bg-blue-100 text-blue-800',
-  [ContactPersonRole.TECHNISCH]: 'bg-orange-100 text-orange-800',
-  [ContactPersonRole.ADMINISTRATIEF]: 'bg-green-100 text-green-800',
-  [ContactPersonRole.ANDERS]: 'bg-gray-100 text-gray-800',
-};
+import { roleColors } from '@/lib/contact-person-role';
 
 function getContactName(contact?: {
   type?: string;
@@ -51,13 +34,13 @@ function getContactName(contact?: {
 export default function ContactPersonsPage() {
   const navigate = useNavigate();
   const [search, setSearch] = useState('');
-  const [roleFilter, setRoleFilter] = useState('');
   const [page, setPage] = useState(1);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
 
+  const { data: roleOptions } = useContactPersonRoles();
+
   const { data, isLoading, error } = useContactPersons({
     search: search || undefined,
-    role: (roleFilter as ContactPersonRole) || undefined,
     page,
     limit: 20,
   });
@@ -70,10 +53,16 @@ export default function ContactPersonsPage() {
     [],
   );
 
-  const columns: Column<ContactPerson>[] = [
+  const columns: ColumnDef<ContactPerson>[] = [
     {
       key: 'name',
       header: 'Naam',
+      pinned: true,
+      sortable: true,
+      filterable: true,
+      filterType: 'text',
+      getFilterValue: (person) =>
+        [person.firstName, person.lastName].filter(Boolean).join(' '),
       render: (person) => (
         <button
           onClick={() => navigate(`/contacts/persons/${person.id}`)}
@@ -86,19 +75,32 @@ export default function ContactPersonsPage() {
     {
       key: 'role',
       header: 'Rol',
+      sortable: true,
+      filterable: true,
+      filterType: 'select',
+      filterOptions: (roleOptions ?? []).map((r) => ({
+        value: r.label,
+        label: r.label,
+      })),
+      groupable: true,
+      getFilterValue: (person) => person.role?.label ?? '',
       render: (person) => (
         <span
           className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
-            roleColors[person.role] || 'bg-gray-100 text-gray-800'
+            roleColors[person.role?.code ?? ''] || 'bg-gray-100 text-gray-800'
           }`}
         >
-          {roleLabels[person.role] || person.role}
+          {person.role?.label || '—'}
         </span>
       ),
     },
     {
       key: 'email',
       header: 'E-mail',
+      sortable: true,
+      filterable: true,
+      filterType: 'text',
+      getFilterValue: (person) => person.email,
       render: (person) => (
         <span className="text-gray-600">{person.email || '—'}</span>
       ),
@@ -106,6 +108,10 @@ export default function ContactPersonsPage() {
     {
       key: 'phone',
       header: 'Telefoon',
+      sortable: true,
+      filterable: true,
+      filterType: 'text',
+      getFilterValue: (person) => person.phone,
       render: (person) => (
         <span className="text-gray-600">{person.phone || '—'}</span>
       ),
@@ -113,6 +119,11 @@ export default function ContactPersonsPage() {
     {
       key: 'contact',
       header: 'Relatie',
+      sortable: true,
+      filterable: true,
+      filterType: 'text',
+      groupable: true,
+      getFilterValue: (person) => getContactName(person.contact),
       render: (person) => (
         <button
           onClick={(e) => {
@@ -121,11 +132,30 @@ export default function ContactPersonsPage() {
           }}
           className="text-sm text-primary-600 hover:text-primary-800 hover:underline"
         >
-          {getContactName((person as any).contact)}
+          {getContactName(person.contact)}
         </button>
       ),
     },
   ];
+
+  const {
+    activeColumns,
+    filteredData,
+    pendingColumnConfig,
+    setPendingColumnConfig,
+    pendingFilters,
+    setPendingFilters,
+    pendingGrouping,
+    setPendingGrouping,
+    applyColumns,
+    applyFilters,
+    resetToDefaults,
+    isColumnsDirty,
+    isFiltersDirty,
+    allColumns,
+    sort,
+    toggleSort,
+  } = useTableConfig({ pageKey: 'contact-persons', columns });
 
   if (isLoading) {
     return (
@@ -137,9 +167,7 @@ export default function ContactPersonsPage() {
 
   if (error) {
     return (
-      <div className="rounded-lg bg-danger-50 p-4 text-sm text-danger-600">
-        Fout bij het laden van contactpersonen: {error.message}
-      </div>
+      <ErrorBox>Fout bij het laden van contactpersonen: {error.message}</ErrorBox>
     );
   }
 
@@ -149,52 +177,57 @@ export default function ContactPersonsPage() {
 
   return (
     <>
-    <DetailPageLayout>
+    <DetailPageLayout
+      sidebar={
+        <TableConfigSidebar
+          columns={allColumns}
+          pendingColumnConfig={pendingColumnConfig}
+          onColumnConfigChange={setPendingColumnConfig}
+          pendingFilters={pendingFilters}
+          onFiltersChange={setPendingFilters}
+          pendingGrouping={pendingGrouping}
+          onGroupingChange={setPendingGrouping}
+          onApplyColumns={applyColumns}
+          onApplyFilters={applyFilters}
+          onReset={resetToDefaults}
+          isColumnsDirty={isColumnsDirty}
+          isFiltersDirty={isFiltersDirty}
+        />
+      }
+    >
       <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-2xl font-bold text-gray-900">Contactpersonen</h2>
-            <p className="mt-1 text-sm text-gray-500">
-              Overzicht van alle contactpersonen
-            </p>
-          </div>
-          <ActionMenu
-            secondaryActions={[
-              {
-                label: 'Nieuw contactpersoon',
-                icon: <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>,
-                onClick: () => setIsCreateOpen(true),
-              },
-            ]}
+        <PageHeader
+          title="Contactpersonen"
+          description="Overzicht van alle contactpersonen"
+          actions={
+            <ActionMenu
+              secondaryActions={[
+                {
+                  label: 'Nieuw contactpersoon',
+                  icon: <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>,
+                  onClick: () => setIsCreateOpen(true),
+                },
+              ]}
+            />
+          }
+        />
+
+        {/* Search */}
+        <div className="max-w-md">
+          <Input
+            placeholder="Zoeken op naam, e-mail..."
+            value={search}
+            onChange={handleSearchChange}
           />
         </div>
 
-        {/* Filters */}
-        <div className="flex flex-col gap-4 sm:flex-row">
-          <div className="flex-1">
-            <Input
-              placeholder="Zoeken op naam, e-mail..."
-              value={search}
-              onChange={handleSearchChange}
-            />
-          </div>
-          <div className="w-48">
-            <Select
-              options={roleFilterOptions}
-              value={roleFilter}
-              onChange={(e) => {
-                setRoleFilter(e.target.value);
-                setPage(1);
-              }}
-            />
-          </div>
-        </div>
-
         <Table
-          columns={columns}
-          data={persons}
+          columns={activeColumns}
+          data={filteredData(persons)}
           keyExtractor={(p) => p.id}
           emptyMessage="Geen contactpersonen gevonden"
+          sort={sort}
+          onSort={toggleSort}
         />
 
         {/* Pagination */}

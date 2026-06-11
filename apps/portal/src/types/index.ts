@@ -109,11 +109,35 @@ export enum LogType {
   NOTE = 'NOTE',
 }
 
-export enum ContactPersonRole {
-  ALGEMEEN = 'ALGEMEEN',
-  TECHNISCH = 'TECHNISCH',
-  ADMINISTRATIEF = 'ADMINISTRATIEF',
-  ANDERS = 'ANDERS',
+/** Lookup-rij voor contactpersoon-rollen (vervangt voorheen de ContactPersonRole enum). */
+export interface ContactPersonRoleOption {
+  id: string;
+  orgId: string | null;
+  code: string;
+  label: string;
+  sortOrder: number;
+  isActive: boolean;
+  isSystem: boolean;
+  createdAt: string;
+}
+
+/** Ingesloten rol-referentie zoals teruggegeven bij een contactpersoon. */
+export interface ContactPersonRoleRef {
+  id: string;
+  code: string;
+  label: string;
+}
+
+/** Lookup-rij voor "reden verloren" (vervangt voorheen de LostReason enum). */
+export interface LostReason {
+  id: string;
+  orgId: string | null;
+  code: string;
+  label: string;
+  sortOrder: number;
+  isActive: boolean;
+  isSystem: boolean;
+  createdAt: string;
 }
 
 export interface Contact {
@@ -154,7 +178,8 @@ export interface ContactPerson {
   lastName: string;
   email: string | null;
   phone: string | null;
-  role: ContactPersonRole;
+  roleId: string | null;
+  role: ContactPersonRoleRef | null;
   notes: string | null;
   isDeleted: boolean;
   createdAt: string;
@@ -211,6 +236,18 @@ export interface Location {
   lng: number | null;
   customFields: Record<string, any> | null;
   createdAt: string;
+}
+
+export interface LocationContactPerson {
+  id: string;
+  locationId: string;
+  contactPersonId: string;
+  orgId: string;
+  notes: string | null;
+  createdAt: string;
+  contactPerson?: ContactPerson & {
+    contact?: { id: string; type: ContactType; companyName: string | null; firstName: string | null; lastName: string | null };
+  };
 }
 
 export interface ContactLog {
@@ -375,6 +412,8 @@ export interface Request {
   title: string;
   description: string | null;
   priority: Priority;
+  lostReasonId: string | null;
+  lostNote: string | null;
   customFields: Record<string, any> | null;
   createdBy: string;
   isDeleted: boolean;
@@ -382,6 +421,7 @@ export interface Request {
   createdAt: string;
   updatedAt: string;
   contact?: ContactSummary;
+  lostReason?: { id: string; code: string; label: string } | null;
   location?: LocationSummary;
   assignedUser?: UserSummary;
   createdByUser?: UserSummary;
@@ -956,7 +996,7 @@ export interface PlanningItem {
     lastName: string;
     email: string | null;
     phone: string | null;
-    role: ContactPersonRole;
+    role: ContactPersonRoleRef | null;
   } | null;
   location?: {
     id: string;
@@ -1142,7 +1182,7 @@ export interface SearchContactPersonResult {
   lastName: string;
   email: string | null;
   phone: string | null;
-  role: ContactPersonRole;
+  role: ContactPersonRoleRef | null;
   contact: {
     id: string;
     companyName: string | null;

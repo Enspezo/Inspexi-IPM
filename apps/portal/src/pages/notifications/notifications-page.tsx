@@ -2,8 +2,9 @@ import { useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { NotificationType } from '@/types';
 import type { Notification } from '@/types';
-import { Button, Spinner, Table, Select } from '@/components/ui';
+import { Button, ErrorBox, Spinner, Table, Select } from '@/components/ui';
 import { DetailPageLayout } from '@/components/layout/detail-page-layout';
+import { PageHeader } from '@/components/layout/page-header';
 import {
   TableConfigSidebar,
   useTableConfig,
@@ -194,9 +195,7 @@ export default function NotificationsPage() {
 
   if (error) {
     return (
-      <div className="rounded-lg bg-danger-50 p-4 text-sm text-danger-600">
-        Fout bij het laden van notificaties: {error.message}
-      </div>
+      <ErrorBox>Fout bij het laden van notificaties: {error.message}</ErrorBox>
     );
   }
 
@@ -225,35 +224,33 @@ export default function NotificationsPage() {
       }
     >
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-bold text-gray-900">Notificaties</h2>
-          <p className="mt-1 text-sm text-gray-500">
-            Bekijk en beheer uw notificaties
-          </p>
-        </div>
-        <Button
-          variant="secondary"
-          onClick={() => markAllRead.mutate()}
-          disabled={unreadCount === 0}
-          isLoading={markAllRead.isPending}
-        >
-          <svg
-            className="h-4 w-4"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
+      <PageHeader
+        title="Notificaties"
+        description="Bekijk en beheer uw notificaties"
+        actions={
+          <Button
+            variant="secondary"
+            onClick={() => markAllRead.mutate()}
+            disabled={unreadCount === 0}
+            isLoading={markAllRead.isPending}
           >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M5 13l4 4L19 7"
-            />
-          </svg>
-          Alles gelezen
-        </Button>
-      </div>
+            <svg
+              className="h-4 w-4"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M5 13l4 4L19 7"
+              />
+            </svg>
+            Alles gelezen
+          </Button>
+        }
+      />
 
       {/* Filters */}
       <div className="flex flex-col gap-4 sm:flex-row">

@@ -5,7 +5,8 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Role, TaskEntityType, DocumentEntityType, TaskStatus } from '@/types';
 import type { User } from '@/types';
-import { ActionMenu, Button, Card, Input, Spinner, Badge, useToast } from '@/components/ui';
+import { ActionMenu, Button, Card, ErrorBox, InfoField, Input, Spinner, Badge, Tabs, useToast } from '@/components/ui';
+import { formatDate } from '@/lib/format';
 import { DetailPageLayout, SidebarSection } from '@/components/layout/detail-page-layout';
 import { AuditHistory } from '@/components/audit-history/audit-history';
 import { useAuth } from '@/providers/auth-provider';
@@ -41,23 +42,6 @@ const userSchema = z.object({
 });
 
 type UserFormData = z.infer<typeof userSchema>;
-
-function InfoField({ label, value }: { label: string; value: string | null | undefined }) {
-  return (
-    <div>
-      <dt className="text-sm font-medium text-gray-500">{label}</dt>
-      <dd className="mt-1 text-sm text-gray-900">{value || '—'}</dd>
-    </div>
-  );
-}
-
-function formatDate(dateStr: string): string {
-  return new Date(dateStr).toLocaleDateString('nl-NL', {
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-  });
-}
 
 export default function UserDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -127,9 +111,7 @@ export default function UserDetailPage() {
 
   if (error || !userRecord) {
     return (
-      <div className="rounded-lg bg-danger-50 p-4 text-sm text-danger-600">
-        Gebruiker niet gevonden of fout bij het laden.
-      </div>
+      <ErrorBox>Gebruiker niet gevonden of fout bij het laden.</ErrorBox>
     );
   }
 
@@ -360,24 +342,7 @@ export default function UserDetailPage() {
         </div>
 
         {/* Tabs */}
-        <div className="border-b border-gray-200">
-          <nav className="-mb-px flex gap-6">
-            {tabs.map((tab) => (
-              <button
-                key={tab.key}
-                type="button"
-                onClick={() => setActiveTab(tab.key)}
-                className={`whitespace-nowrap border-b-2 px-1 pb-3 text-sm font-medium transition-colors ${
-                  activeTab === tab.key
-                    ? 'border-primary-500 text-primary-600'
-                    : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'
-                }`}
-              >
-                {tab.label}
-              </button>
-            ))}
-          </nav>
-        </div>
+        <Tabs tabs={tabs} active={activeTab} onChange={setActiveTab} />
 
         {/* Tab content */}
         {activeTab === 'overzicht' && (

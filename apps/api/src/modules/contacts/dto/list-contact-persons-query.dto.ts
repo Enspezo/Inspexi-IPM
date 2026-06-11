@@ -1,6 +1,5 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsOptional, IsString, IsEnum, IsUUID } from 'class-validator';
-import { ContactPersonRole } from '@prisma/client';
+import { IsOptional, IsString, IsUUID } from 'class-validator';
 import { BasePaginationQueryDto } from '@/common/dto';
 
 export class ListContactPersonsQueryDto extends BasePaginationQueryDto {
@@ -14,8 +13,8 @@ export class ListContactPersonsQueryDto extends BasePaginationQueryDto {
   @IsString()
   search?: string;
 
-  @ApiPropertyOptional({ enum: ContactPersonRole })
+  @ApiPropertyOptional({ description: 'Filter op rol ID (lookup)', format: 'uuid' })
   @IsOptional()
-  @IsEnum(ContactPersonRole)
-  role?: ContactPersonRole;
+  @IsUUID()
+  roleId?: string;
 }

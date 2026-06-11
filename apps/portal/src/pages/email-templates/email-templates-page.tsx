@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ActionMenu, Button, Spinner, Table } from '@/components/ui';
+import { ActionMenu, Button, ErrorBox, Spinner, Table, useConfirm } from '@/components/ui';
 import { DetailPageLayout } from '@/components/layout/detail-page-layout';
+import { PageHeader } from '@/components/layout/page-header';
 import {
   TableConfigSidebar,
   useTableConfig,
@@ -16,6 +17,7 @@ import { EMAIL_TYPE_LABELS } from './components/email-type-labels';
 export default function EmailTemplatesPage() {
   const navigate = useNavigate();
   const { showToast } = useToast();
+  const confirm = useConfirm();
   const [page, setPage] = useState(1);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
 
@@ -23,7 +25,12 @@ export default function EmailTemplatesPage() {
   const deleteMutation = useDeleteEmailTemplate();
 
   const handleDeactivate = async (id: string) => {
-    if (!window.confirm('Weet u zeker dat u dit sjabloon wilt deactiveren?')) return;
+    const confirmed = await confirm({
+      title: 'Sjabloon deactiveren',
+      message: 'Weet u zeker dat u dit sjabloon wilt deactiveren?',
+      confirmLabel: 'Deactiveren',
+    });
+    if (!confirmed) return;
     try {
       await deleteMutation.mutateAsync(id);
       showToast('Sjabloon gedeactiveerd', 'success');
@@ -155,9 +162,7 @@ export default function EmailTemplatesPage() {
 
   if (error) {
     return (
-      <div className="rounded-lg bg-danger-50 p-4 text-sm text-danger-600">
-        Fout bij het laden van sjablonen: {(error as Error).message}
-      </div>
+      <ErrorBox>Fout bij het laden van sjablonen: {(error as Error).message}</ErrorBox>
     );
   }
 
@@ -185,23 +190,21 @@ export default function EmailTemplatesPage() {
       }
     >
       <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-2xl font-bold text-gray-900">E-mailsjablonen</h2>
-            <p className="mt-1 text-sm text-gray-500">
-              Beheer de e-mailtemplates voor uw organisatie
-            </p>
-          </div>
-          <ActionMenu
-            secondaryActions={[
-              {
-                label: 'Sjabloon aanmaken',
-                icon: <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>,
-                onClick: () => setIsCreateOpen(true),
-              },
-            ]}
-          />
-        </div>
+        <PageHeader
+          title="E-mailsjablonen"
+          description="Beheer de e-mailtemplates voor uw organisatie"
+          actions={
+            <ActionMenu
+              secondaryActions={[
+                {
+                  label: 'Sjabloon aanmaken',
+                  icon: <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>,
+                  onClick: () => setIsCreateOpen(true),
+                },
+              ]}
+            />
+          }
+        />
 
         <Table
           columns={activeColumns}

@@ -1,11 +1,13 @@
 import {
   Injectable,
+  Logger,
   NotFoundException,
   ForbiddenException,
   BadRequestException,
 } from '@nestjs/common';
 import { User, Role, Prisma } from '@prisma/client';
 import { PrismaService } from '@/prisma';
+import { paginate, orgScope, assertFound } from '@/common';
 import {
   CreatePriceTableDto,
   UpdatePriceTableDto,
@@ -15,6 +17,8 @@ import {
 
 @Injectable()
 export class PriceTablesService {
+  private readonly logger = new Logger(PriceTablesService.name);
+
   constructor(private prisma: PrismaService) {}
 
   async findAll(user: User, query: ListPriceTablesQueryDto) {
@@ -23,36 +27,26 @@ export class PriceTablesService {
     const orderBy: object = (sortBy && ALLOWED_SORT_FIELDS.includes(sortBy))
       ? { [sortBy]: sortOrder }
       : [{ isDefault: 'desc' }, { name: 'asc' }];
-    const skip = (page - 1) * limit;
 
-    const where: Prisma.PriceTableWhereInput = {};
-
-    if (!user.roles.includes(Role.SUPERUSER)) {
-      where.orgId = user.orgId!;
-    }
+    const where: Prisma.PriceTableWhereInput = { ...orgScope(user) };
 
     if (search) {
       where.name = { contains: search, mode: 'insensitive' };
     }
 
-    const [data, total] = await Promise.all([
-      this.prisma.priceTable.findMany({
-        where,
-        include: {
-          _count: { select: { items: true } },
-        },
-        orderBy,
-        skip,
-        take: limit,
-      }),
-      this.prisma.priceTable.count({ where }),
-    ]);
-
-    return { data, total, page, limit };
+    return paginate(this.prisma.priceTable, {
+      where,
+      include: {
+        _count: { select: { items: true } },
+      },
+      orderBy,
+      page,
+      limit,
+    });
   }
 
   async findOne(id: string, user: User) {
-    const priceTable = await this.prisma.priceTable.findUnique({
+    const priceTable = assertFound(await this.prisma.priceTable.findUnique({
       where: { id },
       include: {
         items: {
@@ -77,11 +71,7 @@ export class PriceTablesService {
           },
         },
       },
-    });
-
-    if (!priceTable) {
-      throw new NotFoundException('Prijstabel niet gevonden');
-    }
+    }), 'Prijstabel');
 
     if (!user.roles.includes(Role.SUPERUSER) && priceTable.orgId !== user.orgId) {
       throw new ForbiddenException();
@@ -260,18 +250,17 @@ export class PriceTablesService {
   async removeFromContact(id: string, contactId: string, user: User) {
     const priceTable = await this.findOne(id, user);
 
-    const existing = await this.prisma.contactPriceTable.findUnique({
-      where: {
-        contactId_priceTableId: {
-          contactId,
-          priceTableId: priceTable.id,
+    assertFound(
+      await this.prisma.contactPriceTable.findUnique({
+        where: {
+          contactId_priceTableId: {
+            contactId,
+            priceTableId: priceTable.id,
+          },
         },
-      },
-    });
-
-    if (!existing) {
-      throw new NotFoundException('Koppeling niet gevonden');
-    }
+      }),
+      'Koppeling',
+    );
 
     await this.prisma.contactPriceTable.delete({
       where: {

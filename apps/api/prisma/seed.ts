@@ -47,12 +47,16 @@ async function main() {
   // CRM tables (dependent on contacts)
   await prisma.contactCustomerGroup.deleteMany();
   await prisma.customerGroup.deleteMany();
+  await prisma.locationContactPerson.deleteMany();
   await prisma.contactPerson.deleteMany();
   await prisma.contactEmail.deleteMany();
   await prisma.contactLog.deleteMany();
   await prisma.location.deleteMany();
   await prisma.contactAddress.deleteMany();
   await prisma.contact.deleteMany();
+  // Lookup tables (requests & contact persons that referenced them are already deleted above)
+  await prisma.lostReason.deleteMany();
+  await prisma.contactPersonRoleOption.deleteMany();
   // Tasks, Documents & Notes (dependent on users)
   await prisma.note.deleteMany();
   await prisma.document.deleteMany();
@@ -92,6 +96,25 @@ async function main() {
     },
   });
   console.log(`  ✓ Organization: ${org2.name} (${org2.slug})`);
+
+  // ─── Lookup defaults (globaal, orgId = null) ─────────────
+  await prisma.lostReason.createMany({
+    data: [
+      { code: 'TE_DUUR', label: 'Te duur', sortOrder: 10, isSystem: true },
+      { code: 'GEEN_BESCHIKBAARHEID', label: 'Geen beschikbaarheid', sortOrder: 20, isSystem: true },
+      { code: 'NIET_LANGER_NODIG', label: 'Niet langer nodig', sortOrder: 30, isSystem: true },
+      { code: 'ANDERS', label: 'Anders', sortOrder: 40, isSystem: true },
+    ],
+  });
+  await prisma.contactPersonRoleOption.createMany({
+    data: [
+      { code: 'ALGEMEEN', label: 'Algemeen', sortOrder: 10, isSystem: true },
+      { code: 'TECHNISCH', label: 'Technisch', sortOrder: 20, isSystem: true },
+      { code: 'ADMINISTRATIEF', label: 'Administratief', sortOrder: 30, isSystem: true },
+      { code: 'ANDERS', label: 'Anders', sortOrder: 40, isSystem: true },
+    ],
+  });
+  console.log('  ✓ Lookup defaults (4 redenen verloren, 4 contactpersoon-rollen)');
 
   // ─── Custom Field Definitions ────────────────────────────
   await prisma.customFieldDefinition.createMany({

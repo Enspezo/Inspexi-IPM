@@ -2,13 +2,17 @@ import { useState, useEffect } from 'react';
 import type { ErrorReport, ErrorReportStatus } from '@/types';
 import {
   Button,
+  ErrorBox,
   Spinner,
+  StatusBadge,
   Table,
   Select,
   Modal,
   useToast,
 } from '@/components/ui';
+import { ERROR_REPORT_STATUS } from '@/lib/status';
 import { DetailPageLayout } from '@/components/layout/detail-page-layout';
+import { PageHeader } from '@/components/layout/page-header';
 import {
   TableConfigSidebar,
   useTableConfig,
@@ -25,28 +29,6 @@ const statusFilterOptions = [
   { value: 'IN_BEHANDELING', label: 'In behandeling' },
   { value: 'OPGELOST', label: 'Opgelost' },
 ];
-
-const statusColors: Record<ErrorReportStatus, string> = {
-  OPEN: 'bg-red-100 text-red-800',
-  IN_BEHANDELING: 'bg-yellow-100 text-yellow-800',
-  OPGELOST: 'bg-green-100 text-green-800',
-};
-
-const statusLabels: Record<ErrorReportStatus, string> = {
-  OPEN: 'Open',
-  IN_BEHANDELING: 'In behandeling',
-  OPGELOST: 'Opgelost',
-};
-
-function StatusBadge({ status }: { status: ErrorReportStatus }) {
-  return (
-    <span
-      className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${statusColors[status]}`}
-    >
-      {statusLabels[status]}
-    </span>
-  );
-}
 
 function ErrorReportDetailModal({
   report,
@@ -268,7 +250,7 @@ export default function ErrorReportsPage() {
       sortable: true,
       sortKey: 'status',
       getFilterValue: (r) => r.status,
-      render: (r) => <StatusBadge status={r.status} />,
+      render: (r) => <StatusBadge status={r.status} map={ERROR_REPORT_STATUS} />,
     },
   ];
 
@@ -314,9 +296,7 @@ export default function ErrorReportsPage() {
 
   if (error) {
     return (
-      <div className="rounded-lg bg-danger-50 p-4 text-sm text-danger-600">
-        Fout bij het laden van foutmeldingen: {error.message}
-      </div>
+      <ErrorBox>Fout bij het laden van foutmeldingen: {error.message}</ErrorBox>
     );
   }
 
@@ -344,14 +324,10 @@ export default function ErrorReportsPage() {
       }
     >
       <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-2xl font-bold text-gray-900">Foutmeldingen</h2>
-            <p className="mt-1 text-sm text-gray-500">
-              Overzicht van door gebruikers ingediende foutmeldingen
-            </p>
-          </div>
-        </div>
+        <PageHeader
+          title="Foutmeldingen"
+          description="Overzicht van door gebruikers ingediende foutmeldingen"
+        />
 
         {/* Filter */}
         <div className="flex gap-3">

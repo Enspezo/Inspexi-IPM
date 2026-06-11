@@ -58,6 +58,21 @@ export class RequestsController {
     return { success: true, data: request };
   }
 
+  @Get('lost-reasons')
+  @Roles(
+    Role.SUPERUSER,
+    Role.ORG_ADMIN,
+    Role.MANAGER,
+    Role.BACKOFFICE,
+    Role.WERKVOORBEREIDER,
+  )
+  @ApiOperation({ summary: 'Lijst "reden verloren" ophalen (lookup)' })
+  @ApiResponse({ status: 200, description: 'Lijst van redenen' })
+  async findLostReasons(@CurrentUser() user: User) {
+    const reasons = await this.requestsService.findLostReasons(user);
+    return { success: true, data: reasons };
+  }
+
   @Get(':id')
   @Roles(
     Role.SUPERUSER,

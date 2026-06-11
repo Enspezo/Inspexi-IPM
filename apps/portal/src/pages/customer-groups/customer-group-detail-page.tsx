@@ -2,7 +2,8 @@ import { useState, useRef, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ContactType, Role } from '@/types';
 import type { Contact } from '@/types';
-import { Button, Spinner, useToast } from '@/components/ui';
+import { Button, ErrorBox, Spinner, StatusBadge, useConfirm, useToast } from '@/components/ui';
+import { CONTACT_TYPE } from '@/lib/status';
 import { DetailPageLayout } from '@/components/layout/detail-page-layout';
 import { useAuth } from '@/providers/auth-provider';
 import {
@@ -28,6 +29,7 @@ export default function CustomerGroupDetailPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { showToast } = useToast();
+  const confirm = useConfirm();
   const { data: group, isLoading, error } = useCustomerGroup(id!);
   const updateMutation = useUpdateCustomerGroup(id!);
   const deleteMutation = useDeleteCustomerGroup();
@@ -39,8 +41,12 @@ export default function CustomerGroupDetailPage() {
 
   const handleDelete = async () => {
     if (!group) return;
-    if (!window.confirm('Weet u zeker dat u deze klantgroep wilt verwijderen?'))
-      return;
+    const confirmed = await confirm({
+      title: 'Klantgroep verwijderen',
+      message: 'Weet u zeker dat u deze klantgroep wilt verwijderen?',
+      confirmLabel: 'Verwijderen',
+    });
+    if (!confirmed) return;
     try {
       await deleteMutation.mutateAsync(group.id);
       showToast('Klantgroep verwijderd', 'success');
@@ -61,7 +67,12 @@ export default function CustomerGroupDetailPage() {
 
   const handleRemoveContact = async (contactId: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!window.confirm('Relatie verwijderen uit deze klantgroep?')) return;
+    const confirmed = await confirm({
+      title: 'Relatie verwijderen uit groep',
+      message: 'Relatie verwijderen uit deze klantgroep?',
+      confirmLabel: 'Verwijderen',
+    });
+    if (!confirmed) return;
     try {
       await removeContactMutation.mutateAsync(contactId);
       showToast('Relatie verwijderd uit groep', 'success');
@@ -80,9 +91,7 @@ export default function CustomerGroupDetailPage() {
 
   if (error || !group) {
     return (
-      <div className="rounded-lg bg-danger-50 p-4 text-sm text-danger-600">
-        {error?.message || 'Klantgroep niet gevonden'}
-      </div>
+      <ErrorBox>{error?.message || 'Klantgroep niet gevonden'}</ErrorBox>
     );
   }
 
@@ -187,17 +196,7 @@ export default function CustomerGroupDetailPage() {
                         {getContactDisplayName(contact)}
                       </td>
                       <td className="whitespace-nowrap px-4 py-3 text-sm">
-                        <span
-                          className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                            contact.type === ContactType.COMPANY
-                              ? 'bg-blue-100 text-blue-800'
-                              : 'bg-purple-100 text-purple-800'
-                          }`}
-                        >
-                          {contact.type === ContactType.COMPANY
-                            ? 'Bedrijf'
-                            : 'Particulier'}
-                        </span>
+                        <StatusBadge status={contact.type} map={CONTACT_TYPE} />
                       </td>
                       <td className="whitespace-nowrap px-4 py-3 text-sm text-gray-500">
                         {contact.email || '—'}

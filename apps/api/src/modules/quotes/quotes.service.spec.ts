@@ -5,52 +5,62 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { Role, User, QuoteStatus, RequestStatus } from '@prisma/client';
+import { ConfigService } from '@nestjs/config';
 import { QuotesService } from './quotes.service';
 import { PrismaService } from '@/prisma';
 import { NotificationsService } from '@/modules/notifications/notifications.service';
+import { EmailService } from '@/common/services/email.service';
+import { STORAGE_PROVIDER } from '@/common/services/storage/storage.interface';
+import { PlanningService } from '@/modules/planning/planning.service';
+import { ProjectsService } from '@/modules/projects/projects.service';
+import { CustomFieldsValidator } from '@/modules/custom-fields/custom-fields.validator';
+import { DocxRendererService } from '@/modules/quote-templates/docx-renderer.service';
+import { EmailTemplatesService } from '@/modules/email-templates/email-templates.service';
+import { TasksService } from '@/modules/tasks/tasks.service';
+import { PdfService } from './pdf.service';
 
 describe('QuotesService', () => {
   let service: QuotesService;
   let prisma: PrismaService;
 
-  const mockUser: User = {
+  const mockUser = {
     id: 'user-1',
     orgId: 'org-1',
     email: 'admin@test.com',
     passwordHash: '$2b$10$hashedpassword',
     firstName: 'Admin',
     lastName: 'User',
-    role: Role.ORG_ADMIN,
+    roles: [Role.ORG_ADMIN],
     isActive: true,
     emailVerifiedAt: new Date('2025-01-01'),
     createdAt: new Date('2025-01-01'),
-  };
+  } as any;
 
-  const mockSuperuser: User = {
+  const mockSuperuser = {
     id: 'su-1',
     orgId: null,
     email: 'superuser@test.com',
     passwordHash: '$2b$10$hashedpassword',
     firstName: 'Super',
     lastName: 'User',
-    role: Role.SUPERUSER,
+    roles: [Role.SUPERUSER],
     isActive: true,
     emailVerifiedAt: new Date('2025-01-01'),
     createdAt: new Date('2025-01-01'),
-  };
+  } as any;
 
-  const mockOtherOrgUser: User = {
+  const mockOtherOrgUser = {
     id: 'user-other',
     orgId: 'org-2',
     email: 'other@test.com',
     passwordHash: '$2b$10$hashedpassword',
     firstName: 'Other',
     lastName: 'User',
-    role: Role.ORG_ADMIN,
+    roles: [Role.ORG_ADMIN],
     isActive: true,
     emailVerifiedAt: new Date('2025-01-01'),
     createdAt: new Date('2025-01-01'),
-  };
+  } as any;
 
   const year = new Date().getFullYear();
 
@@ -240,6 +250,33 @@ describe('QuotesService', () => {
           provide: NotificationsService,
           useValue: { dispatch: jest.fn() },
         },
+        {
+          provide: EmailService,
+          useValue: { sendQuoteEmail: jest.fn().mockResolvedValue(undefined) },
+        },
+        {
+          provide: ConfigService,
+          useValue: { get: jest.fn((_key: string, def?: string) => def) },
+        },
+        {
+          provide: STORAGE_PROVIDER,
+          useValue: {
+            upload: jest.fn(),
+            download: jest.fn(),
+            delete: jest.fn(),
+            exists: jest.fn(),
+          },
+        },
+        { provide: PlanningService, useValue: {} },
+        { provide: ProjectsService, useValue: {} },
+        {
+          provide: CustomFieldsValidator,
+          useValue: { validateAndSanitize: jest.fn().mockResolvedValue(null) },
+        },
+        { provide: DocxRendererService, useValue: {} },
+        { provide: PdfService, useValue: {} },
+        { provide: EmailTemplatesService, useValue: {} },
+        { provide: TasksService, useValue: {} },
       ],
     }).compile();
 

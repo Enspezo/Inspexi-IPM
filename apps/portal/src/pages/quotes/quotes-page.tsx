@@ -5,12 +5,17 @@ import type { Quote } from '@/types';
 import {
   ActionMenu,
   Button,
+  ErrorBox,
   Spinner,
+  StatusBadge,
   Table,
   Input,
   Select,
 } from '@/components/ui';
+import { formatCurrency } from '@/lib/format';
+import { QUOTE_STATUS } from '@/lib/status';
 import { DetailPageLayout } from '@/components/layout/detail-page-layout';
+import { PageHeader } from '@/components/layout/page-header';
 import {
   TableConfigSidebar,
   useTableConfig,
@@ -31,41 +36,12 @@ const statusFilterOptions = [
   { value: QuoteStatus.VERLOPEN, label: 'Verlopen' },
 ];
 
-const statusColors: Record<string, string> = {
-  [QuoteStatus.CONCEPT]: 'bg-gray-100 text-gray-800',
-  [QuoteStatus.TER_GOEDKEURING]: 'bg-yellow-100 text-yellow-800',
-  [QuoteStatus.GOEDGEKEURD]: 'bg-green-100 text-green-800',
-  [QuoteStatus.VERSTUURD]: 'bg-blue-100 text-blue-800',
-  [QuoteStatus.BEKEKEN]: 'bg-purple-100 text-purple-800',
-  [QuoteStatus.GEACCEPTEERD]: 'bg-emerald-100 text-emerald-800',
-  [QuoteStatus.AFGEWEZEN]: 'bg-red-100 text-red-800',
-  [QuoteStatus.VERLOPEN]: 'bg-orange-100 text-orange-800',
-};
-
-const statusLabels: Record<string, string> = {
-  [QuoteStatus.CONCEPT]: 'Concept',
-  [QuoteStatus.TER_GOEDKEURING]: 'Ter goedkeuring',
-  [QuoteStatus.GOEDGEKEURD]: 'Goedgekeurd',
-  [QuoteStatus.VERSTUURD]: 'Verstuurd',
-  [QuoteStatus.BEKEKEN]: 'Bekeken',
-  [QuoteStatus.GEACCEPTEERD]: 'Geaccepteerd',
-  [QuoteStatus.AFGEWEZEN]: 'Afgewezen',
-  [QuoteStatus.VERLOPEN]: 'Verlopen',
-};
-
 const canWrite = [Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE];
 
 function getContactName(quote: Quote): string {
   if (!quote.contact) return '\u2014';
   if (quote.contact.companyName) return quote.contact.companyName;
   return [quote.contact.firstName, quote.contact.lastName].filter(Boolean).join(' ') || '\u2014';
-}
-
-function formatCurrency(amount: number): string {
-  return new Intl.NumberFormat('nl-NL', {
-    style: 'currency',
-    currency: 'EUR',
-  }).format(amount);
 }
 
 export default function QuotesPage() {
@@ -141,15 +117,7 @@ export default function QuotesPage() {
       filterOptions: statusFilterOptions.filter((o) => o.value !== ''),
       groupable: true,
       getFilterValue: (quote) => quote.status,
-      render: (quote) => (
-        <span
-          className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
-            statusColors[quote.status] || 'bg-gray-100 text-gray-600'
-          }`}
-        >
-          {statusLabels[quote.status] || quote.status}
-        </span>
-      ),
+      render: (quote) => <StatusBadge status={quote.status} map={QUOTE_STATUS} />,
     },
     {
       key: 'total',
@@ -238,9 +206,9 @@ export default function QuotesPage() {
 
   if (error) {
     return (
-      <div className="rounded-lg bg-danger-50 p-4 text-sm text-danger-600">
+      <ErrorBox>
         Fout bij het laden van offertes: {error.message}
-      </div>
+      </ErrorBox>
     );
   }
 
@@ -268,25 +236,23 @@ export default function QuotesPage() {
       }
     >
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-bold text-gray-900">Offertes</h2>
-          <p className="mt-1 text-sm text-gray-500">
-            Beheer offertes en prijsopgaven
-          </p>
-        </div>
-        {userCanWrite && (
-          <ActionMenu
-            secondaryActions={[
-              {
-                label: 'Offerte aanmaken',
-                icon: <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>,
-                onClick: () => navigate('/quotes/new'),
-              },
-            ]}
-          />
-        )}
-      </div>
+      <PageHeader
+        title="Offertes"
+        description="Beheer offertes en prijsopgaven"
+        actions={
+          userCanWrite ? (
+            <ActionMenu
+              secondaryActions={[
+                {
+                  label: 'Offerte aanmaken',
+                  icon: <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>,
+                  onClick: () => navigate('/quotes/new'),
+                },
+              ]}
+            />
+          ) : undefined
+        }
+      />
 
       {/* Filters */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center">

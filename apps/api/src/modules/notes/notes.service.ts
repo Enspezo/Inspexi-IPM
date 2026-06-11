@@ -1,11 +1,13 @@
 import {
   Injectable,
+  Logger,
   NotFoundException,
   ForbiddenException,
   BadRequestException,
 } from '@nestjs/common';
 import { User, Role, Prisma, NoteEntityType } from '@prisma/client';
 import { PrismaService } from '@/prisma';
+import { paginate, buildOrderBy, orgScope } from '@/common';
 import { CreateNoteDto, UpdateNoteDto, ListNotesQueryDto } from './dto';
 
 const createdBySelect = {
@@ -16,6 +18,8 @@ const createdBySelect = {
 
 @Injectable()
 export class NotesService {
+  private readonly logger = new Logger(NotesService.name);
+
   constructor(private prisma: PrismaService) {}
 
   /**
@@ -130,15 +134,12 @@ export class NotesService {
    */
   async findByEntity(entityType: NoteEntityType, entityId: string, user: User) {
     const where: Prisma.NoteWhereInput = {
+      ...orgScope(user),
       entityType,
       entityId,
       parentId: null,
       isDeleted: false,
     };
-
-    if (!user.roles.includes(Role.SUPERUSER)) {
-      where.orgId = user.orgId!;
-    }
 
     const notes = await this.prisma.note.findMany({
       where,
@@ -163,19 +164,13 @@ export class NotesService {
   async findAll(user: User, query: ListNotesQueryDto) {
     const { search, entityType, entityId, page = 1, limit = 20, sortBy, sortOrder = 'desc' } = query;
     const ALLOWED_SORT_FIELDS = ['entityType', 'createdAt'];
-    const orderBy = (sortBy && ALLOWED_SORT_FIELDS.includes(sortBy))
-      ? { [sortBy]: sortOrder }
-      : { createdAt: 'desc' as const };
-    const skip = (page - 1) * limit;
+    const orderBy = buildOrderBy(sortBy, sortOrder, ALLOWED_SORT_FIELDS, { createdAt: 'desc' });
 
     const where: Prisma.NoteWhereInput = {
+      ...orgScope(user),
       parentId: null,
       isDeleted: false,
     };
-
-    if (!user.roles.includes(Role.SUPERUSER)) {
-      where.orgId = user.orgId!;
-    }
 
     if (entityType) {
       where.entityType = entityType;
@@ -189,31 +184,28 @@ export class NotesService {
       where.content = { contains: search, mode: 'insensitive' };
     }
 
-    const [data, total] = await Promise.all([
-      this.prisma.note.findMany({
-        where,
-        include: {
-          createdBy: { select: createdBySelect },
-          _count: {
-            select: { replies: { where: { isDeleted: false } } },
-          },
+    const result = await paginate(this.prisma.note, {
+      where,
+      include: {
+        createdBy: { select: createdBySelect },
+        _count: {
+          select: { replies: { where: { isDeleted: false } } },
         },
-        orderBy,
-        skip,
-        take: limit,
-      }),
-      this.prisma.note.count({ where }),
-    ]);
+      },
+      orderBy,
+      page,
+      limit,
+    });
 
-    const nameMap = await this.enrichWithEntityNames(data);
-    const enrichedData = data.map((note) => ({
+    const nameMap = await this.enrichWithEntityNames(result.data);
+    const enrichedData = result.data.map((note) => ({
       ...note,
       entityName: nameMap.get(note.entityId) || null,
-      replyCount: note._count.replies,
+      replyCount: (note as typeof note & { _count: { replies: number } })._count.replies,
       _count: undefined,
     }));
 
-    return { data: enrichedData, total, page, limit };
+    return { ...result, data: enrichedData };
   }
 
   async findOne(id: string, user: User) {

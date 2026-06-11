@@ -4,7 +4,8 @@ import { Card, Spinner } from '@/components/ui';
 import { DetailPageLayout } from '@/components/layout/detail-page-layout';
 import { useMyActivity } from '@/hooks/use-my-activity';
 import { useTasks } from '@/pages/tasks/hooks/use-tasks';
-import { AuditAction, TaskStatus } from '@/types';
+import { AUDIT_ACTION, getStatusConfig, TASK_STATUS } from '@/lib/status';
+import { TaskStatus } from '@/types';
 import type { AuditLogEntry, Task } from '@/types';
 import {
   getEntityTypeLabel,
@@ -55,18 +56,6 @@ const stats = [
   },
 ];
 
-const actionBadgeClasses: Record<AuditAction, string> = {
-  [AuditAction.CREATE]: 'bg-green-100 text-green-800',
-  [AuditAction.UPDATE]: 'bg-blue-100 text-blue-800',
-  [AuditAction.DELETE]: 'bg-red-100 text-red-800',
-};
-
-const actionLabels: Record<AuditAction, string> = {
-  [AuditAction.CREATE]: 'Aangemaakt',
-  [AuditAction.UPDATE]: 'Bijgewerkt',
-  [AuditAction.DELETE]: 'Verwijderd',
-};
-
 function formatRelativeTime(dateStr: string): string {
   const now = Date.now();
   const diff = now - new Date(dateStr).getTime();
@@ -92,9 +81,9 @@ function ActivityRow({ entry }: { entry: AuditLogEntry }) {
   const content = (
     <div className="flex items-start gap-3 px-1 py-2">
       <span
-        className={`mt-0.5 inline-flex shrink-0 items-center rounded-full px-2 py-0.5 text-xs font-medium ${actionBadgeClasses[entry.action]}`}
+        className={`mt-0.5 inline-flex shrink-0 items-center rounded-full px-2 py-0.5 text-xs font-medium ${getStatusConfig(AUDIT_ACTION, entry.action).classes}`}
       >
-        {actionLabels[entry.action]}
+        {getStatusConfig(AUDIT_ACTION, entry.action).label}
       </span>
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm text-gray-800">
@@ -161,17 +150,6 @@ function filterUpcomingTasks(tasks: Task[]): Task[] {
 
 // ─── Task row ────────────────────────────────────────────────────────────────
 
-const taskStatusColors: Record<string, string> = {
-  [TaskStatus.TE_DOEN]: 'bg-blue-100 text-blue-800',
-  [TaskStatus.MEE_BEZIG]: 'bg-yellow-100 text-yellow-800',
-  [TaskStatus.VOLTOOID]: 'bg-green-100 text-green-800',
-};
-const taskStatusLabels: Record<string, string> = {
-  [TaskStatus.TE_DOEN]: 'Te doen',
-  [TaskStatus.MEE_BEZIG]: 'Mee bezig',
-  [TaskStatus.VOLTOOID]: 'Voltooid',
-};
-
 function DashboardTaskRow({ task }: { task: Task }) {
   return (
     <Link
@@ -186,10 +164,10 @@ function DashboardTaskRow({ task }: { task: Task }) {
       </div>
       <span
         className={`shrink-0 inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
-          taskStatusColors[task.status] ?? 'bg-gray-100 text-gray-600'
+          getStatusConfig(TASK_STATUS, task.status).classes
         }`}
       >
-        {taskStatusLabels[task.status] ?? task.status}
+        {getStatusConfig(TASK_STATUS, task.status).label}
       </span>
     </Link>
   );

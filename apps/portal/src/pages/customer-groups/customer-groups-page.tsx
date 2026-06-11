@@ -3,13 +3,19 @@ import { useNavigate } from 'react-router-dom';
 import type { CustomerGroup } from '@/types';
 import {
   ActionMenu,
+  ErrorBox,
   Spinner,
   Button,
   Input,
   Table,
-  type Column,
 } from '@/components/ui';
 import { DetailPageLayout } from '@/components/layout/detail-page-layout';
+import { PageHeader } from '@/components/layout/page-header';
+import {
+  TableConfigSidebar,
+  useTableConfig,
+  type ColumnDef,
+} from '@/components/table-config';
 import { useAuth } from '@/providers/auth-provider';
 import { Role } from '@/types';
 import { useCustomerGroups } from './hooks/use-customer-groups';
@@ -40,10 +46,15 @@ export default function CustomerGroupsPage() {
 
   const userCanCreate = user && user.roles.some(r => canCreate.includes(r));
 
-  const columns: Column<CustomerGroup>[] = [
+  const columns: ColumnDef<CustomerGroup>[] = [
     {
       key: 'name',
       header: 'Naam',
+      pinned: true,
+      sortable: true,
+      filterable: true,
+      filterType: 'text',
+      getFilterValue: (group) => group.name,
       render: (group) => (
         <button
           onClick={() => navigate(`/contacts/groups/${group.id}`)}
@@ -56,6 +67,8 @@ export default function CustomerGroupsPage() {
     {
       key: 'contacts',
       header: 'Aantal relaties',
+      sortable: true,
+      getSortValue: (group) => group._count?.contacts ?? 0,
       render: (group) => (
         <span className="text-gray-600">
           {group._count?.contacts ?? 0}
@@ -65,6 +78,10 @@ export default function CustomerGroupsPage() {
     {
       key: 'notes',
       header: 'Notities',
+      sortable: true,
+      filterable: true,
+      filterType: 'text',
+      getFilterValue: (group) => group.notes,
       render: (group) => (
         <span className="text-gray-500 truncate max-w-xs block">
           {group.notes || '—'}
@@ -72,6 +89,25 @@ export default function CustomerGroupsPage() {
       ),
     },
   ];
+
+  const {
+    activeColumns,
+    filteredData,
+    pendingColumnConfig,
+    setPendingColumnConfig,
+    pendingFilters,
+    setPendingFilters,
+    pendingGrouping,
+    setPendingGrouping,
+    applyColumns,
+    applyFilters,
+    resetToDefaults,
+    isColumnsDirty,
+    isFiltersDirty,
+    allColumns,
+    sort,
+    toggleSort,
+  } = useTableConfig({ pageKey: 'customer-groups', columns });
 
   if (isLoading) {
     return (
@@ -83,9 +119,7 @@ export default function CustomerGroupsPage() {
 
   if (error) {
     return (
-      <div className="rounded-lg bg-danger-50 p-4 text-sm text-danger-600">
-        Fout bij het laden van klantgroepen: {error.message}
-      </div>
+      <ErrorBox>Fout bij het laden van klantgroepen: {error.message}</ErrorBox>
     );
   }
 
@@ -94,27 +128,42 @@ export default function CustomerGroupsPage() {
   const totalPages = Math.ceil(total / 20);
 
   return (
-    <DetailPageLayout>
+    <DetailPageLayout
+      sidebar={
+        <TableConfigSidebar
+          columns={allColumns}
+          pendingColumnConfig={pendingColumnConfig}
+          onColumnConfigChange={setPendingColumnConfig}
+          pendingFilters={pendingFilters}
+          onFiltersChange={setPendingFilters}
+          pendingGrouping={pendingGrouping}
+          onGroupingChange={setPendingGrouping}
+          onApplyColumns={applyColumns}
+          onApplyFilters={applyFilters}
+          onReset={resetToDefaults}
+          isColumnsDirty={isColumnsDirty}
+          isFiltersDirty={isFiltersDirty}
+        />
+      }
+    >
       <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-2xl font-bold text-gray-900">Klantgroepen</h2>
-            <p className="mt-1 text-sm text-gray-500">
-              Beheer klantgroepen om relaties te categoriseren
-            </p>
-          </div>
-          {userCanCreate && (
-            <ActionMenu
-              secondaryActions={[
-                {
-                  label: 'Klantgroep aanmaken',
-                  icon: <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>,
-                  onClick: () => setIsCreateOpen(true),
-                },
-              ]}
-            />
-          )}
-        </div>
+        <PageHeader
+          title="Klantgroepen"
+          description="Beheer klantgroepen om relaties te categoriseren"
+          actions={
+            userCanCreate && (
+              <ActionMenu
+                secondaryActions={[
+                  {
+                    label: 'Klantgroep aanmaken',
+                    icon: <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>,
+                    onClick: () => setIsCreateOpen(true),
+                  },
+                ]}
+              />
+            )
+          }
+        />
 
         {/* Search */}
         <div className="max-w-md">
@@ -126,10 +175,12 @@ export default function CustomerGroupsPage() {
         </div>
 
         <Table
-          columns={columns}
-          data={groups}
+          columns={activeColumns}
+          data={filteredData(groups)}
           keyExtractor={(g) => g.id}
           emptyMessage="Geen klantgroepen gevonden"
+          sort={sort}
+          onSort={toggleSort}
         />
 
         {/* Pagination */}

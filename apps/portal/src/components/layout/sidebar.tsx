@@ -54,6 +54,7 @@ const navSections: NavSection[] = [
         children: [
           { to: '/contacts', label: 'Overzicht' },
           { to: '/contacts/persons', label: 'Contactpersonen' },
+          { to: '/contacts/locations', label: 'Locaties' },
           { to: '/contacts/groups', label: 'Klantgroepen' },
         ],
       },
@@ -118,6 +119,10 @@ const navSections: NavSection[] = [
         ],
       },
     ],
+  },
+  {
+    label: 'Inspecties',
+    items: [],
   },
   {
     label: 'Organisatie',
@@ -285,7 +290,7 @@ export function Sidebar() {
         return user && user.roles.some((r) => item.roles!.includes(r));
       }),
     }))
-    .filter((section) => section.items.length > 0);
+    .filter((section) => section.label !== null || section.items.length > 0);
 
   return (
     <aside

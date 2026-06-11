@@ -30,6 +30,9 @@ import {
   SendContactEmailDto,
   ListContactsQueryDto,
   ListContactPersonsQueryDto,
+  ListLocationsQueryDto,
+  CreateLocationContactPersonDto,
+  UpdateLocationContactPersonDto,
 } from './dto';
 import { Roles, CurrentUser } from '@/common/decorators';
 
@@ -70,6 +73,59 @@ export class ContactsController {
   ) {
     const result = await this.contactsService.findAllContactPersons(user, query);
     return { success: true, data: result };
+  }
+
+  @Get('contact-person-roles')
+  @Roles(
+    Role.SUPERUSER,
+    Role.ORG_ADMIN,
+    Role.MANAGER,
+    Role.BACKOFFICE,
+    Role.WERKVOORBEREIDER,
+  )
+  @ApiOperation({ summary: 'Lijst contactpersoon-rollen ophalen (lookup)' })
+  @ApiResponse({ status: 200, description: 'Lijst van rollen' })
+  async findContactPersonRoles(@CurrentUser() user: User) {
+    const roles = await this.contactsService.findContactPersonRoles(user);
+    return { success: true, data: roles };
+  }
+
+  // ─── Locations (global) ─────────────────────────────────
+
+  @Get('locations')
+  @Roles(
+    Role.SUPERUSER,
+    Role.ORG_ADMIN,
+    Role.MANAGER,
+    Role.BACKOFFICE,
+    Role.WERKVOORBEREIDER,
+  )
+  @ApiOperation({ summary: 'Alle locaties ophalen' })
+  @ApiResponse({ status: 200, description: 'Gepagineerde lijst van locaties' })
+  async findAllLocations(
+    @CurrentUser() user: User,
+    @Query() query: ListLocationsQueryDto,
+  ) {
+    const result = await this.contactsService.findAllLocations(user, query);
+    return { success: true, data: result };
+  }
+
+  @Get('locations/:locationId')
+  @Roles(
+    Role.SUPERUSER,
+    Role.ORG_ADMIN,
+    Role.MANAGER,
+    Role.BACKOFFICE,
+    Role.WERKVOORBEREIDER,
+  )
+  @ApiOperation({ summary: 'Locatie detail ophalen' })
+  @ApiResponse({ status: 200, description: 'Locatie details' })
+  async findLocation(
+    @Param('locationId', ParseUUIDPipe) locationId: string,
+    @CurrentUser() user: User,
+  ) {
+    const location = await this.contactsService.findLocation(locationId, user);
+    return { success: true, data: location };
   }
 
   @Post()
@@ -199,6 +255,24 @@ export class ContactsController {
     return { success: true, data: person };
   }
 
+  @Get('contact-persons/:personId/locations')
+  @Roles(
+    Role.SUPERUSER,
+    Role.ORG_ADMIN,
+    Role.MANAGER,
+    Role.BACKOFFICE,
+    Role.WERKVOORBEREIDER,
+  )
+  @ApiOperation({ summary: 'Gekoppelde locaties van contactpersoon ophalen' })
+  @ApiResponse({ status: 200, description: 'Lijst gekoppelde locaties' })
+  async findContactPersonLocations(
+    @Param('personId', ParseUUIDPipe) personId: string,
+    @CurrentUser() user: User,
+  ) {
+    const links = await this.contactsService.findContactPersonLocations(personId, user);
+    return { success: true, data: links };
+  }
+
   @Get('contact-persons/:personId')
   @Roles(
     Role.SUPERUSER,
@@ -240,6 +314,64 @@ export class ContactsController {
   ) {
     await this.contactsService.deleteContactPerson(personId, user);
     return { success: true, message: 'Contactpersoon verwijderd' };
+  }
+
+  // ─── Location–ContactPerson links ─────────────────────
+
+  @Get('locations/:locationId/contact-persons')
+  @Roles(
+    Role.SUPERUSER,
+    Role.ORG_ADMIN,
+    Role.MANAGER,
+    Role.BACKOFFICE,
+    Role.WERKVOORBEREIDER,
+  )
+  @ApiOperation({ summary: 'Gekoppelde contactpersonen van locatie ophalen' })
+  @ApiResponse({ status: 200, description: 'Lijst gekoppelde contactpersonen' })
+  async findLocationContactPersons(
+    @Param('locationId', ParseUUIDPipe) locationId: string,
+    @CurrentUser() user: User,
+  ) {
+    const links = await this.contactsService.findLocationContactPersons(locationId, user);
+    return { success: true, data: links };
+  }
+
+  @Post('locations/:locationId/contact-persons')
+  @Roles(Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE)
+  @ApiOperation({ summary: 'Contactpersoon koppelen aan locatie' })
+  @ApiResponse({ status: 201, description: 'Contactpersoon gekoppeld' })
+  async addLocationContactPerson(
+    @Param('locationId', ParseUUIDPipe) locationId: string,
+    @Body() dto: CreateLocationContactPersonDto,
+    @CurrentUser() user: User,
+  ) {
+    const link = await this.contactsService.addLocationContactPerson(locationId, dto, user);
+    return { success: true, data: link };
+  }
+
+  @Patch('locations/contact-persons/:linkId')
+  @Roles(Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE)
+  @ApiOperation({ summary: 'Opmerkingen koppeling bijwerken' })
+  @ApiResponse({ status: 200, description: 'Koppeling bijgewerkt' })
+  async updateLocationContactPerson(
+    @Param('linkId', ParseUUIDPipe) linkId: string,
+    @Body() dto: UpdateLocationContactPersonDto,
+    @CurrentUser() user: User,
+  ) {
+    const link = await this.contactsService.updateLocationContactPerson(linkId, dto, user);
+    return { success: true, data: link };
+  }
+
+  @Delete('locations/contact-persons/:linkId')
+  @Roles(Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE)
+  @ApiOperation({ summary: 'Contactpersoon ontkoppelen van locatie' })
+  @ApiResponse({ status: 200, description: 'Contactpersoon ontkoppeld' })
+  async removeLocationContactPerson(
+    @Param('linkId', ParseUUIDPipe) linkId: string,
+    @CurrentUser() user: User,
+  ) {
+    await this.contactsService.removeLocationContactPerson(linkId, user);
+    return { success: true, message: 'Contactpersoon ontkoppeld' };
   }
 
   // ─── Nested: Locations ─────────────────────────────────

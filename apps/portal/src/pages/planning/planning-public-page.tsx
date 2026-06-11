@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { Spinner } from '@/components/ui';
+import { formatFileSize } from '@/lib/format';
 import type { PlanningItem, CrmDocument, PlanningSession } from '@/types';
 import { PlanningStatus, AcceptanceStatus, SessionStatus } from '@/types';
 
@@ -30,12 +31,6 @@ function formatDuration(minutes: number | null | undefined): string {
   if (h > 0 && m > 0) return `${h} uur ${m} min`;
   if (h > 0) return `${h} uur`;
   return `${m} min`;
-}
-
-function formatFileSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 function getContactName(contact?: { companyName?: string | null; firstName?: string | null; lastName?: string | null } | null): string {

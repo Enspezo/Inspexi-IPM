@@ -1,0 +1,167 @@
+/**
+ * Canonieke status/type → presentatie-mappings (kleur + Nederlands label).
+ * Eén bron voor alle badges; gebruik samen met <StatusBadge>.
+ *
+ * Conflictresolutie bij introductie: het domein dat de status "bezit" wint
+ * (bijv. RequestStatus volgt de requests-pagina's, niet contact-detail).
+ */
+import {
+  AcceptanceStatus,
+  ApprovalStatus,
+  AuditAction,
+  ContactType,
+  LogType,
+  PlanningStatus,
+  Priority,
+  ProjectStatus,
+  QuoteStatus,
+  RequestSource,
+  RequestStatus,
+  SessionStatus,
+  TaskEntityType,
+  TaskStatus,
+  TaskType,
+  WorkOrderStatus,
+} from '@/types';
+
+export interface StatusConfig {
+  label: string;
+  classes: string;
+}
+
+export type StatusMap = Record<string, StatusConfig>;
+
+const FALLBACK: StatusConfig = { label: '', classes: 'bg-gray-100 text-gray-600' };
+
+/** Veilige lookup: onbekende waarde → grijze badge met de ruwe waarde als label. */
+export function getStatusConfig(map: StatusMap, value: string | null | undefined): StatusConfig {
+  if (!value) return { ...FALLBACK, label: '—' };
+  return map[value] ?? { ...FALLBACK, label: value };
+}
+
+export const TASK_STATUS: StatusMap = {
+  [TaskStatus.TE_DOEN]: { label: 'Te doen', classes: 'bg-blue-100 text-blue-800' },
+  [TaskStatus.MEE_BEZIG]: { label: 'Mee bezig', classes: 'bg-yellow-100 text-yellow-800' },
+  [TaskStatus.VOLTOOID]: { label: 'Voltooid', classes: 'bg-green-100 text-green-800' },
+};
+
+export const TASK_TYPE: StatusMap = {
+  [TaskType.TO_DO]: { label: 'To-do', classes: 'bg-gray-100 text-gray-700' },
+  [TaskType.EMAIL]: { label: 'E-mail', classes: 'bg-indigo-100 text-indigo-800' },
+  [TaskType.TELEFOONGESPREK]: { label: 'Telefoongesprek', classes: 'bg-orange-100 text-orange-800' },
+  [TaskType.DOCUMENT]: { label: 'Document', classes: 'bg-purple-100 text-purple-800' },
+  [TaskType.GOEDKEURING]: { label: 'Goedkeuring', classes: 'bg-pink-100 text-pink-800' },
+};
+
+export const REQUEST_STATUS: StatusMap = {
+  [RequestStatus.NIEUW]: { label: 'Nieuw', classes: 'bg-blue-100 text-blue-800' },
+  [RequestStatus.IN_BEHANDELING]: { label: 'In behandeling', classes: 'bg-yellow-100 text-yellow-800' },
+  [RequestStatus.OFFERTE_GEMAAKT]: { label: 'Offerte gemaakt', classes: 'bg-purple-100 text-purple-800' },
+  [RequestStatus.GEWONNEN]: { label: 'Gewonnen', classes: 'bg-green-100 text-green-800' },
+  [RequestStatus.VERLOREN]: { label: 'Verloren', classes: 'bg-red-100 text-red-800' },
+  [RequestStatus.ON_HOLD]: { label: 'On hold', classes: 'bg-gray-100 text-gray-600' },
+};
+
+export const PRIORITY: StatusMap = {
+  [Priority.HIGH]: { label: 'Hoog', classes: 'bg-red-100 text-red-800' },
+  [Priority.NORMAL]: { label: 'Normaal', classes: 'bg-yellow-100 text-yellow-800' },
+  [Priority.LOW]: { label: 'Laag', classes: 'bg-gray-100 text-gray-600' },
+};
+
+export const QUOTE_STATUS: StatusMap = {
+  [QuoteStatus.CONCEPT]: { label: 'Concept', classes: 'bg-gray-100 text-gray-800' },
+  [QuoteStatus.TER_GOEDKEURING]: { label: 'Ter goedkeuring', classes: 'bg-yellow-100 text-yellow-800' },
+  [QuoteStatus.GOEDGEKEURD]: { label: 'Goedgekeurd', classes: 'bg-green-100 text-green-800' },
+  [QuoteStatus.VERSTUURD]: { label: 'Verstuurd', classes: 'bg-blue-100 text-blue-800' },
+  [QuoteStatus.BEKEKEN]: { label: 'Bekeken', classes: 'bg-purple-100 text-purple-800' },
+  [QuoteStatus.GEACCEPTEERD]: { label: 'Geaccepteerd', classes: 'bg-emerald-100 text-emerald-800' },
+  [QuoteStatus.AFGEWEZEN]: { label: 'Afgewezen', classes: 'bg-red-100 text-red-800' },
+  [QuoteStatus.VERLOPEN]: { label: 'Verlopen', classes: 'bg-orange-100 text-orange-800' },
+};
+
+export const APPROVAL_STATUS: StatusMap = {
+  [ApprovalStatus.PENDING]: { label: 'In afwachting', classes: 'bg-yellow-100 text-yellow-800' },
+  [ApprovalStatus.APPROVED]: { label: 'Goedgekeurd', classes: 'bg-green-100 text-green-800' },
+  [ApprovalStatus.REJECTED]: { label: 'Afgewezen', classes: 'bg-red-100 text-red-800' },
+};
+
+export const PLANNING_STATUS: StatusMap = {
+  [PlanningStatus.NOG_TE_PLANNEN]: { label: 'Nog te plannen', classes: 'bg-gray-100 text-gray-700' },
+  [PlanningStatus.CONCEPT]: { label: 'Concept', classes: 'bg-yellow-100 text-yellow-800' },
+  [PlanningStatus.GEPLAND]: { label: 'Gepland', classes: 'bg-blue-100 text-blue-800' },
+  [PlanningStatus.AFGEROND]: { label: 'Afgerond', classes: 'bg-green-100 text-green-800' },
+  [PlanningStatus.VERVALLEN]: { label: 'Vervallen', classes: 'bg-red-100 text-red-800' },
+};
+
+export const SESSION_STATUS: StatusMap = {
+  [SessionStatus.NOG_TE_PLANNEN]: { label: 'Nog te plannen', classes: 'bg-gray-100 text-gray-700' },
+  [SessionStatus.CONCEPT]: { label: 'Concept', classes: 'bg-blue-100 text-blue-800' },
+  [SessionStatus.DEFINITIEF]: { label: 'Definitief', classes: 'bg-green-100 text-green-800' },
+  [SessionStatus.AFGEROND]: { label: 'Afgerond', classes: 'bg-green-200 text-green-900' },
+  [SessionStatus.VERVALLEN]: { label: 'Vervallen', classes: 'bg-red-100 text-red-800' },
+};
+
+export const ACCEPTANCE_STATUS: StatusMap = {
+  [AcceptanceStatus.PENDING]: { label: 'In afwachting', classes: 'bg-yellow-100 text-yellow-800' },
+  [AcceptanceStatus.ACCEPTED]: { label: 'Geaccepteerd', classes: 'bg-green-100 text-green-800' },
+  [AcceptanceStatus.REJECTED]: { label: 'Geweigerd', classes: 'bg-red-100 text-red-800' },
+};
+
+export const WORK_ORDER_STATUS: StatusMap = {
+  [WorkOrderStatus.IN_VOORBEREIDING]: { label: 'In voorbereiding', classes: 'bg-yellow-100 text-yellow-800' },
+  [WorkOrderStatus.IN_UITVOERING]: { label: 'In uitvoering', classes: 'bg-blue-100 text-blue-800' },
+  [WorkOrderStatus.UITGEVOERD]: { label: 'Uitgevoerd', classes: 'bg-green-100 text-green-800' },
+  [WorkOrderStatus.WACHT_OP_KLANT]: { label: 'Wacht op klant', classes: 'bg-orange-100 text-orange-800' },
+};
+
+export const PROJECT_STATUS: StatusMap = {
+  [ProjectStatus.ACTIEF]: { label: 'Actief', classes: 'bg-green-100 text-green-800' },
+  [ProjectStatus.ON_HOLD]: { label: 'On hold', classes: 'bg-yellow-100 text-yellow-800' },
+  [ProjectStatus.AFGEROND]: { label: 'Afgerond', classes: 'bg-blue-100 text-blue-800' },
+  [ProjectStatus.GEANNULEERD]: { label: 'Geannuleerd', classes: 'bg-red-100 text-red-800' },
+};
+
+export const LOG_TYPE: StatusMap = {
+  [LogType.EMAIL]: { label: 'E-mail', classes: 'bg-blue-100 text-blue-800' },
+  [LogType.PHONE]: { label: 'Telefoon', classes: 'bg-green-100 text-green-800' },
+  [LogType.MEETING]: { label: 'Vergadering', classes: 'bg-purple-100 text-purple-800' },
+  [LogType.NOTE]: { label: 'Notitie', classes: 'bg-gray-100 text-gray-800' },
+};
+
+export const ERROR_REPORT_STATUS: StatusMap = {
+  OPEN: { label: 'Open', classes: 'bg-red-100 text-red-800' },
+  IN_BEHANDELING: { label: 'In behandeling', classes: 'bg-yellow-100 text-yellow-800' },
+  OPGELOST: { label: 'Opgelost', classes: 'bg-green-100 text-green-800' },
+};
+
+export const CONTACT_TYPE: StatusMap = {
+  [ContactType.COMPANY]: { label: 'Bedrijf', classes: 'bg-blue-100 text-blue-800' },
+  [ContactType.INDIVIDUAL]: { label: 'Particulier', classes: 'bg-purple-100 text-purple-800' },
+};
+
+export const AUDIT_ACTION: StatusMap = {
+  [AuditAction.CREATE]: { label: 'Aangemaakt', classes: 'bg-green-100 text-green-800' },
+  [AuditAction.UPDATE]: { label: 'Bijgewerkt', classes: 'bg-blue-100 text-blue-800' },
+  [AuditAction.DELETE]: { label: 'Verwijderd', classes: 'bg-red-100 text-red-800' },
+};
+
+// ── Label-only maps (geen badge-kleuren) ──────────────────────────────────
+
+export const REQUEST_SOURCE_LABELS: Record<string, string> = {
+  [RequestSource.MANUAL]: 'Handmatig',
+  [RequestSource.WEB_FORM]: 'Webformulier',
+  [RequestSource.EMAIL]: 'E-mail',
+  [RequestSource.PHONE]: 'Telefoon',
+};
+
+export const ENTITY_TYPE_LABELS: Record<string, string> = {
+  [TaskEntityType.CONTACT]: 'Relatie',
+  [TaskEntityType.REQUEST]: 'Aanvraag',
+  [TaskEntityType.QUOTE]: 'Offerte',
+  [TaskEntityType.PLANNING]: 'Afspraak',
+  [TaskEntityType.PROJECT]: 'Project',
+  [TaskEntityType.USER]: 'Gebruiker',
+  PRODUCT: 'Product',
+  TASK: 'Taak',
+  WORK_ORDER: 'Werkbon',
+};

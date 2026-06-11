@@ -16,6 +16,7 @@ import {
 } from '@prisma/client';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '@/prisma';
+import { paginate, orgScope, assertFound } from '@/common';
 import { NotificationsService } from '../notifications/notifications.service';
 import { WorkOrdersService } from '../work-orders/work-orders.service';
 import { PlanningEmailService } from './planning-email.service';
@@ -154,15 +155,13 @@ export class PlanningService {
   async findAll(user: User, query: ListPlanningQueryDto) {
     const page = Number(query.page ?? 1);
     const limit = Math.min(Number(query.limit ?? 25), 100);
-    const skip = (page - 1) * limit;
     const { sortBy, sortOrder = 'desc' } = query;
     const ALLOWED_SORT_FIELDS = ['scheduledDate', 'status', 'createdAt'];
     const orderBy: object = (sortBy && ALLOWED_SORT_FIELDS.includes(sortBy))
       ? [{ [sortBy]: sortOrder }]
       : [{ scheduledDate: 'asc' }, { createdAt: 'desc' }];
 
-    const where: any = {};
-    if (!user.roles.includes(Role.SUPERUSER)) where.orgId = user.orgId!;
+    const where: any = { ...orgScope(user) };
     if (query.status) where.status = query.status;
     if (query.contactId) where.contactId = query.contactId;
     if (query.inspectorId) where.inspectors = { some: { userId: query.inspectorId } };
@@ -201,26 +200,23 @@ export class PlanningService {
 
     if (andConditions.length > 0) where.AND = andConditions;
 
-    const [data, total] = await Promise.all([
-      this.prisma.planningItem.findMany({
-        where,
-        include: PLANNING_INCLUDE,
-        orderBy,
-        skip,
-        take: limit,
-      }),
-      this.prisma.planningItem.count({ where }),
-    ]);
-
-    return { data, total, page, limit };
+    return paginate(this.prisma.planningItem, {
+      where,
+      include: PLANNING_INCLUDE,
+      orderBy,
+      page,
+      limit,
+    });
   }
 
   async findOne(id: string, user: User) {
-    const item = await this.prisma.planningItem.findUnique({
-      where: { id },
-      include: PLANNING_INCLUDE,
-    });
-    if (!item) throw new NotFoundException('Planregel niet gevonden');
+    const item = assertFound(
+      await this.prisma.planningItem.findUnique({
+        where: { id },
+        include: PLANNING_INCLUDE,
+      }),
+      'Planregel',
+    );
     this.checkOrgAccess(user, item.orgId);
     return item;
   }
@@ -738,16 +734,18 @@ export class PlanningService {
   // ─── Send confirmation ─────────────────────────────────────
 
   async sendConfirmation(id: string, user: User) {
-    const item = await this.prisma.planningItem.findUnique({
-      where: { id },
-      include: {
-        contact: { select: { email: true, companyName: true, firstName: true, lastName: true } },
-        location: { select: { street: true, houseNumber: true, city: true } },
-        followers: { include: { user: { select: { email: true, firstName: true } } } },
-        organization: { select: { name: true } },
-      },
-    });
-    if (!item) throw new NotFoundException('Planregel niet gevonden');
+    const item = assertFound(
+      await this.prisma.planningItem.findUnique({
+        where: { id },
+        include: {
+          contact: { select: { email: true, companyName: true, firstName: true, lastName: true } },
+          location: { select: { street: true, houseNumber: true, city: true } },
+          followers: { include: { user: { select: { email: true, firstName: true } } } },
+          organization: { select: { name: true } },
+        },
+      }),
+      'Planregel',
+    );
     this.checkOrgAccess(user, item.orgId);
     await this.doSendConfirmationEmails(item);
     await this.addHistoryEntry(id, user.id, 'BEVESTIGING_VERSTUURD', 'Bevestigings-e-mail handmatig verstuurd');
@@ -884,7 +882,7 @@ export class PlanningService {
   // ─── Public portal ─────────────────────────────────────────
 
   async findByPublicToken(token: string) {
-    const item = await this.prisma.planningItem.findUnique({
+    const item = assertFound(await this.prisma.planningItem.findUnique({
       where: { publicToken: token },
       include: {
         contact: {
@@ -924,8 +922,7 @@ export class PlanningService {
           orderBy: { sessionNumber: 'asc' as const },
         },
       },
-    });
-    if (!item) throw new NotFoundException('Afspraak niet gevonden');
+    }), 'Afspraak');
 
     // Attach shared documents (from this planning item + linked quote + linked request)
     const documents = await this.getSharedDocuments(token);
@@ -933,11 +930,13 @@ export class PlanningService {
   }
 
   async addClientQuestion(token: string, dto: AddQuestionDto) {
-    const item = await this.prisma.planningItem.findUnique({
-      where: { publicToken: token },
-      select: { id: true, orgId: true, createdBy: true, productName: true },
-    });
-    if (!item) throw new NotFoundException('Afspraak niet gevonden');
+    const item = assertFound(
+      await this.prisma.planningItem.findUnique({
+        where: { publicToken: token },
+        select: { id: true, orgId: true, createdBy: true, productName: true },
+      }),
+      'Afspraak',
+    );
 
     const entry = await this.prisma.planningHistory.create({
       data: { planningItemId: item.id, userId: null, action: 'VRAAG_KLANT', description: dto.message },
@@ -957,11 +956,13 @@ export class PlanningService {
   }
 
   async createRescheduleRequest(token: string, dto: CreateRescheduleRequestDto) {
-    const item = await this.prisma.planningItem.findUnique({
-      where: { publicToken: token },
-      select: { id: true, orgId: true, createdBy: true, productName: true, isCancelled: true },
-    });
-    if (!item) throw new NotFoundException('Afspraak niet gevonden');
+    const item = assertFound(
+      await this.prisma.planningItem.findUnique({
+        where: { publicToken: token },
+        select: { id: true, orgId: true, createdBy: true, productName: true, isCancelled: true },
+      }),
+      'Afspraak',
+    );
     if (item.isCancelled) throw new BadRequestException('Deze afspraak is al geannuleerd');
 
     const request = await this.prisma.rescheduleRequest.create({
@@ -995,11 +996,13 @@ export class PlanningService {
   }
 
   async getSharedDocuments(token: string) {
-    const item = await this.prisma.planningItem.findUnique({
-      where: { publicToken: token },
-      select: { id: true, quoteId: true },
-    });
-    if (!item) throw new NotFoundException('Afspraak niet gevonden');
+    const item = assertFound(
+      await this.prisma.planningItem.findUnique({
+        where: { publicToken: token },
+        select: { id: true, quoteId: true },
+      }),
+      'Afspraak',
+    );
 
     // Build OR conditions: always include PLANNING docs, optionally QUOTE + REQUEST docs
     const entityFilters: Array<{ entityType: any; entityId: string }> = [
@@ -1029,17 +1032,19 @@ export class PlanningService {
   // ─── Sessions ──────────────────────────────────────────────
 
   private async findSession(planningItemId: string, sessionId: string) {
-    const session = await this.prisma.planningSession.findUnique({
-      where: { id: sessionId },
-      include: {
-        sessionInspectors: {
-          include: {
-            user: { select: { id: true, firstName: true, lastName: true, email: true, color: true, initials: true } },
+    const session = assertFound(
+      await this.prisma.planningSession.findUnique({
+        where: { id: sessionId },
+        include: {
+          sessionInspectors: {
+            include: {
+              user: { select: { id: true, firstName: true, lastName: true, email: true, color: true, initials: true } },
+            },
           },
         },
-      },
-    });
-    if (!session) throw new NotFoundException('Sessie niet gevonden');
+      }),
+      'Sessie',
+    );
     if (session.planningItemId !== planningItemId) throw new NotFoundException('Sessie niet gevonden');
     return session;
   }

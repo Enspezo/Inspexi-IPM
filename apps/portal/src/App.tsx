@@ -33,6 +33,12 @@ const ContactPersonsPage = lazy(
 const ContactPersonDetailPage = lazy(
   () => import('@/pages/contacts/contact-person-detail-page'),
 );
+const LocationsPage = lazy(
+  () => import('@/pages/contacts/locations-page'),
+);
+const LocationDetailPage = lazy(
+  () => import('@/pages/contacts/location-detail-page'),
+);
 const CustomerGroupsPage = lazy(
   () => import('@/pages/customer-groups/customer-groups-page'),
 );
@@ -142,6 +148,8 @@ export default function App() {
             <Route path="/contacts" element={<ContactsPage />} />
             <Route path="/contacts/persons" element={<ContactPersonsPage />} />
             <Route path="/contacts/persons/:personId" element={<ContactPersonDetailPage />} />
+            <Route path="/contacts/locations" element={<LocationsPage />} />
+            <Route path="/contacts/locations/:locationId" element={<LocationDetailPage />} />
             <Route path="/contacts/groups" element={<CustomerGroupsPage />} />
             <Route path="/contacts/groups/:id" element={<CustomerGroupDetailPage />} />
             <Route path="/contacts/:id" element={<ContactDetailPage />} />

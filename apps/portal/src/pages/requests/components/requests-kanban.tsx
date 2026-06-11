@@ -1,8 +1,9 @@
 import { useState, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { RequestStatus, Priority } from '@/types';
-import type { Request } from '@/types';
-import { Spinner } from '@/components/ui';
+import { RequestStatus } from '@/types';
+import type { Priority, Request } from '@/types';
+import { ErrorBox, Spinner } from '@/components/ui';
+import { getStatusConfig, PRIORITY } from '@/lib/status';
 import { useAllRequests } from '../hooks/use-requests';
 import { useQueryClient, useMutation } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api-client';
@@ -56,18 +57,6 @@ const COLUMNS: {
   },
 ];
 
-const priorityColors: Record<Priority, string> = {
-  [Priority.HIGH]: 'bg-red-100 text-red-700',
-  [Priority.NORMAL]: 'bg-yellow-100 text-yellow-700',
-  [Priority.LOW]: 'bg-gray-100 text-gray-600',
-};
-
-const priorityLabels: Record<Priority, string> = {
-  [Priority.HIGH]: 'Hoog',
-  [Priority.NORMAL]: 'Normaal',
-  [Priority.LOW]: 'Laag',
-};
-
 // ─── KanbanCard ────────────────────────────────────────────────────────────
 
 interface KanbanCardProps {
@@ -113,10 +102,10 @@ function KanbanCard({ request, onDragStart }: KanbanCardProps) {
       <div className="flex items-center justify-between gap-2">
         <span
           className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
-            priorityColors[request.priority] ?? 'bg-gray-100 text-gray-600'
+            getStatusConfig(PRIORITY, request.priority).classes
           }`}
         >
-          {priorityLabels[request.priority] ?? request.priority}
+          {getStatusConfig(PRIORITY, request.priority).label}
         </span>
 
         {request.assignedUser ? (
@@ -391,9 +380,9 @@ export function RequestsKanban({ search, priorityFilter, assignedTo }: RequestsK
 
   if (error) {
     return (
-      <div className="rounded-lg bg-danger-50 p-4 text-sm text-danger-600">
+      <ErrorBox>
         Fout bij het laden van aanvragen: {error.message}
-      </div>
+      </ErrorBox>
     );
   }
 

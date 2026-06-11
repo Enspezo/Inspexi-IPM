@@ -15,7 +15,8 @@ describe('SearchService', () => {
     task: { findMany: jest.fn(), count: jest.fn() },
     document: { findMany: jest.fn(), count: jest.fn() },
     product: { findMany: jest.fn(), count: jest.fn() },
-    planningItem: { findMany: jest.fn() },
+    location: { findMany: jest.fn(), count: jest.fn() },
+    planningItem: { findMany: jest.fn(), count: jest.fn() },
   };
 
   const mockUser = {

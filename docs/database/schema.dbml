@@ -1,0 +1,1145 @@
+// =====================================================================
+// InspeXi Beheer — Database Overzicht (DBML)
+// Gegenereerd vanuit apps/api/prisma/schema.prisma
+// PostgreSQL 15 · alle tabellen prefix `imp_` · multi-tenant op org_id
+//
+// Plak in https://dbdiagram.io of https://dbml.dbdiagram.io om te
+// visualiseren. Project = InspeXi Beheer.
+// =====================================================================
+
+Project inspexi_beheer {
+  database_type: 'PostgreSQL'
+  Note: 'Multi-tenant inspectie-managementplatform (CRM, leads, offertes, planning, projecten, werkbonnen).'
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// ENUMS
+// ─────────────────────────────────────────────────────────────────────
+
+Enum role {
+  SUPERUSER
+  ORG_ADMIN
+  MANAGER
+  BACKOFFICE
+  WERKVOORBEREIDER
+  INSPECTEUR
+}
+
+Enum contact_type {
+  COMPANY
+  INDIVIDUAL
+}
+
+Enum log_type {
+  EMAIL
+  PHONE
+  MEETING
+  NOTE
+}
+
+Enum price_type {
+  FIXED
+  TIERED
+}
+
+Enum request_source {
+  MANUAL
+  WEB_FORM
+  EMAIL
+  PHONE
+}
+
+Enum request_status {
+  NIEUW
+  IN_BEHANDELING
+  OFFERTE_GEMAAKT
+  GEWONNEN
+  VERLOREN
+  ON_HOLD
+}
+
+Enum lost_reason {
+  TE_DUUR
+  GEEN_BESCHIKBAARHEID
+  NIET_LANGER_NODIG
+  ANDERS
+}
+
+Enum priority {
+  LOW
+  NORMAL
+  HIGH
+}
+
+Enum contact_person_role {
+  ALGEMEEN
+  TECHNISCH
+  ADMINISTRATIEF
+  ANDERS
+}
+
+Enum quote_status {
+  CONCEPT
+  TER_GOEDKEURING
+  GOEDGEKEURD
+  VERSTUURD
+  BEKEKEN
+  GEACCEPTEERD
+  AFGEWEZEN
+  VERLOPEN
+}
+
+Enum approval_status {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+Enum notification_type {
+  OFFERTE_TER_GOEDKEURING
+  OFFERTE_GOEDGEKEURD
+  OFFERTE_AFGEWEZEN
+  OFFERTE_VERSTUURD
+  OFFERTE_BEKEKEN
+  OFFERTE_ONDERTEKEND
+  OFFERTE_VERLOPEN
+  NIEUWE_VRAAG_KLANT
+  ANTWOORD_OP_VRAAG
+  AANVRAAG_TOEGEWEZEN
+  AANVRAAG_STATUS_GEWIJZIGD
+  TAAK_TOEGEWEZEN
+  TAAK_STATUS_GEWIJZIGD
+  DOCUMENT_GEUPLOAD
+  AFSPRAAK_ACCEPTATIE_VERZOEK
+  AFSPRAAK_GEACCEPTEERD
+  AFSPRAAK_GEWEIGERD
+  AFSPRAAK_VERPLAATST
+  AFSPRAAK_VERZETTEN_VERZOEK
+  AFSPRAAK_BEVESTIGING_VERSTUURD
+  PROJECT_AANGEMAAKT
+  PROJECT_STATUS_GEWIJZIGD
+  FOUTMELDING_INGEDIEND
+}
+
+Enum audit_action {
+  CREATE
+  UPDATE
+  DELETE
+}
+
+Enum error_report_status {
+  OPEN
+  IN_BEHANDELING
+  OPGELOST
+}
+
+Enum task_status {
+  TE_DOEN
+  MEE_BEZIG
+  VOLTOOID
+}
+
+Enum task_type {
+  TO_DO
+  EMAIL
+  TELEFOONGESPREK
+  DOCUMENT
+  GOEDKEURING
+}
+
+Enum task_entity_type {
+  CONTACT
+  REQUEST
+  QUOTE
+  PLANNING
+  PROJECT
+  USER
+}
+
+Enum follow_up_type {
+  EMAIL
+  TELEFOONGESPREK
+}
+
+Enum follow_up_assignee_type {
+  SYSTEM
+  QUOTE_OWNER
+  SPECIFIC_USER
+}
+
+Enum document_entity_type {
+  CONTACT
+  REQUEST
+  QUOTE
+  PRODUCT
+  TASK
+  PLANNING
+  PROJECT
+  USER
+  WORK_ORDER
+}
+
+Enum note_entity_type {
+  CONTACT
+  REQUEST
+  QUOTE
+  PLANNING
+  PROJECT
+  USER
+  WORK_ORDER
+}
+
+Enum signature_type {
+  DRAW
+  UPLOAD
+  TEXT
+}
+
+Enum planning_status {
+  NOG_TE_PLANNEN
+  CONCEPT
+  GEPLAND
+  AFGEROND
+  VERVALLEN
+}
+
+Enum acceptance_status {
+  PENDING
+  ACCEPTED
+  REJECTED
+}
+
+Enum reschedule_status {
+  PENDING
+  PROCESSED
+}
+
+Enum session_status {
+  NOG_TE_PLANNEN
+  CONCEPT
+  DEFINITIEF
+  AFGEROND
+  VERVALLEN
+}
+
+Enum project_status {
+  ACTIEF
+  ON_HOLD
+  AFGEROND
+  GEANNULEERD
+}
+
+Enum work_order_status {
+  IN_VOORBEREIDING
+  IN_UITVOERING
+  UITGEVOERD
+  WACHT_OP_KLANT
+}
+
+Enum quote_template_type {
+  BLOCKS
+  DOCX
+}
+
+Enum custom_field_type {
+  TEXT
+  NUMBER
+  DATE
+  BOOLEAN
+  SELECT
+}
+
+Enum email_template_type {
+  OFFERTE_VERSTUURD
+  OFFERTE_GEACCEPTEERD
+  OFFERTE_ANTWOORD
+  AFSPRAAK_BEVESTIGING
+  AFSPRAAK_VERPLAATST
+  AFSPRAAK_ACCEPTATIE
+  CONTACT_EMAIL
+  UITNODIGING
+  WACHTWOORD_RESET
+  NOTIFICATIE
+  OFFERTE_FOLLOW_UP
+}
+
+Enum custom_field_entity_type {
+  CONTACT
+  CONTACT_ADDRESS
+  LOCATION
+  REQUEST
+  QUOTE
+  PRODUCT
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// FOUNDATION (PRD-01)
+// ─────────────────────────────────────────────────────────────────────
+
+Table imp_organizations {
+  id uuid [pk]
+  name varchar
+  slug varchar [unique, not null]
+  logo_url varchar [null]
+  primary_color varchar [null]
+  default_vat float [default: 21]
+  default_validity_days int [default: 30]
+  sender_name varchar [null]
+  sender_email varchar [null]
+  timezone varchar [default: 'Europe/Amsterdam']
+  workday_start int [default: 8]
+  workday_end int [default: 17]
+  created_at timestamp [default: `now()`]
+}
+
+Table imp_users {
+  id uuid [pk]
+  org_id uuid [null, ref: > imp_organizations.id]
+  email varchar [unique, not null]
+  password_hash varchar
+  first_name varchar
+  last_name varchar
+  roles role[] [note: 'Postgres array van enum role']
+  is_active boolean [default: true]
+  is_deleted boolean [default: false]
+  deleted_at timestamp [null]
+  email_verified_at timestamp [null]
+  initials varchar [null]
+  avatar_url varchar [null]
+  signature_type signature_type [null]
+  signature_data varchar [null]
+  color varchar [null, note: 'HEX kleur voor kalender']
+  home_street varchar [null]
+  home_house_number varchar [null]
+  home_postal_code varchar [null]
+  home_city varchar [null]
+  home_lat float [null]
+  home_lng float [null]
+  ical_token varchar [unique]
+  created_at timestamp [default: `now()`]
+}
+
+Table imp_refresh_tokens {
+  id uuid [pk]
+  user_id uuid [not null, ref: > imp_users.id]
+  token_hash varchar
+  expires_at timestamp
+  revoked_at timestamp [null]
+  ip_address varchar [null]
+  user_agent varchar [null]
+  created_at timestamp [default: `now()`]
+}
+
+Table imp_invitations {
+  id uuid [pk]
+  org_id uuid [not null, ref: > imp_organizations.id]
+  email varchar
+  role role
+  token varchar [unique]
+  expires_at timestamp
+  accepted_at timestamp [null]
+  created_at timestamp [default: `now()`]
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// CRM (PRD-02)
+// ─────────────────────────────────────────────────────────────────────
+
+Table imp_contacts {
+  id uuid [pk]
+  org_id uuid [not null, ref: > imp_organizations.id]
+  type contact_type
+  company_name varchar [null]
+  first_name varchar [null]
+  last_name varchar [null]
+  email varchar [null]
+  phone varchar [null]
+  website varchar [null]
+  vat_number varchar [null]
+  vat_validation json [null]
+  coc_number varchar [null]
+  notes text [null]
+  price_table_id uuid [null]
+  owner_id uuid [null, ref: > imp_users.id]
+  custom_fields json [null]
+  is_deleted boolean [default: false]
+  created_at timestamp [default: `now()`]
+}
+
+Table imp_contact_addresses {
+  id uuid [pk]
+  contact_id uuid [not null, ref: > imp_contacts.id]
+  label varchar
+  street varchar
+  house_number varchar
+  postal_code varchar
+  city varchar
+  country varchar [default: 'NL']
+  is_primary boolean [default: false]
+  is_postal boolean [default: false]
+  is_invoice boolean [default: false]
+  custom_fields json [null]
+}
+
+Table imp_customer_groups {
+  id uuid [pk]
+  org_id uuid [not null, ref: > imp_organizations.id]
+  name varchar
+  notes text [null]
+  is_deleted boolean [default: false]
+  created_at timestamp [default: `now()`]
+}
+
+Table imp_contact_customer_groups {
+  id uuid [pk]
+  contact_id uuid [not null, ref: > imp_contacts.id]
+  customer_group_id uuid [not null, ref: > imp_customer_groups.id]
+
+  indexes {
+    (contact_id, customer_group_id) [unique]
+  }
+}
+
+Table imp_contact_persons {
+  id uuid [pk]
+  contact_id uuid [not null, ref: > imp_contacts.id]
+  org_id uuid [not null, ref: > imp_organizations.id]
+  first_name varchar
+  last_name varchar
+  email varchar [null]
+  phone varchar [null]
+  role contact_person_role [default: 'ALGEMEEN']
+  notes text [null]
+  is_deleted boolean [default: false]
+  created_at timestamp [default: `now()`]
+}
+
+Table imp_locations {
+  id uuid [pk]
+  contact_id uuid [not null, ref: > imp_contacts.id]
+  org_id uuid [not null, ref: > imp_organizations.id]
+  name varchar
+  street varchar
+  house_number varchar
+  postal_code varchar
+  city varchar
+  object_type varchar [null]
+  notes text [null]
+  pdok_data json [null]
+  lat float [null]
+  lng float [null]
+  custom_fields json [null]
+  created_at timestamp [default: `now()`]
+}
+
+Table imp_location_contact_persons {
+  id uuid [pk]
+  location_id uuid [not null, ref: > imp_locations.id]
+  contact_person_id uuid [not null, ref: > imp_contact_persons.id]
+  org_id uuid [not null, ref: > imp_organizations.id]
+  notes text [null]
+  created_at timestamp [default: `now()`]
+
+  indexes {
+    (location_id, contact_person_id) [unique]
+  }
+}
+
+Table imp_contact_logs {
+  id uuid [pk]
+  contact_id uuid [not null, ref: > imp_contacts.id]
+  org_id uuid [not null]
+  user_id uuid [not null, ref: > imp_users.id]
+  type log_type
+  subject varchar [null]
+  body text [null]
+  logged_at timestamp [default: `now()`]
+  created_at timestamp [default: `now()`]
+}
+
+Table imp_contact_emails {
+  id uuid [pk]
+  contact_id uuid [not null, ref: > imp_contacts.id]
+  org_id uuid [not null]
+  user_id uuid [not null, ref: > imp_users.id]
+  resend_id varchar [null]
+  subject varchar
+  body_html text
+  sent_at timestamp [default: `now()`]
+  opened_at timestamp [null]
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// PRODUCTEN & PRIJSTABELLEN (PRD-04)
+// ─────────────────────────────────────────────────────────────────────
+
+Table imp_product_groups {
+  id uuid [pk]
+  org_id uuid [not null, ref: > imp_organizations.id]
+  name varchar
+  notes text [null]
+  is_deleted boolean [default: false]
+  created_at timestamp [default: `now()`]
+}
+
+Table imp_products {
+  id uuid [pk]
+  org_id uuid [not null, ref: > imp_organizations.id]
+  product_group_id uuid [null, ref: > imp_product_groups.id]
+  name varchar
+  description text [null]
+  unit varchar
+  default_vat float [default: 21]
+  is_active boolean [default: true]
+  custom_fields json [null]
+  created_at timestamp [default: `now()`]
+}
+
+Table imp_price_tables {
+  id uuid [pk]
+  org_id uuid [not null, ref: > imp_organizations.id]
+  name varchar
+  description text [null]
+  is_default boolean [default: false]
+  created_at timestamp [default: `now()`]
+}
+
+Table imp_price_table_items {
+  id uuid [pk]
+  price_table_id uuid [not null, ref: > imp_price_tables.id]
+  product_id uuid [not null, ref: > imp_products.id]
+  price_type price_type
+  base_price float [null]
+  created_at timestamp [default: `now()`]
+}
+
+Table imp_price_tiers {
+  id uuid [pk]
+  price_table_item_id uuid [not null, ref: > imp_price_table_items.id]
+  from_qty float
+  to_qty float [null]
+  price float
+}
+
+Table imp_contact_price_tables {
+  contact_id uuid [not null, ref: > imp_contacts.id]
+  price_table_id uuid [not null, ref: > imp_price_tables.id]
+
+  indexes {
+    (contact_id, price_table_id) [pk]
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// AANVRAGEN (PRD-03)
+// ─────────────────────────────────────────────────────────────────────
+
+Table imp_requests {
+  id uuid [pk]
+  org_id uuid [not null, ref: > imp_organizations.id]
+  contact_id uuid [not null, ref: > imp_contacts.id]
+  location_id uuid [null, ref: > imp_locations.id]
+  assigned_to uuid [null, ref: > imp_users.id]
+  source request_source
+  status request_status [default: 'NIEUW']
+  lost_reason lost_reason [null]
+  lost_note text [null]
+  title varchar
+  description text [null]
+  priority priority [default: 'NORMAL']
+  custom_fields json [null]
+  created_by uuid [not null, ref: > imp_users.id]
+  project_id uuid [null, ref: > imp_projects.id]
+  is_deleted boolean [default: false]
+  created_at timestamp [default: `now()`]
+  updated_at timestamp
+}
+
+Table imp_request_status_history {
+  id uuid [pk]
+  request_id uuid [not null, ref: > imp_requests.id]
+  from_status request_status [null]
+  to_status request_status
+  changed_by uuid [not null, ref: > imp_users.id]
+  changed_at timestamp [default: `now()`]
+  note text [null]
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// OFFERTES (PRD-05)
+// ─────────────────────────────────────────────────────────────────────
+
+Table imp_quote_templates {
+  id uuid [pk]
+  org_id uuid [not null, ref: > imp_organizations.id]
+  name varchar
+  description text [null]
+  template_type quote_template_type [default: 'BLOCKS']
+  cover_blocks json [null]
+  content_blocks json [null]
+  closing_blocks json [null]
+  docx_storage_key varchar [null]
+  docx_file_name varchar [null]
+  docx_file_size int [null]
+  default_validity_days int [default: 30]
+  requires_approval boolean [default: false]
+  is_active boolean [default: true]
+  send_email_template_id uuid [null, ref: > imp_email_templates.id]
+  send_email_enabled boolean [default: true]
+  accepted_email_template_id uuid [null, ref: > imp_email_templates.id]
+  accepted_email_enabled boolean [default: true]
+  created_at timestamp [default: `now()`]
+  updated_at timestamp
+}
+
+Table imp_quote_template_attachments {
+  id uuid [pk]
+  template_id uuid [not null, ref: > imp_quote_templates.id]
+  storage_key varchar
+  file_name varchar
+  mime_type varchar
+  file_size int
+  sort_order int [default: 0]
+  created_at timestamp [default: `now()`]
+}
+
+Table imp_quote_template_docx_revisions {
+  id uuid [pk]
+  template_id uuid [not null, ref: > imp_quote_templates.id]
+  storage_key varchar
+  file_name varchar
+  file_size int
+  uploaded_by_id uuid [not null, ref: > imp_users.id]
+  version int [default: 1]
+  created_at timestamp [default: `now()`]
+}
+
+Table imp_quote_template_follow_ups {
+  id uuid [pk]
+  template_id uuid [not null, ref: > imp_quote_templates.id]
+  type follow_up_type
+  delay_days int
+  is_active boolean [default: true]
+  email_template_id uuid [null, ref: > imp_email_templates.id]
+  default_notes text [null]
+  assignee_type follow_up_assignee_type [default: 'QUOTE_OWNER']
+  assignee_user_id uuid [null, ref: > imp_users.id]
+  sort_order int [default: 0]
+  created_at timestamp [default: `now()`]
+  updated_at timestamp
+}
+
+Table imp_quotes {
+  id uuid [pk]
+  org_id uuid [not null, ref: > imp_organizations.id]
+  quote_number varchar [unique]
+  template_id uuid [null, ref: > imp_quote_templates.id]
+  request_id uuid [null, ref: > imp_requests.id]
+  contact_id uuid [not null, ref: > imp_contacts.id]
+  location_id uuid [null, ref: > imp_locations.id]
+  status quote_status [default: 'CONCEPT']
+  subject varchar
+  cover_blocks json [null]
+  content_blocks json [null]
+  closing_blocks json [null]
+  subtotal float [default: 0]
+  discount_total float [default: 0]
+  vat_total float [default: 0]
+  total float [default: 0]
+  valid_until timestamp [null]
+  requires_approval boolean [default: false]
+  internal_notes text [null]
+  custom_fields json [null]
+  created_by uuid [not null, ref: > imp_users.id]
+  sent_at timestamp [null]
+  viewed_at timestamp [null]
+  signed_at timestamp [null]
+  client_name varchar [null]
+  client_signature varchar [null]
+  client_ip varchar [null]
+  client_user_agent varchar [null]
+  manager_signature varchar [null]
+  public_token varchar [unique, null]
+  pdf_storage_key varchar [null]
+  signed_pdf_storage_key varchar [null]
+  project_id uuid [null, ref: > imp_projects.id]
+  created_at timestamp [default: `now()`]
+  updated_at timestamp
+}
+
+Table imp_quote_questions {
+  id uuid [pk]
+  quote_id uuid [not null, ref: > imp_quotes.id]
+  user_id uuid [null, ref: > imp_users.id]
+  message text
+  is_from_client boolean [default: false]
+  created_at timestamp [default: `now()`]
+}
+
+Table imp_quote_attachments {
+  id uuid [pk]
+  quote_id uuid [not null, ref: > imp_quotes.id]
+  storage_key varchar
+  file_name varchar
+  mime_type varchar
+  file_size int
+  is_standard boolean [default: false]
+  sort_order int [default: 0]
+  created_at timestamp [default: `now()`]
+}
+
+Table imp_quote_lines {
+  id uuid [pk]
+  quote_id uuid [not null, ref: > imp_quotes.id]
+  product_id uuid [null, ref: > imp_products.id]
+  description text
+  quantity float
+  unit varchar
+  unit_price float
+  vat_rate float [default: 21]
+  discount_pct float [default: 0]
+  line_total float
+  sort_order int [default: 0]
+}
+
+Table imp_quote_approval_requests {
+  id uuid [pk]
+  quote_id uuid [not null, ref: > imp_quotes.id]
+  requested_by uuid [not null, ref: > imp_users.id]
+  reviewed_by uuid [null, ref: > imp_users.id]
+  status approval_status [default: 'PENDING']
+  note text [null]
+  requested_at timestamp [default: `now()`]
+  reviewed_at timestamp [null]
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// NOTIFICATIES (PRD-06)
+// ─────────────────────────────────────────────────────────────────────
+
+Table imp_notifications {
+  id uuid [pk]
+  org_id uuid [null, ref: > imp_organizations.id]
+  user_id uuid [not null, ref: > imp_users.id]
+  type notification_type
+  title varchar
+  body text
+  entity_type varchar [null, note: 'Vrije string, GEEN enum']
+  entity_id uuid [null]
+  is_read boolean [default: false]
+  read_at timestamp [null]
+  created_at timestamp [default: `now()`]
+}
+
+Table imp_notification_prefs {
+  id uuid [pk]
+  user_id uuid [not null, ref: > imp_users.id]
+  notification_type notification_type
+  channel_in_app boolean [default: true]
+  channel_email boolean [default: true]
+
+  indexes {
+    (user_id, notification_type) [unique]
+  }
+}
+
+Table imp_notification_group_prefs {
+  id uuid [pk]
+  org_id uuid [not null, ref: > imp_organizations.id]
+  role role
+  notification_type notification_type
+  channel_in_app boolean [default: true]
+  channel_email boolean [default: true]
+
+  indexes {
+    (org_id, role, notification_type) [unique]
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// AUDIT TRAIL
+// ─────────────────────────────────────────────────────────────────────
+
+Table imp_audit_logs {
+  id uuid [pk]
+  org_id uuid [null]
+  entity_type varchar [note: 'Vrije string, GEEN enum']
+  entity_id uuid
+  action audit_action
+  changes json [null]
+  snapshot json [null]
+  user_id uuid [not null, ref: > imp_users.id]
+  ip_address varchar [null]
+  created_at timestamp [default: `now()`]
+
+  indexes {
+    (entity_type, entity_id)
+    (org_id, created_at)
+    (user_id)
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// TAKEN
+// ─────────────────────────────────────────────────────────────────────
+
+Table imp_tasks {
+  id uuid [pk]
+  org_id uuid [not null, ref: > imp_organizations.id]
+  title varchar
+  description text [null]
+  status task_status [default: 'TE_DOEN']
+  task_type task_type [default: 'TO_DO']
+  entity_type task_entity_type
+  entity_id uuid [note: 'Polymorf, geen FK']
+  assignee_id uuid [null, ref: > imp_users.id]
+  created_by_id uuid [not null, ref: > imp_users.id]
+  deadline timestamp [null]
+  created_at timestamp [default: `now()`]
+  updated_at timestamp
+
+  indexes {
+    (org_id, status)
+    (assignee_id)
+    (entity_type, entity_id)
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// DOCUMENTEN
+// ─────────────────────────────────────────────────────────────────────
+
+Table imp_documents {
+  id uuid [pk]
+  org_id uuid [not null, ref: > imp_organizations.id]
+  entity_type document_entity_type
+  entity_id uuid [note: 'Polymorf, geen FK']
+  file_name varchar
+  original_name varchar
+  mime_type varchar
+  size int
+  storage_key varchar
+  description text [null]
+  uploaded_by_id uuid [not null, ref: > imp_users.id]
+  is_deleted boolean [default: false]
+  is_shared_with_client boolean [default: false]
+  created_at timestamp [default: `now()`]
+
+  indexes {
+    (org_id, entity_type, entity_id)
+    (uploaded_by_id)
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// PLANNING & AFSPRAKEN (PRD-07)
+// ─────────────────────────────────────────────────────────────────────
+
+Table imp_planning_items {
+  id uuid [pk]
+  org_id uuid [not null, ref: > imp_organizations.id]
+  quote_id uuid [null]
+  contact_id uuid [not null, ref: > imp_contacts.id]
+  contact_person_id uuid [null, ref: > imp_contact_persons.id]
+  location_id uuid [null, ref: > imp_locations.id]
+  product_id uuid [null]
+  product_name varchar
+  status planning_status [default: 'NOG_TE_PLANNEN']
+  is_cancelled boolean [default: false]
+  cancelled_at timestamp [null]
+  cancelled_by uuid [null]
+  cancel_reason text [null]
+  scheduled_date timestamp [null]
+  duration_hours float [null]
+  end_time timestamp [null]
+  is_multi_day boolean [default: false]
+  session_count int [null]
+  labels varchar[] [note: 'Postgres text array']
+  internal_notes text [null]
+  public_token varchar [unique]
+  replaced_by_id uuid [null]
+  replaces_id uuid [null]
+  original_date timestamp [null]
+  created_by uuid [not null, ref: > imp_users.id]
+  project_id uuid [null, ref: > imp_projects.id]
+  created_at timestamp [default: `now()`]
+  updated_at timestamp
+
+  indexes {
+    (org_id, status)
+    (org_id, scheduled_date)
+    (contact_id)
+  }
+}
+
+Table imp_planning_inspectors {
+  id uuid [pk]
+  planning_item_id uuid [not null, ref: > imp_planning_items.id]
+  user_id uuid [not null, ref: > imp_users.id]
+  is_primary boolean [default: false]
+  acceptance_status acceptance_status [default: 'PENDING']
+  accepted_at timestamp [null]
+  rejected_at timestamp [null]
+  rejection_note text [null]
+
+  indexes {
+    (planning_item_id, user_id) [unique]
+  }
+}
+
+Table imp_planning_history {
+  id uuid [pk]
+  planning_item_id uuid [not null, ref: > imp_planning_items.id]
+  user_id uuid [null, ref: > imp_users.id]
+  action varchar [note: 'Vrije string, GEEN enum']
+  description text
+  old_value text [null]
+  new_value text [null]
+  created_at timestamp [default: `now()`]
+}
+
+Table imp_reschedule_requests {
+  id uuid [pk]
+  planning_item_id uuid [not null, ref: > imp_planning_items.id]
+  requested_by uuid [null]
+  client_name varchar [null]
+  preferred_date timestamp
+  reason text
+  status reschedule_status [default: 'PENDING']
+  processed_by uuid [null]
+  processed_at timestamp [null]
+  created_at timestamp [default: `now()`]
+}
+
+Table imp_planning_followers {
+  id uuid [pk]
+  planning_item_id uuid [not null, ref: > imp_planning_items.id]
+  user_id uuid [null, ref: > imp_users.id]
+  email varchar [null]
+  name varchar [null]
+  created_at timestamp [default: `now()`]
+}
+
+Table imp_planning_sessions {
+  id uuid [pk]
+  planning_item_id uuid [not null, ref: > imp_planning_items.id]
+  session_number int
+  scheduled_date timestamp [null]
+  duration_hours float [null]
+  status session_status [default: 'NOG_TE_PLANNEN']
+  notes text [null]
+  is_definitief boolean [default: false]
+  confirmed_at timestamp [null]
+  confirmed_by uuid [null]
+  replaced_by_id varchar [null]
+  replaces_id varchar [null]
+  original_date timestamp [null]
+  is_cancelled boolean [default: false]
+  created_at timestamp [default: `now()`]
+  updated_at timestamp
+
+  indexes {
+    (planning_item_id, session_number)
+    (planning_item_id, scheduled_date)
+  }
+}
+
+Table imp_planning_session_inspectors {
+  id uuid [pk]
+  session_id uuid [not null, ref: > imp_planning_sessions.id]
+  user_id uuid [not null, ref: > imp_users.id]
+  is_primary boolean [default: false]
+  acceptance_status acceptance_status [default: 'PENDING']
+  accepted_at timestamp [null]
+  rejected_at timestamp [null]
+  rejection_note text [null]
+
+  indexes {
+    (session_id, user_id) [unique]
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// PROJECTEN (DOSSIERS)
+// ─────────────────────────────────────────────────────────────────────
+
+Table imp_projects {
+  id uuid [pk]
+  org_id uuid [not null, ref: > imp_organizations.id]
+  project_number varchar [unique]
+  title varchar
+  description text [null]
+  status project_status [default: 'ACTIEF']
+  contact_id uuid [not null, ref: > imp_contacts.id]
+  location_id uuid [null, ref: > imp_locations.id]
+  project_manager_id uuid [not null, ref: > imp_users.id]
+  start_date timestamp [default: `now()`]
+  expected_end_date timestamp [null]
+  end_date timestamp [null]
+  is_deleted boolean [default: false]
+  deleted_at timestamp [null]
+  created_by uuid [not null, ref: > imp_users.id]
+  created_at timestamp [default: `now()`]
+  updated_at timestamp
+
+  indexes {
+    (org_id, status)
+    (contact_id)
+    (project_manager_id)
+  }
+}
+
+Table imp_project_followers {
+  id uuid [pk]
+  project_id uuid [not null, ref: > imp_projects.id]
+  user_id uuid [null, ref: > imp_users.id]
+  email varchar [null]
+  name varchar [null]
+  can_view_general boolean [default: true]
+  can_view_requests boolean [default: false]
+  can_view_quotes boolean [default: true]
+  can_view_planning boolean [default: true]
+  can_view_documents boolean [default: false]
+  created_at timestamp [default: `now()`]
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// CUSTOM FIELDS
+// ─────────────────────────────────────────────────────────────────────
+
+Table imp_custom_field_definitions {
+  id uuid [pk]
+  org_id uuid [not null, ref: > imp_organizations.id]
+  entity_type custom_field_entity_type
+  field_name varchar
+  label varchar
+  field_type custom_field_type
+  options json [null]
+  is_required boolean [default: false]
+  sort_order int [default: 0]
+  is_deleted boolean [default: false]
+  created_at timestamp [default: `now()`]
+  updated_at timestamp
+
+  indexes {
+    (org_id, entity_type, field_name) [unique]
+    (org_id, entity_type)
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// EMAIL TEMPLATES
+// ─────────────────────────────────────────────────────────────────────
+
+Table imp_email_templates {
+  id uuid [pk]
+  org_id uuid [not null, ref: > imp_organizations.id]
+  type email_template_type
+  name varchar
+  subject varchar
+  body_json json
+  body_html text
+  is_active boolean [default: true]
+  created_by uuid [not null, ref: > imp_users.id]
+  created_at timestamp [default: `now()`]
+  updated_at timestamp
+
+  indexes {
+    (org_id, type)
+  }
+}
+
+Table imp_email_template_attachments {
+  id uuid [pk]
+  email_template_id uuid [not null, ref: > imp_email_templates.id]
+  org_id uuid [not null, ref: > imp_organizations.id]
+  storage_key varchar
+  original_name varchar
+  mime_type varchar
+  file_size int
+  sort_order int [default: 0]
+  created_at timestamp [default: `now()`]
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// FOUTMELDINGEN (HELPDESK)
+// ─────────────────────────────────────────────────────────────────────
+
+Table imp_error_reports {
+  id uuid [pk]
+  org_id uuid [null, ref: > imp_organizations.id]
+  user_id uuid [null, ref: > imp_users.id]
+  error_message varchar
+  stack_trace text [null]
+  component_stack text [null]
+  user_description text [null]
+  page_url varchar [null]
+  user_agent varchar [null]
+  metadata json [null]
+  status error_report_status [default: 'OPEN']
+  created_at timestamp [default: `now()`]
+  updated_at timestamp
+
+  indexes {
+    (status, created_at)
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// NOTITIES (THREADED)
+// ─────────────────────────────────────────────────────────────────────
+
+Table imp_notes {
+  id uuid [pk]
+  org_id uuid [not null, ref: > imp_organizations.id]
+  entity_type note_entity_type
+  entity_id uuid [note: 'Polymorf, geen FK']
+  content text
+  created_by_id uuid [not null, ref: > imp_users.id]
+  parent_id uuid [null, ref: > imp_notes.id]
+  is_deleted boolean [default: false]
+  created_at timestamp [default: `now()`]
+  updated_at timestamp
+
+  indexes {
+    (org_id, entity_type, entity_id)
+    (parent_id)
+    (created_by_id)
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// WERKBONNEN
+// ─────────────────────────────────────────────────────────────────────
+
+Table imp_work_orders {
+  id uuid [pk]
+  org_id uuid [not null, ref: > imp_organizations.id]
+  planning_item_id uuid [null, ref: > imp_planning_items.id]
+  work_order_number varchar [unique]
+  status work_order_status [default: 'IN_VOORBEREIDING']
+  internal_notes text [null]
+  start_time timestamp [null]
+  end_time timestamp [null]
+  created_by uuid [not null, ref: > imp_users.id]
+  created_at timestamp [default: `now()`]
+  updated_at timestamp
+
+  indexes {
+    (org_id, status)
+    (org_id, planning_item_id)
+  }
+}
+
+Table imp_work_order_lines {
+  id uuid [pk]
+  work_order_id uuid [not null, ref: > imp_work_orders.id]
+  product_id uuid [null, ref: > imp_products.id]
+  description text
+  quantity float
+  unit varchar
+  unit_price float
+  vat_rate float [default: 21]
+  line_total float
+  sort_order int [default: 0]
+}

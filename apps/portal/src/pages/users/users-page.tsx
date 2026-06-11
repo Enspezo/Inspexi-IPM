@@ -5,9 +5,11 @@ import {
   ActionMenu,
   Table,
   Badge,
+  ErrorBox,
   Spinner,
 } from '@/components/ui';
 import { DetailPageLayout } from '@/components/layout/detail-page-layout';
+import { PageHeader } from '@/components/layout/page-header';
 import {
   TableConfigSidebar,
   useTableConfig,
@@ -129,9 +131,7 @@ export default function UsersPage() {
 
   if (error) {
     return (
-      <div className="rounded-lg bg-danger-50 p-4 text-sm text-danger-600">
-        Fout bij het laden van gebruikers: {error.message}
-      </div>
+      <ErrorBox>Fout bij het laden van gebruikers: {error.message}</ErrorBox>
     );
   }
 
@@ -155,23 +155,21 @@ export default function UsersPage() {
       }
     >
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-bold text-gray-900">Gebruikers</h2>
-          <p className="mt-1 text-sm text-gray-500">
-            Beheer de gebruikers van uw organisatie
-          </p>
-        </div>
-        <ActionMenu
-          primaryActions={[
-            {
-              label: 'Uitnodigen',
-              icon: <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>,
-              onClick: () => setIsInviteOpen(true),
-            },
-          ]}
-        />
-      </div>
+      <PageHeader
+        title="Gebruikers"
+        description="Beheer de gebruikers van uw organisatie"
+        actions={
+          <ActionMenu
+            primaryActions={[
+              {
+                label: 'Uitnodigen',
+                icon: <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>,
+                onClick: () => setIsInviteOpen(true),
+              },
+            ]}
+          />
+        }
+      />
 
       <Table
         columns={activeColumns}

@@ -1,8 +1,14 @@
 import { useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { ProductGroup } from '@/types';
-import { ActionMenu, Spinner, Button, Input, Table, type Column } from '@/components/ui';
+import { ActionMenu, ErrorBox, Spinner, Button, Input, Table } from '@/components/ui';
 import { DetailPageLayout } from '@/components/layout/detail-page-layout';
+import { PageHeader } from '@/components/layout/page-header';
+import {
+  TableConfigSidebar,
+  useTableConfig,
+  type ColumnDef,
+} from '@/components/table-config';
 import { useAuth } from '@/providers/auth-provider';
 import { Role } from '@/types';
 import { useProductGroups } from './hooks/use-product-groups';
@@ -33,10 +39,15 @@ export default function ProductGroupsPage() {
 
   const userCanCreate = user && user.roles.some(r => canCreate.includes(r));
 
-  const columns: Column<ProductGroup>[] = [
+  const columns: ColumnDef<ProductGroup>[] = [
     {
       key: 'name',
       header: 'Naam',
+      pinned: true,
+      sortable: true,
+      filterable: true,
+      filterType: 'text',
+      getFilterValue: (group) => group.name,
       render: (group) => (
         <button
           onClick={() => navigate(`/products/groups/${group.id}`)}
@@ -49,6 +60,8 @@ export default function ProductGroupsPage() {
     {
       key: 'products',
       header: 'Aantal producten',
+      sortable: true,
+      getSortValue: (group) => group._count?.products ?? 0,
       render: (group) => (
         <span className="text-gray-600">{group._count?.products ?? 0}</span>
       ),
@@ -56,6 +69,10 @@ export default function ProductGroupsPage() {
     {
       key: 'notes',
       header: 'Notities',
+      sortable: true,
+      filterable: true,
+      filterType: 'text',
+      getFilterValue: (group) => group.notes,
       render: (group) => (
         <span className="block max-w-xs truncate text-gray-500">
           {group.notes || '—'}
@@ -63,6 +80,25 @@ export default function ProductGroupsPage() {
       ),
     },
   ];
+
+  const {
+    activeColumns,
+    filteredData,
+    pendingColumnConfig,
+    setPendingColumnConfig,
+    pendingFilters,
+    setPendingFilters,
+    pendingGrouping,
+    setPendingGrouping,
+    applyColumns,
+    applyFilters,
+    resetToDefaults,
+    isColumnsDirty,
+    isFiltersDirty,
+    allColumns,
+    sort,
+    toggleSort,
+  } = useTableConfig({ pageKey: 'product-groups', columns });
 
   if (isLoading) {
     return (
@@ -74,9 +110,7 @@ export default function ProductGroupsPage() {
 
   if (error) {
     return (
-      <div className="rounded-lg bg-danger-50 p-4 text-sm text-danger-600">
-        Fout bij het laden van productgroepen: {error.message}
-      </div>
+      <ErrorBox>Fout bij het laden van productgroepen: {error.message}</ErrorBox>
     );
   }
 
@@ -85,27 +119,42 @@ export default function ProductGroupsPage() {
   const totalPages = Math.ceil(total / 20);
 
   return (
-    <DetailPageLayout>
+    <DetailPageLayout
+      sidebar={
+        <TableConfigSidebar
+          columns={allColumns}
+          pendingColumnConfig={pendingColumnConfig}
+          onColumnConfigChange={setPendingColumnConfig}
+          pendingFilters={pendingFilters}
+          onFiltersChange={setPendingFilters}
+          pendingGrouping={pendingGrouping}
+          onGroupingChange={setPendingGrouping}
+          onApplyColumns={applyColumns}
+          onApplyFilters={applyFilters}
+          onReset={resetToDefaults}
+          isColumnsDirty={isColumnsDirty}
+          isFiltersDirty={isFiltersDirty}
+        />
+      }
+    >
       <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-2xl font-bold text-gray-900">Productgroepen</h2>
-            <p className="mt-1 text-sm text-gray-500">
-              Beheer productgroepen om uw catalogus te categoriseren
-            </p>
-          </div>
-          {userCanCreate && (
-            <ActionMenu
-              secondaryActions={[
-                {
-                  label: 'Productgroep aanmaken',
-                  icon: <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>,
-                  onClick: () => setIsCreateOpen(true),
-                },
-              ]}
-            />
-          )}
-        </div>
+        <PageHeader
+          title="Productgroepen"
+          description="Beheer productgroepen om uw catalogus te categoriseren"
+          actions={
+            userCanCreate && (
+              <ActionMenu
+                secondaryActions={[
+                  {
+                    label: 'Productgroep aanmaken',
+                    icon: <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>,
+                    onClick: () => setIsCreateOpen(true),
+                  },
+                ]}
+              />
+            )
+          }
+        />
 
         <div className="max-w-md">
           <Input
@@ -116,10 +165,12 @@ export default function ProductGroupsPage() {
         </div>
 
         <Table
-          columns={columns}
-          data={groups}
+          columns={activeColumns}
+          data={filteredData(groups)}
           keyExtractor={(g) => g.id}
           emptyMessage="Geen productgroepen gevonden"
+          sort={sort}
+          onSort={toggleSort}
         />
 
         {totalPages > 1 && (

@@ -33,12 +33,11 @@ describe('api-client', () => {
         json: async () => ({ success: true, data: { id: '1' } }),
       });
 
-      const result = await apiClient.get('/api/v1/contacts');
+      const result = await apiClient.get('/contacts');
 
       expect(mockFetch).toHaveBeenCalledWith(
         '/api/v1/contacts',
         expect.objectContaining({
-          method: 'GET',
           headers: expect.objectContaining({
             Authorization: 'Bearer my-token',
           }),
@@ -58,7 +57,7 @@ describe('api-client', () => {
         }),
       });
 
-      const result = await apiClient.get('/api/v1/contacts');
+      const result = await apiClient.get('/contacts');
 
       expect(result).toEqual({ contacts: [{ id: 'c-1' }] });
     });
@@ -76,7 +75,7 @@ describe('api-client', () => {
         }),
       });
 
-      await expect(apiClient.get('/api/v1/contacts')).rejects.toThrow();
+      await expect(apiClient.get('/contacts')).rejects.toThrow();
     });
   });
 
@@ -89,7 +88,7 @@ describe('api-client', () => {
         json: async () => ({ success: true, data: { id: 'new-1' } }),
       });
 
-      const result = await apiClient.post('/api/v1/contacts', {
+      const result = await apiClient.post('/contacts', {
         companyName: 'ACME',
         type: 'COMPANY',
       });
@@ -117,7 +116,7 @@ describe('api-client', () => {
         json: async () => ({ success: true, data: { id: '1', name: 'updated' } }),
       });
 
-      const result = await apiClient.patch('/api/v1/contacts/1', { name: 'updated' });
+      const result = await apiClient.patch('/contacts/1', { name: 'updated' });
 
       expect(mockFetch).toHaveBeenCalledWith(
         '/api/v1/contacts/1',
@@ -135,7 +134,7 @@ describe('api-client', () => {
         json: async () => ({ success: true, data: null }),
       });
 
-      await apiClient.delete('/api/v1/contacts/1');
+      await apiClient.delete('/contacts/1');
 
       expect(mockFetch).toHaveBeenCalledWith(
         '/api/v1/contacts/1',

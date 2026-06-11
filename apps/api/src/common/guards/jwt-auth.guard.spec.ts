@@ -30,6 +30,8 @@ describe('JwtAuthGuard', () => {
       getClass: jest.fn(),
       switchToHttp: jest.fn().mockReturnValue({
         getRequest: jest.fn().mockReturnValue({}),
+        getResponse: jest.fn().mockReturnValue({}),
+        getNext: jest.fn(),
       }),
     }) as unknown as ExecutionContext;
 
@@ -50,41 +52,32 @@ describe('JwtAuthGuard', () => {
     ]);
   });
 
-  it('should delegate to passport for non-public routes', () => {
+  it('should delegate to passport for non-public routes', async () => {
     (reflector.getAllAndOverride as jest.Mock).mockReturnValue(false);
 
     const context = createMockContext();
-    // canActivate will call super.canActivate which returns an Observable/Promise
-    // In a unit test without passport configured, this would throw
-    // We just verify the reflector check happens and it doesn't short-circuit
-    const superCanActivateSpy = jest.spyOn(
-      Object.getPrototypeOf(Object.getPrototypeOf(guard)),
-      'canActivate',
-    );
-
-    try {
-      guard.canActivate(context);
-    } catch {
-      // Expected — passport strategy is not set up in unit tests
-    }
+    // canActivate calls super.canActivate which returns a Promise.
+    // In a unit test the 'jwt' passport strategy is not registered,
+    // so the promise rejects — we just verify the reflector check
+    // happens and the guard does not short-circuit to `true`.
+    await expect(
+      Promise.resolve(guard.canActivate(context) as Promise<boolean>),
+    ).rejects.toThrow();
 
     expect(reflector.getAllAndOverride).toHaveBeenCalledWith('isPublic', [
       context.getHandler(),
       context.getClass(),
     ]);
-    superCanActivateSpy.mockRestore();
   });
 
-  it('should delegate to passport when isPublic is undefined', () => {
+  it('should delegate to passport when isPublic is undefined', async () => {
     (reflector.getAllAndOverride as jest.Mock).mockReturnValue(undefined);
 
     const context = createMockContext();
 
-    try {
-      guard.canActivate(context);
-    } catch {
-      // Expected — passport strategy is not set up
-    }
+    await expect(
+      Promise.resolve(guard.canActivate(context) as Promise<boolean>),
+    ).rejects.toThrow();
 
     expect(reflector.getAllAndOverride).toHaveBeenCalled();
   });

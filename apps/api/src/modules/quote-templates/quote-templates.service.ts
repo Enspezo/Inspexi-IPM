@@ -10,6 +10,7 @@ import { User, Role, Prisma } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import * as mammoth from 'mammoth';
 import { PrismaService } from '@/prisma';
+import { paginate, buildOrderBy, orgScope, assertFound } from '@/common';
 import {
   STORAGE_PROVIDER,
   StorageProvider,
@@ -61,43 +62,31 @@ export class QuoteTemplatesService {
   async findAll(user: User, query: ListQuoteTemplatesQueryDto) {
     const { search, isActive, page = 1, limit = 20, sortBy, sortOrder = 'desc' } = query;
     const ALLOWED_SORT_FIELDS = ['name', 'templateType', 'defaultValidityDays', 'requiresApproval', 'isActive', 'createdAt'];
-    const orderBy = (sortBy && ALLOWED_SORT_FIELDS.includes(sortBy))
-      ? { [sortBy]: sortOrder }
-      : { name: 'asc' as const };
-    const skip = (page - 1) * limit;
+    const orderBy = buildOrderBy(sortBy, sortOrder, ALLOWED_SORT_FIELDS, { name: 'asc' });
 
-    const where: Prisma.QuoteTemplateWhereInput = {};
+    const where: Prisma.QuoteTemplateWhereInput = { ...orgScope(user) };
 
     if (isActive !== undefined) {
       where.isActive = isActive;
-    }
-
-    if (!user.roles.includes(Role.SUPERUSER)) {
-      where.orgId = user.orgId!;
     }
 
     if (search) {
       where.name = { contains: search, mode: 'insensitive' };
     }
 
-    const [data, total] = await Promise.all([
-      this.prisma.quoteTemplate.findMany({
-        where,
-        orderBy,
-        skip,
-        take: limit,
-        include: {
-          _count: { select: { attachments: true } },
-        },
-      }),
-      this.prisma.quoteTemplate.count({ where }),
-    ]);
-
-    return { data, total, page, limit };
+    return paginate(this.prisma.quoteTemplate, {
+      where,
+      include: {
+        _count: { select: { attachments: true } },
+      },
+      orderBy,
+      page,
+      limit,
+    });
   }
 
   async findOne(id: string, user: User) {
-    const template = await this.prisma.quoteTemplate.findUnique({
+    const template = assertFound(await this.prisma.quoteTemplate.findUnique({
       where: { id },
       include: {
         attachments: { orderBy: { sortOrder: 'asc' } },
@@ -128,11 +117,7 @@ export class QuoteTemplatesService {
           },
         },
       },
-    });
-
-    if (!template) {
-      throw new NotFoundException('Template niet gevonden');
-    }
+    }), 'Template');
 
     if (!user.roles.includes(Role.SUPERUSER) && template.orgId !== user.orgId) {
       throw new ForbiddenException();

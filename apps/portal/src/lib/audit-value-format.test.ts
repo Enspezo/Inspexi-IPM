@@ -80,8 +80,7 @@ describe('formatAuditValue', () => {
     });
 
     it('should return resolved display name if not a UUID', () => {
-      expect(formatAuditValue('ACME Corp', 'contactId')).toBe('Bedrijf');
-      // "ACME Corp" is not an enum label, but "COMPANY" is — test with a non-enum:
+      expect(formatAuditValue('ACME Corp', 'contactId')).toBe('ACME Corp');
       expect(formatAuditValue('Some Company Name', 'ownerId')).toBe('Some Company Name');
     });
   });

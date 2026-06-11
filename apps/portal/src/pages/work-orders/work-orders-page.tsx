@@ -5,12 +5,16 @@ import type { WorkOrder } from '@/types';
 import {
   ActionMenu,
   Button,
+  ErrorBox,
   Spinner,
+  StatusBadge,
   Table,
   Input,
   Select,
 } from '@/components/ui';
+import { WORK_ORDER_STATUS } from '@/lib/status';
 import { DetailPageLayout } from '@/components/layout/detail-page-layout';
+import { PageHeader } from '@/components/layout/page-header';
 import {
   TableConfigSidebar,
   useTableConfig,
@@ -19,20 +23,6 @@ import {
 import { useAuth } from '@/providers/auth-provider';
 import { useWorkOrders } from './hooks/use-work-orders';
 import { CreateWorkOrderModal } from './components/create-work-order-modal';
-
-const statusLabels: Record<WorkOrderStatus, string> = {
-  [WorkOrderStatus.IN_VOORBEREIDING]: 'In voorbereiding',
-  [WorkOrderStatus.IN_UITVOERING]: 'In uitvoering',
-  [WorkOrderStatus.UITGEVOERD]: 'Uitgevoerd',
-  [WorkOrderStatus.WACHT_OP_KLANT]: 'Wacht op klant',
-};
-
-const statusColors: Record<WorkOrderStatus, string> = {
-  [WorkOrderStatus.IN_VOORBEREIDING]: 'bg-yellow-100 text-yellow-800',
-  [WorkOrderStatus.IN_UITVOERING]: 'bg-blue-100 text-blue-800',
-  [WorkOrderStatus.UITGEVOERD]: 'bg-green-100 text-green-800',
-  [WorkOrderStatus.WACHT_OP_KLANT]: 'bg-orange-100 text-orange-800',
-};
 
 const statusFilterOptions = [
   { value: '', label: 'Alle statussen' },
@@ -96,15 +86,7 @@ export default function WorkOrdersPage() {
       groupable: true,
       sortable: true,
       getFilterValue: (wo) => wo.status,
-      render: (wo) => (
-        <span
-          className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
-            statusColors[wo.status] || 'bg-gray-100 text-gray-600'
-          }`}
-        >
-          {statusLabels[wo.status] || wo.status}
-        </span>
-      ),
+      render: (wo) => <StatusBadge status={wo.status} map={WORK_ORDER_STATUS} />,
     },
     {
       key: 'product',
@@ -244,9 +226,7 @@ export default function WorkOrdersPage() {
 
   if (error) {
     return (
-      <div className="rounded-lg bg-danger-50 p-4 text-sm text-danger-600">
-        Fout bij het laden van werkbonnen: {error.message}
-      </div>
+      <ErrorBox>Fout bij het laden van werkbonnen: {error.message}</ErrorBox>
     );
   }
 
@@ -274,25 +254,23 @@ export default function WorkOrdersPage() {
       }
     >
       <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-2xl font-bold text-gray-900">Werkbonnen</h2>
-            <p className="mt-1 text-sm text-gray-500">
-              Beheer en volg werkbonnen op
-            </p>
-          </div>
-          {userCanWrite && (
-            <ActionMenu
-              secondaryActions={[
-                {
-                  label: 'Werkbon aanmaken',
-                  icon: <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>,
-                  onClick: () => setShowCreateModal(true),
-                },
-              ]}
-            />
-          )}
-        </div>
+        <PageHeader
+          title="Werkbonnen"
+          description="Beheer en volg werkbonnen op"
+          actions={
+            userCanWrite && (
+              <ActionMenu
+                secondaryActions={[
+                  {
+                    label: 'Werkbon aanmaken',
+                    icon: <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>,
+                    onClick: () => setShowCreateModal(true),
+                  },
+                ]}
+              />
+            )
+          }
+        />
 
         {/* Filters */}
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center">

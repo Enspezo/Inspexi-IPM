@@ -3,13 +3,16 @@ import { DocumentEntityType } from '@/types';
 import type { CrmDocument } from '@/types';
 import {
   ActionMenu,
+  ErrorBox,
   Spinner,
   Table,
   Input,
   Select,
   Button,
 } from '@/components/ui';
+import { ENTITY_TYPE_LABELS } from '@/lib/status';
 import { DetailPageLayout } from '@/components/layout/detail-page-layout';
+import { PageHeader } from '@/components/layout/page-header';
 import {
   TableConfigSidebar,
   useTableConfig,
@@ -28,15 +31,6 @@ const entityTypeFilterOptions = [
   { value: DocumentEntityType.TASK, label: 'Taak' },
   { value: DocumentEntityType.USER, label: 'Gebruiker' },
 ];
-
-const entityTypeLabels: Record<string, string> = {
-  [DocumentEntityType.CONTACT]: 'Relatie',
-  [DocumentEntityType.REQUEST]: 'Aanvraag',
-  [DocumentEntityType.QUOTE]: 'Offerte',
-  [DocumentEntityType.PRODUCT]: 'Product',
-  [DocumentEntityType.TASK]: 'Taak',
-  [DocumentEntityType.USER]: 'Gebruiker',
-};
 
 const entityTypeRoutes: Record<string, string> = {
   [DocumentEntityType.CONTACT]: '/contacts',
@@ -190,7 +184,7 @@ export default function DocumentsPage() {
               </a>
             ) : (
               <span className="text-xs text-gray-500">
-                {entityTypeLabels[doc.entityType] || doc.entityType}
+                {ENTITY_TYPE_LABELS[doc.entityType] || doc.entityType}
               </span>
             )}
           </div>
@@ -301,9 +295,7 @@ export default function DocumentsPage() {
 
   if (error) {
     return (
-      <div className="rounded-lg bg-danger-50 p-4 text-sm text-danger-600">
-        Fout bij het laden van documenten: {error.message}
-      </div>
+      <ErrorBox>Fout bij het laden van documenten: {error.message}</ErrorBox>
     );
   }
 
@@ -331,27 +323,25 @@ export default function DocumentsPage() {
       }
     >
       <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-2xl font-bold text-gray-900">Documenten</h2>
-            <p className="mt-1 text-sm text-gray-500">
-              Beheer alle documenten van uw organisatie
-            </p>
-          </div>
-          <ActionMenu
-            secondaryActions={[
-              {
-                label: 'Document uploaden',
-                icon: (
-                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
-                  </svg>
-                ),
-                onClick: () => setIsUploadOpen(true),
-              },
-            ]}
-          />
-        </div>
+        <PageHeader
+          title="Documenten"
+          description="Beheer alle documenten van uw organisatie"
+          actions={
+            <ActionMenu
+              secondaryActions={[
+                {
+                  label: 'Document uploaden',
+                  icon: (
+                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                    </svg>
+                  ),
+                  onClick: () => setIsUploadOpen(true),
+                },
+              ]}
+            />
+          }
+        />
 
         {/* Filters */}
         <div className="flex flex-col gap-4 sm:flex-row sm:items-end">

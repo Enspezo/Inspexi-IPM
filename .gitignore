@@ -18,6 +18,10 @@ dist/
 # Turbo
 .turbo/
 
+# TypeScript build artifacts
+*.tsbuildinfo
+apps/portal/vite.config.d.ts
+
 # IDE
 .idea/
 .vscode/

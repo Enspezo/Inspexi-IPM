@@ -5,50 +5,51 @@ import {
 } from '@nestjs/common';
 import { Role, User } from '@prisma/client';
 import { ProductsService } from './products.service';
+import { CustomFieldsValidator } from '@/modules/custom-fields/custom-fields.validator';
 import { PrismaService } from '@/prisma';
 
 describe('ProductsService', () => {
   let service: ProductsService;
   let prisma: PrismaService;
 
-  const mockUser: User = {
+  const mockUser = {
     id: 'user-1',
     orgId: 'org-1',
     email: 'admin@test.com',
     passwordHash: '$2b$10$hashedpassword',
     firstName: 'Admin',
     lastName: 'User',
-    role: Role.ORG_ADMIN,
+    roles: [Role.ORG_ADMIN],
     isActive: true,
     emailVerifiedAt: new Date('2025-01-01'),
     createdAt: new Date('2025-01-01'),
-  };
+  } as any;
 
-  const mockSuperuser: User = {
+  const mockSuperuser = {
     id: 'su-1',
     orgId: null,
     email: 'superuser@test.com',
     passwordHash: '$2b$10$hashedpassword',
     firstName: 'Super',
     lastName: 'User',
-    role: Role.SUPERUSER,
+    roles: [Role.SUPERUSER],
     isActive: true,
     emailVerifiedAt: new Date('2025-01-01'),
     createdAt: new Date('2025-01-01'),
-  };
+  } as any;
 
-  const mockOtherOrgUser: User = {
+  const mockOtherOrgUser = {
     id: 'user-other',
     orgId: 'org-2',
     email: 'other@test.com',
     passwordHash: '$2b$10$hashedpassword',
     firstName: 'Other',
     lastName: 'User',
-    role: Role.ORG_ADMIN,
+    roles: [Role.ORG_ADMIN],
     isActive: true,
     emailVerifiedAt: new Date('2025-01-01'),
     createdAt: new Date('2025-01-01'),
-  };
+  } as any;
 
   const mockProduct = {
     id: 'product-1',
@@ -57,7 +58,8 @@ describe('ProductsService', () => {
     unit: 'uur',
     description: 'Elektrische inspectie',
     defaultVat: 21,
-    category: 'inspectie',
+    productGroupId: null,
+    customFields: null,
     isActive: true,
     createdAt: new Date('2025-01-01'),
   };
@@ -72,6 +74,10 @@ describe('ProductsService', () => {
     },
   };
 
+  const mockCustomFieldsValidator = {
+    validateAndSanitize: jest.fn().mockResolvedValue(null),
+  };
+
   beforeEach(async () => {
     jest.clearAllMocks();
 
@@ -79,6 +85,7 @@ describe('ProductsService', () => {
       providers: [
         ProductsService,
         { provide: PrismaService, useValue: mockPrismaService },
+        { provide: CustomFieldsValidator, useValue: mockCustomFieldsValidator },
       ],
     }).compile();
 
@@ -99,6 +106,9 @@ describe('ProductsService', () => {
       expect(result).toEqual({ data: products, total: 1, page: 1, limit: 20 });
       expect(mockPrismaService.product.findMany).toHaveBeenCalledWith({
         where: { orgId: 'org-1' },
+        include: {
+          productGroup: { select: { id: true, name: true } },
+        },
         orderBy: { name: 'asc' },
         skip: 0,
         take: 20,
@@ -108,7 +118,7 @@ describe('ProductsService', () => {
       });
     });
 
-    it('should filter by search term using OR on name and category', async () => {
+    it('should filter by search term using OR on name and product group name', async () => {
       mockPrismaService.product.findMany.mockResolvedValue([]);
       mockPrismaService.product.count.mockResolvedValue(0);
 
@@ -120,7 +130,7 @@ describe('ProductsService', () => {
             orgId: 'org-1',
             OR: [
               { name: { contains: 'test', mode: 'insensitive' } },
-              { category: { contains: 'test', mode: 'insensitive' } },
+              { productGroup: { name: { contains: 'test', mode: 'insensitive' } } },
             ],
           },
         }),
@@ -202,6 +212,9 @@ describe('ProductsService', () => {
       expect(result).toEqual(mockProduct);
       expect(mockPrismaService.product.findUnique).toHaveBeenCalledWith({
         where: { id: 'product-1' },
+        include: {
+          productGroup: { select: { id: true, name: true } },
+        },
       });
     });
 
@@ -240,7 +253,6 @@ describe('ProductsService', () => {
       name: 'NEN3140 Inspectie',
       unit: 'uur',
       description: 'Arbeidsmiddelen inspectie',
-      category: 'inspectie',
     };
 
     it('should create product with orgId from user', async () => {
@@ -249,6 +261,8 @@ describe('ProductsService', () => {
         orgId: 'org-1',
         ...createDto,
         defaultVat: 21,
+        productGroupId: null,
+        customFields: null,
         isActive: true,
         createdAt: new Date(),
       };
@@ -264,19 +278,23 @@ describe('ProductsService', () => {
           unit: createDto.unit,
           description: createDto.description,
           defaultVat: 21,
-          category: createDto.category,
+          productGroupId: null,
           isActive: true,
+          customFields: null,
+        },
+        include: {
+          productGroup: { select: { id: true, name: true } },
         },
       });
     });
 
     it('should throw ForbiddenException if no orgId and not SUPERUSER', async () => {
-      const userNoOrg: User = {
+      const userNoOrg = {
         ...mockUser,
         id: 'user-no-org',
         orgId: null,
-        role: Role.ORG_ADMIN,
-      };
+        roles: [Role.ORG_ADMIN],
+      } as any;
 
       await expect(
         service.create(createDto, userNoOrg),
@@ -313,6 +331,9 @@ describe('ProductsService', () => {
         data: {
           name: 'Updated product',
           isActive: false,
+        },
+        include: {
+          productGroup: { select: { id: true, name: true } },
         },
       });
     });

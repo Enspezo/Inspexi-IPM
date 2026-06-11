@@ -17,7 +17,7 @@ describe('DocumentsService', () => {
       count: jest.fn(),
       update: jest.fn(),
     },
-    contact: { findMany: jest.fn() },
+    contact: { findMany: jest.fn(), findUnique: jest.fn() },
     request: { findMany: jest.fn() },
     quote: { findMany: jest.fn() },
     product: { findMany: jest.fn() },
@@ -105,7 +105,7 @@ describe('DocumentsService', () => {
 
       mockPrismaService.document.create.mockResolvedValue(mockDocument);
       // Notification recipient resolution
-      mockPrismaService.contact.findUnique = jest.fn().mockResolvedValue({ ownerId: 'user-2' });
+      mockPrismaService.contact.findUnique.mockResolvedValue({ ownerId: 'user-2' });
 
       const result = await service.upload(mockFile, mockDto, mockUser);
 
@@ -130,7 +130,7 @@ describe('DocumentsService', () => {
       };
 
       mockPrismaService.document.create.mockResolvedValue(mockDocument);
-      mockPrismaService.contact.findUnique = jest.fn().mockResolvedValue({ ownerId: 'user-2' });
+      mockPrismaService.contact.findUnique.mockResolvedValue({ ownerId: 'user-2' });
 
       await service.upload(mockFile, mockDto, mockUser);
 

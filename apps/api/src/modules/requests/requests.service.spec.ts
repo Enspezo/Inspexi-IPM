@@ -14,49 +14,50 @@ import { RequestsService } from './requests.service';
 import { PrismaService } from '@/prisma';
 import { QuotesService } from '../quotes/quotes.service';
 import { NotificationsService } from '@/modules/notifications/notifications.service';
+import { CustomFieldsValidator } from '@/modules/custom-fields/custom-fields.validator';
 
 describe('RequestsService', () => {
   let service: RequestsService;
   let prisma: PrismaService;
 
-  const mockUser: User = {
+  const mockUser = {
     id: 'user-1',
     orgId: 'org-1',
     email: 'admin@test.com',
     passwordHash: '$2b$10$hashedpassword',
     firstName: 'Admin',
     lastName: 'User',
-    role: Role.ORG_ADMIN,
+    roles: [Role.ORG_ADMIN],
     isActive: true,
     emailVerifiedAt: new Date('2025-01-01'),
     createdAt: new Date('2025-01-01'),
-  };
+  } as any;
 
-  const mockSuperuser: User = {
+  const mockSuperuser = {
     id: 'su-1',
     orgId: null,
     email: 'superuser@test.com',
     passwordHash: '$2b$10$hashedpassword',
     firstName: 'Super',
     lastName: 'User',
-    role: Role.SUPERUSER,
+    roles: [Role.SUPERUSER],
     isActive: true,
     emailVerifiedAt: new Date('2025-01-01'),
     createdAt: new Date('2025-01-01'),
-  };
+  } as any;
 
-  const mockOtherOrgUser: User = {
+  const mockOtherOrgUser = {
     id: 'user-other',
     orgId: 'org-2',
     email: 'other@test.com',
     passwordHash: '$2b$10$hashedpassword',
     firstName: 'Other',
     lastName: 'User',
-    role: Role.ORG_ADMIN,
+    roles: [Role.ORG_ADMIN],
     isActive: true,
     emailVerifiedAt: new Date('2025-01-01'),
     createdAt: new Date('2025-01-01'),
-  };
+  } as any;
 
   const mockRequest = {
     id: 'request-1',
@@ -182,6 +183,10 @@ describe('RequestsService', () => {
         {
           provide: NotificationsService,
           useValue: { dispatch: jest.fn() },
+        },
+        {
+          provide: CustomFieldsValidator,
+          useValue: { validateAndSanitize: jest.fn().mockResolvedValue(null) },
         },
       ],
     }).compile();
@@ -354,6 +359,12 @@ describe('RequestsService', () => {
               email: true,
             },
           },
+          project: {
+            select: {
+              id: true,
+              projectNumber: true,
+            },
+          },
           statusHistory: {
             include: {
               changedByUser: {
@@ -433,6 +444,7 @@ describe('RequestsService', () => {
           description: 'Inspectie aanvraag',
           priority: Priority.NORMAL,
           createdBy: 'user-1',
+          customFields: null,
         },
       });
       expect(mockTx.requestStatusHistory.create).toHaveBeenCalledWith({

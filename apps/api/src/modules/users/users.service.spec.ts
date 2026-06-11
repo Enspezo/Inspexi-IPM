@@ -8,6 +8,7 @@ import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcrypt';
 import { Role, User } from '@prisma/client';
 import { UsersService } from './users.service';
+import { STORAGE_PROVIDER } from '@/common/services/storage/storage.interface';
 import { PrismaService } from '@/prisma';
 import { EmailService } from '@/common/services/email.service';
 
@@ -32,31 +33,31 @@ describe('UsersService', () => {
     createdAt: new Date('2025-01-01'),
   };
 
-  const mockUser: User = {
+  const mockUser = {
     id: 'user-1',
     orgId: 'org-1',
     email: 'admin@test.com',
     passwordHash: '$2b$10$hashedpassword',
     firstName: 'Admin',
     lastName: 'User',
-    role: Role.ORG_ADMIN,
+    roles: [Role.ORG_ADMIN],
     isActive: true,
     emailVerifiedAt: new Date('2025-01-01'),
     createdAt: new Date('2025-01-01'),
-  };
+  } as any;
 
-  const mockSuperuser: User = {
+  const mockSuperuser = {
     id: 'user-super',
     orgId: null,
     email: 'superuser@test.com',
     passwordHash: '$2b$10$hashedpassword',
     firstName: 'Super',
     lastName: 'User',
-    role: Role.SUPERUSER,
+    roles: [Role.SUPERUSER],
     isActive: true,
     emailVerifiedAt: new Date('2025-01-01'),
     createdAt: new Date('2025-01-01'),
-  };
+  } as any;
 
   const mockPrismaService = {
     user: {
@@ -105,6 +106,15 @@ describe('UsersService', () => {
         { provide: PrismaService, useValue: mockPrismaService },
         { provide: EmailService, useValue: mockEmailService },
         { provide: ConfigService, useValue: mockConfigService },
+        {
+          provide: STORAGE_PROVIDER,
+          useValue: {
+            upload: jest.fn(),
+            download: jest.fn(),
+            delete: jest.fn(),
+            exists: jest.fn(),
+          },
+        },
       ],
     }).compile();
 
@@ -125,12 +135,12 @@ describe('UsersService', () => {
       ];
       mockPrismaService.user.findMany.mockResolvedValue(users);
 
-      const result = await service.findAllByOrg('org-1', Role.ORG_ADMIN);
+      const result = await service.findAllByOrg('org-1', false);
 
       expect(result).toEqual(users);
       expect(result).toHaveLength(2);
       expect(mockPrismaService.user.findMany).toHaveBeenCalledWith({
-        where: { orgId: 'org-1' },
+        where: { orgId: 'org-1', isDeleted: false },
         include: { organization: true },
         orderBy: { createdAt: 'desc' },
       });
@@ -143,11 +153,11 @@ describe('UsersService', () => {
       ];
       mockPrismaService.user.findMany.mockResolvedValue(allUsers);
 
-      const result = await service.findAllByOrg(null, Role.SUPERUSER);
+      const result = await service.findAllByOrg(null, true);
 
       expect(result).toEqual(allUsers);
       expect(mockPrismaService.user.findMany).toHaveBeenCalledWith({
-        where: undefined,
+        where: { isDeleted: false },
         include: { organization: true },
         orderBy: { createdAt: 'desc' },
       });
@@ -198,6 +208,7 @@ describe('UsersService', () => {
         expect.stringContaining('https://app.inspexi.nl/invite/'),
         mockOrganization.name,
         inviteDto.role,
+        'org-1',
       );
     });
 
@@ -265,7 +276,7 @@ describe('UsersService', () => {
         passwordHash: '$2b$10$newhashedpassword',
         firstName: acceptDto.firstName,
         lastName: acceptDto.lastName,
-        role: mockInvitation.role,
+        roles: [mockInvitation.role],
         isActive: true,
         emailVerifiedAt: expect.any(Date),
         createdAt: new Date(),
@@ -297,7 +308,7 @@ describe('UsersService', () => {
           passwordHash: '$2b$10$newhashedpassword',
           firstName: acceptDto.firstName,
           lastName: acceptDto.lastName,
-          role: mockInvitation.role,
+          roles: [mockInvitation.role],
         }),
       });
       // Verify invitation.update was called
@@ -396,26 +407,26 @@ describe('UsersService', () => {
   });
 
   describe('changeRole()', () => {
-    it('should update role', async () => {
+    it('should update roles', async () => {
       const targetUser = {
         ...mockUser,
         id: 'user-2',
-        role: Role.BACKOFFICE,
+        roles: [Role.BACKOFFICE],
         organization: mockOrganization,
       };
-      const changeRoleDto = { role: Role.MANAGER };
+      const changeRoleDto = { roles: [Role.MANAGER] };
 
       mockPrismaService.user.findUnique.mockResolvedValue(targetUser);
       mockPrismaService.user.update.mockResolvedValue({
         ...targetUser,
-        role: Role.MANAGER,
+        roles: [Role.MANAGER],
       });
 
       await service.changeRole('user-2', changeRoleDto, mockUser);
 
       expect(mockPrismaService.user.update).toHaveBeenCalledWith({
         where: { id: 'user-2' },
-        data: { role: Role.MANAGER },
+        data: { roles: [Role.MANAGER] },
       });
     });
 
@@ -423,10 +434,10 @@ describe('UsersService', () => {
       const targetUser = {
         ...mockUser,
         id: 'user-2',
-        role: Role.BACKOFFICE,
+        roles: [Role.BACKOFFICE],
         organization: mockOrganization,
       };
-      const changeRoleDto = { role: Role.SUPERUSER };
+      const changeRoleDto = { roles: [Role.SUPERUSER] };
 
       mockPrismaService.user.findUnique.mockResolvedValue(targetUser);
 
@@ -441,7 +452,7 @@ describe('UsersService', () => {
     });
 
     it('should throw if changing own role', async () => {
-      const changeRoleDto = { role: Role.MANAGER };
+      const changeRoleDto = { roles: [Role.MANAGER] };
 
       await expect(
         service.changeRole('user-1', changeRoleDto, mockUser),

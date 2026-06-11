@@ -5,55 +5,57 @@ import {
 } from '@nestjs/common';
 import { Role, User } from '@prisma/client';
 import { QuoteTemplatesService } from './quote-templates.service';
+import { STORAGE_PROVIDER } from '@/common/services/storage/storage.interface';
 import { PrismaService } from '@/prisma';
 
 describe('QuoteTemplatesService', () => {
   let service: QuoteTemplatesService;
   let prisma: PrismaService;
 
-  const mockUser: User = {
+  const mockUser = {
     id: 'user-1',
     orgId: 'org-1',
     email: 'admin@test.com',
     passwordHash: '$2b$10$hashedpassword',
     firstName: 'Admin',
     lastName: 'User',
-    role: Role.ORG_ADMIN,
+    roles: [Role.ORG_ADMIN],
     isActive: true,
     emailVerifiedAt: new Date('2025-01-01'),
     createdAt: new Date('2025-01-01'),
-  };
+  } as any;
 
-  const mockSuperuser: User = {
+  const mockSuperuser = {
     id: 'su-1',
     orgId: null,
     email: 'superuser@test.com',
     passwordHash: '$2b$10$hashedpassword',
     firstName: 'Super',
     lastName: 'User',
-    role: Role.SUPERUSER,
+    roles: [Role.SUPERUSER],
     isActive: true,
     emailVerifiedAt: new Date('2025-01-01'),
     createdAt: new Date('2025-01-01'),
-  };
+  } as any;
 
-  const mockOtherOrgUser: User = {
+  const mockOtherOrgUser = {
     id: 'user-other',
     orgId: 'org-2',
     email: 'other@test.com',
     passwordHash: '$2b$10$hashedpassword',
     firstName: 'Other',
     lastName: 'User',
-    role: Role.ORG_ADMIN,
+    roles: [Role.ORG_ADMIN],
     isActive: true,
     emailVerifiedAt: new Date('2025-01-01'),
     createdAt: new Date('2025-01-01'),
-  };
+  } as any;
 
   const mockTemplate = {
     id: 'template-1',
     orgId: 'org-1',
     name: 'Standaard Inspectie Offerte',
+    templateType: 'BLOCKS',
     coverBlocks: [{ type: 'text', content: 'Cover' }],
     contentBlocks: [{ type: 'text', content: 'Content' }],
     closingBlocks: [{ type: 'text', content: 'Closing' }],
@@ -74,6 +76,13 @@ describe('QuoteTemplatesService', () => {
     },
   };
 
+  const mockStorageProvider = {
+    upload: jest.fn(),
+    download: jest.fn(),
+    delete: jest.fn(),
+    exists: jest.fn(),
+  };
+
   beforeEach(async () => {
     jest.clearAllMocks();
 
@@ -81,6 +90,7 @@ describe('QuoteTemplatesService', () => {
       providers: [
         QuoteTemplatesService,
         { provide: PrismaService, useValue: mockPrismaService },
+        { provide: STORAGE_PROVIDER, useValue: mockStorageProvider },
       ],
     }).compile();
 
@@ -146,9 +156,11 @@ describe('QuoteTemplatesService', () => {
       const result = await service.findOne('template-1', mockUser);
 
       expect(result).toEqual(mockTemplate);
-      expect(mockPrismaService.quoteTemplate.findUnique).toHaveBeenCalledWith({
-        where: { id: 'template-1' },
-      });
+      expect(mockPrismaService.quoteTemplate.findUnique).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'template-1' },
+        }),
+      );
     });
 
     it('should throw NotFoundException when template not found', async () => {
@@ -191,6 +203,8 @@ describe('QuoteTemplatesService', () => {
         data: {
           orgId: 'org-1',
           name: 'Nieuwe Template',
+          description: null,
+          templateType: 'BLOCKS',
           coverBlocks: [{ type: 'heading', content: 'Titel' }],
           contentBlocks: undefined,
           closingBlocks: undefined,
@@ -225,13 +239,15 @@ describe('QuoteTemplatesService', () => {
 
       expect(result.name).toBe('Bijgewerkte Template');
       expect(result.defaultValidityDays).toBe(60);
-      expect(mockPrismaService.quoteTemplate.update).toHaveBeenCalledWith({
-        where: { id: 'template-1' },
-        data: {
-          name: 'Bijgewerkte Template',
-          defaultValidityDays: 60,
-        },
-      });
+      expect(mockPrismaService.quoteTemplate.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'template-1' },
+          data: {
+            name: 'Bijgewerkte Template',
+            defaultValidityDays: 60,
+          },
+        }),
+      );
     });
   });
 

@@ -32,7 +32,7 @@ describe('AuthService', () => {
     passwordHash: '$2b$10$hashedpassword',
     firstName: 'Test',
     lastName: 'User',
-    role: Role.ORG_ADMIN,
+    roles: [Role.ORG_ADMIN],
     isActive: true,
     emailVerifiedAt: new Date('2025-01-01'),
     createdAt: new Date('2025-01-01'),
@@ -58,6 +58,8 @@ describe('AuthService', () => {
       create: jest.fn(),
       update: jest.fn(),
       updateMany: jest.fn(),
+      delete: jest.fn(),
+      deleteMany: jest.fn(),
     },
   };
 
@@ -132,7 +134,7 @@ describe('AuthService', () => {
       expect(mockJwtService.sign).toHaveBeenCalledWith({
         sub: mockUser.id,
         email: mockUser.email,
-        role: mockUser.role,
+        roles: mockUser.roles,
         orgId: mockUser.orgId,
       });
       expect(mockPrismaService.refreshToken.create).toHaveBeenCalledWith({
@@ -140,6 +142,12 @@ describe('AuthService', () => {
           userId: mockUser.id,
           tokenHash: expect.any(String),
           expiresAt: expect.any(Date),
+        }),
+      });
+      // Expired/old revoked tokens are cleaned up after login
+      expect(mockPrismaService.refreshToken.deleteMany).toHaveBeenCalledWith({
+        where: expect.objectContaining({
+          userId: mockUser.id,
         }),
       });
     });
@@ -190,14 +198,13 @@ describe('AuthService', () => {
         tokenHash: 'stored-hash',
         expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
         revokedAt: null,
+        ipAddress: null,
+        userAgent: null,
         user: mockUser,
       };
 
       mockPrismaService.refreshToken.findFirst.mockResolvedValue(storedToken);
-      mockPrismaService.refreshToken.update.mockResolvedValue({
-        ...storedToken,
-        revokedAt: new Date(),
-      });
+      mockPrismaService.refreshToken.delete.mockResolvedValue(storedToken);
       mockPrismaService.refreshToken.create.mockResolvedValue({
         id: 'rt-2',
         userId: mockUser.id,
@@ -212,10 +219,9 @@ describe('AuthService', () => {
       expect(result).toHaveProperty('refreshToken');
       expect(result.accessToken).toBe('mock-access-token');
 
-      // Verify old token was revoked
-      expect(mockPrismaService.refreshToken.update).toHaveBeenCalledWith({
+      // Verify old token was hard-deleted on rotation
+      expect(mockPrismaService.refreshToken.delete).toHaveBeenCalledWith({
         where: { id: storedToken.id },
-        data: { revokedAt: expect.any(Date) },
       });
 
       // Verify new refresh token was created

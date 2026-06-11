@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConflictException, NotFoundException } from '@nestjs/common';
 import { OrganizationsService } from './organizations.service';
+import { STORAGE_PROVIDER } from '@/common/services/storage/storage.interface';
 import { PrismaService } from '@/prisma';
 
 describe('OrganizationsService', () => {
@@ -35,6 +36,15 @@ describe('OrganizationsService', () => {
       providers: [
         OrganizationsService,
         { provide: PrismaService, useValue: mockPrismaService },
+        {
+          provide: STORAGE_PROVIDER,
+          useValue: {
+            upload: jest.fn(),
+            download: jest.fn(),
+            delete: jest.fn(),
+            exists: jest.fn(),
+          },
+        },
       ],
     }).compile();
 
@@ -105,6 +115,7 @@ describe('OrganizationsService', () => {
       expect(result).toEqual(orgs);
       expect(result).toHaveLength(2);
       expect(mockPrismaService.organization.findMany).toHaveBeenCalledWith({
+        include: { _count: { select: { users: true } } },
         orderBy: { createdAt: 'desc' },
       });
     });
@@ -121,6 +132,7 @@ describe('OrganizationsService', () => {
       expect(result).toEqual(mockOrganization);
       expect(mockPrismaService.organization.findUnique).toHaveBeenCalledWith({
         where: { id: 'org-1' },
+        include: { _count: { select: { users: true } } },
       });
     });
 

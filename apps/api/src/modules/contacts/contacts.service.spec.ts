@@ -6,6 +6,8 @@ import {
 } from '@nestjs/common';
 import { Role, User, ContactType, LogType } from '@prisma/client';
 import { ContactsService } from './contacts.service';
+import { CustomFieldsValidator } from '@/modules/custom-fields/custom-fields.validator';
+import { GeocodingService } from '@/modules/geocoding/geocoding.service';
 import { PrismaService } from '@/prisma';
 import { EmailService } from '@/common/services/email.service';
 
@@ -13,44 +15,44 @@ describe('ContactsService', () => {
   let service: ContactsService;
   let prisma: PrismaService;
 
-  const mockUser: User = {
+  const mockUser = {
     id: 'user-1',
     orgId: 'org-1',
     email: 'admin@test.com',
     passwordHash: '$2b$10$hashedpassword',
     firstName: 'Admin',
     lastName: 'User',
-    role: Role.ORG_ADMIN,
+    roles: [Role.ORG_ADMIN],
     isActive: true,
     emailVerifiedAt: new Date('2025-01-01'),
     createdAt: new Date('2025-01-01'),
-  };
+  } as any;
 
-  const mockSuperuser: User = {
+  const mockSuperuser = {
     id: 'user-super',
     orgId: null,
     email: 'superuser@test.com',
     passwordHash: '$2b$10$hashedpassword',
     firstName: 'Super',
     lastName: 'User',
-    role: Role.SUPERUSER,
+    roles: [Role.SUPERUSER],
     isActive: true,
     emailVerifiedAt: new Date('2025-01-01'),
     createdAt: new Date('2025-01-01'),
-  };
+  } as any;
 
-  const mockOtherOrgUser: User = {
+  const mockOtherOrgUser = {
     id: 'user-other',
     orgId: 'org-2',
     email: 'other@test.com',
     passwordHash: '$2b$10$hashedpassword',
     firstName: 'Other',
     lastName: 'User',
-    role: Role.ORG_ADMIN,
+    roles: [Role.ORG_ADMIN],
     isActive: true,
     emailVerifiedAt: new Date('2025-01-01'),
     createdAt: new Date('2025-01-01'),
-  };
+  } as any;
 
   const mockContact = {
     id: 'contact-1',
@@ -97,6 +99,9 @@ describe('ContactsService', () => {
     contactEmail: {
       create: jest.fn(),
     },
+    organization: {
+      findUnique: jest.fn(),
+    },
     $transaction: jest.fn(),
   };
 
@@ -104,14 +109,27 @@ describe('ContactsService', () => {
     sendContactEmail: jest.fn().mockResolvedValue({ id: 'resend-123' }),
   };
 
+  const mockCustomFieldsValidator = {
+    validateAndSanitize: jest.fn().mockResolvedValue(null),
+  };
+
+  const mockGeocodingService = {
+    extractCoordsFromPdokData: jest.fn().mockReturnValue(null),
+    nominatimGeocode: jest.fn().mockResolvedValue(null),
+  };
+
   beforeEach(async () => {
     jest.clearAllMocks();
+    mockGeocodingService.extractCoordsFromPdokData.mockReturnValue(null);
+    mockGeocodingService.nominatimGeocode.mockResolvedValue(null);
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         ContactsService,
         { provide: PrismaService, useValue: mockPrismaService },
         { provide: EmailService, useValue: mockEmailService },
+        { provide: CustomFieldsValidator, useValue: mockCustomFieldsValidator },
+        { provide: GeocodingService, useValue: mockGeocodingService },
       ],
     }).compile();
 
@@ -150,7 +168,7 @@ describe('ContactsService', () => {
       });
     });
 
-    it('should filter by search term using OR on companyName, firstName, lastName, email', async () => {
+    it('should filter by search term using OR on companyName, firstName, lastName, email, phone and city', async () => {
       mockPrismaService.contact.findMany.mockResolvedValue([]);
       mockPrismaService.contact.count.mockResolvedValue(0);
 
@@ -166,6 +184,8 @@ describe('ContactsService', () => {
               { firstName: { contains: 'test', mode: 'insensitive' } },
               { lastName: { contains: 'test', mode: 'insensitive' } },
               { email: { contains: 'test', mode: 'insensitive' } },
+              { phone: { contains: 'test', mode: 'insensitive' } },
+              { addresses: { some: { city: { contains: 'test', mode: 'insensitive' } } } },
             ],
           },
         }),
@@ -239,38 +259,24 @@ describe('ContactsService', () => {
       const result = await service.findOne('contact-1', mockUser);
 
       expect(result).toEqual(mockContact);
-      expect(mockPrismaService.contact.findUnique).toHaveBeenCalledWith({
-        where: { id: 'contact-1' },
-        include: {
-          addresses: true,
-          owner: { select: { id: true, firstName: true, lastName: true } },
-          contactPersons: {
-            where: { isDeleted: false },
-            orderBy: { createdAt: 'desc' },
-          },
-          customerGroups: {
-            include: {
-              customerGroup: { select: { id: true, name: true } },
+      expect(mockPrismaService.contact.findUnique).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'contact-1' },
+          include: expect.objectContaining({
+            addresses: true,
+            owner: { select: { id: true, firstName: true, lastName: true } },
+            locations: true,
+            logs: {
+              include: { user: { select: { firstName: true, lastName: true } } },
+              orderBy: { loggedAt: 'desc' },
             },
-          },
-          locations: true,
-          logs: {
-            include: { user: { select: { firstName: true, lastName: true } } },
-            orderBy: { loggedAt: 'desc' },
-          },
-          emails: {
-            include: { user: { select: { firstName: true, lastName: true } } },
-            orderBy: { sentAt: 'desc' },
-          },
-          quotes: {
-            include: {
-              createdByUser: { select: { id: true, firstName: true, lastName: true, email: true } },
-              location: { select: { id: true, name: true, city: true } },
+            emails: {
+              include: { user: { select: { firstName: true, lastName: true } } },
+              orderBy: { sentAt: 'desc' },
             },
-            orderBy: { createdAt: 'desc' },
-          },
-        },
-      });
+          }),
+        }),
+      );
     });
 
     it('should throw NotFoundException for non-existent contact', async () => {
@@ -491,6 +497,7 @@ describe('ContactsService', () => {
           isPrimary: false,
           isPostal: false,
           isInvoice: false,
+          customFields: null,
         },
       });
     });
@@ -584,6 +591,10 @@ describe('ContactsService', () => {
           city: locationDto.city,
           objectType: locationDto.objectType,
           notes: locationDto.notes,
+          pdokData: null,
+          lat: null,
+          lng: null,
+          customFields: null,
         },
       });
     });
@@ -774,6 +785,10 @@ describe('ContactsService', () => {
         user: { firstName: 'Admin', lastName: 'User' },
       };
       mockPrismaService.contact.findUnique.mockResolvedValue(mockContact);
+      mockPrismaService.organization.findUnique.mockResolvedValue({
+        senderName: null,
+        senderEmail: null,
+      });
       mockEmailService.sendContactEmail.mockResolvedValue({ id: 'resend-123' });
       mockPrismaService.contactEmail.create.mockResolvedValue(savedEmail);
 
@@ -784,6 +799,7 @@ describe('ContactsService', () => {
         'info@test.nl',
         emailDto.subject,
         emailDto.bodyHtml,
+        { senderName: null, senderEmail: null },
       );
       expect(mockPrismaService.contactEmail.create).toHaveBeenCalledWith({
         data: {

@@ -1,6 +1,7 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { User, Role, NotificationType } from '@prisma/client';
 import { PrismaService } from '@/prisma';
+import { paginate, buildOrderBy, assertFound } from '@/common';
 import { NotificationsService } from '../notifications/notifications.service';
 import {
   CreateErrorReportDto,
@@ -76,52 +77,40 @@ export class ErrorReportsService {
   async findAll(query: ListErrorReportsQueryDto) {
     const { status, page = 1, limit = 20, sortBy, sortOrder = 'desc' } = query;
     const ALLOWED_SORT_FIELDS = ['status', 'createdAt'];
-    const orderBy = (sortBy && ALLOWED_SORT_FIELDS.includes(sortBy))
-      ? { [sortBy]: sortOrder }
-      : { createdAt: 'desc' as const };
-    const skip = (page - 1) * limit;
+    const orderBy = buildOrderBy(sortBy, sortOrder, ALLOWED_SORT_FIELDS, { createdAt: 'desc' });
 
     const where = status ? { status } : {};
 
-    const [data, total] = await Promise.all([
-      this.prisma.errorReport.findMany({
-        where,
-        skip,
-        take: limit,
-        orderBy: { createdAt: 'desc' },
+    return paginate(this.prisma.errorReport, {
+      where,
+      orderBy: { createdAt: 'desc' },
+      include: {
+        user: { select: userSelect },
+        organization: { select: orgSelect },
+      },
+      page,
+      limit,
+    });
+  }
+
+  async findOne(id: string) {
+    return assertFound(
+      await this.prisma.errorReport.findUnique({
+        where: { id },
         include: {
           user: { select: userSelect },
           organization: { select: orgSelect },
         },
       }),
-      this.prisma.errorReport.count({ where }),
-    ]);
-
-    return { data, total, page, limit };
-  }
-
-  async findOne(id: string) {
-    const report = await this.prisma.errorReport.findUnique({
-      where: { id },
-      include: {
-        user: { select: userSelect },
-        organization: { select: orgSelect },
-      },
-    });
-
-    if (!report) {
-      throw new NotFoundException('Foutmelding niet gevonden');
-    }
-
-    return report;
+      'Foutmelding',
+    );
   }
 
   async updateStatus(id: string, dto: UpdateErrorReportStatusDto) {
-    const report = await this.prisma.errorReport.findUnique({ where: { id } });
-
-    if (!report) {
-      throw new NotFoundException('Foutmelding niet gevonden');
-    }
+    assertFound(
+      await this.prisma.errorReport.findUnique({ where: { id } }),
+      'Foutmelding',
+    );
 
     return this.prisma.errorReport.update({
       where: { id },

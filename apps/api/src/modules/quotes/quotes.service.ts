@@ -10,6 +10,7 @@ import { User, Role, Prisma, QuoteStatus, RequestStatus, NotificationType, TaskT
 import { ConfigService } from '@nestjs/config';
 import { randomUUID } from 'crypto';
 import { PrismaService } from '@/prisma';
+import { paginate, buildOrderBy, orgScope, assertFound } from '@/common';
 import { NotificationsService } from '../notifications/notifications.service';
 import { EmailService } from '@/common/services/email.service';
 import { StorageProvider, STORAGE_PROVIDER } from '@/common/services/storage/storage.interface';
@@ -100,12 +101,8 @@ export class QuotesService {
   async findAll(user: User, query: ListQuotesQueryDto) {
     const { search, status, contactId, createdBy, page = 1, limit = 20, sortBy, sortOrder = 'desc' } = query;
     const ALLOWED_SORT_FIELDS = ['quoteNumber', 'subject', 'status', 'total', 'validUntil', 'createdAt'];
-    const orderBy = (sortBy && ALLOWED_SORT_FIELDS.includes(sortBy))
-      ? { [sortBy]: sortOrder }
-      : { createdAt: 'desc' as const };
-    const skip = (page - 1) * limit;
-    const where: Prisma.QuoteWhereInput = {};
-    if (!user.roles.includes(Role.SUPERUSER)) where.orgId = user.orgId!;
+    const orderBy = buildOrderBy(sortBy, sortOrder, ALLOWED_SORT_FIELDS);
+    const where: Prisma.QuoteWhereInput = { ...orgScope(user) };
     if (status) where.status = status;
     if (contactId) where.contactId = contactId;
     if (createdBy) where.createdBy = createdBy;
@@ -116,25 +113,20 @@ export class QuotesService {
         { contact: { OR: [{ companyName: { contains: search, mode: 'insensitive' } }, { firstName: { contains: search, mode: 'insensitive' } }, { lastName: { contains: search, mode: 'insensitive' } }] } },
       ];
     }
-    const [data, total] = await Promise.all([
-      this.prisma.quote.findMany({
-        where,
-        include: {
-          contact: { select: { id: true, type: true, companyName: true, firstName: true, lastName: true, email: true } },
-          createdByUser: { select: { id: true, firstName: true, lastName: true, email: true } },
-        },
-        orderBy,
-        skip,
-        take: limit,
-      }),
-      this.prisma.quote.count({ where }),
-    ]);
-    return { data, total, page, limit };
+    return paginate(this.prisma.quote, {
+      where,
+      include: {
+        contact: { select: { id: true, type: true, companyName: true, firstName: true, lastName: true, email: true } },
+        createdByUser: { select: { id: true, firstName: true, lastName: true, email: true } },
+      },
+      orderBy,
+      page,
+      limit,
+    });
   }
 
   async findOne(id: string, user: User) {
-    const quote = await this.prisma.quote.findUnique({ where: { id }, include: QUOTE_INCLUDE });
-    if (!quote) throw new NotFoundException('Offerte niet gevonden');
+    const quote = assertFound(await this.prisma.quote.findUnique({ where: { id }, include: QUOTE_INCLUDE }), 'Offerte');
     if (!user.roles.includes(Role.SUPERUSER) && quote.orgId !== user.orgId) throw new ForbiddenException();
     return quote;
   }
@@ -147,8 +139,7 @@ export class QuotesService {
     if (!orgId && user.roles.includes(Role.SUPERUSER)) orgId = contact.orgId;
     if (!user.roles.includes(Role.SUPERUSER) && contact.orgId !== orgId) throw new ForbiddenException('Relatie behoort niet tot uw organisatie');
     if (dto.locationId) {
-      const location = await this.prisma.location.findUnique({ where: { id: dto.locationId } });
-      if (!location) throw new NotFoundException('Locatie niet gevonden');
+      const location = assertFound(await this.prisma.location.findUnique({ where: { id: dto.locationId } }), 'Locatie');
       if (location.contactId !== dto.contactId) throw new ForbiddenException('Locatie behoort niet tot deze relatie');
     }
     let templateData: { coverBlocks?: any; contentBlocks?: any; closingBlocks?: any; defaultValidityDays?: number; requiresApproval?: boolean } = {};
@@ -524,14 +515,13 @@ export class QuotesService {
 
   // Publieke webviewer
   async findByPublicToken(token: string) {
-    const quote = await this.prisma.quote.findUnique({
+    const quote = assertFound(await this.prisma.quote.findUnique({
       where: { publicToken: token },
       include: {
         ...QUOTE_INCLUDE,
         organization: { select: { id: true, name: true, logoUrl: true, primaryColor: true } },
       },
-    });
-    if (!quote) throw new NotFoundException('Offerte niet gevonden');
+    }), 'Offerte');
     const notSentStatuses: QuoteStatus[] = [QuoteStatus.CONCEPT, QuoteStatus.TER_GOEDKEURING, QuoteStatus.GOEDGEKEURD];
     if (notSentStatuses.includes(quote.status)) {
       throw new ForbiddenException('Offerte is nog niet verstuurd');
@@ -547,11 +537,10 @@ export class QuotesService {
   }
 
   async addClientQuestion(token: string, dto: AddQuestionDto) {
-    const quote = await this.prisma.quote.findUnique({
+    const quote = assertFound(await this.prisma.quote.findUnique({
       where: { publicToken: token },
       select: { id: true, orgId: true, quoteNumber: true, createdBy: true, status: true },
-    });
-    if (!quote) throw new NotFoundException('Offerte niet gevonden');
+    }), 'Offerte');
     const unavailableStatuses: QuoteStatus[] = [QuoteStatus.CONCEPT, QuoteStatus.TER_GOEDKEURING, QuoteStatus.GOEDGEKEURD];
     if (unavailableStatuses.includes(quote.status)) throw new ForbiddenException('Offerte is niet beschikbaar');
     const question = await this.prisma.quoteQuestion.create({ data: { quoteId: quote.id, userId: null, message: dto.message, isFromClient: true } });
@@ -560,15 +549,14 @@ export class QuotesService {
   }
 
   async signQuote(token: string, dto: SignQuoteDto, clientIp?: string, userAgent?: string) {
-    const quote = await this.prisma.quote.findUnique({
+    const quote = assertFound(await this.prisma.quote.findUnique({
       where: { publicToken: token },
       include: {
         organization: { select: { name: true, senderName: true, senderEmail: true } },
         contact: { select: { id: true, email: true, companyName: true, firstName: true, lastName: true } },
         template: { select: { acceptedEmailTemplateId: true, acceptedEmailEnabled: true } },
       },
-    });
-    if (!quote) throw new NotFoundException('Offerte niet gevonden');
+    }), 'Offerte');
     if (quote.status !== QuoteStatus.VERSTUURD && quote.status !== QuoteStatus.BEKEKEN) throw new BadRequestException('Offerte kan niet worden ondertekend in de huidige status');
     if (quote.signedAt) throw new BadRequestException('Offerte is al ondertekend');
     const signedAt = new Date();
@@ -654,8 +642,7 @@ export class QuotesService {
   }
 
   async downloadPublicAttachment(token: string, attachmentId: string) {
-    const quote = await this.prisma.quote.findUnique({ where: { publicToken: token }, select: { id: true, status: true } });
-    if (!quote) throw new NotFoundException('Offerte niet gevonden');
+    const quote = assertFound(await this.prisma.quote.findUnique({ where: { publicToken: token }, select: { id: true, status: true } }), 'Offerte');
     const unavailableStatusesForDownload: QuoteStatus[] = [QuoteStatus.CONCEPT, QuoteStatus.TER_GOEDKEURING, QuoteStatus.GOEDGEKEURD];
     if (unavailableStatusesForDownload.includes(quote.status)) throw new ForbiddenException('Offerte is niet beschikbaar');
     const attachment = await this.prisma.quoteAttachment.findUnique({ where: { id: attachmentId } });
@@ -666,8 +653,7 @@ export class QuotesService {
 
   // Price resolution
   async resolvePrice(productId: string, contactId: string, quantity: number, user: User) {
-    const product = await this.prisma.product.findUnique({ where: { id: productId } });
-    if (!product) throw new NotFoundException('Product niet gevonden');
+    const product = assertFound(await this.prisma.product.findUnique({ where: { id: productId } }), 'Product');
     if (!user.roles.includes(Role.SUPERUSER) && product.orgId !== user.orgId) throw new ForbiddenException();
     const contactTables = await this.prisma.contactPriceTable.findMany({
       where: { contactId },
@@ -715,15 +701,14 @@ export class QuotesService {
   // ─── DOCX Rendering ──────────────────────────────────
 
   async renderQuoteDocx(id: string, user: User): Promise<{ buffer: Buffer; quoteNumber: string }> {
-    const quote = await this.prisma.quote.findUnique({
+    const quote = assertFound(await this.prisma.quote.findUnique({
       where: { id },
       include: {
         template: true,
         contact: { select: { companyName: true, firstName: true, lastName: true, email: true } },
         lines: { orderBy: { sortOrder: 'asc' as const } },
       },
-    });
-    if (!quote) throw new NotFoundException('Offerte niet gevonden');
+    }), 'Offerte');
     if (!user.roles.includes(Role.SUPERUSER) && quote.orgId !== user.orgId) throw new ForbiddenException();
 
     const template = quote.template;
@@ -791,15 +776,14 @@ export class QuotesService {
   // ─── Public PDF download ────────────────────────────
 
   async downloadPublicPdf(token: string) {
-    const quote = await this.prisma.quote.findUnique({
+    const quote = assertFound(await this.prisma.quote.findUnique({
       where: { publicToken: token },
       select: {
         id: true, orgId: true, status: true, pdfStorageKey: true, quoteNumber: true,
         templateId: true,
         template: { select: { id: true, templateType: true, docxStorageKey: true } },
       },
-    });
-    if (!quote) throw new NotFoundException('PDF niet gevonden');
+    }), 'PDF');
     const unavailable: QuoteStatus[] = [QuoteStatus.CONCEPT, QuoteStatus.TER_GOEDKEURING, QuoteStatus.GOEDGEKEURD];
     if (unavailable.includes(quote.status)) throw new ForbiddenException('Offerte is niet beschikbaar');
 

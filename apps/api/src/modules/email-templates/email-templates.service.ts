@@ -10,6 +10,7 @@ import { randomUUID } from 'crypto';
 import { User, Role, Prisma, EmailTemplateType } from '@prisma/client';
 import { PrismaService } from '@/prisma';
 import { STORAGE_PROVIDER, type StorageProvider } from '@/common/services/storage/storage.interface';
+import { paginate, orgScope, assertFound } from '@/common';
 import { CreateEmailTemplateDto } from './dto/create-email-template.dto';
 import { UpdateEmailTemplateDto } from './dto/update-email-template.dto';
 import { TEMPLATE_TYPE_PLACEHOLDERS, EMAIL_TEMPLATE_TYPE_LABELS } from './placeholder.config';
@@ -31,13 +32,8 @@ export class EmailTemplatesService {
     query: { search?: string; type?: EmailTemplateType; isActive?: boolean; page?: number; limit?: number },
   ) {
     const { search, type, isActive, page = 1, limit = 50 } = query;
-    const skip = (page - 1) * limit;
 
-    const where: Prisma.EmailTemplateWhereInput = {};
-
-    if (!user.roles.includes(Role.SUPERUSER)) {
-      where.orgId = user.orgId!;
-    }
+    const where: Prisma.EmailTemplateWhereInput = { ...orgScope(user) };
 
     if (type) {
       where.type = type;
@@ -51,34 +47,28 @@ export class EmailTemplatesService {
       where.name = { contains: search, mode: 'insensitive' };
     }
 
-    const [data, total] = await Promise.all([
-      this.prisma.emailTemplate.findMany({
-        where,
-        orderBy: { createdAt: 'desc' },
-        skip,
-        take: limit,
-        include: {
-          creator: { select: { id: true, firstName: true, lastName: true } },
-        },
-      }),
-      this.prisma.emailTemplate.count({ where }),
-    ]);
-
-    return { data, total, page, limit };
+    return paginate(this.prisma.emailTemplate, {
+      where,
+      orderBy: { createdAt: 'desc' },
+      include: {
+        creator: { select: { id: true, firstName: true, lastName: true } },
+      },
+      page,
+      limit,
+    });
   }
 
   async findOne(id: string, user: User) {
-    const template = await this.prisma.emailTemplate.findUnique({
-      where: { id },
-      include: {
-        creator: { select: { id: true, firstName: true, lastName: true } },
-        attachments: { orderBy: { sortOrder: 'asc' } },
-      },
-    });
-
-    if (!template) {
-      throw new NotFoundException('E-mailsjabloon niet gevonden');
-    }
+    const template = assertFound(
+      await this.prisma.emailTemplate.findUnique({
+        where: { id },
+        include: {
+          creator: { select: { id: true, firstName: true, lastName: true } },
+          attachments: { orderBy: { sortOrder: 'asc' } },
+        },
+      }),
+      'E-mailsjabloon',
+    );
 
     if (!user.roles.includes(Role.SUPERUSER) && template.orgId !== user.orgId) {
       throw new ForbiddenException();

@@ -1,5 +1,6 @@
 import { Injectable, BadRequestException, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { paginate } from '@/common';
 
 const ALLOWED_ENTITY_TYPES = new Set([
   'Contact',
@@ -156,33 +157,25 @@ export class AuditLogService {
       if (options.dateTo) where.createdAt.lte = new Date(options.dateTo);
     }
 
-    const [data, total] = await Promise.all([
-      this.prisma.auditLog.findMany({
-        where,
-        orderBy: { createdAt: 'desc' },
-        skip: (options.page - 1) * options.limit,
-        take: options.limit,
-        include: {
-          user: {
-            select: {
-              id: true,
-              firstName: true,
-              lastName: true,
-            },
+    const result = await paginate(this.prisma.auditLog, {
+      where,
+      orderBy: { createdAt: 'desc' },
+      include: {
+        user: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
           },
         },
-      }),
-      this.prisma.auditLog.count({ where }),
-    ]);
-
-    const enrichedData = await this.resolveDisplayNames(data);
-
-    return {
-      data: enrichedData,
-      total,
+      },
       page: options.page,
       limit: options.limit,
-    };
+    });
+
+    const enrichedData = await this.resolveDisplayNames(result.data);
+
+    return { ...result, data: enrichedData };
   }
 
   async findByEntity(
@@ -205,34 +198,26 @@ export class AuditLogService {
       where.orgId = orgId;
     }
 
-    const [data, total] = await Promise.all([
-      this.prisma.auditLog.findMany({
-        where,
-        orderBy: { createdAt: 'desc' },
-        skip: (options.page - 1) * options.limit,
-        take: options.limit,
-        include: {
-          user: {
-            select: {
-              id: true,
-              firstName: true,
-              lastName: true,
-            },
+    const result = await paginate(this.prisma.auditLog, {
+      where,
+      orderBy: { createdAt: 'desc' },
+      include: {
+        user: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
           },
         },
-      }),
-      this.prisma.auditLog.count({ where }),
-    ]);
-
-    // Resolve UUID references to display names
-    const enrichedData = await this.resolveDisplayNames(data);
-
-    return {
-      data: enrichedData,
-      total,
+      },
       page: options.page,
       limit: options.limit,
-    };
+    });
+
+    // Resolve UUID references to display names
+    const enrichedData = await this.resolveDisplayNames(result.data);
+
+    return { ...result, data: enrichedData };
   }
 
   /**

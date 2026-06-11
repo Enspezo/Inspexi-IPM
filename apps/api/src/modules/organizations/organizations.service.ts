@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { PrismaService } from '@/prisma';
+import { assertFound } from '@/common';
 import { CreateOrganizationDto, UpdateOrganizationDto } from './dto';
 import {
   STORAGE_PROVIDER,
@@ -39,14 +40,13 @@ export class OrganizationsService {
   }
 
   async findOne(id: string) {
-    const org = await this.prisma.organization.findUnique({
-      where: { id },
-      include: { _count: { select: { users: true } } },
-    });
-    if (!org) {
-      throw new NotFoundException('Organisatie niet gevonden');
-    }
-    return org;
+    return assertFound(
+      await this.prisma.organization.findUnique({
+        where: { id },
+        include: { _count: { select: { users: true } } },
+      }),
+      'Organisatie',
+    );
   }
 
   async findUsers(orgId: string) {
@@ -67,13 +67,12 @@ export class OrganizationsService {
   }
 
   async findBySlug(slug: string) {
-    const org = await this.prisma.organization.findUnique({
-      where: { slug },
-    });
-    if (!org) {
-      throw new NotFoundException('Organisatie niet gevonden');
-    }
-    return org;
+    return assertFound(
+      await this.prisma.organization.findUnique({
+        where: { slug },
+      }),
+      'Organisatie',
+    );
   }
 
   async update(id: string, dto: UpdateOrganizationDto) {

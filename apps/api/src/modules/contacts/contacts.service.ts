@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { User, Role, Prisma } from '@prisma/client';
 import { PrismaService } from '@/prisma';
+import { paginate, buildOrderBy, orgScope, assertFound } from '@/common';
 import { requestContext } from '@/common/services/request-context';
 import { EmailService } from '@/common/services/email.service';
 import { CustomFieldsValidator } from '@/modules/custom-fields/custom-fields.validator';
@@ -83,19 +84,13 @@ export class ContactsService {
   async findAll(user: User, query: ListContactsQueryDto) {
     const { search, type, onlyMine, page = 1, limit = 20, sortBy, sortOrder = 'desc' } = query;
     const ALLOWED_SORT_FIELDS = ['type', 'email', 'phone', 'createdAt'];
-    const orderBy = (sortBy && ALLOWED_SORT_FIELDS.includes(sortBy))
-      ? { [sortBy]: sortOrder }
-      : { createdAt: 'desc' as const };
-    const skip = (page - 1) * limit;
-
-    const where: Prisma.ContactWhereInput = {
-      isDeleted: false,
-    };
+    const orderBy = buildOrderBy(sortBy, sortOrder, ALLOWED_SORT_FIELDS);
 
     // Org scoping — SUPERUSER sees all, others scoped to own org
-    if (!user.roles.includes(Role.SUPERUSER)) {
-      where.orgId = user.orgId!;
-    }
+    const where: Prisma.ContactWhereInput = {
+      ...orgScope(user),
+      isDeleted: false,
+    };
 
     if (type) {
       where.type = type;
@@ -117,26 +112,21 @@ export class ContactsService {
       ];
     }
 
-    const [data, total] = await Promise.all([
-      this.prisma.contact.findMany({
-        where,
-        include: {
-          addresses: true,
-          owner: { select: { id: true, firstName: true, lastName: true } },
-          customerGroups: {
-            include: {
-              customerGroup: { select: { id: true, name: true } },
-            },
+    return paginate(this.prisma.contact, {
+      where,
+      include: {
+        addresses: true,
+        owner: { select: { id: true, firstName: true, lastName: true } },
+        customerGroups: {
+          include: {
+            customerGroup: { select: { id: true, name: true } },
           },
         },
-        orderBy,
-        skip,
-        take: limit,
-      }),
-      this.prisma.contact.count({ where }),
-    ]);
-
-    return { data, total, page, limit };
+      },
+      orderBy,
+      page,
+      limit,
+    });
   }
 
   async findOne(id: string, user: User) {
@@ -371,14 +361,13 @@ export class ContactsService {
     dto: UpdateContactAddressDto,
     user: User,
   ) {
-    const address = await this.prisma.contactAddress.findUnique({
-      where: { id: addressId },
-      include: { contact: true },
-    });
-
-    if (!address) {
-      throw new NotFoundException('Adres niet gevonden');
-    }
+    const address = assertFound(
+      await this.prisma.contactAddress.findUnique({
+        where: { id: addressId },
+        include: { contact: true },
+      }),
+      'Adres',
+    );
 
     // Verify org scoping via contact
     await this.findOne(address.contactId, user);
@@ -448,13 +437,12 @@ export class ContactsService {
   }
 
   async deleteAddress(addressId: string, user: User) {
-    const address = await this.prisma.contactAddress.findUnique({
-      where: { id: addressId },
-    });
-
-    if (!address) {
-      throw new NotFoundException('Adres niet gevonden');
-    }
+    const address = assertFound(
+      await this.prisma.contactAddress.findUnique({
+        where: { id: addressId },
+      }),
+      'Adres',
+    );
 
     // Verify org scoping via contact
     await this.findOne(address.contactId, user);
@@ -468,15 +456,11 @@ export class ContactsService {
 
   async findAllContactPersons(user: User, query: ListContactPersonsQueryDto) {
     const { search, roleId, contactId, page = 1, limit = 20 } = query;
-    const skip = (page - 1) * limit;
 
     const where: Prisma.ContactPersonWhereInput = {
+      ...orgScope(user),
       isDeleted: false,
     };
-
-    if (!user.roles.includes(Role.SUPERUSER)) {
-      where.orgId = user.orgId!;
-    }
 
     if (contactId) {
       where.contactId = contactId;
@@ -494,29 +478,24 @@ export class ContactsService {
       ];
     }
 
-    const [data, total] = await Promise.all([
-      this.prisma.contactPerson.findMany({
-        where,
-        include: {
-          role: { select: { id: true, code: true, label: true } },
-          contact: {
-            select: {
-              id: true,
-              type: true,
-              companyName: true,
-              firstName: true,
-              lastName: true,
-            },
+    return paginate(this.prisma.contactPerson, {
+      where,
+      include: {
+        role: { select: { id: true, code: true, label: true } },
+        contact: {
+          select: {
+            id: true,
+            type: true,
+            companyName: true,
+            firstName: true,
+            lastName: true,
           },
         },
-        orderBy: { createdAt: 'desc' },
-        skip,
-        take: limit,
-      }),
-      this.prisma.contactPerson.count({ where }),
-    ]);
-
-    return { data, total, page, limit };
+      },
+      orderBy: { createdAt: 'desc' },
+      page,
+      limit,
+    });
   }
 
   /**
@@ -532,12 +511,12 @@ export class ContactsService {
     const scope = orgId ? [{ orgId: null }, { orgId }] : [{ orgId: null }];
 
     if (roleId) {
-      const role = await this.prisma.contactPersonRoleOption.findFirst({
-        where: { id: roleId, OR: scope },
-      });
-      if (!role) {
-        throw new NotFoundException('Rol niet gevonden');
-      }
+      const role = assertFound(
+        await this.prisma.contactPersonRoleOption.findFirst({
+          where: { id: roleId, OR: scope },
+        }),
+        'Rol',
+      );
       return role.id;
     }
 
@@ -667,13 +646,8 @@ export class ContactsService {
 
   async findAllLocations(user: User, query: ListLocationsQueryDto) {
     const { search, contactId, objectType, page = 1, limit = 20 } = query;
-    const skip = (page - 1) * limit;
 
-    const where: Prisma.LocationWhereInput = {};
-
-    if (!user.roles.includes(Role.SUPERUSER)) {
-      where.orgId = user.orgId!;
-    }
+    const where: Prisma.LocationWhereInput = { ...orgScope(user) };
 
     if (contactId) {
       where.contactId = contactId;
@@ -692,33 +666,8 @@ export class ContactsService {
       ];
     }
 
-    const [data, total] = await Promise.all([
-      this.prisma.location.findMany({
-        where,
-        include: {
-          contact: {
-            select: {
-              id: true,
-              type: true,
-              companyName: true,
-              firstName: true,
-              lastName: true,
-            },
-          },
-        },
-        orderBy: { createdAt: 'desc' },
-        skip,
-        take: limit,
-      }),
-      this.prisma.location.count({ where }),
-    ]);
-
-    return { data, total, page, limit };
-  }
-
-  async findLocation(locationId: string, user: User) {
-    const location = await this.prisma.location.findUnique({
-      where: { id: locationId },
+    return paginate(this.prisma.location, {
+      where,
       include: {
         contact: {
           select: {
@@ -730,11 +679,30 @@ export class ContactsService {
           },
         },
       },
+      orderBy: { createdAt: 'desc' },
+      page,
+      limit,
     });
+  }
 
-    if (!location) {
-      throw new NotFoundException('Locatie niet gevonden');
-    }
+  async findLocation(locationId: string, user: User) {
+    const location = assertFound(
+      await this.prisma.location.findUnique({
+        where: { id: locationId },
+        include: {
+          contact: {
+            select: {
+              id: true,
+              type: true,
+              companyName: true,
+              firstName: true,
+              lastName: true,
+            },
+          },
+        },
+      }),
+      'Locatie',
+    );
 
     if (!user.roles.includes(Role.SUPERUSER) && location.orgId !== user.orgId) {
       throw new ForbiddenException();
@@ -753,13 +721,12 @@ export class ContactsService {
   }
 
   async updateLocation(locationId: string, dto: UpdateLocationDto, user: User) {
-    const location = await this.prisma.location.findUnique({
-      where: { id: locationId },
-    });
-
-    if (!location) {
-      throw new NotFoundException('Locatie niet gevonden');
-    }
+    const location = assertFound(
+      await this.prisma.location.findUnique({
+        where: { id: locationId },
+      }),
+      'Locatie',
+    );
 
     // Verify org scoping
     if (!user.roles.includes(Role.SUPERUSER) && location.orgId !== user.orgId) {
@@ -897,13 +864,12 @@ export class ContactsService {
   }
 
   async updateLocationContactPerson(linkId: string, dto: UpdateLocationContactPersonDto, user: User) {
-    const link = await this.prisma.locationContactPerson.findUnique({
-      where: { id: linkId },
-    });
-
-    if (!link) {
-      throw new NotFoundException('Koppeling niet gevonden');
-    }
+    const link = assertFound(
+      await this.prisma.locationContactPerson.findUnique({
+        where: { id: linkId },
+      }),
+      'Koppeling',
+    );
 
     if (!user.roles.includes(Role.SUPERUSER) && link.orgId !== user.orgId) {
       throw new ForbiddenException();
@@ -926,13 +892,12 @@ export class ContactsService {
   }
 
   async removeLocationContactPerson(linkId: string, user: User) {
-    const link = await this.prisma.locationContactPerson.findUnique({
-      where: { id: linkId },
-    });
-
-    if (!link) {
-      throw new NotFoundException('Koppeling niet gevonden');
-    }
+    const link = assertFound(
+      await this.prisma.locationContactPerson.findUnique({
+        where: { id: linkId },
+      }),
+      'Koppeling',
+    );
 
     if (!user.roles.includes(Role.SUPERUSER) && link.orgId !== user.orgId) {
       throw new ForbiddenException();
@@ -942,13 +907,12 @@ export class ContactsService {
   }
 
   async deleteLocation(locationId: string, user: User) {
-    const location = await this.prisma.location.findUnique({
-      where: { id: locationId },
-    });
-
-    if (!location) {
-      throw new NotFoundException('Locatie niet gevonden');
-    }
+    const location = assertFound(
+      await this.prisma.location.findUnique({
+        where: { id: locationId },
+      }),
+      'Locatie',
+    );
 
     // Verify org scoping
     if (!user.roles.includes(Role.SUPERUSER) && location.orgId !== user.orgId) {

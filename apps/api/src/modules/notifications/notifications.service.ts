@@ -1,7 +1,6 @@
 import {
   Injectable,
   Logger,
-  NotFoundException,
   ForbiddenException,
   BadRequestException,
 } from '@nestjs/common';
@@ -9,6 +8,7 @@ import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { User, Role, NotificationType, Prisma } from '@prisma/client';
 import { PrismaService } from '@/prisma';
+import { paginate, assertFound } from '@/common';
 import { EmailService } from '@/common/services/email.service';
 import {
   ListNotificationsQueryDto,
@@ -141,7 +141,6 @@ export class NotificationsService {
 
   async findAll(user: User, query: ListNotificationsQueryDto) {
     const { type, unread, page = 1, limit = 20 } = query;
-    const skip = (page - 1) * limit;
 
     const where: Prisma.NotificationWhereInput = {
       userId: user.id,
@@ -155,17 +154,12 @@ export class NotificationsService {
       where.isRead = !unread;
     }
 
-    const [data, total] = await Promise.all([
-      this.prisma.notification.findMany({
-        where,
-        orderBy: { createdAt: 'desc' },
-        skip,
-        take: limit,
-      }),
-      this.prisma.notification.count({ where }),
-    ]);
-
-    return { data, total, page, limit };
+    return paginate(this.prisma.notification, {
+      where,
+      orderBy: { createdAt: 'desc' },
+      page,
+      limit,
+    });
   }
 
   async getUnreadCount(user: User) {
@@ -176,13 +170,12 @@ export class NotificationsService {
   }
 
   async markRead(id: string, user: User) {
-    const notification = await this.prisma.notification.findUnique({
-      where: { id },
-    });
-
-    if (!notification) {
-      throw new NotFoundException('Notificatie niet gevonden');
-    }
+    const notification = assertFound(
+      await this.prisma.notification.findUnique({
+        where: { id },
+      }),
+      'Notificatie',
+    );
 
     if (notification.userId !== user.id) {
       throw new ForbiddenException();

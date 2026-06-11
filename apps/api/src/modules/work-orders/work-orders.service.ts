@@ -1,12 +1,12 @@
 import {
   Injectable,
   Logger,
-  NotFoundException,
   ForbiddenException,
   BadRequestException,
 } from '@nestjs/common';
 import { User, Role, Prisma, WorkOrderStatus } from '@prisma/client';
 import { PrismaService } from '@/prisma';
+import { paginate, orgScope, assertFound } from '@/common';
 import {
   CreateWorkOrderDto,
   UpdateWorkOrderDto,
@@ -188,13 +188,8 @@ export class WorkOrdersService {
 
   async findAll(user: User, query: ListWorkOrdersQueryDto) {
     const { search, status, planningItemId, inspectorId, page = 1, limit = 20 } = query;
-    const skip = (page - 1) * limit;
 
-    const where: Prisma.WorkOrderWhereInput = {};
-
-    if (!user.roles.includes(Role.SUPERUSER)) {
-      where.orgId = user.orgId!;
-    }
+    const where: Prisma.WorkOrderWhereInput = { ...orgScope(user) };
 
     if (status) {
       where.status = status;
@@ -231,29 +226,23 @@ export class WorkOrdersService {
       ];
     }
 
-    const [data, total] = await Promise.all([
-      this.prisma.workOrder.findMany({
-        where,
-        include: WORK_ORDER_LIST_INCLUDE,
-        orderBy: { createdAt: 'desc' },
-        skip,
-        take: limit,
-      }),
-      this.prisma.workOrder.count({ where }),
-    ]);
-
-    return { data, total, page, limit };
+    return paginate(this.prisma.workOrder, {
+      where,
+      include: WORK_ORDER_LIST_INCLUDE,
+      orderBy: { createdAt: 'desc' },
+      page,
+      limit,
+    });
   }
 
   async findOne(id: string, user: User) {
-    const workOrder = await this.prisma.workOrder.findUnique({
-      where: { id },
-      include: WORK_ORDER_INCLUDE,
-    });
-
-    if (!workOrder) {
-      throw new NotFoundException('Werkbon niet gevonden');
-    }
+    const workOrder = assertFound(
+      await this.prisma.workOrder.findUnique({
+        where: { id },
+        include: WORK_ORDER_INCLUDE,
+      }),
+      'Werkbon',
+    );
 
     if (
       !user.roles.includes(Role.SUPERUSER) &&
@@ -271,16 +260,15 @@ export class WorkOrdersService {
 
     // If planning item is provided, verify it exists and belongs to org
     if (dto.planningItemId) {
-      const planningItem = await this.prisma.planningItem.findUnique({
-        where: { id: dto.planningItemId },
-        include: {
-          location: { select: { postalCode: true, houseNumber: true } },
-        },
-      });
-
-      if (!planningItem) {
-        throw new NotFoundException('Planregel niet gevonden');
-      }
+      const planningItem = assertFound(
+        await this.prisma.planningItem.findUnique({
+          where: { id: dto.planningItemId },
+          include: {
+            location: { select: { postalCode: true, houseNumber: true } },
+          },
+        }),
+        'Planregel',
+      );
 
       if (
         !user.roles.includes(Role.SUPERUSER) &&
@@ -336,12 +324,12 @@ export class WorkOrdersService {
 
     // If linking to a planning item, verify it exists and belongs to org
     if (dto.planningItemId) {
-      const planningItem = await this.prisma.planningItem.findUnique({
-        where: { id: dto.planningItemId },
-      });
-      if (!planningItem) {
-        throw new NotFoundException('Planregel niet gevonden');
-      }
+      const planningItem = assertFound(
+        await this.prisma.planningItem.findUnique({
+          where: { id: dto.planningItemId },
+        }),
+        'Planregel',
+      );
       if (!user.roles.includes(Role.SUPERUSER) && planningItem.orgId !== user.orgId) {
         throw new ForbiddenException('Geen toegang tot deze planregel');
       }

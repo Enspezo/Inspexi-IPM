@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { User, Role, Prisma } from '@prisma/client';
 import { PrismaService } from '@/prisma';
+import { paginate, orgScope } from '@/common';
 import {
   CreateCustomerGroupDto,
   UpdateCustomerGroupDto,
@@ -17,34 +18,25 @@ export class CustomerGroupsService {
 
   async findAll(user: User, query: ListCustomerGroupsQueryDto) {
     const { search, page = 1, limit = 50 } = query;
-    const skip = (page - 1) * limit;
 
     const where: Prisma.CustomerGroupWhereInput = {
+      ...orgScope(user),
       isDeleted: false,
     };
-
-    if (!user.roles.includes(Role.SUPERUSER)) {
-      where.orgId = user.orgId!;
-    }
 
     if (search) {
       where.name = { contains: search, mode: 'insensitive' };
     }
 
-    const [data, total] = await Promise.all([
-      this.prisma.customerGroup.findMany({
-        where,
-        include: {
-          _count: { select: { contacts: true } },
-        },
-        orderBy: { name: 'asc' },
-        skip,
-        take: limit,
-      }),
-      this.prisma.customerGroup.count({ where }),
-    ]);
-
-    return { data, total, page, limit };
+    return paginate(this.prisma.customerGroup, {
+      where,
+      include: {
+        _count: { select: { contacts: true } },
+      },
+      orderBy: { name: 'asc' },
+      page,
+      limit,
+    });
   }
 
   async findOne(id: string, user: User) {
@@ -164,11 +156,9 @@ export class CustomerGroupsService {
 
   async findAllCompact(user: User) {
     const where: Prisma.CustomerGroupWhereInput = {
+      ...orgScope(user),
       isDeleted: false,
     };
-    if (!user.roles.includes(Role.SUPERUSER)) {
-      where.orgId = user.orgId!;
-    }
 
     return this.prisma.customerGroup.findMany({
       where,

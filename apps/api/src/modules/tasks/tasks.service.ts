@@ -1,11 +1,11 @@
 import {
   Injectable,
-  NotFoundException,
   ForbiddenException,
   Logger,
 } from '@nestjs/common';
 import { User, Role, Prisma, TaskEntityType, TaskType, TaskStatus, LogType, NotificationType } from '@prisma/client';
 import { PrismaService } from '@/prisma';
+import { paginate, buildOrderBy, orgScope, assertFound } from '@/common';
 import { NotificationsService } from '../notifications/notifications.service';
 import { CreateTaskDto, UpdateTaskDto, ListTasksQueryDto } from './dto';
 
@@ -129,16 +129,9 @@ export class TasksService {
   async findAll(user: User, query: ListTasksQueryDto) {
     const { search, status, taskType, entityType, entityId, onlyMine, page = 1, limit = 20, sortBy, sortOrder = 'desc' } = query;
     const ALLOWED_SORT_FIELDS = ['title', 'status', 'taskType', 'entityType', 'deadline', 'createdAt'];
-    const orderBy = (sortBy && ALLOWED_SORT_FIELDS.includes(sortBy))
-      ? { [sortBy]: sortOrder }
-      : { createdAt: 'desc' as const };
-    const skip = (page - 1) * limit;
+    const orderBy = buildOrderBy(sortBy, sortOrder, ALLOWED_SORT_FIELDS, { createdAt: 'desc' });
 
-    const where: Prisma.TaskWhereInput = {};
-
-    if (!user.roles.includes(Role.SUPERUSER)) {
-      where.orgId = user.orgId!;
-    }
+    const where: Prisma.TaskWhereInput = { ...orgScope(user) };
 
     if (status) {
       where.status = status;
@@ -164,42 +157,38 @@ export class TasksService {
       where.title = { contains: search, mode: 'insensitive' };
     }
 
-    const [data, total] = await Promise.all([
-      this.prisma.task.findMany({
-        where,
-        include: {
-          assignee: { select: userSelect },
-          createdBy: { select: userSelect },
-        },
-        orderBy,
-        skip,
-        take: limit,
-      }),
-      this.prisma.task.count({ where }),
-    ]);
-
-    // Enrich with entity names
-    const nameMap = await this.enrichWithEntityNames(data);
-    const enrichedData = data.map((task) => ({
-      ...task,
-      entityName: nameMap.get(task.entityId) || null,
-    }));
-
-    return { data: enrichedData, total, page, limit };
-  }
-
-  async findOne(id: string, user: User) {
-    const task = await this.prisma.task.findUnique({
-      where: { id },
+    const result = await paginate(this.prisma.task, {
+      where,
       include: {
         assignee: { select: userSelect },
         createdBy: { select: userSelect },
       },
+      orderBy,
+      page,
+      limit,
     });
 
-    if (!task) {
-      throw new NotFoundException('Taak niet gevonden');
-    }
+    // Enrich with entity names
+    const nameMap = await this.enrichWithEntityNames(result.data);
+    const enrichedData = result.data.map((task) => ({
+      ...task,
+      entityName: nameMap.get(task.entityId) || null,
+    }));
+
+    return { ...result, data: enrichedData };
+  }
+
+  async findOne(id: string, user: User) {
+    const task = assertFound(
+      await this.prisma.task.findUnique({
+        where: { id },
+        include: {
+          assignee: { select: userSelect },
+          createdBy: { select: userSelect },
+        },
+      }),
+      'Taak',
+    );
 
     if (!user.roles.includes(Role.SUPERUSER) && task.orgId !== user.orgId) {
       throw new ForbiddenException('Geen toegang tot deze taak');
@@ -255,13 +244,10 @@ export class TasksService {
   }
 
   async update(id: string, dto: UpdateTaskDto, user: User) {
-    const existing = await this.prisma.task.findUnique({
-      where: { id },
-    });
-
-    if (!existing) {
-      throw new NotFoundException('Taak niet gevonden');
-    }
+    const existing = assertFound(
+      await this.prisma.task.findUnique({ where: { id } }),
+      'Taak',
+    );
 
     if (!user.roles.includes(Role.SUPERUSER) && existing.orgId !== user.orgId) {
       throw new ForbiddenException('Geen toegang tot deze taak');
@@ -408,13 +394,10 @@ export class TasksService {
   }
 
   async remove(id: string, user: User) {
-    const existing = await this.prisma.task.findUnique({
-      where: { id },
-    });
-
-    if (!existing) {
-      throw new NotFoundException('Taak niet gevonden');
-    }
+    const existing = assertFound(
+      await this.prisma.task.findUnique({ where: { id } }),
+      'Taak',
+    );
 
     if (!user.roles.includes(Role.SUPERUSER) && existing.orgId !== user.orgId) {
       throw new ForbiddenException('Geen toegang tot deze taak');

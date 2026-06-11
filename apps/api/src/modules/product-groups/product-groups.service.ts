@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { User, Role, Prisma } from '@prisma/client';
 import { PrismaService } from '@/prisma';
+import { paginate, orgScope, assertFound } from '@/common';
 import { CreateProductGroupDto, UpdateProductGroupDto, ListProductGroupsQueryDto } from './dto';
 
 const PRODUCT_SELECT = {
@@ -26,34 +27,25 @@ export class ProductGroupsService {
 
   async findAll(user: User, query: ListProductGroupsQueryDto) {
     const { search, page = 1, limit = 50 } = query;
-    const skip = (page - 1) * limit;
 
     const where: Prisma.ProductGroupWhereInput = {
+      ...orgScope(user),
       isDeleted: false,
     };
-
-    if (!user.roles.includes(Role.SUPERUSER)) {
-      where.orgId = user.orgId!;
-    }
 
     if (search) {
       where.name = { contains: search, mode: 'insensitive' };
     }
 
-    const [data, total] = await Promise.all([
-      this.prisma.productGroup.findMany({
-        where,
-        include: {
-          _count: { select: { products: true } },
-        },
-        orderBy: { name: 'asc' },
-        skip,
-        take: limit,
-      }),
-      this.prisma.productGroup.count({ where }),
-    ]);
-
-    return { data, total, page, limit };
+    return paginate(this.prisma.productGroup, {
+      where,
+      include: {
+        _count: { select: { products: true } },
+      },
+      orderBy: { name: 'asc' },
+      page,
+      limit,
+    });
   }
 
   async findOne(id: string, user: User) {
@@ -81,10 +73,7 @@ export class ProductGroupsService {
   }
 
   async findAllCompact(user: User) {
-    const where: Prisma.ProductGroupWhereInput = { isDeleted: false };
-    if (!user.roles.includes(Role.SUPERUSER)) {
-      where.orgId = user.orgId!;
-    }
+    const where: Prisma.ProductGroupWhereInput = { ...orgScope(user), isDeleted: false };
     return this.prisma.productGroup.findMany({
       where,
       select: { id: true, name: true },
@@ -153,10 +142,10 @@ export class ProductGroupsService {
   async addProduct(groupId: string, productId: string, user: User) {
     const group = await this.findOne(groupId, user);
 
-    const product = await this.prisma.product.findUnique({ where: { id: productId } });
-    if (!product) {
-      throw new NotFoundException('Product niet gevonden');
-    }
+    const product = assertFound(
+      await this.prisma.product.findUnique({ where: { id: productId } }),
+      'Product',
+    );
     if (!user.roles.includes(Role.SUPERUSER) && product.orgId !== user.orgId) {
       throw new ForbiddenException();
     }

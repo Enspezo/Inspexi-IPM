@@ -44,7 +44,7 @@ describe('Auth (e2e)', () => {
         passwordHash,
         firstName: 'E2E',
         lastName: 'Tester',
-        role: 'ORG_ADMIN',
+        roles: ['ORG_ADMIN'],
         orgId: org.id,
         emailVerifiedAt: new Date(),
       },

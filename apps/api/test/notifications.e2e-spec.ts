@@ -47,7 +47,7 @@ describe('Notifications (e2e)', () => {
         passwordHash,
         firstName: 'Notif',
         lastName: 'Tester',
-        role: 'ORG_ADMIN',
+        roles: ['ORG_ADMIN'],
         orgId: org.id,
         emailVerifiedAt: new Date(),
       },
@@ -88,7 +88,7 @@ describe('Notifications (e2e)', () => {
 
   afterAll(async () => {
     // Cleanup
-    await prisma.notificationGroupPref.deleteMany({ where: { userId: testUserId } });
+    await prisma.notificationGroupPref.deleteMany({ where: { orgId: testOrgId } });
     await prisma.notificationPref.deleteMany({ where: { userId: testUserId } });
     await prisma.notification.deleteMany({
       where: { id: { in: createdNotificationIds } },
@@ -159,12 +159,12 @@ describe('Notifications (e2e)', () => {
     });
   });
 
-  describe('PATCH /api/v1/notifications/mark-all-read', () => {
+  describe('POST /api/v1/notifications/read-all', () => {
     it('should mark all notifications as read', async () => {
       const res = await request(app.getHttpServer())
-        .patch('/api/v1/notifications/mark-all-read')
+        .post('/api/v1/notifications/read-all')
         .set('Authorization', `Bearer ${accessToken}`)
-        .expect(200);
+        .expect(201);
 
       expect(res.body.success).toBe(true);
 
@@ -178,10 +178,10 @@ describe('Notifications (e2e)', () => {
     });
   });
 
-  describe('GET /api/v1/notifications/preferences', () => {
+  describe('GET /api/v1/notification-prefs', () => {
     it('should return notification preferences', async () => {
       const res = await request(app.getHttpServer())
-        .get('/api/v1/notifications/preferences')
+        .get('/api/v1/notification-prefs')
         .set('Authorization', `Bearer ${accessToken}`)
         .expect(200);
 

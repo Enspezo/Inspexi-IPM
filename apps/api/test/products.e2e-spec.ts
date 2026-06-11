@@ -137,10 +137,17 @@ describe('Products API (e2e)', () => {
       }
     });
 
-    it('filter by category works (category=inspectie)', async () => {
+    it('filter by product group works (productGroupId=Inspectie)', async () => {
+      const org1 = await prisma.organization.findUnique({
+        where: { slug: 'inspexidemo' },
+      });
+      const inspectieGroup = await prisma.productGroup.findFirst({
+        where: { orgId: org1!.id, name: 'Inspectie' },
+      });
+
       const res = await request(app.getHttpServer())
         .get('/api/v1/products')
-        .query({ category: 'inspectie' })
+        .query({ productGroupId: inspectieGroup!.id })
         .set('Authorization', `Bearer ${org1AdminToken}`)
         .expect(200);
 
@@ -148,7 +155,7 @@ describe('Products API (e2e)', () => {
       // Org1 has 3 inspectie products: NEN1010, NEN3140, Thermografisch
       expect(res.body.data.data.length).toBeGreaterThanOrEqual(3);
       for (const product of res.body.data.data) {
-        expect(product.category).toBe('inspectie');
+        expect(product.productGroupId).toBe(inspectieGroup!.id);
       }
     });
 
@@ -192,7 +199,6 @@ describe('Products API (e2e)', () => {
           name: 'E2E Test Product',
           unit: 'uur',
           description: 'Product aangemaakt door E2E test',
-          category: 'test',
         })
         .expect(201);
 
@@ -200,7 +206,6 @@ describe('Products API (e2e)', () => {
       expect(res.body.data.name).toBe('E2E Test Product');
       expect(res.body.data.unit).toBe('uur');
       expect(res.body.data.description).toBe('Product aangemaakt door E2E test');
-      expect(res.body.data.category).toBe('test');
       expect(res.body.data.isActive).toBe(true);
       expect(res.body.data.defaultVat).toBe(21);
       expect(res.body.data.id).toBeDefined();

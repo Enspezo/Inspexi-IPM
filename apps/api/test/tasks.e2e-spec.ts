@@ -48,7 +48,7 @@ describe('Tasks (e2e)', () => {
         passwordHash,
         firstName: 'Task',
         lastName: 'Tester',
-        role: 'ORG_ADMIN',
+        roles: ['ORG_ADMIN'],
         orgId: org.id,
         emailVerifiedAt: new Date(),
       },

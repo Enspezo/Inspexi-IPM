@@ -48,7 +48,7 @@ describe('Organizations (e2e)', () => {
         passwordHash,
         firstName: 'Super',
         lastName: 'User',
-        role: 'SUPERUSER',
+        roles: ['SUPERUSER'],
         emailVerifiedAt: new Date(),
       },
     });
@@ -61,7 +61,7 @@ describe('Organizations (e2e)', () => {
         passwordHash,
         firstName: 'Org',
         lastName: 'Admin',
-        role: 'ORG_ADMIN',
+        roles: ['ORG_ADMIN'],
         orgId: org.id,
         emailVerifiedAt: new Date(),
       },

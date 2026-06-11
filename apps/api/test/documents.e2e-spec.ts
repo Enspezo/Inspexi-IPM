@@ -48,7 +48,7 @@ describe('Documents (e2e)', () => {
         passwordHash,
         firstName: 'Doc',
         lastName: 'Tester',
-        role: 'ORG_ADMIN',
+        roles: ['ORG_ADMIN'],
         orgId: org.id,
         emailVerifiedAt: new Date(),
       },

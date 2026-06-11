@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { User, Role, TaskEntityType, DocumentEntityType } from '@prisma/client';
 import { PrismaService } from '@/prisma';
 import { SearchQueryDto, SearchEntityType } from './dto/search-query.dto';
@@ -22,6 +22,8 @@ export interface SearchResult {
 
 @Injectable()
 export class SearchService {
+  private readonly logger = new Logger(SearchService.name);
+
   constructor(private prisma: PrismaService) {}
 
   async search(user: User, query: SearchQueryDto): Promise<SearchResult> {

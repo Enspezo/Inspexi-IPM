@@ -1,5 +1,6 @@
 import {
   Injectable,
+  Logger,
   ForbiddenException,
 } from '@nestjs/common';
 import { User, Role, Prisma } from '@prisma/client';
@@ -14,6 +15,8 @@ import {
 
 @Injectable()
 export class ProductsService {
+  private readonly logger = new Logger(ProductsService.name);
+
   constructor(
     private prisma: PrismaService,
     private customFieldsValidator: CustomFieldsValidator,

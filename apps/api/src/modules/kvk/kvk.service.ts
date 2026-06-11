@@ -1,5 +1,6 @@
 import {
   Injectable,
+  Logger,
   BadGatewayException,
   NotFoundException,
 } from '@nestjs/common';
@@ -31,6 +32,7 @@ export interface KvkCompanyProfile {
 
 @Injectable()
 export class KvkService {
+  private readonly logger = new Logger(KvkService.name);
   private readonly baseUrlV2: string;
   private readonly baseUrlV1: string;
   private readonly apiKey: string;
@@ -62,7 +64,8 @@ export class KvkService {
     let res: Response;
     try {
       res = await fetch(url, { headers: { apikey: this.apiKey } });
-    } catch {
+    } catch (err) {
+      this.logger.error('KvK search API unreachable', err);
       throw new BadGatewayException('KvK API onbereikbaar');
     }
 
@@ -90,7 +93,8 @@ export class KvkService {
     let res: Response;
     try {
       res = await fetch(url, { headers: { apikey: this.apiKey } });
-    } catch {
+    } catch (err) {
+      this.logger.error('KvK profile API unreachable', err);
       throw new BadGatewayException('KvK API onbereikbaar');
     }
 

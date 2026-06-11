@@ -1,5 +1,6 @@
 import {
   Injectable,
+  Logger,
   NotFoundException,
   ForbiddenException,
   ConflictException,
@@ -23,6 +24,8 @@ const PRODUCT_SELECT = {
 
 @Injectable()
 export class ProductGroupsService {
+  private readonly logger = new Logger(ProductGroupsService.name);
+
   constructor(private prisma: PrismaService) {}
 
   async findAll(user: User, query: ListProductGroupsQueryDto) {

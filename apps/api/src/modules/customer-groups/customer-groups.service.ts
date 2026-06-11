@@ -1,5 +1,6 @@
 import {
   Injectable,
+  Logger,
   NotFoundException,
   ForbiddenException,
 } from '@nestjs/common';
@@ -14,6 +15,8 @@ import {
 
 @Injectable()
 export class CustomerGroupsService {
+  private readonly logger = new Logger(CustomerGroupsService.name);
+
   constructor(private prisma: PrismaService) {}
 
   async findAll(user: User, query: ListCustomerGroupsQueryDto) {

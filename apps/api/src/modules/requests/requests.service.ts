@@ -327,14 +327,46 @@ export class RequestsService {
     return updated;
   }
 
+  /** Lijst van actieve "reden verloren" opties (globaal + org-specifiek). */
+  async findLostReasons(user: User) {
+    const scope = user.orgId
+      ? [{ orgId: null }, { orgId: user.orgId }]
+      : [{ orgId: null }];
+    return this.prisma.lostReason.findMany({
+      where: { isActive: true, OR: scope },
+      orderBy: [{ sortOrder: 'asc' }, { label: 'asc' }],
+    });
+  }
+
+  /** Valideert dat een reden-ID bestaat en globaal of van de eigen org is. */
+  private async resolveLostReasonId(
+    lostReasonId: string | undefined,
+    orgId: string | null,
+  ): Promise<string | null> {
+    if (!lostReasonId) return null;
+    const scope = orgId ? [{ orgId: null }, { orgId }] : [{ orgId: null }];
+    const reason = await this.prisma.lostReason.findFirst({
+      where: { id: lostReasonId, OR: scope },
+    });
+    if (!reason) {
+      throw new NotFoundException('Reden verloren niet gevonden');
+    }
+    return reason.id;
+  }
+
   async updateStatus(id: string, dto: UpdateRequestStatusDto, user: User) {
     const request = await this.findOne(id, user);
+
+    const lostReasonId =
+      dto.status === 'VERLOREN'
+        ? await this.resolveLostReasonId(dto.lostReasonId, request.orgId)
+        : null;
 
     const updated = await this.prisma.$transaction(async (tx) => {
       const lostFields =
         dto.status === 'VERLOREN'
-          ? { lostReason: dto.lostReason ?? null, lostNote: dto.lostNote ?? null }
-          : { lostReason: null, lostNote: null };
+          ? { lostReasonId, lostNote: dto.lostNote ?? null }
+          : { lostReasonId: null, lostNote: null };
 
       const result = await tx.request.update({
         where: { id: request.id },

@@ -104,6 +104,14 @@ const FK_FIELD_RESOLVERS: Record<string, RefConfig> = {
     model: 'workOrder',
     display: (r) => r.workOrderNumber || `Werkbon #${r.id.substring(0, 8)}`,
   },
+  lostReasonId: {
+    model: 'lostReason',
+    display: (r) => r.label || r.code || r.id,
+  },
+  roleId: {
+    model: 'contactPersonRoleOption',
+    display: (r) => r.label || r.code || r.id,
+  },
 };
 
 /** UUID v4 pattern */

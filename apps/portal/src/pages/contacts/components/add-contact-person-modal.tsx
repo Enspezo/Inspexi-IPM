@@ -1,29 +1,19 @@
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { ContactPersonRole } from '@/types';
 import { Modal, Input, Select, Button, useToast } from '@/components/ui';
-import { useAddContactPerson } from '../hooks/use-contacts';
+import { useAddContactPerson, useContactPersonRoles } from '../hooks/use-contacts';
 
 const schema = z.object({
   firstName: z.string().min(1, 'Voornaam is verplicht'),
   lastName: z.string().min(1, 'Achternaam is verplicht'),
   email: z.string().email('Ongeldig e-mailadres').or(z.literal('')).optional(),
   phone: z.string().optional(),
-  role: z.nativeEnum(ContactPersonRole, {
-    errorMap: () => ({ message: 'Selecteer een rol' }),
-  }),
+  roleId: z.string().optional(),
   notes: z.string().optional(),
 });
 
 type FormData = z.infer<typeof schema>;
-
-const roleOptions = [
-  { value: ContactPersonRole.ALGEMEEN, label: 'Algemeen' },
-  { value: ContactPersonRole.TECHNISCH, label: 'Technisch' },
-  { value: ContactPersonRole.ADMINISTRATIEF, label: 'Administratief' },
-  { value: ContactPersonRole.ANDERS, label: 'Anders' },
-];
 
 interface Props {
   isOpen: boolean;
@@ -34,6 +24,8 @@ interface Props {
 export function AddContactPersonModal({ isOpen, onClose, contactId }: Props) {
   const { showToast } = useToast();
   const addMutation = useAddContactPerson(contactId);
+  const { data: roles } = useContactPersonRoles();
+  const roleOptions = (roles ?? []).map((r) => ({ value: r.id, label: r.label }));
 
   const {
     register,
@@ -42,9 +34,6 @@ export function AddContactPersonModal({ isOpen, onClose, contactId }: Props) {
     formState: { errors },
   } = useForm<FormData>({
     resolver: zodResolver(schema),
-    defaultValues: {
-      role: ContactPersonRole.ALGEMEEN,
-    },
   });
 
   const onSubmit = async (data: FormData) => {
@@ -108,8 +97,8 @@ export function AddContactPersonModal({ isOpen, onClose, contactId }: Props) {
         <Select
           label="Rol"
           options={roleOptions}
-          error={errors.role?.message}
-          {...register('role')}
+          error={errors.roleId?.message}
+          {...register('roleId')}
         />
 
         <div>

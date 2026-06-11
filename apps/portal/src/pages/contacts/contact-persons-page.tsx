@@ -1,6 +1,5 @@
 import { useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ContactPersonRole } from '@/types';
 import type { ContactPerson } from '@/types';
 import {
   ActionMenu,
@@ -12,30 +11,9 @@ import {
   type Column,
 } from '@/components/ui';
 import { DetailPageLayout } from '@/components/layout/detail-page-layout';
-import { useContactPersons } from './hooks/use-contacts';
+import { useContactPersons, useContactPersonRoles } from './hooks/use-contacts';
 import { CreateContactPersonModal } from './components/create-contact-person-modal';
-
-const roleFilterOptions = [
-  { value: '', label: 'Alle rollen' },
-  { value: ContactPersonRole.ALGEMEEN, label: 'Algemeen' },
-  { value: ContactPersonRole.TECHNISCH, label: 'Technisch' },
-  { value: ContactPersonRole.ADMINISTRATIEF, label: 'Administratief' },
-  { value: ContactPersonRole.ANDERS, label: 'Anders' },
-];
-
-const roleLabels: Record<string, string> = {
-  [ContactPersonRole.ALGEMEEN]: 'Algemeen',
-  [ContactPersonRole.TECHNISCH]: 'Technisch',
-  [ContactPersonRole.ADMINISTRATIEF]: 'Administratief',
-  [ContactPersonRole.ANDERS]: 'Anders',
-};
-
-const roleColors: Record<string, string> = {
-  [ContactPersonRole.ALGEMEEN]: 'bg-blue-100 text-blue-800',
-  [ContactPersonRole.TECHNISCH]: 'bg-orange-100 text-orange-800',
-  [ContactPersonRole.ADMINISTRATIEF]: 'bg-green-100 text-green-800',
-  [ContactPersonRole.ANDERS]: 'bg-gray-100 text-gray-800',
-};
+import { roleColors } from '@/lib/contact-person-role';
 
 function getContactName(contact?: {
   type?: string;
@@ -55,9 +33,15 @@ export default function ContactPersonsPage() {
   const [page, setPage] = useState(1);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
 
+  const { data: roleOptions } = useContactPersonRoles();
+  const roleFilterOptions = [
+    { value: '', label: 'Alle rollen' },
+    ...(roleOptions ?? []).map((r) => ({ value: r.id, label: r.label })),
+  ];
+
   const { data, isLoading, error } = useContactPersons({
     search: search || undefined,
-    role: (roleFilter as ContactPersonRole) || undefined,
+    roleId: roleFilter || undefined,
     page,
     limit: 20,
   });
@@ -89,10 +73,10 @@ export default function ContactPersonsPage() {
       render: (person) => (
         <span
           className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
-            roleColors[person.role] || 'bg-gray-100 text-gray-800'
+            roleColors[person.role?.code ?? ''] || 'bg-gray-100 text-gray-800'
           }`}
         >
-          {roleLabels[person.role] || person.role}
+          {person.role?.label || '—'}
         </span>
       ),
     },

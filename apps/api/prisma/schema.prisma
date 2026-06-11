@@ -51,24 +51,10 @@ enum RequestStatus {
   ON_HOLD
 }
 
-enum LostReason {
-  TE_DUUR
-  GEEN_BESCHIKBAARHEID
-  NIET_LANGER_NODIG
-  ANDERS
-}
-
 enum Priority {
   LOW
   NORMAL
   HIGH
-}
-
-enum ContactPersonRole {
-  ALGEMEEN
-  TECHNISCH
-  ADMINISTRATIEF
-  ANDERS
 }
 
 enum QuoteStatus {
@@ -306,6 +292,9 @@ model Organization {
   projects               Project[]
   errorReports           ErrorReport[]
   workOrders             WorkOrder[]
+  locationContactPersons LocationContactPerson[]
+  lostReasons            LostReason[]
+  contactPersonRoles     ContactPersonRoleOption[]
 
   @@map("imp_organizations")
 }
@@ -500,14 +489,16 @@ model ContactPerson {
   lastName  String            @map("last_name")
   email     String?
   phone     String?
-  role      ContactPersonRole @default(ALGEMEEN)
+  roleId    String?           @map("role_id") @db.Uuid
   notes     String?
   isDeleted Boolean           @default(false) @map("is_deleted")
   createdAt DateTime          @default(now()) @map("created_at")
 
   contact      Contact      @relation(fields: [contactId], references: [id])
   organization Organization @relation(fields: [orgId], references: [id])
+  role         ContactPersonRoleOption? @relation(fields: [roleId], references: [id])
   planningItems PlanningItem[]
+  locationContactPersons LocationContactPerson[]
 
   @@map("imp_contact_persons")
 }
@@ -535,8 +526,25 @@ model Location {
   quotes       Quote[]
   planningItems PlanningItem[]
   projects      Project[]
+  locationContactPersons LocationContactPerson[]
 
   @@map("imp_locations")
+}
+
+model LocationContactPerson {
+  id              String        @id @default(uuid()) @db.Uuid
+  locationId      String        @map("location_id") @db.Uuid
+  contactPersonId String        @map("contact_person_id") @db.Uuid
+  orgId           String        @map("org_id") @db.Uuid
+  notes           String?
+  createdAt       DateTime      @default(now()) @map("created_at")
+
+  location      Location      @relation(fields: [locationId], references: [id])
+  contactPerson ContactPerson @relation(fields: [contactPersonId], references: [id])
+  organization  Organization  @relation(fields: [orgId], references: [id])
+
+  @@unique([locationId, contactPersonId])
+  @@map("imp_location_contact_persons")
 }
 
 model ContactLog {
@@ -571,6 +579,46 @@ model ContactEmail {
   user    User    @relation(fields: [userId], references: [id])
 
   @@map("imp_contact_emails")
+}
+
+// ─── Lookup Tables (vervangen voorheen enums) ───────────
+
+/// Reden waarom een aanvraag verloren ging. orgId null = globale default.
+model LostReason {
+  id        String   @id @default(uuid()) @db.Uuid
+  orgId     String?  @map("org_id") @db.Uuid
+  code      String
+  label     String
+  sortOrder Int      @default(0) @map("sort_order")
+  isActive  Boolean  @default(true) @map("is_active")
+  isSystem  Boolean  @default(false) @map("is_system")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  organization Organization? @relation(fields: [orgId], references: [id])
+  requests     Request[]
+
+  @@unique([orgId, code])
+  @@index([orgId, isActive])
+  @@map("imp_lost_reasons")
+}
+
+/// Rol van een contactpersoon. orgId null = globale default.
+model ContactPersonRoleOption {
+  id        String   @id @default(uuid()) @db.Uuid
+  orgId     String?  @map("org_id") @db.Uuid
+  code      String
+  label     String
+  sortOrder Int      @default(0) @map("sort_order")
+  isActive  Boolean  @default(true) @map("is_active")
+  isSystem  Boolean  @default(false) @map("is_system")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  organization   Organization?   @relation(fields: [orgId], references: [id])
+  contactPersons ContactPerson[]
+
+  @@unique([orgId, code])
+  @@index([orgId, isActive])
+  @@map("imp_contact_person_roles")
 }
 
 // ─── PRD-04: Products & Price Tables ────────────────────
@@ -673,7 +721,7 @@ model Request {
   assignedTo  String?       @map("assigned_to") @db.Uuid
   source      RequestSource
   status      RequestStatus @default(NIEUW)
-  lostReason  LostReason?   @map("lost_reason")
+  lostReasonId String?      @map("lost_reason_id") @db.Uuid
   lostNote    String?       @map("lost_note")
   title       String
   description String?
@@ -692,6 +740,7 @@ model Request {
   assignedUser  User?                  @relation("AssignedToUser", fields: [assignedTo], references: [id])
   createdByUser User                   @relation("CreatedByUser", fields: [createdBy], references: [id])
   project       Project?               @relation(fields: [projectId], references: [id])
+  lostReason    LostReason?            @relation(fields: [lostReasonId], references: [id])
   statusHistory RequestStatusHistory[]
   quotes        Quote[]
 

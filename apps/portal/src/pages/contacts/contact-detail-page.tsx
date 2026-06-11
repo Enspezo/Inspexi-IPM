@@ -3,7 +3,8 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { ContactType, ContactPersonRole, LogType, QuoteStatus, RequestStatus, Priority, TaskStatus, PlanningStatus, Role, TaskEntityType, DocumentEntityType, CustomFieldEntityType, ProjectStatus } from '@/types';
+import { ContactType, LogType, QuoteStatus, RequestStatus, Priority, TaskStatus, PlanningStatus, Role, TaskEntityType, DocumentEntityType, CustomFieldEntityType, ProjectStatus } from '@/types';
+import { roleColors } from '@/lib/contact-person-role';
 import type { Contact, ContactAddress, ContactLog, ContactEmail, Location, Task, PlanningItem, Request as RequestType } from '@/types';
 import { ActionMenu, type ActionMenuItem, Button, Card, Input, Modal, Spinner, useToast, VatInput } from '@/components/ui';
 import { getKvkProfile } from '@/lib/kvk';
@@ -89,19 +90,7 @@ const logTypeColors: Record<string, string> = {
   [LogType.NOTE]: 'bg-gray-100 text-gray-800',
 };
 
-const contactPersonRoleLabels: Record<string, string> = {
-  [ContactPersonRole.ALGEMEEN]: 'Algemeen',
-  [ContactPersonRole.TECHNISCH]: 'Technisch',
-  [ContactPersonRole.ADMINISTRATIEF]: 'Administratief',
-  [ContactPersonRole.ANDERS]: 'Anders',
-};
-
-const contactPersonRoleColors: Record<string, string> = {
-  [ContactPersonRole.ALGEMEEN]: 'bg-blue-100 text-blue-800',
-  [ContactPersonRole.TECHNISCH]: 'bg-orange-100 text-orange-800',
-  [ContactPersonRole.ADMINISTRATIEF]: 'bg-green-100 text-green-800',
-  [ContactPersonRole.ANDERS]: 'bg-gray-100 text-gray-800',
-};
+const contactPersonRoleColors = roleColors;
 
 const quoteStatusLabels: Record<string, string> = {
   [QuoteStatus.CONCEPT]: 'Concept',
@@ -758,10 +747,10 @@ export default function ContactDetailPage() {
                         <td className="whitespace-nowrap px-4 py-3 text-sm">
                           <span
                             className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
-                              contactPersonRoleColors[person.role] || 'bg-gray-100 text-gray-800'
+                              contactPersonRoleColors[person.role?.code ?? ''] || 'bg-gray-100 text-gray-800'
                             }`}
                           >
-                            {contactPersonRoleLabels[person.role] || person.role}
+                            {person.role?.label || '—'}
                           </span>
                         </td>
                         <td className="whitespace-nowrap px-4 py-3 text-sm text-gray-500">
@@ -879,9 +868,12 @@ export default function ContactDetailPage() {
                     <div className="flex items-start justify-between">
                       <div className="flex-1 min-w-0">
                         <div className="flex flex-wrap items-center gap-1">
-                          <span className="text-sm font-medium text-gray-900">
+                          <button
+                            onClick={() => navigate(`/contacts/locations/${loc.id}`)}
+                            className="text-sm font-medium text-primary-700 hover:underline"
+                          >
                             {loc.name}
-                          </span>
+                          </button>
                           {loc.objectType && (
                             <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-700">
                               {loc.objectType}

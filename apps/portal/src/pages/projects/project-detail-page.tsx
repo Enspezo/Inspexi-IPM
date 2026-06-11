@@ -107,6 +107,15 @@ export default function ProjectDetailPage() {
   const [isTaskOpen, setIsTaskOpen] = useState(false);
   const [addFollowerOpen, setAddFollowerOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [confirmUnlink, setConfirmUnlink] = useState<{
+    entityType: 'requests' | 'quotes' | 'planning';
+    entityId: string;
+    label: string;
+  } | null>(null);
+  const [confirmRemoveFollower, setConfirmRemoveFollower] = useState<{
+    followerId: string;
+    name: string;
+  } | null>(null);
 
   const { data: project, isLoading, error } = useProject(id!);
   const updateMutation = useUpdateProject(id!);
@@ -184,7 +193,14 @@ export default function ProjectDetailPage() {
   const handleUnassign = async (
     entityType: 'requests' | 'quotes' | 'planning',
     entityId: string,
+    label: string,
   ) => {
+    setConfirmUnlink({ entityType, entityId, label });
+  };
+
+  const confirmUnlinkAction = async () => {
+    if (!confirmUnlink) return;
+    const { entityType, entityId } = confirmUnlink;
     const payload: Record<string, string[]> = {};
     if (entityType === 'requests') payload.requestIds = [entityId];
     if (entityType === 'quotes') payload.quoteIds = [entityId];
@@ -194,15 +210,24 @@ export default function ProjectDetailPage() {
       showToast('Ontkoppeld', 'success');
     } catch {
       showToast('Ontkoppelen mislukt', 'error');
+    } finally {
+      setConfirmUnlink(null);
     }
   };
 
-  const handleRemoveFollower = async (followerId: string) => {
+  const handleRemoveFollower = (followerId: string, name: string) => {
+    setConfirmRemoveFollower({ followerId, name });
+  };
+
+  const confirmRemoveFollowerAction = async () => {
+    if (!confirmRemoveFollower) return;
     try {
-      await removeFollowerMutation.mutateAsync(followerId);
+      await removeFollowerMutation.mutateAsync(confirmRemoveFollower.followerId);
       showToast('Volger verwijderd', 'success');
     } catch {
       showToast('Verwijderen mislukt', 'error');
+    } finally {
+      setConfirmRemoveFollower(null);
     }
   };
 
@@ -396,7 +421,7 @@ export default function ProjectDetailPage() {
               entityType="requests"
               canWrite={!!userCanWrite}
               onLink={() => setLinkType('requests')}
-              onUnlink={(entityId) => handleUnassign('requests', entityId)}
+              onUnlink={(entityId, label) => handleUnassign('requests', entityId, label)}
               onNavigate={(entityId) => navigate(`/requests/${entityId}`)}
               getLabel={(item) => item.title}
               getSubLabel={(item) => item.status}
@@ -410,7 +435,7 @@ export default function ProjectDetailPage() {
               entityType="quotes"
               canWrite={!!userCanWrite}
               onLink={() => setLinkType('quotes')}
-              onUnlink={(entityId) => handleUnassign('quotes', entityId)}
+              onUnlink={(entityId, label) => handleUnassign('quotes', entityId, label)}
               onNavigate={(entityId) => navigate(`/quotes/${entityId}`)}
               getLabel={(item) => item.quoteNumber || item.subject}
               getSubLabel={(item) => item.status}
@@ -424,7 +449,7 @@ export default function ProjectDetailPage() {
               entityType="planning"
               canWrite={!!userCanWrite}
               onLink={() => setLinkType('planning')}
-              onUnlink={(entityId) => handleUnassign('planning', entityId)}
+              onUnlink={(entityId, label) => handleUnassign('planning', entityId, label)}
               onNavigate={(entityId) => navigate(`/planning/${entityId}`)}
               getLabel={(item) => item.productName}
               getSubLabel={(item) =>
@@ -510,6 +535,62 @@ export default function ProjectDetailPage() {
               variant="danger"
               onClick={handleDelete}
               isLoading={deleteMutation.isPending}
+            >
+              Verwijderen
+            </Button>
+          </div>
+        </Modal>
+      )}
+
+      {/* Confirm unlink */}
+      {confirmUnlink && (
+        <Modal
+          isOpen
+          onClose={() => setConfirmUnlink(null)}
+          title="Ontkoppelen bevestigen"
+        >
+          <p className="text-sm text-gray-600">
+            Weet je zeker dat je <span className="font-medium">{confirmUnlink.label}</span> wilt ontkoppelen van dit project?
+          </p>
+          <div className="mt-4 flex justify-end gap-3">
+            <Button
+              variant="secondary"
+              onClick={() => setConfirmUnlink(null)}
+            >
+              Annuleren
+            </Button>
+            <Button
+              variant="danger"
+              onClick={confirmUnlinkAction}
+              isLoading={unassignMutation.isPending}
+            >
+              Ontkoppelen
+            </Button>
+          </div>
+        </Modal>
+      )}
+
+      {/* Confirm remove follower */}
+      {confirmRemoveFollower && (
+        <Modal
+          isOpen
+          onClose={() => setConfirmRemoveFollower(null)}
+          title="Volger verwijderen"
+        >
+          <p className="text-sm text-gray-600">
+            Weet je zeker dat je <span className="font-medium">{confirmRemoveFollower.name}</span> als volger wilt verwijderen?
+          </p>
+          <div className="mt-4 flex justify-end gap-3">
+            <Button
+              variant="secondary"
+              onClick={() => setConfirmRemoveFollower(null)}
+            >
+              Annuleren
+            </Button>
+            <Button
+              variant="danger"
+              onClick={confirmRemoveFollowerAction}
+              isLoading={removeFollowerMutation.isPending}
             >
               Verwijderen
             </Button>
@@ -831,7 +912,7 @@ function LinkedEntitiesTab({
   entityType: string;
   canWrite: boolean;
   onLink: () => void;
-  onUnlink: (id: string) => void;
+  onUnlink: (id: string, label: string) => void;
   onNavigate: (id: string) => void;
   getLabel: (item: any) => string;
   getSubLabel: (item: any) => string;
@@ -872,7 +953,7 @@ function LinkedEntitiesTab({
             {canWrite && (
               <Button
                 variant="ghost"
-                onClick={() => onUnlink(item.id)}
+                onClick={() => onUnlink(item.id, getLabel(item))}
               >
                 Ontkoppelen
               </Button>
@@ -911,7 +992,7 @@ function FollowersTab({
   followers: ProjectFollower[];
   canWrite: boolean;
   onAdd: () => void;
-  onRemove: (id: string) => void;
+  onRemove: (id: string, name: string) => void;
   onUpdatePermissions: (followerId: string, data: UpdateProjectFollowerData) => Promise<any>;
 }) {
   const internalFollowers = followers.filter((f) => !!f.userId);
@@ -958,7 +1039,7 @@ function FollowersTab({
                   </div>
                 </div>
                 {canWrite && (
-                  <Button variant="ghost" onClick={() => onRemove(f.id)}>
+                  <Button variant="ghost" onClick={() => onRemove(f.id, name)}>
                     Verwijderen
                   </Button>
                 )}
@@ -997,7 +1078,7 @@ function FollowersTab({
                     </div>
                   </div>
                   {canWrite && (
-                    <Button variant="ghost" onClick={() => onRemove(f.id)}>
+                    <Button variant="ghost" onClick={() => onRemove(f.id, name)}>
                       Verwijderen
                     </Button>
                   )}

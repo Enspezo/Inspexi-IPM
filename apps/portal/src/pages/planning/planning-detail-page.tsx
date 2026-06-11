@@ -698,7 +698,7 @@ function PlanningDetailView({ id }: { id: string }) {
                       <option value="">— Geen contactpersoon —</option>
                       {allContactPersons.map((p) => (
                         <option key={p.id} value={p.id}>
-                          {p.firstName} {p.lastName}{p.role ? ` (${p.role.charAt(0) + p.role.slice(1).toLowerCase()})` : ''}
+                          {p.firstName} {p.lastName}{p.role?.label ? ` (${p.role.label})` : ''}
                         </option>
                       ))}
                     </select>
@@ -1916,7 +1916,7 @@ function CreatePlanningForm() {
         lastName: newPersonLastName.trim(),
         email: newPersonEmail.trim() || undefined,
         phone: newPersonPhone.trim() || undefined,
-        role: 'ALGEMEEN' as any,
+        // roleId weggelaten → backend valt terug op standaardrol "Algemeen"
       });
       setContactPersonId((created as any).id);
       setShowCreatePerson(false);

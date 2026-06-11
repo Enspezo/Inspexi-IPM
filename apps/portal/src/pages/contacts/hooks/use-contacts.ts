@@ -5,11 +5,12 @@ import type {
   ContactAddress,
   ContactPerson,
   Location,
+  LocationContactPerson,
   ContactLog,
   ContactEmail,
   PaginatedResponse,
   ContactType,
-  ContactPersonRole,
+  ContactPersonRoleOption,
 } from '@/types';
 
 interface ListContactsParams {
@@ -272,7 +273,7 @@ export function useSendEmail(contactId: string) {
 interface ListContactPersonsParams {
   contactId?: string;
   search?: string;
-  role?: ContactPersonRole;
+  roleId?: string;
   page?: number;
   limit?: number;
 }
@@ -281,7 +282,7 @@ export function useContactPersons(params: ListContactPersonsParams = {}) {
   const queryParams = new URLSearchParams();
   if (params.contactId) queryParams.set('contactId', params.contactId);
   if (params.search) queryParams.set('search', params.search);
-  if (params.role) queryParams.set('role', params.role);
+  if (params.roleId) queryParams.set('roleId', params.roleId);
   if (params.page) queryParams.set('page', String(params.page));
   if (params.limit) queryParams.set('limit', String(params.limit));
 
@@ -294,12 +295,21 @@ export function useContactPersons(params: ListContactPersonsParams = {}) {
   });
 }
 
+/** Lookup: actieve contactpersoon-rollen (globaal + org-specifiek). */
+export function useContactPersonRoles() {
+  return useQuery<ContactPersonRoleOption[]>({
+    queryKey: ['contact-person-roles'],
+    queryFn: () => apiClient.get<ContactPersonRoleOption[]>('/contacts/contact-person-roles'),
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
 interface CreateContactPersonDto {
   firstName: string;
   lastName: string;
   email?: string;
   phone?: string;
-  role: ContactPersonRole;
+  roleId?: string;
   notes?: string;
 }
 
@@ -353,6 +363,129 @@ export function useDeleteContactPerson() {
       apiClient.delete(`/contacts/contact-persons/${personId}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['contacts'] });
+    },
+  });
+}
+
+interface UpdateLocationData extends Partial<CreateLocationDto> {
+  pdokData?: Record<string, unknown>;
+}
+
+export function useUpdateLocationById() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ locationId, data }: { locationId: string; data: UpdateLocationData }) =>
+      apiClient.patch<Location>(`/contacts/locations/${locationId}`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['locations'] });
+    },
+  });
+}
+
+export function useDeleteLocationById() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (locationId: string) =>
+      apiClient.delete(`/contacts/locations/${locationId}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['locations'] });
+    },
+  });
+}
+
+// ─── Locations (global list) ──────────────────────────
+
+interface ListLocationsParams {
+  search?: string;
+  contactId?: string;
+  objectType?: string;
+  page?: number;
+  limit?: number;
+}
+
+export function useLocations(params: ListLocationsParams = {}) {
+  const queryParams = new URLSearchParams();
+  if (params.search) queryParams.set('search', params.search);
+  if (params.contactId) queryParams.set('contactId', params.contactId);
+  if (params.objectType) queryParams.set('objectType', params.objectType);
+  if (params.page) queryParams.set('page', String(params.page));
+  if (params.limit) queryParams.set('limit', String(params.limit));
+
+  const qs = queryParams.toString();
+  const endpoint = `/contacts/locations${qs ? `?${qs}` : ''}`;
+
+  return useQuery<PaginatedResponse<Location & { contact?: { id: string; type: string; companyName: string | null; firstName: string | null; lastName: string | null } }>>({
+    queryKey: ['locations', params],
+    queryFn: () => apiClient.get(endpoint),
+  });
+}
+
+export function useLocation(locationId: string) {
+  return useQuery<Location & { contact?: { id: string; type: string; companyName: string | null; firstName: string | null; lastName: string | null } }>({
+    queryKey: ['locations', locationId],
+    queryFn: () => apiClient.get(`/contacts/locations/${locationId}`),
+    enabled: !!locationId,
+  });
+}
+
+// ─── Location–ContactPerson links ─────────────────────
+
+export function useContactPersonLocations(personId: string) {
+  return useQuery<(import('@/types').LocationContactPerson & {
+    location?: {
+      id: string; name: string; street: string; houseNumber: string;
+      postalCode: string; city: string; objectType: string | null; contactId: string;
+      contact?: { id: string; type: string; companyName: string | null; firstName: string | null; lastName: string | null };
+    };
+  })[]>({
+    queryKey: ['contact-person-locations', personId],
+    queryFn: () => apiClient.get(`/contacts/contact-persons/${personId}/locations`),
+    enabled: !!personId,
+  });
+}
+
+export function useLocationContactPersons(locationId: string) {
+  return useQuery<LocationContactPerson[]>({
+    queryKey: ['location-contact-persons', locationId],
+    queryFn: () => apiClient.get(`/contacts/locations/${locationId}/contact-persons`),
+    enabled: !!locationId,
+  });
+}
+
+export function useLinkContactPerson(locationId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (data: { contactPersonId: string; notes?: string }) =>
+      apiClient.post<LocationContactPerson>(`/contacts/locations/${locationId}/contact-persons`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['location-contact-persons', locationId] });
+    },
+  });
+}
+
+export function useUpdateLocationContactPerson(linkId: string, locationId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (data: { notes?: string }) =>
+      apiClient.patch<LocationContactPerson>(`/contacts/locations/contact-persons/${linkId}`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['location-contact-persons', locationId] });
+    },
+  });
+}
+
+export function useUnlinkContactPerson(locationId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (linkId: string) =>
+      apiClient.delete(`/contacts/locations/contact-persons/${linkId}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['location-contact-persons', locationId] });
     },
   });
 }

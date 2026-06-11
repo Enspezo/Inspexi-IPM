@@ -2,19 +2,19 @@ import { ApiPropertyOptional } from '@nestjs/swagger';
 import { IsOptional, IsString, IsUUID } from 'class-validator';
 import { BasePaginationQueryDto } from '@/common/dto';
 
-export class ListContactPersonsQueryDto extends BasePaginationQueryDto {
+export class ListLocationsQueryDto extends BasePaginationQueryDto {
   @ApiPropertyOptional({ description: 'Filter op contact ID' })
   @IsOptional()
   @IsUUID()
   contactId?: string;
 
-  @ApiPropertyOptional({ description: 'Zoeken op naam, email' })
+  @ApiPropertyOptional({ description: 'Zoeken op naam, straat, stad, postcode' })
   @IsOptional()
   @IsString()
   search?: string;
 
-  @ApiPropertyOptional({ description: 'Filter op rol ID (lookup)', format: 'uuid' })
+  @ApiPropertyOptional({ description: 'Filter op objecttype' })
   @IsOptional()
-  @IsUUID()
-  roleId?: string;
+  @IsString()
+  objectType?: string;
 }

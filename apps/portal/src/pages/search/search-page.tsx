@@ -14,7 +14,6 @@ import type {
   SearchDocumentResult,
   SearchProductResult,
   SearchResultItem,
-  ContactPersonRole,
 } from '@/types';
 import { Role, RequestStatus, QuoteStatus, TaskStatus } from '@/types';
 import { hasRole } from '@/lib/has-role';
@@ -45,13 +44,6 @@ const TASK_STATUS_LABELS: Record<TaskStatus, string> = {
   TE_DOEN: 'Te doen',
   MEE_BEZIG: 'Mee bezig',
   VOLTOOID: 'Voltooid',
-};
-
-const CONTACT_PERSON_ROLE_LABELS: Record<ContactPersonRole, string> = {
-  ALGEMEEN: 'Algemeen',
-  TECHNISCH: 'Technisch',
-  ADMINISTRATIEF: 'Administratief',
-  ANDERS: 'Anders',
 };
 
 function contactDisplayName(c: {
@@ -157,7 +149,7 @@ function useContactPersonColumns(): Column<SearchContactPersonResult>[] {
     {
       key: 'role',
       header: 'Functie',
-      render: (p) => CONTACT_PERSON_ROLE_LABELS[p.role as ContactPersonRole] ?? p.role,
+      render: (p) => p.role?.label ?? '—',
     },
     {
       key: 'email',

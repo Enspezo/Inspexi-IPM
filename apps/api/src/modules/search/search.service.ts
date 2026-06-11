@@ -168,7 +168,7 @@ export class SearchService {
           lastName: true,
           email: true,
           phone: true,
-          role: true,
+          role: { select: { id: true, code: true, label: true } },
           contact: {
             select: {
               id: true,

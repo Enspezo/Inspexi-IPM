@@ -552,7 +552,7 @@ describe('RequestsService', () => {
       expect(mockPrismaService.$transaction).toHaveBeenCalledTimes(1);
       expect(mockTx.request.update).toHaveBeenCalledWith({
         where: { id: 'request-1' },
-        data: { status: RequestStatus.IN_BEHANDELING },
+        data: expect.objectContaining({ status: RequestStatus.IN_BEHANDELING }),
       });
       expect(mockTx.requestStatusHistory.create).toHaveBeenCalledWith({
         data: {

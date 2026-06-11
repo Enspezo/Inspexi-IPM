@@ -46,7 +46,7 @@ const entityLabels: Record<string, Record<string, string>> = {
   },
   ContactPerson: {
     contactId: 'Relatie',
-    role: 'Rol',
+    roleId: 'Rol',
   },
   Location: {
     contactId: 'Relatie',
@@ -80,6 +80,8 @@ const entityLabels: Record<string, Record<string, string>> = {
     status: 'Status',
     title: 'Titel',
     priority: 'Prioriteit',
+    lostReasonId: 'Reden verloren',
+    lostNote: 'Toelichting verloren',
     createdBy: 'Aangemaakt door',
     customFields: 'Eigen velden',
   },

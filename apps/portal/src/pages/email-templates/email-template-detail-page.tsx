@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import type { Editor } from '@tiptap/react';
-import { ActionMenu, Button, ErrorBox, Spinner, Input, RichTextEditor } from '@/components/ui';
+import { ActionMenu, Button, ErrorBox, Spinner, Input, RichTextEditor, useConfirm } from '@/components/ui';
 import { formatFileSize } from '@/lib/format';
 import { DetailPageLayout } from '@/components/layout/detail-page-layout';
 import { AuditHistory } from '@/components/audit-history/audit-history';
@@ -26,6 +26,7 @@ export default function EmailTemplateDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { showToast } = useToast();
+  const confirm = useConfirm();
 
   const { data: template, isLoading, error } = useEmailTemplate(id!);
   const updateMutation = useUpdateEmailTemplate(id!);
@@ -76,7 +77,13 @@ export default function EmailTemplateDetailPage() {
     if (!template) return;
     const newActive = !template.isActive;
     const msg = newActive ? 'activeren' : 'deactiveren';
-    if (!window.confirm(`Weet u zeker dat u dit sjabloon wilt ${msg}?`)) return;
+    const confirmed = await confirm({
+      title: newActive ? 'Sjabloon activeren' : 'Sjabloon deactiveren',
+      message: `Weet u zeker dat u dit sjabloon wilt ${msg}?`,
+      confirmLabel: newActive ? 'Activeren' : 'Deactiveren',
+      ...(newActive ? { variant: 'primary' as const } : {}),
+    });
+    if (!confirmed) return;
     try {
       await updateMutation.mutateAsync({ isActive: newActive });
       showToast(`Sjabloon ${newActive ? 'geactiveerd' : 'gedeactiveerd'}`, 'success');
@@ -171,7 +178,12 @@ export default function EmailTemplateDetailPage() {
   };
 
   const handleAttachmentDelete = async (attachmentId: string) => {
-    if (!window.confirm('Bijlage verwijderen?')) return;
+    const confirmed = await confirm({
+      title: 'Bijlage verwijderen',
+      message: 'Bijlage verwijderen?',
+      confirmLabel: 'Verwijderen',
+    });
+    if (!confirmed) return;
     try {
       await deleteAttachmentMutation.mutateAsync(attachmentId);
       showToast('Bijlage verwijderd', 'success');

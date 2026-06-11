@@ -4,7 +4,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Role, DocumentEntityType, CustomFieldEntityType } from '@/types';
-import { ActionMenu, Button, Card, ErrorBox, Spinner, Input, Select, useToast } from '@/components/ui';
+import { ActionMenu, Button, Card, ErrorBox, InfoField, Spinner, Input, Select, useToast } from '@/components/ui';
 import { DetailPageLayout } from '@/components/layout/detail-page-layout';
 import { AuditHistory } from '@/components/audit-history/audit-history';
 import { DocumentsSection, UploadDocumentModal } from '@/components/documents';
@@ -36,15 +36,6 @@ const schema = z.object({
 });
 
 type FormData = z.infer<typeof schema>;
-
-function InfoField({ label, value }: { label: string; value: React.ReactNode }) {
-  return (
-    <div>
-      <dt className="text-sm font-medium text-gray-500">{label}</dt>
-      <dd className="mt-1 text-sm text-gray-900">{value ?? '—'}</dd>
-    </div>
-  );
-}
 
 export default function ProductDetailPage() {
   const { id } = useParams<{ id: string }>();

@@ -6,7 +6,7 @@ import { z } from 'zod';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/providers/auth-provider';
 import { apiClient } from '@/lib/api-client';
-import { Card, Input, Button, Badge, Spinner, StatusBadge, useToast, SignatureEditor, AddressSearchInput } from '@/components/ui';
+import { Card, Input, Button, Badge, Spinner, StatusBadge, Tabs, useToast, SignatureEditor, AddressSearchInput } from '@/components/ui';
 import { formatDateTime } from '@/lib/format';
 import { AUDIT_ACTION } from '@/lib/status';
 import type { ParsedAddress } from '@/lib/geocoding';
@@ -1348,24 +1348,7 @@ export default function ProfilePage() {
       </div>
 
       {/* Tabs */}
-      <div className="border-b border-gray-200">
-        <nav className="-mb-px flex gap-6">
-          {tabs.map((tab) => (
-            <button
-              key={tab.key}
-              type="button"
-              onClick={() => setActiveTab(tab.key)}
-              className={`whitespace-nowrap border-b-2 px-1 pb-3 text-sm font-medium transition-colors ${
-                activeTab === tab.key
-                  ? 'border-primary-500 text-primary-600'
-                  : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'
-              }`}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </nav>
-      </div>
+      <Tabs tabs={tabs} active={activeTab} onChange={setActiveTab} />
 
       {activeTab === 'profiel' && (
         <>

@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { clsx } from 'clsx';
 import { Role, NoteEntityType } from '@/types';
 import type { Note } from '@/types';
-import { Spinner, useToast } from '@/components/ui';
+import { Spinner, useConfirm, useToast } from '@/components/ui';
 import { useAuth } from '@/providers/auth-provider';
 import {
   useEntityNotes,
@@ -124,6 +124,7 @@ interface NotesSectionProps {
 export function NotesSection({ entityType, entityId }: NotesSectionProps) {
   const { user } = useAuth();
   const { showToast } = useToast();
+  const confirm = useConfirm();
   const { data: notes = [], isLoading } = useEntityNotes(entityType, entityId);
   const createMutation = useCreateNote();
   const updateMutation = useUpdateNote();
@@ -188,7 +189,12 @@ export function NotesSection({ entityType, entityId }: NotesSectionProps) {
   };
 
   const handleDelete = async (noteId: string) => {
-    if (!window.confirm('Weet u zeker dat u deze notitie wilt verwijderen?')) return;
+    const confirmed = await confirm({
+      title: 'Notitie verwijderen',
+      message: 'Weet u zeker dat u deze notitie wilt verwijderen?',
+      confirmLabel: 'Verwijderen',
+    });
+    if (!confirmed) return;
     try {
       await deleteMutation.mutateAsync(noteId);
       showToast('Notitie verwijderd', 'success');

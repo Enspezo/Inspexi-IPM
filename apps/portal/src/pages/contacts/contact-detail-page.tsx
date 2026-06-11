@@ -8,7 +8,7 @@ import { roleColors } from '@/lib/contact-person-role';
 import { formatCurrency, formatShortDate } from '@/lib/format';
 import { getStatusConfig, LOG_TYPE, PLANNING_STATUS, PRIORITY, PROJECT_STATUS, QUOTE_STATUS, REQUEST_STATUS } from '@/lib/status';
 import type { Contact, ContactAddress, ContactLog, ContactEmail, Location, Task, PlanningItem, Request as RequestType } from '@/types';
-import { ActionMenu, type ActionMenuItem, Button, Card, ErrorBox, Input, Modal, Spinner, StatusBadge, useToast, VatInput } from '@/components/ui';
+import { ActionMenu, type ActionMenuItem, Button, Card, ErrorBox, InfoField, Input, Modal, Spinner, StatusBadge, Tabs, useConfirm, useToast, VatInput } from '@/components/ui';
 import { getKvkProfile } from '@/lib/kvk';
 import { type VatValidationResult } from '@/lib/vat';
 import { DetailPageLayout, SidebarSection } from '@/components/layout/detail-page-layout';
@@ -67,6 +67,7 @@ export default function ContactDetailPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { showToast } = useToast();
+  const confirm = useConfirm();
   const { data: contact, isLoading, error } = useContact(id!);
   const updateMutation = useUpdateContact(id!);
   const deleteMutation = useDeleteContact();
@@ -222,7 +223,12 @@ export default function ContactDetailPage() {
 
   const handleDelete = async () => {
     if (!contact) return;
-    if (!window.confirm('Weet u zeker dat u deze relatie wilt verwijderen?')) return;
+    const confirmed = await confirm({
+      title: 'Relatie verwijderen',
+      message: 'Weet u zeker dat u deze relatie wilt verwijderen?',
+      confirmLabel: 'Verwijderen',
+    });
+    if (!confirmed) return;
     try {
       await deleteMutation.mutateAsync(contact.id);
       showToast('Relatie verwijderd', 'success');
@@ -377,28 +383,7 @@ export default function ContactDetailPage() {
       </div>
 
       {/* Tabs */}
-      <div className="border-b border-gray-200">
-        <nav className="-mb-px flex gap-6 overflow-x-auto">
-          {tabs.map((tab) => (
-            <button
-              key={tab.key}
-              onClick={() => setActiveTab(tab.key)}
-              className={`inline-flex items-center gap-1.5 whitespace-nowrap border-b-2 px-1 py-3 text-sm font-medium transition-colors ${
-                activeTab === tab.key
-                  ? 'border-primary-600 text-primary-600'
-                  : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'
-              }`}
-            >
-              {tab.label}
-              {tab.count != null && tab.count > 0 && (
-                <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-primary-100 px-1.5 text-xs font-semibold text-primary-700">
-                  {tab.count}
-                </span>
-              )}
-            </button>
-          ))}
-        </nav>
-      </div>
+      <Tabs tabs={tabs} active={activeTab} onChange={setActiveTab} />
 
       {/* Tab content */}
       {activeTab === 'algemeen' && (
@@ -706,7 +691,12 @@ export default function ContactDetailPage() {
                         <CardMenu
                           onEdit={() => setEditingAddress(addr)}
                           onDelete={async () => {
-                            if (!window.confirm('Weet u zeker dat u dit adres wilt verwijderen?')) return;
+                            const confirmed = await confirm({
+                              title: 'Adres verwijderen',
+                              message: 'Weet u zeker dat u dit adres wilt verwijderen?',
+                              confirmLabel: 'Verwijderen',
+                            });
+                            if (!confirmed) return;
                             try {
                               await deleteAddressMutation.mutateAsync(addr.id);
                               showToast('Adres verwijderd', 'success');
@@ -773,7 +763,12 @@ export default function ContactDetailPage() {
                         <CardMenu
                           onEdit={() => setEditingLocation(loc)}
                           onDelete={async () => {
-                            if (!window.confirm('Weet u zeker dat u deze locatie wilt verwijderen?')) return;
+                            const confirmed = await confirm({
+                              title: 'Locatie verwijderen',
+                              message: 'Weet u zeker dat u deze locatie wilt verwijderen?',
+                              confirmLabel: 'Verwijderen',
+                            });
+                            if (!confirmed) return;
                             try {
                               await deleteLocationMutation.mutateAsync(loc.id);
                               showToast('Locatie verwijderd', 'success');
@@ -1654,21 +1649,6 @@ function ContactCustomerGroups({
           </div>
         </div>
       )}
-    </div>
-  );
-}
-
-function InfoField({
-  label,
-  value,
-}: {
-  label: string;
-  value: string | null | undefined;
-}) {
-  return (
-    <div>
-      <dt className="text-sm font-medium text-gray-500">{label}</dt>
-      <dd className="mt-1 text-sm text-gray-900">{value || '—'}</dd>
     </div>
   );
 }

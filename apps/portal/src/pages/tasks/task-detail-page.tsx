@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { TaskStatus, TaskEntityType, DocumentEntityType, Role } from '@/types';
-import { ActionMenu, Button, Card, ErrorBox, Spinner, StatusBadge, Select, useToast } from '@/components/ui';
+import { ActionMenu, Button, Card, ErrorBox, Spinner, StatusBadge, Select, useConfirm, useToast } from '@/components/ui';
 import { formatDate } from '@/lib/format';
 import { ENTITY_TYPE_LABELS, TASK_STATUS, TASK_TYPE } from '@/lib/status';
 import { DetailPageLayout } from '@/components/layout/detail-page-layout';
@@ -29,6 +29,7 @@ export default function TaskDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { showToast } = useToast();
+  const confirm = useConfirm();
   const { user } = useAuth();
   const { data: task, isLoading, error } = useTask(id!);
   const updateMutation = useUpdateTask();
@@ -79,7 +80,12 @@ export default function TaskDetailPage() {
   };
 
   const handleDelete = async () => {
-    if (!confirm('Weet je zeker dat je deze taak wilt verwijderen?')) return;
+    const confirmed = await confirm({
+      title: 'Taak verwijderen',
+      message: 'Weet je zeker dat je deze taak wilt verwijderen?',
+      confirmLabel: 'Verwijderen',
+    });
+    if (!confirmed) return;
     try {
       await deleteMutation.mutateAsync(task.id);
       showToast('Taak verwijderd', 'success');

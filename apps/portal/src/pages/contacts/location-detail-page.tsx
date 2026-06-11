@@ -5,7 +5,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { ContactType, Role } from '@/types';
 import { roleColors as contactPersonRoleColors } from '@/lib/contact-person-role';
-import { Button, Card, ErrorBox, Input, Select, Spinner, useToast } from '@/components/ui';
+import { Button, Card, ErrorBox, InfoField, Input, Select, Spinner, useConfirm, useToast } from '@/components/ui';
 import { AddressSearchInput } from '@/components/ui/address-search-input';
 import { DetailPageLayout } from '@/components/layout/detail-page-layout';
 import { useAuth } from '@/providers/auth-provider';
@@ -57,6 +57,7 @@ export default function LocationDetailPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { showToast } = useToast();
+  const confirm = useConfirm();
   const { data: location, isLoading, error } = useLocation(locationId!);
   const { data: linkedPersons = [] } = useLocationContactPersons(locationId!);
   const unlinkMutation = useUnlinkContactPerson(locationId!);
@@ -139,7 +140,12 @@ export default function LocationDetailPage() {
 
   const handleDelete = async () => {
     if (!location) return;
-    if (!window.confirm('Weet u zeker dat u deze locatie wilt verwijderen?')) return;
+    const confirmed = await confirm({
+      title: 'Locatie verwijderen',
+      message: 'Weet u zeker dat u deze locatie wilt verwijderen?',
+      confirmLabel: 'Verwijderen',
+    });
+    if (!confirmed) return;
     try {
       await deleteMutation.mutateAsync(location.id);
       showToast('Locatie verwijderd', 'success');
@@ -350,21 +356,6 @@ export default function LocationDetailPage() {
   );
 }
 
-function InfoField({
-  label,
-  value,
-}: {
-  label: string;
-  value: string | null | undefined;
-}) {
-  return (
-    <div>
-      <dt className="text-sm font-medium text-gray-500">{label}</dt>
-      <dd className="mt-1 text-sm text-gray-900">{value || '—'}</dd>
-    </div>
-  );
-}
-
 interface ContactPersonsSectionProps {
   locationId: string;
   locationContactId: string;
@@ -387,6 +378,7 @@ function ContactPersonsSection({
   onOpenLinkModal,
 }: ContactPersonsSectionProps) {
   const { showToast } = useToast();
+  const confirm = useConfirm();
   const updateNotesMutation = useUpdateLocationContactPerson(
     editingNotes?.linkId ?? '',
     locationId,
@@ -399,7 +391,12 @@ function ContactPersonsSection({
   };
 
   const handleUnlink = async (linkId: string) => {
-    if (!window.confirm('Contactpersoon ontkoppelen van deze locatie?')) return;
+    const confirmed = await confirm({
+      title: 'Contactpersoon ontkoppelen',
+      message: 'Contactpersoon ontkoppelen van deze locatie?',
+      confirmLabel: 'Ontkoppelen',
+    });
+    if (!confirmed) return;
     try {
       await unlinkMutation.mutateAsync(linkId);
       showToast('Contactpersoon ontkoppeld', 'success');

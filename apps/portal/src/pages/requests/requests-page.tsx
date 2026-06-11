@@ -18,6 +18,7 @@ import {
 } from '@/components/ui';
 import { PRIORITY, REQUEST_SOURCE_LABELS, REQUEST_STATUS } from '@/lib/status';
 import { DetailPageLayout } from '@/components/layout/detail-page-layout';
+import { PageHeader } from '@/components/layout/page-header';
 import {
   TableConfigSidebar,
   useTableConfig,
@@ -320,56 +321,53 @@ export default function RequestsPage() {
     >
       <div className="space-y-6">
         {/* Header */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-2xl font-bold text-gray-900">Aanvragen</h2>
-            <p className="mt-1 text-sm text-gray-500">
-              Beheer leads en aanvragen
-            </p>
-          </div>
+        <PageHeader
+          title="Aanvragen"
+          description="Beheer leads en aanvragen"
+          actions={
+            <>
+              {/* Weergave toggle */}
+              <div className="flex rounded-lg border border-gray-200 bg-white p-0.5 shadow-sm">
+                <button
+                  onClick={() => handleSetViewMode('table')}
+                  className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                    viewMode === 'table'
+                      ? 'bg-primary-600 text-white shadow-sm'
+                      : 'text-gray-500 hover:text-gray-700'
+                  }`}
+                  title="Tabelweergave"
+                >
+                  <TableIcon />
+                  Lijst
+                </button>
+                <button
+                  onClick={() => handleSetViewMode('kanban')}
+                  className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                    viewMode === 'kanban'
+                      ? 'bg-primary-600 text-white shadow-sm'
+                      : 'text-gray-500 hover:text-gray-700'
+                  }`}
+                  title="Kanban-weergave"
+                >
+                  <KanbanIcon />
+                  Kanban
+                </button>
+              </div>
 
-          <div className="flex items-center gap-2">
-            {/* Weergave toggle */}
-            <div className="flex rounded-lg border border-gray-200 bg-white p-0.5 shadow-sm">
-              <button
-                onClick={() => handleSetViewMode('table')}
-                className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
-                  viewMode === 'table'
-                    ? 'bg-primary-600 text-white shadow-sm'
-                    : 'text-gray-500 hover:text-gray-700'
-                }`}
-                title="Tabelweergave"
-              >
-                <TableIcon />
-                Lijst
-              </button>
-              <button
-                onClick={() => handleSetViewMode('kanban')}
-                className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
-                  viewMode === 'kanban'
-                    ? 'bg-primary-600 text-white shadow-sm'
-                    : 'text-gray-500 hover:text-gray-700'
-                }`}
-                title="Kanban-weergave"
-              >
-                <KanbanIcon />
-                Kanban
-              </button>
-            </div>
-
-            {userCanWrite && (
-              <ActionMenu
-                secondaryActions={[
-                  {
-                    label: 'Aanvraag aanmaken',
-                    icon: <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>,
-                    onClick: () => setIsCreateOpen(true),
-                  },
-                ]}
-              />
-            )}
-          </div>
-        </div>
+              {userCanWrite && (
+                <ActionMenu
+                  secondaryActions={[
+                    {
+                      label: 'Aanvraag aanmaken',
+                      icon: <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>,
+                      onClick: () => setIsCreateOpen(true),
+                    },
+                  ]}
+                />
+              )}
+            </>
+          }
+        />
 
         {/* Filters — statusfilter alleen in tabelweergave */}
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center">

@@ -11,6 +11,7 @@ import {
   Select,
 } from '@/components/ui';
 import { DetailPageLayout } from '@/components/layout/detail-page-layout';
+import { PageHeader } from '@/components/layout/page-header';
 import {
   TableConfigSidebar,
   useTableConfig,
@@ -205,14 +206,7 @@ export default function NotesPage() {
       }
     >
       <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-2xl font-bold text-gray-900">Notities</h2>
-            <p className="mt-1 text-sm text-gray-500">
-              Bekijk en zoek door notities
-            </p>
-          </div>
-        </div>
+        <PageHeader title="Notities" description="Bekijk en zoek door notities" />
 
         {/* Filters */}
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center">

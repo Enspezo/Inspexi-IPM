@@ -12,9 +12,11 @@ import {
   Modal,
   Input,
   Badge,
+  useConfirm,
   useToast,
 } from '@/components/ui';
 import { DetailPageLayout } from '@/components/layout/detail-page-layout';
+import { PageHeader } from '@/components/layout/page-header';
 import {
   TableConfigSidebar,
   useTableConfig,
@@ -40,6 +42,7 @@ type CreateFormData = z.infer<typeof createSchema>;
 export default function QuoteTemplatesPage() {
   const { user } = useAuth();
   const { showToast } = useToast();
+  const confirm = useConfirm();
   const [page, setPage] = useState(1);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
 
@@ -169,7 +172,12 @@ export default function QuoteTemplatesPage() {
   ];
 
   const handleDeactivate = async (id: string) => {
-    if (!window.confirm('Weet u zeker dat u deze template wilt deactiveren?')) return;
+    const confirmed = await confirm({
+      title: 'Template deactiveren',
+      message: 'Weet u zeker dat u deze template wilt deactiveren?',
+      confirmLabel: 'Deactiveren',
+    });
+    if (!confirmed) return;
     try {
       await deleteMutation.mutateAsync(id);
       showToast('Template gedeactiveerd', 'success');
@@ -249,25 +257,23 @@ export default function QuoteTemplatesPage() {
       }
     >
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-bold text-gray-900">Offerte Templates</h2>
-          <p className="mt-1 text-sm text-gray-500">
-            Beheer offerte templates
-          </p>
-        </div>
-        {userIsAdmin && (
-          <ActionMenu
-            secondaryActions={[
-              {
-                label: 'Template aanmaken',
-                icon: <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>,
-                onClick: () => setIsCreateOpen(true),
-              },
-            ]}
-          />
-        )}
-      </div>
+      <PageHeader
+        title="Offerte Templates"
+        description="Beheer offerte templates"
+        actions={
+          userIsAdmin ? (
+            <ActionMenu
+              secondaryActions={[
+                {
+                  label: 'Template aanmaken',
+                  icon: <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>,
+                  onClick: () => setIsCreateOpen(true),
+                },
+              ]}
+            />
+          ) : undefined
+        }
+      />
 
       <Table
         columns={activeColumns}

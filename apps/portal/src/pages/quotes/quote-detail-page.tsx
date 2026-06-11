@@ -10,7 +10,7 @@ import {
   NoteEntityType,
 } from '@/types';
 import type { Task, ContactLog } from '@/types';
-import { ActionMenu, type ActionMenuItem, Button, Card, ErrorBox, Spinner, StatusBadge, Input, Table, useToast, type Column } from '@/components/ui';
+import { ActionMenu, type ActionMenuItem, Button, Card, ErrorBox, Spinner, StatusBadge, Input, Table, useConfirm, useToast, type Column } from '@/components/ui';
 import { formatCurrency, formatDate, formatFileSize } from '@/lib/format';
 import { APPROVAL_STATUS, getStatusConfig, LOG_TYPE, QUOTE_STATUS } from '@/lib/status';
 import { DetailPageLayout, SidebarSection } from '@/components/layout/detail-page-layout';
@@ -65,6 +65,7 @@ export default function QuoteDetailPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { showToast } = useToast();
+  const confirm = useConfirm();
   const { data: quote, isLoading, error } = useQuote(id!);
   const submitApprovalMutation = useSubmitApproval(id!);
   const rejectMutation = useRejectQuote(id!);
@@ -123,7 +124,12 @@ export default function QuoteDetailPage() {
 
   const handleDelete = async () => {
     if (!quote) return;
-    if (!window.confirm('Weet u zeker dat u deze offerte wilt verwijderen?')) return;
+    const confirmed = await confirm({
+      title: 'Offerte verwijderen',
+      message: 'Weet u zeker dat u deze offerte wilt verwijderen?',
+      confirmLabel: 'Verwijderen',
+    });
+    if (!confirmed) return;
     try {
       await deleteMutation.mutateAsync(quote.id);
       showToast('Offerte verwijderd', 'success');
@@ -161,7 +167,12 @@ export default function QuoteDetailPage() {
   };
 
   const handleDeleteAttachment = async (attachmentId: string) => {
-    if (!window.confirm('Bijlage verwijderen?')) return;
+    const confirmed = await confirm({
+      title: 'Bijlage verwijderen',
+      message: 'Bijlage verwijderen?',
+      confirmLabel: 'Verwijderen',
+    });
+    if (!confirmed) return;
     try {
       await deleteAttachmentMutation.mutateAsync(attachmentId);
       showToast('Bijlage verwijderd', 'success');

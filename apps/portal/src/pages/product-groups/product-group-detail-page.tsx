@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Role } from '@/types';
-import { Button, ErrorBox, Spinner, useToast } from '@/components/ui';
+import { Button, ErrorBox, Spinner, useConfirm, useToast } from '@/components/ui';
 import { DetailPageLayout } from '@/components/layout/detail-page-layout';
 import { useAuth } from '@/providers/auth-provider';
 import {
@@ -22,6 +22,7 @@ export default function ProductGroupDetailPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { showToast } = useToast();
+  const confirm = useConfirm();
 
   const { data: group, isLoading, error } = useProductGroup(id!);
   const updateMutation = useUpdateProductGroup(id!);
@@ -34,8 +35,12 @@ export default function ProductGroupDetailPage() {
 
   const handleDelete = async () => {
     if (!group) return;
-    if (!window.confirm('Weet u zeker dat u deze productgroep wilt verwijderen?'))
-      return;
+    const confirmed = await confirm({
+      title: 'Productgroep verwijderen',
+      message: 'Weet u zeker dat u deze productgroep wilt verwijderen?',
+      confirmLabel: 'Verwijderen',
+    });
+    if (!confirmed) return;
     try {
       await deleteMutation.mutateAsync(group.id);
       showToast('Productgroep verwijderd', 'success');
@@ -59,7 +64,12 @@ export default function ProductGroupDetailPage() {
 
   const handleRemoveProduct = async (productId: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!window.confirm('Product verwijderen uit deze productgroep?')) return;
+    const confirmed = await confirm({
+      title: 'Product verwijderen uit groep',
+      message: 'Product verwijderen uit deze productgroep?',
+      confirmLabel: 'Verwijderen',
+    });
+    if (!confirmed) return;
     try {
       await removeProductMutation.mutateAsync(productId);
       showToast('Product verwijderd uit groep', 'success');

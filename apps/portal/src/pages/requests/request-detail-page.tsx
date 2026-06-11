@@ -15,7 +15,7 @@ import {
   NoteEntityType,
 } from '@/types';
 import type { Task, ContactLog } from '@/types';
-import { ActionMenu, type ActionMenuItem, Button, Card, ErrorBox, Spinner, StatusBadge, Select, Input, useToast } from '@/components/ui';
+import { ActionMenu, type ActionMenuItem, Button, Card, ErrorBox, Spinner, StatusBadge, Select, Input, Tabs, useConfirm, useToast } from '@/components/ui';
 import { getStatusConfig, LOG_TYPE, PRIORITY, REQUEST_SOURCE_LABELS, REQUEST_STATUS } from '@/lib/status';
 import { DetailPageLayout, SidebarSection } from '@/components/layout/detail-page-layout';
 import { NotesSidebarSection, HistorySidebarSection, DocumentsSidebarSection } from '@/components/layout/sidebar-sections';
@@ -93,6 +93,7 @@ export default function RequestDetailPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { showToast } = useToast();
+  const confirm = useConfirm();
   const { data: request, isLoading, error } = useRequest(id!);
   const updateMutation = useUpdateRequest(id!);
   const updateStatusMutation = useUpdateRequestStatus(id!);
@@ -228,7 +229,12 @@ export default function RequestDetailPage() {
 
   const handleDelete = async () => {
     if (!request) return;
-    if (!window.confirm('Weet u zeker dat u deze aanvraag wilt verwijderen?')) return;
+    const confirmed = await confirm({
+      title: 'Aanvraag verwijderen',
+      message: 'Weet u zeker dat u deze aanvraag wilt verwijderen?',
+      confirmLabel: 'Verwijderen',
+    });
+    if (!confirmed) return;
     try {
       await deleteMutation.mutateAsync(request.id);
       showToast('Aanvraag verwijderd', 'success');
@@ -376,31 +382,14 @@ export default function RequestDetailPage() {
       </div>
 
       {/* Tabs */}
-      <div className="border-b border-gray-200">
-        <nav className="-mb-px flex gap-6 overflow-x-auto">
-          {([
-            { key: 'overzicht' as Tab, label: 'Overzicht' },
-            { key: 'status' as Tab, label: 'Status', count: request.statusHistory?.length || 0 },
-          ]).map((tab) => (
-            <button
-              key={tab.key}
-              onClick={() => setActiveTab(tab.key)}
-              className={`inline-flex items-center gap-1.5 whitespace-nowrap border-b-2 px-1 py-3 text-sm font-medium transition-colors ${
-                activeTab === tab.key
-                  ? 'border-primary-600 text-primary-600'
-                  : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'
-              }`}
-            >
-              {tab.label}
-              {tab.count != null && tab.count > 0 && (
-                <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-primary-100 px-1.5 text-xs font-semibold text-primary-700">
-                  {tab.count}
-                </span>
-              )}
-            </button>
-          ))}
-        </nav>
-      </div>
+      <Tabs
+        tabs={[
+          { key: 'overzicht' as Tab, label: 'Overzicht' },
+          { key: 'status' as Tab, label: 'Status', count: request.statusHistory?.length || 0 },
+        ]}
+        active={activeTab}
+        onChange={setActiveTab}
+      />
 
       {/* Tab: Overzicht */}
       {activeTab === 'overzicht' && (

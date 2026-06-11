@@ -5,7 +5,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Role } from '@/types';
 import type { User } from '@/types';
-import { Button, Card, ErrorBox, Input, Spinner, Badge, useToast } from '@/components/ui';
+import { Button, Card, ErrorBox, Input, Spinner, Badge, Tabs, useToast } from '@/components/ui';
 import { formatDate, formatDateTime } from '@/lib/format';
 import { DetailPageLayout } from '@/components/layout/detail-page-layout';
 import { AuditHistory } from '@/components/audit-history/audit-history';
@@ -158,23 +158,7 @@ export default function OrganizationDetailPage() {
         </div>
 
         {/* Tabs */}
-        <div className="border-b border-gray-200">
-          <nav className="-mb-px flex gap-6">
-            {tabs.map((tab) => (
-              <button
-                key={tab.key}
-                onClick={() => setActiveTab(tab.key)}
-                className={`border-b-2 px-1 pb-3 text-sm font-medium transition-colors ${
-                  activeTab === tab.key
-                    ? 'border-primary-600 text-primary-600'
-                    : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'
-                }`}
-              >
-                {tab.label}
-              </button>
-            ))}
-          </nav>
-        </div>
+        <Tabs tabs={tabs} active={activeTab} onChange={setActiveTab} />
 
         {/* Tab: Algemeen */}
         {activeTab === 'algemeen' && (

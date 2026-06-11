@@ -12,7 +12,7 @@ import {
   NoteEntityType,
 } from '@/types';
 import type { Project, ProjectFollower } from '@/types';
-import { ActionMenu, Button, Spinner, StatusBadge, Input, Select, Card, Modal, Checkbox } from '@/components/ui';
+import { ActionMenu, Button, InfoField, Spinner, StatusBadge, Input, Select, Card, Modal, Checkbox, Tabs } from '@/components/ui';
 import { PROJECT_STATUS } from '@/lib/status';
 import { DetailPageLayout, SidebarSection } from '@/components/layout/detail-page-layout';
 import { NotesSidebarSection, HistorySidebarSection, DocumentsSidebarSection } from '@/components/layout/sidebar-sections';
@@ -353,28 +353,7 @@ export default function ProjectDetailPage() {
           </div>
 
           {/* Tabs */}
-          <div className="border-b border-gray-200">
-            <nav className="-mb-px flex space-x-6">
-              {tabs.map((t) => (
-                <button
-                  key={t.key}
-                  onClick={() => setActiveTab(t.key)}
-                  className={`border-b-2 pb-3 text-sm font-medium transition-colors ${
-                    activeTab === t.key
-                      ? 'border-primary-500 text-primary-600'
-                      : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'
-                  }`}
-                >
-                  {t.label}
-                  {t.count !== undefined && t.count > 0 && (
-                    <span className="ml-1.5 rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600">
-                      {t.count}
-                    </span>
-                  )}
-                </button>
-              ))}
-            </nav>
-          </div>
+          <Tabs tabs={tabs} active={activeTab} onChange={setActiveTab} />
 
           {/* Tab: Overzicht */}
           {activeTab === 'overzicht' && (
@@ -854,23 +833,6 @@ function OverviewTab({
           </form>
         </Card>
       )}
-    </div>
-  );
-}
-
-// ─── InfoField ─────────────────────────────────────────────
-
-function InfoField({
-  label,
-  value,
-}: {
-  label: string;
-  value: string | null | undefined;
-}) {
-  return (
-    <div>
-      <dt className="text-sm font-medium text-gray-500">{label}</dt>
-      <dd className="mt-1 text-sm text-gray-900">{value || '—'}</dd>
     </div>
   );
 }

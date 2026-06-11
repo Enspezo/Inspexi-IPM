@@ -5,6 +5,7 @@ import type { Project } from '@/types';
 import { ActionMenu, Button, Spinner, StatusBadge, Table, Input, Select } from '@/components/ui';
 import { PROJECT_STATUS } from '@/lib/status';
 import { DetailPageLayout } from '@/components/layout/detail-page-layout';
+import { PageHeader } from '@/components/layout/page-header';
 import {
   TableConfigSidebar,
   useTableConfig,
@@ -264,20 +265,22 @@ export default function ProjectsPage() {
       >
         <div className="space-y-4">
           {/* Header */}
-          <div className="flex items-center justify-between">
-            <h1 className="text-2xl font-bold text-gray-900">Projecten</h1>
-            {hasWrite && (
-              <ActionMenu
-                secondaryActions={[
-                  {
-                    label: 'Nieuw project',
-                    icon: <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>,
-                    onClick: () => setShowCreate(true),
-                  },
-                ]}
-              />
-            )}
-          </div>
+          <PageHeader
+            title="Projecten"
+            actions={
+              hasWrite && (
+                <ActionMenu
+                  secondaryActions={[
+                    {
+                      label: 'Nieuw project',
+                      icon: <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>,
+                      onClick: () => setShowCreate(true),
+                    },
+                  ]}
+                />
+              )
+            }
+          />
 
           {/* Filters */}
           <div className="flex flex-wrap items-center gap-3">

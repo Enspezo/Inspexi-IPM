@@ -18,6 +18,7 @@ import {
 } from '@/components/ui';
 import { ENTITY_TYPE_LABELS, TASK_STATUS, TASK_TYPE } from '@/lib/status';
 import { DetailPageLayout } from '@/components/layout/detail-page-layout';
+import { PageHeader } from '@/components/layout/page-header';
 import {
   TableConfigSidebar,
   useTableConfig,
@@ -297,29 +298,27 @@ export default function TasksPage() {
       }
     >
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-bold text-gray-900">Taken</h2>
-          <p className="mt-1 text-sm text-gray-500">
-            Beheer en volg taken op
-          </p>
-        </div>
-        {userCanWrite && (
-          <ActionMenu
-            secondaryActions={[
-              {
-                label: 'Taak aanmaken',
-                icon: (
-                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
-                  </svg>
-                ),
-                onClick: () => setIsCreateOpen(true),
-              },
-            ]}
-          />
-        )}
-      </div>
+      <PageHeader
+        title="Taken"
+        description="Beheer en volg taken op"
+        actions={
+          userCanWrite && (
+            <ActionMenu
+              secondaryActions={[
+                {
+                  label: 'Taak aanmaken',
+                  icon: (
+                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+                    </svg>
+                  ),
+                  onClick: () => setIsCreateOpen(true),
+                },
+              ]}
+            />
+          )
+        }
+      />
 
       {/* Filters */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center">

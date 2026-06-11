@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Button, Spinner, useToast } from '@/components/ui';
+import { Button, Spinner, useConfirm, useToast } from '@/components/ui';
 import { FollowUpType, FollowUpAssigneeType } from '@/types';
 import type { QuoteTemplateFollowUp } from '@/types';
 import {
@@ -31,6 +31,7 @@ export function FollowUpSection({
   navigate,
 }: FollowUpSectionProps) {
   const { showToast } = useToast();
+  const confirm = useConfirm();
   const { data: followUps, isLoading } = useFollowUpRules(templateId);
   const createMutation = useCreateFollowUp(templateId);
   const updateMutation = useUpdateFollowUp(templateId);
@@ -65,7 +66,12 @@ export function FollowUpSection({
   };
 
   const handleDelete = async (followUpId: string) => {
-    if (!window.confirm('Weet u zeker dat u deze follow-up wilt verwijderen?')) return;
+    const confirmed = await confirm({
+      title: 'Follow-up verwijderen',
+      message: 'Weet u zeker dat u deze follow-up wilt verwijderen?',
+      confirmLabel: 'Verwijderen',
+    });
+    if (!confirmed) return;
     try {
       await deleteMutation.mutateAsync(followUpId);
       showToast('Follow-up verwijderd', 'success');

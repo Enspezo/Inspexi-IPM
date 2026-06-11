@@ -12,6 +12,7 @@ import {
 } from '@/components/ui';
 import { ERROR_REPORT_STATUS } from '@/lib/status';
 import { DetailPageLayout } from '@/components/layout/detail-page-layout';
+import { PageHeader } from '@/components/layout/page-header';
 import {
   TableConfigSidebar,
   useTableConfig,
@@ -323,14 +324,10 @@ export default function ErrorReportsPage() {
       }
     >
       <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-2xl font-bold text-gray-900">Foutmeldingen</h2>
-            <p className="mt-1 text-sm text-gray-500">
-              Overzicht van door gebruikers ingediende foutmeldingen
-            </p>
-          </div>
-        </div>
+        <PageHeader
+          title="Foutmeldingen"
+          description="Overzicht van door gebruikers ingediende foutmeldingen"
+        />
 
         {/* Filter */}
         <div className="flex gap-3">

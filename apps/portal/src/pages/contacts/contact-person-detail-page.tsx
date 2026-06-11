@@ -4,7 +4,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { ContactType, Role } from '@/types';
-import { Button, Card, ErrorBox, Input, Select, Spinner, useToast } from '@/components/ui';
+import { Button, Card, ErrorBox, InfoField, Input, Select, Spinner, useConfirm, useToast } from '@/components/ui';
 import { DetailPageLayout } from '@/components/layout/detail-page-layout';
 import { useAuth } from '@/providers/auth-provider';
 import {
@@ -43,6 +43,7 @@ export default function ContactPersonDetailPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { showToast } = useToast();
+  const confirm = useConfirm();
   const { data: person, isLoading, error } = useContactPerson(personId!);
   const { data: locationLinks = [] } = useContactPersonLocations(personId!);
   const updateMutation = useUpdateContactPerson(personId!);
@@ -101,7 +102,12 @@ export default function ContactPersonDetailPage() {
 
   const handleDelete = async () => {
     if (!person) return;
-    if (!window.confirm('Weet u zeker dat u deze contactpersoon wilt verwijderen?')) return;
+    const confirmed = await confirm({
+      title: 'Contactpersoon verwijderen',
+      message: 'Weet u zeker dat u deze contactpersoon wilt verwijderen?',
+      confirmLabel: 'Verwijderen',
+    });
+    if (!confirmed) return;
     try {
       await deleteMutation.mutateAsync(person.id);
       showToast('Contactpersoon verwijderd', 'success');
@@ -335,20 +341,5 @@ export default function ContactPersonDetailPage() {
       )}
     </div>
     </DetailPageLayout>
-  );
-}
-
-function InfoField({
-  label,
-  value,
-}: {
-  label: string;
-  value: string | null | undefined;
-}) {
-  return (
-    <div>
-      <dt className="text-sm font-medium text-gray-500">{label}</dt>
-      <dd className="mt-1 text-sm text-gray-900">{value || '—'}</dd>
-    </div>
   );
 }

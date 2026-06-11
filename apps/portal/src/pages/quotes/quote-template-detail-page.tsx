@@ -8,7 +8,10 @@ import {
   Input,
   Select,
   Spinner,
+  Tabs,
+  useConfirm,
   useToast,
+  type TabDef,
 } from '@/components/ui';
 import { formatFileSize } from '@/lib/format';
 import { DetailPageLayout } from '@/components/layout/detail-page-layout';
@@ -44,6 +47,7 @@ export default function QuoteTemplateDetailPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { showToast } = useToast();
+  const confirm = useConfirm();
 
   const { data: template, isLoading, error } = useQuoteTemplate(id!);
   const updateMutation = useUpdateQuoteTemplate(id!);
@@ -236,7 +240,12 @@ export default function QuoteTemplateDetailPage() {
 
   // Deactivate
   const handleDeactivate = async () => {
-    if (!window.confirm('Weet u zeker dat u dit template wilt deactiveren?')) return;
+    const confirmed = await confirm({
+      title: 'Template deactiveren',
+      message: 'Weet u zeker dat u dit template wilt deactiveren?',
+      confirmLabel: 'Deactiveren',
+    });
+    if (!confirmed) return;
     try {
       await deleteMutation.mutateAsync(id!);
       showToast('Template gedeactiveerd', 'success');
@@ -289,7 +298,12 @@ export default function QuoteTemplateDetailPage() {
 
   // Attachment delete
   const handleAttachmentDelete = async (attId: string) => {
-    if (!window.confirm('Bijlage verwijderen?')) return;
+    const confirmed = await confirm({
+      title: 'Bijlage verwijderen',
+      message: 'Bijlage verwijderen?',
+      confirmLabel: 'Verwijderen',
+    });
+    if (!confirmed) return;
     try {
       await deleteAttachmentMutation.mutateAsync(attId);
       showToast('Bijlage verwijderd', 'success');
@@ -379,18 +393,18 @@ export default function QuoteTemplateDetailPage() {
   }
 
   // Build tabs based on template type
-  const tabs: { key: Tab; label: string }[] = isDocx
+  const tabs: TabDef<Tab>[] = isDocx
     ? [
         { key: 'docx-bestand', label: 'DOCX Bestand' },
-        { key: 'revisies', label: `Revisies${docxRevisions?.length ? ` (${docxRevisions.length})` : ''}` },
+        { key: 'revisies', label: 'Revisies', count: docxRevisions?.length },
         { key: 'automatisering', label: 'Automatisering' },
-        { key: 'bijlagen', label: `Bijlagen${attachments?.length ? ` (${attachments.length})` : ''}` },
+        { key: 'bijlagen', label: 'Bijlagen', count: attachments?.length },
         { key: 'instellingen', label: 'Instellingen' },
       ]
     : [
         { key: 'inhoud', label: 'Inhoud' },
         { key: 'automatisering', label: 'Automatisering' },
-        { key: 'bijlagen', label: `Bijlagen${attachments?.length ? ` (${attachments.length})` : ''}` },
+        { key: 'bijlagen', label: 'Bijlagen', count: attachments?.length },
         { key: 'instellingen', label: 'Instellingen' },
       ];
 
@@ -452,24 +466,7 @@ export default function QuoteTemplateDetailPage() {
         </div>
 
         {/* Tabs */}
-        <div className="border-b border-gray-200">
-          <nav className="flex gap-6">
-            {tabs.map((tab) => (
-              <button
-                key={tab.key}
-                type="button"
-                onClick={() => setActiveTab(tab.key)}
-                className={`border-b-2 pb-3 text-sm font-medium transition-colors ${
-                  activeTab === tab.key
-                    ? 'border-primary-600 text-primary-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700'
-                }`}
-              >
-                {tab.label}
-              </button>
-            ))}
-          </nav>
-        </div>
+        <Tabs tabs={tabs} active={activeTab} onChange={setActiveTab} />
 
         {/* ── BLOCKS: Inhoud tab ─────────────────────────────── */}
         {activeTab === 'inhoud' && !isDocx && (

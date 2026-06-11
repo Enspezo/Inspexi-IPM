@@ -11,6 +11,8 @@ import {
   Modal,
   Input,
   Select,
+  Tabs,
+  useConfirm,
   useToast,
 } from '@/components/ui';
 import {
@@ -619,27 +621,16 @@ function PlanningDetailView({ id }: { id: string }) {
       </div>
 
       {/* Tabs */}
-      <div className="border-b border-gray-200 mb-6">
-        <nav className="-mb-px flex gap-6 overflow-x-auto">
-          {(['algemeen', ...(item.isMultiDay ? ['sessies'] : []), 'klantportaal', 'volgers', 'status', 'geschiedenis'] as Tab[]).map((t) => (
-            <button
-              key={t}
-              onClick={() => setTab(t)}
-              className={`inline-flex items-center gap-1.5 whitespace-nowrap border-b-2 px-1 py-3 text-sm font-medium transition-colors ${
-                tab === t
-                  ? 'border-primary-600 text-primary-600'
-                  : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'
-              }`}
-            >
-              {tabLabels[t]}
-              {t === 'status' && statusHistory.length > 0 && (
-                <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-primary-100 px-1.5 text-xs font-semibold text-primary-700">
-                  {statusHistory.length}
-                </span>
-              )}
-            </button>
-          ))}
-        </nav>
+      <div className="mb-6">
+        <Tabs
+          tabs={(['algemeen', ...(item.isMultiDay ? ['sessies'] : []), 'klantportaal', 'volgers', 'status', 'geschiedenis'] as Tab[]).map((t) => ({
+            key: t,
+            label: tabLabels[t],
+            count: t === 'status' ? statusHistory.length : undefined,
+          }))}
+          active={tab}
+          onChange={setTab}
+        />
       </div>
 
       {/* ── Algemeen ── */}
@@ -1580,6 +1571,7 @@ function SessionCard({
   const [dateEditOpen, setDateEditOpen] = useState(false);
   const [dateEditValue, setDateEditValue] = useState('');
   const { showToast } = useToast();
+  const confirm = useConfirm();
   const updateSession = useUpdatePlanningSession(planningItemId, session.id);
   const acceptSessionMut = useAcceptSession(planningItemId, session.id);
   const confirmSessionMut = useConfirmSession(planningItemId, session.id);
@@ -1654,7 +1646,13 @@ function SessionCard({
   };
 
   const handleCancel = async () => {
-    if (!window.confirm('Weet u zeker dat u deze sessie wilt annuleren?')) return;
+    const confirmed = await confirm({
+      title: 'Sessie annuleren',
+      message: 'Weet u zeker dat u deze sessie wilt annuleren?',
+      confirmLabel: 'Annuleren',
+      cancelLabel: 'Terug',
+    });
+    if (!confirmed) return;
     try {
       await cancelSessionMut.mutateAsync(undefined);
       showToast('Sessie geannuleerd', 'success');

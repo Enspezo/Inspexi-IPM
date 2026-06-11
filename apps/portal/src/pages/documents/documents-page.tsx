@@ -12,6 +12,7 @@ import {
 } from '@/components/ui';
 import { ENTITY_TYPE_LABELS } from '@/lib/status';
 import { DetailPageLayout } from '@/components/layout/detail-page-layout';
+import { PageHeader } from '@/components/layout/page-header';
 import {
   TableConfigSidebar,
   useTableConfig,
@@ -322,27 +323,25 @@ export default function DocumentsPage() {
       }
     >
       <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-2xl font-bold text-gray-900">Documenten</h2>
-            <p className="mt-1 text-sm text-gray-500">
-              Beheer alle documenten van uw organisatie
-            </p>
-          </div>
-          <ActionMenu
-            secondaryActions={[
-              {
-                label: 'Document uploaden',
-                icon: (
-                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
-                  </svg>
-                ),
-                onClick: () => setIsUploadOpen(true),
-              },
-            ]}
-          />
-        </div>
+        <PageHeader
+          title="Documenten"
+          description="Beheer alle documenten van uw organisatie"
+          actions={
+            <ActionMenu
+              secondaryActions={[
+                {
+                  label: 'Document uploaden',
+                  icon: (
+                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                    </svg>
+                  ),
+                  onClick: () => setIsUploadOpen(true),
+                },
+              ]}
+            />
+          }
+        />
 
         {/* Filters */}
         <div className="flex flex-col gap-4 sm:flex-row sm:items-end">

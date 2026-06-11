@@ -15,6 +15,7 @@ import {
 import { formatCurrency } from '@/lib/format';
 import { QUOTE_STATUS } from '@/lib/status';
 import { DetailPageLayout } from '@/components/layout/detail-page-layout';
+import { PageHeader } from '@/components/layout/page-header';
 import {
   TableConfigSidebar,
   useTableConfig,
@@ -235,25 +236,23 @@ export default function QuotesPage() {
       }
     >
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-bold text-gray-900">Offertes</h2>
-          <p className="mt-1 text-sm text-gray-500">
-            Beheer offertes en prijsopgaven
-          </p>
-        </div>
-        {userCanWrite && (
-          <ActionMenu
-            secondaryActions={[
-              {
-                label: 'Offerte aanmaken',
-                icon: <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>,
-                onClick: () => navigate('/quotes/new'),
-              },
-            ]}
-          />
-        )}
-      </div>
+      <PageHeader
+        title="Offertes"
+        description="Beheer offertes en prijsopgaven"
+        actions={
+          userCanWrite ? (
+            <ActionMenu
+              secondaryActions={[
+                {
+                  label: 'Offerte aanmaken',
+                  icon: <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>,
+                  onClick: () => navigate('/quotes/new'),
+                },
+              ]}
+            />
+          ) : undefined
+        }
+      />
 
       {/* Filters */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center">

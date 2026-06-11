@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ContactType, Role } from '@/types';
 import type { Contact } from '@/types';
-import { Button, ErrorBox, Spinner, StatusBadge, useToast } from '@/components/ui';
+import { Button, ErrorBox, Spinner, StatusBadge, useConfirm, useToast } from '@/components/ui';
 import { CONTACT_TYPE } from '@/lib/status';
 import { DetailPageLayout } from '@/components/layout/detail-page-layout';
 import { useAuth } from '@/providers/auth-provider';
@@ -29,6 +29,7 @@ export default function CustomerGroupDetailPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { showToast } = useToast();
+  const confirm = useConfirm();
   const { data: group, isLoading, error } = useCustomerGroup(id!);
   const updateMutation = useUpdateCustomerGroup(id!);
   const deleteMutation = useDeleteCustomerGroup();
@@ -40,8 +41,12 @@ export default function CustomerGroupDetailPage() {
 
   const handleDelete = async () => {
     if (!group) return;
-    if (!window.confirm('Weet u zeker dat u deze klantgroep wilt verwijderen?'))
-      return;
+    const confirmed = await confirm({
+      title: 'Klantgroep verwijderen',
+      message: 'Weet u zeker dat u deze klantgroep wilt verwijderen?',
+      confirmLabel: 'Verwijderen',
+    });
+    if (!confirmed) return;
     try {
       await deleteMutation.mutateAsync(group.id);
       showToast('Klantgroep verwijderd', 'success');
@@ -62,7 +67,12 @@ export default function CustomerGroupDetailPage() {
 
   const handleRemoveContact = async (contactId: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!window.confirm('Relatie verwijderen uit deze klantgroep?')) return;
+    const confirmed = await confirm({
+      title: 'Relatie verwijderen uit groep',
+      message: 'Relatie verwijderen uit deze klantgroep?',
+      confirmLabel: 'Verwijderen',
+    });
+    if (!confirmed) return;
     try {
       await removeContactMutation.mutateAsync(contactId);
       showToast('Relatie verwijderd uit groep', 'success');

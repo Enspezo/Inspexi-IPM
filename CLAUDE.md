@@ -149,6 +149,11 @@ src/modules/contacts/
 └── dto/                         # class-validator DTOs
 ```
 
+**Grote modules zijn opgesplitst in per-resource/per-domein services** (allemaal geregistreerd in de eigen module; controller delegeert):
+- `contacts/`: ContactsService + ContactAddressesService + ContactPersonsService + LocationsService (sub-services injecteren ContactsService voor de org-scoped findOne check)
+- `quotes/`: QuotesService + QuoteApprovalsService + QuoteQuestionsService + QuoteAttachmentsService + QuotePdfService + QuotePublicService + DI-vrije helpers in `quotes.helpers.ts`
+- `planning/`: PlanningService (core) + PlanningSessionsService + PlanningFollowersService + PlanningPublicService — dependency-richting altijd sub-service → core, nooit andersom
+
 ### Patterns
 
 - **Soft deletes**: `isDeleted` boolean, queries filteren standaard op `false`

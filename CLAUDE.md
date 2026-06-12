@@ -106,6 +106,8 @@ PostgreSQL 15 via Docker op poort **5433**. Alle tabellen hebben prefix `imp_`.
   - `superuser`: `mijn.localhost` / `mijn.inspexi.nl` — alleen SUPERUSER gebruikers
   - `org`: `voorbeeldbedrijf.localhost` — org-specifieke toegang
   - `unknown`: `127.0.0.1`, IP-adressen — geen restricties (E2E tests)
+- **Org-cache**: `TenantCacheService` (`common/services/tenant-cache.service.ts`, @Global) — gedeelde slug→Organization cache (5 min TTL); `OrganizationsService.update()` invalideert direct. Inactieve orgs (`Organization.isActive = false`) krijgen 404 van de middleware (offboarding)
+- **Trust proxy**: `main.ts` zet `trust proxy = 1` zodra `BASE_DOMAIN !== 'localhost'` (X-Forwarded-Host bepaalt dan req.hostname); lokaal expliciet uit tegen hostname-spoofing
 - **CORS**: dynamische origin-functie die alle subdomeinen van `BASE_DOMAIN` toestaat
 - **Cookies**: localhost → geen domain; productie → `.inspexi.nl` (gedeeld)
 
@@ -157,6 +159,10 @@ src/modules/contacts/
 ### Patterns
 
 - **Soft deletes**: `isDeleted` boolean, queries filteren standaard op `false`
+- **Per-org nummering**: `quoteNumber`, `projectNumber` en `workOrderNumber` zijn uniek per org (`@@unique([orgId, <veld>])`), niet globaal
+- **FK org-validatie**: create/update endpoints die FK-UUID's accepteren valideren deze met `assertSameOrg(model, id, orgId, label)` / `assertAllSameOrg(...)` uit `@/common` vóór de schrijfactie (cross-tenant isolatie)
+- **Rate limiting**: globaal 120 req/min per IP via `@nestjs/throttler` (`AppThrottlerGuard`); auth- en publieke routes strenger via `@Throttle({ default: { limit: N, ttl: 60000 } })`
+- **iCal-token rotatie**: `POST /users/me/rotate-ical-token` genereert een nieuw feed-token (oude URL direct ongeldig); feed-toegang wordt gelogd
 - **Audit trail**: Prisma `$use` middleware in `prisma.service.ts` vangt CREATE/UPDATE/DELETE automatisch op voor 14 modellen. `AuditContextInterceptor` zet userId/orgId/ip in `AsyncLocalStorage` (`requestContext`). `writeAuditLog()` gebruikt `$executeRaw` om recursieve middleware te voorkomen. Fire-and-forget (Logger.error bij falen, blokkeert operatie niet).
 - **Audit UUID-resolutie**: `audit-log.service.ts` bevat `FK_FIELD_RESOLVERS` die UUID FK-waarden (contactId, ownerId, assignedTo, etc.) batch-resolven naar leesbare namen (bedrijfsnaam, voor+achternaam, adres, etc.) voordat ze naar de frontend gestuurd worden.
 - **Swagger docs**: beschikbaar op `/api/docs`
@@ -264,6 +270,8 @@ Bash script dat dummy documenten (PDF, PNG, CSV, SVG, DOCX, XLSX) genereert en u
 **`lib/format.ts`** — alle datum/valuta/bestandsgrootte formatting; null/undefined → `'—'`:
 - `formatDate(value)` → "8 juni 2026", `formatShortDate(value)` → "08-06-2026", `formatDateTime(value)` → datum + tijd
 - `formatCurrency(value)` → "€ 1.234,56" (Intl nl-NL EUR), `formatFileSize(bytes)` → "2,4 MB"
+
+**`lib/storage.ts`** — `tenantStorage.getItem/setItem/removeItem`: tenant-scoped localStorage wrapper die keys prefixt met `inspexi:${slug}:` (superuser-domein → `mijn`). **Altijd gebruiken i.p.v. `localStorage`** voor UI-voorkeuren (tabel-config, sidebar-state, filters). Keys zijn bare names ('filter-mine:tasks', 'sidebar-state') — de wrapper prefixt zelf.
 
 **`lib/status.ts`** — canonieke status-mappings, NOOIT lokaal opnieuw definiëren:
 - `StatusMap = Record<string, { label, classes }>`; `getStatusConfig(map, value)` met grijze fallback voor onbekende waarden
@@ -477,7 +485,9 @@ pnpm test:e2e                 # 154 tests, 13 suites
 - Test users beginnen met `e2e-` prefix in email
 - `afterAll` moet in volgorde opruimen: `auditLog` → `invitation` → `refreshToken` → `user` → `organization` (FK constraints)
 - Slugs mogen **geen hyphens** bevatten (regex: `/^[a-z0-9]+$/`)
-- Tests draaien op `127.0.0.1` (classified als `unknown` host) — TenantGuard laat alles door
+- Tests draaien op `127.0.0.1` (classified als `unknown` host) — TenantGuard laat alles door (alleen wanneer `BASE_DOMAIN = localhost`; anders fail-secure)
+- `afterAll`-cleanup altijd in `try/finally` met `app.close()` in de finally — anders blijft jest hangen op open handles bij een gefaalde cleanup
+- Nooit twee E2E-runs tegelijk (gedeelde database); leftover fixtures na een gekillde run opruimen met `pnpm prisma:seed`
 
 ### Frontend Tests
 

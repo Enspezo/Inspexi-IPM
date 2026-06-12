@@ -4,6 +4,7 @@ import { Button, Card, Input, Select, useToast } from '@/components/ui';
 import { PLANNING_STATUS, getStatusConfig } from '@/lib/status';
 import { useUpdatePlanningStatus } from '../hooks/use-planning';
 import { planningStatusLabel } from './planning-detail-shared';
+import { getErrorMessage } from '@/lib/api-client';
 
 export function PlanningStatusTab({
   id,
@@ -34,8 +35,8 @@ export function PlanningStatusTab({
       showToast('Status bijgewerkt', 'success');
       setNewStatus('');
       setStatusNote('');
-    } catch {
-      showToast('Status wijzigen mislukt', 'error');
+    } catch (err) {
+      showToast(getErrorMessage(err, 'Status wijzigen mislukt'), 'error');
     }
   };
 

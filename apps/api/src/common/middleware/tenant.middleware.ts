@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { Request, Response, NextFunction } from 'express';
 import { Organization } from '@prisma/client';
 import { PrismaService } from '@/prisma';
+import { TenantCacheService } from '../services/tenant-cache.service';
 import { TenantContext } from '../interfaces/tenant-context.interface';
 
 type SlugResult =
@@ -13,8 +14,6 @@ type SlugResult =
 @Injectable()
 export class TenantMiddleware implements NestMiddleware {
   private readonly logger = new Logger(TenantMiddleware.name);
-  private readonly cache = new Map<string, { org: Organization; cachedAt: number }>();
-  private readonly CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
   private readonly baseDomain: string;
   private readonly superuserSubdomain: string;
@@ -22,6 +21,7 @@ export class TenantMiddleware implements NestMiddleware {
   constructor(
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
+    private readonly tenantCache: TenantCacheService,
   ) {
     this.baseDomain = this.config.get<string>('BASE_DOMAIN', 'localhost');
     this.superuserSubdomain = this.config.get<string>('SUPERUSER_SUBDOMAIN', 'mijn');
@@ -44,9 +44,9 @@ export class TenantMiddleware implements NestMiddleware {
       return next();
     }
 
-    // Org subdomain → look up by slug
+    // Org subdomain → look up by slug (alleen actieve orgs)
     const org = await this.findOrgBySlug(result.slug);
-    if (!org) {
+    if (!org || !org.isActive) {
       res.status(404).json({
         statusCode: 404,
         message: `Organisatie '${result.slug}' niet gevonden`,
@@ -89,10 +89,10 @@ export class TenantMiddleware implements NestMiddleware {
   }
 
   private async findOrgBySlug(slug: string): Promise<Organization | null> {
-    // Check cache first
-    const cached = this.cache.get(slug);
-    if (cached && Date.now() - cached.cachedAt < this.CACHE_TTL) {
-      return cached.org;
+    // Check shared cache first (invalidated by OrganizationsService on updates)
+    const cached = this.tenantCache.get(slug);
+    if (cached) {
+      return cached;
     }
 
     try {
@@ -100,11 +100,11 @@ export class TenantMiddleware implements NestMiddleware {
         where: { slug },
       });
 
-      if (org) {
-        this.cache.set(slug, { org, cachedAt: Date.now() });
+      if (org && org.isActive) {
+        this.tenantCache.set(slug, org);
       } else {
-        // Remove stale cache entry if org was deleted
-        this.cache.delete(slug);
+        // Remove stale cache entry if org was deleted or deactivated
+        this.tenantCache.invalidate(slug);
       }
 
       return org;

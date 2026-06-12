@@ -1,3 +1,4 @@
+import { tenantStorage } from '@/lib/storage';
 import { useState, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -98,15 +99,15 @@ export default function RequestsPage() {
     const timer = setTimeout(() => setDebouncedSearch(search), 300);
     return () => clearTimeout(timer);
   }, [search]);
-  const [onlyMine, setOnlyMine] = useState(() => localStorage.getItem('inspexi:filter-mine:requests') === 'true');
+  const [onlyMine, setOnlyMine] = useState(() => tenantStorage.getItem('filter-mine:requests') === 'true');
   const [page, setPage] = useState(1);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>(
-    () => (localStorage.getItem('requests-view-mode') as ViewMode | null) ?? 'table',
+    () => (tenantStorage.getItem('requests-view-mode') as ViewMode | null) ?? 'table',
   );
 
   const handleSetViewMode = (mode: ViewMode) => {
-    localStorage.setItem('requests-view-mode', mode);
+    tenantStorage.setItem('requests-view-mode', mode);
     setViewMode(mode);
   };
 
@@ -397,7 +398,7 @@ export default function RequestsPage() {
               checked={onlyMine}
               onChange={(e) => {
                 setOnlyMine(e.target.checked);
-                localStorage.setItem('inspexi:filter-mine:requests', String(e.target.checked));
+                tenantStorage.setItem('filter-mine:requests', String(e.target.checked));
                 setPage(1);
               }}
             />

@@ -14,7 +14,7 @@ import {
 } from '@prisma/client';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '@/prisma';
-import { paginate, orgScope, assertFound } from '@/common';
+import { paginate, orgScope, assertFound, assertSameOrg, assertAllSameOrg } from '@/common';
 import { NotificationsService } from '../notifications/notifications.service';
 import { WorkOrdersService } from '../work-orders/work-orders.service';
 import { PlanningEmailService } from './planning-email.service';
@@ -222,6 +222,13 @@ export class PlanningService {
       throw new BadRequestException('Meerdaagse planning vereist minimaal 2 sessies');
     }
 
+    // Verify all foreign keys belong to the user's organization
+    await assertSameOrg(this.prisma.contact, dto.contactId, user.orgId, 'Relatie');
+    await assertSameOrg(this.prisma.location, dto.locationId, user.orgId, 'Locatie');
+    await assertSameOrg(this.prisma.contactPerson, dto.contactPersonId, user.orgId, 'Contactpersoon');
+    await assertSameOrg(this.prisma.quote, dto.quoteId, user.orgId, 'Offerte');
+    await assertSameOrg(this.prisma.product, dto.productId, user.orgId, 'Product');
+
     const item = await this.prisma.planningItem.create({
       data: {
         orgId: user.orgId!,
@@ -375,6 +382,9 @@ export class PlanningService {
 
   async assignInspectors(id: string, dto: AssignInspectorsDto, user: User) {
     const item = await this.findOne(id, user);
+
+    // Inspectors must belong to the same organization as the planning item
+    await assertAllSameOrg(this.prisma.user, dto.inspectorIds, item.orgId, 'inspecteurs');
 
     // Remove pending (non-responded) inspectors
     await this.prisma.planningInspector.deleteMany({

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Modal, Button, SignatureCanvas, useToast } from '@/components/ui';
 import { useApproveQuote } from '../hooks/use-quotes';
+import { getErrorMessage } from '@/lib/api-client';
 
 interface ApproveQuoteModalProps {
   quoteId: string;
@@ -25,8 +26,8 @@ export function ApproveQuoteModal({ quoteId, quoteNumber, isOpen, onClose }: App
       });
       showToast('Offerte goedgekeurd', 'success');
       onClose();
-    } catch {
-      showToast('Goedkeuren mislukt', 'error');
+    } catch (err) {
+      showToast(getErrorMessage(err, 'Goedkeuren mislukt'), 'error');
     }
   };
 

@@ -1,3 +1,4 @@
+import { tenantStorage } from '@/lib/storage';
 import { useState, useEffect } from 'react';
 import { Link, NavLink, useLocation } from 'react-router-dom';
 import { clsx } from 'clsx';
@@ -33,8 +34,8 @@ interface NavSection {
   items: NavItem[];
 }
 
-const STORAGE_KEY = 'inspexi:sidebar-collapsed';
-const SECTIONS_STORAGE_KEY = 'inspexi:sidebar-sections';
+const STORAGE_KEY = 'sidebar-collapsed';
+const SECTIONS_STORAGE_KEY = 'sidebar-sections';
 
 type CollapsedSections = Record<string, boolean>;
 
@@ -279,7 +280,7 @@ export function Sidebar() {
 
   const [collapsed, setCollapsed] = useState(() => {
     try {
-      return localStorage.getItem(STORAGE_KEY) === 'true';
+      return tenantStorage.getItem(STORAGE_KEY) === 'true';
     } catch {
       return false;
     }
@@ -287,7 +288,7 @@ export function Sidebar() {
 
   const [collapsedSections, setCollapsedSections] = useState<CollapsedSections>(() => {
     try {
-      const stored = localStorage.getItem(SECTIONS_STORAGE_KEY);
+      const stored = tenantStorage.getItem(SECTIONS_STORAGE_KEY);
       return stored ? JSON.parse(stored) : {};
     } catch {
       return {};
@@ -296,7 +297,7 @@ export function Sidebar() {
 
   useEffect(() => {
     try {
-      localStorage.setItem(STORAGE_KEY, String(collapsed));
+      tenantStorage.setItem(STORAGE_KEY, String(collapsed));
     } catch {
       // ignore
     }
@@ -304,7 +305,7 @@ export function Sidebar() {
 
   useEffect(() => {
     try {
-      localStorage.setItem(SECTIONS_STORAGE_KEY, JSON.stringify(collapsedSections));
+      tenantStorage.setItem(SECTIONS_STORAGE_KEY, JSON.stringify(collapsedSections));
     } catch {
       // ignore
     }

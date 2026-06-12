@@ -1,3 +1,4 @@
+import { getErrorMessage } from '@/lib/api-client';
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
@@ -191,8 +192,8 @@ export default function WorkOrderDetailPage() {
       });
       setIsEditing(false);
       showToast('Werkbon bijgewerkt', 'success');
-    } catch {
-      showToast('Fout bij opslaan', 'error');
+    } catch (err) {
+      showToast(getErrorMessage(err, 'Fout bij opslaan'), 'error');
     }
   };
 
@@ -229,8 +230,8 @@ export default function WorkOrderDetailPage() {
         })),
       });
       showToast('Meerwerk opgeslagen', 'success');
-    } catch {
-      showToast('Fout bij opslaan meerwerk', 'error');
+    } catch (err) {
+      showToast(getErrorMessage(err, 'Fout bij opslaan meerwerk'), 'error');
     }
   };
 

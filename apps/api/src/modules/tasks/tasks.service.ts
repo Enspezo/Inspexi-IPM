@@ -5,7 +5,7 @@ import {
 } from '@nestjs/common';
 import { User, Role, Prisma, TaskEntityType, TaskType, TaskStatus, LogType, NotificationType } from '@prisma/client';
 import { PrismaService } from '@/prisma';
-import { paginate, buildOrderBy, orgScope, assertFound } from '@/common';
+import { paginate, buildOrderBy, orgScope, assertFound, assertSameOrg } from '@/common';
 import { NotificationsService } from '../notifications/notifications.service';
 import { CreateTaskDto, UpdateTaskDto, ListTasksQueryDto } from './dto';
 
@@ -202,7 +202,38 @@ export class TasksService {
     };
   }
 
+  /**
+   * Verify a task's linked entity belongs to the user's organization, so a tenant
+   * cannot attach a task to (and thereby discover the name of) another org's entity.
+   */
+  private async assertEntityInOrg(
+    entityType: TaskEntityType,
+    entityId: string,
+    orgId: string | null,
+  ): Promise<void> {
+    switch (entityType) {
+      case TaskEntityType.CONTACT:
+        return assertSameOrg(this.prisma.contact, entityId, orgId, 'Relatie');
+      case TaskEntityType.REQUEST:
+        return assertSameOrg(this.prisma.request, entityId, orgId, 'Aanvraag');
+      case TaskEntityType.QUOTE:
+        return assertSameOrg(this.prisma.quote, entityId, orgId, 'Offerte');
+      case TaskEntityType.PLANNING:
+        return assertSameOrg(this.prisma.planningItem, entityId, orgId, 'Planning');
+      case TaskEntityType.PROJECT:
+        return assertSameOrg(this.prisma.project, entityId, orgId, 'Project');
+      case TaskEntityType.USER:
+        return assertSameOrg(this.prisma.user, entityId, orgId, 'Gebruiker');
+    }
+  }
+
   async create(dto: CreateTaskDto, user: User) {
+    // Linked entity and assignee must belong to the user's organization
+    if (dto.entityId) {
+      await this.assertEntityInOrg(dto.entityType, dto.entityId, user.orgId);
+    }
+    await assertSameOrg(this.prisma.user, dto.assigneeId, user.orgId, 'Toegewezen gebruiker');
+
     const task = await this.prisma.task.create({
       data: {
         title: dto.title,
@@ -263,6 +294,7 @@ export class TasksService {
     if (dto.status !== undefined) data.status = dto.status;
     if (dto.taskType !== undefined) data.taskType = dto.taskType;
     if (dto.assigneeId !== undefined) {
+      await assertSameOrg(this.prisma.user, dto.assigneeId, user.orgId, 'Toegewezen gebruiker');
       data.assignee = dto.assigneeId
         ? { connect: { id: dto.assigneeId } }
         : { disconnect: true };

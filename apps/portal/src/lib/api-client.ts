@@ -12,7 +12,7 @@ export function getAccessToken(): string | null {
   return accessToken;
 }
 
-class ApiClientError extends Error {
+export class ApiClientError extends Error {
   statusCode: number;
   error?: string;
 
@@ -22,6 +22,17 @@ class ApiClientError extends Error {
     this.statusCode = data.statusCode;
     this.error = data.error;
   }
+}
+
+/**
+ * Geeft de servermelding (NL, bijv. uit assertFound of FK-validatie) terug
+ * voor toasts; valt terug op een generieke melding bij netwerk/onbekende fouten.
+ */
+export function getErrorMessage(err: unknown, fallback: string): string {
+  if (err instanceof ApiClientError && err.message) {
+    return err.message;
+  }
+  return fallback;
 }
 
 // Track whether we're in the initial auth check to avoid redirect loops

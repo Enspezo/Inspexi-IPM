@@ -119,15 +119,33 @@ export class UsersService {
     const publicUrl = this.config.get<string>('PUBLIC_URL');
     const inviteUrl = `${publicUrl}/invite/${invitation.token}`;
 
-    await this.emailService.sendInvitation(
-      dto.email,
-      inviteUrl,
-      org?.name || 'InspeXi',
-      dto.role,
-      orgId,
-    );
+    try {
+      await this.emailService.sendInvitation(
+        dto.email,
+        inviteUrl,
+        org?.name || 'InspeXi',
+        dto.role,
+        orgId,
+      );
+    } catch {
+      // Invitation opruimen, anders blokkeert de ConflictException een retry
+      await this.prisma.invitation.delete({ where: { id: invitation.id } });
+      throw new BadRequestException(
+        'Uitnodigingsmail kon niet verzonden worden. Probeer het opnieuw.',
+      );
+    }
 
     return invitation;
+  }
+
+  async rotateIcalToken(userId: string) {
+    const updated = await this.prisma.user.update({
+      where: { id: userId },
+      data: { icalToken: randomUUID() },
+      select: { icalToken: true },
+    });
+    this.logger.log(`iCal-token vernieuwd voor gebruiker ${userId}`);
+    return updated;
   }
 
   async acceptInvitation(dto: AcceptInvitationDto) {

@@ -133,7 +133,10 @@ export class PlanningIcalService {
       select: { id: true, firstName: true, lastName: true },
     });
 
-    if (!user) return this.emptyCalendar();
+    if (!user) {
+      this.logger.warn(`iCal feed-request met ongeldig token (${icalToken.slice(0, 8)}…)`);
+      return this.emptyCalendar();
+    }
 
     // Single-day: accepted PlanningInspector entries
     const inspectorItems = await this.prisma.planningInspector.findMany({

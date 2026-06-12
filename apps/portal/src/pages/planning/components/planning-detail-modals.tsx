@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Button, Modal, useToast } from '@/components/ui';
 import { useReschedulePlanningItem, useRejectPlanningItem } from '../hooks/use-planning';
 import { useRejectSession, useRescheduleSession } from '../hooks/use-planning-sessions';
+import { getErrorMessage } from '@/lib/api-client';
 
 export function PlanningRescheduleModal({
   id,
@@ -26,8 +27,8 @@ export function PlanningRescheduleModal({
       setRescheduleReason('');
       showToast('Afspraak verplaatst. Nieuwe planregel aangemaakt.', 'success');
       navigate(`/planning/${(newItem as any).id}`);
-    } catch {
-      showToast('Fout bij verzetten afspraak', 'error');
+    } catch (err) {
+      showToast(getErrorMessage(err, 'Fout bij verzetten afspraak'), 'error');
     }
   };
 
@@ -82,8 +83,8 @@ export function PlanningRejectModal({
       setRejectOpen(false);
       setRejectReason('');
       showToast('Afspraak geweigerd', 'success');
-    } catch {
-      showToast('Fout bij weigeren afspraak', 'error');
+    } catch (err) {
+      showToast(getErrorMessage(err, 'Fout bij weigeren afspraak'), 'error');
     }
   };
 
@@ -137,8 +138,8 @@ export function SessionRejectModal({
       setSessionRejectOpen(false);
       setSessionRejectReason('');
       showToast('Sessie geweigerd', 'success');
-    } catch {
-      showToast('Fout bij weigeren sessie', 'error');
+    } catch (err) {
+      showToast(getErrorMessage(err, 'Fout bij weigeren sessie'), 'error');
     }
   };
 
@@ -192,8 +193,8 @@ export function SessionRescheduleModal({
       setSessionRescheduleOpen(false);
       setSessionRescheduleReason('');
       showToast('Sessie verzet. Nieuwe sessie aangemaakt.', 'success');
-    } catch {
-      showToast('Fout bij verzetten sessie', 'error');
+    } catch (err) {
+      showToast(getErrorMessage(err, 'Fout bij verzetten sessie'), 'error');
     }
   };
 

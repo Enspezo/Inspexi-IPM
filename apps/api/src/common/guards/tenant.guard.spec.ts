@@ -1,5 +1,6 @@
 import { ExecutionContext, ForbiddenException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
+import { ConfigService } from '@nestjs/config';
 import { Test, TestingModule } from '@nestjs/testing';
 import { Role } from '@prisma/client';
 import { TenantGuard } from './tenant.guard';
@@ -9,7 +10,7 @@ describe('TenantGuard', () => {
   let guard: TenantGuard;
   let reflector: Reflector;
 
-  beforeEach(async () => {
+  const buildGuard = async (baseDomain = 'localhost'): Promise<TenantGuard> => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         TenantGuard,
@@ -19,11 +20,21 @@ describe('TenantGuard', () => {
             getAllAndOverride: jest.fn(),
           },
         },
+        {
+          provide: ConfigService,
+          useValue: {
+            get: jest.fn(() => baseDomain),
+          },
+        },
       ],
     }).compile();
 
-    guard = module.get<TenantGuard>(TenantGuard);
     reflector = module.get<Reflector>(Reflector);
+    return module.get<TenantGuard>(TenantGuard);
+  };
+
+  beforeEach(async () => {
+    guard = await buildGuard();
   });
 
   const createMockContext = (user?: any, tenant?: TenantContext): ExecutionContext =>
@@ -106,7 +117,7 @@ describe('TenantGuard', () => {
   });
 
   describe('unknown domain (tests, direct IP)', () => {
-    it('should allow any user on unknown domain', () => {
+    it('should allow any user on unknown domain in local/dev', () => {
       (reflector.getAllAndOverride as jest.Mock).mockReturnValue(false);
 
       const tenant: TenantContext = {
@@ -118,6 +129,37 @@ describe('TenantGuard', () => {
       const user = { id: 'u1', orgId: 'org-1', roles: [Role.ORG_ADMIN] };
       const context = createMockContext(user, tenant);
       expect(guard.canActivate(context)).toBe(true);
+    });
+
+    it('should deny non-SUPERUSER on unknown host in production (fail secure)', async () => {
+      const prodGuard = await buildGuard('inspexi.nl');
+      (reflector.getAllAndOverride as jest.Mock).mockReturnValue(false);
+
+      const tenant: TenantContext = {
+        slug: null,
+        organization: null,
+        orgId: null,
+        isSuperuserDomain: false,
+      };
+      const user = { id: 'u1', orgId: 'org-1', roles: [Role.ORG_ADMIN] };
+      const context = createMockContext(user, tenant);
+
+      expect(() => prodGuard.canActivate(context)).toThrow(ForbiddenException);
+    });
+
+    it('should still allow SUPERUSER on unknown host in production', async () => {
+      const prodGuard = await buildGuard('inspexi.nl');
+      (reflector.getAllAndOverride as jest.Mock).mockReturnValue(false);
+
+      const tenant: TenantContext = {
+        slug: null,
+        organization: null,
+        orgId: null,
+        isSuperuserDomain: false,
+      };
+      const user = { id: 'u1', orgId: null, roles: [Role.SUPERUSER] };
+      const context = createMockContext(user, tenant);
+      expect(prodGuard.canActivate(context)).toBe(true);
     });
   });
 

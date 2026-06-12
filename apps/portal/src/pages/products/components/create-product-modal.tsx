@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { Modal, Input, Select, Button, useToast } from '@/components/ui';
 import { useCreateProduct } from '../hooks/use-products';
 import { useProductGroupsCompact } from '@/pages/product-groups/hooks/use-product-groups';
+import { getErrorMessage } from '@/lib/api-client';
 
 const unitOptions = [
   { value: 'uur', label: 'Uur' },
@@ -62,8 +63,8 @@ export function CreateProductModal({ isOpen, onClose }: CreateProductModalProps)
       showToast('Product aangemaakt!', 'success');
       reset();
       onClose();
-    } catch {
-      showToast('Aanmaken mislukt', 'error');
+    } catch (err) {
+      showToast(getErrorMessage(err, 'Aanmaken mislukt'), 'error');
     }
   };
 

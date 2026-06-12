@@ -29,6 +29,7 @@ import { RequestStatusTab } from './components/request-status-tab';
 import { RequestTasksSidebar } from './components/request-tasks-sidebar';
 import { ContactLogsSidebar } from './components/request-contact-logs-sidebar';
 import { formatDate } from './components/request-detail-helpers';
+import { getErrorMessage } from '@/lib/api-client';
 
 type Tab = 'overzicht' | 'status';
 
@@ -72,8 +73,8 @@ export default function RequestDetailPage() {
       const quote = await createQuoteMutation.mutateAsync(request.id);
       showToast('Offerte aangemaakt', 'success');
       navigate(`/quotes/${quote.id}/edit`);
-    } catch {
-      showToast('Offerte aanmaken mislukt', 'error');
+    } catch (err) {
+      showToast(getErrorMessage(err, 'Offerte aanmaken mislukt'), 'error');
     }
   };
 
@@ -89,8 +90,8 @@ export default function RequestDetailPage() {
       await deleteMutation.mutateAsync(request.id);
       showToast('Aanvraag verwijderd', 'success');
       navigate('/requests');
-    } catch {
-      showToast('Verwijderen mislukt', 'error');
+    } catch (err) {
+      showToast(getErrorMessage(err, 'Verwijderen mislukt'), 'error');
     }
   };
 
@@ -208,8 +209,8 @@ export default function RequestDetailPage() {
                     const project = await createProjectMutation.mutateAsync(request.id);
                     showToast('Project aangemaakt', 'success');
                     navigate(`/projects/${project.id}`);
-                  } catch {
-                    showToast('Project aanmaken mislukt', 'error');
+                  } catch (err) {
+                    showToast(getErrorMessage(err, 'Project aanmaken mislukt'), 'error');
                   }
                 },
                 isLoading: createProjectMutation.isPending,

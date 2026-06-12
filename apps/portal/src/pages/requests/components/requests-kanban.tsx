@@ -1,3 +1,4 @@
+import { tenantStorage } from '@/lib/storage';
 import { useState, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { RequestStatus } from '@/types';
@@ -283,10 +284,10 @@ export function RequestsKanban({ search, priorityFilter, assignedTo }: RequestsK
   });
 
   // Ingeklapte kolommen — persisted in localStorage
-  const STORAGE_KEY = 'inspexi:kanban-collapsed';
+  const STORAGE_KEY = 'kanban-collapsed';
   const [collapsedColumns, setCollapsedColumns] = useState<Set<RequestStatus>>(() => {
     try {
-      const stored = localStorage.getItem(STORAGE_KEY);
+      const stored = tenantStorage.getItem(STORAGE_KEY);
       if (stored) return new Set(JSON.parse(stored) as RequestStatus[]);
     } catch {}
     return new Set(COLUMNS.filter((c) => c.defaultCollapsed).map((c) => c.status));
@@ -297,7 +298,7 @@ export function RequestsKanban({ search, priorityFilter, assignedTo }: RequestsK
       const next = new Set(prev);
       if (next.has(status)) next.delete(status);
       else next.add(status);
-      try { localStorage.setItem(STORAGE_KEY, JSON.stringify([...next])); } catch {}
+      try { tenantStorage.setItem(STORAGE_KEY, JSON.stringify([...next])); } catch {}
       return next;
     });
   }, []);

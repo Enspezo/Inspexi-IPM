@@ -1,3 +1,4 @@
+import { tenantStorage } from '@/lib/storage';
 import { useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { WorkOrderStatus, Role } from '@/types';
@@ -41,7 +42,7 @@ export default function WorkOrdersPage() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [onlyMine, setOnlyMine] = useState(
-    () => localStorage.getItem('inspexi:filter-mine:work-orders') === 'true',
+    () => tenantStorage.getItem('filter-mine:work-orders') === 'true',
   );
   const [page, setPage] = useState(1);
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -298,8 +299,7 @@ export default function WorkOrdersPage() {
               checked={onlyMine}
               onChange={(e) => {
                 setOnlyMine(e.target.checked);
-                localStorage.setItem(
-                  'inspexi:filter-mine:work-orders',
+                tenantStorage.setItem('filter-mine:work-orders',
                   String(e.target.checked),
                 );
                 setPage(1);

@@ -5,6 +5,7 @@ import { useToast } from '@/components/ui';
 import { SidebarSection } from '@/components/layout/detail-page-layout';
 import { NotesSidebarSection, HistorySidebarSection, DocumentsSidebarSection } from '@/components/layout/sidebar-sections';
 import { useUpdateTask } from '@/pages/tasks/hooks/use-tasks';
+import { getErrorMessage } from '@/lib/api-client';
 
 export function PlanningDetailSidebar({
   id,
@@ -41,8 +42,8 @@ export function PlanningDetailSidebar({
                     const newStatus = task.status === TaskStatus.VOLTOOID ? TaskStatus.TE_DOEN : TaskStatus.VOLTOOID;
                     try {
                       await updateTaskMutation.mutateAsync({ id: task.id, data: { status: newStatus } });
-                    } catch {
-                      showToast('Status wijzigen mislukt', 'error');
+                    } catch (err) {
+                      showToast(getErrorMessage(err, 'Status wijzigen mislukt'), 'error');
                     }
                   }}
                   className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors ${

@@ -5,6 +5,7 @@ import type { Task } from '@/types';
 import { useToast } from '@/components/ui';
 import { useUpdateTask } from '@/pages/tasks/hooks/use-tasks';
 import { EditTaskModal } from '@/pages/tasks/components/edit-task-modal';
+import { getErrorMessage } from '@/lib/api-client';
 
 // ─── QuoteTasksSidebar ────────────────────────────────
 
@@ -142,8 +143,8 @@ export function QuoteTasksSidebar({
   const handleStatusChange = async (taskId: string, status: TaskStatus) => {
     try {
       await updateTaskMutation.mutateAsync({ id: taskId, data: { status } });
-    } catch {
-      showToast('Status bijwerken mislukt', 'error');
+    } catch (err) {
+      showToast(getErrorMessage(err, 'Status bijwerken mislukt'), 'error');
     }
   };
 

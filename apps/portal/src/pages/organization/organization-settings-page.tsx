@@ -18,6 +18,7 @@ import {
   useSaveGroupNotificationPrefs,
 } from '@/pages/notifications/hooks/use-notifications';
 import { NotificationType, Role } from '@/types';
+import { getErrorMessage } from '@/lib/api-client';
 
 const orgSchema = z.object({
   name: z.string().min(1, 'Organisatienaam is verplicht'),
@@ -155,8 +156,8 @@ function GroupNotificationPrefsCard() {
         })),
       );
       showToast('Standaard notificatie-instellingen opgeslagen', 'success');
-    } catch {
-      showToast('Opslaan mislukt', 'error');
+    } catch (err) {
+      showToast(getErrorMessage(err, 'Opslaan mislukt'), 'error');
     }
   };
 

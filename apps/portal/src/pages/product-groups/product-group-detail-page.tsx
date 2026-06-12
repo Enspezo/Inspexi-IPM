@@ -13,6 +13,7 @@ import {
 } from './hooks/use-product-groups';
 import { useProducts } from '@/pages/products/hooks/use-products';
 import { AuditHistory } from '@/components/audit-history/audit-history';
+import { getErrorMessage } from '@/lib/api-client';
 
 const canWrite = [Role.SUPERUSER, Role.ORG_ADMIN];
 const canDelete = [Role.SUPERUSER, Role.ORG_ADMIN];
@@ -57,8 +58,8 @@ export default function ProductGroupDetailPage() {
     try {
       await addProductMutation.mutateAsync(productId);
       showToast('Product toegevoegd aan groep', 'success');
-    } catch {
-      showToast('Toevoegen mislukt', 'error');
+    } catch (err) {
+      showToast(getErrorMessage(err, 'Toevoegen mislukt'), 'error');
     }
   };
 
@@ -73,8 +74,8 @@ export default function ProductGroupDetailPage() {
     try {
       await removeProductMutation.mutateAsync(productId);
       showToast('Product verwijderd uit groep', 'success');
-    } catch {
-      showToast('Verwijderen mislukt', 'error');
+    } catch (err) {
+      showToast(getErrorMessage(err, 'Verwijderen mislukt'), 'error');
     }
   };
 
@@ -117,8 +118,8 @@ export default function ProductGroupDetailPage() {
                 onSave={async (notes) => {
                   try {
                     await updateMutation.mutateAsync({ notes: notes || undefined });
-                  } catch {
-                    showToast('Notities opslaan mislukt', 'error');
+                  } catch (err) {
+                    showToast(getErrorMessage(err, 'Notities opslaan mislukt'), 'error');
                   }
                 }}
               />

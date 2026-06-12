@@ -50,24 +50,7 @@ export class AuthService {
     }
 
     // Tenant-aware login checks
-    if (tenant) {
-      if (tenant.isSuperuserDomain && tenant.orgId === null) {
-        // Explicit SUPERUSER domain (mijn.inspexi.nl) — only SUPERUSER may login
-        if (!user.roles.includes(Role.SUPERUSER)) {
-          throw new UnauthorizedException(
-            'Gebruik het subdomein van uw organisatie om in te loggen',
-          );
-        }
-      } else if (tenant.orgId !== null) {
-        // Org subdomain — user must belong to this org (unless SUPERUSER)
-        if (!user.roles.includes(Role.SUPERUSER) && user.orgId !== tenant.orgId) {
-          throw new UnauthorizedException(
-            'Uw account hoort niet bij deze organisatie',
-          );
-        }
-      }
-      // Unknown domain (isSuperuserDomain=false, orgId=null) → no restrictions
-    }
+    this.assertUserMatchesTenant(user, tenant);
 
     const accessToken = this.generateAccessToken(user);
     const refreshToken = await this.createRefreshToken(user.id, ipAddress, userAgent);
@@ -88,7 +71,12 @@ export class AuthService {
     return { accessToken, refreshToken };
   }
 
-  async refresh(refreshTokenRaw: string, ipAddress?: string, userAgent?: string) {
+  async refresh(
+    refreshTokenRaw: string,
+    ipAddress?: string,
+    userAgent?: string,
+    tenant?: TenantContext | null,
+  ) {
     const tokenHash = this.hashToken(refreshTokenRaw);
 
     const storedToken = await this.prisma.refreshToken.findFirst({
@@ -107,6 +95,10 @@ export class AuthService {
     if (!storedToken.user.isActive) {
       throw new UnauthorizedException('Account is gedeactiveerd');
     }
+
+    // A refresh token from org A must not be redeemable on org B's subdomain
+    // (the cookie is shared across *.inspexi.nl in production).
+    this.assertUserMatchesTenant(storedToken.user, tenant);
 
     // Hard-delete old token on rotation — rotation artifacts don't need to be
     // kept as visible "ended sessions"; only explicit logouts are soft-deleted.
@@ -146,7 +138,9 @@ export class AuthService {
     if (!user) return;
 
     const resetToken = this.jwtService.sign(
-      { sub: user.id, purpose: 'password-reset' },
+      // E-mail in de token binden zodat een token nooit op een ander
+      // (bijv. later hergebruikt of gewijzigd) account toegepast kan worden
+      { sub: user.id, email: user.email, purpose: 'password-reset' },
       {
         secret: this.config.get<string>('JWT_SECRET'),
         expiresIn: '1h',
@@ -171,6 +165,15 @@ export class AuthService {
 
     if (payload.purpose !== 'password-reset') {
       throw new BadRequestException('Ongeldige token');
+    }
+
+    // Valideer dat de token nog bij dit account hoort (e-mailbinding)
+    const user = await this.prisma.user.findUnique({
+      where: { id: payload.sub },
+      select: { id: true, email: true },
+    });
+    if (!user || !payload.email || user.email !== payload.email) {
+      throw new BadRequestException('Ongeldige of verlopen reset token');
     }
 
     const passwordHash = await bcrypt.hash(dto.newPassword, 10);
@@ -296,6 +299,37 @@ export class AuthService {
   }
 
   // ─── Private Helpers ───────────────────────────────────
+
+  /**
+   * Enforce that the authenticating user is allowed on the current tenant host.
+   * Shared by login and refresh so a token issued for org A cannot be used on
+   * org B's subdomain. Unknown host (orgId null, not superuser domain) → no
+   * restriction (E2E / direct IP); the TenantGuard fails those secure in prod.
+   */
+  private assertUserMatchesTenant(
+    user: { orgId: string | null; roles: Role[] },
+    tenant?: TenantContext | null,
+  ): void {
+    if (!tenant) {
+      return;
+    }
+
+    if (tenant.isSuperuserDomain && tenant.orgId === null) {
+      // Explicit SUPERUSER domain (mijn.inspexi.nl) — only SUPERUSER allowed
+      if (!user.roles.includes(Role.SUPERUSER)) {
+        throw new UnauthorizedException(
+          'Gebruik het subdomein van uw organisatie om in te loggen',
+        );
+      }
+    } else if (tenant.orgId !== null) {
+      // Org subdomain — user must belong to this org (unless SUPERUSER)
+      if (!user.roles.includes(Role.SUPERUSER) && user.orgId !== tenant.orgId) {
+        throw new UnauthorizedException(
+          'Uw account hoort niet bij deze organisatie',
+        );
+      }
+    }
+  }
 
   private generateAccessToken(user: {
     id: string;

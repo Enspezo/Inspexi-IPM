@@ -6,6 +6,15 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { STORAGE_PROVIDER, type StorageProvider } from '../services/storage/storage.interface';
 import { renderTemplate, wrapInEmailLayout } from '../../modules/email-templates/template-renderer';
 
+/**
+ * Foutconventie per mailtype:
+ * - THROWT bij verzendfalen (gebruiker moet het weten): sendInvitation,
+ *   sendQuoteEmail, sendContactEmail
+ * - LOGT alleen (background of bewust stil): sendNotificationEmail,
+ *   sendSignedQuoteEmail, sendQuoteAnswerEmail, sendEmailVerification en
+ *   sendPasswordReset — die laatste bewust: een fout alléén bij bestaande
+ *   accounts zou e-mail-enumeratie mogelijk maken.
+ */
 @Injectable()
 export class EmailService {
   private readonly logger = new Logger(EmailService.name);
@@ -156,6 +165,7 @@ export class EmailService {
       });
     } catch (error) {
       this.logger.error(`Failed to send invitation email to ${to}`, error);
+      throw error;
     }
   }
 

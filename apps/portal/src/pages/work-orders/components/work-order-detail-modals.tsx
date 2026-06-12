@@ -1,3 +1,4 @@
+import { getErrorMessage } from '@/lib/api-client';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button, Modal, Select, useToast } from '@/components/ui';
@@ -36,8 +37,8 @@ export function WorkOrderStatusChangeModal({
       setNewStatus('');
       setStatusNote('');
       showToast('Status bijgewerkt', 'success');
-    } catch {
-      showToast('Fout bij statuswijziging', 'error');
+    } catch (err) {
+      showToast(getErrorMessage(err, 'Fout bij statuswijziging'), 'error');
     }
   };
 
@@ -124,8 +125,8 @@ export function WorkOrderDeleteModal({
       await deleteWorkOrder.mutateAsync();
       showToast('Werkbon verwijderd', 'success');
       navigate('/work-orders');
-    } catch {
-      showToast('Fout bij verwijderen', 'error');
+    } catch (err) {
+      showToast(getErrorMessage(err, 'Fout bij verwijderen'), 'error');
     }
   };
 

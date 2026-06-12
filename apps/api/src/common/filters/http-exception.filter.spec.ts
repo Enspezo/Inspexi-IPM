@@ -6,6 +6,7 @@ import {
   ForbiddenException,
   InternalServerErrorException,
 } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { AllExceptionsFilter } from './http-exception.filter';
 
 describe('AllExceptionsFilter', () => {
@@ -63,12 +64,59 @@ describe('AllExceptionsFilter', () => {
     filter.catch(exception, mockHost);
 
     expect(mockStatus).toHaveBeenCalledWith(HttpStatus.BAD_REQUEST);
-    // Should take first message from array
+    // First message as primary, full array in errors
+    expect(mockJson).toHaveBeenCalledWith({
+      success: false,
+      message: 'email must be an email',
+      errors: ['email must be an email', 'name should not be empty'],
+      statusCode: HttpStatus.BAD_REQUEST,
+    });
+  });
+
+  it('should omit errors field for single-message validation errors', () => {
+    const exception = new BadRequestException({
+      message: ['email must be an email'],
+      error: 'Bad Request',
+    });
+
+    filter.catch(exception, mockHost);
+
     expect(mockJson).toHaveBeenCalledWith({
       success: false,
       message: 'email must be an email',
       statusCode: HttpStatus.BAD_REQUEST,
     });
+  });
+
+  it.each([
+    ['P2002', HttpStatus.CONFLICT, 'Deze waarde bestaat al'],
+    ['P2025', HttpStatus.NOT_FOUND, 'Gegevens niet gevonden'],
+    ['P2003', HttpStatus.BAD_REQUEST, 'Verwijzing naar niet-bestaande gegevens'],
+  ])('should map Prisma %s to %s', (code, status, message) => {
+    const exception = new Prisma.PrismaClientKnownRequestError('db error', {
+      code,
+      clientVersion: 'test',
+    });
+
+    filter.catch(exception, mockHost);
+
+    expect(mockStatus).toHaveBeenCalledWith(status);
+    expect(mockJson).toHaveBeenCalledWith({
+      success: false,
+      message,
+      statusCode: status,
+    });
+  });
+
+  it('should map unknown Prisma codes to 500', () => {
+    const exception = new Prisma.PrismaClientKnownRequestError('db error', {
+      code: 'P1001',
+      clientVersion: 'test',
+    });
+
+    filter.catch(exception, mockHost);
+
+    expect(mockStatus).toHaveBeenCalledWith(HttpStatus.INTERNAL_SERVER_ERROR);
   });
 
   it('should handle ForbiddenException', () => {

@@ -1,3 +1,4 @@
+import { getErrorMessage } from '@/lib/api-client';
 import { useState, useEffect } from 'react';
 import type { ErrorReport, ErrorReportStatus } from '@/types';
 import {
@@ -47,8 +48,8 @@ function ErrorReportDetailModal({
     try {
       await updateStatus.mutateAsync({ id: report.id, status: s });
       showToast('Status bijgewerkt', 'success');
-    } catch {
-      showToast('Status bijwerken mislukt', 'error');
+    } catch (err) {
+      showToast(getErrorMessage(err, 'Status bijwerken mislukt'), 'error');
       setStatus(report.status);
     }
   }

@@ -11,6 +11,7 @@ import {
   useCompleteSession,
 } from '../hooks/use-planning-sessions';
 import { toDatetimeLocal } from './planning-detail-shared';
+import { getErrorMessage } from '@/lib/api-client';
 
 export function SessionsTab({
   sessions,
@@ -109,8 +110,8 @@ function SessionCard({
       await updateSession.mutateAsync({ notes: notesValue || null });
       setNotesOpen(false);
       showToast('Notitie opgeslagen', 'success');
-    } catch {
-      showToast('Fout bij opslaan notitie', 'error');
+    } catch (err) {
+      showToast(getErrorMessage(err, 'Fout bij opslaan notitie'), 'error');
     }
   };
 
@@ -126,8 +127,8 @@ function SessionCard({
       });
       setDateEditOpen(false);
       showToast('Datum opgeslagen', 'success');
-    } catch {
-      showToast('Fout bij opslaan datum', 'error');
+    } catch (err) {
+      showToast(getErrorMessage(err, 'Fout bij opslaan datum'), 'error');
     }
   };
 
@@ -135,8 +136,8 @@ function SessionCard({
     try {
       await acceptSessionMut.mutateAsync(undefined);
       showToast('Sessie geaccepteerd', 'success');
-    } catch {
-      showToast('Fout bij accepteren sessie', 'error');
+    } catch (err) {
+      showToast(getErrorMessage(err, 'Fout bij accepteren sessie'), 'error');
     }
   };
 
@@ -144,8 +145,8 @@ function SessionCard({
     try {
       await confirmSessionMut.mutateAsync(undefined);
       showToast('Sessie bevestigd als definitief', 'success');
-    } catch {
-      showToast('Fout bij bevestigen sessie', 'error');
+    } catch (err) {
+      showToast(getErrorMessage(err, 'Fout bij bevestigen sessie'), 'error');
     }
   };
 
@@ -153,8 +154,8 @@ function SessionCard({
     try {
       await completeSessionMut.mutateAsync(undefined);
       showToast('Sessie afgerond', 'success');
-    } catch {
-      showToast('Fout bij afronden sessie', 'error');
+    } catch (err) {
+      showToast(getErrorMessage(err, 'Fout bij afronden sessie'), 'error');
     }
   };
 
@@ -169,8 +170,8 @@ function SessionCard({
     try {
       await cancelSessionMut.mutateAsync(undefined);
       showToast('Sessie geannuleerd', 'success');
-    } catch {
-      showToast('Fout bij annuleren sessie', 'error');
+    } catch (err) {
+      showToast(getErrorMessage(err, 'Fout bij annuleren sessie'), 'error');
     }
   };
 

@@ -1,21 +1,47 @@
 import { NestFactory } from '@nestjs/core';
-import { ValidationPipe } from '@nestjs/common';
+import { NestExpressApplication } from '@nestjs/platform-express';
+import { Logger, ValidationPipe } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import cookieParser from 'cookie-parser';
 import { AppModule } from './app.module';
 import { AllExceptionsFilter } from './common/filters';
 
+const processLogger = new Logger('Process');
+
+// Een rejection buiten de request-context (cron job, fire-and-forget promise)
+// mag het proces niet neerhalen; een uncaughtException laat het proces wél
+// gecontroleerd stoppen zodat de procesmanager met een schone staat herstart.
+process.on('unhandledRejection', (reason) => {
+  processLogger.error(
+    'Unhandled promise rejection',
+    reason instanceof Error ? reason.stack : String(reason),
+  );
+});
+
+process.on('uncaughtException', (error) => {
+  processLogger.error('Uncaught exception, shutting down', error.stack);
+  process.exit(1);
+});
+
 async function bootstrap() {
   // Enable rawBody so webhook controllers can verify signatures
-  const app = await NestFactory.create(AppModule, { rawBody: true });
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, { rawBody: true });
+
+  const baseDomain = process.env.BASE_DOMAIN || 'localhost';
+  const portalPort = process.env.PORTAL_PORT || '5173';
+  const isLocalhost = baseDomain === 'localhost';
+
+  // Trust proxy: in productie staat de API achter precies één reverse proxy.
+  // 'trust proxy = 1' laat Express X-Forwarded-Host/-For/-Proto van die proxy
+  // gebruiken voor req.hostname (tenant-resolutie!) en req.ip (rate limiting),
+  // maar negeert door clients meegestuurde extra headers. Lokaal (geen proxy)
+  // expliciet uit, zodat een client de tenant-hostname niet kan spoofen.
+  app.set('trust proxy', isLocalhost ? false : 1);
 
   // Cookie parser
   app.use(cookieParser());
 
   // CORS — allow all subdomains of BASE_DOMAIN
-  const baseDomain = process.env.BASE_DOMAIN || 'localhost';
-  const portalPort = process.env.PORTAL_PORT || '5173';
-  const isLocalhost = baseDomain === 'localhost';
   const protocol = isLocalhost ? 'http' : 'https';
   const portSuffix = isLocalhost ? `:${portalPort}` : '';
 

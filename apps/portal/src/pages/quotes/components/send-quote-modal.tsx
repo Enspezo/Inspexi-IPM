@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { Modal, Button, Input, useToast } from '@/components/ui';
 import { useSendQuote } from '../hooks/use-quotes';
 import type { Quote } from '@/types';
+import { getErrorMessage } from '@/lib/api-client';
 
 const schema = z.object({
   to: z.string().email('Ongeldig e-mailadres'),
@@ -58,8 +59,8 @@ export function SendQuoteModal({ isOpen, onClose, quote }: SendQuoteModalProps) 
       });
       showToast('Offerte verstuurd', 'success');
       onClose();
-    } catch {
-      showToast('Versturen mislukt', 'error');
+    } catch (err) {
+      showToast(getErrorMessage(err, 'Versturen mislukt'), 'error');
     }
   };
 

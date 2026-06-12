@@ -1,3 +1,4 @@
+import { getErrorMessage } from '@/lib/api-client';
 import { useEffect, useState, useCallback } from 'react';
 import { Card, Button, useToast } from '@/components/ui';
 import { NotificationType } from '@/types';
@@ -86,8 +87,8 @@ export function NotificationPrefsCard() {
         })),
       );
       showToast('Notificatie-instellingen opgeslagen', 'success');
-    } catch {
-      showToast('Opslaan mislukt', 'error');
+    } catch (err) {
+      showToast(getErrorMessage(err, 'Opslaan mislukt'), 'error');
     }
   };
 

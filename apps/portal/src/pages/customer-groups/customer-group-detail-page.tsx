@@ -15,6 +15,7 @@ import {
 } from './hooks/use-customer-groups';
 import { useContacts } from '@/pages/contacts/hooks/use-contacts';
 import { AuditHistory } from '@/components/audit-history/audit-history';
+import { getErrorMessage } from '@/lib/api-client';
 
 const canWrite = [Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE];
 const canDelete = [Role.SUPERUSER, Role.ORG_ADMIN];
@@ -51,8 +52,8 @@ export default function CustomerGroupDetailPage() {
       await deleteMutation.mutateAsync(group.id);
       showToast('Klantgroep verwijderd', 'success');
       navigate('/contacts/groups');
-    } catch {
-      showToast('Verwijderen mislukt', 'error');
+    } catch (err) {
+      showToast(getErrorMessage(err, 'Verwijderen mislukt'), 'error');
     }
   };
 
@@ -60,8 +61,8 @@ export default function CustomerGroupDetailPage() {
     try {
       await addContactMutation.mutateAsync(contactId);
       showToast('Relatie toegevoegd aan groep', 'success');
-    } catch {
-      showToast('Toevoegen mislukt', 'error');
+    } catch (err) {
+      showToast(getErrorMessage(err, 'Toevoegen mislukt'), 'error');
     }
   };
 
@@ -76,8 +77,8 @@ export default function CustomerGroupDetailPage() {
     try {
       await removeContactMutation.mutateAsync(contactId);
       showToast('Relatie verwijderd uit groep', 'success');
-    } catch {
-      showToast('Verwijderen mislukt', 'error');
+    } catch (err) {
+      showToast(getErrorMessage(err, 'Verwijderen mislukt'), 'error');
     }
   };
 
@@ -133,8 +134,8 @@ export default function CustomerGroupDetailPage() {
                 onSave={async (notes) => {
                   try {
                     await updateMutation.mutateAsync({ notes: notes || undefined });
-                  } catch {
-                    showToast('Notities opslaan mislukt', 'error');
+                  } catch (err) {
+                    showToast(getErrorMessage(err, 'Notities opslaan mislukt'), 'error');
                   }
                 }}
               />

@@ -16,7 +16,7 @@ import {
   useSetQuoteLines,
   useResolvePrice,
 } from './hooks/use-quotes';
-import { apiClient } from '@/lib/api-client';
+import { apiClient, getErrorMessage } from '@/lib/api-client';
 import { formatCurrency } from '@/lib/format';
 import type { ResolvedPrice } from '@/types';
 
@@ -311,8 +311,8 @@ export default function QuoteEditorPage() {
 
       showToast(isEditing ? 'Offerte bijgewerkt' : 'Offerte aangemaakt', 'success');
       navigate(`/quotes/${quoteId}`);
-    } catch {
-      showToast(isEditing ? 'Bijwerken mislukt' : 'Aanmaken mislukt', 'error');
+    } catch (err) {
+      showToast(getErrorMessage(err, isEditing ? 'Bijwerken mislukt' : 'Aanmaken mislukt'), 'error');
     }
   };
 

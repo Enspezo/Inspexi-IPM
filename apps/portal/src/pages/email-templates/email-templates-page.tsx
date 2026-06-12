@@ -13,6 +13,7 @@ import type { EmailTemplate } from '@/types';
 import { useEmailTemplates, useDeleteEmailTemplate } from './hooks/use-email-templates';
 import { CreateEmailTemplateModal } from './components/create-email-template-modal';
 import { EMAIL_TYPE_LABELS } from './components/email-type-labels';
+import { getErrorMessage } from '@/lib/api-client';
 
 export default function EmailTemplatesPage() {
   const navigate = useNavigate();
@@ -34,8 +35,8 @@ export default function EmailTemplatesPage() {
     try {
       await deleteMutation.mutateAsync(id);
       showToast('Sjabloon gedeactiveerd', 'success');
-    } catch {
-      showToast('Deactiveren mislukt', 'error');
+    } catch (err) {
+      showToast(getErrorMessage(err, 'Deactiveren mislukt'), 'error');
     }
   };
 

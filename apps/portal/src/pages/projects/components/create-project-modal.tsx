@@ -9,6 +9,7 @@ import { useContactLocations } from '@/pages/contacts/hooks/use-contacts';
 import { useUsers } from '@/pages/users/hooks/use-users';
 import { ContactSearchInput } from '@/components/contacts/contact-search-input';
 import type { Project } from '@/types';
+import { getErrorMessage } from '@/lib/api-client';
 
 const schema = z.object({
   title: z.string().min(1, 'Titel is verplicht'),
@@ -92,8 +93,8 @@ export function CreateProjectModal({
       showToast('Project aangemaakt', 'success');
       reset();
       onCreated(result);
-    } catch {
-      showToast('Project aanmaken mislukt', 'error');
+    } catch (err) {
+      showToast(getErrorMessage(err, 'Project aanmaken mislukt'), 'error');
     }
   };
 

@@ -7,6 +7,7 @@ import { DetailPageLayout } from '@/components/layout/detail-page-layout';
 import { usePriceTable, useSetPriceTableItems, useRemovePriceTableAssignment } from './hooks/use-price-tables';
 import { useProducts } from '../products/hooks/use-products';
 import { AuditHistory } from '@/components/audit-history/audit-history';
+import { getErrorMessage } from '@/lib/api-client';
 
 interface EditableItem {
   productId: string;
@@ -126,8 +127,8 @@ export default function PriceTableDetailPage() {
       );
       showToast('Prijzen opgeslagen!', 'success');
       setIsDirty(false);
-    } catch {
-      showToast('Opslaan mislukt', 'error');
+    } catch (err) {
+      showToast(getErrorMessage(err, 'Opslaan mislukt'), 'error');
     }
   };
 
@@ -135,8 +136,8 @@ export default function PriceTableDetailPage() {
     try {
       await removeMutation.mutateAsync(contactId);
       showToast('Koppeling verwijderd', 'success');
-    } catch {
-      showToast('Verwijderen mislukt', 'error');
+    } catch (err) {
+      showToast(getErrorMessage(err, 'Verwijderen mislukt'), 'error');
     }
   };
 

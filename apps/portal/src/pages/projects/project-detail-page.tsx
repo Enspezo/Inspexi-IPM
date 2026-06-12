@@ -36,7 +36,7 @@ import { OverviewTab } from './components/project-overview-tab';
 import { LinkedEntitiesTab } from './components/project-linked-entities-tab';
 import { FollowersTab } from './components/project-followers-tab';
 import { AddFollowerModal } from './components/add-follower-modal';
-import { apiClient } from '@/lib/api-client';
+import { apiClient, getErrorMessage } from '@/lib/api-client';
 import { useEffect } from 'react';
 
 // ─── Constants ─────────────────────────────────────────────
@@ -171,8 +171,8 @@ export default function ProjectDetailPage() {
     try {
       await unassignMutation.mutateAsync(payload);
       showToast('Ontkoppeld', 'success');
-    } catch {
-      showToast('Ontkoppelen mislukt', 'error');
+    } catch (err) {
+      showToast(getErrorMessage(err, 'Ontkoppelen mislukt'), 'error');
     } finally {
       setConfirmUnlink(null);
     }
@@ -187,8 +187,8 @@ export default function ProjectDetailPage() {
     try {
       await removeFollowerMutation.mutateAsync(confirmRemoveFollower.followerId);
       showToast('Volger verwijderd', 'success');
-    } catch {
-      showToast('Verwijderen mislukt', 'error');
+    } catch (err) {
+      showToast(getErrorMessage(err, 'Verwijderen mislukt'), 'error');
     } finally {
       setConfirmRemoveFollower(null);
     }
@@ -199,8 +199,8 @@ export default function ProjectDetailPage() {
       await deleteMutation.mutateAsync();
       showToast('Project verwijderd', 'success');
       navigate('/projects');
-    } catch {
-      showToast('Verwijderen mislukt', 'error');
+    } catch (err) {
+      showToast(getErrorMessage(err, 'Verwijderen mislukt'), 'error');
     }
   };
 
@@ -227,8 +227,8 @@ export default function ProjectDetailPage() {
                           const newStatus = task.status === TaskStatus.VOLTOOID ? TaskStatus.TE_DOEN : TaskStatus.VOLTOOID;
                           try {
                             await updateTaskMutation.mutateAsync({ id: task.id, data: { status: newStatus } });
-                          } catch {
-                            showToast('Status wijzigen mislukt', 'error');
+                          } catch (err) {
+                            showToast(getErrorMessage(err, 'Status wijzigen mislukt'), 'error');
                           }
                         }}
                         className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors ${
@@ -343,8 +343,8 @@ export default function ProjectDetailPage() {
                 try {
                   await updateMutation.mutateAsync(data);
                   showToast('Project bijgewerkt', 'success');
-                } catch {
-                  showToast('Bijwerken mislukt', 'error');
+                } catch (err) {
+                  showToast(getErrorMessage(err, 'Bijwerken mislukt'), 'error');
                 }
               }}
               isUpdating={updateMutation.isPending}
@@ -443,8 +443,8 @@ export default function ProjectDetailPage() {
               await addFollowerMutation.mutateAsync(data);
               showToast('Volger toegevoegd', 'success');
               setAddFollowerOpen(false);
-            } catch {
-              showToast('Toevoegen mislukt', 'error');
+            } catch (err) {
+              showToast(getErrorMessage(err, 'Toevoegen mislukt'), 'error');
             }
           }}
           isAdding={addFollowerMutation.isPending}

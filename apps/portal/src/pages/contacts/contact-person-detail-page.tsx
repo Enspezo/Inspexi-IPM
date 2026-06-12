@@ -16,6 +16,7 @@ import {
 } from './hooks/use-contacts';
 import { roleColors } from '@/lib/contact-person-role';
 import { AuditHistory } from '@/components/audit-history/audit-history';
+import { getErrorMessage } from '@/lib/api-client';
 
 const objectTypeColors: Record<string, string> = {
   woning: 'bg-blue-100 text-blue-800',
@@ -81,8 +82,8 @@ export default function ContactPersonDetailPage() {
       await updateMutation.mutateAsync(data);
       showToast('Contactpersoon bijgewerkt', 'success');
       setIsEditing(false);
-    } catch {
-      showToast('Opslaan mislukt', 'error');
+    } catch (err) {
+      showToast(getErrorMessage(err, 'Opslaan mislukt'), 'error');
     }
   };
 
@@ -112,8 +113,8 @@ export default function ContactPersonDetailPage() {
       await deleteMutation.mutateAsync(person.id);
       showToast('Contactpersoon verwijderd', 'success');
       navigate(`/contacts/${person.contactId}`);
-    } catch {
-      showToast('Verwijderen mislukt', 'error');
+    } catch (err) {
+      showToast(getErrorMessage(err, 'Verwijderen mislukt'), 'error');
     }
   };
 

@@ -1,6 +1,7 @@
 import type { PlanningFollower } from '@/types';
 import { Button, useToast } from '@/components/ui';
 import { useRemoveFollower } from '../hooks/use-planning-followers';
+import { getErrorMessage } from '@/lib/api-client';
 
 export function PlanningVolgersTab({
   id,
@@ -20,8 +21,8 @@ export function PlanningVolgersTab({
     try {
       await removeFollower.mutateAsync(followerId);
       showToast('Volger verwijderd', 'success');
-    } catch {
-      showToast('Fout bij verwijderen volger', 'error');
+    } catch (err) {
+      showToast(getErrorMessage(err, 'Fout bij verwijderen volger'), 'error');
     }
   };
 

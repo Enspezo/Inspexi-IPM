@@ -12,6 +12,7 @@ import { CustomFieldsDisplay, CustomFieldsForm } from '@/components/custom-field
 import { useAuth } from '@/providers/auth-provider';
 import { useProduct, useUpdateProduct } from './hooks/use-products';
 import { useProductGroupsCompact } from '@/pages/product-groups/hooks/use-product-groups';
+import { getErrorMessage } from '@/lib/api-client';
 
 const canWrite = [Role.SUPERUSER, Role.ORG_ADMIN];
 
@@ -91,8 +92,8 @@ export default function ProductDetailPage() {
       } as any);
       showToast('Product bijgewerkt', 'success');
       setIsEditing(false);
-    } catch {
-      showToast('Opslaan mislukt', 'error');
+    } catch (err) {
+      showToast(getErrorMessage(err, 'Opslaan mislukt'), 'error');
     }
   };
 

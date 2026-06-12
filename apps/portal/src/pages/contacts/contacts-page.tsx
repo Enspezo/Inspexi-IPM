@@ -1,3 +1,4 @@
+import { tenantStorage } from '@/lib/storage';
 import { useState, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { Contact } from '@/types';
@@ -49,7 +50,7 @@ export default function ContactsPage() {
   const navigate = useNavigate();
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
-  const [onlyMine, setOnlyMine] = useState(() => localStorage.getItem('inspexi:filter-mine:contacts') === 'true');
+  const [onlyMine, setOnlyMine] = useState(() => tenantStorage.getItem('filter-mine:contacts') === 'true');
   const [page, setPage] = useState(1);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
 
@@ -281,7 +282,7 @@ export default function ContactsPage() {
             checked={onlyMine}
             onChange={(e) => {
               setOnlyMine(e.target.checked);
-              localStorage.setItem('inspexi:filter-mine:contacts', String(e.target.checked));
+              tenantStorage.setItem('filter-mine:contacts', String(e.target.checked));
               setPage(1);
             }}
           />

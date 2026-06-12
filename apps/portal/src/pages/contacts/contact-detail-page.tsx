@@ -39,6 +39,7 @@ import { ContactProjectsTab } from './components/contact-projects-tab';
 import { ContactHistorySidebar } from './components/contact-history-sidebar';
 import { ContactTasksSidebar } from './components/contact-tasks-sidebar';
 import { ViesNameModal } from './components/vies-name-modal';
+import { getErrorMessage } from '@/lib/api-client';
 
 type Tab = 'algemeen' | 'adressen' | 'locaties' | 'aanvragen' | 'offertes' | 'planning' | 'projecten';
 
@@ -141,8 +142,8 @@ export default function ContactDetailPage() {
         setFormValue('website', profile.website, { shouldDirty: true });
       }
       showToast('Gegevens opgehaald uit KvK', 'success');
-    } catch {
-      showToast('KvK-nummer niet gevonden', 'error');
+    } catch (err) {
+      showToast(getErrorMessage(err, 'KvK-nummer niet gevonden'), 'error');
     } finally {
       setIsKvkLookingUp(false);
     }
@@ -186,8 +187,8 @@ export default function ContactDetailPage() {
       viesNameApplied.current = false;
       showToast('Relatie bijgewerkt', 'success');
       setIsEditing(false);
-    } catch {
-      showToast('Opslaan mislukt', 'error');
+    } catch (err) {
+      showToast(getErrorMessage(err, 'Opslaan mislukt'), 'error');
     }
   };
 
@@ -222,8 +223,8 @@ export default function ContactDetailPage() {
       await deleteMutation.mutateAsync(contact.id);
       showToast('Relatie verwijderd', 'success');
       navigate('/contacts');
-    } catch {
-      showToast('Verwijderen mislukt', 'error');
+    } catch (err) {
+      showToast(getErrorMessage(err, 'Verwijderen mislukt'), 'error');
     }
   };
 

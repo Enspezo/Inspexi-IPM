@@ -1,3 +1,4 @@
+import { getErrorMessage } from '@/lib/api-client';
 import { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -181,8 +182,8 @@ export default function QuoteTemplatesPage() {
     try {
       await deleteMutation.mutateAsync(id);
       showToast('Template gedeactiveerd', 'success');
-    } catch {
-      showToast('Deactiveren mislukt', 'error');
+    } catch (err) {
+      showToast(getErrorMessage(err, 'Deactiveren mislukt'), 'error');
     }
   };
 
@@ -353,8 +354,8 @@ function CreateTemplateModal({ isOpen, onClose }: { isOpen: boolean; onClose: ()
       setSelectedType('BLOCKS');
       onClose();
       navigate(`/quote-templates/${template.id}`);
-    } catch {
-      showToast('Aanmaken mislukt', 'error');
+    } catch (err) {
+      showToast(getErrorMessage(err, 'Aanmaken mislukt'), 'error');
     }
   };
 

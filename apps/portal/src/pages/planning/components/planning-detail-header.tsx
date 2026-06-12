@@ -1,3 +1,4 @@
+import { getErrorMessage } from '@/lib/api-client';
 import { useNavigate } from 'react-router-dom';
 import { PlanningStatus } from '@/types';
 import type { PlanningItem } from '@/types';
@@ -44,8 +45,8 @@ export function PlanningDetailHeader({
     try {
       await complete.mutateAsync(undefined);
       showToast('Afspraak afgerond', 'success');
-    } catch {
-      showToast('Fout bij afronden afspraak', 'error');
+    } catch (err) {
+      showToast(getErrorMessage(err, 'Fout bij afronden afspraak'), 'error');
     }
   };
 
@@ -53,8 +54,8 @@ export function PlanningDetailHeader({
     try {
       await sendConfirmation.mutateAsync(undefined);
       showToast('Bevestiging verstuurd', 'success');
-    } catch {
-      showToast('Fout bij versturen bevestiging', 'error');
+    } catch (err) {
+      showToast(getErrorMessage(err, 'Fout bij versturen bevestiging'), 'error');
     }
   };
 
@@ -62,8 +63,8 @@ export function PlanningDetailHeader({
     try {
       await accept.mutateAsync(undefined);
       showToast('Afspraak geaccepteerd', 'success');
-    } catch {
-      showToast('Fout bij accepteren afspraak', 'error');
+    } catch (err) {
+      showToast(getErrorMessage(err, 'Fout bij accepteren afspraak'), 'error');
     }
   };
 

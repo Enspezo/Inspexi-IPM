@@ -9,7 +9,7 @@ import { formatFileSize } from '@/lib/format';
 import { DetailPageLayout } from '@/components/layout/detail-page-layout';
 import { AuditHistory } from '@/components/audit-history/audit-history';
 import { useToast } from '@/components/ui';
-import { getAccessToken } from '@/lib/api-client';
+import { getAccessToken, getErrorMessage } from '@/lib/api-client';
 import {
   useEmailTemplate,
   useUpdateEmailTemplate,
@@ -84,8 +84,8 @@ export default function EmailTemplateDetailPage() {
       });
       showToast('Sjabloongegevens opgeslagen', 'success');
       setIsEditing(false);
-    } catch {
-      showToast('Opslaan mislukt', 'error');
+    } catch (err) {
+      showToast(getErrorMessage(err, 'Opslaan mislukt'), 'error');
     }
   };
 
@@ -104,8 +104,8 @@ export default function EmailTemplateDetailPage() {
       });
       showToast('Sjabloon opgeslagen', 'success');
       setIsBodyDirty(false);
-    } catch {
-      showToast('Opslaan mislukt', 'error');
+    } catch (err) {
+      showToast(getErrorMessage(err, 'Opslaan mislukt'), 'error');
     }
   };
 
@@ -123,8 +123,8 @@ export default function EmailTemplateDetailPage() {
     try {
       await updateMutation.mutateAsync({ isActive: newActive });
       showToast(`Sjabloon ${newActive ? 'geactiveerd' : 'gedeactiveerd'}`, 'success');
-    } catch {
-      showToast(`${msg} mislukt`, 'error');
+    } catch (err) {
+      showToast(getErrorMessage(err, `${msg} mislukt`), 'error');
     }
   };
 
@@ -133,8 +133,8 @@ export default function EmailTemplateDetailPage() {
       const result = await duplicateMutation.mutateAsync(id!);
       showToast('Sjabloon gedupliceerd', 'success');
       navigate(`/email-templates/${result.id}`);
-    } catch {
-      showToast('Dupliceren mislukt', 'error');
+    } catch (err) {
+      showToast(getErrorMessage(err, 'Dupliceren mislukt'), 'error');
     }
   };
 
@@ -186,8 +186,8 @@ export default function EmailTemplateDetailPage() {
       try {
         await uploadAttachmentMutation.mutateAsync(formData);
         showToast('Bijlage toegevoegd', 'success');
-      } catch {
-        showToast('Upload mislukt', 'error');
+      } catch (err) {
+        showToast(getErrorMessage(err, 'Upload mislukt'), 'error');
       }
     };
     input.click();
@@ -208,8 +208,8 @@ export default function EmailTemplateDetailPage() {
       a.download = att.originalName;
       a.click();
       URL.revokeObjectURL(url);
-    } catch {
-      showToast('Download mislukt', 'error');
+    } catch (err) {
+      showToast(getErrorMessage(err, 'Download mislukt'), 'error');
     }
   };
 
@@ -223,8 +223,8 @@ export default function EmailTemplateDetailPage() {
     try {
       await deleteAttachmentMutation.mutateAsync(attachmentId);
       showToast('Bijlage verwijderd', 'success');
-    } catch {
-      showToast('Verwijderen mislukt', 'error');
+    } catch (err) {
+      showToast(getErrorMessage(err, 'Verwijderen mislukt'), 'error');
     }
   };
 

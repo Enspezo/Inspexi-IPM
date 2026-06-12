@@ -5,13 +5,22 @@ import {
   ForbiddenException,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
+import { ConfigService } from '@nestjs/config';
 import { Role } from '@prisma/client';
 import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
 import { TenantContext } from '../interfaces/tenant-context.interface';
 
 @Injectable()
 export class TenantGuard implements CanActivate {
-  constructor(private reflector: Reflector) {}
+  private readonly isLocalhost: boolean;
+
+  constructor(
+    private reflector: Reflector,
+    private config: ConfigService,
+  ) {
+    this.isLocalhost =
+      this.config.get<string>('BASE_DOMAIN', 'localhost') === 'localhost';
+  }
 
   canActivate(context: ExecutionContext): boolean {
     // Skip for @Public() routes — they don't require auth so no tenant check
@@ -42,9 +51,16 @@ export class TenantGuard implements CanActivate {
       return true;
     }
 
-    // Unknown domain (e.g., 127.0.0.1 in tests, direct IP) → no tenant restrictions
+    // Unknown domain (e.g., 127.0.0.1 in tests, direct IP) → no tenant context.
+    // Allowed only in local/dev (E2E tests run on 127.0.0.1). In production we
+    // fail secure: an authenticated request must arrive on a known org subdomain.
     if (!tenant.isSuperuserDomain && tenant.orgId === null) {
-      return true;
+      if (this.isLocalhost) {
+        return true;
+      }
+      throw new ForbiddenException(
+        'Gebruik het subdomein van uw organisatie',
+      );
     }
 
     // Explicit SUPERUSER domain (mijn.inspexi.nl / mijn.localhost) — only SUPERUSER allowed

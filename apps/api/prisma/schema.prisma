@@ -266,6 +266,7 @@ model Organization {
   timezone            String   @default("Europe/Amsterdam")
   workdayStart        Int      @default(8)  @map("workday_start")
   workdayEnd          Int      @default(17) @map("workday_end")
+  isActive            Boolean  @default(true) @map("is_active")
   createdAt           DateTime @default(now()) @map("created_at")
 
   users       User[]
@@ -433,6 +434,7 @@ model Contact {
   planningItems      PlanningItem[]
   projects           Project[]
 
+  @@index([orgId])
   @@map("imp_contacts")
 }
 
@@ -744,6 +746,7 @@ model Request {
   statusHistory RequestStatusHistory[]
   quotes        Quote[]
 
+  @@index([orgId, status])
   @@map("imp_requests")
 }
 
@@ -855,7 +858,7 @@ model QuoteTemplateFollowUp {
 model Quote {
   id               String      @id @default(uuid()) @db.Uuid
   orgId            String      @map("org_id") @db.Uuid
-  quoteNumber      String      @unique @map("quote_number")
+  quoteNumber      String      @map("quote_number")
   templateId       String?     @map("template_id") @db.Uuid
   requestId        String?     @map("request_id") @db.Uuid
   contactId        String      @map("contact_id") @db.Uuid
@@ -907,6 +910,8 @@ model Quote {
   questions        QuoteQuestion[]
   attachments      QuoteAttachment[]
 
+  @@unique([orgId, quoteNumber])
+  @@index([orgId, status])
   @@map("imp_quotes")
 }
 
@@ -1276,7 +1281,7 @@ model PlanningSessionInspector {
 model Project {
   id               String        @id @default(uuid()) @db.Uuid
   orgId            String        @map("org_id") @db.Uuid
-  projectNumber    String        @unique @map("project_number")
+  projectNumber    String        @map("project_number")
   title            String
   description      String?
   status           ProjectStatus @default(ACTIEF)
@@ -1302,6 +1307,7 @@ model Project {
   quotes         Quote[]
   planningItems  PlanningItem[]
 
+  @@unique([orgId, projectNumber])
   @@index([orgId, status])
   @@index([contactId])
   @@index([projectManagerId])
@@ -1450,7 +1456,7 @@ model WorkOrder {
   id              String          @id @default(uuid()) @db.Uuid
   orgId           String          @map("org_id") @db.Uuid
   planningItemId  String?         @map("planning_item_id") @db.Uuid
-  workOrderNumber String          @unique @map("work_order_number")
+  workOrderNumber String          @map("work_order_number")
   status          WorkOrderStatus @default(IN_VOORBEREIDING)
   internalNotes   String?         @map("internal_notes")
   startTime       DateTime?       @map("start_time")
@@ -1464,6 +1470,7 @@ model WorkOrder {
   createdByUser   User            @relation("WorkOrderCreatedByUser", fields: [createdBy], references: [id])
   lines           WorkOrderLine[]
 
+  @@unique([orgId, workOrderNumber])
   @@index([orgId, status])
   @@index([orgId, planningItemId])
   @@map("imp_work_orders")

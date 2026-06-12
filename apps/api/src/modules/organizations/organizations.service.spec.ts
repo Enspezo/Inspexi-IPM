@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { ConflictException, NotFoundException } from '@nestjs/common';
 import { OrganizationsService } from './organizations.service';
 import { STORAGE_PROVIDER } from '@/common/services/storage/storage.interface';
+import { TenantCacheService } from '@/common/services/tenant-cache.service';
 import { PrismaService } from '@/prisma';
 
 describe('OrganizationsService', () => {
@@ -12,6 +13,7 @@ describe('OrganizationsService', () => {
     id: 'org-1',
     name: 'Test Org',
     slug: 'test-org',
+    isActive: true,
     logoUrl: null,
     primaryColor: '#1E40AF',
     defaultVat: 21,
@@ -45,6 +47,7 @@ describe('OrganizationsService', () => {
             exists: jest.fn(),
           },
         },
+        TenantCacheService,
       ],
     }).compile();
 

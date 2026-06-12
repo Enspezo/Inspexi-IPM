@@ -1,15 +1,18 @@
 import { Module, NestModule, MiddlewareConsumer } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { ScheduleModule } from '@nestjs/schedule';
+import { ThrottlerModule } from '@nestjs/throttler';
 import { APP_GUARD, APP_FILTER, APP_INTERCEPTOR } from '@nestjs/core';
 import { TenantMiddleware } from './common/middleware/tenant.middleware';
 import { PrismaModule } from './prisma';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { RolesGuard } from './common/guards/roles.guard';
 import { TenantGuard } from './common/guards/tenant.guard';
+import { AppThrottlerGuard } from './common/guards/app-throttler.guard';
 import { AllExceptionsFilter } from './common/filters';
 import { AuditContextInterceptor } from './common/interceptors/audit-context.interceptor';
 import { EmailModule } from './common/services/email.module';
+import { TenantCacheModule } from './common/services/tenant-cache.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { OrganizationsModule } from './modules/organizations/organizations.module';
 import { UsersModule } from './modules/users/users.module';
@@ -43,7 +46,11 @@ import { WorkOrdersModule } from './modules/work-orders/work-orders.module';
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     ScheduleModule.forRoot(),
+    // Global rate limiting: 120 requests / 60s per IP (in-memory store).
+    // Sensitive routes tighten this with @Throttle(); see auth.controller.ts.
+    ThrottlerModule.forRoot([{ name: 'default', ttl: 60000, limit: 120 }]),
     PrismaModule,
+    TenantCacheModule,
     EmailModule,
     NotificationsModule,
     AuthModule,
@@ -82,6 +89,10 @@ import { WorkOrdersModule } from './modules/work-orders/work-orders.module';
     {
       provide: APP_INTERCEPTOR,
       useClass: AuditContextInterceptor,
+    },
+    {
+      provide: APP_GUARD,
+      useClass: AppThrottlerGuard,
     },
     {
       provide: APP_GUARD,

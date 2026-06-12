@@ -1,3 +1,4 @@
+import { tenantStorage } from '@/lib/storage';
 import { useState, useEffect } from 'react';
 import { DocumentEntityType } from '@/types';
 import type { CrmDocument } from '@/types';
@@ -101,7 +102,7 @@ export default function DocumentsPage() {
   const [isUploadOpen, setIsUploadOpen] = useState(false);
   const [search, setSearch] = useState('');
   const [entityTypeFilter, setEntityTypeFilter] = useState('');
-  const [onlyMine, setOnlyMine] = useState(() => localStorage.getItem('inspexi:filter-mine:documents') === 'true');
+  const [onlyMine, setOnlyMine] = useState(() => tenantStorage.getItem('filter-mine:documents') === 'true');
   const [page, setPage] = useState(1);
   const [previewDoc, setPreviewDoc] = useState<CrmDocument | null>(null);
 
@@ -372,7 +373,7 @@ export default function DocumentsPage() {
               checked={onlyMine}
               onChange={(e) => {
                 setOnlyMine(e.target.checked);
-                localStorage.setItem('inspexi:filter-mine:documents', String(e.target.checked));
+                tenantStorage.setItem('filter-mine:documents', String(e.target.checked));
                 setPage(1);
               }}
             />

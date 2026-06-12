@@ -36,6 +36,7 @@ import {
   UpdateColorDto,
   DeleteUserDto,
 } from './dto';
+import { Throttle } from '@nestjs/throttler';
 import { Roles, CurrentUser, Public } from '@/common/decorators';
 
 @ApiTags('Users')
@@ -150,6 +151,7 @@ export class UsersController {
   }
 
   @Public()
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
   @Post('accept-invitation')
   @ApiOperation({ summary: 'Uitnodiging accepteren en account aanmaken' })
   @ApiResponse({ status: 201, description: 'Account aangemaakt' })
@@ -157,6 +159,14 @@ export class UsersController {
   async acceptInvitation(@Body() dto: AcceptInvitationDto) {
     const user = await this.usersService.acceptInvitation(dto);
     return { success: true, data: user };
+  }
+
+  @Post('me/rotate-ical-token')
+  @ApiOperation({ summary: 'iCal feed-token vernieuwen (oude feed-URL wordt direct ongeldig)' })
+  @ApiResponse({ status: 201, description: 'Nieuw token gegenereerd' })
+  async rotateIcalToken(@CurrentUser() user: User) {
+    const data = await this.usersService.rotateIcalToken(user.id);
+    return { success: true, data };
   }
 
   // ─── Parameterized :id routes ─────────────────────────

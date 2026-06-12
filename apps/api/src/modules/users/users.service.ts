@@ -130,6 +130,16 @@ export class UsersService {
     return invitation;
   }
 
+  async rotateIcalToken(userId: string) {
+    const updated = await this.prisma.user.update({
+      where: { id: userId },
+      data: { icalToken: randomUUID() },
+      select: { icalToken: true },
+    });
+    this.logger.log(`iCal-token vernieuwd voor gebruiker ${userId}`);
+    return updated;
+  }
+
   async acceptInvitation(dto: AcceptInvitationDto) {
     const invitation = await this.prisma.invitation.findUnique({
       where: { token: dto.token },

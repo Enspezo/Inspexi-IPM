@@ -17,10 +17,12 @@ describe('TasksService', () => {
       delete: jest.fn(),
       count: jest.fn(),
     },
-    contact: { findMany: jest.fn() },
-    request: { findMany: jest.fn() },
-    quote: { findMany: jest.fn() },
-    planningItem: { findMany: jest.fn() },
+    contact: { findMany: jest.fn(), findUnique: jest.fn() },
+    request: { findMany: jest.fn(), findUnique: jest.fn() },
+    quote: { findMany: jest.fn(), findUnique: jest.fn() },
+    planningItem: { findMany: jest.fn(), findUnique: jest.fn() },
+    project: { findUnique: jest.fn() },
+    user: { findUnique: jest.fn() },
   };
 
   const mockNotificationsService = {
@@ -59,6 +61,14 @@ describe('TasksService', () => {
     mockPrismaService.request.findMany.mockResolvedValue([]);
     mockPrismaService.quote.findMany.mockResolvedValue([]);
     mockPrismaService.planningItem.findMany.mockResolvedValue([]);
+
+    // Default FK-ownership checks resolve to the same org as mockUser
+    mockPrismaService.contact.findUnique.mockResolvedValue({ orgId: 'org-1' });
+    mockPrismaService.request.findUnique.mockResolvedValue({ orgId: 'org-1' });
+    mockPrismaService.quote.findUnique.mockResolvedValue({ orgId: 'org-1' });
+    mockPrismaService.planningItem.findUnique.mockResolvedValue({ orgId: 'org-1' });
+    mockPrismaService.project.findUnique.mockResolvedValue({ orgId: 'org-1' });
+    mockPrismaService.user.findUnique.mockResolvedValue({ orgId: 'org-1' });
   });
 
   describe('findAll', () => {

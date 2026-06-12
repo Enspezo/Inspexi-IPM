@@ -1,11 +1,13 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import { TenantMiddleware } from './tenant.middleware';
+import { TenantCacheService } from '../services/tenant-cache.service';
 import { PrismaService } from '@/prisma';
 
 describe('TenantMiddleware', () => {
   let middleware: TenantMiddleware;
   let prisma: any;
+  let tenantCache: TenantCacheService;
 
   const mockPrismaService = {
     organization: {
@@ -29,6 +31,7 @@ describe('TenantMiddleware', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         TenantMiddleware,
+        TenantCacheService,
         { provide: PrismaService, useValue: mockPrismaService },
         { provide: ConfigService, useValue: mockConfigService },
       ],
@@ -36,6 +39,7 @@ describe('TenantMiddleware', () => {
 
     middleware = module.get<TenantMiddleware>(TenantMiddleware);
     prisma = module.get<PrismaService>(PrismaService);
+    tenantCache = module.get<TenantCacheService>(TenantCacheService);
   });
 
   const createReq = (hostname: string) =>
@@ -114,7 +118,7 @@ describe('TenantMiddleware', () => {
 
   describe('org subdomain resolution', () => {
     it('should resolve org subdomain and set tenant context', async () => {
-      const mockOrg = { id: 'org-1', slug: 'testorg', name: 'Test Org' };
+      const mockOrg = { id: 'org-1', slug: 'testorg', name: 'Test Org', isActive: true };
       mockPrismaService.organization.findUnique.mockResolvedValue(mockOrg);
 
       const req = createReq('testorg.localhost');
@@ -146,11 +150,32 @@ describe('TenantMiddleware', () => {
       });
       expect(next).not.toHaveBeenCalled();
     });
+
+    it('should return 404 for an inactive org', async () => {
+      mockPrismaService.organization.findUnique.mockResolvedValue({
+        id: 'org-1',
+        slug: 'inactiveorg',
+        name: 'Inactive Org',
+        isActive: false,
+      });
+
+      const req = createReq('inactiveorg.localhost');
+      const res = createRes();
+
+      await middleware.use(req, res, next);
+
+      expect(res.status).toHaveBeenCalledWith(404);
+      expect(res.json).toHaveBeenCalledWith({
+        statusCode: 404,
+        message: "Organisatie 'inactiveorg' niet gevonden",
+      });
+      expect(next).not.toHaveBeenCalled();
+    });
   });
 
   describe('caching', () => {
     it('should cache org lookups', async () => {
-      const mockOrg = { id: 'org-1', slug: 'cached', name: 'Cached Org' };
+      const mockOrg = { id: 'org-1', slug: 'cached', name: 'Cached Org', isActive: true };
       mockPrismaService.organization.findUnique.mockResolvedValue(mockOrg);
 
       const req1 = createReq('cached.localhost');
@@ -162,6 +187,20 @@ describe('TenantMiddleware', () => {
 
       // Should only call database once
       expect(mockPrismaService.organization.findUnique).toHaveBeenCalledTimes(1);
+    });
+
+    it('should re-query the database after cache invalidation', async () => {
+      const mockOrg = { id: 'org-1', slug: 'invalidated', name: 'Org', isActive: true };
+      mockPrismaService.organization.findUnique.mockResolvedValue(mockOrg);
+
+      const res = createRes();
+      await middleware.use(createReq('invalidated.localhost'), res, next);
+
+      tenantCache.invalidate('invalidated');
+
+      await middleware.use(createReq('invalidated.localhost'), res, next);
+
+      expect(mockPrismaService.organization.findUnique).toHaveBeenCalledTimes(2);
     });
   });
 

@@ -9,6 +9,7 @@ import {
 import { randomUUID } from 'crypto';
 import { PrismaService } from '@/prisma';
 import { assertFound } from '@/common';
+import { TenantCacheService } from '@/common/services/tenant-cache.service';
 import { CreateOrganizationDto, UpdateOrganizationDto } from './dto';
 import {
   STORAGE_PROVIDER,
@@ -22,6 +23,7 @@ export class OrganizationsService {
   constructor(
     private prisma: PrismaService,
     @Inject(STORAGE_PROVIDER) private storage: StorageProvider,
+    private tenantCache: TenantCacheService,
   ) {}
 
   async create(dto: CreateOrganizationDto) {
@@ -70,16 +72,15 @@ export class OrganizationsService {
   }
 
   async findBySlug(slug: string) {
-    return assertFound(
-      await this.prisma.organization.findUnique({
-        where: { slug },
-      }),
-      'Organisatie',
-    );
+    const org = await this.prisma.organization.findUnique({
+      where: { slug },
+    });
+    // Inactieve orgs zijn publiek onzichtbaar (offboarding)
+    return assertFound(org && org.isActive ? org : null, 'Organisatie');
   }
 
   async update(id: string, dto: UpdateOrganizationDto) {
-    await this.findOne(id);
+    const current = await this.findOne(id);
 
     if (dto.slug) {
       const existing = await this.prisma.organization.findFirst({
@@ -90,10 +91,19 @@ export class OrganizationsService {
       }
     }
 
-    return this.prisma.organization.update({
+    const updated = await this.prisma.organization.update({
       where: { id },
       data: dto,
     });
+
+    // Tenant-cache direct invalideren zodat slug-wijziging of deactivatie
+    // niet tot 5 minuten uit een verouderde cache geserveerd wordt
+    this.tenantCache.invalidate(current.slug);
+    if (updated.slug !== current.slug) {
+      this.tenantCache.invalidate(updated.slug);
+    }
+
+    return updated;
   }
 
   async uploadLogo(id: string, file: Express.Multer.File): Promise<string> {

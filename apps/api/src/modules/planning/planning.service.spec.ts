@@ -67,6 +67,7 @@ describe('PlanningService', () => {
     },
     user: {
       findMany: jest.fn(),
+      findUnique: jest.fn(),
     },
     organization: {
       findUnique: jest.fn(),
@@ -75,6 +76,18 @@ describe('PlanningService', () => {
       findFirst: jest.fn(),
     },
     quote: {
+      findUnique: jest.fn(),
+    },
+    contact: {
+      findUnique: jest.fn(),
+    },
+    location: {
+      findUnique: jest.fn(),
+    },
+    contactPerson: {
+      findUnique: jest.fn(),
+    },
+    product: {
       findUnique: jest.fn(),
     },
     document: {
@@ -186,6 +199,13 @@ describe('PlanningService', () => {
     }).compile();
 
     service = module.get<PlanningService>(PlanningService);
+
+    // Default FK-ownership checks resolve to the same org as mockUser
+    mockPrismaService.contact.findUnique.mockResolvedValue({ orgId: 'org-1' });
+    mockPrismaService.location.findUnique.mockResolvedValue({ orgId: 'org-1' });
+    mockPrismaService.contactPerson.findUnique.mockResolvedValue({ orgId: 'org-1' });
+    mockPrismaService.product.findUnique.mockResolvedValue({ orgId: 'org-1' });
+    mockPrismaService.quote.findUnique.mockResolvedValue({ orgId: 'org-1' });
 
     // Default: fire-and-forget services resolve quietly
     mockPrismaService.planningHistory.create.mockResolvedValue({});

@@ -1,3 +1,4 @@
+import { tenantStorage } from '@/lib/storage';
 import { useState, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { QuoteStatus, Role } from '@/types';
@@ -50,7 +51,7 @@ export default function QuotesPage() {
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
-  const [onlyMine, setOnlyMine] = useState(() => localStorage.getItem('inspexi:filter-mine:quotes') === 'true');
+  const [onlyMine, setOnlyMine] = useState(() => tenantStorage.getItem('filter-mine:quotes') === 'true');
   const [page, setPage] = useState(1);
 
   useEffect(() => {
@@ -280,7 +281,7 @@ export default function QuotesPage() {
             checked={onlyMine}
             onChange={(e) => {
               setOnlyMine(e.target.checked);
-              localStorage.setItem('inspexi:filter-mine:quotes', String(e.target.checked));
+              tenantStorage.setItem('filter-mine:quotes', String(e.target.checked));
               setPage(1);
             }}
           />

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/providers/auth-provider';
 import { apiClient } from '@/lib/api-client';
-import { Card, Button, useToast } from '@/components/ui';
+import { Card, Button, useToast, useConfirm } from '@/components/ui';
 
 // ─── Inspector Color & iCal Card ──────────────────────────
 
@@ -14,9 +14,11 @@ const PRESET_COLORS = [
 export function InspectorCard() {
   const { user, refreshUser } = useAuth();
   const { showToast } = useToast();
+  const confirm = useConfirm();
   const [color, setColor] = useState(user?.color || '#3B82F6');
   const [saving, setSaving] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [rotating, setRotating] = useState(false);
 
   useEffect(() => {
     if (user?.color) setColor(user.color);
@@ -32,6 +34,27 @@ export function InspectorCard() {
       showToast('Opslaan mislukt', 'error');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleRotateIcalToken = async () => {
+    const confirmed = await confirm({
+      title: 'iCal-token vernieuwen',
+      message:
+        'De huidige feed-URL wordt direct ongeldig. Agenda-apps die de oude URL gebruiken ontvangen geen afspraken meer en moeten opnieuw gekoppeld worden.',
+      confirmLabel: 'Vernieuwen',
+    });
+    if (!confirmed) return;
+
+    setRotating(true);
+    try {
+      await apiClient.post('/users/me/rotate-ical-token', {});
+      await refreshUser();
+      showToast('iCal-token vernieuwd — koppel uw agenda-app opnieuw', 'success');
+    } catch {
+      showToast('Vernieuwen mislukt', 'error');
+    } finally {
+      setRotating(false);
     }
   };
 
@@ -107,6 +130,14 @@ export function InspectorCard() {
             >
               {copied ? 'Gekopieerd!' : 'Kopieer'}
             </Button>
+          </div>
+          <div className="mt-3">
+            <Button size="sm" variant="danger" onClick={handleRotateIcalToken} isLoading={rotating}>
+              Token vernieuwen
+            </Button>
+            <p className="mt-2 text-xs text-gray-500">
+              Is de URL gelekt? Vernieuw het token — de oude feed-URL werkt dan direct niet meer.
+            </p>
           </div>
         </div>
       </div>

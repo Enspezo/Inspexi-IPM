@@ -1,7 +1,8 @@
 import { useState, useEffect, useContext, createContext, type ReactNode } from 'react';
 import { useLocation } from 'react-router-dom';
+import { tenantStorage } from '@/lib/storage';
 
-const STORAGE_KEY = 'inspexi:sidebar-state';
+const STORAGE_KEY = 'sidebar-state';
 
 /** Return the "view key" for the current route, e.g. "/contacts/:id" → "contacts-detail" */
 function getViewKey(pathname: string): string {
@@ -29,7 +30,7 @@ function getViewKey(pathname: string): string {
 
 function loadSidebarState(): Record<string, boolean> {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = tenantStorage.getItem(STORAGE_KEY);
     return raw ? JSON.parse(raw) : {};
   } catch {
     return {};
@@ -38,7 +39,7 @@ function loadSidebarState(): Record<string, boolean> {
 
 function saveSidebarState(state: Record<string, boolean>) {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    tenantStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   } catch {
     // Ignore storage errors
   }

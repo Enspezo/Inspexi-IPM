@@ -56,16 +56,29 @@ INSERT INTO "imp_contact_person_roles" ("id", "org_id", "code", "label", "sort_o
 -- ─── 3. Nieuwe FK-kolommen ───────────────────────────────
 
 ALTER TABLE "imp_requests"         ADD COLUMN "lost_reason_id" UUID;
+-- lost_note zat al via `db push` in bestaande databases maar in geen enkele migratie
+ALTER TABLE "imp_requests"         ADD COLUMN IF NOT EXISTS "lost_note" TEXT;
 ALTER TABLE "imp_contact_persons"  ADD COLUMN "role_id"        UUID;
 
 -- ─── 4. Backfill bestaande rijen (enum-tekst → lookup-rij) ──
 
-UPDATE "imp_requests" r
-SET "lost_reason_id" = lr."id"
-FROM "imp_lost_reasons" lr
-WHERE lr."org_id" IS NULL
-  AND lr."code" = r."lost_reason"::text
-  AND r."lost_reason" IS NOT NULL;
+-- NB: "lost_reason" bestond alleen in databases die via `db push` zijn bijgewerkt —
+-- geen eerdere migratie maakt deze kolom aan. Conditioneel backfillen zodat de
+-- keten ook op een lege (shadow) database herspeelt.
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'imp_requests' AND column_name = 'lost_reason'
+    ) THEN
+        UPDATE "imp_requests" r
+        SET "lost_reason_id" = lr."id"
+        FROM "imp_lost_reasons" lr
+        WHERE lr."org_id" IS NULL
+          AND lr."code" = r."lost_reason"::text
+          AND r."lost_reason" IS NOT NULL;
+    END IF;
+END $$;
 
 UPDATE "imp_contact_persons" cp
 SET "role_id" = o."id"
@@ -75,7 +88,7 @@ WHERE o."org_id" IS NULL
 
 -- ─── 5. Oude enum-kolommen verwijderen ───────────────────
 
-ALTER TABLE "imp_requests"        DROP COLUMN "lost_reason";
+ALTER TABLE "imp_requests"        DROP COLUMN IF EXISTS "lost_reason";
 ALTER TABLE "imp_contact_persons" DROP COLUMN "role";
 
 -- ─── 6. Foreign keys ─────────────────────────────────────
@@ -98,5 +111,5 @@ ALTER TABLE "imp_contact_persons"
 
 -- ─── 7. Oude enum-types verwijderen ──────────────────────
 
-DROP TYPE "LostReason";
+DROP TYPE IF EXISTS "LostReason";
 DROP TYPE "ContactPersonRole";

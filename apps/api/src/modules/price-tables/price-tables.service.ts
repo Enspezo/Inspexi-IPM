@@ -21,6 +21,24 @@ export class PriceTablesService {
 
   constructor(private prisma: PrismaService) {}
 
+  /**
+   * Convert Prisma.Decimal money fields (item.basePrice, tier.price) to plain numbers so the
+   * portal receives numbers instead of Decimal-as-string. Safe on any price-table-shaped object.
+   */
+  private serializePriceTable<T extends Record<string, any> | null>(table: T): T {
+    if (!table || !Array.isArray((table as any).items)) return table;
+    return {
+      ...(table as any),
+      items: (table as any).items.map((item: any) => ({
+        ...item,
+        basePrice: item.basePrice != null ? Number(item.basePrice) : item.basePrice,
+        tiers: Array.isArray(item.tiers)
+          ? item.tiers.map((tier: any) => ({ ...tier, price: tier.price != null ? Number(tier.price) : tier.price }))
+          : item.tiers,
+      })),
+    };
+  }
+
   async findAll(user: User, query: ListPriceTablesQueryDto) {
     const { search, page = 1, limit = 20, sortBy, sortOrder = 'desc' } = query;
     const ALLOWED_SORT_FIELDS = ['name', 'isDefault', 'createdAt'];
@@ -77,7 +95,7 @@ export class PriceTablesService {
       throw new ForbiddenException();
     }
 
-    return priceTable;
+    return this.serializePriceTable(priceTable);
   }
 
   async create(dto: CreatePriceTableDto, user: User) {
@@ -182,7 +200,7 @@ export class PriceTablesService {
       }
 
       // Return the full updated price table
-      return tx.priceTable.findUnique({
+      const updated = await tx.priceTable.findUnique({
         where: { id: priceTable.id },
         include: {
           items: {
@@ -194,6 +212,7 @@ export class PriceTablesService {
           },
         },
       });
+      return this.serializePriceTable(updated);
     });
   }
 
@@ -319,9 +338,9 @@ export class PriceTablesService {
         },
       });
 
-      return defaultTable ? [defaultTable] : [];
+      return defaultTable ? [this.serializePriceTable(defaultTable)] : [];
     }
 
-    return assignments.map((a) => a.priceTable);
+    return assignments.map((a) => this.serializePriceTable(a.priceTable));
   }
 }

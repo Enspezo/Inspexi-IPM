@@ -12,7 +12,7 @@ import { assertFound } from '@/common';
 import { StorageProvider, STORAGE_PROVIDER } from '@/common/services/storage/storage.interface';
 import { DocxRendererService } from '../quote-templates/docx-renderer.service';
 import { PdfService } from './pdf.service';
-import { QUOTE_INCLUDE, findQuoteForUser, getPublicUrl } from './quotes.helpers';
+import { QUOTE_INCLUDE, findQuoteForUser, getPublicUrl, serializeQuote } from './quotes.helpers';
 
 @Injectable()
 export class QuotePdfService {
@@ -46,17 +46,18 @@ export class QuotePdfService {
     const createdByUser = await this.prisma.user.findUnique({ where: { id: quote.createdBy }, select: { firstName: true, lastName: true, email: true } });
 
     const templateBuffer = await this.storage.download(template.docxStorageKey);
+    const serialized = serializeQuote(quote);
     const renderData = this.docxRenderer.buildRenderData({
       quote: {
-        quoteNumber: quote.quoteNumber,
-        subject: quote.subject,
-        subtotal: quote.subtotal,
-        discountTotal: quote.discountTotal,
-        vatTotal: quote.vatTotal,
-        total: quote.total,
-        validUntil: quote.validUntil,
-        createdAt: quote.createdAt,
-        lines: quote.lines,
+        quoteNumber: serialized.quoteNumber,
+        subject: serialized.subject,
+        subtotal: serialized.subtotal,
+        discountTotal: serialized.discountTotal,
+        vatTotal: serialized.vatTotal,
+        total: serialized.total,
+        validUntil: serialized.validUntil,
+        createdAt: serialized.createdAt,
+        lines: serialized.lines,
       },
       contact: quote.contact,
       organization: { name: org?.name ?? 'InspeXi' },
@@ -127,8 +128,9 @@ export class QuotePdfService {
       });
       if (!fullQuote) throw new NotFoundException();
       const templateBuffer = await this.storage.download(quote.template.docxStorageKey);
+      const fq = serializeQuote(fullQuote);
       const renderData = this.docxRenderer.buildRenderData({
-        quote: { quoteNumber: fullQuote.quoteNumber, subject: fullQuote.subject, subtotal: fullQuote.subtotal, discountTotal: fullQuote.discountTotal, vatTotal: fullQuote.vatTotal, total: fullQuote.total, validUntil: fullQuote.validUntil, createdAt: fullQuote.createdAt, lines: fullQuote.lines },
+        quote: { quoteNumber: fq.quoteNumber, subject: fq.subject, subtotal: fq.subtotal, discountTotal: fq.discountTotal, vatTotal: fq.vatTotal, total: fq.total, validUntil: fq.validUntil, createdAt: fq.createdAt, lines: fq.lines },
         contact: fullQuote.contact ?? { companyName: '', firstName: '', lastName: '', email: '' },
         organization: fullQuote.organization ?? { name: '' },
         user: { firstName: '', lastName: '', email: '' },

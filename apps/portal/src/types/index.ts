@@ -160,6 +160,7 @@ export interface Contact {
   customFields: Record<string, any> | null;
   isDeleted: boolean;
   createdAt: string;
+  updatedAt: string;
   owner?: { id: string; firstName: string; lastName: string } | null;
   addresses?: ContactAddress[];
   contactPersons?: ContactPerson[];
@@ -184,6 +185,7 @@ export interface ContactPerson {
   notes: string | null;
   isDeleted: boolean;
   createdAt: string;
+  updatedAt: string;
   contact?: Contact;
 }
 
@@ -199,7 +201,6 @@ export interface CustomerGroup {
 }
 
 export interface ContactCustomerGroup {
-  id: string;
   contactId: string;
   customerGroupId: string;
   contact?: Contact;
@@ -219,6 +220,7 @@ export interface ContactAddress {
   isPostal: boolean;
   isInvoice: boolean;
   customFields: Record<string, any> | null;
+  updatedAt: string;
 }
 
 export interface Location {
@@ -237,6 +239,7 @@ export interface Location {
   lng: number | null;
   customFields: Record<string, any> | null;
   createdAt: string;
+  updatedAt: string;
 }
 
 export interface LocationContactPerson {

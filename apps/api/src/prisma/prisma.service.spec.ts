@@ -65,6 +65,20 @@ describe('PrismaService audit-failure alerting', () => {
     expect(dispatchSpy).toHaveBeenCalledTimes(1);
   });
 
+  it('retries on the next batch when the alert dispatch itself fails', async () => {
+    dispatchSpy.mockRejectedValueOnce(new Error('notify failed') as never);
+
+    // First batch: dispatch fails -> no cooldown set, state left for retry
+    await failNTimes(5);
+    expect(dispatchSpy).toHaveBeenCalledTimes(1);
+    // Let the rejected dispatch promise settle (clears the in-flight guard)
+    await Promise.resolve();
+
+    // Next failure crosses the (still-full) window again -> immediate retry
+    await failNTimes(1);
+    expect(dispatchSpy).toHaveBeenCalledTimes(2);
+  });
+
   it('alerts again after the cooldown window elapses', async () => {
     jest.useFakeTimers();
     jest.setSystemTime(new Date('2026-06-12T10:00:00Z'));

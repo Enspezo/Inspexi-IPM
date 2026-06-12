@@ -50,6 +50,15 @@ describe('AccessLogMiddleware', () => {
     expect(errorSpy).not.toHaveBeenCalled();
   });
 
+  it('strips query strings from the logged path', () => {
+    const req = makeReq({ originalUrl: '/api/v1/contacts?search=geheim&page=2' });
+    middleware.use(req, makeRes(403), next);
+    finishHandler();
+    const message = warnSpy.mock.calls[0][0] as string;
+    expect(message).toContain('GET /api/v1/contacts');
+    expect(message).not.toContain('search=');
+  });
+
   it('logs a warn for 4xx including userId/orgId/requestId', () => {
     const req = makeReq({
       requestId: 'req-403',

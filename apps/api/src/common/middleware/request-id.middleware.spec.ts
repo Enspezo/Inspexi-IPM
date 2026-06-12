@@ -77,5 +77,6 @@ describe('RequestIdMiddleware', () => {
     middleware.use(req, res, next);
 
     expect(req.requestId).toBe('first-valid');
+    expect(setHeader).toHaveBeenCalledWith('X-Request-Id', 'first-valid');
   });
 });

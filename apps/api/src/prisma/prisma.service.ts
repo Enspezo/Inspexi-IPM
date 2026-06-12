@@ -101,6 +101,8 @@ export class PrismaService
   private auditFailureTimestamps: number[] = [];
   /** Timestamp (ms) of the last superuser alert that was dispatched */
   private lastAuditAlertAt = 0;
+  /** Guards against double-dispatch while an alert is in flight */
+  private auditAlertInFlight = false;
 
   async onModuleInit() {
     await this.$connect();
@@ -282,25 +284,25 @@ export class PrismaService
     try {
       const now = Date.now();
       this.auditFailureTimestamps.push(now);
-      // Drop timestamps that fell outside the rolling window
+      // Drop timestamps that fell outside the rolling window; cap the size so
+      // the failure path stays O(1) even when every request fails
       const windowStart = now - AUDIT_FAILURE_WINDOW_MS;
-      this.auditFailureTimestamps = this.auditFailureTimestamps.filter(
-        (ts) => ts >= windowStart,
-      );
+      this.auditFailureTimestamps = this.auditFailureTimestamps
+        .filter((ts) => ts >= windowStart)
+        .slice(-AUDIT_FAILURE_THRESHOLD);
 
       if (this.auditFailureTimestamps.length < AUDIT_FAILURE_THRESHOLD) {
         return;
       }
 
-      // Threshold reached — respect cooldown to avoid spamming superusers
-      if (now - this.lastAuditAlertAt < AUDIT_ALERT_COOLDOWN_MS) {
+      // Threshold reached — respect cooldown to avoid spamming superusers,
+      // and don't double-dispatch while an alert is already in flight
+      if (this.auditAlertInFlight || now - this.lastAuditAlertAt < AUDIT_ALERT_COOLDOWN_MS) {
         return;
       }
 
       const failureCount = this.auditFailureTimestamps.length;
-      this.lastAuditAlertAt = now;
-      // Reset the window so the next alert needs a fresh batch of failures
-      this.auditFailureTimestamps = [];
+      this.auditAlertInFlight = true;
 
       this.logger.error(
         `ALERT: audit-logging is structurally failing — ${failureCount} failures ` +
@@ -309,9 +311,19 @@ export class PrismaService
       );
 
       // Fire-and-forget: never await, never let it throw into the caller.
-      this.dispatchAuditFailureAlert(failureCount).catch((err) => {
-        this.logger.error(`Failed to dispatch audit-failure alert: ${err}`);
-      });
+      // Cooldown/window pas resetten als de dispatch slaagt — bij falen mag
+      // de volgende batch het opnieuw proberen.
+      this.dispatchAuditFailureAlert(failureCount)
+        .then(() => {
+          this.lastAuditAlertAt = Date.now();
+          this.auditFailureTimestamps = [];
+        })
+        .catch((err) => {
+          this.logger.error(`Failed to dispatch audit-failure alert: ${err}`);
+        })
+        .finally(() => {
+          this.auditAlertInFlight = false;
+        });
     } catch (err) {
       // Alerting must never break the original operation
       this.logger.error(`Audit-failure tracking error: ${err}`);

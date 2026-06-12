@@ -29,8 +29,10 @@ export class AccessLogMiddleware implements NestMiddleware {
       // req.user wordt door passport gezet voor geauthenticeerde requests.
       const user = req.user as { id?: string; orgId?: string | null } | undefined;
 
+      // Alleen het pad loggen — query strings kunnen gevoelige data bevatten
+      const path = req.originalUrl.split('?')[0];
       const parts: string[] = [
-        `${req.method} ${req.originalUrl}`,
+        `${req.method} ${path}`,
         `${statusCode}`,
         `${durationMs}ms`,
       ];

@@ -1,3 +1,4 @@
+import { tenantStorage } from '@/lib/storage';
 import { useCallback } from 'react';
 import type {
   TableColumnConfig,
@@ -7,7 +8,7 @@ import type {
   PersistedTableState,
 } from './types';
 
-const STORAGE_PREFIX = 'inspexi-table-config:';
+const STORAGE_PREFIX = 'table-config:';
 const SCHEMA_VERSION = 1;
 
 export function useTableConfigPersistence(pageKey: string) {
@@ -15,7 +16,7 @@ export function useTableConfigPersistence(pageKey: string) {
 
   const load = useCallback((): PersistedTableState | null => {
     try {
-      const raw = localStorage.getItem(storageKey);
+      const raw = tenantStorage.getItem(storageKey);
       if (!raw) return null;
       const parsed = JSON.parse(raw) as PersistedTableState;
       if (parsed.version !== SCHEMA_VERSION) return null;
@@ -40,7 +41,7 @@ export function useTableConfigPersistence(pageKey: string) {
         version: SCHEMA_VERSION,
       };
       try {
-        localStorage.setItem(storageKey, JSON.stringify(state));
+        tenantStorage.setItem(storageKey, JSON.stringify(state));
       } catch {
         // Storage full or unavailable
       }
@@ -49,7 +50,7 @@ export function useTableConfigPersistence(pageKey: string) {
   );
 
   const clear = useCallback(() => {
-    localStorage.removeItem(storageKey);
+    tenantStorage.removeItem(storageKey);
   }, [storageKey]);
 
   return { load, save, clear };

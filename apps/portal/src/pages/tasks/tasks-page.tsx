@@ -1,3 +1,4 @@
+import { tenantStorage } from '@/lib/storage';
 import { useState, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -90,7 +91,7 @@ export default function TasksPage() {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
-  const [onlyMine, setOnlyMine] = useState(() => localStorage.getItem('inspexi:filter-mine:tasks') === 'true');
+  const [onlyMine, setOnlyMine] = useState(() => tenantStorage.getItem('filter-mine:tasks') === 'true');
   const [page, setPage] = useState(1);
 
   const handleSearchChange = useCallback(
@@ -346,7 +347,7 @@ export default function TasksPage() {
             checked={onlyMine}
             onChange={(e) => {
               setOnlyMine(e.target.checked);
-              localStorage.setItem('inspexi:filter-mine:tasks', String(e.target.checked));
+              tenantStorage.setItem('filter-mine:tasks', String(e.target.checked));
               setPage(1);
             }}
           />

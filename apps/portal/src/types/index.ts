@@ -19,6 +19,7 @@ export interface Organization {
   senderEmail: string | null;
   workdayStart: number;
   workdayEnd: number;
+  isActive: boolean;
   createdAt: string;
   _count?: { users: number };
 }

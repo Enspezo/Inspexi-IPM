@@ -463,13 +463,14 @@ pnpm test:cov                 # Met coverage
 
 ```bash
 cd apps/api
-pnpm test:e2e                 # 139 tests, 12 suites
+pnpm test:e2e                 # 154 tests, 13 suites
 ```
 
 - Config: `test/jest-e2e.json`
 - **MaxWorkers: 1** (serieel)
 - Gebruikt echte database (seed data + eigen test fixtures)
-- Suites: auth, contacts, organizations, price-tables, products, quote-templates, quotes, requests, users
+- Suites: auth, contacts, cross-tenant, documents, notifications, organizations, price-tables, products, quote-templates, quotes, requests, tasks, users
+- `cross-tenant.e2e-spec.ts`: cross-tenant FK-aanvallen (org A injecteert org B's UUIDs in planning/taken/contacten create+update) → moeten 403 geven; test de service-laag `assertSameOrg`/`assertAllSameOrg` checks
 
 ### Belangrijk bij E2E Tests
 

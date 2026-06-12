@@ -7,7 +7,7 @@ import {
 } from '@nestjs/common';
 import { User, Role, Prisma } from '@prisma/client';
 import { PrismaService } from '@/prisma';
-import { paginate, buildOrderBy, orgScope } from '@/common';
+import { paginate, buildOrderBy, orgScope, assertAllSameOrg } from '@/common';
 import { requestContext } from '@/common/services/request-context';
 import { EmailService } from '@/common/services/email.service';
 import { CustomFieldsValidator } from '@/modules/custom-fields/custom-fields.validator';
@@ -335,6 +335,9 @@ export class ContactsService {
 
   async setContactGroups(contactId: string, groupIds: string[], user: User) {
     const contact = await this.findOne(contactId, user);
+
+    // Customer groups must belong to the same organization as the contact
+    await assertAllSameOrg(this.prisma.customerGroup, groupIds, contact.orgId, 'klantgroepen');
 
     // Remove all existing group assignments, then re-create
     await this.prisma.$transaction([

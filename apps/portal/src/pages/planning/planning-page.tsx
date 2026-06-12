@@ -1,3 +1,4 @@
+import { tenantStorage } from '@/lib/storage';
 import { useState, useCallback, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { PlanningStatus, Role } from '@/types';
@@ -114,17 +115,17 @@ export default function PlanningPage() {
 
   // View toggle — persisted in localStorage
   const [view, setViewState] = useState<ViewMode>(() => {
-    const saved = localStorage.getItem('inspexi:planning-view') as ViewMode | null;
+    const saved = tenantStorage.getItem('planning-view') as ViewMode | null;
     return saved && ['list', 'maand', 'week', 'dag'].includes(saved) ? saved : 'list';
   });
   const setView = useCallback((v: ViewMode) => {
-    localStorage.setItem('inspexi:planning-view', v);
+    tenantStorage.setItem('planning-view', v);
     setViewState(v);
   }, []);
 
   // Calendar navigation — persisted in localStorage
   const [calendarDate, setCalendarDateState] = useState<Date>(() => {
-    const saved = localStorage.getItem('inspexi:planning-date');
+    const saved = tenantStorage.getItem('planning-date');
     if (saved) {
       const d = new Date(saved);
       if (!isNaN(d.getTime())) return d;
@@ -132,7 +133,7 @@ export default function PlanningPage() {
     return new Date();
   });
   const setCalendarDate = useCallback((d: Date) => {
-    localStorage.setItem('inspexi:planning-date', d.toISOString());
+    tenantStorage.setItem('planning-date', d.toISOString());
     setCalendarDateState(d);
   }, []);
 

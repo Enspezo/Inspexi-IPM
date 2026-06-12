@@ -16,6 +16,7 @@ import {
   ApiResponse,
   ApiBearerAuth,
 } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 import { ConfigService } from '@nestjs/config';
 import { Request, Response } from 'express';
 import { User } from '@prisma/client';
@@ -52,6 +53,7 @@ export class AuthController {
   }
 
   @Public()
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
   @Post('login')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Login met e-mail en wachtwoord' })
@@ -86,7 +88,7 @@ export class AuthController {
 
     const ip = req.ip || req.socket?.remoteAddress;
     const ua = req.headers['user-agent'];
-    const result = await this.authService.refresh(refreshToken, ip, ua);
+    const result = await this.authService.refresh(refreshToken, ip, ua, req.tenant);
     res.cookie('refresh_token', result.refreshToken, this.getCookieOptions());
     return { success: true, data: { accessToken: result.accessToken } };
   }
@@ -113,6 +115,7 @@ export class AuthController {
   }
 
   @Public()
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
   @Post('forgot-password')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Stuur wachtwoord reset e-mail' })
@@ -126,6 +129,7 @@ export class AuthController {
   }
 
   @Public()
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
   @Post('reset-password')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Reset wachtwoord met token' })

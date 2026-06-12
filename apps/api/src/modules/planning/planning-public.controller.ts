@@ -4,13 +4,15 @@ import {
   Post,
   Body,
   Param,
+  Req,
   Res,
   HttpCode,
   HttpStatus,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
-import { Response } from 'express';
+import { Request, Response } from 'express';
 import { Public } from '@/common/decorators';
 import { PlanningPublicService } from './planning-public.service';
 import { PlanningIcalService } from './planning-ical.service';
@@ -145,11 +147,20 @@ export class PlanningPublicController {
 @Public()
 @Controller('ical')
 export class PlanningIcalController {
+  private readonly logger = new Logger(PlanningIcalController.name);
+
   constructor(private readonly icalService: PlanningIcalService) {}
 
   @Get(':ical_token.ics')
   @ApiOperation({ summary: 'Persoonlijke iCal feed voor inspecteur' })
-  async getPersonalFeed(@Param('ical_token') icalToken: string, @Res() res: Response) {
+  async getPersonalFeed(
+    @Param('ical_token') icalToken: string,
+    @Req() req: Request,
+    @Res() res: Response,
+  ) {
+    // Toegangslog: tokens zijn permanent-achtig, dus elk gebruik vastleggen
+    // (alleen token-prefix om de feed-URL niet zelf in de logs te lekken)
+    this.logger.log(`iCal feed opgevraagd: token=${icalToken.slice(0, 8)}… ip=${req.ip}`);
     const ics = await this.icalService.generatePersonalFeed(icalToken);
     res.set({
       'Content-Type': 'text/calendar; charset=utf-8',

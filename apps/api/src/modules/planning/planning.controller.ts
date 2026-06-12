@@ -15,6 +15,8 @@ import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagg
 import { User, Role } from '@prisma/client';
 import { Roles, CurrentUser } from '@/common/decorators';
 import { PlanningService } from './planning.service';
+import { PlanningSessionsService } from './planning-sessions.service';
+import { PlanningFollowersService } from './planning-followers.service';
 import {
   CreatePlanningItemDto,
   UpdatePlanningItemDto,
@@ -36,7 +38,11 @@ import {
 @ApiBearerAuth()
 @Controller('planning')
 export class PlanningController {
-  constructor(private readonly service: PlanningService) {}
+  constructor(
+    private readonly service: PlanningService,
+    private readonly sessionsService: PlanningSessionsService,
+    private readonly followersService: PlanningFollowersService,
+  ) {}
 
   // ─── List & Create ─────────────────────────────────────────
 
@@ -78,7 +84,7 @@ export class PlanningController {
   )
   @ApiOperation({ summary: 'Sessies van een planregel ophalen' })
   async findSessions(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: User) {
-    const data = await this.service.findSessions(id, user);
+    const data = await this.sessionsService.findSessions(id, user);
     return { success: true, data };
   }
 
@@ -91,7 +97,7 @@ export class PlanningController {
     @Body() dto: CreateSessionDto,
     @CurrentUser() user: User,
   ) {
-    const data = await this.service.addSession(id, dto, user);
+    const data = await this.sessionsService.addSession(id, dto, user);
     return { success: true, data };
   }
 
@@ -104,7 +110,7 @@ export class PlanningController {
     @Body() dto: UpdateSessionDto,
     @CurrentUser() user: User,
   ) {
-    const data = await this.service.updateSession(id, sessionId, dto, user);
+    const data = await this.sessionsService.updateSession(id, sessionId, dto, user);
     return { success: true, data };
   }
 
@@ -117,7 +123,7 @@ export class PlanningController {
     @Param('sessionId', ParseUUIDPipe) sessionId: string,
     @CurrentUser() user: User,
   ) {
-    await this.service.cancelSession(id, sessionId, user);
+    await this.sessionsService.cancelSession(id, sessionId, user);
     return { success: true, message: 'Sessie geannuleerd' };
   }
 
@@ -131,7 +137,7 @@ export class PlanningController {
     @Body() dto: AssignSessionInspectorsDto,
     @CurrentUser() user: User,
   ) {
-    const data = await this.service.assignSessionInspectors(id, sessionId, dto, user);
+    const data = await this.sessionsService.assignSessionInspectors(id, sessionId, dto, user);
     return { success: true, data };
   }
 
@@ -144,7 +150,7 @@ export class PlanningController {
     @Param('sessionId', ParseUUIDPipe) sessionId: string,
     @CurrentUser() user: User,
   ) {
-    await this.service.acceptSession(id, sessionId, user);
+    await this.sessionsService.acceptSession(id, sessionId, user);
     return { success: true, message: 'Sessie geaccepteerd' };
   }
 
@@ -158,7 +164,7 @@ export class PlanningController {
     @Body() dto: RejectSessionDto,
     @CurrentUser() user: User,
   ) {
-    await this.service.rejectSession(id, sessionId, dto, user);
+    await this.sessionsService.rejectSession(id, sessionId, dto, user);
     return { success: true, message: 'Sessie geweigerd' };
   }
 
@@ -171,7 +177,7 @@ export class PlanningController {
     @Param('sessionId', ParseUUIDPipe) sessionId: string,
     @CurrentUser() user: User,
   ) {
-    await this.service.confirmSession(id, sessionId, user);
+    await this.sessionsService.confirmSession(id, sessionId, user);
     return { success: true, message: 'Sessie bevestigd' };
   }
 
@@ -185,7 +191,7 @@ export class PlanningController {
     @Body() dto: RescheduleSessionDto,
     @CurrentUser() user: User,
   ) {
-    const data = await this.service.rescheduleSession(id, sessionId, dto, user);
+    const data = await this.sessionsService.rescheduleSession(id, sessionId, dto, user);
     return { success: true, data };
   }
 
@@ -198,7 +204,7 @@ export class PlanningController {
     @Param('sessionId', ParseUUIDPipe) sessionId: string,
     @CurrentUser() user: User,
   ) {
-    await this.service.completeSession(id, sessionId, user);
+    await this.sessionsService.completeSession(id, sessionId, user);
     return { success: true, message: 'Sessie afgerond' };
   }
 
@@ -352,7 +358,7 @@ export class PlanningController {
   @Roles(Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE, Role.WERKVOORBEREIDER)
   @ApiOperation({ summary: 'Volgers ophalen' })
   async getFollowers(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: User) {
-    const data = await this.service.getFollowers(id, user);
+    const data = await this.followersService.getFollowers(id, user);
     return { success: true, data };
   }
 
@@ -364,7 +370,7 @@ export class PlanningController {
     @Body() dto: AddFollowerDto,
     @CurrentUser() user: User,
   ) {
-    const data = await this.service.addFollower(id, dto, user);
+    const data = await this.followersService.addFollower(id, dto, user);
     return { success: true, data };
   }
 
@@ -376,7 +382,7 @@ export class PlanningController {
     @Param('followerId', ParseUUIDPipe) followerId: string,
     @CurrentUser() user: User,
   ) {
-    await this.service.removeFollower(id, followerId, user);
+    await this.followersService.removeFollower(id, followerId, user);
     return { success: true, data: null };
   }
 }

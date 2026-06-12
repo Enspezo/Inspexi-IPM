@@ -12,7 +12,7 @@ import {
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { Response } from 'express';
 import { Public } from '@/common/decorators';
-import { PlanningService } from './planning.service';
+import { PlanningPublicService } from './planning-public.service';
 import { PlanningIcalService } from './planning-ical.service';
 import { AddQuestionDto, CreateRescheduleRequestDto } from './dto';
 import {
@@ -27,7 +27,7 @@ import { PrismaService } from '@/prisma';
 @Controller('public/planning')
 export class PlanningPublicController {
   constructor(
-    private readonly service: PlanningService,
+    private readonly service: PlanningPublicService,
     private readonly icalService: PlanningIcalService,
     private readonly prisma: PrismaService,
     @Inject(STORAGE_PROVIDER) private readonly storage: StorageProvider,

@@ -38,7 +38,7 @@ const SECTIONS_STORAGE_KEY = 'inspexi:sidebar-sections';
 
 type CollapsedSections = Record<string, boolean>;
 
-const navSections: NavSection[] = [
+const mainSections: NavSection[] = [
   {
     label: 'Backoffice',
     items: [
@@ -125,7 +125,54 @@ const navSections: NavSection[] = [
     items: [],
   },
   {
-    label: 'Organisatie',
+    label: 'Persoonlijk',
+    items: [
+      {
+        to: '/tasks',
+        label: 'Taken',
+        roles: crmRoles,
+        icon: (
+          <svg className="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+          </svg>
+        ),
+      },
+      {
+        to: '/notities',
+        label: 'Notities',
+        roles: crmRoles,
+        icon: (
+          <svg className="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z" />
+          </svg>
+        ),
+      },
+      {
+        to: '/notifications',
+        label: 'Notificaties',
+        icon: (
+          <svg className="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+          </svg>
+        ),
+      },
+      {
+        to: '/profile',
+        label: 'Profiel',
+        icon: (
+          <svg className="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+          </svg>
+        ),
+      },
+    ],
+  },
+];
+
+// Items in het Organisatie-submenu — vervangt het hoofdmenu (Atera-stijl)
+const organisatieSections: NavSection[] = [
+  {
+    label: 'Beheer',
     items: [
       {
         to: '/organization/settings',
@@ -192,55 +239,43 @@ const navSections: NavSection[] = [
       },
     ],
   },
-  {
-    label: 'Persoonlijk',
-    items: [
-      {
-        to: '/tasks',
-        label: 'Taken',
-        roles: crmRoles,
-        icon: (
-          <svg className="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
-          </svg>
-        ),
-      },
-      {
-        to: '/notities',
-        label: 'Notities',
-        roles: crmRoles,
-        icon: (
-          <svg className="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z" />
-          </svg>
-        ),
-      },
-      {
-        to: '/notifications',
-        label: 'Notificaties',
-        icon: (
-          <svg className="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
-          </svg>
-        ),
-      },
-      {
-        to: '/profile',
-        label: 'Profiel',
-        icon: (
-          <svg className="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-          </svg>
-        ),
-      },
-    ],
-  },
 ];
+
+// Route-prefixes die bij het Organisatie-submenu horen — bepaalt de menuweergave na een refresh
+const organisatieRoutePrefixes = organisatieSections
+  .flatMap((s) => s.items)
+  .flatMap((item) => [item.to, ...(item.children?.map((c) => c.to) ?? [])])
+  .map((to) => to.split('/').slice(0, 2).join('/'));
+
+const organisatieIcon = (
+  <svg className="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+  </svg>
+);
+
+function filterSections(sections: NavSection[], user: { roles: Role[] } | null) {
+  return sections
+    .map((section) => ({
+      ...section,
+      items: section.items.filter((item) => {
+        if (!item.roles) return true;
+        return user && user.roles.some((r) => item.roles!.includes(r));
+      }),
+    }))
+    .filter((section) => section.label !== null || section.items.length > 0);
+}
 
 export function Sidebar() {
   const { user } = useAuth();
   const { orgBranding } = useTenant();
   const location = useLocation();
+
+  // 'main' = hoofdmenu, 'organisatie' = submenu dat het hoofdmenu vervangt (Atera-stijl)
+  const [menuView, setMenuView] = useState<'main' | 'organisatie'>(() =>
+    organisatieRoutePrefixes.some((prefix) => window.location.pathname.startsWith(prefix))
+      ? 'organisatie'
+      : 'main',
+  );
 
   const [collapsed, setCollapsed] = useState(() => {
     try {
@@ -275,6 +310,15 @@ export function Sidebar() {
     }
   }, [collapsedSections]);
 
+  // Houd de menuweergave in sync met de route (bijv. logo-klik naar dashboard → hoofdmenu)
+  useEffect(() => {
+    setMenuView(
+      organisatieRoutePrefixes.some((prefix) => location.pathname.startsWith(prefix))
+        ? 'organisatie'
+        : 'main',
+    );
+  }, [location.pathname]);
+
   const toggleSection = (label: string) => {
     setCollapsedSections((prev) => ({ ...prev, [label]: !prev[label] }));
   };
@@ -282,15 +326,14 @@ export function Sidebar() {
   const brandName = orgBranding?.name ?? 'InspeXi';
 
   // Filter sections: remove items the user can't see, then remove empty sections
-  const visibleSections = navSections
-    .map((section) => ({
-      ...section,
-      items: section.items.filter((item) => {
-        if (!item.roles) return true;
-        return user && user.roles.some((r) => item.roles!.includes(r));
-      }),
-    }))
-    .filter((section) => section.label !== null || section.items.length > 0);
+  const visibleSections = filterSections(
+    menuView === 'organisatie' ? organisatieSections : mainSections,
+    user,
+  );
+  const hasOrgAccess = !!user && user.roles.some((r) => adminRoles.includes(r));
+  const orgMenuActive = organisatieRoutePrefixes.some((prefix) =>
+    location.pathname.startsWith(prefix),
+  );
 
   return (
     <aside
@@ -299,13 +342,18 @@ export function Sidebar() {
         collapsed ? 'w-16' : 'w-64',
       )}
     >
-      {/* Logo — links to dashboard */}
-      <div className="flex h-16 items-center px-3">
+      {/* Logo + collapse toggle (Atera-stijl: toggle-icoon bovenin) */}
+      <div
+        className={clsx(
+          'flex shrink-0 items-center px-3',
+          collapsed ? 'h-auto flex-col gap-1 py-3' : 'h-16 justify-between',
+        )}
+      >
         <Link
           to="/dashboard"
           className={clsx(
-            'flex items-center gap-3 rounded-lg transition-colors hover:opacity-80',
-            collapsed ? 'justify-center w-full' : 'pl-3',
+            'flex min-w-0 items-center gap-3 rounded-lg transition-colors hover:opacity-80',
+            !collapsed && 'pl-3',
           )}
         >
           {orgBranding?.logoUrl ? (
@@ -325,10 +373,37 @@ export function Sidebar() {
             <span className="text-lg font-bold text-white truncate">{brandName}</span>
           )}
         </Link>
+        <button
+          onClick={() => setCollapsed(!collapsed)}
+          className="rounded-lg p-1.5 text-gray-400 transition-colors hover:bg-gray-800 hover:text-white"
+          title={collapsed ? 'Menu uitklappen' : 'Menu inklappen'}
+        >
+          <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 5.25A2.25 2.25 0 016.25 3h11.5A2.25 2.25 0 0120 5.25v13.5A2.25 2.25 0 0117.75 21H6.25A2.25 2.25 0 014 18.75V5.25z" />
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9.5 3v18" />
+          </svg>
+        </button>
       </div>
 
       {/* Org Switcher (SUPERUSER only) — hidden when collapsed */}
       {!collapsed && <OrgSwitcher />}
+
+      {/* Submenu-header met terugknop naar hoofdmenu */}
+      {menuView === 'organisatie' && (
+        <button
+          onClick={() => setMenuView('main')}
+          title={collapsed ? 'Terug naar hoofdmenu' : undefined}
+          className={clsx(
+            'mx-2 mb-1 flex shrink-0 items-center rounded-lg py-2 text-sm font-semibold text-white transition-colors hover:bg-gray-800',
+            collapsed ? 'justify-center px-0' : 'gap-2 px-3',
+          )}
+        >
+          <svg className="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7 7-7m-7 7h18" />
+          </svg>
+          {!collapsed && <span>Organisatie</span>}
+        </button>
+      )}
 
       {/* Navigation */}
       <nav className="flex-1 overflow-y-auto px-2 py-2">
@@ -337,6 +412,42 @@ export function Sidebar() {
 
           return (
             <div key={section.label ?? 'top'} className={sectionIdx > 0 ? 'mt-3' : ''}>
+              {/* Organisatie-trigger: opent het submenu dat het hoofdmenu vervangt */}
+              {menuView === 'main' && section.label === 'Persoonlijk' && hasOrgAccess && (
+                <div className="mb-3">
+                  {collapsed ? (
+                    <div className="mx-2 my-2 border-t border-gray-700" />
+                  ) : (
+                    <div className="mb-1 px-3 pt-1">
+                      <span className="text-[11px] font-semibold uppercase tracking-wider text-gray-500">
+                        Organisatie
+                      </span>
+                    </div>
+                  )}
+                  <button
+                    onClick={() => setMenuView('organisatie')}
+                    title={collapsed ? 'Organisatie' : undefined}
+                    className={clsx(
+                      'flex w-full items-center rounded-lg text-sm font-medium transition-colors duration-150',
+                      collapsed ? 'justify-center px-0 py-2.5' : 'gap-3 px-3 py-2',
+                      orgMenuActive
+                        ? 'bg-gray-800 text-white'
+                        : 'text-gray-400 hover:bg-gray-800 hover:text-white',
+                    )}
+                  >
+                    {organisatieIcon}
+                    {!collapsed && (
+                      <>
+                        <span className="flex-1 text-left">Organisatie</span>
+                        <svg className="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                        </svg>
+                      </>
+                    )}
+                  </button>
+                </div>
+              )}
+
               {/* Section header */}
               {section.label && (
                 collapsed ? (
@@ -352,7 +463,7 @@ export function Sidebar() {
                     <svg
                       className={clsx(
                         'h-3.5 w-3.5 text-gray-600 transition-transform duration-150 group-hover:text-gray-400',
-                        sectionIsCollapsed ? '-rotate-90' : 'rotate-0',
+                        sectionIsCollapsed ? 'rotate-0' : 'rotate-180',
                       )}
                       fill="none"
                       viewBox="0 0 24 24"
@@ -428,27 +539,6 @@ export function Sidebar() {
         })}
       </nav>
 
-      {/* Collapse toggle button */}
-      <div className="border-t border-gray-800 px-2 py-2">
-        <button
-          onClick={() => setCollapsed(!collapsed)}
-          className="flex w-full items-center rounded-lg px-3 py-2 text-gray-400 transition-colors hover:bg-gray-800 hover:text-white"
-          title={collapsed ? 'Menu uitklappen' : 'Menu inklappen'}
-        >
-          {collapsed ? (
-            <svg className="h-5 w-5 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13 5l7 7-7 7M5 5l7 7-7 7" />
-            </svg>
-          ) : (
-            <>
-              <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M11 19l-7-7 7-7m8 14l-7-7 7-7" />
-              </svg>
-              <span className="ml-3 text-sm">Inklappen</span>
-            </>
-          )}
-        </button>
-      </div>
     </aside>
   );
 }

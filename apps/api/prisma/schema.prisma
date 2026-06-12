@@ -380,6 +380,8 @@ model RefreshToken {
 
   user User @relation(fields: [userId], references: [id])
 
+  @@index([userId])
+  @@index([expiresAt])
   @@map("imp_refresh_tokens")
 }
 
@@ -395,6 +397,7 @@ model Invitation {
 
   organization Organization @relation(fields: [orgId], references: [id])
 
+  @@index([orgId, email])
   @@map("imp_invitations")
 }
 
@@ -419,6 +422,7 @@ model Contact {
   customFields Json?       @map("custom_fields")
   isDeleted    Boolean     @default(false) @map("is_deleted")
   createdAt    DateTime    @default(now()) @map("created_at")
+  updatedAt    DateTime    @updatedAt @map("updated_at")
 
   organization       Organization        @relation(fields: [orgId], references: [id])
   owner              User?               @relation("ContactOwner", fields: [ownerId], references: [id])
@@ -435,6 +439,7 @@ model Contact {
   projects           Project[]
 
   @@index([orgId])
+  @@index([ownerId])
   @@map("imp_contacts")
 }
 
@@ -451,9 +456,11 @@ model ContactAddress {
   isPostal     Boolean @default(false) @map("is_postal")
   isInvoice    Boolean @default(false) @map("is_invoice")
   customFields Json?   @map("custom_fields")
+  updatedAt    DateTime @updatedAt @map("updated_at")
 
   contact Contact @relation(fields: [contactId], references: [id])
 
+  @@index([contactId])
   @@map("imp_contact_addresses")
 }
 
@@ -472,14 +479,13 @@ model CustomerGroup {
 }
 
 model ContactCustomerGroup {
-  id              String @id @default(uuid()) @db.Uuid
   contactId       String @map("contact_id") @db.Uuid
   customerGroupId String @map("customer_group_id") @db.Uuid
 
   contact       Contact       @relation(fields: [contactId], references: [id])
   customerGroup CustomerGroup @relation(fields: [customerGroupId], references: [id])
 
-  @@unique([contactId, customerGroupId])
+  @@id([contactId, customerGroupId])
   @@map("imp_contact_customer_groups")
 }
 
@@ -495,6 +501,7 @@ model ContactPerson {
   notes     String?
   isDeleted Boolean           @default(false) @map("is_deleted")
   createdAt DateTime          @default(now()) @map("created_at")
+  updatedAt DateTime          @updatedAt @map("updated_at")
 
   contact      Contact      @relation(fields: [contactId], references: [id])
   organization Organization @relation(fields: [orgId], references: [id])
@@ -502,6 +509,7 @@ model ContactPerson {
   planningItems PlanningItem[]
   locationContactPersons LocationContactPerson[]
 
+  @@index([contactId])
   @@map("imp_contact_persons")
 }
 
@@ -521,6 +529,7 @@ model Location {
   lng          Float?
   customFields Json?    @map("custom_fields")
   createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
 
   contact      Contact      @relation(fields: [contactId], references: [id])
   organization Organization @relation(fields: [orgId], references: [id])
@@ -530,6 +539,7 @@ model Location {
   projects      Project[]
   locationContactPersons LocationContactPerson[]
 
+  @@index([contactId])
   @@map("imp_locations")
 }
 
@@ -563,6 +573,7 @@ model ContactLog {
   contact Contact @relation(fields: [contactId], references: [id])
   user    User    @relation(fields: [userId], references: [id])
 
+  @@index([contactId])
   @@map("imp_contact_logs")
 }
 
@@ -580,6 +591,7 @@ model ContactEmail {
   contact Contact @relation(fields: [contactId], references: [id])
   user    User    @relation(fields: [userId], references: [id])
 
+  @@index([contactId])
   @@map("imp_contact_emails")
 }
 
@@ -680,13 +692,15 @@ model PriceTableItem {
   priceTableId String    @map("price_table_id") @db.Uuid
   productId    String    @map("product_id") @db.Uuid
   priceType    PriceType @map("price_type")
-  basePrice    Float?    @map("base_price")
+  basePrice    Decimal?  @map("base_price") @db.Decimal(12, 2)
   createdAt    DateTime  @default(now()) @map("created_at")
 
   priceTable PriceTable @relation(fields: [priceTableId], references: [id])
   product    Product    @relation(fields: [productId], references: [id])
   tiers      PriceTier[]
 
+  @@index([priceTableId])
+  @@index([productId])
   @@map("imp_price_table_items")
 }
 
@@ -695,10 +709,11 @@ model PriceTier {
   priceTableItemId String @map("price_table_item_id") @db.Uuid
   fromQty          Float  @map("from_qty")
   toQty            Float? @map("to_qty")
-  price            Float
+  price            Decimal @db.Decimal(12, 2)
 
   priceTableItem PriceTableItem @relation(fields: [priceTableItemId], references: [id])
 
+  @@index([priceTableItemId])
   @@map("imp_price_tiers")
 }
 
@@ -747,6 +762,9 @@ model Request {
   quotes        Quote[]
 
   @@index([orgId, status])
+  @@index([contactId])
+  @@index([assignedTo])
+  @@index([projectId])
   @@map("imp_requests")
 }
 
@@ -762,6 +780,7 @@ model RequestStatusHistory {
   request       Request @relation(fields: [requestId], references: [id])
   changedByUser User    @relation("StatusChangedByUser", fields: [changedBy], references: [id])
 
+  @@index([requestId])
   @@map("imp_request_status_history")
 }
 
@@ -868,10 +887,10 @@ model Quote {
   coverBlocks      Json?       @map("cover_blocks")
   contentBlocks    Json?       @map("content_blocks")
   closingBlocks    Json?       @map("closing_blocks")
-  subtotal         Float       @default(0)
-  discountTotal    Float       @default(0) @map("discount_total")
-  vatTotal         Float       @default(0) @map("vat_total")
-  total            Float       @default(0)
+  subtotal         Decimal     @default(0) @db.Decimal(12, 2)
+  discountTotal    Decimal     @default(0) @map("discount_total") @db.Decimal(12, 2)
+  vatTotal         Decimal     @default(0) @map("vat_total") @db.Decimal(12, 2)
+  total            Decimal     @default(0) @db.Decimal(12, 2)
   validUntil       DateTime?   @map("valid_until")
   requiresApproval Boolean     @default(false) @map("requires_approval")
   internalNotes    String?     @map("internal_notes")
@@ -912,6 +931,9 @@ model Quote {
 
   @@unique([orgId, quoteNumber])
   @@index([orgId, status])
+  @@index([contactId])
+  @@index([requestId])
+  @@index([projectId])
   @@map("imp_quotes")
 }
 
@@ -954,15 +976,16 @@ model QuoteLine {
   description String
   quantity    Float
   unit        String
-  unitPrice   Float   @map("unit_price")
+  unitPrice   Decimal @map("unit_price") @db.Decimal(12, 2)
   vatRate     Float   @default(21) @map("vat_rate")
   discountPct Float   @default(0) @map("discount_pct")
-  lineTotal   Float   @map("line_total")
+  lineTotal   Decimal @map("line_total") @db.Decimal(12, 2)
   sortOrder   Int     @default(0) @map("sort_order")
 
   quote   Quote    @relation(fields: [quoteId], references: [id], onDelete: Cascade)
   product Product? @relation(fields: [productId], references: [id])
 
+  @@index([quoteId])
   @@map("imp_quote_lines")
 }
 
@@ -980,6 +1003,7 @@ model QuoteApprovalRequest {
   requestedByUser User  @relation("ApprovalRequestedByUser", fields: [requestedBy], references: [id])
   reviewedByUser  User? @relation("ApprovalReviewedByUser", fields: [reviewedBy], references: [id])
 
+  @@index([quoteId])
   @@map("imp_quote_approval_requests")
 }
 
@@ -1001,6 +1025,8 @@ model Notification {
   organization Organization? @relation(fields: [orgId], references: [id])
   user         User          @relation(fields: [userId], references: [id])
 
+  @@index([userId, isRead])
+  @@index([userId, createdAt])
   @@map("imp_notifications")
 }
 
@@ -1077,6 +1103,8 @@ model Task {
   @@index([orgId, status])
   @@index([assigneeId])
   @@index([entityType, entityId])
+  @@index([orgId, deadline])
+  @@index([createdById])
   @@map("imp_tasks")
 }
 
@@ -1161,6 +1189,8 @@ model PlanningItem {
   @@index([orgId, status])
   @@index([orgId, scheduledDate])
   @@index([contactId])
+  @@index([quoteId])
+  @@index([projectId])
   @@map("imp_planning_items")
 }
 
@@ -1243,8 +1273,8 @@ model PlanningSession {
   confirmedAt     DateTime?     @map("confirmed_at")
   confirmedBy     String?       @map("confirmed_by") @db.Uuid
   // Reschedule tracking (same pattern as PlanningItem — stored as plain strings)
-  replacedById    String?       @map("replaced_by_id")
-  replacesId      String?       @map("replaces_id")
+  replacedById    String?       @map("replaced_by_id") @db.Uuid
+  replacesId      String?       @map("replaces_id") @db.Uuid
   originalDate    DateTime?     @map("original_date")
   isCancelled     Boolean       @default(false) @map("is_cancelled")
   createdAt       DateTime      @default(now()) @map("created_at")
@@ -1483,13 +1513,14 @@ model WorkOrderLine {
   description String
   quantity    Float
   unit        String
-  unitPrice   Float     @map("unit_price")
+  unitPrice   Decimal   @map("unit_price") @db.Decimal(12, 2)
   vatRate     Float     @default(21) @map("vat_rate")
-  lineTotal   Float     @map("line_total")
+  lineTotal   Decimal   @map("line_total") @db.Decimal(12, 2)
   sortOrder   Int       @default(0) @map("sort_order")
 
   workOrder   WorkOrder @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
   product     Product?  @relation(fields: [productId], references: [id])
 
+  @@index([workOrderId])
   @@map("imp_work_order_lines")
 }

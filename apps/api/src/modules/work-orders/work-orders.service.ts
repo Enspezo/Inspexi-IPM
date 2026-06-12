@@ -100,6 +100,22 @@ const WORK_ORDER_LIST_INCLUDE = {
   },
 };
 
+/**
+ * Convert Prisma.Decimal money fields on work-order lines (unitPrice, lineTotal) to plain
+ * numbers so the portal receives numbers instead of Decimal-as-string.
+ */
+function serializeWorkOrder<T extends Record<string, any> | null>(workOrder: T): T {
+  if (!workOrder || !Array.isArray((workOrder as any).lines)) return workOrder;
+  return {
+    ...(workOrder as any),
+    lines: (workOrder as any).lines.map((line: any) => ({
+      ...line,
+      unitPrice: line.unitPrice != null ? Number(line.unitPrice) : line.unitPrice,
+      lineTotal: line.lineTotal != null ? Number(line.lineTotal) : line.lineTotal,
+    })),
+  };
+}
+
 @Injectable()
 export class WorkOrdersService {
   private readonly logger = new Logger(WorkOrdersService.name);
@@ -167,7 +183,7 @@ export class WorkOrdersService {
         this.logger.log(
           `Created work order ${workOrderNumber} for planning item ${data.id}`,
         );
-        return workOrder;
+        return serializeWorkOrder(workOrder);
       } catch (error) {
         if (
           error instanceof Prisma.PrismaClientKnownRequestError &&
@@ -251,7 +267,7 @@ export class WorkOrdersService {
       throw new ForbiddenException('Geen toegang tot deze werkbon');
     }
 
-    return workOrder;
+    return serializeWorkOrder(workOrder);
   }
 
   async create(dto: CreateWorkOrderDto, user: User) {
@@ -300,7 +316,7 @@ export class WorkOrdersService {
           },
           include: WORK_ORDER_INCLUDE,
         });
-        return workOrder;
+        return serializeWorkOrder(workOrder);
       } catch (error) {
         if (
           error instanceof Prisma.PrismaClientKnownRequestError &&
@@ -335,7 +351,7 @@ export class WorkOrdersService {
       }
     }
 
-    return this.prisma.workOrder.update({
+    return serializeWorkOrder(await this.prisma.workOrder.update({
       where: { id: workOrder.id },
       data: {
         planningItemId: dto.planningItemId !== undefined ? (dto.planningItemId || null) : undefined,
@@ -354,7 +370,7 @@ export class WorkOrdersService {
             : undefined,
       },
       include: WORK_ORDER_INCLUDE,
-    });
+    }));
   }
 
   async updateStatus(id: string, dto: UpdateWorkOrderStatusDto, user: User) {
@@ -366,11 +382,11 @@ export class WorkOrdersService {
       );
     }
 
-    return this.prisma.workOrder.update({
+    return serializeWorkOrder(await this.prisma.workOrder.update({
       where: { id: workOrder.id },
       data: { status: dto.status },
       include: WORK_ORDER_INCLUDE,
-    });
+    }));
   }
 
   async setLines(id: string, dto: SetWorkOrderLinesDto, user: User) {
@@ -397,10 +413,10 @@ export class WorkOrdersService {
         await tx.workOrderLine.createMany({ data: lineData });
       }
 
-      return tx.workOrder.findUnique({
+      return serializeWorkOrder(await tx.workOrder.findUnique({
         where: { id: workOrder.id },
         include: WORK_ORDER_INCLUDE,
-      });
+      }));
     });
   }
 

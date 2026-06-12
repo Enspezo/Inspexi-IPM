@@ -25,7 +25,7 @@ import {
   ListQuotesQueryDto,
   SendQuoteDto,
 } from './dto';
-import { VALID_TRANSITIONS, calculateLineTotal, findQuoteForUser, getPublicUrl } from './quotes.helpers';
+import { VALID_TRANSITIONS, calculateLineTotal, findQuoteForUser, getPublicUrl, serializeQuote } from './quotes.helpers';
 
 @Injectable()
 export class QuotesService {
@@ -58,7 +58,7 @@ export class QuotesService {
         { contact: { OR: [{ companyName: { contains: search, mode: 'insensitive' } }, { firstName: { contains: search, mode: 'insensitive' } }, { lastName: { contains: search, mode: 'insensitive' } }] } },
       ];
     }
-    return paginate(this.prisma.quote, {
+    const result = await paginate(this.prisma.quote, {
       where,
       include: {
         contact: { select: { id: true, type: true, companyName: true, firstName: true, lastName: true, email: true } },
@@ -68,10 +68,11 @@ export class QuotesService {
       page,
       limit,
     });
+    return { ...result, data: result.data.map((q) => serializeQuote(q)) };
   }
 
   async findOne(id: string, user: User) {
-    return findQuoteForUser(this.prisma, id, user);
+    return serializeQuote(await findQuoteForUser(this.prisma, id, user));
   }
 
   async create(dto: CreateQuoteDto, user: User) {
@@ -112,7 +113,7 @@ export class QuotesService {
 
     return this.prisma.$transaction(async (tx) => {
       const quoteNumber = await this.generateQuoteNumber(orgId!, tx);
-      return tx.quote.create({
+      return serializeQuote(await tx.quote.create({
         data: {
           orgId: orgId!,
           quoteNumber,
@@ -131,7 +132,7 @@ export class QuotesService {
           publicToken: randomUUID(),
           customFields: customFields as any,
         },
-      });
+      }));
     });
   }
 
@@ -150,7 +151,7 @@ export class QuotesService {
       );
     }
 
-    return this.prisma.quote.update({
+    return serializeQuote(await this.prisma.quote.update({
       where: { id: quote.id },
       data: {
         ...(dto.subject !== undefined && { subject: dto.subject }),
@@ -163,7 +164,7 @@ export class QuotesService {
         ...(dto.closingBlocks !== undefined && { closingBlocks: dto.closingBlocks }),
         ...(customFieldsData !== undefined && { customFields: customFieldsData as any }),
       },
-    });
+    }));
   }
 
   async setLines(id: string, dto: SetQuoteLinesDto, user: User) {
@@ -184,7 +185,7 @@ export class QuotesService {
       });
       if (lineData.length > 0) await tx.quoteLine.createMany({ data: lineData });
       const total = Math.round((subtotal + vatTotal) * 100) / 100;
-      return tx.quote.update({ where: { id: quote.id }, data: { subtotal, vatTotal, discountTotal, total }, include: { lines: { orderBy: { sortOrder: 'asc' } } } });
+      return serializeQuote(await tx.quote.update({ where: { id: quote.id }, data: { subtotal, vatTotal, discountTotal, total }, include: { lines: { orderBy: { sortOrder: 'asc' } } } }));
     });
   }
 
@@ -196,7 +197,7 @@ export class QuotesService {
     if (status === QuoteStatus.VERSTUURD) {
       this.notifications.dispatch({ type: NotificationType.OFFERTE_VERSTUURD, orgId: quote.orgId, recipientUserIds: [quote.createdBy], title: 'Offerte verstuurd', body: `Offerte ${quote.quoteNumber} is naar de klant verstuurd.`, entityType: 'quote', entityId: quote.id });
     }
-    return updated;
+    return serializeQuote(updated);
   }
 
   async sendQuote(id: string, dto: SendQuoteDto, user: User) {
@@ -239,7 +240,7 @@ export class QuotesService {
       const emailVars = {
         organisatie: { naam: org?.name ?? 'InspeXi', email: org?.senderEmail ?? '' },
         contact: { bedrijfsnaam: quote.contact?.companyName ?? '', voornaam: quote.contact?.firstName ?? '', achternaam: quote.contact?.lastName ?? '', email: quote.contact?.email ?? dto.to },
-        offerte: { nummer: quote.quoteNumber, onderwerp: dto.subject, totaal: `€ ${quote.total.toFixed(2)}`, vervalDatum: quote.validUntil ? new Date(quote.validUntil).toLocaleDateString('nl-NL') : '', url: quoteUrl },
+        offerte: { nummer: quote.quoteNumber, onderwerp: dto.subject, totaal: `€ ${Number(quote.total).toFixed(2)}`, vervalDatum: quote.validUntil ? new Date(quote.validUntil).toLocaleDateString('nl-NL') : '', url: quoteUrl },
         gebruiker: { voornaam: user.firstName ?? '', achternaam: user.lastName ?? '', email: user.email },
       };
       const rendered = await this.emailTemplatesService.tryRenderById(template.sendEmailTemplateId, emailVars, org?.name);
@@ -279,7 +280,7 @@ export class QuotesService {
       );
     }
 
-    return updated;
+    return serializeQuote(updated);
   }
 
   private async createFollowUpTasks(
@@ -370,10 +371,10 @@ export class QuotesService {
     }
     let unitPrice = 0;
     if (priceTableItem) {
-      if (priceTableItem.priceType === 'FIXED') unitPrice = priceTableItem.basePrice ?? 0;
+      if (priceTableItem.priceType === 'FIXED') unitPrice = priceTableItem.basePrice != null ? Number(priceTableItem.basePrice) : 0;
       else if (priceTableItem.priceType === 'TIERED') {
         for (const tier of priceTableItem.tiers) {
-          if (quantity >= tier.fromQty && (tier.toQty === null || quantity <= tier.toQty)) { unitPrice = tier.price; break; }
+          if (quantity >= tier.fromQty && (tier.toQty === null || quantity <= tier.toQty)) { unitPrice = Number(tier.price); break; }
         }
       }
     }
@@ -394,7 +395,7 @@ export class QuotesService {
       });
       await tx.request.update({ where: { id: request.id }, data: { status: RequestStatus.OFFERTE_GEMAAKT } });
       await tx.requestStatusHistory.create({ data: { requestId: request.id, fromStatus: request.status, toStatus: RequestStatus.OFFERTE_GEMAAKT, changedBy: user.id, note: `Offerte ${quoteNumber} aangemaakt` } });
-      return quote;
+      return serializeQuote(quote);
     });
   }
 

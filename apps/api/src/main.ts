@@ -1,10 +1,27 @@
 import { NestFactory } from '@nestjs/core';
 import { NestExpressApplication } from '@nestjs/platform-express';
-import { ValidationPipe } from '@nestjs/common';
+import { Logger, ValidationPipe } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import cookieParser from 'cookie-parser';
 import { AppModule } from './app.module';
 import { AllExceptionsFilter } from './common/filters';
+
+const processLogger = new Logger('Process');
+
+// Een rejection buiten de request-context (cron job, fire-and-forget promise)
+// mag het proces niet neerhalen; een uncaughtException laat het proces wél
+// gecontroleerd stoppen zodat de procesmanager met een schone staat herstart.
+process.on('unhandledRejection', (reason) => {
+  processLogger.error(
+    'Unhandled promise rejection',
+    reason instanceof Error ? reason.stack : String(reason),
+  );
+});
+
+process.on('uncaughtException', (error) => {
+  processLogger.error('Uncaught exception, shutting down', error.stack);
+  process.exit(1);
+});
 
 async function bootstrap() {
   // Enable rawBody so webhook controllers can verify signatures

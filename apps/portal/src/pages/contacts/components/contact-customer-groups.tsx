@@ -3,6 +3,7 @@ import { Spinner, useToast } from '@/components/ui';
 import type { Contact } from '@/types';
 import { useCustomerGroupsCompact } from '@/pages/customer-groups/hooks/use-customer-groups';
 import { useSetContactGroups } from '../hooks/use-contacts';
+import { getErrorMessage } from '@/lib/api-client';
 
 export function ContactCustomerGroups({
   contactId,
@@ -28,8 +29,8 @@ export function ContactCustomerGroups({
       : [...assignedIds, groupId];
     try {
       await setGroupsMutation.mutateAsync(newIds);
-    } catch {
-      showToast('Klantgroepen bijwerken mislukt', 'error');
+    } catch (err) {
+      showToast(getErrorMessage(err, 'Klantgroepen bijwerken mislukt'), 'error');
     }
   };
 

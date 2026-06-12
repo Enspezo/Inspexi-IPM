@@ -9,6 +9,7 @@ import { useContactLocations } from '@/pages/contacts/hooks/use-contacts';
 import { ContactSearchInput } from '@/components/contacts/contact-search-input';
 import { CustomFieldsForm } from '@/components/custom-fields';
 import { RequestSource, Priority, CustomFieldEntityType } from '@/types';
+import { getErrorMessage } from '@/lib/api-client';
 
 const sourceOptions = [
   { value: RequestSource.MANUAL, label: 'Handmatig' },
@@ -126,8 +127,8 @@ export function CreateRequestModal({ isOpen, onClose, contactId: prefilledContac
       reset();
       setSelectedContactId('');
       onClose();
-    } catch {
-      showToast('Aanmaken mislukt', 'error');
+    } catch (err) {
+      showToast(getErrorMessage(err, 'Aanmaken mislukt'), 'error');
     }
   };
 

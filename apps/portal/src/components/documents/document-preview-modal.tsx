@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Button, Spinner, useToast } from '@/components/ui';
 import { downloadFile } from '@/lib/download-file';
-import { getAccessToken } from '@/lib/api-client';
+import { getAccessToken, getErrorMessage } from '@/lib/api-client';
 import type { CrmDocument } from '@/types';
 import { renderAsync as renderDocx } from 'docx-preview';
 import * as XLSX from 'xlsx';
@@ -466,8 +466,8 @@ export function DocumentPreviewModal({
   const handleDownload = async () => {
     try {
       await downloadFile(doc.id, doc.originalName);
-    } catch {
-      showToast('Download mislukt', 'error');
+    } catch (err) {
+      showToast(getErrorMessage(err, 'Download mislukt'), 'error');
     }
   };
 

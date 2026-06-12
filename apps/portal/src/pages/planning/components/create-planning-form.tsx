@@ -4,6 +4,7 @@ import { Button, Card, Input, useToast } from '@/components/ui';
 import { DetailPageLayout } from '@/components/layout/detail-page-layout';
 import { useContactPersons, useContacts, useContactLocations, useAddContactPerson } from '@/pages/contacts/hooks/use-contacts';
 import { useCreatePlanningItem } from '../hooks/use-planning';
+import { getErrorMessage } from '@/lib/api-client';
 
 export function CreatePlanningForm() {
   const navigate = useNavigate();
@@ -67,8 +68,8 @@ export function CreatePlanningForm() {
       setNewPersonEmail('');
       setNewPersonPhone('');
       showToast('Contactpersoon aangemaakt', 'success');
-    } catch {
-      showToast('Fout bij aanmaken contactpersoon', 'error');
+    } catch (err) {
+      showToast(getErrorMessage(err, 'Fout bij aanmaken contactpersoon'), 'error');
     }
   };
 
@@ -98,8 +99,8 @@ export function CreatePlanningForm() {
       });
       showToast('Planregel aangemaakt', 'success');
       navigate(`/planning/${(newItem as any).id}`);
-    } catch {
-      showToast('Fout bij aanmaken planregel', 'error');
+    } catch (err) {
+      showToast(getErrorMessage(err, 'Fout bij aanmaken planregel'), 'error');
     }
   };
 

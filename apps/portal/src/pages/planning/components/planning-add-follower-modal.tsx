@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import type { ContactPerson } from '@/types';
 import { Button, Input, Modal, useToast } from '@/components/ui';
 import { useAddFollower } from '../hooks/use-planning-followers';
+import { getErrorMessage } from '@/lib/api-client';
 
 export function PlanningAddFollowerModal({
   id,
@@ -57,8 +58,8 @@ export function PlanningAddFollowerModal({
       setFollowerSearch('');
       setShowFollowerDropdown(false);
       showToast('Volger toegevoegd', 'success');
-    } catch {
-      showToast('Fout bij toevoegen volger', 'error');
+    } catch (err) {
+      showToast(getErrorMessage(err, 'Fout bij toevoegen volger'), 'error');
     }
   };
 
@@ -71,8 +72,8 @@ export function PlanningAddFollowerModal({
       setNewFollowerName('');
       setFollowerSearch('');
       showToast('Volger toegevoegd', 'success');
-    } catch {
-      showToast('Fout bij toevoegen volger', 'error');
+    } catch (err) {
+      showToast(getErrorMessage(err, 'Fout bij toevoegen volger'), 'error');
     }
   };
 

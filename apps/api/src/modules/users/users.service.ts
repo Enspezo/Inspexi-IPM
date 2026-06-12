@@ -119,13 +119,21 @@ export class UsersService {
     const publicUrl = this.config.get<string>('PUBLIC_URL');
     const inviteUrl = `${publicUrl}/invite/${invitation.token}`;
 
-    await this.emailService.sendInvitation(
-      dto.email,
-      inviteUrl,
-      org?.name || 'InspeXi',
-      dto.role,
-      orgId,
-    );
+    try {
+      await this.emailService.sendInvitation(
+        dto.email,
+        inviteUrl,
+        org?.name || 'InspeXi',
+        dto.role,
+        orgId,
+      );
+    } catch {
+      // Invitation opruimen, anders blokkeert de ConflictException een retry
+      await this.prisma.invitation.delete({ where: { id: invitation.id } });
+      throw new BadRequestException(
+        'Uitnodigingsmail kon niet verzonden worden. Probeer het opnieuw.',
+      );
+    }
 
     return invitation;
   }

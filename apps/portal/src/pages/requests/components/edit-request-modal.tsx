@@ -5,6 +5,7 @@ import { Modal, Input, Select, Button, useToast } from '@/components/ui';
 import { useUpdateRequest, useOrgUsers } from '../hooks/use-requests';
 import { Priority } from '@/types';
 import type { Request } from '@/types';
+import { getErrorMessage } from '@/lib/api-client';
 
 const priorityOptions = [
   { value: Priority.LOW, label: 'Laag' },
@@ -69,8 +70,8 @@ export function EditRequestModal({ isOpen, onClose, request }: EditRequestModalP
       });
       showToast('Aanvraag bijgewerkt!', 'success');
       onClose();
-    } catch {
-      showToast('Bijwerken mislukt', 'error');
+    } catch (err) {
+      showToast(getErrorMessage(err, 'Bijwerken mislukt'), 'error');
     }
   };
 

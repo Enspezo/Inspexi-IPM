@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/providers/auth-provider';
-import { apiClient } from '@/lib/api-client';
+import { apiClient, getErrorMessage } from '@/lib/api-client';
 import { Card, Button, useToast, useConfirm } from '@/components/ui';
 
 // ─── Inspector Color & iCal Card ──────────────────────────
@@ -30,8 +30,8 @@ export function InspectorCard() {
       await apiClient.patch(`/users/${user!.id}/color`, { color });
       refreshUser();
       showToast('Kleur opgeslagen', 'success');
-    } catch {
-      showToast('Opslaan mislukt', 'error');
+    } catch (err) {
+      showToast(getErrorMessage(err, 'Opslaan mislukt'), 'error');
     } finally {
       setSaving(false);
     }
@@ -51,8 +51,8 @@ export function InspectorCard() {
       await apiClient.post('/users/me/rotate-ical-token', {});
       await refreshUser();
       showToast('iCal-token vernieuwd — koppel uw agenda-app opnieuw', 'success');
-    } catch {
-      showToast('Vernieuwen mislukt', 'error');
+    } catch (err) {
+      showToast(getErrorMessage(err, 'Vernieuwen mislukt'), 'error');
     } finally {
       setRotating(false);
     }

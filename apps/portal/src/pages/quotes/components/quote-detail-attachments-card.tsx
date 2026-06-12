@@ -3,6 +3,7 @@ import type { QuoteAttachment } from '@/types';
 import { Button, Card, useConfirm, useToast } from '@/components/ui';
 import { formatFileSize } from '@/lib/format';
 import { useUploadQuoteAttachment, useDeleteQuoteAttachment } from '../hooks/use-quotes';
+import { getErrorMessage } from '@/lib/api-client';
 
 export function QuoteAttachmentsCard({
   quoteId,
@@ -25,7 +26,7 @@ export function QuoteAttachmentsCard({
     try {
       await uploadAttachmentMutation.mutateAsync(file);
       showToast('Bijlage geüpload', 'success');
-    } catch { showToast('Uploaden mislukt', 'error'); }
+    } catch (err) { showToast(getErrorMessage(err, 'Uploaden mislukt'), 'error'); }
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
@@ -39,7 +40,7 @@ export function QuoteAttachmentsCard({
     try {
       await deleteAttachmentMutation.mutateAsync(attachmentId);
       showToast('Bijlage verwijderd', 'success');
-    } catch { showToast('Verwijderen mislukt', 'error'); }
+    } catch (err) { showToast(getErrorMessage(err, 'Verwijderen mislukt'), 'error'); }
   };
 
   const handleDownloadAttachment = async (attachment: QuoteAttachment) => {
@@ -56,7 +57,7 @@ export function QuoteAttachmentsCard({
       a.download = attachment.fileName;
       a.click();
       URL.revokeObjectURL(url);
-    } catch { showToast('Downloaden mislukt', 'error'); }
+    } catch (err) { showToast(getErrorMessage(err, 'Downloaden mislukt'), 'error'); }
   };
 
   return (

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Modal, Button, Input, Spinner } from '@/components/ui';
 import { useToast } from '@/components/ui';
-import { apiClient } from '@/lib/api-client';
+import { apiClient, getErrorMessage } from '@/lib/api-client';
 import { useAssignToProject } from '../hooks/use-projects';
 
 interface Props {
@@ -68,8 +68,8 @@ export function LinkEntitiesModal({ projectId, entityType, onClose }: Props) {
         'success',
       );
       onClose();
-    } catch {
-      showToast('Koppelen mislukt', 'error');
+    } catch (err) {
+      showToast(getErrorMessage(err, 'Koppelen mislukt'), 'error');
     }
   };
 

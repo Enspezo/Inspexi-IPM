@@ -3,6 +3,7 @@ import { useAuth } from '@/providers/auth-provider';
 import { Card, Button, SignatureEditor, useToast } from '@/components/ui';
 import { SignatureType } from '@/types';
 import { useSignature, useSaveSignature, useDeleteSignature } from '../hooks/use-signature';
+import { getErrorMessage } from '@/lib/api-client';
 
 // ─── Signature Card Component ─────────────────────────────
 
@@ -26,8 +27,8 @@ export function SignatureCard() {
       await saveMutation.mutateAsync({ signatureType: type, signatureData: data });
       showToast('Handtekening opgeslagen', 'success');
       setIsEditing(false);
-    } catch {
-      showToast('Opslaan mislukt', 'error');
+    } catch (err) {
+      showToast(getErrorMessage(err, 'Opslaan mislukt'), 'error');
     }
   };
 
@@ -36,8 +37,8 @@ export function SignatureCard() {
       await deleteMutation.mutateAsync();
       showToast('Handtekening verwijderd', 'success');
       setIsEditing(false);
-    } catch {
-      showToast('Verwijderen mislukt', 'error');
+    } catch (err) {
+      showToast(getErrorMessage(err, 'Verwijderen mislukt'), 'error');
     }
   };
 

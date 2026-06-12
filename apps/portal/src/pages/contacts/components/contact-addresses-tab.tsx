@@ -2,6 +2,7 @@ import { Button, Card, useConfirm, useToast } from '@/components/ui';
 import type { Contact, ContactAddress } from '@/types';
 import type { useDeleteAddress } from '../hooks/use-contacts';
 import { CardMenu } from './card-menu';
+import { getErrorMessage } from '@/lib/api-client';
 
 export function ContactAddressesTab({
   contact,
@@ -76,8 +77,8 @@ export function ContactAddressesTab({
                         try {
                           await deleteAddressMutation.mutateAsync(addr.id);
                           showToast('Adres verwijderd', 'success');
-                        } catch {
-                          showToast('Verwijderen mislukt', 'error');
+                        } catch (err) {
+                          showToast(getErrorMessage(err, 'Verwijderen mislukt'), 'error');
                         }
                       }}
                     />

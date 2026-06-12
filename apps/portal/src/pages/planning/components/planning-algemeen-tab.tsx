@@ -6,6 +6,7 @@ import { ACCEPTANCE_STATUS, WORK_ORDER_STATUS } from '@/lib/status';
 import { useUpdatePlanningItem } from '../hooks/use-planning';
 import { useCreateWorkOrder, usePlanningWorkOrders } from '@/pages/work-orders/hooks/use-work-orders';
 import { toDatetimeLocal } from './planning-detail-shared';
+import { getErrorMessage } from '@/lib/api-client';
 
 export function PlanningAlgemeenTab({
   id,
@@ -90,8 +91,8 @@ export function PlanningAlgemeenTab({
       });
       setEditMode(false);
       showToast('Planregel bijgewerkt', 'success');
-    } catch {
-      showToast('Fout bij opslaan', 'error');
+    } catch (err) {
+      showToast(getErrorMessage(err, 'Fout bij opslaan'), 'error');
     }
   };
 
@@ -222,8 +223,8 @@ export function PlanningAlgemeenTab({
                             await updateItem.mutateAsync({ contactPersonId: quickContactPersonId });
                             setEditingContactPerson(false);
                             showToast('Contactpersoon opgeslagen', 'success');
-                          } catch {
-                            showToast('Fout bij opslaan', 'error');
+                          } catch (err) {
+                            showToast(getErrorMessage(err, 'Fout bij opslaan'), 'error');
                           }
                         }}
                         disabled={updateItem.isPending}

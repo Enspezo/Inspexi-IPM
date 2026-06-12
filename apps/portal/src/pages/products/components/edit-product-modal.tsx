@@ -6,6 +6,7 @@ import { Modal, Input, Select, Button, useToast } from '@/components/ui';
 import { useUpdateProduct } from '../hooks/use-products';
 import { useProductGroupsCompact } from '@/pages/product-groups/hooks/use-product-groups';
 import type { Product } from '@/types';
+import { getErrorMessage } from '@/lib/api-client';
 
 const unitOptions = [
   { value: 'uur', label: 'Uur' },
@@ -79,8 +80,8 @@ export function EditProductModal({ isOpen, onClose, product, disableGroupSelect 
       });
       showToast('Product bijgewerkt!', 'success');
       onClose();
-    } catch {
-      showToast('Bijwerken mislukt', 'error');
+    } catch (err) {
+      showToast(getErrorMessage(err, 'Bijwerken mislukt'), 'error');
     }
   };
 

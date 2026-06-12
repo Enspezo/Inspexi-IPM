@@ -10,6 +10,7 @@ import {
 } from '../hooks/use-quote-templates';
 import { FollowUpModal } from './follow-up-modal';
 import type { FollowUpFormData } from './follow-up-modal';
+import { getErrorMessage } from '@/lib/api-client';
 
 interface FollowUpSectionProps {
   templateId: string;
@@ -60,8 +61,8 @@ export function FollowUpSection({
         showToast('Follow-up toegevoegd', 'success');
       }
       setShowModal(false);
-    } catch {
-      showToast('Opslaan mislukt', 'error');
+    } catch (err) {
+      showToast(getErrorMessage(err, 'Opslaan mislukt'), 'error');
     }
   };
 
@@ -75,8 +76,8 @@ export function FollowUpSection({
     try {
       await deleteMutation.mutateAsync(followUpId);
       showToast('Follow-up verwijderd', 'success');
-    } catch {
-      showToast('Verwijderen mislukt', 'error');
+    } catch (err) {
+      showToast(getErrorMessage(err, 'Verwijderen mislukt'), 'error');
     }
   };
 
@@ -87,8 +88,8 @@ export function FollowUpSection({
         data: { isActive: !followUp.isActive },
       });
       showToast(followUp.isActive ? 'Follow-up uitgeschakeld' : 'Follow-up ingeschakeld', 'success');
-    } catch {
-      showToast('Wijziging mislukt', 'error');
+    } catch (err) {
+      showToast(getErrorMessage(err, 'Wijziging mislukt'), 'error');
     }
   };
 

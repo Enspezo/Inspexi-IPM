@@ -20,6 +20,7 @@ import { EditTaskModal } from '@/pages/tasks/components/edit-task-modal';
 import { DocumentsSidebarSection } from '@/components/layout/sidebar-sections';
 import { AddressSearchInput } from '@/components/ui';
 import type { ParsedAddress } from '@/lib/geocoding';
+import { getErrorMessage } from '@/lib/api-client';
 
 type Tab = 'overzicht' | 'instellingen';
 
@@ -143,8 +144,8 @@ export default function UserDetailPage() {
     try {
       await deactivateMutation.mutateAsync(userRecord.id);
       showToast('Gebruiker gedeactiveerd', 'success');
-    } catch {
-      showToast('Deactiveren mislukt', 'error');
+    } catch (err) {
+      showToast(getErrorMessage(err, 'Deactiveren mislukt'), 'error');
     }
   };
 
@@ -152,8 +153,8 @@ export default function UserDetailPage() {
     try {
       await activateMutation.mutateAsync(userRecord.id);
       showToast('Gebruiker geactiveerd', 'success');
-    } catch {
-      showToast('Activeren mislukt', 'error');
+    } catch (err) {
+      showToast(getErrorMessage(err, 'Activeren mislukt'), 'error');
     }
   };
 
@@ -170,8 +171,8 @@ export default function UserDetailPage() {
     const newStatus = task.status === TaskStatus.VOLTOOID ? TaskStatus.TE_DOEN : TaskStatus.VOLTOOID;
     try {
       await updateTaskMutation.mutateAsync({ id: task.id, data: { status: newStatus } });
-    } catch {
-      showToast('Status wijzigen mislukt', 'error');
+    } catch (err) {
+      showToast(getErrorMessage(err, 'Status wijzigen mislukt'), 'error');
     }
   };
 

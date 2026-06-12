@@ -3,6 +3,7 @@ import { Button, Card, useConfirm, useToast } from '@/components/ui';
 import type { Contact, Location } from '@/types';
 import type { useDeleteLocation } from '../hooks/use-contacts';
 import { CardMenu } from './card-menu';
+import { getErrorMessage } from '@/lib/api-client';
 
 export function ContactLocationsTab({
   contact,
@@ -71,8 +72,8 @@ export function ContactLocationsTab({
                         try {
                           await deleteLocationMutation.mutateAsync(loc.id);
                           showToast('Locatie verwijderd', 'success');
-                        } catch {
-                          showToast('Verwijderen mislukt', 'error');
+                        } catch (err) {
+                          showToast(getErrorMessage(err, 'Verwijderen mislukt'), 'error');
                         }
                       }}
                     />

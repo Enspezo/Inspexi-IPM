@@ -13,6 +13,7 @@ import { useAuth } from '@/providers/auth-provider';
 import { useUsers } from '@/pages/users/hooks/use-users';
 import { useTask, useUpdateTask, useDeleteTask } from './hooks/use-tasks';
 import { DocumentsSection, UploadDocumentModal } from '@/components/documents';
+import { getErrorMessage } from '@/lib/api-client';
 
 const canWrite = [Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE, Role.WERKVOORBEREIDER];
 
@@ -214,8 +215,8 @@ export default function TaskDetailPage() {
                         try {
                           await updateMutation.mutateAsync({ id: task.id, data: { status: TaskStatus.VOLTOOID } });
                           showToast('Taak voltooid', 'success');
-                        } catch {
-                          showToast('Status wijzigen mislukt', 'error');
+                        } catch (err) {
+                          showToast(getErrorMessage(err, 'Status wijzigen mislukt'), 'error');
                         }
                       },
                     },

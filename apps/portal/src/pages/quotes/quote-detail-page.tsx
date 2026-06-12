@@ -39,7 +39,7 @@ import { QuoteTasksSidebar } from './components/quote-detail-tasks-sidebar';
 import { ContactLogsSidebar } from './components/quote-detail-contact-logs-sidebar';
 import { formatDateTimeLong } from './components/quote-detail-helpers';
 import { RichTextViewer } from '@/components/ui';
-import { getAccessToken } from '@/lib/api-client';
+import { getAccessToken, getErrorMessage } from '@/lib/api-client';
 
 const canWrite = [Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE];
 const canApprove = [Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER];
@@ -81,7 +81,7 @@ export default function QuoteDetailPage() {
     try {
       await submitApprovalMutation.mutateAsync();
       showToast('Offerte ter goedkeuring ingediend', 'success');
-    } catch { showToast('Indienen mislukt', 'error'); }
+    } catch (err) { showToast(getErrorMessage(err, 'Indienen mislukt'), 'error'); }
   };
 
   const handleReject = async () => {
@@ -90,14 +90,14 @@ export default function QuoteDetailPage() {
       showToast('Offerte afgewezen', 'success');
       setRejectNote('');
       setShowRejectInput(false);
-    } catch { showToast('Afwijzen mislukt', 'error'); }
+    } catch (err) { showToast(getErrorMessage(err, 'Afwijzen mislukt'), 'error'); }
   };
 
   const handleStatusUpdate = async (status: string) => {
     try {
       await updateStatusMutation.mutateAsync({ status });
       showToast('Status bijgewerkt', 'success');
-    } catch { showToast('Status wijzigen mislukt', 'error'); }
+    } catch (err) { showToast(getErrorMessage(err, 'Status wijzigen mislukt'), 'error'); }
   };
 
   const handleDelete = async () => {
@@ -112,7 +112,7 @@ export default function QuoteDetailPage() {
       await deleteMutation.mutateAsync(quote.id);
       showToast('Offerte verwijderd', 'success');
       navigate('/quotes');
-    } catch { showToast('Verwijderen mislukt', 'error'); }
+    } catch (err) { showToast(getErrorMessage(err, 'Verwijderen mislukt'), 'error'); }
   };
 
   if (isLoading) {
@@ -285,7 +285,7 @@ export default function QuoteDetailPage() {
                       const blob = await res.blob();
                       const url = URL.createObjectURL(blob);
                       const a = document.createElement('a'); a.href = url; a.download = `Offerte-${quote.quoteNumber}.pdf`; a.click(); URL.revokeObjectURL(url);
-                    } catch { showToast('PDF downloaden mislukt', 'error'); }
+                    } catch (err) { showToast(getErrorMessage(err, 'PDF downloaden mislukt'), 'error'); }
                   },
                 }] : []),
               ]}

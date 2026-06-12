@@ -30,6 +30,7 @@ import {
 } from './components/planning-detail-modals';
 import { PlanningAddFollowerModal } from './components/planning-add-follower-modal';
 import { CreatePlanningForm } from './components/create-planning-form';
+import { getErrorMessage } from '@/lib/api-client';
 
 type Tab = 'algemeen' | 'sessies' | 'klantportaal' | 'volgers' | 'status' | 'geschiedenis';
 
@@ -184,8 +185,8 @@ function PlanningDetailView({ id }: { id: string }) {
     try {
       await addSession.mutateAsync({});
       showToast('Sessie toegevoegd', 'success');
-    } catch {
-      showToast('Fout bij toevoegen sessie', 'error');
+    } catch (err) {
+      showToast(getErrorMessage(err, 'Fout bij toevoegen sessie'), 'error');
     }
   };
 

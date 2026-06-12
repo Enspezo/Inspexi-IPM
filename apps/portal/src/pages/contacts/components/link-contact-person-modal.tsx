@@ -3,6 +3,7 @@ import { ContactType } from '@/types';
 import { Button, Modal, Input, useToast } from '@/components/ui';
 import { useContactPersons, useLinkContactPerson } from '../hooks/use-contacts';
 import { roleColors } from '@/lib/contact-person-role';
+import { getErrorMessage } from '@/lib/api-client';
 
 interface LinkContactPersonModalProps {
   isOpen: boolean;
@@ -54,8 +55,8 @@ export function LinkContactPersonModal({
       await linkMutation.mutateAsync({ contactPersonId: selectedPersonId, notes: notes || undefined });
       showToast('Contactpersoon gekoppeld', 'success');
       handleClose();
-    } catch {
-      showToast('Koppelen mislukt', 'error');
+    } catch (err) {
+      showToast(getErrorMessage(err, 'Koppelen mislukt'), 'error');
     }
   };
 

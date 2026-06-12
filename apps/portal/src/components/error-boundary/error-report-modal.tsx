@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Modal, Button, useToast } from '@/components/ui';
-import { apiClient } from '@/lib/api-client';
+import { apiClient, getErrorMessage } from '@/lib/api-client';
 
 interface ErrorReportModalProps {
   isOpen: boolean;
@@ -41,8 +41,8 @@ export function ErrorReportModal({
       showToast('Foutmelding succesvol verzonden. Bedankt!', 'success');
       setUserDescription('');
       onClose();
-    } catch {
-      showToast('Verzenden mislukt. Probeer het later opnieuw.', 'error');
+    } catch (err) {
+      showToast(getErrorMessage(err, 'Verzenden mislukt. Probeer het later opnieuw.'), 'error');
     } finally {
       setIsSubmitting(false);
     }

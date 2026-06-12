@@ -17,6 +17,7 @@ import { useContactLocations } from '@/pages/contacts/hooks/use-contacts';
 import { ContactSearchInput } from '@/components/contacts/contact-search-input';
 import { CustomFieldsDisplay, CustomFieldsForm } from '@/components/custom-fields';
 import { formatDate, getContactName } from './request-detail-helpers';
+import { getErrorMessage } from '@/lib/api-client';
 
 const priorityOptions = [
   { value: Priority.LOW, label: 'Laag' },
@@ -112,8 +113,8 @@ export function RequestOverviewTab({
       } as any);
       showToast('Aanvraag bijgewerkt', 'success');
       setIsEditing(false);
-    } catch {
-      showToast('Opslaan mislukt', 'error');
+    } catch (err) {
+      showToast(getErrorMessage(err, 'Opslaan mislukt'), 'error');
     }
   };
 

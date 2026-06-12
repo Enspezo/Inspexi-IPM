@@ -5,6 +5,7 @@ import { Button, Card, Select, Input, useToast } from '@/components/ui';
 import { getStatusConfig, REQUEST_STATUS } from '@/lib/status';
 import type { useUpdateRequestStatus } from '../hooks/use-requests';
 import { formatDate } from './request-detail-helpers';
+import { getErrorMessage } from '@/lib/api-client';
 
 const statusOptions = Object.values(RequestStatus).map((s) => ({
   value: s,
@@ -34,8 +35,8 @@ export function RequestStatusTab({
       showToast('Status bijgewerkt', 'success');
       setNewStatus('');
       setStatusNote('');
-    } catch {
-      showToast('Status wijzigen mislukt', 'error');
+    } catch (err) {
+      showToast(getErrorMessage(err, 'Status wijzigen mislukt'), 'error');
     }
   };
 

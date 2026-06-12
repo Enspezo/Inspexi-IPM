@@ -8,6 +8,7 @@ import { Button, Card, InfoField, Input } from '@/components/ui';
 import { formatDate } from '@/lib/format';
 import type { useUpdateQuote } from '../hooks/use-quotes';
 import { getContactName } from './quote-detail-helpers';
+import { getErrorMessage } from '@/lib/api-client';
 
 const quoteSchema = z.object({
   subject: z.string().min(1, 'Onderwerp is verplicht'),
@@ -56,8 +57,8 @@ export function QuoteInfoCard({
       });
       showToast('Offerte bijgewerkt', 'success');
       setIsEditing(false);
-    } catch {
-      showToast('Bijwerken mislukt', 'error');
+    } catch (err) {
+      showToast(getErrorMessage(err, 'Bijwerken mislukt'), 'error');
     }
   };
 

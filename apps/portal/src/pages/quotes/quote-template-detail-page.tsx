@@ -34,7 +34,7 @@ import { DocxFileTab } from './components/quote-template-docx-file-tab';
 import { RevisionsTab } from './components/quote-template-revisions-tab';
 import { AttachmentsTab } from './components/quote-template-attachments-tab';
 import { AutomationTab } from './components/quote-template-automation-tab';
-import { getAccessToken } from '@/lib/api-client';
+import { getAccessToken, getErrorMessage } from '@/lib/api-client';
 
 type BlocksTab = 'inhoud' | 'automatisering' | 'bijlagen' | 'instellingen';
 type DocxTab = 'docx-bestand' | 'revisies' | 'automatisering' | 'bijlagen' | 'instellingen';
@@ -222,9 +222,9 @@ export default function QuoteTemplateDetailPage() {
       setAutosaveStatus('saved');
       setIsDirty(false);
       showToast('Template opgeslagen', 'success');
-    } catch {
+    } catch (err) {
       setAutosaveStatus('error');
-      showToast('Opslaan mislukt', 'error');
+      showToast(getErrorMessage(err, 'Opslaan mislukt'), 'error');
     }
   };
 
@@ -250,8 +250,8 @@ export default function QuoteTemplateDetailPage() {
       await deleteMutation.mutateAsync(id!);
       showToast('Template gedeactiveerd', 'success');
       navigate('/quote-templates');
-    } catch {
-      showToast('Deactiveren mislukt', 'error');
+    } catch (err) {
+      showToast(getErrorMessage(err, 'Deactiveren mislukt'), 'error');
     }
   };
 
@@ -268,8 +268,8 @@ export default function QuoteTemplateDetailPage() {
       try {
         await uploadAttachmentMutation.mutateAsync(formData);
         showToast('Bijlage toegevoegd', 'success');
-      } catch {
-        showToast('Upload mislukt', 'error');
+      } catch (err) {
+        showToast(getErrorMessage(err, 'Upload mislukt'), 'error');
       }
     };
     input.click();
@@ -291,8 +291,8 @@ export default function QuoteTemplateDetailPage() {
       a.download = att.fileName;
       a.click();
       URL.revokeObjectURL(url);
-    } catch {
-      showToast('Download mislukt', 'error');
+    } catch (err) {
+      showToast(getErrorMessage(err, 'Download mislukt'), 'error');
     }
   };
 
@@ -307,8 +307,8 @@ export default function QuoteTemplateDetailPage() {
     try {
       await deleteAttachmentMutation.mutateAsync(attId);
       showToast('Bijlage verwijderd', 'success');
-    } catch {
-      showToast('Verwijderen mislukt', 'error');
+    } catch (err) {
+      showToast(getErrorMessage(err, 'Verwijderen mislukt'), 'error');
     }
   };
 
@@ -350,8 +350,8 @@ export default function QuoteTemplateDetailPage() {
       a.download = template?.docxFileName || 'template.docx';
       a.click();
       URL.revokeObjectURL(url);
-    } catch {
-      showToast('Download mislukt', 'error');
+    } catch (err) {
+      showToast(getErrorMessage(err, 'Download mislukt'), 'error');
     }
   };
 
@@ -371,8 +371,8 @@ export default function QuoteTemplateDetailPage() {
       a.download = revision.fileName;
       a.click();
       URL.revokeObjectURL(url);
-    } catch {
-      showToast('Download mislukt', 'error');
+    } catch (err) {
+      showToast(getErrorMessage(err, 'Download mislukt'), 'error');
     }
   };
 
@@ -542,7 +542,7 @@ export default function QuoteTemplateDetailPage() {
             try {
               await updateMutation.mutateAsync({ [linkModalField]: emailTemplateId });
               showToast('E-mailsjabloon gekoppeld', 'success');
-            } catch { showToast('Koppelen mislukt', 'error'); }
+            } catch (err) { showToast(getErrorMessage(err, 'Koppelen mislukt'), 'error'); }
           }}
         />
 

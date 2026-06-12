@@ -5,6 +5,7 @@ import { downloadFile } from '@/lib/download-file';
 import { UploadDocumentModal } from './upload-document-modal';
 import { DocumentPreviewModal } from './document-preview-modal';
 import type { DocumentEntityType, CrmDocument } from '@/types';
+import { getErrorMessage } from '@/lib/api-client';
 
 interface DocumentsSectionProps {
   entityType: DocumentEntityType;
@@ -70,8 +71,8 @@ function DocumentRow({
   const handleDownload = async () => {
     try {
       await downloadFile(doc.id, doc.originalName);
-    } catch {
-      showToast('Download mislukt', 'error');
+    } catch (err) {
+      showToast(getErrorMessage(err, 'Download mislukt'), 'error');
     }
   };
 
@@ -80,8 +81,8 @@ function DocumentRow({
     try {
       await deleteMutation.mutateAsync(doc.id);
       showToast('Document verwijderd', 'success');
-    } catch {
-      showToast('Verwijderen mislukt', 'error');
+    } catch (err) {
+      showToast(getErrorMessage(err, 'Verwijderen mislukt'), 'error');
     }
   };
 
@@ -89,8 +90,8 @@ function DocumentRow({
     try {
       await updateMutation.mutateAsync({ id: doc.id, data: { isSharedWithClient: !doc.isSharedWithClient } });
       showToast(doc.isSharedWithClient ? 'Niet meer gedeeld met opdrachtgever' : 'Gedeeld met opdrachtgever', 'success');
-    } catch {
-      showToast('Bijwerken mislukt', 'error');
+    } catch (err) {
+      showToast(getErrorMessage(err, 'Bijwerken mislukt'), 'error');
     }
   };
 

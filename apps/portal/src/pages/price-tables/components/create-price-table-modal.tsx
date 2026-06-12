@@ -3,6 +3,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Modal, Input, Button, useToast } from '@/components/ui';
 import { useCreatePriceTable } from '../hooks/use-price-tables';
+import { getErrorMessage } from '@/lib/api-client';
 
 const schema = z.object({
   name: z.string().min(1, 'Naam is verplicht'),
@@ -41,8 +42,8 @@ export function CreatePriceTableModal({ isOpen, onClose }: CreatePriceTableModal
       showToast('Prijstabel aangemaakt!', 'success');
       reset();
       onClose();
-    } catch {
-      showToast('Aanmaken mislukt', 'error');
+    } catch (err) {
+      showToast(getErrorMessage(err, 'Aanmaken mislukt'), 'error');
     }
   };
 

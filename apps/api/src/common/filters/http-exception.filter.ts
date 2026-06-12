@@ -6,6 +6,7 @@ import {
   HttpStatus,
   Logger,
 } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { Response, Request } from 'express';
 
 @Catch()
@@ -18,7 +19,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
     const request = ctx.getRequest<Request>();
 
     let status = HttpStatus.INTERNAL_SERVER_ERROR;
-    let message = 'Internal server error';
+    let message: string | string[] = 'Internal server error';
 
     if (exception instanceof HttpException) {
       status = exception.getStatus();
@@ -27,6 +28,26 @@ export class AllExceptionsFilter implements ExceptionFilter {
         typeof exceptionResponse === 'string'
           ? exceptionResponse
           : (exceptionResponse as any).message || exception.message;
+    } else if (exception instanceof Prisma.PrismaClientKnownRequestError) {
+      switch (exception.code) {
+        case 'P2002':
+          status = HttpStatus.CONFLICT;
+          message = 'Deze waarde bestaat al';
+          break;
+        case 'P2025':
+          status = HttpStatus.NOT_FOUND;
+          message = 'Gegevens niet gevonden';
+          break;
+        case 'P2003':
+          status = HttpStatus.BAD_REQUEST;
+          message = 'Verwijzing naar niet-bestaande gegevens';
+          break;
+      }
+      if (status !== HttpStatus.INTERNAL_SERVER_ERROR) {
+        this.logger.warn(
+          `Prisma ${exception.code} on ${request.method} ${request.url}: ${exception.message.split('\n').pop()}`,
+        );
+      }
     }
 
     // Log non-HTTP exceptions (500s) for debugging
@@ -40,6 +61,8 @@ export class AllExceptionsFilter implements ExceptionFilter {
     response.status(status).json({
       success: false,
       message: Array.isArray(message) ? message[0] : message,
+      // Class-validator kan meerdere veldfouten geven; geef ze allemaal door
+      ...(Array.isArray(message) && message.length > 1 ? { errors: message } : {}),
       statusCode: status,
     });
   }

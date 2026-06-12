@@ -9,6 +9,7 @@ import { useToast } from '@/components/ui';
 import { useCreateEmailTemplate } from '../hooks/use-email-templates';
 import { EmailTemplateType } from '@/types';
 import { EMAIL_TYPE_LABELS } from './email-type-labels';
+import { getErrorMessage } from '@/lib/api-client';
 
 const schema = z.object({
   type: z.nativeEnum(EmailTemplateType),
@@ -58,8 +59,8 @@ export function CreateEmailTemplateModal({ isOpen, onClose, onCreated }: CreateE
       reset();
       onClose();
       onCreated?.(result);
-    } catch {
-      showToast('Fout bij aanmaken sjabloon', 'error');
+    } catch (err) {
+      showToast(getErrorMessage(err, 'Fout bij aanmaken sjabloon'), 'error');
     }
   };
 

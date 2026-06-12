@@ -1,3 +1,4 @@
+import { getErrorMessage } from '@/lib/api-client';
 import { useState } from 'react';
 import { clsx } from 'clsx';
 import { Role, NoteEntityType } from '@/types';
@@ -149,8 +150,8 @@ export function NotesSection({ entityType, entityId }: NotesSectionProps) {
       setNewContent('');
       setIsComposerOpen(false);
       showToast('Notitie toegevoegd', 'success');
-    } catch {
-      showToast('Notitie toevoegen mislukt', 'error');
+    } catch (err) {
+      showToast(getErrorMessage(err, 'Notitie toevoegen mislukt'), 'error');
     }
   };
 
@@ -166,8 +167,8 @@ export function NotesSection({ entityType, entityId }: NotesSectionProps) {
       setReplyingTo(null);
       setReplyContent('');
       showToast('Antwoord geplaatst', 'success');
-    } catch {
-      showToast('Antwoord plaatsen mislukt', 'error');
+    } catch (err) {
+      showToast(getErrorMessage(err, 'Antwoord plaatsen mislukt'), 'error');
     }
   };
 
@@ -183,8 +184,8 @@ export function NotesSection({ entityType, entityId }: NotesSectionProps) {
       setEditingNote(null);
       setEditContent('');
       showToast('Notitie bijgewerkt', 'success');
-    } catch {
-      showToast('Bijwerken mislukt', 'error');
+    } catch (err) {
+      showToast(getErrorMessage(err, 'Bijwerken mislukt'), 'error');
     }
   };
 
@@ -198,8 +199,8 @@ export function NotesSection({ entityType, entityId }: NotesSectionProps) {
     try {
       await deleteMutation.mutateAsync(noteId);
       showToast('Notitie verwijderd', 'success');
-    } catch {
-      showToast('Verwijderen mislukt', 'error');
+    } catch (err) {
+      showToast(getErrorMessage(err, 'Verwijderen mislukt'), 'error');
     }
   };
 

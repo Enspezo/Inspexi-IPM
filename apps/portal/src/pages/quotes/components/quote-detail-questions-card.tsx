@@ -3,6 +3,7 @@ import type { QuoteQuestion } from '@/types';
 import { Button, Card, useToast } from '@/components/ui';
 import { useAddQuestion, useAnswerQuestion } from '../hooks/use-quotes';
 import { formatDateTimeLong } from './quote-detail-helpers';
+import { getErrorMessage } from '@/lib/api-client';
 
 export function QuoteQuestionsCard({
   quoteId,
@@ -27,7 +28,7 @@ export function QuoteQuestionsCard({
       await addQuestionMutation.mutateAsync({ message: newQuestion });
       setNewQuestion('');
       showToast('Bericht toegevoegd', 'success');
-    } catch { showToast('Toevoegen mislukt', 'error'); }
+    } catch (err) { showToast(getErrorMessage(err, 'Toevoegen mislukt'), 'error'); }
   };
 
   const handleAnswer = async () => {
@@ -37,7 +38,7 @@ export function QuoteQuestionsCard({
       setAnswerText('');
       setAnsweringId(null);
       showToast('Antwoord verstuurd', 'success');
-    } catch { showToast('Versturen mislukt', 'error'); }
+    } catch (err) { showToast(getErrorMessage(err, 'Versturen mislukt'), 'error'); }
   };
 
   return (

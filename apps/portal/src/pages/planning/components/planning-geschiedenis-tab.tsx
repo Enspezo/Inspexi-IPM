@@ -1,6 +1,7 @@
 import type { PlanningItem } from '@/types';
 import { Button, Input, useToast } from '@/components/ui';
 import { useAddPlanningQuestion } from '../hooks/use-planning-questions';
+import { getErrorMessage } from '@/lib/api-client';
 
 export function PlanningGeschiedenisTab({
   id,
@@ -22,8 +23,8 @@ export function PlanningGeschiedenisTab({
       await addQuestion.mutateAsync({ message: newQuestion });
       setNewQuestion('');
       showToast('Vraag/opmerking toegevoegd', 'success');
-    } catch {
-      showToast('Fout bij toevoegen vraag', 'error');
+    } catch (err) {
+      showToast(getErrorMessage(err, 'Fout bij toevoegen vraag'), 'error');
     }
   };
 

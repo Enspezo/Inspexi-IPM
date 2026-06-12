@@ -20,6 +20,7 @@ import {
 import { LinkContactPersonModal } from './components/link-contact-person-modal';
 import { AuditHistory } from '@/components/audit-history/audit-history';
 import type { ParsedAddress } from '@/lib/geocoding';
+import { getErrorMessage } from '@/lib/api-client';
 
 const canWrite = [Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE];
 
@@ -117,8 +118,8 @@ export default function LocationDetailPage() {
       });
       showToast('Locatie bijgewerkt', 'success');
       setIsEditing(false);
-    } catch {
-      showToast('Opslaan mislukt', 'error');
+    } catch (err) {
+      showToast(getErrorMessage(err, 'Opslaan mislukt'), 'error');
     }
   };
 
@@ -150,8 +151,8 @@ export default function LocationDetailPage() {
       await deleteMutation.mutateAsync(location.id);
       showToast('Locatie verwijderd', 'success');
       navigate('/contacts/locations');
-    } catch {
-      showToast('Verwijderen mislukt', 'error');
+    } catch (err) {
+      showToast(getErrorMessage(err, 'Verwijderen mislukt'), 'error');
     }
   };
 
@@ -400,8 +401,8 @@ function ContactPersonsSection({
     try {
       await unlinkMutation.mutateAsync(linkId);
       showToast('Contactpersoon ontkoppeld', 'success');
-    } catch {
-      showToast('Ontkoppelen mislukt', 'error');
+    } catch (err) {
+      showToast(getErrorMessage(err, 'Ontkoppelen mislukt'), 'error');
     }
   };
 
@@ -411,8 +412,8 @@ function ContactPersonsSection({
       await updateNotesMutation.mutateAsync({ notes: editingNotes.notes || undefined });
       showToast('Opmerking opgeslagen', 'success');
       setEditingNotes(null);
-    } catch {
-      showToast('Opslaan mislukt', 'error');
+    } catch (err) {
+      showToast(getErrorMessage(err, 'Opslaan mislukt'), 'error');
     }
   };
 

@@ -143,12 +143,13 @@ export class WorkOrdersService {
     // Check if a work order already exists for this planning item
     const existing = await this.prisma.workOrder.findFirst({
       where: { planningItemId: data.id },
+      include: WORK_ORDER_INCLUDE,
     });
     if (existing) {
       this.logger.log(
         `Work order already exists for planning item ${data.id}`,
       );
-      return existing;
+      return serializeWorkOrder(existing);
     }
 
     // Fetch location for number generation

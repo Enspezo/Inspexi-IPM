@@ -538,7 +538,7 @@ describe('WorkOrdersService', () => {
         createdBy: 'user-1',
       });
 
-      expect(result).toBe(mockWorkOrder);
+      expect(result).toStrictEqual(mockWorkOrder);
       expect(mockPrismaService.workOrder.create).not.toHaveBeenCalled();
     });
 

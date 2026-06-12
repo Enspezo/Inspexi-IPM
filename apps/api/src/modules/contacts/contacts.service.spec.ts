@@ -7,7 +7,6 @@ import {
 import { Role, User, ContactType, LogType } from '@prisma/client';
 import { ContactsService } from './contacts.service';
 import { CustomFieldsValidator } from '@/modules/custom-fields/custom-fields.validator';
-import { GeocodingService } from '@/modules/geocoding/geocoding.service';
 import { PrismaService } from '@/prisma';
 import { EmailService } from '@/common/services/email.service';
 
@@ -113,15 +112,8 @@ describe('ContactsService', () => {
     validateAndSanitize: jest.fn().mockResolvedValue(null),
   };
 
-  const mockGeocodingService = {
-    extractCoordsFromPdokData: jest.fn().mockReturnValue(null),
-    nominatimGeocode: jest.fn().mockResolvedValue(null),
-  };
-
   beforeEach(async () => {
     jest.clearAllMocks();
-    mockGeocodingService.extractCoordsFromPdokData.mockReturnValue(null);
-    mockGeocodingService.nominatimGeocode.mockResolvedValue(null);
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -129,7 +121,6 @@ describe('ContactsService', () => {
         { provide: PrismaService, useValue: mockPrismaService },
         { provide: EmailService, useValue: mockEmailService },
         { provide: CustomFieldsValidator, useValue: mockCustomFieldsValidator },
-        { provide: GeocodingService, useValue: mockGeocodingService },
       ],
     }).compile();
 
@@ -453,176 +444,6 @@ describe('ContactsService', () => {
 
       expect(mockPrismaService.contact.findUnique).toHaveBeenCalledTimes(1);
       expect(mockPrismaService.contact.update).toHaveBeenCalledTimes(1);
-    });
-  });
-
-  // ─── addAddress ──────────────────────────────────────────────────────
-
-  describe('addAddress()', () => {
-    const addressDto = {
-      label: 'Factuuradres',
-      street: 'Industrieweg',
-      houseNumber: '42',
-      postalCode: '1234 AB',
-      city: 'Amsterdam',
-      isPrimary: false,
-    };
-
-    it('should create address for contact', async () => {
-      const createdAddress = {
-        id: 'addr-1',
-        contactId: 'contact-1',
-        ...addressDto,
-        country: 'NL',
-      };
-      mockPrismaService.contact.findUnique.mockResolvedValue(mockContact);
-      mockPrismaService.contactAddress.create.mockResolvedValue(createdAddress);
-
-      const result = await service.addAddress(
-        'contact-1',
-        addressDto,
-        mockUser,
-      );
-
-      expect(result).toEqual(createdAddress);
-      expect(mockPrismaService.contactAddress.create).toHaveBeenCalledWith({
-        data: {
-          contactId: 'contact-1',
-          label: addressDto.label,
-          street: addressDto.street,
-          houseNumber: addressDto.houseNumber,
-          postalCode: addressDto.postalCode,
-          city: addressDto.city,
-          country: 'NL',
-          isPrimary: false,
-          isPostal: false,
-          isInvoice: false,
-          customFields: null,
-        },
-      });
-    });
-
-    it('should unset other primary addresses in transaction when isPrimary=true', async () => {
-      const primaryDto = { ...addressDto, isPrimary: true };
-      const createdAddress = {
-        id: 'addr-2',
-        contactId: 'contact-1',
-        ...primaryDto,
-        country: 'NL',
-      };
-
-      mockPrismaService.contact.findUnique.mockResolvedValue(mockContact);
-      mockPrismaService.$transaction.mockImplementation(async (fn) => {
-        const tx = {
-          contactAddress: {
-            updateMany: jest.fn().mockResolvedValue({ count: 1 }),
-            create: jest.fn().mockResolvedValue(createdAddress),
-          },
-        };
-        return fn(tx);
-      });
-
-      const result = await service.addAddress(
-        'contact-1',
-        primaryDto,
-        mockUser,
-      );
-
-      expect(result).toEqual(createdAddress);
-      expect(mockPrismaService.$transaction).toHaveBeenCalledTimes(1);
-    });
-
-    it('should create normally when isPrimary=false', async () => {
-      const createdAddress = {
-        id: 'addr-3',
-        contactId: 'contact-1',
-        ...addressDto,
-        country: 'NL',
-      };
-      mockPrismaService.contact.findUnique.mockResolvedValue(mockContact);
-      mockPrismaService.contactAddress.create.mockResolvedValue(createdAddress);
-
-      await service.addAddress('contact-1', addressDto, mockUser);
-
-      expect(mockPrismaService.$transaction).not.toHaveBeenCalled();
-      expect(mockPrismaService.contactAddress.create).toHaveBeenCalled();
-    });
-  });
-
-  // ─── addLocation ─────────────────────────────────────────────────────
-
-  describe('addLocation()', () => {
-    const locationDto = {
-      name: 'Hoofdkantoor Amsterdam',
-      street: 'Keizersgracht',
-      houseNumber: '100',
-      postalCode: '1015 AA',
-      city: 'Amsterdam',
-      objectType: 'kantoor',
-      notes: 'Toegang via achterdeur',
-    };
-
-    it('should create location linked to contact and org', async () => {
-      const createdLocation = {
-        id: 'loc-1',
-        contactId: 'contact-1',
-        orgId: 'org-1',
-        ...locationDto,
-        createdAt: new Date(),
-      };
-      mockPrismaService.contact.findUnique.mockResolvedValue(mockContact);
-      mockPrismaService.location.create.mockResolvedValue(createdLocation);
-
-      const result = await service.addLocation(
-        'contact-1',
-        locationDto,
-        mockUser,
-      );
-
-      expect(result).toEqual(createdLocation);
-      expect(mockPrismaService.location.create).toHaveBeenCalledWith({
-        data: {
-          contactId: 'contact-1',
-          orgId: 'org-1',
-          name: locationDto.name,
-          street: locationDto.street,
-          houseNumber: locationDto.houseNumber,
-          postalCode: locationDto.postalCode,
-          city: locationDto.city,
-          objectType: locationDto.objectType,
-          notes: locationDto.notes,
-          pdokData: null,
-          lat: null,
-          lng: null,
-          customFields: null,
-        },
-      });
-    });
-  });
-
-  // ─── findLocations ───────────────────────────────────────────────────
-
-  describe('findLocations()', () => {
-    it('should return locations for contact', async () => {
-      const locations = [
-        {
-          id: 'loc-1',
-          contactId: 'contact-1',
-          orgId: 'org-1',
-          name: 'Kantoor',
-          createdAt: new Date(),
-        },
-      ];
-      mockPrismaService.contact.findUnique.mockResolvedValue(mockContact);
-      mockPrismaService.location.findMany.mockResolvedValue(locations);
-
-      const result = await service.findLocations('contact-1', mockUser);
-
-      expect(result).toEqual(locations);
-      expect(mockPrismaService.location.findMany).toHaveBeenCalledWith({
-        where: { contactId: 'contact-1' },
-        orderBy: { createdAt: 'desc' },
-      });
     });
   });
 

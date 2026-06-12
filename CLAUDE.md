@@ -630,6 +630,7 @@ Commits volgen het patroon: `feat: implement PRD-{nr} — {beschrijving}`
 ## Bekende Gotchas
 
 - **Prisma migrate moet vanuit `apps/api/` draaien**, niet vanuit de root — anders "Could not find Prisma Schema"
+- **NOOIT `prisma db push` gebruiken** — altijd `npx prisma migrate dev --name <naam>`. `db push` wijzigt de database zonder migratiebestand; de migratieketen herspeelt dan niet meer op een lege/shadow-database (P3006) en elke volgende `migrate dev` blokkeert. Dit is in juni 2026 eenmalig hersteld met een repair-migratie (`20260612230000_repair_db_push_drift`) — niet opnieuw laten ontstaan
 - **Dev server port conflict**: bij herstarten altijd eerst `lsof -ti:3001 -ti:5173 | xargs kill -9`
 - **NestJS route volgorde**: specifieke routes (`GET :id/users`) moeten vóór parameterized routes (`GET :id`) in de controller staan
 - **Audit middleware recursie**: `writeAuditLog()` gebruikt `$executeRaw` i.p.v. Prisma client om oneindige middleware-loop te voorkomen

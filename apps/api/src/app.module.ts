@@ -4,6 +4,8 @@ import { ScheduleModule } from '@nestjs/schedule';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { APP_GUARD, APP_FILTER, APP_INTERCEPTOR } from '@nestjs/core';
 import { TenantMiddleware } from './common/middleware/tenant.middleware';
+import { RequestIdMiddleware } from './common/middleware/request-id.middleware';
+import { AccessLogMiddleware } from './common/middleware/access-log.middleware';
 import { PrismaModule } from './prisma';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { RolesGuard } from './common/guards/roles.guard';
@@ -110,6 +112,9 @@ import { WorkOrdersModule } from './modules/work-orders/work-orders.module';
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
+    consumer.apply(RequestIdMiddleware).forRoutes('*');
+    // Na RequestIdMiddleware zodat req.requestId beschikbaar is in de access log.
+    consumer.apply(AccessLogMiddleware).forRoutes('*');
     consumer.apply(TenantMiddleware).forRoutes('*');
   }
 }

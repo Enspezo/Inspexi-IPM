@@ -15,7 +15,9 @@ describe('AllExceptionsFilter', () => {
   const mockJson = jest.fn();
   const mockStatus = jest.fn().mockReturnValue({ json: mockJson });
   const mockGetResponse = jest.fn().mockReturnValue({ status: mockStatus });
-  const mockGetRequest = jest.fn().mockReturnValue({ method: 'GET', url: '/api/v1/test' });
+  const mockGetRequest = jest
+    .fn()
+    .mockReturnValue({ method: 'GET', url: '/api/v1/test', requestId: 'req-test-123' });
 
   const mockHost = {
     switchToHttp: jest.fn().mockReturnValue({
@@ -141,6 +143,7 @@ describe('AllExceptionsFilter', () => {
     expect(mockJson).toHaveBeenCalledWith({
       success: false,
       message: 'Internal server error',
+      requestId: 'req-test-123',
       statusCode: HttpStatus.INTERNAL_SERVER_ERROR,
     });
   });
@@ -152,8 +155,18 @@ describe('AllExceptionsFilter', () => {
     expect(mockJson).toHaveBeenCalledWith({
       success: false,
       message: 'Internal server error',
+      requestId: 'req-test-123',
       statusCode: HttpStatus.INTERNAL_SERVER_ERROR,
     });
+  });
+
+  it('should include requestId only for 500 responses', () => {
+    filter.catch(new NotFoundException('Niet gevonden'), mockHost);
+    expect(mockJson.mock.calls[0][0]).not.toHaveProperty('requestId');
+
+    jest.clearAllMocks();
+    filter.catch(new Error('boom'), mockHost);
+    expect(mockJson.mock.calls[0][0]).toHaveProperty('requestId', 'req-test-123');
   });
 
   it('should always return { success: false } format', () => {

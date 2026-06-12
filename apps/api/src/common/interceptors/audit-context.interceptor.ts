@@ -21,6 +21,7 @@ export class AuditContextInterceptor implements NestInterceptor {
       userId: user.id,
       orgId: user.orgId ?? null,
       ipAddress: request.ip || request.connection?.remoteAddress,
+      requestId: request.requestId,
     };
 
     return new Observable((subscriber) => {

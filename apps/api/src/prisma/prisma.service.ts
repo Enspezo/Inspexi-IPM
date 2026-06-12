@@ -59,6 +59,11 @@ const MODEL_TABLE_MAP: Record<string, string> = {
   WorkOrderLine: 'imp_work_order_lines',
 };
 
+/** Audit-failure alerting thresholds (in-memory, single process) */
+const AUDIT_FAILURE_THRESHOLD = 5; // failures within the window before alerting
+const AUDIT_FAILURE_WINDOW_MS = 10 * 60 * 1000; // 10 minutes
+const AUDIT_ALERT_COOLDOWN_MS = 60 * 60 * 1000; // 60 minutes between alerts
+
 function sanitize(obj: Record<string, any>): Record<string, any> {
   const result: Record<string, any> = {};
   for (const [key, value] of Object.entries(obj)) {
@@ -91,6 +96,13 @@ export class PrismaService
   implements OnModuleInit, OnModuleDestroy
 {
   private readonly logger = new Logger(PrismaService.name);
+
+  /** Timestamps (ms) of recent audit-write failures within the rolling window */
+  private auditFailureTimestamps: number[] = [];
+  /** Timestamp (ms) of the last superuser alert that was dispatched */
+  private lastAuditAlertAt = 0;
+  /** Guards against double-dispatch while an alert is in flight */
+  private auditAlertInFlight = false;
 
   async onModuleInit() {
     await this.$connect();
@@ -256,6 +268,120 @@ export class PrismaService
       `;
     } catch (err) {
       this.logger.error(`Failed to write audit log: ${err}`);
+      // Whole alerting path is fire-and-forget and exception-safe:
+      // it must never break (or delay) the original operation.
+      this.recordAuditFailure();
+    }
+  }
+
+  /**
+   * Tracks audit-write failures in-memory. When failures pile up structurally
+   * (>= AUDIT_FAILURE_THRESHOLD within AUDIT_FAILURE_WINDOW_MS) a single alert is
+   * dispatched to superusers, then repeat alerts are suppressed for a cooldown
+   * period to avoid notification spam. Single-process / in-memory by design.
+   */
+  private recordAuditFailure(): void {
+    try {
+      const now = Date.now();
+      this.auditFailureTimestamps.push(now);
+      // Drop timestamps that fell outside the rolling window; cap the size so
+      // the failure path stays O(1) even when every request fails
+      const windowStart = now - AUDIT_FAILURE_WINDOW_MS;
+      this.auditFailureTimestamps = this.auditFailureTimestamps
+        .filter((ts) => ts >= windowStart)
+        .slice(-AUDIT_FAILURE_THRESHOLD);
+
+      if (this.auditFailureTimestamps.length < AUDIT_FAILURE_THRESHOLD) {
+        return;
+      }
+
+      // Threshold reached — respect cooldown to avoid spamming superusers,
+      // and don't double-dispatch while an alert is already in flight
+      if (this.auditAlertInFlight || now - this.lastAuditAlertAt < AUDIT_ALERT_COOLDOWN_MS) {
+        return;
+      }
+
+      const failureCount = this.auditFailureTimestamps.length;
+      this.auditAlertInFlight = true;
+
+      this.logger.error(
+        `ALERT: audit-logging is structurally failing — ${failureCount} failures ` +
+          `within the last ${AUDIT_FAILURE_WINDOW_MS / 60000} minutes. ` +
+          `Notifying superusers.`,
+      );
+
+      // Fire-and-forget: never await, never let it throw into the caller.
+      // Cooldown/window pas resetten als de dispatch slaagt — bij falen mag
+      // de volgende batch het opnieuw proberen.
+      this.dispatchAuditFailureAlert(failureCount)
+        .then(() => {
+          this.lastAuditAlertAt = Date.now();
+          this.auditFailureTimestamps = [];
+        })
+        .catch((err) => {
+          this.logger.error(`Failed to dispatch audit-failure alert: ${err}`);
+        })
+        .finally(() => {
+          this.auditAlertInFlight = false;
+        });
+    } catch (err) {
+      // Alerting must never break the original operation
+      this.logger.error(`Audit-failure tracking error: ${err}`);
+    }
+  }
+
+  /**
+   * Writes Notification rows for all active superusers directly via raw SQL.
+   * Done with $executeRaw (like writeAuditLog) to avoid a DI cycle:
+   * NotificationsService depends on PrismaService, so PrismaService cannot
+   * depend on it. Reuses the existing FOUTMELDING_INGEDIEND notification type
+   * since no migration may be added here.
+   */
+  private async dispatchAuditFailureAlert(failureCount: number): Promise<void> {
+    const superusers = await this.$queryRaw<{ id: string }[]>`
+      SELECT id FROM imp_users
+      WHERE 'SUPERUSER' = ANY(roles)
+        AND is_deleted = false
+        AND is_active = true
+    `;
+
+    if (superusers.length === 0) {
+      this.logger.error(
+        'Audit-logging is failing but no active superuser exists to notify.',
+      );
+      return;
+    }
+
+    const title = 'Audit-logging faalt';
+    const body =
+      `Het wegschrijven van audit-logregels faalt structureel ` +
+      `(${failureCount} fouten in ${AUDIT_FAILURE_WINDOW_MS / 60000} minuten). ` +
+      `Controleer de database en de serverlogs. ` +
+      `Verdere meldingen worden ${AUDIT_ALERT_COOLDOWN_MS / 60000} minuten onderdrukt.`;
+
+    for (const su of superusers) {
+      const id = randomUUID();
+      try {
+        await this.$executeRaw`
+          INSERT INTO imp_notifications (id, org_id, user_id, type, title, body, entity_type, entity_id, is_read, created_at)
+          VALUES (
+            ${id}::uuid,
+            ${null},
+            ${su.id}::uuid,
+            ${'FOUTMELDING_INGEDIEND'}::"NotificationType",
+            ${title},
+            ${body},
+            ${'AuditLog'},
+            ${null},
+            false,
+            NOW()
+          )
+        `;
+      } catch (err) {
+        this.logger.error(
+          `Failed to insert audit-failure notification for superuser ${su.id}: ${err}`,
+        );
+      }
     }
   }
 }

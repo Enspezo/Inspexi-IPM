@@ -50,10 +50,13 @@ export class AllExceptionsFilter implements ExceptionFilter {
       }
     }
 
+    const requestId = (request as any).requestId as string | undefined;
+    const isServerError = status === HttpStatus.INTERNAL_SERVER_ERROR;
+
     // Log non-HTTP exceptions (500s) for debugging
-    if (status === HttpStatus.INTERNAL_SERVER_ERROR) {
+    if (isServerError) {
       this.logger.error(
-        `500 on ${request.method} ${request.url}`,
+        `500 on ${request.method} ${request.url}${requestId ? ` [requestId=${requestId}]` : ''}`,
         exception instanceof Error ? exception.stack : String(exception),
       );
     }
@@ -63,6 +66,8 @@ export class AllExceptionsFilter implements ExceptionFilter {
       message: Array.isArray(message) ? message[0] : message,
       // Class-validator kan meerdere veldfouten geven; geef ze allemaal door
       ...(Array.isArray(message) && message.length > 1 ? { errors: message } : {}),
+      // Alleen 500's krijgen het requestId mee — koppelbaar aan serverlogs
+      ...(isServerError && requestId ? { requestId } : {}),
       statusCode: status,
     });
   }

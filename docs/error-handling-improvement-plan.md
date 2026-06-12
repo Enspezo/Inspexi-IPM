@@ -4,7 +4,7 @@ Bevindingen uit de review van juni 2026. Stappen 1–5 zijn quick wins (één PR
 
 ## Status
 
-- [ ] Stap 1–5 (PR: error handling quick wins)
+- [x] Stap 1–5 (PR [#8](https://github.com/Enspezo/Inspexi-IPM/pull/8): error handling quick wins, juni 2026)
 - [ ] Stap 6–9
 - [ ] Stap 10–11
 

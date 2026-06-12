@@ -17,6 +17,9 @@ import {
 } from '@nestjs/swagger';
 import { User, Role } from '@prisma/client';
 import { ContactsService } from './contacts.service';
+import { ContactAddressesService } from './contact-addresses.service';
+import { ContactPersonsService } from './contact-persons.service';
+import { LocationsService } from './locations.service';
 import {
   CreateContactDto,
   UpdateContactDto,
@@ -40,7 +43,12 @@ import { Roles, CurrentUser } from '@/common/decorators';
 @ApiBearerAuth()
 @Controller('contacts')
 export class ContactsController {
-  constructor(private contactsService: ContactsService) {}
+  constructor(
+    private contactsService: ContactsService,
+    private contactAddressesService: ContactAddressesService,
+    private contactPersonsService: ContactPersonsService,
+    private locationsService: LocationsService,
+  ) {}
 
   @Get()
   @Roles(
@@ -71,7 +79,7 @@ export class ContactsController {
     @CurrentUser() user: User,
     @Query() query: ListContactPersonsQueryDto,
   ) {
-    const result = await this.contactsService.findAllContactPersons(user, query);
+    const result = await this.contactPersonsService.findAllContactPersons(user, query);
     return { success: true, data: result };
   }
 
@@ -86,7 +94,7 @@ export class ContactsController {
   @ApiOperation({ summary: 'Lijst contactpersoon-rollen ophalen (lookup)' })
   @ApiResponse({ status: 200, description: 'Lijst van rollen' })
   async findContactPersonRoles(@CurrentUser() user: User) {
-    const roles = await this.contactsService.findContactPersonRoles(user);
+    const roles = await this.contactPersonsService.findContactPersonRoles(user);
     return { success: true, data: roles };
   }
 
@@ -106,7 +114,7 @@ export class ContactsController {
     @CurrentUser() user: User,
     @Query() query: ListLocationsQueryDto,
   ) {
-    const result = await this.contactsService.findAllLocations(user, query);
+    const result = await this.locationsService.findAllLocations(user, query);
     return { success: true, data: result };
   }
 
@@ -124,7 +132,7 @@ export class ContactsController {
     @Param('locationId', ParseUUIDPipe) locationId: string,
     @CurrentUser() user: User,
   ) {
-    const location = await this.contactsService.findLocation(locationId, user);
+    const location = await this.locationsService.findLocation(locationId, user);
     return { success: true, data: location };
   }
 
@@ -192,7 +200,7 @@ export class ContactsController {
     @Body() dto: CreateContactAddressDto,
     @CurrentUser() user: User,
   ) {
-    const address = await this.contactsService.addAddress(id, dto, user);
+    const address = await this.contactAddressesService.addAddress(id, dto, user);
     return { success: true, data: address };
   }
 
@@ -205,7 +213,7 @@ export class ContactsController {
     @Body() dto: UpdateContactAddressDto,
     @CurrentUser() user: User,
   ) {
-    const address = await this.contactsService.updateAddress(addressId, dto, user);
+    const address = await this.contactAddressesService.updateAddress(addressId, dto, user);
     return { success: true, data: address };
   }
 
@@ -217,7 +225,7 @@ export class ContactsController {
     @Param('addressId', ParseUUIDPipe) addressId: string,
     @CurrentUser() user: User,
   ) {
-    await this.contactsService.deleteAddress(addressId, user);
+    await this.contactAddressesService.deleteAddress(addressId, user);
     return { success: true, message: 'Adres verwijderd' };
   }
 
@@ -251,7 +259,7 @@ export class ContactsController {
     @Body() dto: CreateContactPersonDto,
     @CurrentUser() user: User,
   ) {
-    const person = await this.contactsService.addContactPerson(id, dto, user);
+    const person = await this.contactPersonsService.addContactPerson(id, dto, user);
     return { success: true, data: person };
   }
 
@@ -269,7 +277,7 @@ export class ContactsController {
     @Param('personId', ParseUUIDPipe) personId: string,
     @CurrentUser() user: User,
   ) {
-    const links = await this.contactsService.findContactPersonLocations(personId, user);
+    const links = await this.contactPersonsService.findContactPersonLocations(personId, user);
     return { success: true, data: links };
   }
 
@@ -287,7 +295,7 @@ export class ContactsController {
     @Param('personId', ParseUUIDPipe) personId: string,
     @CurrentUser() user: User,
   ) {
-    const person = await this.contactsService.findContactPerson(personId, user);
+    const person = await this.contactPersonsService.findContactPerson(personId, user);
     return { success: true, data: person };
   }
 
@@ -300,7 +308,7 @@ export class ContactsController {
     @Body() dto: UpdateContactPersonDto,
     @CurrentUser() user: User,
   ) {
-    const person = await this.contactsService.updateContactPerson(personId, dto, user);
+    const person = await this.contactPersonsService.updateContactPerson(personId, dto, user);
     return { success: true, data: person };
   }
 
@@ -312,7 +320,7 @@ export class ContactsController {
     @Param('personId', ParseUUIDPipe) personId: string,
     @CurrentUser() user: User,
   ) {
-    await this.contactsService.deleteContactPerson(personId, user);
+    await this.contactPersonsService.deleteContactPerson(personId, user);
     return { success: true, message: 'Contactpersoon verwijderd' };
   }
 
@@ -332,7 +340,7 @@ export class ContactsController {
     @Param('locationId', ParseUUIDPipe) locationId: string,
     @CurrentUser() user: User,
   ) {
-    const links = await this.contactsService.findLocationContactPersons(locationId, user);
+    const links = await this.locationsService.findLocationContactPersons(locationId, user);
     return { success: true, data: links };
   }
 
@@ -345,7 +353,7 @@ export class ContactsController {
     @Body() dto: CreateLocationContactPersonDto,
     @CurrentUser() user: User,
   ) {
-    const link = await this.contactsService.addLocationContactPerson(locationId, dto, user);
+    const link = await this.locationsService.addLocationContactPerson(locationId, dto, user);
     return { success: true, data: link };
   }
 
@@ -358,7 +366,7 @@ export class ContactsController {
     @Body() dto: UpdateLocationContactPersonDto,
     @CurrentUser() user: User,
   ) {
-    const link = await this.contactsService.updateLocationContactPerson(linkId, dto, user);
+    const link = await this.locationsService.updateLocationContactPerson(linkId, dto, user);
     return { success: true, data: link };
   }
 
@@ -370,7 +378,7 @@ export class ContactsController {
     @Param('linkId', ParseUUIDPipe) linkId: string,
     @CurrentUser() user: User,
   ) {
-    await this.contactsService.removeLocationContactPerson(linkId, user);
+    await this.locationsService.removeLocationContactPerson(linkId, user);
     return { success: true, message: 'Contactpersoon ontkoppeld' };
   }
 
@@ -385,7 +393,7 @@ export class ContactsController {
     @Body() dto: CreateLocationDto,
     @CurrentUser() user: User,
   ) {
-    const location = await this.contactsService.addLocation(id, dto, user);
+    const location = await this.locationsService.addLocation(id, dto, user);
     return { success: true, data: location };
   }
 
@@ -403,7 +411,7 @@ export class ContactsController {
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: User,
   ) {
-    const locations = await this.contactsService.findLocations(id, user);
+    const locations = await this.locationsService.findLocations(id, user);
     return { success: true, data: locations };
   }
 
@@ -416,7 +424,7 @@ export class ContactsController {
     @Body() dto: UpdateLocationDto,
     @CurrentUser() user: User,
   ) {
-    const location = await this.contactsService.updateLocation(locationId, dto, user);
+    const location = await this.locationsService.updateLocation(locationId, dto, user);
     return { success: true, data: location };
   }
 
@@ -428,7 +436,7 @@ export class ContactsController {
     @Param('locationId', ParseUUIDPipe) locationId: string,
     @CurrentUser() user: User,
   ) {
-    await this.contactsService.deleteLocation(locationId, user);
+    await this.locationsService.deleteLocation(locationId, user);
     return { success: true, message: 'Locatie verwijderd' };
   }
 

@@ -24,6 +24,11 @@ import { Roles } from '@/common/decorators/roles.decorator';
 import { CurrentUser } from '@/common/decorators/current-user.decorator';
 import { Public } from '@/common/decorators/public.decorator';
 import { QuotesService } from './quotes.service';
+import { QuoteApprovalsService } from './quote-approvals.service';
+import { QuoteQuestionsService } from './quote-questions.service';
+import { QuoteAttachmentsService } from './quote-attachments.service';
+import { QuotePdfService } from './quote-pdf.service';
+import { QuotePublicService } from './quote-public.service';
 import {
   CreateQuoteDto,
   UpdateQuoteDto,
@@ -40,7 +45,13 @@ import {
 @ApiTags('quotes')
 @Controller('quotes')
 export class QuotesController {
-  constructor(private readonly service: QuotesService) {}
+  constructor(
+    private readonly service: QuotesService,
+    private readonly approvalsService: QuoteApprovalsService,
+    private readonly questionsService: QuoteQuestionsService,
+    private readonly attachmentsService: QuoteAttachmentsService,
+    private readonly quotePdfService: QuotePdfService,
+  ) {}
 
   // ─── Resolve price (must be before :id routes) ────────
   @Get('resolve-price')
@@ -120,7 +131,7 @@ export class QuotesController {
   @ApiOperation({ summary: 'Offerte ter goedkeuring indienen' })
   @Roles(Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE)
   async submitForApproval(@CurrentUser() user: User, @Param('id', ParseUUIDPipe) id: string, @Body() dto: SubmitApprovalDto) {
-    const data = await this.service.submitForApproval(id, dto, user);
+    const data = await this.approvalsService.submitForApproval(id, dto, user);
     return { success: true, data };
   }
 
@@ -128,7 +139,7 @@ export class QuotesController {
   @ApiOperation({ summary: 'Offerte goedkeuren' })
   @Roles(Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER)
   async approve(@CurrentUser() user: User, @Param('id', ParseUUIDPipe) id: string, @Body() dto: ApproveQuoteDto) {
-    const data = await this.service.approve(id, dto, user);
+    const data = await this.approvalsService.approve(id, dto, user);
     return { success: true, data };
   }
 
@@ -136,7 +147,7 @@ export class QuotesController {
   @ApiOperation({ summary: 'Offerte afwijzen' })
   @Roles(Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER)
   async reject(@CurrentUser() user: User, @Param('id', ParseUUIDPipe) id: string, @Body() dto: RejectQuoteDto) {
-    const data = await this.service.reject(id, dto, user);
+    const data = await this.approvalsService.reject(id, dto, user);
     return { success: true, data };
   }
 
@@ -145,7 +156,7 @@ export class QuotesController {
   @ApiOperation({ summary: 'Vragen bij offerte ophalen' })
   @Roles(Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE)
   async getQuestions(@CurrentUser() user: User, @Param('id', ParseUUIDPipe) id: string) {
-    const data = await this.service.getQuestions(id, user);
+    const data = await this.questionsService.getQuestions(id, user);
     return { success: true, data };
   }
 
@@ -153,7 +164,7 @@ export class QuotesController {
   @ApiOperation({ summary: 'Vraag bij offerte toevoegen' })
   @Roles(Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE)
   async addQuestion(@CurrentUser() user: User, @Param('id', ParseUUIDPipe) id: string, @Body() dto: AddQuestionDto) {
-    const data = await this.service.addQuestion(id, dto, user);
+    const data = await this.questionsService.addQuestion(id, dto, user);
     return { success: true, data };
   }
 
@@ -166,7 +177,7 @@ export class QuotesController {
     @Param('questionId', ParseUUIDPipe) questionId: string,
     @Body() dto: AddQuestionDto,
   ) {
-    const data = await this.service.answerClientQuestion(id, questionId, dto, user);
+    const data = await this.questionsService.answerClientQuestion(id, questionId, dto, user);
     return { success: true, data };
   }
 
@@ -175,7 +186,7 @@ export class QuotesController {
   @ApiOperation({ summary: 'Bijlagen bij offerte ophalen' })
   @Roles(Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE)
   async getAttachments(@CurrentUser() user: User, @Param('id', ParseUUIDPipe) id: string) {
-    const data = await this.service.getAttachments(id, user);
+    const data = await this.attachmentsService.getAttachments(id, user);
     return { success: true, data };
   }
 
@@ -189,7 +200,7 @@ export class QuotesController {
     @Param('id', ParseUUIDPipe) id: string,
     @UploadedFile() file: Express.Multer.File,
   ) {
-    const data = await this.service.uploadAttachment(id, file, user);
+    const data = await this.attachmentsService.uploadAttachment(id, file, user);
     return { success: true, data };
   }
 
@@ -202,7 +213,7 @@ export class QuotesController {
     @Param('attachmentId', ParseUUIDPipe) attachmentId: string,
     @Res() res: Response,
   ) {
-    const { buffer, attachment } = await this.service.downloadAttachment(id, attachmentId, user);
+    const { buffer, attachment } = await this.attachmentsService.downloadAttachment(id, attachmentId, user);
     res.set({ 'Content-Type': attachment.mimeType, 'Content-Disposition': `attachment; filename="${attachment.fileName}"`, 'Content-Length': buffer.length });
     res.send(buffer);
   }
@@ -215,7 +226,7 @@ export class QuotesController {
     @Param('id', ParseUUIDPipe) id: string,
     @Param('attachmentId', ParseUUIDPipe) attachmentId: string,
   ) {
-    const data = await this.service.deleteAttachment(id, attachmentId, user);
+    const data = await this.attachmentsService.deleteAttachment(id, attachmentId, user);
     return { success: true, data };
   }
 
@@ -228,7 +239,7 @@ export class QuotesController {
     @Param('id', ParseUUIDPipe) id: string,
     @Res() res: Response,
   ) {
-    const { buffer, quoteNumber } = await this.service.renderQuotePdf(id, user);
+    const { buffer, quoteNumber } = await this.quotePdfService.renderQuotePdf(id, user);
     res.set({
       'Content-Type': 'application/pdf',
       'Content-Disposition': `inline; filename="Preview-${quoteNumber}.pdf"`,
@@ -245,7 +256,7 @@ export class QuotesController {
     @Param('id', ParseUUIDPipe) id: string,
     @Res() res: Response,
   ) {
-    const { buffer, quoteNumber } = await this.service.generatePdf(id, user);
+    const { buffer, quoteNumber } = await this.quotePdfService.generatePdf(id, user);
     res.set({
       'Content-Type': 'application/pdf',
       'Content-Disposition': `attachment; filename="Offerte-${quoteNumber}.pdf"`,
@@ -269,13 +280,18 @@ export class QuotesController {
 @ApiTags('public-quotes')
 @Controller('public/quotes')
 export class PublicQuotesController {
-  constructor(private readonly service: QuotesService) {}
+  constructor(
+    private readonly publicService: QuotePublicService,
+    private readonly questionsService: QuoteQuestionsService,
+    private readonly attachmentsService: QuoteAttachmentsService,
+    private readonly quotePdfService: QuotePdfService,
+  ) {}
 
   @Get(':token')
   @ApiOperation({ summary: 'Offerte ophalen via publieke token' })
   @Public()
   async getByToken(@Param('token') token: string) {
-    const data = await this.service.findByPublicToken(token);
+    const data = await this.publicService.findByPublicToken(token);
     return { success: true, data };
   }
 
@@ -283,7 +299,7 @@ export class PublicQuotesController {
   @ApiOperation({ summary: 'Offerte-PDF via publieke token' })
   @Public()
   async downloadPdf(@Param('token') token: string, @Res() res: Response) {
-    const { buffer, quoteNumber } = await this.service.downloadPublicPdf(token);
+    const { buffer, quoteNumber } = await this.quotePdfService.downloadPublicPdf(token);
     res.set({
       'Content-Type': 'application/pdf',
       'Content-Disposition': `inline; filename="Offerte-${quoteNumber}.pdf"`,
@@ -297,7 +313,7 @@ export class PublicQuotesController {
   @Public()
   @HttpCode(HttpStatus.CREATED)
   async addQuestion(@Param('token') token: string, @Body() dto: AddQuestionDto) {
-    const data = await this.service.addClientQuestion(token, dto);
+    const data = await this.questionsService.addClientQuestion(token, dto);
     return { success: true, data };
   }
 
@@ -308,7 +324,7 @@ export class PublicQuotesController {
   async sign(@Param('token') token: string, @Body() dto: SignQuoteDto, @Req() req: Request) {
     const clientIp = req.ip || req.socket.remoteAddress;
     const userAgent = req.headers['user-agent'];
-    const data = await this.service.signQuote(token, dto, clientIp, userAgent);
+    const data = await this.publicService.signQuote(token, dto, clientIp, userAgent);
     return { success: true, data };
   }
 
@@ -320,7 +336,7 @@ export class PublicQuotesController {
     @Param('attachmentId', ParseUUIDPipe) attachmentId: string,
     @Res() res: Response,
   ) {
-    const { buffer, attachment } = await this.service.downloadPublicAttachment(token, attachmentId);
+    const { buffer, attachment } = await this.attachmentsService.downloadPublicAttachment(token, attachmentId);
     res.set({ 'Content-Type': attachment.mimeType, 'Content-Disposition': `attachment; filename="${attachment.fileName}"`, 'Content-Length': buffer.length });
     res.send(buffer);
   }

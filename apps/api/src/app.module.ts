@@ -44,6 +44,10 @@ import { ErrorReportsModule } from './modules/error-reports/error-reports.module
 import { NotesModule } from './modules/notes/notes.module';
 import { WorkOrdersModule } from './modules/work-orders/work-orders.module';
 import { LookupModule } from './modules/lookups/lookup.module';
+import { InspectionPlansModule } from './modules/inspection-plans/inspection-plans.module';
+import { AssetTypesModule } from './modules/asset-types/asset-types.module';
+import { AssetsModule } from './modules/assets/assets.module';
+import { FindingsModule } from './modules/findings/findings.module';
 
 @Module({
   imports: [
@@ -84,6 +88,11 @@ import { LookupModule } from './modules/lookups/lookup.module';
     NotesModule,
     WorkOrdersModule,
     LookupModule,
+    // Inspectiedomein Fase 2 — uitvoering + config
+    InspectionPlansModule,
+    AssetTypesModule,
+    AssetsModule,
+    FindingsModule,
   ],
   providers: [
     {

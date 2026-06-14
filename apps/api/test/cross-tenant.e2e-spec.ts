@@ -38,6 +38,9 @@ describe('Cross-tenant FK isolation (e2e)', () => {
   let productBId: string;
   let contactPersonBId: string;
   let groupBId: string;
+  let templateBId: string;
+  let planBId: string;
+  let assetBId: string;
 
   const createdPlanningIds: string[] = [];
   const createdTaskIds: string[] = [];
@@ -172,6 +175,48 @@ describe('Cross-tenant FK isolation (e2e)', () => {
     });
     groupBId = groupB.id;
 
+    // ─── Inspectiedomein-fixtures (Fase 2) ──────────────
+    // Globale norm (geen orgId) zodat org A's positieve controles slagen.
+    await prisma.normTypeDefinition.create({
+      data: { code: 'e2extnorm', label: 'XTenant Norm', createdBy: userA.id, isActive: true, assetTypes: [] },
+    });
+    // Org B's inspectie-template (vereist een classificatiemodel).
+    const cmB = await prisma.classificationModel.create({
+      data: { code: 'e2extcm', name: 'Classificatie B', createdBy: userB.id },
+    });
+    const templateB = await prisma.inspectionTemplate.create({
+      data: {
+        orgId: orgB.id,
+        code: 'e2exttpl',
+        name: 'Template B',
+        normTypeCode: 'e2extnorm',
+        classificationModelId: cmB.id,
+        createdBy: userB.id,
+      },
+    });
+    templateBId = templateB.id;
+    // Org B's plan + asset (voor path-scoped isolatie-tests).
+    const planB = await prisma.inspectionPlan.create({
+      data: {
+        orgId: orgB.id,
+        contactId: contactB.id,
+        projectName: 'Plan B',
+        normTypeCode: 'e2extnorm',
+        createdBy: userB.id,
+      },
+    });
+    planBId = planB.id;
+    const assetB = await prisma.asset.create({
+      data: {
+        orgId: orgB.id,
+        inspectionPlanId: planB.id,
+        assetType: 'kast',
+        name: 'Asset B',
+        createdBy: userB.id,
+      },
+    });
+    assetBId = assetB.id;
+
     // Login as org A's admin
     const loginRes = await request(app.getHttpServer())
       .post('/api/v1/auth/login')
@@ -197,6 +242,13 @@ describe('Cross-tenant FK isolation (e2e)', () => {
         where: { id: { in: createdPlanningIds } },
       });
       await prisma.task.deleteMany({ where: { id: { in: createdTaskIds } } });
+      // Inspectiedomein (kinderen eerst): finding → asset → plan → template → cm → norm
+      await prisma.finding.deleteMany({ where: { orgId: { in: orgIds } } });
+      await prisma.asset.deleteMany({ where: { orgId: { in: orgIds } } });
+      await prisma.inspectionPlan.deleteMany({ where: { orgId: { in: orgIds } } });
+      await prisma.inspectionTemplate.deleteMany({ where: { orgId: { in: orgIds } } });
+      await prisma.classificationModel.deleteMany({ where: { code: 'e2extcm' } });
+      await prisma.normTypeDefinition.deleteMany({ where: { code: 'e2extnorm' } });
       await prisma.contactCustomerGroup.deleteMany({
         where: { contactId: { in: [contactAId, contactBId] } },
       });
@@ -380,6 +432,111 @@ describe('Cross-tenant FK isolation (e2e)', () => {
         .set('Authorization', `Bearer ${tokenA}`)
         .send({ groupIds: [groupAId] })
         .expect(200);
+    });
+  });
+
+  // ─── Inspection plans: create ─────────────────────────
+  describe('POST /api/v1/inspection-plans — cross-tenant FK in create', () => {
+    const base = { projectName: 'XTenant Plan', normTypeCode: 'e2extnorm' };
+
+    it('rejects a cross-tenant contactId', async () => {
+      await request(app.getHttpServer())
+        .post('/api/v1/inspection-plans')
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({ ...base, contactId: contactBId })
+        .expect(403);
+    });
+
+    it('rejects a cross-tenant assignedTo', async () => {
+      await request(app.getHttpServer())
+        .post('/api/v1/inspection-plans')
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({ ...base, contactId: contactAId, assignedTo: userBId })
+        .expect(403);
+    });
+
+    it('rejects a cross-tenant reviewerId', async () => {
+      await request(app.getHttpServer())
+        .post('/api/v1/inspection-plans')
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({ ...base, contactId: contactAId, reviewerId: userBId })
+        .expect(403);
+    });
+
+    it('rejects a cross-tenant installationResponsibleId', async () => {
+      await request(app.getHttpServer())
+        .post('/api/v1/inspection-plans')
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({ ...base, contactId: contactAId, installationResponsibleId: contactPersonBId })
+        .expect(403);
+    });
+
+    it('rejects a cross-tenant inspectionTemplateId', async () => {
+      await request(app.getHttpServer())
+        .post('/api/v1/inspection-plans')
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({ ...base, contactId: contactAId, inspectionTemplateId: templateBId })
+        .expect(403);
+    });
+
+    it('allows an all-same-org inspection plan (positive control)', async () => {
+      const res = await request(app.getHttpServer())
+        .post('/api/v1/inspection-plans')
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({ ...base, contactId: contactAId })
+        .expect(201);
+      expect(res.body.success).toBe(true);
+    });
+  });
+
+  // ─── Inspection plans: update ─────────────────────────
+  describe('PATCH /api/v1/inspection-plans/:id — cross-tenant FK in update', () => {
+    let planId: string;
+
+    beforeAll(async () => {
+      const res = await request(app.getHttpServer())
+        .post('/api/v1/inspection-plans')
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({ projectName: 'Update target', normTypeCode: 'e2extnorm', contactId: contactAId });
+      planId = res.body.data.id;
+    });
+
+    it('rejects reassigning to a cross-tenant user', async () => {
+      await request(app.getHttpServer())
+        .patch(`/api/v1/inspection-plans/${planId}`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({ assignedTo: userBId })
+        .expect(403);
+    });
+
+    it('allows reassigning to a same-org user (positive control)', async () => {
+      await request(app.getHttpServer())
+        .patch(`/api/v1/inspection-plans/${planId}`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({ assignedTo: userAId })
+        .expect(200);
+    });
+  });
+
+  // ─── Assets & findings: path-scoped isolation ─────────
+  // Deze FK's komen via het URL-pad binnen en worden met orgScope() geladen,
+  // dus een vreemde-org id wordt simpelweg niet gevonden → 404 (geen leak),
+  // i.p.v. de 403 die body-FK assertSameOrg-checks geven.
+  describe('cross-tenant path-scoped FKs (assets/findings)', () => {
+    it('rejects creating an asset under a cross-tenant plan (404)', async () => {
+      await request(app.getHttpServer())
+        .post(`/api/v1/inspection-plans/${planBId}/assets`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({ assetType: 'kast', name: 'Sneaky' })
+        .expect(404);
+    });
+
+    it('rejects creating a finding on a cross-tenant asset (404)', async () => {
+      await request(app.getHttpServer())
+        .post(`/api/v1/assets/${assetBId}/findings`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({ inspectionType: 'visual', shortDescription: 'Sneaky' })
+        .expect(404);
     });
   });
 });

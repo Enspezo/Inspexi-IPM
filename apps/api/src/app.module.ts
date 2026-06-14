@@ -43,6 +43,7 @@ import { VatModule } from './modules/vat/vat.module';
 import { ErrorReportsModule } from './modules/error-reports/error-reports.module';
 import { NotesModule } from './modules/notes/notes.module';
 import { WorkOrdersModule } from './modules/work-orders/work-orders.module';
+import { LookupModule } from './modules/lookups/lookup.module';
 
 @Module({
   imports: [
@@ -82,6 +83,7 @@ import { WorkOrdersModule } from './modules/work-orders/work-orders.module';
     ErrorReportsModule,
     NotesModule,
     WorkOrdersModule,
+    LookupModule,
   ],
   providers: [
     {

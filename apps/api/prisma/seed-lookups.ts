@@ -1,180 +1,144 @@
-/**
- * Fase 1 — Globale lookup-defaults voor het inspectiedomein.
- *
- * De 11 per-org overschrijfbare status/type-lijsten (zie FASE1-SCHEMA.md §3a).
- * Deze set wordt als systeemdefault geseed (orgId = null, isSystem = true) en
- * door elke organisatie geërfd. Een org kan een systeemcode herlabelen/kleuren
- * (eigen rij met dezelfde `code`) of eigen extra codes toevoegen.
- *
- * De vaste systeemcodes hieronder blijven leidend voor de state-machine-logica
- * in de backend; orgs mogen ze herlabelen maar niet verwijderen.
- */
 import { PrismaClient } from '@prisma/client';
 
-export interface LookupRow {
-  code: string;
-  label: string;
-  color?: string;
-  sortOrder: number;
-}
+const GRAY = '#6B7280';
+const BLUE = '#3B82F6';
+const AMBER = '#F59E0B';
+const ORANGE = '#F97316';
+const GREEN = '#16A34A';
+const RED = '#DC2626';
 
-export interface LookupSet {
-  /** Naam van de Prisma-delegate, bv. 'planStatusType' */
-  model:
-    | 'inspectionTypeOption'
-    | 'planStatusType'
-    | 'assetStatusType'
-    | 'findingStatusType'
-    | 'reportStatusType'
-    | 'signatoryTypeOption'
-    | 'signerRoleOption'
-    | 'passFailStatusType'
-    | 'resolutionStatusType'
-    | 'clientRequestTypeOption'
-    | 'clientRequestStatusType';
-  label: string;
-  rows: LookupRow[];
-}
+type Row = { code: string; label: string; color: string | null; sortOrder: number };
 
-export const LOOKUP_SETS: LookupSet[] = [
-  {
-    model: 'inspectionTypeOption',
-    label: 'Inspectietypes',
-    rows: [
-      { code: 'initial', label: 'Eerste inspectie', color: '#2563EB', sortOrder: 0 },
-      { code: 'periodic', label: 'Periodieke inspectie', color: '#0891B2', sortOrder: 1 },
-      { code: 'modification', label: 'Wijziging', color: '#CA8A04', sortOrder: 2 },
-      { code: 'reinspection', label: 'Herinspectie', color: '#7C3AED', sortOrder: 3 },
-    ],
-  },
-  {
-    model: 'planStatusType',
-    label: 'Inspectieplan-statussen',
-    rows: [
-      { code: 'draft', label: 'Concept', color: '#6B7280', sortOrder: 0 },
-      { code: 'planned', label: 'Gepland', color: '#2563EB', sortOrder: 1 },
-      { code: 'in_progress', label: 'In uitvoering', color: '#D97706', sortOrder: 2 },
-      { code: 'pending_review', label: 'Wacht op review', color: '#CA8A04', sortOrder: 3 },
-      { code: 'reviewed', label: 'Beoordeeld', color: '#0891B2', sortOrder: 4 },
-      { code: 'approved', label: 'Goedgekeurd', color: '#16A34A', sortOrder: 5 },
-      { code: 'completed', label: 'Afgerond', color: '#15803D', sortOrder: 6 },
-      { code: 'cancelled', label: 'Geannuleerd', color: '#DC2626', sortOrder: 7 },
-    ],
-  },
-  {
-    model: 'assetStatusType',
-    label: 'Asset-statussen',
-    rows: [
-      { code: 'new', label: 'Nieuw', color: '#6B7280', sortOrder: 0 },
-      { code: 'in_progress', label: 'In uitvoering', color: '#D97706', sortOrder: 1 },
-      { code: 'completed', label: 'Afgerond', color: '#16A34A', sortOrder: 2 },
-      { code: 'rejected', label: 'Afgekeurd', color: '#DC2626', sortOrder: 3 },
-      { code: 'not_applicable', label: 'Niet van toepassing', color: '#9CA3AF', sortOrder: 4 },
-    ],
-  },
-  {
-    model: 'findingStatusType',
-    label: 'Constatering-statussen',
-    rows: [
-      { code: 'open', label: 'Open', color: '#DC2626', sortOrder: 0 },
-      { code: 'acknowledged', label: 'Erkend', color: '#D97706', sortOrder: 1 },
-      { code: 'resolved', label: 'Opgelost', color: '#16A34A', sortOrder: 2 },
-      { code: 'disputed', label: 'Betwist', color: '#7C3AED', sortOrder: 3 },
-    ],
-  },
-  {
-    model: 'reportStatusType',
-    label: 'Rapport-statussen',
-    rows: [
-      { code: 'draft', label: 'Concept', color: '#6B7280', sortOrder: 0 },
-      { code: 'generating', label: 'Wordt gegenereerd', color: '#D97706', sortOrder: 1 },
-      { code: 'generated', label: 'Gegenereerd', color: '#0891B2', sortOrder: 2 },
-      { code: 'approved', label: 'Goedgekeurd', color: '#16A34A', sortOrder: 3 },
-      { code: 'sent', label: 'Verzonden', color: '#2563EB', sortOrder: 4 },
-      { code: 'archived', label: 'Gearchiveerd', color: '#9CA3AF', sortOrder: 5 },
-    ],
-  },
-  {
-    model: 'signatoryTypeOption',
-    label: 'Ondertekenaar-types',
-    rows: [
-      { code: 'inspector', label: 'Inspecteur', color: '#2563EB', sortOrder: 0 },
-      { code: 'reviewer', label: 'Beoordelaar', color: '#0891B2', sortOrder: 1 },
-      { code: 'client', label: 'Opdrachtgever', color: '#16A34A', sortOrder: 2 },
-      { code: 'installation_responsible', label: 'Installatieverantwoordelijke', color: '#CA8A04', sortOrder: 3 },
-    ],
-  },
-  {
-    model: 'signerRoleOption',
-    label: 'Ondertekenaar-rollen',
-    rows: [
-      { code: 'INSPECTOR', label: 'Inspecteur', color: '#2563EB', sortOrder: 0 },
-      { code: 'REVIEWER', label: 'Beoordelaar', color: '#0891B2', sortOrder: 1 },
-      { code: 'CLIENT', label: 'Opdrachtgever', color: '#16A34A', sortOrder: 2 },
-      { code: 'INSTALLATION_RESPONSIBLE', label: 'Installatieverantwoordelijke', color: '#CA8A04', sortOrder: 3 },
-    ],
-  },
-  {
-    model: 'passFailStatusType',
-    label: 'Goed/afkeur-statussen',
-    rows: [
-      { code: 'PASS', label: 'Voldoet', color: '#16A34A', sortOrder: 0 },
-      { code: 'FAIL', label: 'Voldoet niet', color: '#DC2626', sortOrder: 1 },
-      { code: 'WARNING', label: 'Aandachtspunt', color: '#D97706', sortOrder: 2 },
-      { code: 'NOT_APPLICABLE', label: 'Niet van toepassing', color: '#9CA3AF', sortOrder: 3 },
-    ],
-  },
-  {
-    model: 'resolutionStatusType',
-    label: 'Oplossing-statussen',
-    rows: [
-      { code: 'PENDING_VERIFICATION', label: 'Wacht op verificatie', color: '#D97706', sortOrder: 0 },
-      { code: 'VERIFIED', label: 'Geverifieerd', color: '#16A34A', sortOrder: 1 },
-      { code: 'REJECTED', label: 'Afgewezen', color: '#DC2626', sortOrder: 2 },
-    ],
-  },
-  {
-    model: 'clientRequestTypeOption',
-    label: 'Klantverzoek-types',
-    rows: [
-      { code: 'REINSPECTION', label: 'Herinspectie', color: '#7C3AED', sortOrder: 0 },
-      { code: 'NEW_ASSIGNMENT', label: 'Nieuwe opdracht', color: '#2563EB', sortOrder: 1 },
-      { code: 'QUESTION', label: 'Vraag', color: '#0891B2', sortOrder: 2 },
-      { code: 'OTHER', label: 'Overig', color: '#9CA3AF', sortOrder: 3 },
-    ],
-  },
-  {
-    model: 'clientRequestStatusType',
-    label: 'Klantverzoek-statussen',
-    rows: [
-      { code: 'PENDING_REQUEST', label: 'Open', color: '#D97706', sortOrder: 0 },
-      { code: 'IN_PROGRESS_REQUEST', label: 'In behandeling', color: '#2563EB', sortOrder: 1 },
-      { code: 'COMPLETED_REQUEST', label: 'Afgehandeld', color: '#16A34A', sortOrder: 2 },
-      { code: 'CANCELLED_REQUEST', label: 'Geannuleerd', color: '#DC2626', sortOrder: 3 },
-    ],
-  },
-];
+const sys = (rows: Row[]) =>
+  rows.map((r) => ({ ...r, isActive: true, isSystem: true })); // orgId blijft null (default)
 
-/**
- * Seed de globale lookup-defaults: orgId null, isSystem true.
- *
- * De seed-cleanup leegt deze tabellen vooraf, dus createMany volstaat en
- * vermijdt de bekende valkuil van upsert op een nullable composite-unique
- * (SQL behandelt NULL als distinct, waardoor org-null rijen niet uniek matchen).
- */
-export async function seedInspectionLookups(prisma: PrismaClient): Promise<void> {
-  for (const set of LOOKUP_SETS) {
-    const delegate = (prisma as any)[set.model];
-    await delegate.createMany({
-      data: set.rows.map((row) => ({
-        orgId: null,
-        code: row.code,
-        label: row.label,
-        color: row.color ?? null,
-        sortOrder: row.sortOrder,
-        isActive: true,
-        isSystem: true,
-      })),
-    });
-  }
+export async function seedLookups(prisma: PrismaClient): Promise<void> {
+  // 1. Inspectietypes
+  await prisma.inspectionTypeOption.deleteMany({ where: { orgId: null } });
+  await prisma.inspectionTypeOption.createMany({
+    data: sys([
+      { code: 'initial', label: 'Eerste inspectie', color: BLUE, sortOrder: 10 },
+      { code: 'periodic', label: 'Periodieke inspectie', color: BLUE, sortOrder: 20 },
+      { code: 'modification', label: 'Wijzigingsinspectie', color: BLUE, sortOrder: 30 },
+      { code: 'reinspection', label: 'Herinspectie', color: BLUE, sortOrder: 40 },
+    ]),
+  });
+
+  // 2. Inspectieplan-status
+  await prisma.planStatusType.deleteMany({ where: { orgId: null } });
+  await prisma.planStatusType.createMany({
+    data: sys([
+      { code: 'draft', label: 'Concept', color: GRAY, sortOrder: 10 },
+      { code: 'planned', label: 'Gepland', color: BLUE, sortOrder: 20 },
+      { code: 'in_progress', label: 'Mee bezig', color: AMBER, sortOrder: 30 },
+      { code: 'pending_review', label: 'Wacht op review', color: ORANGE, sortOrder: 40 },
+      { code: 'reviewed', label: 'Beoordeeld', color: BLUE, sortOrder: 50 },
+      { code: 'approved', label: 'Goedgekeurd', color: GREEN, sortOrder: 60 },
+      { code: 'completed', label: 'Afgerond', color: GREEN, sortOrder: 70 },
+      { code: 'cancelled', label: 'Geannuleerd', color: RED, sortOrder: 80 },
+    ]),
+  });
+
+  // 3. Asset-status
+  await prisma.assetStatusType.deleteMany({ where: { orgId: null } });
+  await prisma.assetStatusType.createMany({
+    data: sys([
+      { code: 'new', label: 'Nieuw', color: GRAY, sortOrder: 10 },
+      { code: 'in_progress', label: 'Mee bezig', color: AMBER, sortOrder: 20 },
+      { code: 'completed', label: 'Voltooid', color: GREEN, sortOrder: 30 },
+      { code: 'rejected', label: 'Afgekeurd', color: RED, sortOrder: 40 },
+      { code: 'not_applicable', label: 'N.v.t.', color: GRAY, sortOrder: 50 },
+    ]),
+  });
+
+  // 4. Constatering-status
+  await prisma.findingStatusType.deleteMany({ where: { orgId: null } });
+  await prisma.findingStatusType.createMany({
+    data: sys([
+      { code: 'open', label: 'Open', color: RED, sortOrder: 10 },
+      { code: 'acknowledged', label: 'Erkend', color: AMBER, sortOrder: 20 },
+      { code: 'resolved', label: 'Opgelost', color: GREEN, sortOrder: 30 },
+      { code: 'disputed', label: 'Betwist', color: ORANGE, sortOrder: 40 },
+    ]),
+  });
+
+  // 5. Rapport-status
+  await prisma.reportStatusType.deleteMany({ where: { orgId: null } });
+  await prisma.reportStatusType.createMany({
+    data: sys([
+      { code: 'draft', label: 'Concept', color: GRAY, sortOrder: 10 },
+      { code: 'generating', label: 'Genereren', color: BLUE, sortOrder: 20 },
+      { code: 'generated', label: 'Gegenereerd', color: BLUE, sortOrder: 30 },
+      { code: 'approved', label: 'Goedgekeurd', color: GREEN, sortOrder: 40 },
+      { code: 'sent', label: 'Verstuurd', color: GREEN, sortOrder: 50 },
+      { code: 'archived', label: 'Gearchiveerd', color: GRAY, sortOrder: 60 },
+    ]),
+  });
+
+  // 6. Ondertekenaar-types
+  await prisma.signatoryTypeOption.deleteMany({ where: { orgId: null } });
+  await prisma.signatoryTypeOption.createMany({
+    data: sys([
+      { code: 'inspector', label: 'Inspecteur', color: BLUE, sortOrder: 10 },
+      { code: 'reviewer', label: 'Beoordelaar', color: BLUE, sortOrder: 20 },
+      { code: 'client', label: 'Opdrachtgever', color: GRAY, sortOrder: 30 },
+      { code: 'installation_responsible', label: 'Installatieverantwoordelijke', color: GRAY, sortOrder: 40 },
+    ]),
+  });
+
+  // 7. Ondertekenaar-rollen (documentondertekening)
+  await prisma.signerRoleOption.deleteMany({ where: { orgId: null } });
+  await prisma.signerRoleOption.createMany({
+    data: sys([
+      { code: 'INSPECTOR', label: 'Inspecteur', color: BLUE, sortOrder: 10 },
+      { code: 'REVIEWER', label: 'Beoordelaar', color: BLUE, sortOrder: 20 },
+      { code: 'CLIENT', label: 'Opdrachtgever', color: GRAY, sortOrder: 30 },
+      { code: 'INSTALLATION_RESPONSIBLE', label: 'Installatieverantwoordelijke', color: GRAY, sortOrder: 40 },
+    ]),
+  });
+
+  // 8. Pass/fail-status (metingen)
+  await prisma.passFailStatusType.deleteMany({ where: { orgId: null } });
+  await prisma.passFailStatusType.createMany({
+    data: sys([
+      { code: 'PASS', label: 'Goed', color: GREEN, sortOrder: 10 },
+      { code: 'FAIL', label: 'Afgekeurd', color: RED, sortOrder: 20 },
+      { code: 'WARNING', label: 'Aandacht', color: AMBER, sortOrder: 30 },
+      { code: 'NOT_APPLICABLE', label: 'N.v.t.', color: GRAY, sortOrder: 40 },
+    ]),
+  });
+
+  // 9. Afhandeling-status (constatering-resolutie door klant)
+  await prisma.resolutionStatusType.deleteMany({ where: { orgId: null } });
+  await prisma.resolutionStatusType.createMany({
+    data: sys([
+      { code: 'PENDING_VERIFICATION', label: 'Wacht op verificatie', color: AMBER, sortOrder: 10 },
+      { code: 'VERIFIED', label: 'Geverifieerd', color: GREEN, sortOrder: 20 },
+      { code: 'REJECTED', label: 'Afgewezen', color: RED, sortOrder: 30 },
+    ]),
+  });
+
+  // 10. Verzoek-types (client-portal)
+  await prisma.clientRequestTypeOption.deleteMany({ where: { orgId: null } });
+  await prisma.clientRequestTypeOption.createMany({
+    data: sys([
+      { code: 'REINSPECTION', label: 'Herinspectie', color: BLUE, sortOrder: 10 },
+      { code: 'NEW_ASSIGNMENT', label: 'Nieuwe opdracht', color: BLUE, sortOrder: 20 },
+      { code: 'QUESTION', label: 'Vraag', color: GRAY, sortOrder: 30 },
+      { code: 'OTHER', label: 'Overig', color: GRAY, sortOrder: 40 },
+    ]),
+  });
+
+  // 11. Verzoek-status (client-portal)
+  await prisma.clientRequestStatusType.deleteMany({ where: { orgId: null } });
+  await prisma.clientRequestStatusType.createMany({
+    data: sys([
+      { code: 'PENDING_REQUEST', label: 'In afwachting', color: AMBER, sortOrder: 10 },
+      { code: 'IN_PROGRESS_REQUEST', label: 'In behandeling', color: BLUE, sortOrder: 20 },
+      { code: 'COMPLETED_REQUEST', label: 'Afgehandeld', color: GREEN, sortOrder: 30 },
+      { code: 'CANCELLED_REQUEST', label: 'Geannuleerd', color: RED, sortOrder: 40 },
+    ]),
+  });
+
+  console.log('🌱 Lookup-systeemdefaults geseed (11 tabellen)');
 }

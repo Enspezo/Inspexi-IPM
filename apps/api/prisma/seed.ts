@@ -1,7 +1,7 @@
 import { PrismaClient, Role, ContactType, LogType, PriceType, RequestSource, RequestStatus, Priority, QuoteStatus, NotificationType, PlanningStatus, AcceptanceStatus, ProjectStatus, AssetFieldType, ChecklistStatus, TemplateStatus, MeasurementSheetTemplateStatus, MeasurementSheetFieldType, FindingInspectionType } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { randomUUID } from 'crypto';
-import { seedInspectionLookups } from './seed-lookups';
+import { seedLookups } from './seed-lookups';
 
 const prisma = new PrismaClient();
 
@@ -1367,7 +1367,7 @@ async function main() {
   console.log('\n🔍 Seeding inspection domain...');
 
   // 1. Globale lookup-defaults (orgId null, isSystem)
-  await seedInspectionLookups(prisma);
+  await seedLookups(prisma);
   console.log('  ✓ Inspection lookup defaults (11 sets)');
 
   // 2. Classificatiemodel (systeem) met kenmerken + opties

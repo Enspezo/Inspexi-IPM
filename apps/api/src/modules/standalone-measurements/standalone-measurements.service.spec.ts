@@ -1,7 +1,8 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { NotFoundException, ForbiddenException } from '@nestjs/common';
+import { NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
 import { Role } from '@prisma/client';
 import { StandaloneMeasurementsService } from './standalone-measurements.service';
+import { LookupService } from '../lookups/lookup.service';
 import { PrismaService } from '@/prisma';
 
 describe('StandaloneMeasurementsService', () => {
@@ -28,6 +29,10 @@ describe('StandaloneMeasurementsService', () => {
     },
   };
 
+  const mockLookupService = {
+    resolveLookup: jest.fn(),
+  };
+
   const mockUser = {
     id: 'user-1',
     orgId: 'org-1',
@@ -42,6 +47,7 @@ describe('StandaloneMeasurementsService', () => {
       providers: [
         StandaloneMeasurementsService,
         { provide: PrismaService, useValue: mockPrismaService },
+        { provide: LookupService, useValue: mockLookupService },
       ],
     }).compile();
 
@@ -212,6 +218,50 @@ describe('StandaloneMeasurementsService', () => {
           value: '1',
         } as any),
       ).rejects.toThrow(NotFoundException);
+      expect(mockPrismaService.standaloneMeasurementValue.create).not.toHaveBeenCalled();
+    });
+
+    it('validates passFailCode against the lookup and stores it', async () => {
+      mockPrismaService.standaloneMeasurement.findFirst.mockResolvedValue({
+        id: 'm-1',
+        orgId: 'org-1',
+      });
+      mockLookupService.resolveLookup.mockResolvedValue({ id: 'pf-1', code: 'pass' });
+      mockPrismaService.standaloneMeasurementValue.create.mockResolvedValue({ id: 'v-2' });
+
+      await service.addValue('m-1', mockUser, {
+        fieldName: 'isolatieweerstand',
+        fieldType: 'number',
+        value: '500',
+        unit: 'MOhm',
+        passFailCode: 'pass',
+      } as any);
+
+      expect(mockLookupService.resolveLookup).toHaveBeenCalledWith(
+        'pass-fail-status-types',
+        'pass',
+        'org-1',
+      );
+      expect(mockPrismaService.standaloneMeasurementValue.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({ passFailCode: 'pass' }),
+      });
+    });
+
+    it('rejects an unknown passFailCode (BadRequest)', async () => {
+      mockPrismaService.standaloneMeasurement.findFirst.mockResolvedValue({
+        id: 'm-1',
+        orgId: 'org-1',
+      });
+      mockLookupService.resolveLookup.mockResolvedValue(null);
+
+      await expect(
+        service.addValue('m-1', mockUser, {
+          fieldName: 'x',
+          fieldType: 'number',
+          value: '1',
+          passFailCode: 'bogus',
+        } as any),
+      ).rejects.toThrow(BadRequestException);
       expect(mockPrismaService.standaloneMeasurementValue.create).not.toHaveBeenCalled();
     });
   });

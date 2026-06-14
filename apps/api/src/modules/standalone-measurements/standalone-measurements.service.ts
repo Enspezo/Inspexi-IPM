@@ -2,6 +2,7 @@ import { Injectable, BadRequestException } from '@nestjs/common';
 import { User } from '@prisma/client';
 import { PrismaService } from '@/prisma';
 import { orgScope, assertFound, assertSameOrg } from '@/common';
+import { LookupService } from '../lookups/lookup.service';
 import {
   CreateStandaloneMeasurementDto,
   UpdateStandaloneMeasurementDto,
@@ -11,11 +12,21 @@ import {
 
 @Injectable()
 export class StandaloneMeasurementsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly lookups: LookupService,
+  ) {}
 
   private requireOrg(user: User): string {
     if (!user.orgId) throw new BadRequestException('Selecteer eerst een organisatie');
     return user.orgId;
+  }
+
+  /** Valideert een optionele passFailCode tegen de pass-fail-status lookup. */
+  private async assertPassFail(code: string | undefined, orgId: string): Promise<void> {
+    if (!code) return;
+    const row = await this.lookups.resolveLookup('pass-fail-status-types', code, orgId);
+    if (!row) throw new BadRequestException(`Onbekende pass/fail-status: ${code}`);
   }
 
   private async getPlanInOrg(planId: string, user: User) {
@@ -73,6 +84,11 @@ export class StandaloneMeasurementsService {
     // Locatie moet binnen dezelfde organisatie vallen
     await assertSameOrg(this.prisma.inspectionLocation, dto.locationId, orgId, 'Locatie');
 
+    // Optionele pass/fail-codes op de meegegeven waarden valideren (lookup)
+    for (const v of dto.values ?? []) {
+      await this.assertPassFail(v.passFailCode, orgId);
+    }
+
     return this.prisma.standaloneMeasurement.create({
       data: {
         orgId: plan.orgId,
@@ -90,6 +106,7 @@ export class StandaloneMeasurementsService {
                   fieldType: v.fieldType,
                   value: v.value,
                   unit: v.unit,
+                  passFailCode: v.passFailCode,
                 })),
               },
             }
@@ -125,8 +142,9 @@ export class StandaloneMeasurementsService {
   }
 
   async addValue(id: string, user: User, dto: AddValueDto) {
-    this.requireOrg(user);
+    const orgId = this.requireOrg(user);
     const measurement = await this.findScoped(id, user);
+    await this.assertPassFail(dto.passFailCode, orgId);
 
     return this.prisma.standaloneMeasurementValue.create({
       data: {
@@ -135,6 +153,7 @@ export class StandaloneMeasurementsService {
         fieldType: dto.fieldType,
         value: dto.value,
         unit: dto.unit,
+        passFailCode: dto.passFailCode,
       },
     });
   }

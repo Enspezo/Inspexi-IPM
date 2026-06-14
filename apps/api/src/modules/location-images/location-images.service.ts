@@ -98,6 +98,19 @@ export class LocationImagesService {
     );
   }
 
+  /** Ruwe bytes van de locatie-afbeelding (voor inline preview/download). */
+  async getImageFile(locationId: string, user: User) {
+    await this.getLocationInOrg(locationId, user);
+
+    const image = assertFound(
+      await this.prisma.locationImage.findUnique({ where: { locationId } }),
+      'Locatie-afbeelding',
+    );
+
+    const buffer = await this.storage.download(image.storagePath);
+    return { buffer, image };
+  }
+
   async uploadImage(
     locationId: string,
     user: User,

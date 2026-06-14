@@ -7,6 +7,7 @@ import {
   Param,
   Body,
   Headers,
+  Res,
   ParseUUIDPipe,
   UseInterceptors,
   UploadedFile,
@@ -23,6 +24,7 @@ import {
 } from '@nestjs/swagger';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
+import type { Response } from 'express';
 import { User, Role } from '@prisma/client';
 import { Roles, CurrentUser } from '@/common/decorators';
 import { LocationImagesService } from './location-images.service';
@@ -81,6 +83,25 @@ export class LocationImagesController {
     @CurrentUser() user: User,
   ) {
     return { success: true, data: await this.service.getImageByLocation(locationId, user) };
+  }
+
+  @Get('locations/:locationId/image/file')
+  @Roles(...ALL)
+  @ApiOperation({ summary: 'Locatie-afbeelding (bytes) streamen voor preview/download' })
+  async getImageFile(
+    @Param('locationId', ParseUUIDPipe) locationId: string,
+    @CurrentUser() user: User,
+    @Res() res: Response,
+  ) {
+    const { buffer, image } = await this.service.getImageFile(locationId, user);
+    res.set({
+      'Content-Type': image.mimeType,
+      'Content-Disposition': `inline; filename="${encodeURIComponent(
+        image.originalFilename ?? 'afbeelding',
+      )}"`,
+      'Content-Length': buffer.length.toString(),
+    });
+    res.send(buffer);
   }
 
   @Post('locations/:locationId/image')

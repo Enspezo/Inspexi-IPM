@@ -18,4 +18,12 @@ export class AddValueDto {
   @IsOptional()
   @IsString()
   unit?: string;
+
+  @ApiPropertyOptional({
+    example: 'pass',
+    description: 'Pass/fail-status (lookup: pass-fail-status-types)',
+  })
+  @IsOptional()
+  @IsString()
+  passFailCode?: string;
 }

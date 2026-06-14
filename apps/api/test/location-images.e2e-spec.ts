@@ -217,6 +217,25 @@ describe('LocationImages (e2e)', () => {
     });
   });
 
+  describe('GET /api/v1/locations/:locationId/image/file', () => {
+    it('streams the raw image bytes inline', async () => {
+      const res = await request(app.getHttpServer())
+        .get(`/api/v1/locations/${testLocationId}/image/file`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(200);
+
+      expect(res.headers['content-type']).toContain('image/png');
+      expect(Number(res.headers['content-length'])).toBeGreaterThan(0);
+    });
+
+    it('returns 404 for a location in another org', async () => {
+      await request(app.getHttpServer())
+        .get('/api/v1/locations/00000000-0000-0000-0000-000000000000/image/file')
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(404);
+    });
+  });
+
   describe('POST /api/v1/location-images/:imageId/markers', () => {
     it('creates an ASSET marker referencing the seeded asset', async () => {
       const res = await request(app.getHttpServer())

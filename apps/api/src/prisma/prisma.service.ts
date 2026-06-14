@@ -41,6 +41,11 @@ const AUDITED_MODELS = new Set([
   'InspectionTemplate',
   'MeasurementSheetTemplate',
   'MeasurementSheetRecord',
+  // Inspectiedomein (Fase 2 — uitvoering)
+  'VisualInspection',
+  'MeasurementRecord',
+  'StandaloneMeasurement',
+  'LocationImage',
   'GeneratedDocument',
   'ClientRequest',
 ]);
@@ -91,6 +96,11 @@ const MODEL_TABLE_MAP: Record<string, string> = {
   InspectionTemplate: 'imp_inspection_templates',
   MeasurementSheetTemplate: 'imp_measurement_sheet_templates',
   MeasurementSheetRecord: 'imp_measurement_sheet_records',
+  // Inspectiedomein (Fase 2 — uitvoering)
+  VisualInspection: 'imp_visual_inspections',
+  MeasurementRecord: 'imp_measurement_records',
+  StandaloneMeasurement: 'imp_standalone_measurements',
+  LocationImage: 'imp_location_images',
   GeneratedDocument: 'imp_generated_documents',
   ClientRequest: 'imp_client_requests',
 };

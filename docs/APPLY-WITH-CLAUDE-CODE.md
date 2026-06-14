@@ -165,37 +165,77 @@ Definition of done:
 
 ## 6. Prompt D — Fase 2: rest-modules met subagents (parallel)
 
+> Verfijnd na A/B/C. Geleerd: Claude Code volgt referentiecode + checklists trouw, maar (1) de
+> 4 modules staan nu LIVE in de repo → laat subagents díé als canon gebruiken; (2) parallelle
+> subagents mogen NIET tegelijk gedeelde bestanden bewerken (app.module.ts, prisma.service.ts,
+> seed.ts, cross-tenant-spec) → de orchestrator doet die edits zelf; (3) laat elke subagent
+> zichzelf `tsc --noEmit` + unit-test geven vóór teruggave (dat ving alles in A/B/C af).
+
 ```
-Doel: port de resterende Fase 2-modules met behulp van subagents.
+Doel: port de resterende Fase 2-modules. Fase A/B/C zijn al gemerged.
 
-Lees eerst: docs/fase2/FASE2-API.md (§4 volgorde, §6 config-skelet, §7 uitvoering) en de
-golden paths in docs/fase2/code/asset-types (config) en docs/fase2/code/assets (uitvoering).
-Lees per module ook de originele bron in ../Inspexi-App/apps/api/src/modules/<naam>.
+Canon = de LIVE modules in apps/api/src/modules (NIET docs/fase2/code; dat was de blauwdruk):
+- config-patroon (incl. sub-resources): apps/api/src/modules/asset-types  (fields + constraints,
+  /merged-overlay, validate-parent, duplicate, assertManageable)
+- uitvoering-patroon: apps/api/src/modules/{assets, findings, inspection-plans}
+- lookups: apps/api/src/modules/lookups  (LookupService.resolveLookup voor *Code-velden)
 
-Aanpak:
-- Spawn parallelle subagents voor de ONAFHANKELIJKE config-modules (elk in een eigen subagent):
-  norm-types, classification-models, categories, finding-templates, location-types.
-  Elke subagent: port de module naar Beheer-conventies via het config-skelet (FASE2-API.md §6),
-  registreer in app.module.ts, schrijf unit + E2E + cross-tenant.
-- Daarna de modules MET afhankelijkheden (serieel, want ze hangen aan elkaar/aan plannen):
-  checklists (+items, version history), measurement-sheet-templates (+sections/fields),
-  inspection-templates (+links/version history), inspection-locations (kopieer assets-patroon),
-  visual-inspections, measurement-records, measurement-sheet-records, location-images (+markers),
-  standalone-measurements, portal-stats.
-- Sluit af met één VERIFICATIE-subagent: `npx turbo run build`, alle tests, en een
-  review van tenant-scoping (orgScope/assertSameOrg) en statusCode-lookup-gebruik per module.
+Lees per te porten module ook de ORIGINELE bron: ../Inspexi-App/apps/api/src/modules/<naam>
+— de live modules dekken de conventies, de bron dekt de business-logica (vooral de
+versie-lifecycle: publish/retire/new-version + version-history).
 
-Constraints:
-- statusCode/inspectionTypeCode e.d. via LookupService; norm via NormTypeDefinition; geen enums.
-- Sync-velden (syncedAt/deviceId) en `deletedAt` behouden op uitvoeringstabellen.
-- measurement-sheet-templates is GLOBAAL (geen orgId), superuser-only.
+ORCHESTRATIE (cruciaal — voorkom merge-conflicten op gedeelde bestanden):
+- Subagents maken UITSLUITEND hun eigen module-map: controller/service/module/dto +
+  <naam>.service.spec.ts + test/<naam>.e2e-spec.ts. Ze bewerken GEEN gedeelde bestanden.
+- JIJ (orchestrator) doet ALLE edits aan gedeelde bestanden zelf, ná afloop, sequentieel:
+  app.module.ts (module-registratie), prisma/prisma.service.ts (AUDITED_MODELS + MODEL_TABLE_MAP),
+  prisma/seed.ts (seed-data + cleanup-volgorde kinderen-eerst), test/cross-tenant.e2e-spec.ts
+  (extra 403-cases), apps/portal/src/types/index.ts.
+- Elke subagent VERIFIEERT zichzelf vóór teruggave en rapporteert het resultaat:
+  `npx tsc -p tsconfig.json --noEmit` (in apps/api) én zijn eigen unit-spec via jest, beide groen.
+
+GROEP 1 — parallel (echt onafhankelijk), 1 subagent per module:
+  norm-types, classification-models (+characteristics+options), categories,
+  location-types (= 1-op-1 kopie van asset-types, incl. validate-parent + fields/constraints).
+
+GROEP 2 — serieel ná groep 1 (FK's naar groep 1 / naar elkaar):
+  finding-templates (FK classificationModel + category),
+  checklist-items, checklists (+itemLinks +versionHistory; lifecycle CONCEPT/ACTIEF/VERVALLEN +
+  publish/retire/new-version),
+  measurement-sheet-templates (GLOBAAL: geen orgId, superuser-only; +sections+fields+versionHistory),
+  inspection-templates (+checklist/meetstaat-links +versionHistory +fork).
+
+GROEP 3 — uitvoering, serieel (hangen aan plan/asset; kopieer assets/findings):
+  inspection-locations (boom = kopie van assets), visual-inspections, measurement-records,
+  measurement-sheet-records, location-images (+markers; multipart-upload via STORAGE_PROVIDER),
+  standalone-measurements (+values), portal-stats (read-only dashboard, org-scoped).
+
+MODULE-SPECIFIEKE REGELS:
+- LookupService ALLEEN waar een *Code-veld bestaat (Fase 1): standalone-measurement-values
+  (passFailCode → 'pass-fail-status-types'). De rest gebruikt de BEHOUDEN enums — geen lookup.
+  Let op: measurement-sheet-records.status, visual/measurement-records.status,
+  template-lifecycle = enums (MeasurementSheetRecordStatus / InspectionExecStatus /
+  ChecklistStatus / TemplateStatus / MeasurementSheetTemplateStatus). NIET via lookup.
+- Versie-template-modules: neem publish/retire/new-version + version-history over uit de App-bron.
+- Sub-resources: gebruik asset-types (fields/constraints) als skelet voor secties/velden/links/markers.
+- Notificaties: ontbreekt een NotificationType-waarde, voeg die toe aan de enum + APARTE migratie
+  (zoals 20260614073634_add_inspection_plan_notification_types). Doe dit als orchestrator, niet in
+  een subagent.
+- Behoud sync-velden (syncedAt/deviceId), X-Device-ID op create van veld-entiteiten, en
+  expliciete `deletedAt: null`-filters op uitvoeringstabellen.
 - Houd PWA-route-namespaces stabiel (asset-types, finding-templates, classification-models,
   measurement-sheet-templates en de uitvoerings-endpoints) — Fase 3 sync hangt eraan.
 
-Definition of done:
-- Alle modules geregistreerd; `npx turbo run build` + tests groen; cross-tenant 403-tests slagen.
-- Commit per logische groep, bv. `feat: port config modules (Fase 2)` en
-  `feat: port execution modules (Fase 2)`.
+VERIFICATIE-subagent (afsluitend, ná jouw shared-file edits):
+- `npx turbo run build` (root) groen;
+- `pnpm --filter <api-pkg> test` (unit) groen;
+- `pnpm --filter <api-pkg> test:e2e` tegen een draaiende DB (eerst `docker compose up -d`) groen;
+- `npx prisma migrate reset` op een wegwerp-DB → keten + seed herspeelt schoon;
+- steekproef: elke service gebruikt orgScope/assertSameOrg en filtert `deletedAt: null` expliciet.
+
+Definition of done: alle modules geregistreerd; build + unit + e2e + cross-tenant groen;
+migratie/seed herspeelt schoon. Commit per groep, bv. `feat: port config modules (Fase 2)`
+en `feat: port execution modules (Fase 2)`.
 ```
 
 ---

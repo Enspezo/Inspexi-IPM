@@ -53,6 +53,9 @@ import { ClassificationModelsModule } from './modules/classification-models/clas
 import { CategoriesModule } from './modules/categories/categories.module';
 import { FindingTemplatesModule } from './modules/finding-templates/finding-templates.module';
 import { LocationTypesModule } from './modules/location-types/location-types.module';
+import { ChecklistsModule } from './modules/checklists/checklists.module';
+import { MeasurementSheetTemplatesModule } from './modules/measurement-sheet-templates/measurement-sheet-templates.module';
+import { InspectionTemplatesModule } from './modules/inspection-templates/inspection-templates.module';
 
 @Module({
   imports: [
@@ -103,6 +106,9 @@ import { LocationTypesModule } from './modules/location-types/location-types.mod
     CategoriesModule,
     FindingTemplatesModule,
     LocationTypesModule,
+    ChecklistsModule,
+    MeasurementSheetTemplatesModule,
+    InspectionTemplatesModule,
   ],
   providers: [
     {

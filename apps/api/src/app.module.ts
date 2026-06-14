@@ -48,6 +48,11 @@ import { InspectionPlansModule } from './modules/inspection-plans/inspection-pla
 import { AssetTypesModule } from './modules/asset-types/asset-types.module';
 import { AssetsModule } from './modules/assets/assets.module';
 import { FindingsModule } from './modules/findings/findings.module';
+import { NormTypesModule } from './modules/norm-types/norm-types.module';
+import { ClassificationModelsModule } from './modules/classification-models/classification-models.module';
+import { CategoriesModule } from './modules/categories/categories.module';
+import { FindingTemplatesModule } from './modules/finding-templates/finding-templates.module';
+import { LocationTypesModule } from './modules/location-types/location-types.module';
 
 @Module({
   imports: [
@@ -93,6 +98,11 @@ import { FindingsModule } from './modules/findings/findings.module';
     AssetTypesModule,
     AssetsModule,
     FindingsModule,
+    NormTypesModule,
+    ClassificationModelsModule,
+    CategoriesModule,
+    FindingTemplatesModule,
+    LocationTypesModule,
   ],
   providers: [
     {

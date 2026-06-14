@@ -37,6 +37,7 @@ describe('ChecklistsService', () => {
     checklistVersionHistory: {
       findMany: jest.fn(),
       create: jest.fn(),
+      deleteMany: jest.fn(),
     },
     category: {
       findFirst: jest.fn(),
@@ -494,9 +495,13 @@ describe('ChecklistsService', () => {
         itemLinks: [],
       });
       mockPrismaService.checklist.delete.mockResolvedValue({});
+      mockPrismaService.$transaction.mockImplementation((ops) => Promise.all(ops));
 
       const result = await service.delete('cl-1', mockUser);
       expect(result).toEqual({ deleted: true });
+      expect(mockPrismaService.checklistVersionHistory.deleteMany).toHaveBeenCalledWith({
+        where: { checklistId: 'cl-1' },
+      });
     });
 
     it('should reject deleting a non-CONCEPT checklist', async () => {

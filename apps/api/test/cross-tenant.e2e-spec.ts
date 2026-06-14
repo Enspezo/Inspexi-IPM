@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import request from 'supertest';
 import cookieParser from 'cookie-parser';
+import { randomUUID } from 'crypto';
 import { AppModule } from '@/app.module';
 import { PrismaService } from '@/prisma';
 import bcrypt from 'bcrypt';
@@ -269,6 +270,7 @@ describe('Cross-tenant FK isolation (e2e)', () => {
       await prisma.product.deleteMany({ where: { orgId: { in: orgIds } } });
       await prisma.contact.deleteMany({ where: { orgId: { in: orgIds } } });
       await prisma.notification.deleteMany({ where: { orgId: { in: orgIds } } });
+      await prisma.syncQueue.deleteMany({ where: { userId: { in: userIds } } });
       await prisma.auditLog.deleteMany({ where: { orgId: { in: orgIds } } });
       await prisma.refreshToken.deleteMany({ where: { userId: { in: userIds } } });
       await prisma.user.deleteMany({ where: { id: { in: userIds } } });
@@ -609,6 +611,105 @@ describe('Cross-tenant FK isolation (e2e)', () => {
           categoryId: categoryBId,
         })
         .expect(403);
+    });
+  });
+
+  // ─── Sync push: cross-tenant parent FKs ───────────────
+  // Org A pushes records whose parent FK belongs to org B. The sync service
+  // injects orgId from the parent hierarchy and validates it with
+  // assertSameOrg, so the parent is "not the caller's" → the change is
+  // reported in `errors` and NEVER written. Plan/asset of org B reuse the
+  // suite's existing planBId/assetBId fixtures.
+  describe('Sync push cross-tenant', () => {
+    it('rejects an asset create referencing org B\'s plan (error, never written)', async () => {
+      const clientAssetId = randomUUID();
+
+      const res = await request(app.getHttpServer())
+        .post('/api/v1/sync/push')
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({
+          deviceId: 'dev-xtenant-a',
+          changes: {
+            assets: [
+              {
+                operation: 'create',
+                data: {
+                  id: clientAssetId,
+                  inspectionPlanId: planBId,
+                  assetType: 'electrical_installation',
+                  name: 'Hack',
+                },
+              },
+            ],
+          },
+        })
+        .expect(201);
+
+      expect(res.body.success).toBe(true);
+      expect(res.body.data.errors.length).toBeGreaterThanOrEqual(1);
+      expect(
+        res.body.data.errors.map((e: { entityId: string }) => e.entityId),
+      ).toContain(clientAssetId);
+      expect(res.body.data.processed.assets).toBe(0);
+
+      const written = await prisma.asset.findUnique({ where: { id: clientAssetId } });
+      expect(written).toBeNull();
+    });
+
+    it('rejects an update of org B\'s plan (error, original preserved)', async () => {
+      const before = await prisma.inspectionPlan.findUnique({ where: { id: planBId } });
+
+      const res = await request(app.getHttpServer())
+        .post('/api/v1/sync/push')
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({
+          deviceId: 'dev-xtenant-a',
+          changes: {
+            inspectionPlans: [
+              { operation: 'update', data: { id: planBId, projectName: 'Hacked' } },
+            ],
+          },
+        })
+        .expect(201);
+
+      expect(res.body.success).toBe(true);
+      expect(res.body.data.errors.length).toBeGreaterThanOrEqual(1);
+
+      const after = await prisma.inspectionPlan.findUnique({ where: { id: planBId } });
+      expect(after?.projectName).toBe(before?.projectName);
+      expect(after?.projectName).not.toBe('Hacked');
+    });
+
+    it('rejects a finding create referencing org B\'s asset (error, never written)', async () => {
+      const clientFindingId = randomUUID();
+
+      const res = await request(app.getHttpServer())
+        .post('/api/v1/sync/push')
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({
+          deviceId: 'dev-xtenant-a',
+          changes: {
+            findings: [
+              {
+                operation: 'create',
+                data: {
+                  id: clientFindingId,
+                  assetId: assetBId,
+                  inspectionType: 'visual',
+                  shortDescription: 'x',
+                },
+              },
+            ],
+          },
+        })
+        .expect(201);
+
+      expect(res.body.success).toBe(true);
+      expect(res.body.data.errors.length).toBeGreaterThanOrEqual(1);
+      expect(res.body.data.processed.findings).toBe(0);
+
+      const written = await prisma.finding.findUnique({ where: { id: clientFindingId } });
+      expect(written).toBeNull();
     });
   });
 });

@@ -63,6 +63,8 @@ import { MeasurementSheetRecordsModule } from './modules/measurement-sheet-recor
 import { StandaloneMeasurementsModule } from './modules/standalone-measurements/standalone-measurements.module';
 import { LocationImagesModule } from './modules/location-images/location-images.module';
 import { PortalStatsModule } from './modules/portal-stats/portal-stats.module';
+import { SyncModule } from './modules/sync/sync.module';
+import { PhotosModule } from './modules/photos/photos.module';
 
 @Module({
   imports: [
@@ -123,6 +125,9 @@ import { PortalStatsModule } from './modules/portal-stats/portal-stats.module';
     StandaloneMeasurementsModule,
     LocationImagesModule,
     PortalStatsModule,
+    // Inspectiedomein Fase 3 — PWA-sync + foto-upload
+    SyncModule,
+    PhotosModule,
   ],
   providers: [
     {

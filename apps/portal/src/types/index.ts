@@ -1406,3 +1406,601 @@ export interface ErrorReport {
   user?: { id: string; firstName: string; lastName: string; email: string } | null;
   organization?: { id: string; name: string; slug: string } | null;
 }
+
+// ─── Fase 1: Inspectiedomein ─────────────────────────────
+// Core + config/template types geport uit de Inspexi-App.
+// Status-/type-codes (statusCode, normTypeCode, ...) zijn vrije code-strings
+// gekoppeld aan per-org lookups (InspectionLookupOption), GEEN enums.
+
+// ── Per-org lookups ──
+/**
+ * Generieke lookup-rij voor de 11 overschrijfbare status/type-lijsten
+ * (inspectietype, plan-/asset-/finding-/report-status, signatory-type,
+ * signer-role, pass/fail, resolutie, client-request type/status).
+ * orgId null = globale systeemdefault; org-rij met dezelfde `code` overschrijft.
+ */
+export interface InspectionLookupOption {
+  id: string;
+  orgId: string | null;
+  code: string;
+  label: string;
+  color?: string | null;
+  sortOrder: number;
+  isActive: boolean;
+  isSystem: boolean;
+  createdAt: string;
+}
+
+// ── Vaste enums (code-gebonden, niet org-uitbreidbaar) ──
+export enum InspectionExecStatus {
+  not_started = 'not_started',
+  in_progress = 'in_progress',
+  completed = 'completed',
+}
+
+export enum FindingInspectionType {
+  visual = 'visual',
+  measurement = 'measurement',
+}
+
+export enum PhotoEntityType {
+  asset = 'asset',
+  finding = 'finding',
+  inspection_plan = 'inspection_plan',
+  location = 'location',
+}
+
+export enum MeasurementDataType {
+  number = 'number',
+  text = 'text',
+  select = 'select',
+  boolean = 'boolean',
+}
+
+export enum ChecklistStatus {
+  CONCEPT = 'CONCEPT',
+  ACTIEF = 'ACTIEF',
+  VERVALLEN = 'VERVALLEN',
+}
+
+export enum TemplateStatus {
+  CONCEPT = 'CONCEPT',
+  ACTIEF = 'ACTIEF',
+  VERVALLEN = 'VERVALLEN',
+}
+
+export enum AssetFieldType {
+  text = 'text',
+  number = 'number',
+  select = 'select',
+  checkbox = 'checkbox',
+  date = 'date',
+  textarea = 'textarea',
+}
+
+export enum DocumentType {
+  PLAN = 'PLAN',
+  REPORT = 'REPORT',
+}
+
+export enum SectionType {
+  STATIC = 'STATIC',
+  REPEATING = 'REPEATING',
+  TABLE_OF_CONTENTS = 'TABLE_OF_CONTENTS',
+  SIGNATURE_BLOCK = 'SIGNATURE_BLOCK',
+  CONDITIONAL = 'CONDITIONAL',
+}
+
+export enum GeneratedDocumentStatus {
+  DRAFT = 'DRAFT',
+  PENDING_SIGNATURES = 'PENDING_SIGNATURES',
+  SIGNED = 'SIGNED',
+  FINALIZED = 'FINALIZED',
+}
+
+export enum SignatureStatus {
+  PENDING = 'PENDING',
+  REQUESTED = 'REQUESTED',
+  SIGNED = 'SIGNED',
+  DECLINED = 'DECLINED',
+  EXPIRED = 'EXPIRED',
+}
+
+export enum MeasurementSheetTemplateStatus {
+  CONCEPT = 'CONCEPT',
+  ACTIEF = 'ACTIEF',
+  VERVALLEN = 'VERVALLEN',
+}
+
+export enum MeasurementSheetFieldType {
+  NUMBER = 'NUMBER',
+  TEXT = 'TEXT',
+  TEXTAREA = 'TEXTAREA',
+  CHECKBOX = 'CHECKBOX',
+  DROPDOWN = 'DROPDOWN',
+  CALCULATED = 'CALCULATED',
+  PHOTO = 'PHOTO',
+}
+
+export enum MeasurementSheetFieldWidth {
+  QUARTER = 'QUARTER',
+  THIRD = 'THIRD',
+  HALF = 'HALF',
+  TWO_THIRDS = 'TWO_THIRDS',
+  THREE_QUARTERS = 'THREE_QUARTERS',
+  FULL = 'FULL',
+}
+
+export enum PassFailOperator {
+  GTE = 'GTE',
+  GT = 'GT',
+  LTE = 'LTE',
+  LT = 'LT',
+  EQ = 'EQ',
+  RANGE = 'RANGE',
+  IN = 'IN',
+}
+
+export enum MeasurementSheetRecordStatus {
+  IN_PROGRESS = 'IN_PROGRESS',
+  COMPLETED = 'COMPLETED',
+  VALIDATED = 'VALIDATED',
+}
+
+export enum MarkerType {
+  ASSET = 'ASSET',
+  MEASUREMENT = 'MEASUREMENT',
+  FINDING = 'FINDING',
+}
+
+// ── Core entities ──
+export interface InspectionPlan {
+  id: string;
+  orgId: string;
+  contactId: string;
+  projectId: string | null;
+  inspectionTemplateId: string | null;
+  projectName: string;
+  description: string | null;
+  referenceNumber: string | null;
+  normTypeCode: string;
+  inspectionTypeCode: string;
+  addressStreet: string | null;
+  addressHouseNumber: string | null;
+  addressPostalCode: string | null;
+  addressCity: string | null;
+  gpsLatitude: string | null;
+  gpsLongitude: string | null;
+  plannedDate: string | null;
+  plannedDurationHours: string | null;
+  deadline: string | null;
+  assignedTo: string | null;
+  reviewerId: string | null;
+  statusCode: string;
+  startedAt: string | null;
+  submittedAt: string | null;
+  reviewedAt: string | null;
+  approvedAt: string | null;
+  completedAt: string | null;
+  installationResponsibleId: string | null;
+  notes: string | null;
+  internalNotes: string | null;
+  metadata: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+  syncedAt: string | null;
+  createdBy: string | null;
+  lastModifiedBy: string | null;
+  deviceId: string | null;
+  deletedAt: string | null;
+  contact?: ContactSummary;
+  project?: { id: string; projectNumber: string } | null;
+  assignedUser?: UserSummary | null;
+  reviewer?: UserSummary | null;
+  inspectionTemplate?: InspectionTemplate | null;
+  assets?: Asset[];
+  locations?: InspectionLocation[];
+  signatures?: Signature[];
+  reports?: Report[];
+}
+
+export interface Asset {
+  id: string;
+  orgId: string;
+  inspectionPlanId: string;
+  parentAssetId: string | null;
+  locationId: string | null;
+  assetType: string;
+  name: string;
+  identifier: string | null;
+  locationDescription: string | null;
+  sortOrder: number;
+  treePath: string | null;
+  statusCode: string;
+  technicalData: Record<string, unknown>;
+  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
+  syncedAt: string | null;
+  createdBy: string | null;
+  deviceId: string | null;
+  deletedAt: string | null;
+  parentAsset?: Asset | null;
+  childAssets?: Asset[];
+  location?: InspectionLocation | null;
+  findings?: Finding[];
+}
+
+export interface Finding {
+  id: string;
+  orgId: string;
+  assetId: string;
+  visualInspectionId: string | null;
+  measurementRecordId: string | null;
+  findingTemplateId: string | null;
+  inspectionType: FindingInspectionType;
+  shortDescription: string;
+  longDescription: string | null;
+  classificationValues: Record<string, unknown>;
+  locationDescription: string | null;
+  locationMarker: Record<string, unknown> | null;
+  recommendation: string | null;
+  recommendationCustom: string | null;
+  normReference: string | null;
+  checklistItemId: string | null;
+  statusCode: string;
+  resolvedAt: string | null;
+  resolvedBy: string | null;
+  resolutionNotes: string | null;
+  createdAt: string;
+  updatedAt: string;
+  syncedAt: string | null;
+  createdBy: string | null;
+  deviceId: string | null;
+  deletedAt: string | null;
+  asset?: Asset;
+  findingTemplate?: FindingTemplate | null;
+}
+
+export interface InspectionLocation {
+  id: string;
+  orgId: string;
+  inspectionPlanId: string;
+  parentLocationId: string | null;
+  locationType: string;
+  name: string;
+  identifier: string | null;
+  description: string | null;
+  sortOrder: number;
+  treePath: string | null;
+  technicalData: Record<string, unknown>;
+  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
+  syncedAt: string | null;
+  createdBy: string | null;
+  deviceId: string | null;
+  deletedAt: string | null;
+  parentLocation?: InspectionLocation | null;
+  childLocations?: InspectionLocation[];
+  assets?: Asset[];
+}
+
+export interface Signature {
+  id: string;
+  orgId: string;
+  inspectionPlanId: string;
+  signatoryTypeCode: string;
+  signatoryName: string;
+  signatoryFunction: string | null;
+  signatoryUserId: string | null;
+  signatoryContactId: string | null;
+  signatureData: string;
+  signatureHash: string | null;
+  signedAt: string;
+  ipAddress: string | null;
+  deviceInfo: Record<string, unknown> | null;
+  gpsLatitude: string | null;
+  gpsLongitude: string | null;
+  syncedAt: string | null;
+  deviceId: string | null;
+}
+
+export interface Report {
+  id: string;
+  orgId: string;
+  inspectionPlanId: string;
+  version: number;
+  templateId: string | null;
+  statusCode: string;
+  customContent: Record<string, unknown>;
+  pdfPath: string | null;
+  wordPath: string | null;
+  approvedBy: string | null;
+  approvedAt: string | null;
+  approvalNotes: string | null;
+  sentAt: string | null;
+  sentTo: unknown[];
+  deliveryStatus: string | null;
+  generatedAt: string | null;
+  fileSize: number | null;
+  pageCount: number | null;
+  createdAt: string;
+  updatedAt: string;
+  createdBy: string | null;
+}
+
+// ── Norm & classificatie ──
+export interface NormTypeDefinition {
+  id: string;
+  code: string;
+  label: string;
+  description: string | null;
+  assetTypes: string[];
+  classificationModelId: string | null;
+  isActive: boolean;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+  deletedAt: string | null;
+  createdBy: string;
+  classificationModel?: ClassificationModel | null;
+}
+
+export interface ClassificationModel {
+  id: string;
+  code: string;
+  name: string;
+  description: string | null;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+  createdBy: string;
+  characteristics?: ClassificationCharacteristic[];
+}
+
+export interface ClassificationCharacteristic {
+  id: string;
+  classificationModelId: string;
+  code: string;
+  name: string;
+  description: string | null;
+  sortOrder: number;
+  options?: ClassificationOption[];
+}
+
+export interface ClassificationOption {
+  id: string;
+  characteristicId: string;
+  code: string;
+  name: string;
+  description: string | null;
+  color: string;
+  sortOrder: number;
+}
+
+// ── Checklists ──
+export interface Checklist {
+  id: string;
+  isSystem: boolean;
+  orgId: string | null;
+  code: string | null;
+  name: string;
+  description: string | null;
+  normTypeCode: string;
+  assetTypes: string[];
+  locationTypes: string[];
+  version: string;
+  status: ChecklistStatus;
+  previousVersionId: string | null;
+  createdAt: string;
+  updatedAt: string;
+  publishedAt: string | null;
+  retiredAt: string | null;
+  createdBy: string;
+  updatedBy: string | null;
+  items?: ChecklistItem[];
+}
+
+export interface ChecklistItem {
+  id: string;
+  isSystem: boolean;
+  orgId: string | null;
+  code: string | null;
+  question: string;
+  instruction: string | null;
+  normReference: string | null;
+  categoryId: string | null;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+  createdBy: string;
+}
+
+// ── Templates (constatering / asset- & locatietype / inspectie / meetstaat) ──
+export interface FindingTemplate {
+  id: string;
+  isSystem: boolean;
+  orgId: string | null;
+  code: string | null;
+  categoryId: string | null;
+  shortDescription: string;
+  longDescription: string | null;
+  explanation: string | null;
+  normReference: string | null;
+  classificationModelId: string;
+  defaultClassification: Record<string, unknown>;
+  usageCount: number;
+  lastUsedAt: string | null;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+  createdBy: string;
+}
+
+export interface AssetTypeDefinition {
+  id: string;
+  orgId: string | null;
+  code: string;
+  name: string;
+  description: string | null;
+  icon: string | null;
+  color: string | null;
+  normTypes: unknown[];
+  isActive: boolean;
+  isSystem: boolean;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+  deletedAt: string | null;
+  fields?: AssetTypeField[];
+}
+
+export interface AssetTypeField {
+  id: string;
+  assetTypeDefinitionId: string;
+  fieldKey: string;
+  label: string;
+  description: string | null;
+  helpText: string | null;
+  fieldType: AssetFieldType;
+  isRequired: boolean;
+  defaultValue: string | null;
+  placeholder: string | null;
+  validationRules: Record<string, unknown>;
+  unit: string | null;
+  sortOrder: number;
+  isActive: boolean;
+  displayWidth: string | null;
+  groupName: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface LocationTypeDefinition {
+  id: string;
+  orgId: string | null;
+  code: string;
+  name: string;
+  description: string | null;
+  icon: string | null;
+  color: string | null;
+  normTypes: unknown[];
+  isActive: boolean;
+  isSystem: boolean;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+  deletedAt: string | null;
+  fields?: LocationTypeField[];
+}
+
+export interface LocationTypeField {
+  id: string;
+  locationTypeDefinitionId: string;
+  fieldKey: string;
+  label: string;
+  description: string | null;
+  helpText: string | null;
+  fieldType: AssetFieldType;
+  isRequired: boolean;
+  defaultValue: string | null;
+  placeholder: string | null;
+  validationRules: Record<string, unknown>;
+  unit: string | null;
+  sortOrder: number;
+  isActive: boolean;
+  displayWidth: string | null;
+  groupName: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface InspectionTemplate {
+  id: string;
+  isSystem: boolean;
+  orgId: string | null;
+  forkedFromId: string | null;
+  code: string;
+  name: string;
+  description: string | null;
+  normTypeCode: string;
+  classificationModelId: string;
+  version: string;
+  status: TemplateStatus;
+  previousVersionId: string | null;
+  createdAt: string;
+  updatedAt: string;
+  publishedAt: string | null;
+  retiredAt: string | null;
+  createdBy: string;
+  updatedBy: string | null;
+  classificationModel?: ClassificationModel;
+}
+
+export interface MeasurementSheetTemplate {
+  id: string;
+  code: string;
+  name: string;
+  description: string | null;
+  normTypeCode: string;
+  assetTypes: string[];
+  locationTypes: string[];
+  version: string;
+  status: MeasurementSheetTemplateStatus;
+  previousVersionId: string | null;
+  finalCheckRules: unknown[];
+  createdAt: string;
+  updatedAt: string;
+  publishedAt: string | null;
+  retiredAt: string | null;
+  createdBy: string;
+  updatedBy: string | null;
+  sections?: MeasurementSheetSection[];
+}
+
+export interface MeasurementSheetSection {
+  id: string;
+  templateId: string;
+  code: string;
+  name: string;
+  description: string | null;
+  isRepeating: boolean;
+  minRows: number;
+  sortOrder: number;
+  collapsible: boolean;
+  defaultCollapsed: boolean;
+  rowValidationRules: unknown[];
+  fields?: MeasurementSheetField[];
+}
+
+export interface MeasurementSheetField {
+  id: string;
+  sectionId: string;
+  code: string;
+  name: string;
+  description: string | null;
+  fieldType: MeasurementSheetFieldType;
+  sortOrder: number;
+  placeholder: string | null;
+  width: MeasurementSheetFieldWidth;
+  unit: string | null;
+  decimals: number | null;
+  minValue: string | null;
+  maxValue: string | null;
+  dropdownOptions: Record<string, unknown> | null;
+  formula: string | null;
+  formulaDependencies: string[];
+  isRequired: boolean;
+  passFailEnabled: boolean;
+  passFailOperator: PassFailOperator | null;
+  passFailValue: string | null;
+  passFailMinValue: string | null;
+  passFailMaxValue: string | null;
+  passFailValues: Record<string, unknown> | null;
+  passFailFailMessage: string | null;
+  autoFindingEnabled: boolean;
+  autoFindingTemplateId: string | null;
+  copyValueOnNewRow: boolean;
+  allowBulkEdit: boolean;
+}

@@ -41,6 +41,8 @@ describe('Cross-tenant FK isolation (e2e)', () => {
   let templateBId: string;
   let planBId: string;
   let assetBId: string;
+  let categoryBId: string;
+  let cmBId: string;
 
   const createdPlanningIds: string[] = [];
   const createdTaskIds: string[] = [];
@@ -184,6 +186,7 @@ describe('Cross-tenant FK isolation (e2e)', () => {
     const cmB = await prisma.classificationModel.create({
       data: { code: 'e2extcm', name: 'Classificatie B', createdBy: userB.id },
     });
+    cmBId = cmB.id;
     const templateB = await prisma.inspectionTemplate.create({
       data: {
         orgId: orgB.id,
@@ -216,6 +219,11 @@ describe('Cross-tenant FK isolation (e2e)', () => {
       },
     });
     assetBId = assetB.id;
+    // Org B's categorie (config org+systeem) voor finding-template body-FK test.
+    const categoryB = await prisma.category.create({
+      data: { orgId: orgB.id, name: 'Categorie B', createdBy: userB.id },
+    });
+    categoryBId = categoryB.id;
 
     // Login as org A's admin
     const loginRes = await request(app.getHttpServer())
@@ -246,7 +254,9 @@ describe('Cross-tenant FK isolation (e2e)', () => {
       await prisma.finding.deleteMany({ where: { orgId: { in: orgIds } } });
       await prisma.asset.deleteMany({ where: { orgId: { in: orgIds } } });
       await prisma.inspectionPlan.deleteMany({ where: { orgId: { in: orgIds } } });
+      await prisma.findingTemplate.deleteMany({ where: { orgId: { in: orgIds } } });
       await prisma.inspectionTemplate.deleteMany({ where: { orgId: { in: orgIds } } });
+      await prisma.category.deleteMany({ where: { orgId: { in: orgIds } } });
       await prisma.classificationModel.deleteMany({ where: { code: 'e2extcm' } });
       await prisma.normTypeDefinition.deleteMany({ where: { code: 'e2extnorm' } });
       await prisma.contactCustomerGroup.deleteMany({
@@ -537,6 +547,68 @@ describe('Cross-tenant FK isolation (e2e)', () => {
         .set('Authorization', `Bearer ${tokenA}`)
         .send({ inspectionType: 'visual', shortDescription: 'Sneaky' })
         .expect(404);
+    });
+
+    it('rejects creating a location under a cross-tenant plan (404)', async () => {
+      await request(app.getHttpServer())
+        .post(`/api/v1/inspection-plans/${planBId}/locations`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({ locationType: 'ruimte', name: 'Sneaky' })
+        .expect(404);
+    });
+
+    it('rejects creating a visual-inspection on a cross-tenant asset (404)', async () => {
+      await request(app.getHttpServer())
+        .post(`/api/v1/assets/${assetBId}/visual-inspections`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({})
+        .expect(404);
+    });
+
+    it('rejects creating a measurement-record on a cross-tenant asset (404)', async () => {
+      await request(app.getHttpServer())
+        .post(`/api/v1/assets/${assetBId}/measurement-records`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({})
+        .expect(404);
+    });
+
+    it('rejects creating a standalone-measurement under a cross-tenant plan (404)', async () => {
+      await request(app.getHttpServer())
+        .post(`/api/v1/inspection-plans/${planBId}/standalone-measurements`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({
+          locationId: '00000000-0000-0000-0000-000000000000',
+          measurementType: 'isolatie',
+        })
+        .expect(404);
+    });
+  });
+
+  // ─── Body-FK isolation (assertSameOrg → 403) ──────────
+  describe('cross-tenant body FKs (inspection execution + config)', () => {
+    it('rejects a measurement-sheet-record with a cross-tenant assetId (403)', async () => {
+      await request(app.getHttpServer())
+        .post('/api/v1/measurement-sheet-records')
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({
+          assetId: assetBId,
+          templateId: '00000000-0000-0000-0000-000000000000',
+        })
+        .expect(403);
+    });
+
+    it('rejects a finding-template with a cross-tenant categoryId (403)', async () => {
+      await request(app.getHttpServer())
+        .post('/api/v1/finding-templates')
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({
+          shortDescription: 'Sneaky',
+          classificationModelId: cmBId,
+          defaultClassification: {},
+          categoryId: categoryBId,
+        })
+        .expect(403);
     });
   });
 });

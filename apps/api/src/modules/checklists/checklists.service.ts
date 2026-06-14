@@ -250,7 +250,12 @@ export class ChecklistsService {
     this.assertManageable(checklist, user);
     this.assertConcept(checklist);
 
-    await this.prisma.checklist.delete({ where: { id } });
+    // itemLinks cascaden via FK; versionHistory heeft geen cascade en moet
+    // expliciet weg vóór de checklist (anders P2003 → 400).
+    await this.prisma.$transaction([
+      this.prisma.checklistVersionHistory.deleteMany({ where: { checklistId: id } }),
+      this.prisma.checklist.delete({ where: { id } }),
+    ]);
     return { deleted: true };
   }
 

@@ -1,6 +1,7 @@
-import { PrismaClient, Role, ContactType, LogType, PriceType, RequestSource, RequestStatus, Priority, QuoteStatus, NotificationType, PlanningStatus, AcceptanceStatus, ProjectStatus } from '@prisma/client';
+import { PrismaClient, Role, ContactType, LogType, PriceType, RequestSource, RequestStatus, Priority, QuoteStatus, NotificationType, PlanningStatus, AcceptanceStatus, ProjectStatus, AssetFieldType, ChecklistStatus, TemplateStatus, MeasurementSheetTemplateStatus, MeasurementSheetFieldType, FindingInspectionType } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { randomUUID } from 'crypto';
+import { seedLookups } from './seed-lookups';
 
 const prisma = new PrismaClient();
 
@@ -8,6 +9,93 @@ async function main() {
   console.log('🌱 Seeding database...');
 
   // Clean existing imp_ data (safe for shared DB — only deletes our tables)
+  // ─── Inspectiedomein (Fase 1) — fully downstream, clean children-first ───
+  // client-portal
+  await prisma.findingResolutionPhoto.deleteMany();
+  await prisma.findingResolution.deleteMany();
+  await prisma.messageAttachment.deleteMany();
+  await prisma.inspectionMessage.deleteMany();
+  await prisma.clientMagicLink.deleteMany();
+  await prisma.inspectionClientAccess.deleteMany();
+  await prisma.clientAccess.deleteMany();
+  await prisma.clientRequest.deleteMany();
+  await prisma.clientUser.deleteMany();
+  // sync & devices
+  await prisma.syncQueue.deleteMany();
+  await prisma.deviceRegistration.deleteMany();
+  // voice
+  await prisma.voiceUserPrompt.deleteMany();
+  await prisma.voiceTemplatePrompt.deleteMany();
+  await prisma.voiceBasePrompt.deleteMany();
+  // document generation
+  await prisma.documentSignature.deleteMany();
+  await prisma.generatedDocument.deleteMany();
+  await prisma.documentSection.deleteMany();
+  await prisma.documentTemplateDocxRevision.deleteMany();
+  await prisma.documentTemplate.deleteMany();
+  // location images & standalone measurements
+  await prisma.locationImageMarker.deleteMany();
+  await prisma.standaloneMeasurementValue.deleteMany();
+  await prisma.standaloneMeasurement.deleteMany();
+  await prisma.locationImage.deleteMany();
+  // measurement sheets
+  await prisma.measurementSheetRecord.deleteMany();
+  await prisma.measurementSheetVersionHistory.deleteMany();
+  await prisma.measurementSheetField.deleteMany();
+  await prisma.measurementSheetSection.deleteMany();
+  // inspection templates (links before the measurement-sheet templates they reference)
+  await prisma.inspectionTemplateVersionHistory.deleteMany();
+  await prisma.inspectionTemplateMeasurementSheetLink.deleteMany();
+  await prisma.inspectionTemplateChecklistLink.deleteMany();
+  await prisma.measurementSheetTemplate.deleteMany();
+  // execution
+  await prisma.finding.deleteMany();
+  await prisma.measurementRecord.deleteMany();
+  await prisma.visualInspection.deleteMany();
+  await prisma.photo.deleteMany();
+  await prisma.signature.deleteMany();
+  await prisma.report.deleteMany();
+  await prisma.asset.deleteMany();
+  await prisma.inspectionLocation.deleteMany();
+  await prisma.inspectionPlan.deleteMany();
+  // checklists
+  await prisma.checklistVersionHistory.deleteMany();
+  await prisma.checklistItemLink.deleteMany();
+  await prisma.checklist.deleteMany();
+  await prisma.checklistItem.deleteMany();
+  // templates & types (finding-templates before category + classification model;
+  // measurement-field-templates before norm-configurations they belong to)
+  await prisma.findingTemplate.deleteMany();
+  await prisma.category.deleteMany();
+  await prisma.reportTemplate.deleteMany();
+  await prisma.assetTypeMeasurementConfig.deleteMany();
+  await prisma.assetTypeConstraint.deleteMany();
+  await prisma.assetTypeField.deleteMany();
+  await prisma.assetTypeDefinition.deleteMany();
+  await prisma.measurementFieldTemplate.deleteMany();
+  await prisma.locationTypeConstraint.deleteMany();
+  await prisma.locationTypeField.deleteMany();
+  await prisma.locationTypeDefinition.deleteMany();
+  await prisma.inspectionTemplate.deleteMany();
+  // norm & classification (norm-type-definitions before classification models)
+  await prisma.normConfiguration.deleteMany();
+  await prisma.classificationOption.deleteMany();
+  await prisma.classificationCharacteristic.deleteMany();
+  await prisma.normTypeDefinition.deleteMany();
+  await prisma.classificationModel.deleteMany();
+  // per-org lookups (relate only to Organization → before organization delete)
+  await prisma.inspectionTypeOption.deleteMany();
+  await prisma.planStatusType.deleteMany();
+  await prisma.assetStatusType.deleteMany();
+  await prisma.findingStatusType.deleteMany();
+  await prisma.reportStatusType.deleteMany();
+  await prisma.signatoryTypeOption.deleteMany();
+  await prisma.signerRoleOption.deleteMany();
+  await prisma.passFailStatusType.deleteMany();
+  await prisma.resolutionStatusType.deleteMany();
+  await prisma.clientRequestTypeOption.deleteMany();
+  await prisma.clientRequestStatusType.deleteMany();
+  // ─── Beheer-domein ───────────────────────────────────────
   // PRD-06 tables (no dependents)
   await prisma.notificationGroupPref.deleteMany();
   await prisma.notificationPref.deleteMany();
@@ -160,7 +248,7 @@ async function main() {
   const passwordHash = await bcrypt.hash('Password123!', 10);
 
   // Superuser (no org)
-  await prisma.user.create({
+  const superuser = await prisma.user.create({
     data: {
       email: 'superuser@inspexi.nl',
       passwordHash,
@@ -1274,6 +1362,286 @@ async function main() {
   });
   console.log(`  ✓ Project: ${project2.projectNumber}`);
   void project2;
+
+  // ─── Inspectiedomein (Fase 1) ──────────────────────────
+  console.log('\n🔍 Seeding inspection domain...');
+
+  // 1. Globale lookup-defaults (orgId null, isSystem)
+  await seedLookups(prisma);
+  console.log('  ✓ Inspection lookup defaults (11 sets)');
+
+  // 2. Classificatiemodel (systeem) met kenmerken + opties
+  const classModelNen = await prisma.classificationModel.create({
+    data: {
+      code: 'NEN1010_DEFAULT',
+      name: 'NEN 1010 standaardclassificatie',
+      description: 'Standaardclassificatie voor NEN 1010-inspecties',
+      createdBy: superuser.id,
+      characteristics: {
+        create: [
+          {
+            code: 'SEVERITY',
+            name: 'Ernst',
+            sortOrder: 0,
+            options: {
+              create: [
+                { code: 'C1', name: 'Gevaarlijk — direct herstellen', color: '#DC2626', sortOrder: 0 },
+                { code: 'C2', name: 'Onveilig — herstel aanbevolen', color: '#D97706', sortOrder: 1 },
+                { code: 'C3', name: 'Verbetering mogelijk', color: '#CA8A04', sortOrder: 2 },
+                { code: 'FI', name: 'Nader onderzoek nodig', color: '#7C3AED', sortOrder: 3 },
+              ],
+            },
+          },
+        ],
+      },
+    },
+  });
+
+  const classModelScios = await prisma.classificationModel.create({
+    data: {
+      code: 'SCOPE8_DEFAULT',
+      name: 'SCIOS Scope 8 classificatie',
+      description: 'Standaardclassificatie voor SCIOS Scope 8-inspecties',
+      createdBy: superuser.id,
+      characteristics: {
+        create: [
+          {
+            code: 'CATEGORY',
+            name: 'Categorie',
+            sortOrder: 0,
+            options: {
+              create: [
+                { code: 'A', name: 'Categorie A — ernstig', color: '#DC2626', sortOrder: 0 },
+                { code: 'B', name: 'Categorie B — matig', color: '#D97706', sortOrder: 1 },
+                { code: 'C', name: 'Categorie C — gering', color: '#16A34A', sortOrder: 2 },
+              ],
+            },
+          },
+        ],
+      },
+    },
+  });
+  console.log('  ✓ Classification models (2)');
+
+  // 3. Norm-type-definitions (systeem, globaal)
+  const normDefs = [
+    { code: 'NEN1010', label: 'NEN 1010', description: 'Veiligheidsbepalingen voor laagspanningsinstallaties', assetTypes: ['electrical_installation'], classificationModelId: classModelNen.id, sortOrder: 0 },
+    { code: 'NEN3140', label: 'NEN 3140', description: 'Bedrijfsvoering van elektrische installaties — laagspanning', assetTypes: ['electrical_installation'], classificationModelId: classModelNen.id, sortOrder: 1 },
+    { code: 'SCOPE_8', label: 'SCIOS Scope 8', description: 'Inspectie elektrisch materieel op brandrisico', assetTypes: ['electrical_installation'], classificationModelId: classModelScios.id, sortOrder: 2 },
+    { code: 'SCOPE_10', label: 'SCIOS Scope 10', description: 'Inspectie zonnestroominstallaties', assetTypes: ['pv_installation'], classificationModelId: null, sortOrder: 3 },
+    { code: 'IEC62446_1', label: 'IEC 62446-1', description: 'Inspectie en testen van PV-systemen', assetTypes: ['pv_installation'], classificationModelId: null, sortOrder: 4 },
+    { code: 'SCOPE_12', label: 'SCIOS Scope 12', description: 'Inspectie zonnestroominstallaties — brandveiligheid', assetTypes: ['pv_installation'], classificationModelId: null, sortOrder: 5 },
+  ];
+  for (const n of normDefs) {
+    await prisma.normTypeDefinition.create({ data: { ...n, createdBy: superuser.id } });
+  }
+  console.log('  ✓ Norm type definitions (6)');
+
+  // 4. Asset- en locatietype-definitions (systeem) met velden
+  await prisma.assetTypeDefinition.create({
+    data: {
+      code: 'electrical_installation',
+      name: 'Elektrische installatie',
+      description: 'Laagspanningsinstallatie',
+      icon: 'zap',
+      color: '#2563EB',
+      normTypes: ['NEN1010', 'NEN3140', 'SCOPE_8'],
+      isSystem: true,
+      sortOrder: 0,
+      fields: {
+        create: [
+          { fieldKey: 'rated_current', label: 'Nominale stroom', fieldType: AssetFieldType.number, unit: 'A', sortOrder: 0 },
+          { fieldKey: 'phases', label: 'Aantal fasen', fieldType: AssetFieldType.select, sortOrder: 1 },
+        ],
+      },
+    },
+  });
+  await prisma.assetTypeDefinition.create({
+    data: {
+      code: 'pv_installation',
+      name: 'Zonnestroominstallatie',
+      description: 'PV-installatie',
+      icon: 'sun',
+      color: '#CA8A04',
+      normTypes: ['SCOPE_10', 'IEC62446_1', 'SCOPE_12'],
+      isSystem: true,
+      sortOrder: 1,
+      fields: {
+        create: [
+          { fieldKey: 'peak_power', label: 'Piekvermogen', fieldType: AssetFieldType.number, unit: 'Wp', sortOrder: 0 },
+        ],
+      },
+    },
+  });
+  await prisma.locationTypeDefinition.create({
+    data: {
+      code: 'distribution_room',
+      name: 'Verdeelruimte',
+      description: 'Ruimte met verdeelinrichting',
+      icon: 'door-open',
+      color: '#0891B2',
+      normTypes: ['NEN1010', 'NEN3140'],
+      isSystem: true,
+      sortOrder: 0,
+      fields: {
+        create: [
+          { fieldKey: 'floor', label: 'Verdieping', fieldType: AssetFieldType.text, sortOrder: 0 },
+        ],
+      },
+    },
+  });
+  console.log('  ✓ Asset/location type definitions (3)');
+
+  // 5. Checklist (systeem) met items + links
+  const checklistItemA = await prisma.checklistItem.create({
+    data: { isSystem: true, code: 'NEN1010-001', question: 'Is de hoofdschakelaar correct geïnstalleerd en bereikbaar?', normReference: 'NEN 1010 art. 462', createdBy: superuser.id },
+  });
+  const checklistItemB = await prisma.checklistItem.create({
+    data: { isSystem: true, code: 'NEN1010-002', question: 'Zijn alle aardverbindingen aanwezig en deugdelijk?', normReference: 'NEN 1010 art. 411', createdBy: superuser.id },
+  });
+  const checklistNen = await prisma.checklist.create({
+    data: {
+      isSystem: true,
+      code: 'CL-NEN1010',
+      name: 'NEN 1010 basis-inspectiechecklist',
+      description: 'Standaardchecklist voor NEN 1010-eerstinspecties',
+      normTypeCode: 'NEN1010',
+      assetTypes: ['electrical_installation'],
+      locationTypes: ['distribution_room'],
+      status: ChecklistStatus.ACTIEF,
+      publishedAt: new Date(),
+      createdBy: superuser.id,
+      itemLinks: {
+        create: [
+          { checklistItemId: checklistItemA.id, sortOrder: 0, isRequired: true },
+          { checklistItemId: checklistItemB.id, sortOrder: 1, isRequired: true },
+        ],
+      },
+    },
+  });
+  console.log('  ✓ Checklist + items (1 checklist, 2 items)');
+
+  // 6. Meetstaat-template (globaal) met sectie + velden
+  const measSheet = await prisma.measurementSheetTemplate.create({
+    data: {
+      code: 'MS-NEN1010-ISO',
+      name: 'NEN 1010 isolatieweerstandmeting',
+      description: 'Meetstaat voor isolatieweerstand- en doorgangsmetingen',
+      normTypeCode: 'NEN1010',
+      assetTypes: ['electrical_installation'],
+      locationTypes: [],
+      status: MeasurementSheetTemplateStatus.ACTIEF,
+      publishedAt: new Date(),
+      createdBy: superuser.id,
+      sections: {
+        create: [
+          {
+            code: 'isolation',
+            name: 'Isolatieweerstand',
+            sortOrder: 0,
+            fields: {
+              create: [
+                { code: 'group', name: 'Groep', fieldType: MeasurementSheetFieldType.TEXT, sortOrder: 0 },
+                { code: 'r_iso', name: 'Isolatieweerstand', fieldType: MeasurementSheetFieldType.NUMBER, unit: 'MΩ', decimals: 2, sortOrder: 1, isRequired: true },
+              ],
+            },
+          },
+        ],
+      },
+    },
+  });
+  console.log('  ✓ Measurement sheet template + section/fields (1)');
+
+  // 7. Inspectie-template (verwijst naar classificatiemodel; links naar checklist + meetstaat)
+  const inspTemplate = await prisma.inspectionTemplate.create({
+    data: {
+      isSystem: true,
+      code: 'IT-NEN1010-INITIAL',
+      name: 'NEN 1010 eerste inspectie',
+      description: 'Inspectietemplate voor NEN 1010-eerstinspecties',
+      normTypeCode: 'NEN1010',
+      classificationModelId: classModelNen.id,
+      status: TemplateStatus.ACTIEF,
+      publishedAt: new Date(),
+      createdBy: superuser.id,
+      checklistLinks: {
+        create: [{ checklistId: checklistNen.id, assetTypes: ['electrical_installation'], sortOrder: 0 }],
+      },
+      measurementSheetLinks: {
+        create: [{ measurementSheetTemplateId: measSheet.id, assetTypes: ['electrical_installation'], sortOrder: 0 }],
+      },
+    },
+  });
+  console.log('  ✓ Inspection template (1)');
+
+  // 8. Demo-inspectieplan (org1, contact1, inspecteur) met assets + findings
+  const demoPlan = await prisma.inspectionPlan.create({
+    data: {
+      orgId: org1.id,
+      contactId: contact1.id,
+      projectName: 'NEN 1010 inspectie hoofdkantoor De Vries',
+      description: 'Periodieke veiligheidsinspectie van de elektrische installatie',
+      referenceNumber: 'INSP-2026-0001',
+      normTypeCode: 'NEN1010',
+      inspectionTypeCode: 'initial',
+      statusCode: 'draft',
+      inspectionTemplateId: inspTemplate.id,
+      assignedTo: createdOrg1Users[Role.INSPECTEUR],
+      addressStreet: 'Industrieweg',
+      addressHouseNumber: '12',
+      addressPostalCode: '1234 AB',
+      addressCity: 'Amsterdam',
+      plannedDate: new Date('2026-07-01'),
+      createdBy: createdOrg1Users[Role.ORG_ADMIN],
+    },
+  });
+
+  const asset1 = await prisma.asset.create({
+    data: {
+      orgId: org1.id,
+      inspectionPlanId: demoPlan.id,
+      assetType: 'electrical_installation',
+      name: 'Hoofdverdeler HVK',
+      identifier: 'HVK-01',
+      statusCode: 'new',
+      sortOrder: 0,
+    },
+  });
+  const asset2 = await prisma.asset.create({
+    data: {
+      orgId: org1.id,
+      inspectionPlanId: demoPlan.id,
+      assetType: 'electrical_installation',
+      name: 'Onderverdeler kantoor',
+      identifier: 'OVK-02',
+      statusCode: 'new',
+      sortOrder: 1,
+    },
+  });
+
+  await prisma.finding.create({
+    data: {
+      orgId: org1.id,
+      assetId: asset1.id,
+      inspectionType: FindingInspectionType.visual,
+      shortDescription: 'Ontbrekende afdekking op verdeelinrichting',
+      longDescription: 'De afdekking van de hoofdverdeler ontbreekt, aanraakgevaar voor spanningvoerende delen.',
+      normReference: 'NEN 1010 art. 412',
+      statusCode: 'open',
+    },
+  });
+  await prisma.finding.create({
+    data: {
+      orgId: org1.id,
+      assetId: asset2.id,
+      inspectionType: FindingInspectionType.measurement,
+      shortDescription: 'Isolatieweerstand onder norm op groep 3',
+      longDescription: 'Gemeten isolatieweerstand 0,3 MΩ, onder de minimumwaarde van 1 MΩ.',
+      normReference: 'NEN 1010 art. 612',
+      statusCode: 'open',
+    },
+  });
+  console.log('  ✓ Demo inspection plan + 2 assets + 2 findings');
 
   console.log('\n✅ Seed completed successfully!');
   console.log('\n📋 Login credentials (all use Password123!):');

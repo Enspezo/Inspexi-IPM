@@ -25,6 +25,29 @@ const AUDITED_MODELS = new Set([
   'Project',
   'WorkOrder',
   'WorkOrderLine',
+  // Inspectiedomein (Fase 1)
+  'InspectionPlan',
+  'Asset',
+  'Finding',
+  'InspectionLocation',
+  'Checklist',
+  'ChecklistItem',
+  'Category',
+  'FindingTemplate',
+  'ClassificationModel',
+  'NormTypeDefinition',
+  'AssetTypeDefinition',
+  'LocationTypeDefinition',
+  'InspectionTemplate',
+  'MeasurementSheetTemplate',
+  'MeasurementSheetRecord',
+  // Inspectiedomein (Fase 2 — uitvoering)
+  'VisualInspection',
+  'MeasurementRecord',
+  'StandaloneMeasurement',
+  'LocationImage',
+  'GeneratedDocument',
+  'ClientRequest',
 ]);
 
 /** Fields excluded from change tracking */
@@ -57,6 +80,29 @@ const MODEL_TABLE_MAP: Record<string, string> = {
   Project: 'imp_projects',
   WorkOrder: 'imp_work_orders',
   WorkOrderLine: 'imp_work_order_lines',
+  // Inspectiedomein (Fase 1)
+  InspectionPlan: 'imp_inspection_plans',
+  Asset: 'imp_assets',
+  Finding: 'imp_findings',
+  InspectionLocation: 'imp_inspection_locations',
+  Checklist: 'imp_checklists',
+  ChecklistItem: 'imp_checklist_items',
+  Category: 'imp_categories',
+  FindingTemplate: 'imp_finding_templates',
+  ClassificationModel: 'imp_classification_models',
+  NormTypeDefinition: 'imp_norm_type_definitions',
+  AssetTypeDefinition: 'imp_asset_type_definitions',
+  LocationTypeDefinition: 'imp_location_type_definitions',
+  InspectionTemplate: 'imp_inspection_templates',
+  MeasurementSheetTemplate: 'imp_measurement_sheet_templates',
+  MeasurementSheetRecord: 'imp_measurement_sheet_records',
+  // Inspectiedomein (Fase 2 — uitvoering)
+  VisualInspection: 'imp_visual_inspections',
+  MeasurementRecord: 'imp_measurement_records',
+  StandaloneMeasurement: 'imp_standalone_measurements',
+  LocationImage: 'imp_location_images',
+  GeneratedDocument: 'imp_generated_documents',
+  ClientRequest: 'imp_client_requests',
 };
 
 /** Audit-failure alerting thresholds (in-memory, single process) */

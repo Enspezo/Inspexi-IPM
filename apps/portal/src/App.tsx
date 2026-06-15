@@ -109,6 +109,20 @@ const ErrorReportsPage = lazy(() => import('@/pages/error-reports/error-reports-
 const NotesPage = lazy(() => import('@/pages/notes/notes-page'));
 const WorkOrdersPage = lazy(() => import('@/pages/work-orders/work-orders-page'));
 const WorkOrderDetailPage = lazy(() => import('@/pages/work-orders/work-order-detail-page'));
+// Inspectiedomein (Fase 5)
+const InspectionsPage = lazy(() => import('@/pages/inspections/inspections-page'));
+const InspectionDetailPage = lazy(() => import('@/pages/inspections/inspection-detail-page'));
+const AssetsPage = lazy(() => import('@/pages/assets/assets-page'));
+const ChecklistsPage = lazy(() => import('@/pages/checklists/checklists-page'));
+const FindingTemplatesPage = lazy(() => import('@/pages/finding-templates/finding-templates-page'));
+const ClassificationModelsPage = lazy(() => import('@/pages/classification-models/classification-models-page'));
+const NormTypesPage = lazy(() => import('@/pages/norm-types/norm-types-page'));
+const AssetTypesPage = lazy(() => import('@/pages/asset-types/asset-types-page'));
+const LocationTypesPage = lazy(() => import('@/pages/location-types/location-types-page'));
+const MeasurementSheetTemplatesPage = lazy(() => import('@/pages/measurement-sheet-templates/measurement-sheet-templates-page'));
+const InspectionTemplatesPage = lazy(() => import('@/pages/inspection-templates/inspection-templates-page'));
+const LookupsIndexPage = lazy(() => import('@/pages/lookups/lookups-index-page'));
+const LookupManagePage = lazy(() => import('@/pages/lookups/lookup-manage-page'));
 
 function PageLoader() {
   return (
@@ -184,6 +198,20 @@ export default function App() {
             <Route path="/search" element={<SearchPage />} />
             <Route path="/error-reports" element={<ErrorReportsPage />} />
             <Route path="/notities" element={<NotesPage />} />
+            {/* Inspectiedomein (Fase 5) */}
+            <Route path="/inspections" element={<InspectionsPage />} />
+            <Route path="/inspections/:id" element={<InspectionDetailPage />} />
+            <Route path="/assets" element={<AssetsPage />} />
+            <Route path="/checklists" element={<ChecklistsPage />} />
+            <Route path="/finding-templates" element={<FindingTemplatesPage />} />
+            <Route path="/classification-models" element={<ClassificationModelsPage />} />
+            <Route path="/norm-types" element={<NormTypesPage />} />
+            <Route path="/asset-types" element={<AssetTypesPage />} />
+            <Route path="/location-types" element={<LocationTypesPage />} />
+            <Route path="/measurement-sheet-templates" element={<MeasurementSheetTemplatesPage />} />
+            <Route path="/inspection-templates" element={<InspectionTemplatesPage />} />
+            <Route path="/lookups" element={<LookupsIndexPage />} />
+            <Route path="/lookups/:kind" element={<LookupManagePage />} />
           </Route>
         </Route>
 

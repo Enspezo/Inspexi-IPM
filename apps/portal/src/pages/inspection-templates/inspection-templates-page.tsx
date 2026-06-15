@@ -2,6 +2,7 @@
 // Zoeken client-side; status via StatusBadge (geen lookup). Geen server-paginatie.
 
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import type { InspectionTemplate } from '@/types';
 import { ErrorBox, Spinner, Table, Input, StatusBadge } from '@/components/ui';
 import { DetailPageLayout } from '@/components/layout/detail-page-layout';
@@ -17,7 +18,11 @@ export default function InspectionTemplatesPage() {
   const columns: ColumnDef<InspectionTemplate>[] = [
     {
       key: 'name', header: 'Naam', pinned: true, sortable: true, sortKey: 'name',
-      render: (t) => <span className="font-medium text-gray-900">{t.name}</span>,
+      render: (t) => (
+        <Link to={`/inspection-templates/${t.id}`} className="font-medium text-primary-600 hover:text-primary-800 hover:underline">
+          {t.name}
+        </Link>
+      ),
     },
     {
       key: 'code', header: 'Code', sortable: true, sortKey: 'code',

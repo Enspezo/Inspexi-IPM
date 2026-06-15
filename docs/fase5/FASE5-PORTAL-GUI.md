@@ -95,22 +95,66 @@ Afronden:
 - Géén lokale merge in dev; review/merge via de PR.
 ```
 
-## 7. Prompt K — Fase 5d/5e: block-editor + floor-plan (apart)
+## 7. Prompt K1 — Fase 5d: block-editor (eigen branch)
 ```
-Doel: bouw de document-builder (block-editor) voor inspectie-templates en de floor-plan-viewer.
-Lees eerst: docs/fase4 (DocumentTemplate.contentBlocks) en de App-portal componenten in
-../Inspexi-App/apps/portal/src/components/block-editor en .../location-image-viewer.
+Doel: bouw de document-builder (block-editor) voor inspectie-templates in de Beheer-portal.
+
+Branch & voorwaarden (eerst checken, niets stiekem aanmaken):
+- git fetch --all --prune && git switch dev && git pull --ff-only
+- git switch -c feat/portal-block-editor          # verse branch vanaf de actuele dev
+- Verifieer dat Fase 4 + Fase 5-fundament op dev staan (anders STOP en meld):
+  apps/api/src/modules/document-templates en generated-documents bestaan; in de portal bestaan
+  src/lib/lookups.ts en de inspectie-overzichtspagina's (PR #14 gemerged).
+
+Lees eerst: docs/fase4/FASE4-DOCGEN.md (DocumentTemplate.contentBlocks + TemplateMode),
+de gedeelde block-editor-types, en als bron ../Inspexi-App/apps/portal/src/components/block-editor.
 
 Stappen:
-1. Block-editor: components/block-editor/ met ContentBlock-types + per-block renderers (TipTap voor
-   rich_text, @dnd-kit voor volgorde). Inbouwen als tab op de inspectie-template-detailpagina;
-   opslaan via PUT .../document-templates (contentBlocks). Port de logica uit de App-bron.
-2. Floor-plan: pnpm add konva react-konva; components/location-image-viewer/ met markers
-   (asset/measurement/finding); koppelen aan /location-images (+ markers).
+1. components/block-editor/: ContentBlock-types + per-block renderers — rich_text (TipTap, al in de
+   portal aanwezig), image, divider, spacer, placeholder, toc, findings_table, asset_summary,
+   measurement_data, signature_block. Volgorde via @dnd-kit (al aanwezig). Port de logica uit de App.
+2. Inspectie-template-detailpagina: bouw 'm (Beheer detail-patroon: DetailPageLayout + AuditHistory +
+   tabs) als die nog niet bestaat, met een tab "Document-builder" die de block-editor host.
+3. Opslaan/laden via de document-templates endpoints (Fase 4): contentBlocks op de PLAN/REPORT-
+   DocumentTemplate; templateMode = BLOCKS. Preview via de Fase 4 preview-endpoint.
 
-Definition of done: build + typecheck groen; een template-document is met blokken te bewerken en
-genereert correct (Fase 4 preview); markers op een floor-plan zijn te plaatsen en op te slaan.
-Commit: `feat(portal): block editor + floor-plan viewer (Fase 5d/5e)`.
+Constraints: Tailwind v4 + custom componenten (géén shadcn); hergebruik bestaande ui-componenten en
+rich-text-editor.tsx. Geen handmatige fetch in useEffect — hooks + apiClient + TanStack Query.
+
+Verificatie & afronden:
+- `pnpm --filter <portal> typecheck` + `npx turbo run build` groen; een template met blokken bewerken
+  → opslaan → Fase 4-preview rendert correct.
+- Commit op feat/portal-block-editor; `git push -u origin feat/portal-block-editor`;
+  `gh pr create --base dev --head feat/portal-block-editor --title "Fase 5d — block-editor"`.
+- Géén lokale merge in dev.
+```
+
+## 8. Prompt K2 — Fase 5e: Konva floor-plan (eigen branch)
+```
+Doel: bouw de floor-plan / locatie-afbeelding-viewer met klikbare markers in de Beheer-portal.
+
+Branch & voorwaarden:
+- git fetch --all --prune && git switch dev && git pull --ff-only
+- git switch -c feat/portal-floorplan              # verse branch vanaf de actuele dev
+- Verifieer dat de location-images backend (Fase 2) op dev staat:
+  apps/api/src/modules/location-images bestaat. Zo niet → STOP en meld.
+
+Lees eerst: docs/fase2 (location-images + markers) en als bron
+../Inspexi-App/apps/portal/src/components/location-image-viewer (Konva-canvas + markers).
+
+Stappen:
+1. pnpm --filter <portal> add konva react-konva
+2. components/location-image-viewer/: afbeelding op een Konva-canvas, klikbare markers met type
+   asset|measurement|finding (kleur/icoon per type via de lookups), toevoegen/verslepen/verwijderen.
+3. Koppelen aan de endpoints: GET/POST/DELETE /location-images (+ markers); upload via de bestaande
+   authenticated-upload/-download-route. Inbouwen op de inspectie-locatie-detail of een eigen pagina.
+
+Constraints: Tailwind v4 + custom componenten; lookups-gedreven marker-labels/-kleuren via useLookups.
+
+Verificatie & afronden:
+- typecheck + build groen; een afbeelding tonen, markers plaatsen + opslaan, herladen toont ze terug.
+- Commit op feat/portal-floorplan; push -u; `gh pr create --base dev --head feat/portal-floorplan
+  --title "Fase 5e — floor-plan viewer"`. Géén lokale merge in dev.
 ```
 
 ---

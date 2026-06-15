@@ -68,6 +68,7 @@ import { PortalStatsModule } from './modules/portal-stats/portal-stats.module';
 import { SyncModule } from './modules/sync/sync.module';
 import { PhotosModule } from './modules/photos/photos.module';
 import { GeneratedDocumentsModule } from './modules/generated-documents/generated-documents.module';
+import { VoiceModule } from './modules/voice/voice.module';
 
 @Module({
   imports: [
@@ -135,6 +136,8 @@ import { GeneratedDocumentsModule } from './modules/generated-documents/generate
     PhotosModule,
     // Inspectiedomein Fase 4 — gegenereerde documenten + ondertekening
     GeneratedDocumentsModule,
+    // Inspectiedomein Fase 7 — voice-input (AI spraak-naar-meting + 3-lagen prompts)
+    VoiceModule,
   ],
   providers: [
     {

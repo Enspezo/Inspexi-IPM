@@ -1,5 +1,6 @@
 export { ActionMenu, type ActionMenuItem } from './action-menu';
 export { StatusBadge } from './status-badge';
+export { LookupBadge } from './lookup-badge';
 export { ErrorBox } from './error-box';
 export { InfoField } from './info-field';
 export { Tabs, type TabDef } from './tabs';

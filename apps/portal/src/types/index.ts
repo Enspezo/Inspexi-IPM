@@ -1779,6 +1779,25 @@ export interface ClassificationOption {
   sortOrder: number;
 }
 
+// ── Categorieën (constatering- & checklist-item-categorieën) ──
+export interface Category {
+  id: string;
+  isSystem: boolean;
+  orgId: string | null;
+  name: string;
+  description: string | null;
+  color: string | null;
+  icon: string | null;
+  parentId: string | null;
+  sortOrder: number;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+  createdBy?: string;
+  parent?: Category | null;
+  children?: Category[];
+}
+
 // ── Checklists ──
 export interface Checklist {
   id: string;

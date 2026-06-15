@@ -13,7 +13,10 @@ export class AuditContextInterceptor implements NestInterceptor {
     const request = context.switchToHttp().getRequest();
     const user = request.user;
 
-    if (!user?.id) {
+    // Alleen de staf-realm wordt ge-audit. Client-realm-principals (ClientUser, 2e auth-realm)
+    // hebben geen `roles` en bestaan niet in imp_users — hun id als audit-userId zou de FK
+    // (imp_audit_logs_user_id_fkey) breken. Sla de audit-context dan over.
+    if (!user?.id || !Array.isArray(user.roles)) {
       return next.handle();
     }
 

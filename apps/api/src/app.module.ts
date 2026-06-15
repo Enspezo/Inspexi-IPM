@@ -56,6 +56,8 @@ import { LocationTypesModule } from './modules/location-types/location-types.mod
 import { ChecklistsModule } from './modules/checklists/checklists.module';
 import { MeasurementSheetTemplatesModule } from './modules/measurement-sheet-templates/measurement-sheet-templates.module';
 import { InspectionTemplatesModule } from './modules/inspection-templates/inspection-templates.module';
+import { DocumentGenerationModule } from './modules/document-generation/document-generation.module';
+import { DocumentTemplatesModule } from './modules/document-templates/document-templates.module';
 import { InspectionLocationsModule } from './modules/inspection-locations/inspection-locations.module';
 import { VisualInspectionsModule } from './modules/visual-inspections/visual-inspections.module';
 import { MeasurementRecordsModule } from './modules/measurement-records/measurement-records.module';
@@ -118,6 +120,8 @@ import { PhotosModule } from './modules/photos/photos.module';
     ChecklistsModule,
     MeasurementSheetTemplatesModule,
     InspectionTemplatesModule,
+    DocumentGenerationModule,
+    DocumentTemplatesModule,
     InspectionLocationsModule,
     VisualInspectionsModule,
     MeasurementRecordsModule,

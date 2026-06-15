@@ -67,6 +67,7 @@ import { LocationImagesModule } from './modules/location-images/location-images.
 import { PortalStatsModule } from './modules/portal-stats/portal-stats.module';
 import { SyncModule } from './modules/sync/sync.module';
 import { PhotosModule } from './modules/photos/photos.module';
+import { GeneratedDocumentsModule } from './modules/generated-documents/generated-documents.module';
 
 @Module({
   imports: [
@@ -132,6 +133,8 @@ import { PhotosModule } from './modules/photos/photos.module';
     // Inspectiedomein Fase 3 — PWA-sync + foto-upload
     SyncModule,
     PhotosModule,
+    // Inspectiedomein Fase 4 — gegenereerde documenten + ondertekening
+    GeneratedDocumentsModule,
   ],
   providers: [
     {

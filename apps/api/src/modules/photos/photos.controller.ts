@@ -49,9 +49,9 @@ export class PhotosController {
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: User,
     @Res({ passthrough: true }) res: Response,
-    @Query('thumb') _thumb?: string,
+    @Query('thumb') thumb?: string,
   ): Promise<StreamableFile> {
-    const { buffer, mimeType } = await this.photos.getFile(id, user);
+    const { buffer, mimeType } = await this.photos.getFile(id, user, Boolean(thumb));
     res.set({ 'Content-Type': mimeType, 'Cache-Control': 'private, max-age=86400' });
     return new StreamableFile(buffer);
   }

@@ -2,7 +2,7 @@
 // orgId + entiteit-bestaan worden server-side gecontroleerd (tenant-veilig).
 // Polymorf: entityType wire 'inspectionPlan' → enum 'inspection_plan'.
 
-import { Injectable, Inject, BadRequestException } from '@nestjs/common';
+import { Injectable, Inject, BadRequestException, Logger } from '@nestjs/common';
 import { User, PhotoEntityType, Prisma } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import { PrismaService } from '@/prisma';
@@ -10,6 +10,13 @@ import { orgScope, assertFound } from '@/common';
 import { STORAGE_PROVIDER } from '@/common/services/storage/storage.interface';
 import type { StorageProvider } from '@/common/services/storage/storage.interface';
 import { PhotoUploadDto } from './dto';
+import { makeThumbnail } from './thumbnail.util';
+
+/** Duck-type voor providers die signed-URLs ondersteunen (R2). Lokaal → download-route. */
+interface SignedUrlCapable {
+  supportsSignedUrls?: () => boolean;
+  getSignedUrl?: (key: string, expiresInSeconds?: number) => Promise<string>;
+}
 
 const ALLOWED_MIME = new Set(['image/jpeg', 'image/png', 'image/webp']);
 const EXT: Record<string, string> = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' };
@@ -21,6 +28,8 @@ const WIRE_TO_ENUM: Record<string, PhotoEntityType> = {
 
 @Injectable()
 export class PhotosService {
+  private readonly logger = new Logger(PhotosService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     @Inject(STORAGE_PROVIDER) private readonly storage: StorageProvider,
@@ -52,8 +61,23 @@ export class PhotosService {
       throw new BadRequestException('Alleen JPEG, PNG of WebP toegestaan');
     }
     const orgId = await this.resolveEntityOrg(dto.entityType, dto.entityId, user);
-    const key = `${orgId}/photos/${randomUUID()}.${EXT[file.mimetype]}`;
+    const uuid = randomUUID();
+    const key = `${orgId}/photos/${uuid}.${EXT[file.mimetype]}`;
     await this.storage.upload(key, file.buffer, file.mimetype);
+
+    // Thumbnail (Fase 4) — fail-soft: bij een onleesbare/corrupte afbeelding vallen we terug
+    // op de originele key, zodat de upload zelf nooit faalt op de thumbnail-stap.
+    let thumbnailPath = key;
+    try {
+      const thumb = await makeThumbnail(file.buffer);
+      const thumbKey = `${orgId}/photos/thumb/${uuid}.jpg`;
+      await this.storage.upload(thumbKey, thumb, 'image/jpeg');
+      thumbnailPath = thumbKey;
+    } catch (e) {
+      this.logger.warn(
+        `Thumbnail-generatie mislukt (val terug op origineel): ${(e as Error).message}`,
+      );
+    }
 
     const photo = await this.prisma.photo.create({
       data: {
@@ -61,7 +85,7 @@ export class PhotosService {
         entityType: WIRE_TO_ENUM[dto.entityType],
         entityId: dto.entityId,
         storagePath: key,
-        thumbnailPath: key, // TODO Fase 4: thumbnail genereren (sharp)
+        thumbnailPath,
         mimeType: file.mimetype,
         fileSize: file.size,
         caption: dto.caption,
@@ -74,23 +98,48 @@ export class PhotosService {
       select: { id: true },
     });
 
+    return { id: photo.id, ...(await this.buildPhotoUrls(photo.id, key, thumbnailPath)) };
+  }
+
+  /**
+   * Geeft signed-URLs als de provider die ondersteunt (R2), anders de authenticated
+   * download-routes (lokale opslag).
+   */
+  private async buildPhotoUrls(
+    id: string,
+    storageKey: string,
+    thumbKey: string,
+  ): Promise<{ url: string; thumbnailUrl: string }> {
+    const s = this.storage as StorageProvider & SignedUrlCapable;
+    if (s.supportsSignedUrls?.() && s.getSignedUrl) {
+      return {
+        url: await s.getSignedUrl(storageKey),
+        thumbnailUrl: await s.getSignedUrl(thumbKey),
+      };
+    }
     return {
-      id: photo.id,
-      url: `/api/v1/photos/${photo.id}/download`,
-      thumbnailUrl: `/api/v1/photos/${photo.id}/download?thumb=1`,
+      url: `/api/v1/photos/${id}/download`,
+      thumbnailUrl: `/api/v1/photos/${id}/download?thumb=1`,
     };
   }
 
-  /** Buffer + mime voor de download-route (org-scoped). */
-  async getFile(id: string, user: User): Promise<{ buffer: Buffer; mimeType: string }> {
+  /** Buffer + mime voor de download-route (org-scoped). `thumb` → de thumbnail-variant. */
+  async getFile(
+    id: string,
+    user: User,
+    thumb = false,
+  ): Promise<{ buffer: Buffer; mimeType: string }> {
     const photo = assertFound(
       await this.prisma.photo.findFirst({
         where: { id, ...orgScope(user), deletedAt: null },
-        select: { storagePath: true, mimeType: true },
+        select: { storagePath: true, thumbnailPath: true, mimeType: true },
       }),
       'Foto',
     );
-    const buffer = await this.storage.download(photo.storagePath);
-    return { buffer, mimeType: photo.mimeType };
+    // Alleen een echte thumbnail (afwijkende key, JPEG) als zodanig serveren.
+    const useThumb = thumb && !!photo.thumbnailPath && photo.thumbnailPath !== photo.storagePath;
+    const path = useThumb ? photo.thumbnailPath! : photo.storagePath;
+    const buffer = await this.storage.download(path);
+    return { buffer, mimeType: useThumb ? 'image/jpeg' : photo.mimeType };
   }
 }

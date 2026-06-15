@@ -47,6 +47,7 @@ const AUDITED_MODELS = new Set([
   'StandaloneMeasurement',
   'LocationImage',
   'GeneratedDocument',
+  'DocumentSignature',
   'ClientRequest',
 ]);
 
@@ -102,6 +103,7 @@ const MODEL_TABLE_MAP: Record<string, string> = {
   StandaloneMeasurement: 'imp_standalone_measurements',
   LocationImage: 'imp_location_images',
   GeneratedDocument: 'imp_generated_documents',
+  DocumentSignature: 'imp_document_signatures',
   ClientRequest: 'imp_client_requests',
 };
 

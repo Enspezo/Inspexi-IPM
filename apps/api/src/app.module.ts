@@ -75,6 +75,7 @@ import { ClientDocumentsModule } from './modules/client-documents/client-documen
 import { ClientFindingsModule } from './modules/client-findings/client-findings.module';
 import { ClientMessagesModule } from './modules/client-messages/client-messages.module';
 import { ClientRequestsModule } from './modules/client-requests/client-requests.module';
+import { ClientLookupsModule } from './modules/client-lookups/client-lookups.module';
 
 @Module({
   imports: [
@@ -149,6 +150,7 @@ import { ClientRequestsModule } from './modules/client-requests/client-requests.
     ClientFindingsModule,
     ClientMessagesModule,
     ClientRequestsModule,
+    ClientLookupsModule,
   ],
   providers: [
     {

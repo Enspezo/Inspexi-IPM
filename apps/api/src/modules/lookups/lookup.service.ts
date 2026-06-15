@@ -76,7 +76,15 @@ export class LookupService {
    */
   async listMerged(kind: LookupKind, user: User): Promise<LookupRow[]> {
     const orgId = user.roles.includes(Role.SUPERUSER) ? null : user.orgId;
+    return this.listMergedByOrg(kind, orgId);
+  }
 
+  /**
+   * Zelfde merge-logica als listMerged, maar org-scope rechtstreeks via orgId i.p.v. een
+   * staf-User. Gebruikt door de client-realm (orgId uit @CurrentTenant/subdomein), die geen
+   * staf-User heeft maar wel de status/type-labels nodig heeft voor <LookupBadge>.
+   */
+  async listMergedByOrg(kind: LookupKind, orgId: string | null): Promise<LookupRow[]> {
     const rows: LookupRow[] = await this.delegate(kind).findMany({
       where: { OR: [{ orgId: null }, ...(orgId ? [{ orgId }] : [])] },
       orderBy: [{ sortOrder: 'asc' }],

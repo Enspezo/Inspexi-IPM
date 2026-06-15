@@ -68,6 +68,14 @@ import { PortalStatsModule } from './modules/portal-stats/portal-stats.module';
 import { SyncModule } from './modules/sync/sync.module';
 import { PhotosModule } from './modules/photos/photos.module';
 import { GeneratedDocumentsModule } from './modules/generated-documents/generated-documents.module';
+// Inspectiedomein Fase 6 — client-portal (2e auth-realm + klant-endpoints)
+import { ClientAuthModule } from './modules/client-auth/client-auth.module';
+import { ClientInspectionsModule } from './modules/client-inspections/client-inspections.module';
+import { ClientDocumentsModule } from './modules/client-documents/client-documents.module';
+import { ClientFindingsModule } from './modules/client-findings/client-findings.module';
+import { ClientMessagesModule } from './modules/client-messages/client-messages.module';
+import { ClientRequestsModule } from './modules/client-requests/client-requests.module';
+// Inspectiedomein Fase 7 — voice-input (AI spraak-naar-meting + 3-lagen prompts)
 import { VoiceModule } from './modules/voice/voice.module';
 
 @Module({
@@ -136,6 +144,13 @@ import { VoiceModule } from './modules/voice/voice.module';
     PhotosModule,
     // Inspectiedomein Fase 4 — gegenereerde documenten + ondertekening
     GeneratedDocumentsModule,
+    // Inspectiedomein Fase 6 — client-portal (2e auth-realm + klant-endpoints)
+    ClientAuthModule,
+    ClientInspectionsModule,
+    ClientDocumentsModule,
+    ClientFindingsModule,
+    ClientMessagesModule,
+    ClientRequestsModule,
     // Inspectiedomein Fase 7 — voice-input (AI spraak-naar-meting + 3-lagen prompts)
     VoiceModule,
   ],

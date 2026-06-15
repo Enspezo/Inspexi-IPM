@@ -22,6 +22,23 @@ const ALLOWED_ENTITY_TYPES = new Set([
   'Project',
   'WorkOrder',
   'WorkOrderLine',
+  // Inspectiedomein (Fase 1-5) — moet overeenkomen met AUDITED_MODELS in prisma.service.ts
+  'InspectionPlan',
+  'Asset',
+  'Finding',
+  'InspectionLocation',
+  'Checklist',
+  'ChecklistItem',
+  'Category',
+  'FindingTemplate',
+  'ClassificationModel',
+  'NormTypeDefinition',
+  'AssetTypeDefinition',
+  'LocationTypeDefinition',
+  'InspectionTemplate',
+  'MeasurementSheetTemplate',
+  'MeasurementSheetRecord',
+  'ClientRequest',
 ]);
 
 /**
@@ -112,6 +129,43 @@ const FK_FIELD_RESOLVERS: Record<string, RefConfig> = {
   roleId: {
     model: 'contactPersonRoleOption',
     display: (r) => r.label || r.code || r.id,
+  },
+  // Inspectiedomein (Fase 1-5)
+  reviewerId: {
+    model: 'user',
+    display: (r) => `${r.firstName ?? ''} ${r.lastName ?? ''}`.trim() || r.email || r.id,
+  },
+  lastModifiedBy: {
+    model: 'user',
+    display: (r) => `${r.firstName ?? ''} ${r.lastName ?? ''}`.trim() || r.email || r.id,
+  },
+  resolvedBy: {
+    model: 'user',
+    display: (r) => `${r.firstName ?? ''} ${r.lastName ?? ''}`.trim() || r.email || r.id,
+  },
+  installationResponsibleId: {
+    model: 'contactPerson',
+    display: (r) => `${r.firstName ?? ''} ${r.lastName ?? ''}`.trim() || r.id,
+  },
+  inspectionPlanId: {
+    model: 'inspectionPlan',
+    display: (r) => r.projectName || `Inspectieplan #${r.id.substring(0, 8)}`,
+  },
+  inspectionTemplateId: {
+    model: 'inspectionTemplate',
+    display: (r) => [r.name, r.version].filter(Boolean).join(' ') || r.code || r.id,
+  },
+  classificationModelId: {
+    model: 'classificationModel',
+    display: (r) => r.name || r.code || r.id,
+  },
+  findingTemplateId: {
+    model: 'findingTemplate',
+    display: (r) => r.shortDescription || r.code || r.id,
+  },
+  assetId: {
+    model: 'asset',
+    display: (r) => r.name || r.identifier || r.id,
   },
 };
 

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, lazy, Suspense } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -34,7 +34,12 @@ import {
   useDeleteInspectionPlan,
 } from './hooks/use-inspections';
 
-type Tab = 'overzicht' | 'assets' | 'instellingen';
+// Konva-zware tab apart laden: alleen wanneer de gebruiker hem opent.
+const FloorPlanTab = lazy(() =>
+  import('./components/floor-plan-tab').then((m) => ({ default: m.FloorPlanTab })),
+);
+
+type Tab = 'overzicht' | 'assets' | 'plattegrond' | 'instellingen';
 
 const canWriteRoles = [Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE, Role.WERKVOORBEREIDER];
 const canReviewRoles = [Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.WERKVOORBEREIDER];
@@ -191,6 +196,7 @@ export default function InspectionDetailPage() {
   const tabs = [
     { key: 'overzicht' as const, label: 'Overzicht' },
     { key: 'assets' as const, label: 'Assets', count: assets.length },
+    { key: 'plattegrond' as const, label: 'Plattegrond' },
     { key: 'instellingen' as const, label: 'Instellingen' },
   ];
 
@@ -307,6 +313,18 @@ export default function InspectionDetailPage() {
           <Card title={`Assets (${assets.length})`}>
             <Table columns={assetColumns} data={assets} keyExtractor={(a) => a.id} emptyMessage="Geen assets gekoppeld" />
           </Card>
+        )}
+
+        {activeTab === 'plattegrond' && (
+          <Suspense
+            fallback={
+              <div className="flex justify-center py-10">
+                <Spinner size="lg" />
+              </div>
+            }
+          >
+            <FloorPlanTab planId={id!} canWrite={userCanWrite} />
+          </Suspense>
         )}
 
         {activeTab === 'instellingen' && (

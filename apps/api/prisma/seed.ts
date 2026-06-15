@@ -1,4 +1,4 @@
-import { PrismaClient, Role, ContactType, LogType, PriceType, RequestSource, RequestStatus, Priority, QuoteStatus, NotificationType, PlanningStatus, AcceptanceStatus, ProjectStatus, AssetFieldType, ChecklistStatus, TemplateStatus, MeasurementSheetTemplateStatus, MeasurementSheetFieldType, FindingInspectionType } from '@prisma/client';
+import { PrismaClient, Role, ContactType, LogType, PriceType, RequestSource, RequestStatus, Priority, QuoteStatus, NotificationType, PlanningStatus, AcceptanceStatus, ProjectStatus, AssetFieldType, ChecklistStatus, TemplateStatus, MeasurementSheetTemplateStatus, MeasurementSheetFieldType, FindingInspectionType, DocumentType, TemplateMode, SectionType } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { randomUUID } from 'crypto';
 import { seedLookups } from './seed-lookups';
@@ -1573,6 +1573,62 @@ async function main() {
     },
   });
   console.log('  ✓ Inspection template (1)');
+
+  // 7b. Document-template (PLAN) voor de demo-inspectietemplate — t.b.v. document-generatie (Fase 4)
+  await prisma.documentTemplate.create({
+    data: {
+      inspectionTemplateId: inspTemplate.id,
+      documentType: DocumentType.PLAN,
+      templateMode: TemplateMode.SECTIONS,
+      pageSize: 'A4',
+      orientation: 'portrait',
+      headerHtml: '<div>{{organization.name}} — Inspectieplan</div>',
+      footerHtml: '<div>Pagina {{pageNumber}} van {{totalPages}}</div>',
+      sections: {
+        create: [
+          {
+            code: 'projectgegevens',
+            title: 'Projectgegevens',
+            sectionType: SectionType.STATIC,
+            sortOrder: 0,
+            contentHtml: [
+              '<table>',
+              '<tr><th>Referentie</th><td>{{plan.reference}}</td></tr>',
+              '<tr><th>Project</th><td>{{plan.projectName}}</td></tr>',
+              '<tr><th>Norm</th><td>{{plan.normTypeName}}</td></tr>',
+              '<tr><th>Opdrachtgever</th><td>{{client.name}}</td></tr>',
+              '<tr><th>Locatie</th><td>{{location.address}}, {{location.city}}</td></tr>',
+              '<tr><th>Inspecteur</th><td>{{inspector.name}}</td></tr>',
+              '</table>',
+            ].join('\n'),
+          },
+          {
+            code: 'bevindingen',
+            title: 'Bevindingen',
+            sectionType: SectionType.STATIC,
+            sortOrder: 1,
+            contentHtml: [
+              '<p>Totaal aantal bevindingen: {{findingsSummary.total}}</p>',
+              '{{#each findings}}',
+              '<div class="finding-item">',
+              '<p><strong>{{this.shortDescription}}</strong> — <span class="classification-badge">{{this.classificationName}}</span></p>',
+              '{{#if this.longDescription}}<p>{{this.longDescription}}</p>{{/if}}',
+              '<p>Asset: {{this.assetName}}</p>',
+              '</div>',
+              '{{/each}}',
+            ].join('\n'),
+          },
+          {
+            code: 'ondertekening',
+            title: 'Ondertekening',
+            sectionType: SectionType.SIGNATURE_BLOCK,
+            sortOrder: 2,
+          },
+        ],
+      },
+    },
+  });
+  console.log('  ✓ Document template (PLAN) (1)');
 
   // 8. Demo-inspectieplan (org1, contact1, inspecteur) met assets + findings
   const demoPlan = await prisma.inspectionPlan.create({

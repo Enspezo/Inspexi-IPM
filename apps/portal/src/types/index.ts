@@ -1752,6 +1752,66 @@ export interface InspectionLocation {
   assets?: Asset[];
 }
 
+export interface StandaloneMeasurement {
+  id: string;
+  orgId: string;
+  inspectionPlanId: string;
+  locationId: string | null;
+  assetId: string | null;
+  measurementType: string;
+  description: string | null;
+  createdAt: string;
+  updatedAt: string;
+  syncedAt?: string | null;
+  createdBy?: string | null;
+  deviceId?: string | null;
+}
+
+// ── Locatie-afbeelding (plattegrond) + markers ──
+export interface LocationImageMarker {
+  id: string;
+  orgId: string;
+  locationImageId: string;
+  positionX: number; // % 0-100
+  positionY: number; // % 0-100
+  markerType: MarkerType;
+  assetId: string | null;
+  findingId: string | null;
+  standaloneMeasurementId: string | null;
+  annotation: Record<string, unknown> | null;
+  label: string | null;
+  color: string | null;
+  icon: string | null;
+  createdAt: string;
+  updatedAt: string;
+  syncedAt: string | null;
+  createdBy: string | null;
+  deviceId: string | null;
+  // Door de API meegestuurde (deels geselecteerde) relaties:
+  asset?: Pick<Asset, 'id' | 'name' | 'assetType' | 'statusCode'> | null;
+  finding?: Pick<Finding, 'id' | 'shortDescription' | 'statusCode' | 'classificationValues'> | null;
+  standaloneMeasurement?: Pick<StandaloneMeasurement, 'id' | 'measurementType' | 'description'> | null;
+}
+
+export interface LocationImage {
+  id: string;
+  orgId: string;
+  locationId: string;
+  storagePath: string;
+  thumbnailPath: string | null;
+  originalFilename: string | null;
+  fileSize: number | null;
+  mimeType: string;
+  width: number | null;
+  height: number | null;
+  createdAt: string;
+  updatedAt: string;
+  syncedAt: string | null;
+  createdBy: string | null;
+  deviceId: string | null;
+  markers?: LocationImageMarker[];
+}
+
 export interface Signature {
   id: string;
   orgId: string;

@@ -9,6 +9,15 @@ interface ListParams {
   search?: string;
 }
 
+/** Detail van één inspectie-template. */
+export function useInspectionTemplate(id: string) {
+  return useQuery<InspectionTemplate>({
+    queryKey: ['inspection-template', id],
+    queryFn: () => apiClient.get<InspectionTemplate>(`/inspection-templates/${id}`),
+    enabled: !!id,
+  });
+}
+
 export function useInspectionTemplates(params: ListParams = {}) {
   const qp = new URLSearchParams();
   if (params.status) qp.set('status', params.status);

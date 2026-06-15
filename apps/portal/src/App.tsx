@@ -121,6 +121,7 @@ const AssetTypesPage = lazy(() => import('@/pages/asset-types/asset-types-page')
 const LocationTypesPage = lazy(() => import('@/pages/location-types/location-types-page'));
 const MeasurementSheetTemplatesPage = lazy(() => import('@/pages/measurement-sheet-templates/measurement-sheet-templates-page'));
 const InspectionTemplatesPage = lazy(() => import('@/pages/inspection-templates/inspection-templates-page'));
+const InspectionTemplateDetailPage = lazy(() => import('@/pages/inspection-templates/inspection-template-detail-page'));
 const LookupsIndexPage = lazy(() => import('@/pages/lookups/lookups-index-page'));
 const LookupManagePage = lazy(() => import('@/pages/lookups/lookup-manage-page'));
 
@@ -210,6 +211,7 @@ export default function App() {
             <Route path="/location-types" element={<LocationTypesPage />} />
             <Route path="/measurement-sheet-templates" element={<MeasurementSheetTemplatesPage />} />
             <Route path="/inspection-templates" element={<InspectionTemplatesPage />} />
+            <Route path="/inspection-templates/:id" element={<InspectionTemplateDetailPage />} />
             <Route path="/lookups" element={<LookupsIndexPage />} />
             <Route path="/lookups/:kind" element={<LookupManagePage />} />
           </Route>

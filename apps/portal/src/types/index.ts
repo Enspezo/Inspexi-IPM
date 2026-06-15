@@ -1491,6 +1491,72 @@ export enum SectionType {
   CONDITIONAL = 'CONDITIONAL',
 }
 
+/** Hoe een DocumentTemplate is opgebouwd (Fase 4). */
+export enum TemplateMode {
+  SECTIONS = 'SECTIONS',
+  BLOCKS = 'BLOCKS',
+  DOCX = 'DOCX',
+}
+
+export interface DocumentSection {
+  id: string;
+  documentTemplateId: string;
+  code: string;
+  title: string;
+  sectionType: SectionType;
+  contentHtml: string | null;
+  repeatOn: string | null;
+  repeatItemTemplate: string | null;
+  condition: string | null;
+  sortOrder: number;
+  includeInToc: boolean;
+  pageBreakBefore: boolean;
+  pageBreakAfter: boolean;
+  parentSectionId: string | null;
+  childSections?: DocumentSection[];
+}
+
+export interface DocumentTemplateDocxRevision {
+  id: string;
+  documentTemplateId: string;
+  storageKey: string;
+  fileName: string;
+  fileSize: number;
+  uploadedById: string;
+  uploadedBy?: { id: string; firstName: string; lastName: string };
+  version: number;
+  createdAt: string;
+}
+
+/**
+ * Plan- of rapport-document-template van een inspectie-template (Fase 4).
+ * `contentBlocks` is de block-editor-payload (BLOCKS-modus) — getypt als
+ * `unknown[]` om `@/types` losgekoppeld te houden van de block-editor-module;
+ * de detailpagina cast naar `DocContentBlock[]`.
+ */
+export interface DocumentTemplate {
+  id: string;
+  inspectionTemplateId: string;
+  documentType: DocumentType;
+  pageSize: string;
+  orientation: string;
+  marginTop: number;
+  marginBottom: number;
+  marginLeft: number;
+  marginRight: number;
+  headerHtml: string | null;
+  footerHtml: string | null;
+  coverPageHtml: string | null;
+  templateMode: TemplateMode;
+  contentBlocks: unknown[] | null;
+  docxStorageKey: string | null;
+  docxFileName: string | null;
+  docxFileSize: number | null;
+  createdAt: string;
+  updatedAt: string;
+  sections?: DocumentSection[];
+}
+
 export enum GeneratedDocumentStatus {
   DRAFT = 'DRAFT',
   PENDING_SIGNATURES = 'PENDING_SIGNATURES',

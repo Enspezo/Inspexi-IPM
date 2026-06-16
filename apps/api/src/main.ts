@@ -41,9 +41,24 @@ async function bootstrap() {
   // Cookie parser
   app.use(cookieParser());
 
-  // CORS — allow all subdomains of BASE_DOMAIN
+  // CORS — allow all subdomains of BASE_DOMAIN (Beheer-portal) plus, optioneel, een los
+  // client-portal-basisdomein (Fase 6). In dev draait de client-portal op een subdomein van
+  // BASE_DOMAIN (bijv. inspexidemo.localhost:5174) en valt dus al onder de eerste check;
+  // CLIENT_PORTAL_BASE_DOMAIN is voor een prod-deploy op een eigen domein.
   const protocol = isLocalhost ? 'http' : 'https';
   const portSuffix = isLocalhost ? `:${portalPort}` : '';
+  const clientPortalBaseDomain = process.env.CLIENT_PORTAL_BASE_DOMAIN?.trim() || null;
+
+  const isAllowedHost = (hostname: string): boolean => {
+    if (hostname === baseDomain || hostname.endsWith(`.${baseDomain}`)) return true;
+    if (
+      clientPortalBaseDomain &&
+      (hostname === clientPortalBaseDomain || hostname.endsWith(`.${clientPortalBaseDomain}`))
+    ) {
+      return true;
+    }
+    return false;
+  };
 
   app.enableCors({
     origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
@@ -54,9 +69,7 @@ async function bootstrap() {
       }
       try {
         const url = new URL(origin);
-        const hostname = url.hostname;
-        // Allow exact base domain or any subdomain of base domain
-        if (hostname === baseDomain || hostname.endsWith(`.${baseDomain}`)) {
+        if (isAllowedHost(url.hostname)) {
           callback(null, true);
           return;
         }

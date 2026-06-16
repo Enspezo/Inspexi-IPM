@@ -1,22 +1,33 @@
 // FLAT-array overzichtspagina (geen serverpaginatie): DetailPageLayout + TableConfigSidebar
 // + useTableConfig + ColumnDef + Table + PageHeader. Zoeken is client-side.
+// SUPERUSER-beheer: gebruikt de admin-endpoint (incl. inactieve modellen) + aanmaak-modal.
 
 import { useState } from 'react';
-import type { ClassificationModel } from '@/types';
-import { ErrorBox, Spinner, Table, Input } from '@/components/ui';
+import { Link } from 'react-router-dom';
+import { Role, type ClassificationModel } from '@/types';
+import { ErrorBox, Spinner, Table, Input, Button } from '@/components/ui';
 import { DetailPageLayout } from '@/components/layout/detail-page-layout';
 import { PageHeader } from '@/components/layout/page-header';
 import { TableConfigSidebar, useTableConfig, type ColumnDef } from '@/components/table-config';
-import { useClassificationModels } from './hooks/use-classification-models';
+import { useAuth } from '@/providers/auth-provider';
+import { useClassificationModelsAdmin } from './hooks/use-classification-models';
+import { CreateClassificationModelModal } from './components/create-classification-model-modal';
 
 export default function ClassificationModelsPage() {
   const [search, setSearch] = useState('');
-  const { data, isLoading, error } = useClassificationModels();
+  const [createOpen, setCreateOpen] = useState(false);
+  const { user } = useAuth();
+  const isSuperuser = !!user && user.roles.includes(Role.SUPERUSER);
+  const { data, isLoading, error } = useClassificationModelsAdmin();
 
   const columns: ColumnDef<ClassificationModel>[] = [
     {
       key: 'name', header: 'Naam', pinned: true, sortable: true, sortKey: 'name',
-      render: (m) => <span className="font-medium text-gray-900">{m.name}</span>,
+      render: (m) => (
+        <Link to={`/classification-models/${m.id}`} className="font-medium text-primary-600 hover:underline">
+          {m.name}
+        </Link>
+      ),
     },
     {
       key: 'code', header: 'Code', sortable: true, sortKey: 'code',
@@ -70,7 +81,13 @@ export default function ClassificationModelsPage() {
       }
     >
       <div className="space-y-6">
-        <PageHeader title="Classificatiemodellen" description="Beheer classificatiemodellen en hun kenmerken" />
+        <PageHeader
+          title="Classificatiemodellen"
+          description="Beheer classificatiemodellen en hun kenmerken"
+          actions={
+            isSuperuser ? <Button onClick={() => setCreateOpen(true)}>Nieuw</Button> : undefined
+          }
+        />
 
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
           <div className="flex-1">
@@ -89,6 +106,8 @@ export default function ClassificationModelsPage() {
 
         <p className="text-sm text-gray-500">{searched.length} resultaten</p>
       </div>
+
+      <CreateClassificationModelModal isOpen={createOpen} onClose={() => setCreateOpen(false)} />
     </DetailPageLayout>
   );
 }

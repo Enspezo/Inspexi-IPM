@@ -76,6 +76,7 @@ export const AUDITED_ENTITIES: readonly AuditedEntity[] = [
 
   // Overig (beheer)
   { model: 'Document', table: 'imp_documents', displayFields: ['originalName', 'fileName'] },
+  { model: 'Task', table: 'imp_tasks', displayFields: ['title'] },
   { model: 'PlanningItem', table: 'imp_planning_items', displayFields: ['productName'] },
   {
     model: 'CustomFieldDefinition',

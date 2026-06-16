@@ -1,6 +1,18 @@
 import { useQuery } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api-client';
-import type { Asset, PaginatedResponse } from '@/types';
+import type { Asset, Finding, PaginatedResponse } from '@/types';
+
+/**
+ * GET /assets/:id geeft een Asset PLUS extra relaties terug die de gedeelde
+ * `Asset`-type niet declareert (measurementRecords/visualInspections). Daarom
+ * lokaal getypeerd — dynamische rijen blijven losjes getypt.
+ */
+export interface AssetDetail extends Asset {
+  findings?: Finding[];
+  childAssets?: Asset[];
+  measurementRecords?: Array<Record<string, unknown>>;
+  visualInspections?: Array<Record<string, unknown>>;
+}
 
 interface ListAssetsParams {
   search?: string;
@@ -28,5 +40,14 @@ export function useAssets(params: ListAssetsParams = {}) {
   return useQuery<PaginatedResponse<Asset>>({
     queryKey: ['assets', params],
     queryFn: () => apiClient.get<PaginatedResponse<Asset>>(`/assets${qs ? `?${qs}` : ''}`),
+  });
+}
+
+/** Detail van één asset, inclusief findings, child-assets en meet-/visuele records. */
+export function useAsset(id: string) {
+  return useQuery<AssetDetail>({
+    queryKey: ['assets', id],
+    queryFn: () => apiClient.get<AssetDetail>(`/assets/${id}`),
+    enabled: !!id,
   });
 }

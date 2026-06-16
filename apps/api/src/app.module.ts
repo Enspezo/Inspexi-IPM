@@ -76,6 +76,8 @@ import { ClientFindingsModule } from './modules/client-findings/client-findings.
 import { ClientMessagesModule } from './modules/client-messages/client-messages.module';
 import { ClientRequestsModule } from './modules/client-requests/client-requests.module';
 import { ClientLookupsModule } from './modules/client-lookups/client-lookups.module';
+// Inspectiedomein Fase 7 — voice-input (AI spraak-naar-meting + 3-lagen prompts)
+import { VoiceModule } from './modules/voice/voice.module';
 
 @Module({
   imports: [
@@ -151,6 +153,8 @@ import { ClientLookupsModule } from './modules/client-lookups/client-lookups.mod
     ClientMessagesModule,
     ClientRequestsModule,
     ClientLookupsModule,
+    // Inspectiedomein Fase 7 — voice-input (AI spraak-naar-meting + 3-lagen prompts)
+    VoiceModule,
   ],
   providers: [
     {

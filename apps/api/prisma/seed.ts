@@ -2,6 +2,7 @@ import { PrismaClient, Role, ContactType, LogType, PriceType, RequestSource, Req
 import * as bcrypt from 'bcrypt';
 import { randomUUID } from 'crypto';
 import { seedLookups } from './seed-lookups';
+import { DEFAULT_VOICE_BASE_PROMPT } from '../src/modules/voice/default-base-prompt';
 
 const prisma = new PrismaClient();
 
@@ -1551,6 +1552,17 @@ async function main() {
     },
   });
   console.log('  ✓ Measurement sheet template + section/fields (1)');
+
+  // 6b. Voice base-prompt (Fase 7) — één actieve prompt zodat /voice/parse-measurement
+  //     direct werkt zonder aparte configuratiestap (fallback blijft de geporte default).
+  await prisma.voiceBasePrompt.create({
+    data: {
+      name: 'Standaard NL meet-prompt',
+      content: DEFAULT_VOICE_BASE_PROMPT,
+      isActive: true,
+    },
+  });
+  console.log('  ✓ Voice base-prompt (1, actief)');
 
   // 7. Inspectie-template (verwijst naar classificatiemodel; links naar checklist + meetstaat)
   const inspTemplate = await prisma.inspectionTemplate.create({

@@ -119,12 +119,15 @@ const ChecklistItemsPage = lazy(() => import('@/pages/checklist-items/checklist-
 const FindingTemplatesPage = lazy(() => import('@/pages/finding-templates/finding-templates-page'));
 const FindingTemplateDetailPage = lazy(() => import('@/pages/finding-templates/finding-template-detail-page'));
 const ClassificationModelsPage = lazy(() => import('@/pages/classification-models/classification-models-page'));
+const ClassificationModelDetailPage = lazy(() => import('@/pages/classification-models/classification-model-detail-page'));
 const NormTypesPage = lazy(() => import('@/pages/norm-types/norm-types-page'));
+const NormTypeDetailPage = lazy(() => import('@/pages/norm-types/norm-type-detail-page'));
 const AssetTypesPage = lazy(() => import('@/pages/asset-types/asset-types-page'));
 const AssetTypeDetailPage = lazy(() => import('@/pages/asset-types/asset-type-detail-page'));
 const LocationTypesPage = lazy(() => import('@/pages/location-types/location-types-page'));
 const LocationTypeDetailPage = lazy(() => import('@/pages/location-types/location-type-detail-page'));
 const MeasurementSheetTemplatesPage = lazy(() => import('@/pages/measurement-sheet-templates/measurement-sheet-templates-page'));
+const MeasurementSheetTemplateDetailPage = lazy(() => import('@/pages/measurement-sheet-templates/measurement-sheet-template-detail-page'));
 const VoiceBasePromptsPage = lazy(() => import('@/pages/voice-prompts/voice-base-prompts-page'));
 const VoiceTemplatePromptsPage = lazy(() => import('@/pages/voice-prompts/voice-template-prompts-page'));
 const InspectionTemplatesPage = lazy(() => import('@/pages/inspection-templates/inspection-templates-page'));
@@ -216,12 +219,15 @@ export default function App() {
             <Route path="/finding-templates" element={<FindingTemplatesPage />} />
             <Route path="/finding-templates/:id" element={<FindingTemplateDetailPage />} />
             <Route path="/classification-models" element={<ClassificationModelsPage />} />
+            <Route path="/classification-models/:id" element={<ClassificationModelDetailPage />} />
             <Route path="/norm-types" element={<NormTypesPage />} />
+            <Route path="/norm-types/:id" element={<NormTypeDetailPage />} />
             <Route path="/asset-types" element={<AssetTypesPage />} />
             <Route path="/asset-types/:id" element={<AssetTypeDetailPage />} />
             <Route path="/location-types" element={<LocationTypesPage />} />
             <Route path="/location-types/:id" element={<LocationTypeDetailPage />} />
             <Route path="/measurement-sheet-templates" element={<MeasurementSheetTemplatesPage />} />
+            <Route path="/measurement-sheet-templates/:id" element={<MeasurementSheetTemplateDetailPage />} />
             <Route path="/admin/voice-prompts" element={<VoiceBasePromptsPage />} />
             <Route path="/voice-prompts/template" element={<VoiceTemplatePromptsPage />} />
             <Route path="/inspection-templates" element={<InspectionTemplatesPage />} />

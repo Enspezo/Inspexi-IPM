@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { ClientInspectionsService } from './client-inspections.service';
 import { PrismaService } from '@/prisma';
+import { STATUS_OPEN, STATUS_RESOLVED } from '@/common';
 
 describe('ClientInspectionsService (tenant + ClientAccess scoping)', () => {
   let service: ClientInspectionsService;
@@ -109,7 +110,7 @@ describe('ClientInspectionsService (tenant + ClientAccess scoping)', () => {
         .mockResolvedValueOnce({ id: 'plan-1' }) // access-check
         .mockResolvedValueOnce({
           id: 'plan-1',
-          assets: [{ findings: [{ statusCode: 'open' }, { statusCode: 'resolved' }] }],
+          assets: [{ findings: [{ statusCode: STATUS_OPEN }, { statusCode: STATUS_RESOLVED }] }],
         }); // detail
 
       const res = await service.detail(user, 'org-A', 'plan-1');

@@ -15,7 +15,8 @@ import {
   ApiBearerAuth,
 } from '@nestjs/swagger';
 import { Response } from 'express';
-import { User, Role } from '@prisma/client';
+import { User } from '@prisma/client';
+import { ALL_STAFF } from '@/common/auth/roles';
 import { NotificationsService } from './notifications.service';
 import { ListNotificationsQueryDto } from './dto';
 import { Roles, CurrentUser, Public } from '@/common/decorators';
@@ -27,14 +28,7 @@ export class NotificationsController {
   constructor(private notificationsService: NotificationsService) {}
 
   @Get()
-  @Roles(
-    Role.SUPERUSER,
-    Role.ORG_ADMIN,
-    Role.MANAGER,
-    Role.BACKOFFICE,
-    Role.WERKVOORBEREIDER,
-    Role.INSPECTEUR,
-  )
+  @Roles(...ALL_STAFF)
   @ApiOperation({ summary: 'Eigen notificaties ophalen' })
   @ApiResponse({ status: 200, description: 'Gepagineerde lijst notificaties' })
   async findAll(
@@ -46,14 +40,7 @@ export class NotificationsController {
   }
 
   @Get('unread-count')
-  @Roles(
-    Role.SUPERUSER,
-    Role.ORG_ADMIN,
-    Role.MANAGER,
-    Role.BACKOFFICE,
-    Role.WERKVOORBEREIDER,
-    Role.INSPECTEUR,
-  )
+  @Roles(...ALL_STAFF)
   @ApiOperation({ summary: 'Aantal ongelezen notificaties' })
   @ApiResponse({ status: 200, description: 'Ongelezen telling' })
   async getUnreadCount(@CurrentUser() user: User) {
@@ -62,14 +49,7 @@ export class NotificationsController {
   }
 
   @Patch(':id/read')
-  @Roles(
-    Role.SUPERUSER,
-    Role.ORG_ADMIN,
-    Role.MANAGER,
-    Role.BACKOFFICE,
-    Role.WERKVOORBEREIDER,
-    Role.INSPECTEUR,
-  )
+  @Roles(...ALL_STAFF)
   @ApiOperation({ summary: 'Notificatie als gelezen markeren' })
   @ApiResponse({ status: 200, description: 'Notificatie bijgewerkt' })
   async markRead(
@@ -81,14 +61,7 @@ export class NotificationsController {
   }
 
   @Post('read-all')
-  @Roles(
-    Role.SUPERUSER,
-    Role.ORG_ADMIN,
-    Role.MANAGER,
-    Role.BACKOFFICE,
-    Role.WERKVOORBEREIDER,
-    Role.INSPECTEUR,
-  )
+  @Roles(...ALL_STAFF)
   @ApiOperation({ summary: 'Alle notificaties als gelezen markeren' })
   @ApiResponse({ status: 200, description: 'Alle notificaties gelezen' })
   async markAllRead(@CurrentUser() user: User) {

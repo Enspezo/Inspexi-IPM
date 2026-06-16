@@ -25,6 +25,21 @@ export const LOOKUP_KINDS = {
 
 export type LookupKind = keyof typeof LOOKUP_KINDS;
 
+/** Benoemde handvatten voor de lookup-codes — i.p.v. losse string-literals. */
+export const LOOKUP_KIND = {
+  INSPECTION_TYPES: 'inspection-types',
+  PLAN_STATUS_TYPES: 'plan-status-types',
+  ASSET_STATUS_TYPES: 'asset-status-types',
+  FINDING_STATUS_TYPES: 'finding-status-types',
+  REPORT_STATUS_TYPES: 'report-status-types',
+  SIGNATORY_TYPES: 'signatory-types',
+  SIGNER_ROLES: 'signer-roles',
+  PASS_FAIL_STATUS_TYPES: 'pass-fail-status-types',
+  RESOLUTION_STATUS_TYPES: 'resolution-status-types',
+  CLIENT_REQUEST_TYPES: 'client-request-types',
+  CLIENT_REQUEST_STATUS_TYPES: 'client-request-status-types',
+} as const satisfies Record<string, LookupKind>;
+
 /** Minimale rij-vorm die alle lookup-tabellen delen. */
 export interface LookupRow {
   id: string;

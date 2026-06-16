@@ -16,7 +16,8 @@ import {
   ApiResponse,
   ApiBearerAuth,
 } from '@nestjs/swagger';
-import { User, Role } from '@prisma/client';
+import { User } from '@prisma/client';
+import { CRM_ROLES, ORG_ADMINS } from '@/common/auth/roles';
 import { PriceTablesService } from './price-tables.service';
 import {
   CreatePriceTableDto,
@@ -33,7 +34,7 @@ export class PriceTablesController {
   constructor(private priceTablesService: PriceTablesService) {}
 
   @Get()
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN)
+  @Roles(...ORG_ADMINS)
   @ApiOperation({ summary: 'Prijstabellen ophalen' })
   @ApiResponse({ status: 200, description: 'Gepagineerde lijst prijstabellen' })
   async findAll(
@@ -45,7 +46,7 @@ export class PriceTablesController {
   }
 
   @Post()
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN)
+  @Roles(...ORG_ADMINS)
   @ApiOperation({ summary: 'Nieuwe prijstabel aanmaken' })
   @ApiResponse({ status: 201, description: 'Prijstabel aangemaakt' })
   async create(@Body() dto: CreatePriceTableDto, @CurrentUser() user: User) {
@@ -54,13 +55,7 @@ export class PriceTablesController {
   }
 
   @Get('for-contact/:contactId')
-  @Roles(
-    Role.SUPERUSER,
-    Role.ORG_ADMIN,
-    Role.MANAGER,
-    Role.BACKOFFICE,
-    Role.WERKVOORBEREIDER,
-  )
+  @Roles(...CRM_ROLES)
   @ApiOperation({ summary: 'Prijstabel(len) voor relatie ophalen' })
   @ApiResponse({ status: 200, description: 'Prijstabellen van relatie' })
   async findForContact(
@@ -72,7 +67,7 @@ export class PriceTablesController {
   }
 
   @Get(':id')
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN)
+  @Roles(...ORG_ADMINS)
   @ApiOperation({ summary: 'Prijstabel detail ophalen' })
   @ApiResponse({ status: 200, description: 'Prijstabel details' })
   async findOne(
@@ -84,7 +79,7 @@ export class PriceTablesController {
   }
 
   @Patch(':id')
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN)
+  @Roles(...ORG_ADMINS)
   @ApiOperation({ summary: 'Prijstabel bijwerken' })
   @ApiResponse({ status: 200, description: 'Prijstabel bijgewerkt' })
   async update(
@@ -97,7 +92,7 @@ export class PriceTablesController {
   }
 
   @Put(':id/items')
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN)
+  @Roles(...ORG_ADMINS)
   @ApiOperation({ summary: 'Producten en prijzen instellen' })
   @ApiResponse({ status: 200, description: 'Items bijgewerkt' })
   async setItems(
@@ -110,7 +105,7 @@ export class PriceTablesController {
   }
 
   @Post(':id/assign/:contactId')
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN)
+  @Roles(...ORG_ADMINS)
   @ApiOperation({ summary: 'Prijstabel aan relatie koppelen' })
   @ApiResponse({ status: 201, description: 'Koppeling aangemaakt' })
   async assignToContact(
@@ -123,7 +118,7 @@ export class PriceTablesController {
   }
 
   @Delete(':id/assign/:contactId')
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN)
+  @Roles(...ORG_ADMINS)
   @ApiOperation({ summary: 'Prijstabel ontkoppelen van relatie' })
   @ApiResponse({ status: 200, description: 'Koppeling verwijderd' })
   async removeFromContact(

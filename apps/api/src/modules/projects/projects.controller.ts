@@ -12,6 +12,7 @@ import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { Role, User } from '@prisma/client';
 import { Roles } from '@/common/decorators/roles.decorator';
 import { CurrentUser } from '@/common/decorators/current-user.decorator';
+import { CRM_ROLES, ORG_ADMINS } from '@/common/auth/roles';
 import { ProjectsService } from './projects.service';
 import {
   CreateProjectDto,
@@ -22,8 +23,7 @@ import {
   AssignToProjectDto,
 } from './dto';
 
-const CRM_ROLES = [Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE, Role.WERKVOORBEREIDER];
-const WRITE_ROLES = [Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE, Role.WERKVOORBEREIDER];
+const WRITE_ROLES = CRM_ROLES;
 
 @ApiTags('projects')
 @Controller('projects')
@@ -172,7 +172,7 @@ export class ProjectsController {
   }
 
   @Delete(':id')
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN)
+  @Roles(...ORG_ADMINS)
   @ApiOperation({ summary: 'Soft delete project' })
   async remove(@CurrentUser() user: User, @Param('id') id: string) {
     return this.projectsService.remove(id, user);

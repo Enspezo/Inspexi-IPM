@@ -10,7 +10,8 @@ import {
   ApiResponse,
   ApiBearerAuth,
 } from '@nestjs/swagger';
-import { User, Role } from '@prisma/client';
+import { User } from '@prisma/client';
+import { ALL_STAFF, ORG_ADMINS } from '@/common/auth/roles';
 import { NotificationsService } from './notifications.service';
 import { SavePrefsDto, SaveGroupPrefsDto } from './dto';
 import { Roles, CurrentUser } from '@/common/decorators';
@@ -22,14 +23,7 @@ export class NotificationPrefsController {
   constructor(private notificationsService: NotificationsService) {}
 
   @Get()
-  @Roles(
-    Role.SUPERUSER,
-    Role.ORG_ADMIN,
-    Role.MANAGER,
-    Role.BACKOFFICE,
-    Role.WERKVOORBEREIDER,
-    Role.INSPECTEUR,
-  )
+  @Roles(...ALL_STAFF)
   @ApiOperation({ summary: 'Eigen notificatievoorkeuren ophalen' })
   @ApiResponse({ status: 200, description: 'Lijst met voorkeuren' })
   async getOwnPrefs(@CurrentUser() user: User) {
@@ -38,14 +32,7 @@ export class NotificationPrefsController {
   }
 
   @Put()
-  @Roles(
-    Role.SUPERUSER,
-    Role.ORG_ADMIN,
-    Role.MANAGER,
-    Role.BACKOFFICE,
-    Role.WERKVOORBEREIDER,
-    Role.INSPECTEUR,
-  )
+  @Roles(...ALL_STAFF)
   @ApiOperation({ summary: 'Eigen notificatievoorkeuren opslaan' })
   @ApiResponse({ status: 200, description: 'Voorkeuren bijgewerkt' })
   async saveOwnPrefs(
@@ -57,7 +44,7 @@ export class NotificationPrefsController {
   }
 
   @Get('group')
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN)
+  @Roles(...ORG_ADMINS)
   @ApiOperation({ summary: 'Groepsnotificatievoorkeuren ophalen' })
   @ApiResponse({ status: 200, description: 'Lijst met groepsvoorkeuren' })
   async getGroupPrefs(@CurrentUser() user: User) {
@@ -66,7 +53,7 @@ export class NotificationPrefsController {
   }
 
   @Put('group')
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN)
+  @Roles(...ORG_ADMINS)
   @ApiOperation({ summary: 'Groepsnotificatievoorkeuren opslaan' })
   @ApiResponse({ status: 200, description: 'Groepsvoorkeuren bijgewerkt' })
   async saveGroupPrefs(

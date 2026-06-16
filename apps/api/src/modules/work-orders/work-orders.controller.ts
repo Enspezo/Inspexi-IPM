@@ -11,7 +11,8 @@ import {
   ParseUUIDPipe,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
-import { User, Role } from '@prisma/client';
+import { User } from '@prisma/client';
+import { ALL_STAFF, CRM_ROLES, MANAGEMENT_ROLES } from '@/common/auth/roles';
 import { Roles } from '@/common/decorators/roles.decorator';
 import { CurrentUser } from '@/common/decorators/current-user.decorator';
 import { WorkOrdersService } from './work-orders.service';
@@ -29,14 +30,7 @@ export class WorkOrdersController {
   constructor(private readonly service: WorkOrdersService) {}
 
   @Get()
-  @Roles(
-    Role.SUPERUSER,
-    Role.ORG_ADMIN,
-    Role.MANAGER,
-    Role.BACKOFFICE,
-    Role.WERKVOORBEREIDER,
-    Role.INSPECTEUR,
-  )
+  @Roles(...ALL_STAFF)
   @ApiOperation({ summary: 'Lijst van werkbonnen' })
   async findAll(
     @CurrentUser() user: User,
@@ -47,13 +41,7 @@ export class WorkOrdersController {
   }
 
   @Post()
-  @Roles(
-    Role.SUPERUSER,
-    Role.ORG_ADMIN,
-    Role.MANAGER,
-    Role.BACKOFFICE,
-    Role.WERKVOORBEREIDER,
-  )
+  @Roles(...CRM_ROLES)
   @ApiOperation({ summary: 'Werkbon aanmaken' })
   async create(@CurrentUser() user: User, @Body() dto: CreateWorkOrderDto) {
     const data = await this.service.create(dto, user);
@@ -62,14 +50,7 @@ export class WorkOrdersController {
 
   // Specific routes BEFORE generic :id routes to avoid NestJS route conflicts
   @Patch(':id/status')
-  @Roles(
-    Role.SUPERUSER,
-    Role.ORG_ADMIN,
-    Role.MANAGER,
-    Role.BACKOFFICE,
-    Role.WERKVOORBEREIDER,
-    Role.INSPECTEUR,
-  )
+  @Roles(...ALL_STAFF)
   @ApiOperation({ summary: 'Werkbon status wijzigen' })
   async updateStatus(
     @CurrentUser() user: User,
@@ -81,14 +62,7 @@ export class WorkOrdersController {
   }
 
   @Put(':id/lines')
-  @Roles(
-    Role.SUPERUSER,
-    Role.ORG_ADMIN,
-    Role.MANAGER,
-    Role.BACKOFFICE,
-    Role.WERKVOORBEREIDER,
-    Role.INSPECTEUR,
-  )
+  @Roles(...ALL_STAFF)
   @ApiOperation({ summary: 'Werkbon meerwerk regels instellen' })
   async setLines(
     @CurrentUser() user: User,
@@ -100,14 +74,7 @@ export class WorkOrdersController {
   }
 
   @Get(':id')
-  @Roles(
-    Role.SUPERUSER,
-    Role.ORG_ADMIN,
-    Role.MANAGER,
-    Role.BACKOFFICE,
-    Role.WERKVOORBEREIDER,
-    Role.INSPECTEUR,
-  )
+  @Roles(...ALL_STAFF)
   @ApiOperation({ summary: 'Werkbon details' })
   async findOne(
     @CurrentUser() user: User,
@@ -118,14 +85,7 @@ export class WorkOrdersController {
   }
 
   @Patch(':id')
-  @Roles(
-    Role.SUPERUSER,
-    Role.ORG_ADMIN,
-    Role.MANAGER,
-    Role.BACKOFFICE,
-    Role.WERKVOORBEREIDER,
-    Role.INSPECTEUR,
-  )
+  @Roles(...ALL_STAFF)
   @ApiOperation({ summary: 'Werkbon bijwerken' })
   async update(
     @CurrentUser() user: User,
@@ -137,7 +97,7 @@ export class WorkOrdersController {
   }
 
   @Delete(':id')
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER)
+  @Roles(...MANAGEMENT_ROLES)
   @ApiOperation({ summary: 'Werkbon verwijderen' })
   async remove(
     @CurrentUser() user: User,

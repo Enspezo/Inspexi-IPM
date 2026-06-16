@@ -11,8 +11,9 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
-import { User, Role, ChecklistStatus } from '@prisma/client';
+import { User, ChecklistStatus } from '@prisma/client';
 import { Roles, CurrentUser } from '@/common/decorators';
+import { ALL_STAFF, ORG_ADMINS } from '@/common/auth/roles';
 import { ChecklistsService } from './checklists.service';
 import {
   CreateChecklistDto,
@@ -26,15 +27,8 @@ import {
   ImportChecklistDto,
 } from './dto';
 
-const READ_ROLES = [
-  Role.SUPERUSER,
-  Role.ORG_ADMIN,
-  Role.MANAGER,
-  Role.BACKOFFICE,
-  Role.WERKVOORBEREIDER,
-  Role.INSPECTEUR,
-] as const;
-const WRITE_ROLES = [Role.SUPERUSER, Role.ORG_ADMIN] as const;
+const READ_ROLES = ALL_STAFF;
+const WRITE_ROLES = ORG_ADMINS;
 
 @ApiTags('checklists')
 @ApiBearerAuth()

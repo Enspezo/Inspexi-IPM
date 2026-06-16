@@ -16,7 +16,8 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { ApiTags, ApiOperation, ApiConsumes } from '@nestjs/swagger';
-import { User, Role, EmailTemplateType } from '@prisma/client';
+import { User, EmailTemplateType } from '@prisma/client';
+import { ORG_ADMINS } from '@/common/auth/roles';
 import type { Response } from 'express';
 import { Roles } from '@/common/decorators/roles.decorator';
 import { CurrentUser } from '@/common/decorators/current-user.decorator';
@@ -30,7 +31,7 @@ export class EmailTemplatesController {
   constructor(private readonly service: EmailTemplatesService) {}
 
   @Get()
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN)
+  @Roles(...ORG_ADMINS)
   @ApiOperation({ summary: 'Lijst alle e-mailsjablonen' })
   async findAll(
     @CurrentUser() user: User,
@@ -51,7 +52,7 @@ export class EmailTemplatesController {
   }
 
   @Get('types')
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN)
+  @Roles(...ORG_ADMINS)
   @ApiOperation({ summary: 'Alle sjabloontypen met beschikbare placeholders' })
   async getTypes() {
     const data = this.service.getTypes();
@@ -59,7 +60,7 @@ export class EmailTemplatesController {
   }
 
   @Post('preview')
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN)
+  @Roles(...ORG_ADMINS)
   @ApiOperation({ summary: 'Preview sjabloon met voorbeelddata' })
   async preview(
     @Body() body: { subject: string; bodyHtml: string; type: EmailTemplateType },
@@ -71,7 +72,7 @@ export class EmailTemplatesController {
   // ── Attachments (before :id to avoid route conflicts) ──
 
   @Get(':id/attachments')
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN)
+  @Roles(...ORG_ADMINS)
   @ApiOperation({ summary: 'Bijlagen van e-mailsjabloon ophalen' })
   async getAttachments(
     @CurrentUser() user: User,
@@ -82,7 +83,7 @@ export class EmailTemplatesController {
   }
 
   @Post(':id/attachments')
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN)
+  @Roles(...ORG_ADMINS)
   @UseInterceptors(FileInterceptor('file', { storage: memoryStorage(), limits: { fileSize: 25 * 1024 * 1024 } }))
   @ApiConsumes('multipart/form-data')
   @ApiOperation({ summary: 'Bijlage toevoegen aan e-mailsjabloon' })
@@ -97,7 +98,7 @@ export class EmailTemplatesController {
   }
 
   @Get(':id/attachments/:attachmentId/download')
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN)
+  @Roles(...ORG_ADMINS)
   @ApiOperation({ summary: 'Bijlage downloaden' })
   async downloadAttachment(
     @CurrentUser() user: User,
@@ -112,7 +113,7 @@ export class EmailTemplatesController {
   }
 
   @Delete(':id/attachments/:attachmentId')
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN)
+  @Roles(...ORG_ADMINS)
   @ApiOperation({ summary: 'Bijlage verwijderen' })
   async deleteAttachment(
     @CurrentUser() user: User,
@@ -124,7 +125,7 @@ export class EmailTemplatesController {
   }
 
   @Get(':id')
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN)
+  @Roles(...ORG_ADMINS)
   @ApiOperation({ summary: 'E-mailsjabloon details' })
   async findOne(
     @CurrentUser() user: User,
@@ -135,7 +136,7 @@ export class EmailTemplatesController {
   }
 
   @Post()
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN)
+  @Roles(...ORG_ADMINS)
   @ApiOperation({ summary: 'Nieuw e-mailsjabloon aanmaken' })
   async create(
     @CurrentUser() user: User,
@@ -146,7 +147,7 @@ export class EmailTemplatesController {
   }
 
   @Post(':id/duplicate')
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN)
+  @Roles(...ORG_ADMINS)
   @ApiOperation({ summary: 'E-mailsjabloon dupliceren' })
   async duplicate(
     @CurrentUser() user: User,
@@ -157,7 +158,7 @@ export class EmailTemplatesController {
   }
 
   @Patch(':id')
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN)
+  @Roles(...ORG_ADMINS)
   @ApiOperation({ summary: 'E-mailsjabloon bijwerken' })
   async update(
     @CurrentUser() user: User,
@@ -169,7 +170,7 @@ export class EmailTemplatesController {
   }
 
   @Delete(':id')
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN)
+  @Roles(...ORG_ADMINS)
   @ApiOperation({ summary: 'E-mailsjabloon deactiveren' })
   async deactivate(
     @CurrentUser() user: User,

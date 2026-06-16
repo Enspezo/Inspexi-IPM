@@ -14,6 +14,7 @@ import {
 } from '@nestjs/common';
 import { SignatureStatus } from '@prisma/client';
 import { PrismaService } from '@/prisma';
+import { STATUS_OPEN, STATUS_RESOLVED } from '@/common';
 import type { CurrentClientUserData } from '@/common/decorators/current-client-user.decorator';
 
 @Injectable()
@@ -162,8 +163,8 @@ export class ClientInspectionsService {
     const allFindings = plan.assets.flatMap((a) => a.findings);
     const findingCounts = {
       total: allFindings.length,
-      open: allFindings.filter((f) => f.statusCode === 'open').length,
-      resolved: allFindings.filter((f) => f.statusCode === 'resolved').length,
+      open: allFindings.filter((f) => f.statusCode === STATUS_OPEN).length,
+      resolved: allFindings.filter((f) => f.statusCode === STATUS_RESOLVED).length,
     };
     return { ...plan, findingCounts };
   }
@@ -278,7 +279,7 @@ export class ClientInspectionsService {
       allPlanIds.length
         ? this.prisma.finding.count({
             where: {
-              statusCode: 'open',
+              statusCode: STATUS_OPEN,
               deletedAt: null,
               asset: { inspectionPlanId: { in: allPlanIds }, deletedAt: null },
             },

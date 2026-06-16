@@ -8,15 +8,13 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { UseInterceptors } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiConsumes } from '@nestjs/swagger';
 import type { Response } from 'express';
-import { User, Role } from '@prisma/client';
+import { User } from '@prisma/client';
 import { Roles, CurrentUser } from '@/common/decorators';
+import { ALL_STAFF } from '@/common/auth/roles';
 import { PhotosService } from './photos.service';
 import { PhotoUploadDto } from './dto';
 
-const ALL = [
-  Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER,
-  Role.BACKOFFICE, Role.WERKVOORBEREIDER, Role.INSPECTEUR,
-] as const;
+const ALL = ALL_STAFF;
 
 @ApiTags('Photos')
 @ApiBearerAuth()

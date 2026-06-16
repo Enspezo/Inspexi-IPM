@@ -27,7 +27,7 @@ import { orgScope, assertFound, assertSameOrg } from '@/common';
 import { STORAGE_PROVIDER } from '@/common/services/storage/storage.interface';
 import type { StorageProvider } from '@/common/services/storage/storage.interface';
 import { EmailService } from '@/common/services/email.service';
-import { LookupService } from '../lookups/lookup.service';
+import { LookupService, LOOKUP_KIND } from '../lookups/lookup.service';
 import { DocumentRenderService } from '../document-generation/document-render.service';
 import { PdfGenerationService } from '../document-generation/pdf-generation.service';
 import { WordExportService } from '../document-generation/word-export.service';
@@ -268,7 +268,7 @@ export class GeneratedDocumentsService {
     if (doc.status === GeneratedDocumentStatus.FINALIZED) {
       throw new BadRequestException('Gefinaliseerd document kan niet meer ondertekend worden');
     }
-    const role = await this.lookups.resolveLookup('signer-roles', dto.signerRoleCode, doc.orgId);
+    const role = await this.lookups.resolveLookup(LOOKUP_KIND.SIGNER_ROLES, dto.signerRoleCode, doc.orgId);
     if (!role) throw new BadRequestException(`Onbekende ondertekenrol: ${dto.signerRoleCode}`);
 
     const requestId = randomUUID();

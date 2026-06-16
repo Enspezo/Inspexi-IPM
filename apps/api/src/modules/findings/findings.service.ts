@@ -14,11 +14,9 @@ import {
 } from '@nestjs/common';
 import { User, Prisma } from '@prisma/client';
 import { PrismaService } from '@/prisma';
-import { orgScope, assertFound } from '@/common';
-import { LookupService } from '../lookups/lookup.service';
+import { orgScope, assertFound, STATUS_OPEN, STATUS_RESOLVED } from '@/common';
+import { LookupService, LOOKUP_KIND } from '../lookups/lookup.service';
 import { CreateFindingDto, UpdateFindingDto } from './dto';
-
-const STATUS_RESOLVED = 'resolved';
 
 @Injectable()
 export class FindingsService {
@@ -34,7 +32,7 @@ export class FindingsService {
 
   private async assertStatus(code: string | undefined, orgId: string): Promise<void> {
     if (!code) return;
-    const row = await this.lookups.resolveLookup('finding-status-types', code, orgId);
+    const row = await this.lookups.resolveLookup(LOOKUP_KIND.FINDING_STATUS_TYPES, code, orgId);
     if (!row) throw new BadRequestException(`Onbekende constatering-status: ${code}`);
   }
 
@@ -175,7 +173,7 @@ export class FindingsService {
         recommendationCustom: dto.recommendationCustom,
         normReference: dto.normReference,
         checklistItemId: dto.checklistItemId,
-        statusCode: 'open',
+        statusCode: STATUS_OPEN,
         createdBy: user.id,
         deviceId,
       },

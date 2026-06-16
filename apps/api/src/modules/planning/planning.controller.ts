@@ -13,6 +13,7 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { User, Role } from '@prisma/client';
+import { ALL_STAFF, CRM_ROLES } from '@/common/auth/roles';
 import { Roles, CurrentUser } from '@/common/decorators';
 import { PlanningService } from './planning.service';
 import { PlanningSessionsService } from './planning-sessions.service';
@@ -47,14 +48,7 @@ export class PlanningController {
   // ─── List & Create ─────────────────────────────────────────
 
   @Get()
-  @Roles(
-    Role.SUPERUSER,
-    Role.ORG_ADMIN,
-    Role.MANAGER,
-    Role.BACKOFFICE,
-    Role.WERKVOORBEREIDER,
-    Role.INSPECTEUR,
-  )
+  @Roles(...ALL_STAFF)
   @ApiOperation({ summary: 'Planregels ophalen' })
   async findAll(@CurrentUser() user: User, @Query() query: ListPlanningQueryDto) {
     const result = await this.service.findAll(user, query);
@@ -62,7 +56,7 @@ export class PlanningController {
   }
 
   @Post()
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE, Role.WERKVOORBEREIDER)
+  @Roles(...CRM_ROLES)
   @ApiOperation({ summary: 'Planregel aanmaken' })
   @ApiResponse({ status: 201, description: 'Planregel aangemaakt' })
   async create(@Body() dto: CreatePlanningItemDto, @CurrentUser() user: User) {
@@ -74,14 +68,7 @@ export class PlanningController {
   // NOTE: these routes must stay ABOVE the bare :id routes
 
   @Get(':id/sessions')
-  @Roles(
-    Role.SUPERUSER,
-    Role.ORG_ADMIN,
-    Role.MANAGER,
-    Role.BACKOFFICE,
-    Role.WERKVOORBEREIDER,
-    Role.INSPECTEUR,
-  )
+  @Roles(...ALL_STAFF)
   @ApiOperation({ summary: 'Sessies van een planregel ophalen' })
   async findSessions(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: User) {
     const data = await this.sessionsService.findSessions(id, user);
@@ -89,7 +76,7 @@ export class PlanningController {
   }
 
   @Post(':id/sessions')
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE, Role.WERKVOORBEREIDER)
+  @Roles(...CRM_ROLES)
   @ApiOperation({ summary: 'Extra sessie toevoegen aan planregel' })
   @ApiResponse({ status: 201, description: 'Sessie aangemaakt' })
   async addSession(
@@ -102,7 +89,7 @@ export class PlanningController {
   }
 
   @Patch(':id/sessions/:sessionId')
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE, Role.WERKVOORBEREIDER)
+  @Roles(...CRM_ROLES)
   @ApiOperation({ summary: 'Sessie bijwerken (datum/duur/notitie)' })
   async updateSession(
     @Param('id', ParseUUIDPipe) id: string,
@@ -115,7 +102,7 @@ export class PlanningController {
   }
 
   @Delete(':id/sessions/:sessionId')
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE, Role.WERKVOORBEREIDER)
+  @Roles(...CRM_ROLES)
   @ApiOperation({ summary: 'Sessie annuleren (VERVALLEN)' })
   @HttpCode(HttpStatus.OK)
   async cancelSession(
@@ -128,7 +115,7 @@ export class PlanningController {
   }
 
   @Post(':id/sessions/:sessionId/assign')
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE, Role.WERKVOORBEREIDER)
+  @Roles(...CRM_ROLES)
   @ApiOperation({ summary: 'Inspecteurs toewijzen aan sessie' })
   @HttpCode(HttpStatus.OK)
   async assignSessionInspectors(
@@ -169,7 +156,7 @@ export class PlanningController {
   }
 
   @Post(':id/sessions/:sessionId/confirm')
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE, Role.WERKVOORBEREIDER)
+  @Roles(...CRM_ROLES)
   @ApiOperation({ summary: 'Sessie handmatig bevestigen als DEFINITIEF (planner override)' })
   @HttpCode(HttpStatus.OK)
   async confirmSession(
@@ -182,7 +169,7 @@ export class PlanningController {
   }
 
   @Post(':id/sessions/:sessionId/reschedule')
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE, Role.WERKVOORBEREIDER)
+  @Roles(...CRM_ROLES)
   @ApiOperation({ summary: 'Sessie verzetten (vervangt huidige sessie)' })
   @HttpCode(HttpStatus.OK)
   async rescheduleSession(
@@ -196,7 +183,7 @@ export class PlanningController {
   }
 
   @Post(':id/sessions/:sessionId/complete')
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE, Role.WERKVOORBEREIDER)
+  @Roles(...CRM_ROLES)
   @ApiOperation({ summary: 'Sessie afronden (AFGEROND)' })
   @HttpCode(HttpStatus.OK)
   async completeSession(
@@ -211,14 +198,7 @@ export class PlanningController {
   // ─── Detail & Update ───────────────────────────────────────
 
   @Get(':id')
-  @Roles(
-    Role.SUPERUSER,
-    Role.ORG_ADMIN,
-    Role.MANAGER,
-    Role.BACKOFFICE,
-    Role.WERKVOORBEREIDER,
-    Role.INSPECTEUR,
-  )
+  @Roles(...ALL_STAFF)
   @ApiOperation({ summary: 'Planregel ophalen' })
   async findOne(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: User) {
     const data = await this.service.findOne(id, user);
@@ -226,7 +206,7 @@ export class PlanningController {
   }
 
   @Patch(':id/status')
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE, Role.WERKVOORBEREIDER)
+  @Roles(...CRM_ROLES)
   @ApiOperation({ summary: 'Status van planregel direct wijzigen' })
   async updateStatus(
     @Param('id', ParseUUIDPipe) id: string,
@@ -238,7 +218,7 @@ export class PlanningController {
   }
 
   @Patch(':id')
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE, Role.WERKVOORBEREIDER)
+  @Roles(...CRM_ROLES)
   @ApiOperation({ summary: 'Planregel bijwerken' })
   async update(
     @Param('id', ParseUUIDPipe) id: string,
@@ -252,7 +232,7 @@ export class PlanningController {
   // ─── Inspector actions ─────────────────────────────────────
 
   @Post(':id/assign')
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE, Role.WERKVOORBEREIDER)
+  @Roles(...CRM_ROLES)
   @ApiOperation({ summary: 'Inspecteurs toewijzen' })
   async assignInspectors(
     @Param('id', ParseUUIDPipe) id: string,
@@ -286,7 +266,7 @@ export class PlanningController {
   }
 
   @Post(':id/complete')
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE, Role.WERKVOORBEREIDER)
+  @Roles(...CRM_ROLES)
   @ApiOperation({ summary: 'Afspraak afronden' })
   @HttpCode(HttpStatus.OK)
   async complete(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: User) {
@@ -295,7 +275,7 @@ export class PlanningController {
   }
 
   @Post(':id/reschedule')
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE, Role.WERKVOORBEREIDER)
+  @Roles(...CRM_ROLES)
   @ApiOperation({ summary: 'Afspraak verzetten (maakt nieuwe planregel)' })
   @HttpCode(HttpStatus.OK)
   async reschedule(
@@ -308,7 +288,7 @@ export class PlanningController {
   }
 
   @Post(':id/send-confirmation')
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE, Role.WERKVOORBEREIDER)
+  @Roles(...CRM_ROLES)
   @ApiOperation({ summary: 'Bevestigings-e-mail opnieuw versturen' })
   @HttpCode(HttpStatus.OK)
   async sendConfirmation(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: User) {
@@ -319,14 +299,7 @@ export class PlanningController {
   // ─── Questions ─────────────────────────────────────────────
 
   @Get(':id/questions')
-  @Roles(
-    Role.SUPERUSER,
-    Role.ORG_ADMIN,
-    Role.MANAGER,
-    Role.BACKOFFICE,
-    Role.WERKVOORBEREIDER,
-    Role.INSPECTEUR,
-  )
+  @Roles(...ALL_STAFF)
   @ApiOperation({ summary: 'Vragen & antwoorden ophalen' })
   async getQuestions(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: User) {
     const data = await this.service.getQuestions(id, user);
@@ -334,14 +307,7 @@ export class PlanningController {
   }
 
   @Post(':id/questions')
-  @Roles(
-    Role.SUPERUSER,
-    Role.ORG_ADMIN,
-    Role.MANAGER,
-    Role.BACKOFFICE,
-    Role.WERKVOORBEREIDER,
-    Role.INSPECTEUR,
-  )
+  @Roles(...ALL_STAFF)
   @ApiOperation({ summary: 'Vraag of antwoord toevoegen' })
   async addQuestion(
     @Param('id', ParseUUIDPipe) id: string,
@@ -355,7 +321,7 @@ export class PlanningController {
   // ─── Followers ─────────────────────────────────────────────
 
   @Get(':id/followers')
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE, Role.WERKVOORBEREIDER)
+  @Roles(...CRM_ROLES)
   @ApiOperation({ summary: 'Volgers ophalen' })
   async getFollowers(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: User) {
     const data = await this.followersService.getFollowers(id, user);
@@ -363,7 +329,7 @@ export class PlanningController {
   }
 
   @Post(':id/followers')
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE, Role.WERKVOORBEREIDER)
+  @Roles(...CRM_ROLES)
   @ApiOperation({ summary: 'Volger toevoegen' })
   async addFollower(
     @Param('id', ParseUUIDPipe) id: string,
@@ -375,7 +341,7 @@ export class PlanningController {
   }
 
   @Delete(':id/followers/:followerId')
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE, Role.WERKVOORBEREIDER)
+  @Roles(...CRM_ROLES)
   @ApiOperation({ summary: 'Volger verwijderen' })
   async removeFollower(
     @Param('id', ParseUUIDPipe) id: string,

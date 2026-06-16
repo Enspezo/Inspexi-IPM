@@ -11,8 +11,13 @@ import {
   orgScope,
   assertFound,
   assertSameOrg,
+  STATUS_DRAFT,
+  STATUS_IN_PROGRESS,
+  STATUS_PENDING_REVIEW,
+  STATUS_REVIEWED,
+  STATUS_APPROVED,
 } from '@/common';
-import { LookupService } from '../lookups/lookup.service';
+import { LookupService, LOOKUP_KIND, type LookupKind } from '../lookups/lookup.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import {
   CreateInspectionPlanDto,
@@ -21,13 +26,6 @@ import {
   SubmitInspectionPlanDto,
   ReviewInspectionPlanDto,
 } from './dto';
-
-// Beschermde systeemcodes die de state-machine stuurt (orgs mogen herlabelen, niet verwijderen).
-const STATUS_DRAFT = 'draft';
-const STATUS_IN_PROGRESS = 'in_progress';
-const STATUS_PENDING_REVIEW = 'pending_review';
-const STATUS_REVIEWED = 'reviewed';
-const STATUS_APPROVED = 'approved';
 
 const userSelect = { id: true, firstName: true, lastName: true, email: true };
 const contactSelect = {
@@ -80,7 +78,7 @@ export class InspectionPlansService {
   }
 
   private async assertLookup(
-    kind: any,
+    kind: LookupKind,
     code: string | undefined,
     orgId: string,
   ): Promise<void> {
@@ -212,7 +210,7 @@ export class InspectionPlansService {
     );
     await this.assertTemplateUsable(dto.inspectionTemplateId, orgId);
     await this.assertNormExists(dto.normTypeCode);
-    await this.assertLookup('inspection-types', dto.inspectionTypeCode, orgId);
+    await this.assertLookup(LOOKUP_KIND.INSPECTION_TYPES, dto.inspectionTypeCode, orgId);
 
     const plan = await this.prisma.inspectionPlan.create({
       data: {
@@ -269,7 +267,7 @@ export class InspectionPlansService {
     );
     await this.assertTemplateUsable(dto.inspectionTemplateId, orgId);
     if (dto.normTypeCode) await this.assertNormExists(dto.normTypeCode);
-    await this.assertLookup('inspection-types', dto.inspectionTypeCode, orgId);
+    await this.assertLookup(LOOKUP_KIND.INSPECTION_TYPES, dto.inspectionTypeCode, orgId);
 
     const data: Prisma.InspectionPlanUpdateInput = {};
     // Map alleen aanwezige velden (PATCH-semantiek).
@@ -304,7 +302,7 @@ export class InspectionPlansService {
     // Vereist om een plan naar `in_progress` te brengen. Validatie via lookup.
     if (dto.statusCode !== undefined) {
       const row = await this.lookups.resolveLookup(
-        'plan-status-types',
+        LOOKUP_KIND.PLAN_STATUS_TYPES,
         dto.statusCode,
         orgId,
       );

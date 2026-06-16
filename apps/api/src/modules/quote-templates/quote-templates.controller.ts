@@ -16,7 +16,8 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { ApiTags, ApiOperation, ApiConsumes } from '@nestjs/swagger';
-import { User, Role } from '@prisma/client';
+import { User } from '@prisma/client';
+import { OFFICE_ROLES, ORG_ADMINS } from '@/common/auth/roles';
 import { Response } from 'express';
 import { Roles } from '@/common/decorators/roles.decorator';
 import { CurrentUser } from '@/common/decorators/current-user.decorator';
@@ -36,7 +37,7 @@ export class QuoteTemplatesController {
 
   @Get()
   @ApiOperation({ summary: 'Offertesjablonen ophalen' })
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE)
+  @Roles(...OFFICE_ROLES)
   async findAll(
     @CurrentUser() user: User,
     @Query() query: ListQuoteTemplatesQueryDto,
@@ -47,7 +48,7 @@ export class QuoteTemplatesController {
 
   @Post()
   @ApiOperation({ summary: 'Nieuw offertesjabloon aanmaken' })
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN)
+  @Roles(...ORG_ADMINS)
   async create(
     @CurrentUser() user: User,
     @Body() dto: CreateQuoteTemplateDto,
@@ -60,7 +61,7 @@ export class QuoteTemplatesController {
 
   @Post(':id/docx')
   @ApiOperation({ summary: 'DOCX-sjabloon uploaden' })
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN)
+  @Roles(...ORG_ADMINS)
   @UseInterceptors(
     FileInterceptor('file', {
       storage: memoryStorage(),
@@ -82,7 +83,7 @@ export class QuoteTemplatesController {
 
   @Get(':id/docx/download')
   @ApiOperation({ summary: 'DOCX-sjabloon downloaden' })
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE)
+  @Roles(...OFFICE_ROLES)
   async downloadDocx(
     @CurrentUser() user: User,
     @Param('id', ParseUUIDPipe) id: string,
@@ -100,7 +101,7 @@ export class QuoteTemplatesController {
 
   @Get(':id/docx/revisions')
   @ApiOperation({ summary: 'DOCX-revisies ophalen' })
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE)
+  @Roles(...OFFICE_ROLES)
   async getDocxRevisions(
     @CurrentUser() user: User,
     @Param('id', ParseUUIDPipe) id: string,
@@ -111,7 +112,7 @@ export class QuoteTemplatesController {
 
   @Get(':id/docx/revisions/:revisionId/download')
   @ApiOperation({ summary: 'DOCX-revisie downloaden' })
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE)
+  @Roles(...OFFICE_ROLES)
   async downloadDocxRevision(
     @CurrentUser() user: User,
     @Param('id', ParseUUIDPipe) id: string,
@@ -132,7 +133,7 @@ export class QuoteTemplatesController {
 
   @Post(':id/images')
   @ApiOperation({ summary: 'Afbeelding bij sjabloon uploaden' })
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN)
+  @Roles(...ORG_ADMINS)
   @UseInterceptors(
     FileInterceptor('file', {
       storage: memoryStorage(),
@@ -154,7 +155,7 @@ export class QuoteTemplatesController {
 
   @Get(':id/images/:key(*)')
   @ApiOperation({ summary: 'Sjabloonafbeelding ophalen' })
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE)
+  @Roles(...OFFICE_ROLES)
   async getImage(
     @CurrentUser() user: User,
     @Param('id', ParseUUIDPipe) id: string,
@@ -179,7 +180,7 @@ export class QuoteTemplatesController {
 
   @Get(':id/attachments')
   @ApiOperation({ summary: 'Standaardbijlagen ophalen' })
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE)
+  @Roles(...OFFICE_ROLES)
   async getAttachments(
     @CurrentUser() user: User,
     @Param('id', ParseUUIDPipe) id: string,
@@ -190,7 +191,7 @@ export class QuoteTemplatesController {
 
   @Post(':id/attachments')
   @ApiOperation({ summary: 'Standaardbijlage uploaden' })
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN)
+  @Roles(...ORG_ADMINS)
   @UseInterceptors(
     FileInterceptor('file', {
       storage: memoryStorage(),
@@ -212,7 +213,7 @@ export class QuoteTemplatesController {
 
   @Patch(':id/attachments/reorder')
   @ApiOperation({ summary: 'Standaardbijlagen herordenen' })
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN)
+  @Roles(...ORG_ADMINS)
   async reorderAttachments(
     @CurrentUser() user: User,
     @Param('id', ParseUUIDPipe) id: string,
@@ -228,7 +229,7 @@ export class QuoteTemplatesController {
 
   @Get(':id/attachments/:attachmentId/download')
   @ApiOperation({ summary: 'Standaardbijlage downloaden' })
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE)
+  @Roles(...OFFICE_ROLES)
   async downloadAttachment(
     @CurrentUser() user: User,
     @Param('id', ParseUUIDPipe) id: string,
@@ -250,7 +251,7 @@ export class QuoteTemplatesController {
 
   @Delete(':id/attachments/:attachmentId')
   @ApiOperation({ summary: 'Standaardbijlage verwijderen' })
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN)
+  @Roles(...ORG_ADMINS)
   async deleteAttachment(
     @CurrentUser() user: User,
     @Param('id', ParseUUIDPipe) id: string,
@@ -264,7 +265,7 @@ export class QuoteTemplatesController {
 
   @Get(':id/follow-ups')
   @ApiOperation({ summary: 'Follow-up regels ophalen' })
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE)
+  @Roles(...OFFICE_ROLES)
   async getFollowUpRules(
     @CurrentUser() user: User,
     @Param('id', ParseUUIDPipe) id: string,
@@ -275,7 +276,7 @@ export class QuoteTemplatesController {
 
   @Post(':id/follow-ups')
   @ApiOperation({ summary: 'Follow-up regel toevoegen' })
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN)
+  @Roles(...ORG_ADMINS)
   async createFollowUp(
     @CurrentUser() user: User,
     @Param('id', ParseUUIDPipe) id: string,
@@ -287,7 +288,7 @@ export class QuoteTemplatesController {
 
   @Patch(':id/follow-ups/:followUpId')
   @ApiOperation({ summary: 'Follow-up regel bijwerken' })
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN)
+  @Roles(...ORG_ADMINS)
   async updateFollowUp(
     @CurrentUser() user: User,
     @Param('id', ParseUUIDPipe) id: string,
@@ -300,7 +301,7 @@ export class QuoteTemplatesController {
 
   @Delete(':id/follow-ups/:followUpId')
   @ApiOperation({ summary: 'Follow-up regel verwijderen' })
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN)
+  @Roles(...ORG_ADMINS)
   async deleteFollowUp(
     @CurrentUser() user: User,
     @Param('id', ParseUUIDPipe) id: string,
@@ -314,7 +315,7 @@ export class QuoteTemplatesController {
 
   @Get(':id')
   @ApiOperation({ summary: 'Offertesjabloon ophalen' })
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE)
+  @Roles(...OFFICE_ROLES)
   async findOne(
     @CurrentUser() user: User,
     @Param('id', ParseUUIDPipe) id: string,
@@ -325,7 +326,7 @@ export class QuoteTemplatesController {
 
   @Patch(':id')
   @ApiOperation({ summary: 'Offertesjabloon bijwerken' })
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN)
+  @Roles(...ORG_ADMINS)
   async update(
     @CurrentUser() user: User,
     @Param('id', ParseUUIDPipe) id: string,
@@ -337,7 +338,7 @@ export class QuoteTemplatesController {
 
   @Delete(':id')
   @ApiOperation({ summary: 'Offertesjabloon verwijderen (soft delete)' })
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN)
+  @Roles(...ORG_ADMINS)
   async deactivate(
     @CurrentUser() user: User,
     @Param('id', ParseUUIDPipe) id: string,

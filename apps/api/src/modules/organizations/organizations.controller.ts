@@ -24,6 +24,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { Response } from 'express';
 import { User, Role } from '@prisma/client';
+import { ORG_ADMINS } from '@/common/auth/roles';
 import { OrganizationsService } from './organizations.service';
 import { CreateOrganizationDto, UpdateOrganizationDto } from './dto';
 import { Roles, CurrentUser, Public } from '@/common/decorators';
@@ -90,7 +91,7 @@ export class OrganizationsController {
   }
 
   @Get(':id')
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN)
+  @Roles(...ORG_ADMINS)
   @ApiOperation({ summary: 'Organisatie ophalen op ID' })
   @ApiResponse({ status: 200, description: 'Organisatie details' })
   @ApiResponse({ status: 404, description: 'Niet gevonden' })
@@ -106,7 +107,7 @@ export class OrganizationsController {
   }
 
   @Patch(':id')
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN)
+  @Roles(...ORG_ADMINS)
   @ApiOperation({ summary: 'Organisatie instellingen bijwerken' })
   @ApiResponse({ status: 200, description: 'Organisatie bijgewerkt' })
   @ApiResponse({ status: 404, description: 'Niet gevonden' })
@@ -123,7 +124,7 @@ export class OrganizationsController {
   }
 
   @Post(':id/logo')
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN)
+  @Roles(...ORG_ADMINS)
   @UseInterceptors(
     FileInterceptor('file', {
       storage: memoryStorage(),
@@ -168,7 +169,7 @@ export class OrganizationsController {
   }
 
   @Delete(':id/logo')
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN)
+  @Roles(...ORG_ADMINS)
   @ApiOperation({ summary: 'Logo verwijderen van organisatie' })
   @ApiResponse({ status: 200, description: 'Logo verwijderd' })
   async deleteLogo(

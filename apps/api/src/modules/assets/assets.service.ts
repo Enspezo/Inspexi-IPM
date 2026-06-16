@@ -3,7 +3,7 @@ import { User, Prisma } from '@prisma/client';
 import { PrismaService } from '@/prisma';
 import { paginate, orgScope, assertFound } from '@/common';
 import { AssetTypesService } from '../asset-types/asset-types.service';
-import { LookupService } from '../lookups/lookup.service';
+import { LookupService, LOOKUP_KIND } from '../lookups/lookup.service';
 import {
   CreateAssetDto,
   UpdateAssetDto,
@@ -36,7 +36,7 @@ export class AssetsService {
 
   private async assertStatus(code: string | undefined, orgId: string): Promise<void> {
     if (!code) return;
-    const row = await this.lookups.resolveLookup('asset-status-types', code, orgId);
+    const row = await this.lookups.resolveLookup(LOOKUP_KIND.ASSET_STATUS_TYPES, code, orgId);
     if (!row) throw new BadRequestException(`Onbekende asset-status: ${code}`);
   }
 

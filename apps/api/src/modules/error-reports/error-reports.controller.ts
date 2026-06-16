@@ -9,6 +9,7 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { User, Role } from '@prisma/client';
+import { ALL_STAFF } from '@/common/auth/roles';
 import { Roles } from '@/common/decorators/roles.decorator';
 import { CurrentUser } from '@/common/decorators/current-user.decorator';
 import { ErrorReportsService } from './error-reports.service';
@@ -26,14 +27,7 @@ export class ErrorReportsController {
 
   @Post()
   @ApiOperation({ summary: 'Submit an error report' })
-  @Roles(
-    Role.SUPERUSER,
-    Role.ORG_ADMIN,
-    Role.MANAGER,
-    Role.BACKOFFICE,
-    Role.WERKVOORBEREIDER,
-    Role.INSPECTEUR,
-  )
+  @Roles(...ALL_STAFF)
   async create(
     @Body() dto: CreateErrorReportDto,
     @CurrentUser() user: User,

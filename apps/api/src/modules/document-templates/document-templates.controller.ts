@@ -17,8 +17,9 @@ import { ApiTags, ApiBearerAuth, ApiOperation, ApiConsumes } from '@nestjs/swagg
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { Response } from 'express';
-import { User, Role, DocumentType } from '@prisma/client';
+import { User, DocumentType } from '@prisma/client';
 import { Roles, CurrentUser } from '@/common/decorators';
+import { ALL_STAFF, ORG_ADMINS } from '@/common/auth/roles';
 import { DocumentTemplatesService } from './document-templates.service';
 import {
   UpdateDocumentTemplateDto,
@@ -27,15 +28,8 @@ import {
   ReorderSectionsDto,
 } from './dto';
 
-const READ_ROLES = [
-  Role.SUPERUSER,
-  Role.ORG_ADMIN,
-  Role.MANAGER,
-  Role.BACKOFFICE,
-  Role.WERKVOORBEREIDER,
-  Role.INSPECTEUR,
-] as const;
-const WRITE_ROLES = [Role.SUPERUSER, Role.ORG_ADMIN] as const;
+const READ_ROLES = ALL_STAFF;
+const WRITE_ROLES = ORG_ADMINS;
 
 const DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 

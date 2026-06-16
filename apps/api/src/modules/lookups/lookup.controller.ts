@@ -10,7 +10,8 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiParam } from '@nestjs/swagger';
-import { User, Role } from '@prisma/client';
+import { User } from '@prisma/client';
+import { ALL_STAFF, ORG_ADMINS } from '@/common/auth/roles';
 import { Roles, CurrentUser } from '@/common/decorators';
 import { LookupService, LOOKUP_KINDS, LookupKind } from './lookup.service';
 import { CreateLookupDto, UpdateLookupDto } from './dto';
@@ -29,10 +30,7 @@ export class LookupController {
   }
 
   @Get(':kind')
-  @Roles(
-    Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER,
-    Role.BACKOFFICE, Role.WERKVOORBEREIDER, Role.INSPECTEUR,
-  )
+  @Roles(...ALL_STAFF)
   @ApiOperation({ summary: 'Lookup-waarden ophalen (systeemdefaults + org-overrides, gemerged)' })
   @ApiParam({ name: 'kind', enum: Object.keys(LOOKUP_KINDS) })
   async list(@Param('kind') kind: string, @CurrentUser() user: User) {
@@ -41,7 +39,7 @@ export class LookupController {
   }
 
   @Get(':kind/manage')
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN)
+  @Roles(...ORG_ADMINS)
   @ApiOperation({ summary: 'Ruwe lookup-rijen voor beheer (defaults + org-rijen apart)' })
   async listRaw(@Param('kind') kind: string, @CurrentUser() user: User) {
     const data = await this.lookups.listRaw(this.assertKind(kind), user);
@@ -49,7 +47,7 @@ export class LookupController {
   }
 
   @Post(':kind')
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN)
+  @Roles(...ORG_ADMINS)
   @ApiOperation({ summary: 'Lookup-waarde toevoegen (org-rij of — als SUPERUSER — systeemdefault)' })
   async create(
     @Param('kind') kind: string,
@@ -61,7 +59,7 @@ export class LookupController {
   }
 
   @Patch(':kind/:id')
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN)
+  @Roles(...ORG_ADMINS)
   @ApiOperation({ summary: 'Lookup-waarde bijwerken (label/kleur/volgorde/actief)' })
   async update(
     @Param('kind') kind: string,
@@ -74,7 +72,7 @@ export class LookupController {
   }
 
   @Delete(':kind/:id')
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN)
+  @Roles(...ORG_ADMINS)
   @ApiOperation({ summary: 'Lookup-waarde verwijderen (alleen eigen org-rijen / superuser-defaults)' })
   async remove(
     @Param('kind') kind: string,

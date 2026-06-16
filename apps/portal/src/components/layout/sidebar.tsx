@@ -251,6 +251,7 @@ const organisatieSections: NavSection[] = [
         children: [
           { to: '/inspection-templates', label: 'Inspectie-templates' },
           { to: '/checklists', label: 'Checklists' },
+          { to: '/checklist-items', label: 'Checklist-items' },
           { to: '/finding-templates', label: 'Constateringen' },
           { to: '/asset-types', label: 'Asset-types' },
           { to: '/location-types', label: 'Locatie-types' },

@@ -1944,7 +1944,19 @@ export interface Checklist {
   retiredAt: string | null;
   createdBy: string;
   updatedBy: string | null;
-  items?: ChecklistItem[];
+  /** Door de API meegestuurd op detail: gekoppelde items via de join-tabel. */
+  itemLinks?: ChecklistItemLink[];
+}
+
+/** Koppeling tussen een Checklist en een ChecklistItem uit de bibliotheek. */
+export interface ChecklistItemLink {
+  id: string;
+  checklistId: string;
+  checklistItemId: string;
+  sortOrder: number;
+  isRequired: boolean;
+  categoryOverride: string | null;
+  checklistItem?: ChecklistItem & { category?: Category | null };
 }
 
 export interface ChecklistItem {
@@ -2022,6 +2034,16 @@ export interface AssetTypeField {
   updatedAt: string;
 }
 
+/** Toegestaan ouder-type voor een asset-type (parent-constraint). */
+export interface AssetTypeConstraint {
+  id: string;
+  assetTypeDefinitionId: string;
+  allowedParentTypeId: string | null;
+  isRequired: boolean;
+  createdAt: string;
+  allowedParentType?: { id: string; code: string; name: string } | null;
+}
+
 export interface LocationTypeDefinition {
   id: string;
   orgId: string | null;
@@ -2059,6 +2081,16 @@ export interface LocationTypeField {
   groupName: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+/** Toegestaan ouder-type voor een locatie-type (parent-constraint). */
+export interface LocationTypeConstraint {
+  id: string;
+  locationTypeDefinitionId: string;
+  allowedParentTypeId: string | null;
+  isRequired: boolean;
+  createdAt: string;
+  allowedParentType?: { id: string; code: string; name: string } | null;
 }
 
 export interface InspectionTemplate {

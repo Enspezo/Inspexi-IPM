@@ -1,6 +1,11 @@
-import { useQuery } from '@tanstack/react-query';
+// Hooks-laag voor het finding-templates domein: lijst (PAGINATED) + detail + CRUD +
+// dupliceren + import/export. TanStack Query, queryKeys als arrays; mutaties invalideren
+// ['finding-templates']. Bevat ook een lokale classification-model detail-query voor de
+// defaultClassification-editor (geen edit aan de classification-models map).
+
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api-client';
-import type { FindingTemplate, PaginatedResponse } from '@/types';
+import type { FindingTemplate, ClassificationModel, PaginatedResponse } from '@/types';
 
 interface ListFindingTemplatesParams {
   search?: string;
@@ -30,5 +35,115 @@ export function useFindingTemplates(params: ListFindingTemplatesParams = {}) {
   return useQuery<PaginatedResponse<FindingTemplate>>({
     queryKey: ['finding-templates', params],
     queryFn: () => apiClient.get<PaginatedResponse<FindingTemplate>>(`/finding-templates${qs ? `?${qs}` : ''}`),
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Detail + CRUD
+// ---------------------------------------------------------------------------
+
+export function useFindingTemplate(id: string) {
+  return useQuery<FindingTemplate>({
+    queryKey: ['finding-templates', id],
+    queryFn: () => apiClient.get<FindingTemplate>(`/finding-templates/${id}`),
+    enabled: !!id,
+  });
+}
+
+export function useCreateFindingTemplate() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: Record<string, unknown>) =>
+      apiClient.post<FindingTemplate>('/finding-templates', data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['finding-templates'] }),
+  });
+}
+
+export function useUpdateFindingTemplate() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, data }: { id: string; data: Record<string, unknown> }) =>
+      apiClient.patch<FindingTemplate>(`/finding-templates/${id}`, data),
+    onSuccess: (_d, v) => {
+      qc.invalidateQueries({ queryKey: ['finding-templates'] });
+      qc.invalidateQueries({ queryKey: ['finding-templates', v.id] });
+    },
+  });
+}
+
+export function useDeleteFindingTemplate() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => apiClient.delete(`/finding-templates/${id}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['finding-templates'] }),
+  });
+}
+
+/** Systeem→org kopie; body { code? }; geeft de nieuwe template terug. */
+export function useDuplicateFindingTemplate() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, code }: { id: string; code?: string }) =>
+      apiClient.post<FindingTemplate>(`/finding-templates/${id}/duplicate`, code ? { code } : {}),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['finding-templates'] }),
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Import / Export
+// ---------------------------------------------------------------------------
+
+/** Eén geëxporteerd sjabloon (categorie/model op naam/code i.p.v. UUID). */
+export interface FindingTemplateExportItem {
+  code?: string;
+  category?: string;
+  shortDescription: string;
+  longDescription?: string;
+  explanation?: string;
+  normReference?: string;
+  classificationModelCode?: string;
+  defaultClassification?: Record<string, string>;
+}
+
+/** Export-formaat zoals de backend dit teruggeeft (na apiClient unwrap van { success, data }). */
+export interface FindingTemplateExport {
+  exportVersion: string;
+  exportedAt: string;
+  exportedBy: string;
+  findingTemplates: FindingTemplateExportItem[];
+}
+
+/** Resultaat van een import-actie. */
+export interface ImportFindingTemplatesResult {
+  imported: number;
+  skipped: number;
+  errors: string[];
+}
+
+/** Importpayload: exportVersion + lijst sjablonen (classificationModelCode verplicht per item). */
+export interface ImportFindingTemplatesPayload {
+  exportVersion: string;
+  findingTemplates: FindingTemplateExportItem[];
+}
+
+export function useImportFindingTemplates() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: ImportFindingTemplatesPayload) =>
+      apiClient.post<ImportFindingTemplatesResult>('/finding-templates/import', payload),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['finding-templates'] }),
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Classification-model detail (lokaal — geen edit aan de classification-models map)
+// ---------------------------------------------------------------------------
+
+/** Detail van een classificatiemodel inclusief characteristics + options. */
+export function useClassificationModelDetail(id: string | null | undefined) {
+  return useQuery<ClassificationModel>({
+    queryKey: ['classification-models', id],
+    queryFn: () => apiClient.get<ClassificationModel>(`/classification-models/${id}`),
+    enabled: !!id,
   });
 }

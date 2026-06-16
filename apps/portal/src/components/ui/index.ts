@@ -13,6 +13,7 @@ export { Checkbox } from './checkbox';
 export { Table, type Column, type TableSort } from './table';
 export { Modal } from './modal';
 export { Card } from './card';
+export { SortableList, DragHandle, type SortableRenderProps } from './sortable-list';
 export { Spinner } from './spinner';
 export { ToastProvider, useToast } from './toast';
 export { RichTextEditor } from './rich-text-editor';

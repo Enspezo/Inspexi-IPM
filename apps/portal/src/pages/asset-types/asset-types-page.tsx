@@ -2,21 +2,38 @@
 // + useTableConfig + ColumnDef + Table + PageHeader. Zoeken is client-side.
 
 import { useState } from 'react';
-import type { AssetTypeDefinition } from '@/types';
-import { ErrorBox, Spinner, Table, Input } from '@/components/ui';
+import { useNavigate } from 'react-router-dom';
+import { Role, type AssetTypeDefinition } from '@/types';
+import { Button, ErrorBox, Spinner, Table, Input } from '@/components/ui';
 import { DetailPageLayout } from '@/components/layout/detail-page-layout';
 import { PageHeader } from '@/components/layout/page-header';
 import { TableConfigSidebar, useTableConfig, type ColumnDef } from '@/components/table-config';
+import { useAuth } from '@/providers/auth-provider';
 import { useAssetTypes } from './hooks/use-asset-types';
+import { CreateAssetTypeModal } from './components/create-asset-type-modal';
+
+const MANAGE_ROLES: Role[] = [Role.SUPERUSER, Role.ORG_ADMIN];
 
 export default function AssetTypesPage() {
+  const navigate = useNavigate();
+  const { user } = useAuth();
   const [search, setSearch] = useState('');
+  const [createOpen, setCreateOpen] = useState(false);
   const { data, isLoading, error } = useAssetTypes();
+
+  const canManage = !!user && user.roles.some((r) => MANAGE_ROLES.includes(r));
 
   const columns: ColumnDef<AssetTypeDefinition>[] = [
     {
       key: 'name', header: 'Naam', pinned: true, sortable: true, sortKey: 'name',
-      render: (t) => <span className="font-medium text-gray-900">{t.name}</span>,
+      render: (t) => (
+        <button
+          onClick={() => navigate(`/asset-types/${t.id}`)}
+          className="font-medium text-primary-600 hover:text-primary-700 hover:underline"
+        >
+          {t.name}
+        </button>
+      ),
     },
     {
       key: 'code', header: 'Code', sortable: true, sortKey: 'code',
@@ -84,7 +101,17 @@ export default function AssetTypesPage() {
       }
     >
       <div className="space-y-6">
-        <PageHeader title="Asset-types" description="Type-definities voor assets" />
+        <PageHeader
+          title="Asset-types"
+          description="Type-definities voor assets"
+          actions={
+            canManage ? (
+              <Button onClick={() => setCreateOpen(true)}>Nieuw asset-type</Button>
+            ) : undefined
+          }
+        />
+
+        <CreateAssetTypeModal isOpen={createOpen} onClose={() => setCreateOpen(false)} />
 
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
           <div className="flex-1">

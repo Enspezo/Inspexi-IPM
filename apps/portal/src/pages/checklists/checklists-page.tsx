@@ -3,22 +3,37 @@
 // Zoeken gebeurt client-side; status is een StatusBadge (geen lookup).
 
 import { useState } from 'react';
-import type { Checklist } from '@/types';
-import { ErrorBox, Spinner, Table, Input, StatusBadge } from '@/components/ui';
+import { Link } from 'react-router-dom';
+import { Role, type Checklist } from '@/types';
+import { Button, ErrorBox, Spinner, Table, Input, StatusBadge } from '@/components/ui';
 import { DetailPageLayout } from '@/components/layout/detail-page-layout';
 import { PageHeader } from '@/components/layout/page-header';
 import { TableConfigSidebar, useTableConfig, type ColumnDef } from '@/components/table-config';
+import { useAuth } from '@/providers/auth-provider';
 import { CHECKLIST_STATUS } from '@/lib/status';
 import { useChecklists } from './hooks/use-checklists';
+import { CreateChecklistModal } from './components/create-checklist-modal';
+import { ImportChecklistModal } from './components/import-checklist-modal';
+
+const MANAGE_ROLES: Role[] = [Role.SUPERUSER, Role.ORG_ADMIN];
 
 export default function ChecklistsPage() {
   const [search, setSearch] = useState('');
+  const [createOpen, setCreateOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
+  const { user } = useAuth();
   const { data, isLoading, error } = useChecklists();
+
+  const canManage = !!user && user.roles.some((r) => MANAGE_ROLES.includes(r));
 
   const columns: ColumnDef<Checklist>[] = [
     {
       key: 'name', header: 'Naam', pinned: true, sortable: true, sortKey: 'name',
-      render: (c) => <span className="font-medium text-gray-900">{c.name}</span>,
+      render: (c) => (
+        <Link to={`/checklists/${c.id}`} className="font-medium text-primary-600 hover:text-primary-700 hover:underline">
+          {c.name}
+        </Link>
+      ),
     },
     {
       key: 'code', header: 'Code', sortable: true, sortKey: 'code',
@@ -81,7 +96,20 @@ export default function ChecklistsPage() {
       }
     >
       <div className="space-y-6">
-        <PageHeader title="Checklists" description="Inspectie-checklists beheren en doorzoeken" />
+        <PageHeader
+          title="Checklists"
+          description="Inspectie-checklists beheren en doorzoeken"
+          actions={
+            canManage ? (
+              <div className="flex gap-2">
+                <Button variant="secondary" onClick={() => setImportOpen(true)}>
+                  Importeren
+                </Button>
+                <Button onClick={() => setCreateOpen(true)}>Nieuw checklist</Button>
+              </div>
+            ) : undefined
+          }
+        />
 
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
           <div className="flex-1">
@@ -100,6 +128,9 @@ export default function ChecklistsPage() {
 
         <p className="text-sm text-gray-500">{searched.length} {searched.length !== 1 ? 'resultaten' : 'resultaat'}</p>
       </div>
+
+      <CreateChecklistModal isOpen={createOpen} onClose={() => setCreateOpen(false)} />
+      <ImportChecklistModal isOpen={importOpen} onClose={() => setImportOpen(false)} />
     </DetailPageLayout>
   );
 }

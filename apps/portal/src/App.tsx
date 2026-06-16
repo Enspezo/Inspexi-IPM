@@ -120,6 +120,8 @@ const NormTypesPage = lazy(() => import('@/pages/norm-types/norm-types-page'));
 const AssetTypesPage = lazy(() => import('@/pages/asset-types/asset-types-page'));
 const LocationTypesPage = lazy(() => import('@/pages/location-types/location-types-page'));
 const MeasurementSheetTemplatesPage = lazy(() => import('@/pages/measurement-sheet-templates/measurement-sheet-templates-page'));
+const VoiceBasePromptsPage = lazy(() => import('@/pages/voice-prompts/voice-base-prompts-page'));
+const VoiceTemplatePromptsPage = lazy(() => import('@/pages/voice-prompts/voice-template-prompts-page'));
 const InspectionTemplatesPage = lazy(() => import('@/pages/inspection-templates/inspection-templates-page'));
 const InspectionTemplateDetailPage = lazy(() => import('@/pages/inspection-templates/inspection-template-detail-page'));
 const LookupsIndexPage = lazy(() => import('@/pages/lookups/lookups-index-page'));
@@ -210,6 +212,8 @@ export default function App() {
             <Route path="/asset-types" element={<AssetTypesPage />} />
             <Route path="/location-types" element={<LocationTypesPage />} />
             <Route path="/measurement-sheet-templates" element={<MeasurementSheetTemplatesPage />} />
+            <Route path="/admin/voice-prompts" element={<VoiceBasePromptsPage />} />
+            <Route path="/voice-prompts/template" element={<VoiceTemplatePromptsPage />} />
             <Route path="/inspection-templates" element={<InspectionTemplatesPage />} />
             <Route path="/inspection-templates/:id" element={<InspectionTemplateDetailPage />} />
             <Route path="/lookups" element={<LookupsIndexPage />} />

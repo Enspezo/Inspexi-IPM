@@ -114,11 +114,16 @@ const InspectionsPage = lazy(() => import('@/pages/inspections/inspections-page'
 const InspectionDetailPage = lazy(() => import('@/pages/inspections/inspection-detail-page'));
 const AssetsPage = lazy(() => import('@/pages/assets/assets-page'));
 const ChecklistsPage = lazy(() => import('@/pages/checklists/checklists-page'));
+const ChecklistDetailPage = lazy(() => import('@/pages/checklists/checklist-detail-page'));
+const ChecklistItemsPage = lazy(() => import('@/pages/checklist-items/checklist-items-page'));
 const FindingTemplatesPage = lazy(() => import('@/pages/finding-templates/finding-templates-page'));
+const FindingTemplateDetailPage = lazy(() => import('@/pages/finding-templates/finding-template-detail-page'));
 const ClassificationModelsPage = lazy(() => import('@/pages/classification-models/classification-models-page'));
 const NormTypesPage = lazy(() => import('@/pages/norm-types/norm-types-page'));
 const AssetTypesPage = lazy(() => import('@/pages/asset-types/asset-types-page'));
+const AssetTypeDetailPage = lazy(() => import('@/pages/asset-types/asset-type-detail-page'));
 const LocationTypesPage = lazy(() => import('@/pages/location-types/location-types-page'));
+const LocationTypeDetailPage = lazy(() => import('@/pages/location-types/location-type-detail-page'));
 const MeasurementSheetTemplatesPage = lazy(() => import('@/pages/measurement-sheet-templates/measurement-sheet-templates-page'));
 const VoiceBasePromptsPage = lazy(() => import('@/pages/voice-prompts/voice-base-prompts-page'));
 const VoiceTemplatePromptsPage = lazy(() => import('@/pages/voice-prompts/voice-template-prompts-page'));
@@ -206,11 +211,16 @@ export default function App() {
             <Route path="/inspections/:id" element={<InspectionDetailPage />} />
             <Route path="/assets" element={<AssetsPage />} />
             <Route path="/checklists" element={<ChecklistsPage />} />
+            <Route path="/checklists/:id" element={<ChecklistDetailPage />} />
+            <Route path="/checklist-items" element={<ChecklistItemsPage />} />
             <Route path="/finding-templates" element={<FindingTemplatesPage />} />
+            <Route path="/finding-templates/:id" element={<FindingTemplateDetailPage />} />
             <Route path="/classification-models" element={<ClassificationModelsPage />} />
             <Route path="/norm-types" element={<NormTypesPage />} />
             <Route path="/asset-types" element={<AssetTypesPage />} />
+            <Route path="/asset-types/:id" element={<AssetTypeDetailPage />} />
             <Route path="/location-types" element={<LocationTypesPage />} />
+            <Route path="/location-types/:id" element={<LocationTypeDetailPage />} />
             <Route path="/measurement-sheet-templates" element={<MeasurementSheetTemplatesPage />} />
             <Route path="/admin/voice-prompts" element={<VoiceBasePromptsPage />} />
             <Route path="/voice-prompts/template" element={<VoiceTemplatePromptsPage />} />

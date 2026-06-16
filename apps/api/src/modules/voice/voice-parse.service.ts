@@ -70,8 +70,10 @@ export class VoiceParseService {
         system,
         messages: [{ role: 'user', content: `Parseer deze gesproken meting naar JSON:\n\n"${input.transcript}"` }],
       });
-      const textBlock = response.content.find((c) => c.type === 'text');
-      if (!textBlock || textBlock.type !== 'text') throw new Error('Geen tekst in respons');
+      const textBlock = response.content.find(
+        (c): c is Anthropic.TextBlock => c.type === 'text',
+      );
+      if (!textBlock) throw new Error('Geen tekst in respons');
 
       let json = textBlock.text.trim();
       if (json.startsWith('```json')) json = json.slice(7);

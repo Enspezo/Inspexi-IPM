@@ -2149,3 +2149,29 @@ export interface MeasurementSheetField {
   copyValueOnNewRow: boolean;
   allowBulkEdit: boolean;
 }
+
+// ─── Voice-prompts (3-lagen prompt-model voor spraakinvoer) ───
+
+/** Laag 1: systeem-base-prompt (SUPERUSER, exact één actief). */
+export interface VoiceBasePrompt {
+  id: string;
+  name: string;
+  content: string;
+  isActive: boolean;
+  version: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Laag 2: per-org template-prompt op een meetstaat-template (ORG_ADMIN). */
+export interface VoiceTemplatePrompt {
+  id: string;
+  orgId: string;
+  templateId: string;
+  content: string;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+  /** Meegestuurd door de API (include) — handig voor weergave. */
+  template?: { id: string; name: string };
+}

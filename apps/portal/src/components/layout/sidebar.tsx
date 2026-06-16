@@ -255,6 +255,7 @@ const organisatieSections: NavSection[] = [
           { to: '/asset-types', label: 'Asset-types' },
           { to: '/location-types', label: 'Locatie-types' },
           { to: '/lookups', label: 'Lookups' },
+          { to: '/voice-prompts/template', label: 'Voice-prompts' },
         ],
       },
       {
@@ -271,6 +272,7 @@ const organisatieSections: NavSection[] = [
           { to: '/classification-models', label: 'Classificatiemodellen' },
           { to: '/norm-types', label: 'Normtypes' },
           { to: '/measurement-sheet-templates', label: 'Meetstaat-templates' },
+          { to: '/admin/voice-prompts', label: 'Voice base-prompts' },
         ],
       },
       {

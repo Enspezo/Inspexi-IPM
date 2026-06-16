@@ -7,6 +7,7 @@ import {
   ValidateNested, IsUUID,
 } from 'class-validator';
 import { Type } from 'class-transformer';
+import { SyncRecordData } from '../sync-mapper';
 
 export class PullQueryDto {
   @ApiPropertyOptional({ description: 'ISO-tijdstip; alleen wijzigingen ná dit moment' })
@@ -21,7 +22,7 @@ export class EntityChangeDto {
 
   @ApiProperty({ description: 'Volledig record (Beheer-veldnamen); id = client-UUID' })
   @IsObject()
-  data: Record<string, unknown>;
+  data: SyncRecordData;
 }
 
 export class PushChangesGroupDto {

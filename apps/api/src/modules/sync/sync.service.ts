@@ -12,12 +12,42 @@ import { User, Prisma, SyncStatus } from '@prisma/client';
 import { PrismaService } from '@/prisma';
 import { orgScope, assertSameOrg } from '@/common';
 import { PushDto, ResolveDto } from './dto';
-import { SYNC_ENTITIES, SyncEntityKey, toDbData, toWire } from './sync-mapper';
+import { SYNC_ENTITIES, SyncEntityKey, SyncRecordData, toDbData, toWire } from './sync-mapper';
 
 type OpResult =
   | { entityType: string; entityId: string; status: 'success' }
-  | { entityType: string; entityId: string; status: 'conflict'; clientData: any; serverData: any }
+  | { entityType: string; entityId: string; status: 'conflict'; clientData: SyncRecordData; serverData: unknown }
   | { entityType: string; entityId: string; status: 'failed'; error: string };
+
+/** Prisma-modelnamen die de sync aanraakt (eigen entiteiten + parent-modellen). */
+type SyncModelName = 'inspectionPlan' | 'asset' | 'finding';
+
+/** Bestaande db-rij zoals de sync die leest (alleen `updatedAt` wordt expliciet gebruikt). */
+interface SyncRow {
+  updatedAt: Date;
+  [field: string]: unknown;
+}
+
+/**
+ * Minimale, gedeelde delegate-vorm voor de drie sync-modellen. Prisma's per-model
+ * generics unificeren niet bij een dynamische index; deze interface dekt exact de
+ * CRUD-subset die de sync gebruikt en is toewijsbaar aan `assertSameOrg`'s delegate
+ * (findUnique/findMany), zodat de tenant-check getypeerd blijft.
+ */
+interface SyncDelegate {
+  findFirst(args: { where: Record<string, unknown> }): Promise<SyncRow | null>;
+  findUnique(args: { where: { id: string }; select: { orgId: true } }): Promise<{ orgId: string } | null>;
+  findMany(args: { where: { id: { in: string[] }; orgId: string }; select: { id: true } }): Promise<Array<{ id: string }>>;
+  create(args: { data: Record<string, unknown> }): Promise<unknown>;
+  update(args: { where: { id: string }; data: Record<string, unknown> }): Promise<unknown>;
+}
+
+/** JSON-kolom (conflictData/payload) veilig als object lezen; niet-objecten → leeg record. */
+function asRecord(value: unknown): Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
 
 @Injectable()
 export class SyncService {
@@ -26,6 +56,16 @@ export class SyncService {
   private requireOrg(user: User): string {
     if (!user.orgId) throw new BadRequestException('Selecteer eerst een organisatie');
     return user.orgId;
+  }
+
+  /** Expliciete map model-naam → Prisma-delegate, i.p.v. een dynamische `this.prisma[name]`. */
+  private delegateFor(model: SyncModelName): SyncDelegate {
+    const delegates: Record<SyncModelName, unknown> = {
+      inspectionPlan: this.prisma.inspectionPlan,
+      asset: this.prisma.asset,
+      finding: this.prisma.finding,
+    };
+    return delegates[model] as SyncDelegate;
   }
 
   // ── PULL ───────────────────────────────────────────────
@@ -106,7 +146,7 @@ export class SyncService {
         } catch (e: any) {
           results.push({
             entityType: SYNC_ENTITIES[key].singular,
-            entityId: String((change.data as any)?.id ?? ''),
+            entityId: String(change.data.id ?? ''),
             status: 'failed',
             error: e?.message ?? 'Onbekende fout',
           });
@@ -125,14 +165,14 @@ export class SyncService {
   private async processChange(
     key: SyncEntityKey,
     operation: 'create' | 'update' | 'delete',
-    data: Record<string, unknown>,
+    data: SyncRecordData,
     user: User,
     userOrgId: string,
     deviceId: string,
   ): Promise<OpResult> {
     const cfg = SYNC_ENTITIES[key];
-    const model = (this.prisma as any)[cfg.model];
-    const id = String((data as any).id ?? '');
+    const model = this.delegateFor(cfg.model);
+    const id = String(data.id ?? '');
     if (!id) throw new BadRequestException('Record mist id');
     const ref = { entityType: cfg.singular, entityId: id };
 
@@ -149,7 +189,7 @@ export class SyncService {
 
     if (operation === 'create') {
       await model.create({
-        data: { ...fields, id, orgId, createdBy: (data as any).createdBy ?? user.id },
+        data: { ...fields, id, orgId, createdBy: data.createdBy ?? user.id },
       });
       return { ...ref, status: 'success' };
     }
@@ -159,11 +199,11 @@ export class SyncService {
     if (!existing) throw new BadRequestException('Record niet gevonden');
 
     // optimistic conflict: server nieuwer dan wat de client laatst zag
-    const clientSynced = (data as any).syncedAt ? new Date((data as any).syncedAt as string) : null;
+    const clientSynced = data.syncedAt ? new Date(data.syncedAt) : null;
     if (clientSynced && existing.updatedAt > clientSynced) {
       // existing bevat Date/Decimal-velden die niet rauw in de Json-kolom mogen;
       // normaliseer naar plain JSON vóór opslag/teruggave.
-      const serverData = JSON.parse(JSON.stringify(existing));
+      const serverData: unknown = JSON.parse(JSON.stringify(existing));
       await this.prisma.syncQueue.create({
         data: {
           deviceId, userId: user.id, entityType: cfg.singular, entityId: id,
@@ -183,16 +223,16 @@ export class SyncService {
   /** orgId uit de hiërarchie + tenant-check op de parent-FK. */
   private async resolveOrgId(
     key: SyncEntityKey,
-    data: Record<string, unknown>,
+    data: SyncRecordData,
     userOrgId: string,
     user: User,
   ): Promise<string> {
     const cfg = SYNC_ENTITIES[key];
     if (cfg.org.from === 'self') return userOrgId;
 
-    const parentId = (data as any)[cfg.org.fkField] as string | undefined;
+    const parentId = data[cfg.org.fkField] as string | undefined;
     if (!parentId) throw new BadRequestException(`${cfg.org.fkField} ontbreekt`);
-    const parentModel = (this.prisma as any)[cfg.org.parentModel];
+    const parentModel = this.delegateFor(cfg.org.parentModel);
     await assertSameOrg(parentModel, parentId, user.orgId, 'Bovenliggend item');
     const parent = await parentModel.findUnique({ where: { id: parentId }, select: { orgId: true } });
     if (!parent) throw new BadRequestException('Bovenliggend item niet gevonden');
@@ -214,18 +254,19 @@ export class SyncService {
         if (!queueItem) throw new BadRequestException('Geen conflict gevonden');
 
         const key = this.singularToKey(r.entityType);
-        const conflict = queueItem.conflictData as any;
-        const chosen =
-          r.resolution === 'server' ? conflict?.serverData
-          : r.resolution === 'client' ? (queueItem.payload as any)
+        const conflict = asRecord(queueItem.conflictData);
+        const chosen: Record<string, unknown> =
+          r.resolution === 'server' ? asRecord(conflict.serverData)
+          : r.resolution === 'client' ? asRecord(queueItem.payload)
           : (r.mergedData ?? {});
 
-        const existing = await (this.prisma as any)[SYNC_ENTITIES[key].model].findFirst({
+        const delegate = this.delegateFor(SYNC_ENTITIES[key].model);
+        const existing = await delegate.findFirst({
           where: { id: r.entityId, ...orgScope(user) },
         });
         if (!existing) throw new BadRequestException('Record niet gevonden');
 
-        await (this.prisma as any)[SYNC_ENTITIES[key].model].update({
+        await delegate.update({
           where: { id: r.entityId },
           data: { ...toDbData(key, chosen), syncedAt: new Date() },
         });

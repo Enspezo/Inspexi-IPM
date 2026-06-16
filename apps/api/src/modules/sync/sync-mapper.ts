@@ -4,6 +4,18 @@
 
 export type SyncEntityKey = 'inspectionPlans' | 'assets' | 'findings';
 
+/**
+ * Inkomend client-record (wire) — Beheer-veldnamen. Alleen de sleutels die de service
+ * expliciet uitleest zijn benoemd; de overige whitelisted velden komen via de
+ * index-signatuur binnen en worden door {@link toDbData} gefilterd.
+ */
+export interface SyncRecordData {
+  id?: string;
+  syncedAt?: string;
+  createdBy?: string;
+  [field: string]: unknown;
+}
+
 interface EntityConfig {
   /** Prisma-modelnaam (delegate-key op PrismaService) */
   model: 'inspectionPlan' | 'asset' | 'finding';

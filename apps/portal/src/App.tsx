@@ -113,6 +113,7 @@ const WorkOrderDetailPage = lazy(() => import('@/pages/work-orders/work-order-de
 const InspectionsPage = lazy(() => import('@/pages/inspections/inspections-page'));
 const InspectionDetailPage = lazy(() => import('@/pages/inspections/inspection-detail-page'));
 const AssetsPage = lazy(() => import('@/pages/assets/assets-page'));
+const AssetDetailPage = lazy(() => import('@/pages/assets/asset-detail-page'));
 const ChecklistsPage = lazy(() => import('@/pages/checklists/checklists-page'));
 const FindingTemplatesPage = lazy(() => import('@/pages/finding-templates/finding-templates-page'));
 const ClassificationModelsPage = lazy(() => import('@/pages/classification-models/classification-models-page'));
@@ -205,6 +206,7 @@ export default function App() {
             <Route path="/inspections" element={<InspectionsPage />} />
             <Route path="/inspections/:id" element={<InspectionDetailPage />} />
             <Route path="/assets" element={<AssetsPage />} />
+            <Route path="/assets/:id" element={<AssetDetailPage />} />
             <Route path="/checklists" element={<ChecklistsPage />} />
             <Route path="/finding-templates" element={<FindingTemplatesPage />} />
             <Route path="/classification-models" element={<ClassificationModelsPage />} />

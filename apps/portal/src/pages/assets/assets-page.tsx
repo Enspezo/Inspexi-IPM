@@ -5,6 +5,7 @@
 // Overzicht-only: geen "Nieuw"-knop, geen detail-navigatie (naam = platte tekst).
 
 import { useState, useCallback, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import type { Asset } from '@/types';
 import { ErrorBox, Spinner, Table, Input, Select, Button } from '@/components/ui';
 import { LookupBadge } from '@/components/ui/lookup-badge';
@@ -15,6 +16,7 @@ import { useLookups } from '@/lib/lookups';
 import { useAssets } from './hooks/use-assets';
 
 export default function AssetsPage() {
+  const navigate = useNavigate();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [page, setPage] = useState(1);
@@ -38,7 +40,14 @@ export default function AssetsPage() {
       pinned: true,
       sortable: true,
       sortKey: 'name',
-      render: (a) => <span className="font-medium text-gray-900">{a.name}</span>,
+      render: (a) => (
+        <button
+          onClick={() => navigate(`/assets/${a.id}`)}
+          className="text-left font-medium text-primary-600 hover:text-primary-700 hover:underline"
+        >
+          {a.name}
+        </button>
+      ),
     },
     {
       key: 'identifier',

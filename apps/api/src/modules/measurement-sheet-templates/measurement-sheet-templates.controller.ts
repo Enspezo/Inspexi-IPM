@@ -13,6 +13,7 @@ import {
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { User, Role, MeasurementSheetTemplateStatus } from '@prisma/client';
 import { Roles, CurrentUser } from '@/common/decorators';
+import { ALL_STAFF } from '@/common/auth/roles';
 import { MeasurementSheetTemplatesService } from './measurement-sheet-templates.service';
 import { MeasurementSheetSectionsService } from './measurement-sheet-sections.service';
 import { MeasurementSheetFieldsService } from './measurement-sheet-fields.service';
@@ -32,14 +33,7 @@ import {
 } from './dto';
 
 // Globaal: iedereen leest, alleen SUPERUSER schrijft.
-const READ_ROLES = [
-  Role.SUPERUSER,
-  Role.ORG_ADMIN,
-  Role.MANAGER,
-  Role.BACKOFFICE,
-  Role.WERKVOORBEREIDER,
-  Role.INSPECTEUR,
-] as const;
+const READ_ROLES = ALL_STAFF;
 
 @ApiTags('measurement-sheet-templates')
 @ApiBearerAuth()

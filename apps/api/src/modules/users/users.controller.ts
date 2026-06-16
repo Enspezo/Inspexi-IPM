@@ -24,6 +24,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { Response } from 'express';
 import { User, Role } from '@prisma/client';
+import { ORG_ADMINS } from '@/common/auth/roles';
 import { UsersService } from './users.service';
 import {
   InviteUserDto,
@@ -47,7 +48,7 @@ export class UsersController {
 
   // ─── List ─────────────────────────────────────────────
   @Get()
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN)
+  @Roles(...ORG_ADMINS)
   @ApiOperation({ summary: 'Gebruikers van organisatie ophalen' })
   @ApiResponse({ status: 200, description: 'Lijst van gebruikers' })
   async findAll(@CurrentUser() user: User) {
@@ -141,7 +142,7 @@ export class UsersController {
   }
 
   @Post('invite')
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN)
+  @Roles(...ORG_ADMINS)
   @ApiOperation({ summary: 'Gebruiker uitnodigen voor de organisatie' })
   @ApiResponse({ status: 201, description: 'Uitnodiging verstuurd' })
   @ApiResponse({ status: 409, description: 'Gebruiker of uitnodiging bestaat al' })
@@ -171,7 +172,7 @@ export class UsersController {
 
   // ─── Parameterized :id routes ─────────────────────────
   @Get(':id/record-counts')
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN)
+  @Roles(...ORG_ADMINS)
   @ApiOperation({ summary: 'Aantal records van een gebruiker ophalen voor overdracht' })
   @ApiResponse({ status: 200, description: 'Record counts' })
   async getRecordCounts(
@@ -183,7 +184,7 @@ export class UsersController {
   }
 
   @Post(':id/delete')
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN)
+  @Roles(...ORG_ADMINS)
   @ApiOperation({ summary: 'Gebruiker verwijderen (soft delete met overdracht)' })
   @ApiResponse({ status: 200, description: 'Gebruiker verwijderd' })
   async softDelete(
@@ -196,7 +197,7 @@ export class UsersController {
   }
 
   @Get(':id')
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN)
+  @Roles(...ORG_ADMINS)
   @ApiOperation({ summary: 'Gebruiker ophalen op ID' })
   @ApiResponse({ status: 200, description: 'Gebruiker details' })
   @ApiResponse({ status: 404, description: 'Niet gevonden' })
@@ -214,7 +215,7 @@ export class UsersController {
   }
 
   @Patch(':id/deactivate')
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN)
+  @Roles(...ORG_ADMINS)
   @ApiOperation({ summary: 'Gebruiker deactiveren (soft delete)' })
   @ApiResponse({ status: 200, description: 'Gebruiker gedeactiveerd' })
   async deactivate(
@@ -226,7 +227,7 @@ export class UsersController {
   }
 
   @Patch(':id/activate')
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN)
+  @Roles(...ORG_ADMINS)
   @ApiOperation({ summary: 'Gebruiker heractiveren' })
   @ApiResponse({ status: 200, description: 'Gebruiker geactiveerd' })
   async activate(
@@ -238,7 +239,7 @@ export class UsersController {
   }
 
   @Patch(':id/role')
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN)
+  @Roles(...ORG_ADMINS)
   @ApiOperation({ summary: 'Gebruikersrol wijzigen' })
   @ApiResponse({ status: 200, description: 'Rol gewijzigd' })
   async changeRole(
@@ -251,7 +252,7 @@ export class UsersController {
   }
 
   @Patch(':id/reset-password')
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN)
+  @Roles(...ORG_ADMINS)
   @ApiOperation({ summary: 'Wachtwoord van gebruiker resetten (admin)' })
   @ApiResponse({ status: 200, description: 'Wachtwoord gereset' })
   @ApiResponse({ status: 403, description: 'Geen bevoegdheid' })
@@ -278,7 +279,7 @@ export class UsersController {
 
   // ─── Admin update (generic, last to avoid swallowing literals) ──
   @Patch(':id')
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN)
+  @Roles(...ORG_ADMINS)
   @ApiOperation({ summary: 'Gebruikersgegevens bijwerken (admin)' })
   @ApiResponse({ status: 200, description: 'Gebruiker bijgewerkt' })
   async adminUpdate(

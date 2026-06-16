@@ -19,6 +19,7 @@ import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import type { Response } from 'express';
 import { User, Role, DocumentType } from '@prisma/client';
 import { Roles, CurrentUser, Public } from '@/common/decorators';
+import { ALL_STAFF } from '@/common/auth/roles';
 import { GeneratedDocumentsService } from './generated-documents.service';
 import {
   GenerateDocumentDto,
@@ -28,14 +29,7 @@ import {
   PublicSignDto,
 } from './dto';
 
-const STAFF = [
-  Role.SUPERUSER,
-  Role.ORG_ADMIN,
-  Role.MANAGER,
-  Role.BACKOFFICE,
-  Role.WERKVOORBEREIDER,
-  Role.INSPECTEUR,
-] as const;
+const STAFF = ALL_STAFF;
 const APPROVERS = [Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.WERKVOORBEREIDER] as const;
 
 @ApiTags('Generated Documents')

@@ -3,6 +3,7 @@ import { NotFoundException, BadRequestException } from '@nestjs/common';
 import { Role, FindingInspectionType } from '@prisma/client';
 import { FindingsService } from './findings.service';
 import { PrismaService } from '@/prisma';
+import { STATUS_OPEN, STATUS_RESOLVED } from '@/common';
 import { LookupService } from '../lookups/lookup.service';
 
 describe('FindingsService', () => {
@@ -88,7 +89,7 @@ describe('FindingsService', () => {
       mockPrismaService.asset.findFirst.mockResolvedValue({ id: 'asset-1', orgId: 'org-1' });
       mockPrismaService.finding.create.mockResolvedValue({
         id: 'f-new',
-        statusCode: 'open',
+        statusCode: STATUS_OPEN,
         classificationValues: {},
         createdAt: new Date(),
       });
@@ -100,13 +101,13 @@ describe('FindingsService', () => {
         'device-abc',
       );
 
-      expect(result.statusCode).toBe('open');
+      expect(result.statusCode).toBe(STATUS_OPEN);
       expect(mockPrismaService.finding.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
             orgId: 'org-1',
             assetId: 'asset-1',
-            statusCode: 'open',
+            statusCode: STATUS_OPEN,
             createdBy: 'user-1',
             deviceId: 'device-abc',
           }),
@@ -132,24 +133,24 @@ describe('FindingsService', () => {
       mockPrismaService.finding.findFirst.mockResolvedValue({
         id: 'f-1',
         orgId: 'org-1',
-        statusCode: 'open',
+        statusCode: STATUS_OPEN,
       });
-      mockLookupService.resolveLookup.mockResolvedValue({ code: 'resolved' });
+      mockLookupService.resolveLookup.mockResolvedValue({ code: STATUS_RESOLVED });
       mockPrismaService.finding.update.mockResolvedValue({
         id: 'f-1',
-        statusCode: 'resolved',
+        statusCode: STATUS_RESOLVED,
         resolvedAt: new Date(),
         classificationValues: {},
         updatedAt: new Date(),
       });
 
       await service.update('f-1', mockUser, {
-        statusCode: 'resolved',
+        statusCode: STATUS_RESOLVED,
         resolutionNotes: 'Fixed',
       } as any);
 
       const updateCall = mockPrismaService.finding.update.mock.calls[0][0];
-      expect(updateCall.data.statusCode).toBe('resolved');
+      expect(updateCall.data.statusCode).toBe(STATUS_RESOLVED);
       expect(updateCall.data.resolvedAt).toBeInstanceOf(Date);
       expect(updateCall.data.resolvedByUser).toEqual({ connect: { id: 'user-1' } });
       expect(updateCall.data.resolutionNotes).toBe('Fixed');
@@ -159,12 +160,12 @@ describe('FindingsService', () => {
       mockPrismaService.finding.findFirst.mockResolvedValue({
         id: 'f-1',
         orgId: 'org-1',
-        statusCode: 'resolved',
+        statusCode: STATUS_RESOLVED,
       });
-      mockLookupService.resolveLookup.mockResolvedValue({ code: 'resolved' });
+      mockLookupService.resolveLookup.mockResolvedValue({ code: STATUS_RESOLVED });
       mockPrismaService.finding.update.mockResolvedValue({ id: 'f-1' });
 
-      await service.update('f-1', mockUser, { statusCode: 'resolved' } as any);
+      await service.update('f-1', mockUser, { statusCode: STATUS_RESOLVED } as any);
 
       const updateCall = mockPrismaService.finding.update.mock.calls[0][0];
       expect(updateCall.data.resolvedAt).toBeUndefined();
@@ -175,7 +176,7 @@ describe('FindingsService', () => {
       mockPrismaService.finding.findFirst.mockResolvedValue({
         id: 'f-1',
         orgId: 'org-1',
-        statusCode: 'open',
+        statusCode: STATUS_OPEN,
       });
       mockLookupService.resolveLookup.mockResolvedValue(null);
 

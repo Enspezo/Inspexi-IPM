@@ -19,7 +19,8 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiTags, ApiOperation, ApiConsumes } from '@nestjs/swagger';
 import { Response, Request } from 'express';
-import { User, Role, QuoteStatus } from '@prisma/client';
+import { User, QuoteStatus } from '@prisma/client';
+import { CRM_ROLES, MANAGEMENT_ROLES, OFFICE_ROLES } from '@/common/auth/roles';
 import { Roles } from '@/common/decorators/roles.decorator';
 import { CurrentUser } from '@/common/decorators/current-user.decorator';
 import { Public } from '@/common/decorators/public.decorator';
@@ -56,7 +57,7 @@ export class QuotesController {
   // ─── Resolve price (must be before :id routes) ────────
   @Get('resolve-price')
   @ApiOperation({ summary: 'Prijs voor product/contact/aantal opzoeken' })
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE)
+  @Roles(...OFFICE_ROLES)
   async resolvePrice(
     @CurrentUser() user: User,
     @Query('productId', ParseUUIDPipe) productId: string,
@@ -70,7 +71,7 @@ export class QuotesController {
   // ─── List & Create ────────────────────────────────────
   @Get()
   @ApiOperation({ summary: 'Offertes ophalen (gepagineerd)' })
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE, Role.WERKVOORBEREIDER)
+  @Roles(...CRM_ROLES)
   async findAll(@CurrentUser() user: User, @Query() query: ListQuotesQueryDto) {
     const data = await this.service.findAll(user, query);
     return { success: true, data };
@@ -78,7 +79,7 @@ export class QuotesController {
 
   @Post()
   @ApiOperation({ summary: 'Nieuwe offerte aanmaken' })
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE)
+  @Roles(...OFFICE_ROLES)
   async create(@CurrentUser() user: User, @Body() dto: CreateQuoteDto) {
     const data = await this.service.create(dto, user);
     return { success: true, data };
@@ -87,7 +88,7 @@ export class QuotesController {
   // ─── Detail ───────────────────────────────────────────
   @Get(':id')
   @ApiOperation({ summary: 'Offerte ophalen' })
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE, Role.WERKVOORBEREIDER)
+  @Roles(...CRM_ROLES)
   async findOne(@CurrentUser() user: User, @Param('id', ParseUUIDPipe) id: string) {
     const data = await this.service.findOne(id, user);
     return { success: true, data };
@@ -95,7 +96,7 @@ export class QuotesController {
 
   @Patch(':id')
   @ApiOperation({ summary: 'Offerte bijwerken' })
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE)
+  @Roles(...OFFICE_ROLES)
   async update(@CurrentUser() user: User, @Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateQuoteDto) {
     const data = await this.service.update(id, dto, user);
     return { success: true, data };
@@ -103,7 +104,7 @@ export class QuotesController {
 
   @Put(':id/lines')
   @ApiOperation({ summary: 'Offerteregels vervangen' })
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE)
+  @Roles(...OFFICE_ROLES)
   async setLines(@CurrentUser() user: User, @Param('id', ParseUUIDPipe) id: string, @Body() dto: SetQuoteLinesDto) {
     const data = await this.service.setLines(id, dto, user);
     return { success: true, data };
@@ -111,7 +112,7 @@ export class QuotesController {
 
   @Patch(':id/status')
   @ApiOperation({ summary: 'Offertestatus bijwerken' })
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE)
+  @Roles(...OFFICE_ROLES)
   async updateStatus(@CurrentUser() user: User, @Param('id', ParseUUIDPipe) id: string, @Body('status') status: QuoteStatus) {
     const data = await this.service.updateStatus(id, status, user);
     return { success: true, data };
@@ -120,7 +121,7 @@ export class QuotesController {
   // ─── Send ─────────────────────────────────────────────
   @Post(':id/send')
   @ApiOperation({ summary: 'Offerte versturen naar klant' })
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE)
+  @Roles(...OFFICE_ROLES)
   async sendQuote(@CurrentUser() user: User, @Param('id', ParseUUIDPipe) id: string, @Body() dto: SendQuoteDto) {
     const data = await this.service.sendQuote(id, dto, user);
     return { success: true, data };
@@ -129,7 +130,7 @@ export class QuotesController {
   // ─── Approval ─────────────────────────────────────────
   @Post(':id/submit-approval')
   @ApiOperation({ summary: 'Offerte ter goedkeuring indienen' })
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE)
+  @Roles(...OFFICE_ROLES)
   async submitForApproval(@CurrentUser() user: User, @Param('id', ParseUUIDPipe) id: string, @Body() dto: SubmitApprovalDto) {
     const data = await this.approvalsService.submitForApproval(id, dto, user);
     return { success: true, data };
@@ -137,7 +138,7 @@ export class QuotesController {
 
   @Post(':id/approve')
   @ApiOperation({ summary: 'Offerte goedkeuren' })
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER)
+  @Roles(...MANAGEMENT_ROLES)
   async approve(@CurrentUser() user: User, @Param('id', ParseUUIDPipe) id: string, @Body() dto: ApproveQuoteDto) {
     const data = await this.approvalsService.approve(id, dto, user);
     return { success: true, data };
@@ -145,7 +146,7 @@ export class QuotesController {
 
   @Post(':id/reject')
   @ApiOperation({ summary: 'Offerte afwijzen' })
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER)
+  @Roles(...MANAGEMENT_ROLES)
   async reject(@CurrentUser() user: User, @Param('id', ParseUUIDPipe) id: string, @Body() dto: RejectQuoteDto) {
     const data = await this.approvalsService.reject(id, dto, user);
     return { success: true, data };
@@ -154,7 +155,7 @@ export class QuotesController {
   // ─── Q&A (medewerker) ─────────────────────────────────
   @Get(':id/questions')
   @ApiOperation({ summary: 'Vragen bij offerte ophalen' })
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE)
+  @Roles(...OFFICE_ROLES)
   async getQuestions(@CurrentUser() user: User, @Param('id', ParseUUIDPipe) id: string) {
     const data = await this.questionsService.getQuestions(id, user);
     return { success: true, data };
@@ -162,7 +163,7 @@ export class QuotesController {
 
   @Post(':id/questions')
   @ApiOperation({ summary: 'Vraag bij offerte toevoegen' })
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE)
+  @Roles(...OFFICE_ROLES)
   async addQuestion(@CurrentUser() user: User, @Param('id', ParseUUIDPipe) id: string, @Body() dto: AddQuestionDto) {
     const data = await this.questionsService.addQuestion(id, dto, user);
     return { success: true, data };
@@ -170,7 +171,7 @@ export class QuotesController {
 
   @Post(':id/questions/:questionId/answer')
   @ApiOperation({ summary: 'Klantvraag beantwoorden' })
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE)
+  @Roles(...OFFICE_ROLES)
   async answerQuestion(
     @CurrentUser() user: User,
     @Param('id', ParseUUIDPipe) id: string,
@@ -184,7 +185,7 @@ export class QuotesController {
   // ─── Bijlagen ─────────────────────────────────────────
   @Get(':id/attachments')
   @ApiOperation({ summary: 'Bijlagen bij offerte ophalen' })
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE)
+  @Roles(...OFFICE_ROLES)
   async getAttachments(@CurrentUser() user: User, @Param('id', ParseUUIDPipe) id: string) {
     const data = await this.attachmentsService.getAttachments(id, user);
     return { success: true, data };
@@ -192,7 +193,7 @@ export class QuotesController {
 
   @Post(':id/attachments')
   @ApiOperation({ summary: 'Bijlage bij offerte uploaden' })
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE)
+  @Roles(...OFFICE_ROLES)
   @ApiConsumes('multipart/form-data')
   @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 25 * 1024 * 1024 } }))
   async uploadAttachment(
@@ -206,7 +207,7 @@ export class QuotesController {
 
   @Get(':id/attachments/:attachmentId/download')
   @ApiOperation({ summary: 'Bijlage downloaden' })
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE, Role.WERKVOORBEREIDER)
+  @Roles(...CRM_ROLES)
   async downloadAttachment(
     @CurrentUser() user: User,
     @Param('id', ParseUUIDPipe) id: string,
@@ -220,7 +221,7 @@ export class QuotesController {
 
   @Delete(':id/attachments/:attachmentId')
   @ApiOperation({ summary: 'Bijlage verwijderen' })
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE)
+  @Roles(...OFFICE_ROLES)
   async deleteAttachment(
     @CurrentUser() user: User,
     @Param('id', ParseUUIDPipe) id: string,
@@ -233,7 +234,7 @@ export class QuotesController {
   // ─── PDF ──────────────────────────────────────────────
   @Get(':id/preview-pdf')
   @ApiOperation({ summary: 'Offerte-PDF preview genereren' })
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE)
+  @Roles(...OFFICE_ROLES)
   async previewPdf(
     @CurrentUser() user: User,
     @Param('id', ParseUUIDPipe) id: string,
@@ -250,7 +251,7 @@ export class QuotesController {
 
   @Get(':id/pdf')
   @ApiOperation({ summary: 'Offerte-PDF downloaden' })
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE)
+  @Roles(...OFFICE_ROLES)
   async downloadPdf(
     @CurrentUser() user: User,
     @Param('id', ParseUUIDPipe) id: string,
@@ -268,7 +269,7 @@ export class QuotesController {
   // ─── Delete ───────────────────────────────────────────
   @Delete(':id')
   @ApiOperation({ summary: 'Offerte verwijderen (soft delete)' })
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER)
+  @Roles(...MANAGEMENT_ROLES)
   async remove(@CurrentUser() user: User, @Param('id', ParseUUIDPipe) id: string) {
     const data = await this.service.remove(id, user);
     return { success: true, data };

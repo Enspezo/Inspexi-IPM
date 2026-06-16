@@ -2,7 +2,7 @@ import { Injectable, BadRequestException } from '@nestjs/common';
 import { User } from '@prisma/client';
 import { PrismaService } from '@/prisma';
 import { orgScope, assertFound, assertSameOrg } from '@/common';
-import { LookupService } from '../lookups/lookup.service';
+import { LookupService, LOOKUP_KIND } from '../lookups/lookup.service';
 import {
   CreateStandaloneMeasurementDto,
   UpdateStandaloneMeasurementDto,
@@ -25,7 +25,7 @@ export class StandaloneMeasurementsService {
   /** Valideert een optionele passFailCode tegen de pass-fail-status lookup. */
   private async assertPassFail(code: string | undefined, orgId: string): Promise<void> {
     if (!code) return;
-    const row = await this.lookups.resolveLookup('pass-fail-status-types', code, orgId);
+    const row = await this.lookups.resolveLookup(LOOKUP_KIND.PASS_FAIL_STATUS_TYPES, code, orgId);
     if (!row) throw new BadRequestException(`Onbekende pass/fail-status: ${code}`);
   }
 

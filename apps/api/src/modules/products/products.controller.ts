@@ -14,7 +14,8 @@ import {
   ApiResponse,
   ApiBearerAuth,
 } from '@nestjs/swagger';
-import { User, Role } from '@prisma/client';
+import { User } from '@prisma/client';
+import { CRM_ROLES, ORG_ADMINS } from '@/common/auth/roles';
 import { ProductsService } from './products.service';
 import { CreateProductDto, UpdateProductDto, ListProductsQueryDto } from './dto';
 import { Roles, CurrentUser } from '@/common/decorators';
@@ -26,7 +27,7 @@ export class ProductsController {
   constructor(private productsService: ProductsService) {}
 
   @Get()
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE, Role.WERKVOORBEREIDER)
+  @Roles(...CRM_ROLES)
   @ApiOperation({ summary: 'Productcatalogus ophalen' })
   @ApiResponse({ status: 200, description: 'Gepagineerde lijst producten' })
   async findAll(
@@ -38,7 +39,7 @@ export class ProductsController {
   }
 
   @Get(':id')
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE, Role.WERKVOORBEREIDER)
+  @Roles(...CRM_ROLES)
   @ApiOperation({ summary: 'Product detail ophalen' })
   @ApiResponse({ status: 200, description: 'Product gevonden' })
   async findOne(
@@ -50,7 +51,7 @@ export class ProductsController {
   }
 
   @Post()
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN)
+  @Roles(...ORG_ADMINS)
   @ApiOperation({ summary: 'Nieuw product aanmaken' })
   @ApiResponse({ status: 201, description: 'Product aangemaakt' })
   async create(@Body() dto: CreateProductDto, @CurrentUser() user: User) {
@@ -59,7 +60,7 @@ export class ProductsController {
   }
 
   @Patch(':id')
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN)
+  @Roles(...ORG_ADMINS)
   @ApiOperation({ summary: 'Product bijwerken' })
   @ApiResponse({ status: 200, description: 'Product bijgewerkt' })
   async update(

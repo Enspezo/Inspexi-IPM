@@ -4,15 +4,13 @@ import {
   Controller, Get, Post, Patch, Delete, Param, Body, Headers, ParseUUIDPipe,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
-import { User, Role } from '@prisma/client';
+import { User } from '@prisma/client';
 import { Roles, CurrentUser } from '@/common/decorators';
+import { ALL_STAFF } from '@/common/auth/roles';
 import { FindingsService } from './findings.service';
 import { CreateFindingDto, UpdateFindingDto } from './dto';
 
-const ALL = [
-  Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER,
-  Role.BACKOFFICE, Role.WERKVOORBEREIDER, Role.INSPECTEUR,
-] as const;
+const ALL = ALL_STAFF;
 
 @ApiTags('Findings')
 @ApiBearerAuth()

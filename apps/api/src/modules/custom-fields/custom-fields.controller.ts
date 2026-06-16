@@ -10,7 +10,8 @@ import {
   ParseEnumPipe,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
-import { User, Role, CustomFieldEntityType } from '@prisma/client';
+import { User, CustomFieldEntityType } from '@prisma/client';
+import { ORG_ADMINS } from '@/common/auth/roles';
 import { CustomFieldsService } from './custom-fields.service';
 import {
   CreateCustomFieldDto,
@@ -42,21 +43,21 @@ export class CustomFieldsController {
   }
 
   @Post()
-  @Roles(Role.ORG_ADMIN, Role.SUPERUSER)
+  @Roles(...ORG_ADMINS)
   @ApiOperation({ summary: 'Nieuw eigen veld aanmaken' })
   create(@Body() dto: CreateCustomFieldDto, @CurrentUser() user: User) {
     return this.customFieldsService.create(user.orgId!, dto);
   }
 
   @Patch('reorder')
-  @Roles(Role.ORG_ADMIN, Role.SUPERUSER)
+  @Roles(...ORG_ADMINS)
   @ApiOperation({ summary: 'Volgorde eigen velden aanpassen' })
   reorder(@Body() dto: ReorderCustomFieldsDto, @CurrentUser() user: User) {
     return this.customFieldsService.reorder(user.orgId!, dto.orderedIds);
   }
 
   @Patch(':id')
-  @Roles(Role.ORG_ADMIN, Role.SUPERUSER)
+  @Roles(...ORG_ADMINS)
   @ApiOperation({ summary: 'Eigen veld bijwerken' })
   update(
     @Param('id', ParseUUIDPipe) id: string,
@@ -67,7 +68,7 @@ export class CustomFieldsController {
   }
 
   @Delete(':id')
-  @Roles(Role.ORG_ADMIN, Role.SUPERUSER)
+  @Roles(...ORG_ADMINS)
   @ApiOperation({ summary: 'Eigen veld verwijderen (soft-delete)' })
   remove(
     @Param('id', ParseUUIDPipe) id: string,

@@ -15,7 +15,8 @@ import {
   ApiResponse,
   ApiBearerAuth,
 } from '@nestjs/swagger';
-import { User, Role } from '@prisma/client';
+import { User } from '@prisma/client';
+import { CRM_ROLES, ORG_ADMINS } from '@/common/auth/roles';
 import { ProductGroupsService } from './product-groups.service';
 import {
   CreateProductGroupDto,
@@ -31,7 +32,7 @@ export class ProductGroupsController {
   constructor(private productGroupsService: ProductGroupsService) {}
 
   @Get()
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE, Role.WERKVOORBEREIDER)
+  @Roles(...CRM_ROLES)
   @ApiOperation({ summary: 'Lijst productgroepen ophalen' })
   @ApiResponse({ status: 200, description: 'Gepagineerde lijst van productgroepen' })
   async findAll(
@@ -43,7 +44,7 @@ export class ProductGroupsController {
   }
 
   @Get('compact')
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE, Role.WERKVOORBEREIDER)
+  @Roles(...CRM_ROLES)
   @ApiOperation({ summary: 'Compacte lijst productgroepen (voor dropdowns)' })
   async findAllCompact(@CurrentUser() user: User) {
     const data = await this.productGroupsService.findAllCompact(user);
@@ -51,7 +52,7 @@ export class ProductGroupsController {
   }
 
   @Get(':id')
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE, Role.WERKVOORBEREIDER)
+  @Roles(...CRM_ROLES)
   @ApiOperation({ summary: 'Productgroep detail ophalen' })
   async findOne(
     @Param('id', ParseUUIDPipe) id: string,
@@ -62,7 +63,7 @@ export class ProductGroupsController {
   }
 
   @Post()
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN)
+  @Roles(...ORG_ADMINS)
   @ApiOperation({ summary: 'Productgroep aanmaken' })
   @ApiResponse({ status: 201, description: 'Productgroep aangemaakt' })
   async create(
@@ -74,7 +75,7 @@ export class ProductGroupsController {
   }
 
   @Patch(':id')
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN)
+  @Roles(...ORG_ADMINS)
   @ApiOperation({ summary: 'Productgroep bijwerken' })
   async update(
     @Param('id', ParseUUIDPipe) id: string,
@@ -86,7 +87,7 @@ export class ProductGroupsController {
   }
 
   @Delete(':id')
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN)
+  @Roles(...ORG_ADMINS)
   @ApiOperation({ summary: 'Productgroep verwijderen (soft delete)' })
   async remove(
     @Param('id', ParseUUIDPipe) id: string,
@@ -99,7 +100,7 @@ export class ProductGroupsController {
   // ─── Product koppeling ───────────────────────────────────
 
   @Post(':id/products')
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN)
+  @Roles(...ORG_ADMINS)
   @ApiOperation({ summary: 'Product toevoegen aan productgroep' })
   async addProduct(
     @Param('id', ParseUUIDPipe) id: string,
@@ -111,7 +112,7 @@ export class ProductGroupsController {
   }
 
   @Delete(':id/products/:productId')
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN)
+  @Roles(...ORG_ADMINS)
   @ApiOperation({ summary: 'Product verwijderen uit productgroep' })
   async removeProduct(
     @Param('id', ParseUUIDPipe) id: string,

@@ -12,17 +12,11 @@ import {
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { User, Role } from '@prisma/client';
 import { Roles, CurrentUser } from '@/common/decorators';
+import { ALL_STAFF } from '@/common/auth/roles';
 import { NormTypesService } from './norm-types.service';
 import { CreateNormTypeDto, UpdateNormTypeDto } from './dto';
 
-const READ_ROLES = [
-  Role.SUPERUSER,
-  Role.ORG_ADMIN,
-  Role.MANAGER,
-  Role.BACKOFFICE,
-  Role.WERKVOORBEREIDER,
-  Role.INSPECTEUR,
-] as const;
+const READ_ROLES = ALL_STAFF;
 const WRITE_ROLES = [Role.SUPERUSER] as const;
 
 @ApiTags('norm-types')

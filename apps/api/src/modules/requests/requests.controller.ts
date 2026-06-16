@@ -15,7 +15,8 @@ import {
   ApiResponse,
   ApiBearerAuth,
 } from '@nestjs/swagger';
-import { User, Role } from '@prisma/client';
+import { User } from '@prisma/client';
+import { CRM_ROLES, OFFICE_ROLES } from '@/common/auth/roles';
 import { RequestsService } from './requests.service';
 import {
   CreateRequestDto,
@@ -32,13 +33,7 @@ export class RequestsController {
   constructor(private requestsService: RequestsService) {}
 
   @Get()
-  @Roles(
-    Role.SUPERUSER,
-    Role.ORG_ADMIN,
-    Role.MANAGER,
-    Role.BACKOFFICE,
-    Role.WERKVOORBEREIDER,
-  )
+  @Roles(...CRM_ROLES)
   @ApiOperation({ summary: 'Aanvragen ophalen' })
   @ApiResponse({ status: 200, description: 'Gepagineerde lijst aanvragen' })
   async findAll(
@@ -50,7 +45,7 @@ export class RequestsController {
   }
 
   @Post()
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE)
+  @Roles(...OFFICE_ROLES)
   @ApiOperation({ summary: 'Nieuwe aanvraag aanmaken' })
   @ApiResponse({ status: 201, description: 'Aanvraag aangemaakt' })
   async create(@Body() dto: CreateRequestDto, @CurrentUser() user: User) {
@@ -59,13 +54,7 @@ export class RequestsController {
   }
 
   @Get('lost-reasons')
-  @Roles(
-    Role.SUPERUSER,
-    Role.ORG_ADMIN,
-    Role.MANAGER,
-    Role.BACKOFFICE,
-    Role.WERKVOORBEREIDER,
-  )
+  @Roles(...CRM_ROLES)
   @ApiOperation({ summary: 'Lijst "reden verloren" ophalen (lookup)' })
   @ApiResponse({ status: 200, description: 'Lijst van redenen' })
   async findLostReasons(@CurrentUser() user: User) {
@@ -74,13 +63,7 @@ export class RequestsController {
   }
 
   @Get(':id')
-  @Roles(
-    Role.SUPERUSER,
-    Role.ORG_ADMIN,
-    Role.MANAGER,
-    Role.BACKOFFICE,
-    Role.WERKVOORBEREIDER,
-  )
+  @Roles(...CRM_ROLES)
   @ApiOperation({ summary: 'Aanvraag detail ophalen' })
   @ApiResponse({ status: 200, description: 'Aanvraag details' })
   @ApiResponse({ status: 404, description: 'Niet gevonden' })
@@ -93,7 +76,7 @@ export class RequestsController {
   }
 
   @Patch(':id')
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE)
+  @Roles(...OFFICE_ROLES)
   @ApiOperation({ summary: 'Aanvraag bijwerken' })
   @ApiResponse({ status: 200, description: 'Aanvraag bijgewerkt' })
   async update(
@@ -106,7 +89,7 @@ export class RequestsController {
   }
 
   @Patch(':id/status')
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE)
+  @Roles(...OFFICE_ROLES)
   @ApiOperation({ summary: 'Aanvraag status wijzigen' })
   @ApiResponse({ status: 200, description: 'Status bijgewerkt' })
   async updateStatus(
@@ -119,7 +102,7 @@ export class RequestsController {
   }
 
   @Post(':id/quote')
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE)
+  @Roles(...OFFICE_ROLES)
   @ApiOperation({ summary: 'Offerte aanmaken vanuit aanvraag' })
   @ApiResponse({ status: 201, description: 'Offerte aangemaakt' })
   async createQuote(
@@ -131,7 +114,7 @@ export class RequestsController {
   }
 
   @Delete(':id')
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE)
+  @Roles(...OFFICE_ROLES)
   @ApiOperation({ summary: 'Aanvraag verwijderen (soft delete)' })
   @ApiResponse({ status: 200, description: 'Aanvraag verwijderd' })
   async remove(

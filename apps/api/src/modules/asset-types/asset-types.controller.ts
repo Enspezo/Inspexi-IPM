@@ -11,8 +11,9 @@ import {
   ParseUUIDPipe,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
-import { User, Role } from '@prisma/client';
+import { User } from '@prisma/client';
 import { Roles, CurrentUser } from '@/common/decorators';
+import { ALL_STAFF, ORG_ADMINS } from '@/common/auth/roles';
 import { AssetTypesService } from './asset-types.service';
 import {
   CreateAssetTypeDto,
@@ -24,15 +25,8 @@ import {
   ValidateParentDto,
 } from './dto';
 
-const READ_ROLES = [
-  Role.SUPERUSER,
-  Role.ORG_ADMIN,
-  Role.MANAGER,
-  Role.BACKOFFICE,
-  Role.WERKVOORBEREIDER,
-  Role.INSPECTEUR,
-] as const;
-const WRITE_ROLES = [Role.SUPERUSER, Role.ORG_ADMIN] as const;
+const READ_ROLES = ALL_STAFF;
+const WRITE_ROLES = ORG_ADMINS;
 
 @ApiTags('asset-types')
 @ApiBearerAuth()

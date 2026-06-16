@@ -7,6 +7,13 @@ import {
 import { Role, NotificationType } from '@prisma/client';
 import { InspectionPlansService } from './inspection-plans.service';
 import { PrismaService } from '@/prisma';
+import {
+  STATUS_DRAFT,
+  STATUS_IN_PROGRESS,
+  STATUS_PENDING_REVIEW,
+  STATUS_REVIEWED,
+  STATUS_APPROVED,
+} from '@/common';
 import { LookupService } from '../lookups/lookup.service';
 import { NotificationsService } from '../notifications/notifications.service';
 
@@ -180,7 +187,7 @@ describe('InspectionPlansService', () => {
         id: 'plan-new',
         orgId: 'org-1',
         projectName: 'New Plan',
-        statusCode: 'draft',
+        statusCode: STATUS_DRAFT,
         assignedTo: null,
       };
       mockPrismaService.inspectionPlan.create.mockResolvedValue(mockPlan);
@@ -194,7 +201,7 @@ describe('InspectionPlansService', () => {
       expect(mockPrismaService.inspectionPlan.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
-            statusCode: 'draft',
+            statusCode: STATUS_DRAFT,
             createdBy: 'user-1',
           }),
         }),
@@ -206,7 +213,7 @@ describe('InspectionPlansService', () => {
         id: 'plan-new',
         orgId: 'org-1',
         projectName: 'Assigned Plan',
-        statusCode: 'draft',
+        statusCode: STATUS_DRAFT,
         assignedTo: 'user-2',
       };
       mockPrismaService.inspectionPlan.create.mockResolvedValue(mockPlan);
@@ -234,7 +241,7 @@ describe('InspectionPlansService', () => {
         id: 'plan-new',
         orgId: 'org-1',
         projectName: 'Self Plan',
-        statusCode: 'draft',
+        statusCode: STATUS_DRAFT,
         assignedTo: 'user-1',
       };
       mockPrismaService.inspectionPlan.create.mockResolvedValue(mockPlan);
@@ -278,19 +285,19 @@ describe('InspectionPlansService', () => {
         id: 'plan-1',
         orgId: 'org-1',
         projectName: 'Test',
-        statusCode: 'in_progress',
+        statusCode: STATUS_IN_PROGRESS,
       });
 
       const result = await service.update(
         'plan-1',
-        { statusCode: 'in_progress' } as any,
+        { statusCode: STATUS_IN_PROGRESS } as any,
         mockUser,
       );
 
-      expect(result.statusCode).toBe('in_progress');
+      expect(result.statusCode).toBe(STATUS_IN_PROGRESS);
       expect(mockPrismaService.inspectionPlan.update).toHaveBeenCalledWith(
         expect.objectContaining({
-          data: expect.objectContaining({ statusCode: 'in_progress' }),
+          data: expect.objectContaining({ statusCode: STATUS_IN_PROGRESS }),
         }),
       );
     });
@@ -341,7 +348,7 @@ describe('InspectionPlansService', () => {
         id: 'plan-1',
         orgId: 'org-1',
         projectName: 'Test',
-        statusCode: 'draft',
+        statusCode: STATUS_DRAFT,
       });
 
       await expect(
@@ -354,7 +361,7 @@ describe('InspectionPlansService', () => {
         id: 'plan-1',
         orgId: 'org-1',
         projectName: 'Test',
-        statusCode: 'in_progress',
+        statusCode: STATUS_IN_PROGRESS,
         reviewerId: 'user-2',
         internalNotes: null,
       });
@@ -362,15 +369,15 @@ describe('InspectionPlansService', () => {
         id: 'plan-1',
         orgId: 'org-1',
         projectName: 'Test',
-        statusCode: 'pending_review',
+        statusCode: STATUS_PENDING_REVIEW,
       });
 
       const result = await service.submit('plan-1', {} as any, mockUser);
 
-      expect(result.statusCode).toBe('pending_review');
+      expect(result.statusCode).toBe(STATUS_PENDING_REVIEW);
       expect(mockPrismaService.inspectionPlan.update).toHaveBeenCalledWith(
         expect.objectContaining({
-          data: expect.objectContaining({ statusCode: 'pending_review' }),
+          data: expect.objectContaining({ statusCode: STATUS_PENDING_REVIEW }),
         }),
       );
       expect(mockNotificationsService.dispatch).toHaveBeenCalledWith(
@@ -388,7 +395,7 @@ describe('InspectionPlansService', () => {
         id: 'plan-1',
         orgId: 'org-1',
         projectName: 'Test',
-        statusCode: 'in_progress',
+        statusCode: STATUS_IN_PROGRESS,
       });
 
       await expect(
@@ -401,7 +408,7 @@ describe('InspectionPlansService', () => {
         id: 'plan-1',
         orgId: 'org-1',
         projectName: 'Test',
-        statusCode: 'pending_review',
+        statusCode: STATUS_PENDING_REVIEW,
         assignedTo: 'user-2',
         createdBy: 'user-3',
         internalNotes: null,
@@ -410,7 +417,7 @@ describe('InspectionPlansService', () => {
         id: 'plan-1',
         orgId: 'org-1',
         projectName: 'Test',
-        statusCode: 'approved',
+        statusCode: STATUS_APPROVED,
         assignedTo: 'user-2',
         createdBy: 'user-3',
       });
@@ -421,7 +428,7 @@ describe('InspectionPlansService', () => {
         mockUser,
       );
 
-      expect(result.statusCode).toBe('approved');
+      expect(result.statusCode).toBe(STATUS_APPROVED);
       expect(mockNotificationsService.dispatch).toHaveBeenCalledWith(
         expect.objectContaining({
           type: NotificationType.INSPECTIEPLAN_GOEDGEKEURD,
@@ -435,7 +442,7 @@ describe('InspectionPlansService', () => {
         id: 'plan-1',
         orgId: 'org-1',
         projectName: 'Test',
-        statusCode: 'pending_review',
+        statusCode: STATUS_PENDING_REVIEW,
         assignedTo: 'user-2',
         createdBy: 'user-3',
         internalNotes: null,
@@ -444,7 +451,7 @@ describe('InspectionPlansService', () => {
         id: 'plan-1',
         orgId: 'org-1',
         projectName: 'Test',
-        statusCode: 'reviewed',
+        statusCode: STATUS_REVIEWED,
         assignedTo: 'user-2',
         createdBy: 'user-3',
       });
@@ -455,7 +462,7 @@ describe('InspectionPlansService', () => {
         mockUser,
       );
 
-      expect(result.statusCode).toBe('reviewed');
+      expect(result.statusCode).toBe(STATUS_REVIEWED);
       expect(mockNotificationsService.dispatch).toHaveBeenCalledWith(
         expect.objectContaining({
           type: NotificationType.INSPECTIEPLAN_AFGEKEURD,

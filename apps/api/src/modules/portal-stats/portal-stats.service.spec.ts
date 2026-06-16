@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { Role, User } from '@prisma/client';
 import { PortalStatsService } from './portal-stats.service';
 import { PrismaService } from '@/prisma';
+import { STATUS_PENDING_REVIEW, STATUS_APPROVED, STATUS_OPEN } from '@/common';
 
 describe('PortalStatsService', () => {
   let service: PortalStatsService;
@@ -120,7 +121,7 @@ describe('PortalStatsService', () => {
       await service.getDashboardStats(orgUser);
 
       expect(mockPrismaService.finding.count.mock.calls[0][0].where).toEqual(
-        expect.objectContaining({ statusCode: 'open', deletedAt: null }),
+        expect.objectContaining({ statusCode: STATUS_OPEN, deletedAt: null }),
       );
     });
   });
@@ -167,7 +168,7 @@ describe('PortalStatsService', () => {
       mockPrismaService.inspectionPlan.findMany.mockResolvedValue([
         {
           id: 'plan-1',
-          statusCode: 'pending_review',
+          statusCode: STATUS_PENDING_REVIEW,
           normTypeCode: 'scope8',
           projectName: 'Plan A',
           updatedAt: new Date('2026-06-10T10:00:00Z'),
@@ -176,7 +177,7 @@ describe('PortalStatsService', () => {
         },
         {
           id: 'plan-2',
-          statusCode: 'approved',
+          statusCode: STATUS_APPROVED,
           normTypeCode: 'scope10',
           projectName: 'Plan B',
           updatedAt: new Date('2026-06-12T10:00:00Z'),
@@ -232,7 +233,7 @@ describe('PortalStatsService', () => {
     it('limits the result to 10 items', async () => {
       const plans = Array.from({ length: 10 }, (_, i) => ({
         id: `plan-${i}`,
-        statusCode: 'pending_review',
+        statusCode: STATUS_PENDING_REVIEW,
         normTypeCode: 'scope8',
         projectName: `Plan ${i}`,
         updatedAt: new Date(2026, 5, i + 1),

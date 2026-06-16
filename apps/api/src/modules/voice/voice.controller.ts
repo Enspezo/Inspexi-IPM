@@ -2,14 +2,13 @@
 
 import { Controller, Post, Get, Body } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
-import { User, Role } from '@prisma/client';
+import { User } from '@prisma/client';
 import { Public, Roles, CurrentUser, CurrentTenant } from '@/common/decorators';
+import { ALL_STAFF } from '@/common/auth/roles';
 import { VoiceParseService } from './voice-parse.service';
 import { ParseMeasurementDto } from './dto';
 
-const VOICE_USERS = [
-  Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE, Role.WERKVOORBEREIDER, Role.INSPECTEUR,
-] as const;
+const VOICE_USERS = ALL_STAFF;
 
 @ApiTags('Voice')
 @ApiBearerAuth()

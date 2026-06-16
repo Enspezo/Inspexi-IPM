@@ -15,18 +15,13 @@ import {
   ApiResponse,
   ApiBearerAuth,
 } from '@nestjs/swagger';
-import { User, Role, NoteEntityType } from '@prisma/client';
+import { User, NoteEntityType } from '@prisma/client';
 import { NotesService } from './notes.service';
 import { CreateNoteDto, UpdateNoteDto, ListNotesQueryDto } from './dto';
 import { Roles, CurrentUser } from '@/common/decorators';
+import { CRM_ROLES } from '@/common/auth/roles';
 
-const crmRoles = [
-  Role.SUPERUSER,
-  Role.ORG_ADMIN,
-  Role.MANAGER,
-  Role.BACKOFFICE,
-  Role.WERKVOORBEREIDER,
-];
+const crmRoles = CRM_ROLES;
 
 @ApiTags('Notes')
 @ApiBearerAuth()

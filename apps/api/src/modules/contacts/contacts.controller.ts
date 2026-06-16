@@ -15,7 +15,8 @@ import {
   ApiResponse,
   ApiBearerAuth,
 } from '@nestjs/swagger';
-import { User, Role } from '@prisma/client';
+import { User } from '@prisma/client';
+import { CRM_ROLES, OFFICE_ROLES } from '@/common/auth/roles';
 import { ContactsService } from './contacts.service';
 import { ContactAddressesService } from './contact-addresses.service';
 import { ContactPersonsService } from './contact-persons.service';
@@ -51,13 +52,7 @@ export class ContactsController {
   ) {}
 
   @Get()
-  @Roles(
-    Role.SUPERUSER,
-    Role.ORG_ADMIN,
-    Role.MANAGER,
-    Role.BACKOFFICE,
-    Role.WERKVOORBEREIDER,
-  )
+  @Roles(...CRM_ROLES)
   @ApiOperation({ summary: 'Lijst relaties ophalen' })
   @ApiResponse({ status: 200, description: 'Gepagineerde lijst van relaties' })
   async findAll(@CurrentUser() user: User, @Query() query: ListContactsQueryDto) {
@@ -66,13 +61,7 @@ export class ContactsController {
   }
 
   @Get('contact-persons')
-  @Roles(
-    Role.SUPERUSER,
-    Role.ORG_ADMIN,
-    Role.MANAGER,
-    Role.BACKOFFICE,
-    Role.WERKVOORBEREIDER,
-  )
+  @Roles(...CRM_ROLES)
   @ApiOperation({ summary: 'Lijst contactpersonen ophalen' })
   @ApiResponse({ status: 200, description: 'Gepagineerde lijst van contactpersonen' })
   async findAllContactPersons(
@@ -84,13 +73,7 @@ export class ContactsController {
   }
 
   @Get('contact-person-roles')
-  @Roles(
-    Role.SUPERUSER,
-    Role.ORG_ADMIN,
-    Role.MANAGER,
-    Role.BACKOFFICE,
-    Role.WERKVOORBEREIDER,
-  )
+  @Roles(...CRM_ROLES)
   @ApiOperation({ summary: 'Lijst contactpersoon-rollen ophalen (lookup)' })
   @ApiResponse({ status: 200, description: 'Lijst van rollen' })
   async findContactPersonRoles(@CurrentUser() user: User) {
@@ -101,13 +84,7 @@ export class ContactsController {
   // ─── Locations (global) ─────────────────────────────────
 
   @Get('locations')
-  @Roles(
-    Role.SUPERUSER,
-    Role.ORG_ADMIN,
-    Role.MANAGER,
-    Role.BACKOFFICE,
-    Role.WERKVOORBEREIDER,
-  )
+  @Roles(...CRM_ROLES)
   @ApiOperation({ summary: 'Alle locaties ophalen' })
   @ApiResponse({ status: 200, description: 'Gepagineerde lijst van locaties' })
   async findAllLocations(
@@ -119,13 +96,7 @@ export class ContactsController {
   }
 
   @Get('locations/:locationId')
-  @Roles(
-    Role.SUPERUSER,
-    Role.ORG_ADMIN,
-    Role.MANAGER,
-    Role.BACKOFFICE,
-    Role.WERKVOORBEREIDER,
-  )
+  @Roles(...CRM_ROLES)
   @ApiOperation({ summary: 'Locatie detail ophalen' })
   @ApiResponse({ status: 200, description: 'Locatie details' })
   async findLocation(
@@ -137,7 +108,7 @@ export class ContactsController {
   }
 
   @Post()
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE)
+  @Roles(...OFFICE_ROLES)
   @ApiOperation({ summary: 'Nieuwe relatie aanmaken' })
   @ApiResponse({ status: 201, description: 'Relatie aangemaakt' })
   async create(@Body() dto: CreateContactDto, @CurrentUser() user: User) {
@@ -146,13 +117,7 @@ export class ContactsController {
   }
 
   @Get(':id')
-  @Roles(
-    Role.SUPERUSER,
-    Role.ORG_ADMIN,
-    Role.MANAGER,
-    Role.BACKOFFICE,
-    Role.WERKVOORBEREIDER,
-  )
+  @Roles(...CRM_ROLES)
   @ApiOperation({ summary: 'Relatie detail ophalen' })
   @ApiResponse({ status: 200, description: 'Relatie details' })
   @ApiResponse({ status: 404, description: 'Niet gevonden' })
@@ -165,7 +130,7 @@ export class ContactsController {
   }
 
   @Patch(':id')
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE)
+  @Roles(...OFFICE_ROLES)
   @ApiOperation({ summary: 'Relatie bijwerken' })
   @ApiResponse({ status: 200, description: 'Relatie bijgewerkt' })
   async update(
@@ -178,7 +143,7 @@ export class ContactsController {
   }
 
   @Delete(':id')
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE)
+  @Roles(...OFFICE_ROLES)
   @ApiOperation({ summary: 'Relatie verwijderen (soft delete)' })
   @ApiResponse({ status: 200, description: 'Relatie verwijderd' })
   async remove(
@@ -192,7 +157,7 @@ export class ContactsController {
   // ─── Nested: Addresses ─────────────────────────────────
 
   @Post(':id/addresses')
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE)
+  @Roles(...OFFICE_ROLES)
   @ApiOperation({ summary: 'Adres toevoegen aan relatie' })
   @ApiResponse({ status: 201, description: 'Adres toegevoegd' })
   async addAddress(
@@ -205,7 +170,7 @@ export class ContactsController {
   }
 
   @Patch('addresses/:addressId')
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE)
+  @Roles(...OFFICE_ROLES)
   @ApiOperation({ summary: 'Adres bijwerken' })
   @ApiResponse({ status: 200, description: 'Adres bijgewerkt' })
   async updateAddress(
@@ -218,7 +183,7 @@ export class ContactsController {
   }
 
   @Delete('addresses/:addressId')
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE)
+  @Roles(...OFFICE_ROLES)
   @ApiOperation({ summary: 'Adres verwijderen' })
   @ApiResponse({ status: 200, description: 'Adres verwijderd' })
   async deleteAddress(
@@ -232,7 +197,7 @@ export class ContactsController {
   // ─── Nested: Customer Groups Assignment ───────────────
 
   @Patch(':id/groups')
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE)
+  @Roles(...OFFICE_ROLES)
   @ApiOperation({ summary: 'Klantgroepen van relatie instellen' })
   @ApiResponse({ status: 200, description: 'Klantgroepen bijgewerkt' })
   async setContactGroups(
@@ -251,7 +216,7 @@ export class ContactsController {
   // ─── Nested: Contact Persons ──────────────────────────
 
   @Post(':id/contact-persons')
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE)
+  @Roles(...OFFICE_ROLES)
   @ApiOperation({ summary: 'Contactpersoon toevoegen aan relatie' })
   @ApiResponse({ status: 201, description: 'Contactpersoon toegevoegd' })
   async addContactPerson(
@@ -264,13 +229,7 @@ export class ContactsController {
   }
 
   @Get('contact-persons/:personId/locations')
-  @Roles(
-    Role.SUPERUSER,
-    Role.ORG_ADMIN,
-    Role.MANAGER,
-    Role.BACKOFFICE,
-    Role.WERKVOORBEREIDER,
-  )
+  @Roles(...CRM_ROLES)
   @ApiOperation({ summary: 'Gekoppelde locaties van contactpersoon ophalen' })
   @ApiResponse({ status: 200, description: 'Lijst gekoppelde locaties' })
   async findContactPersonLocations(
@@ -282,13 +241,7 @@ export class ContactsController {
   }
 
   @Get('contact-persons/:personId')
-  @Roles(
-    Role.SUPERUSER,
-    Role.ORG_ADMIN,
-    Role.MANAGER,
-    Role.BACKOFFICE,
-    Role.WERKVOORBEREIDER,
-  )
+  @Roles(...CRM_ROLES)
   @ApiOperation({ summary: 'Contactpersoon detail ophalen' })
   @ApiResponse({ status: 200, description: 'Contactpersoon details' })
   async findContactPerson(
@@ -300,7 +253,7 @@ export class ContactsController {
   }
 
   @Patch('contact-persons/:personId')
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE)
+  @Roles(...OFFICE_ROLES)
   @ApiOperation({ summary: 'Contactpersoon bijwerken' })
   @ApiResponse({ status: 200, description: 'Contactpersoon bijgewerkt' })
   async updateContactPerson(
@@ -313,7 +266,7 @@ export class ContactsController {
   }
 
   @Delete('contact-persons/:personId')
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE)
+  @Roles(...OFFICE_ROLES)
   @ApiOperation({ summary: 'Contactpersoon verwijderen (soft delete)' })
   @ApiResponse({ status: 200, description: 'Contactpersoon verwijderd' })
   async deleteContactPerson(
@@ -327,13 +280,7 @@ export class ContactsController {
   // ─── Location–ContactPerson links ─────────────────────
 
   @Get('locations/:locationId/contact-persons')
-  @Roles(
-    Role.SUPERUSER,
-    Role.ORG_ADMIN,
-    Role.MANAGER,
-    Role.BACKOFFICE,
-    Role.WERKVOORBEREIDER,
-  )
+  @Roles(...CRM_ROLES)
   @ApiOperation({ summary: 'Gekoppelde contactpersonen van locatie ophalen' })
   @ApiResponse({ status: 200, description: 'Lijst gekoppelde contactpersonen' })
   async findLocationContactPersons(
@@ -345,7 +292,7 @@ export class ContactsController {
   }
 
   @Post('locations/:locationId/contact-persons')
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE)
+  @Roles(...OFFICE_ROLES)
   @ApiOperation({ summary: 'Contactpersoon koppelen aan locatie' })
   @ApiResponse({ status: 201, description: 'Contactpersoon gekoppeld' })
   async addLocationContactPerson(
@@ -358,7 +305,7 @@ export class ContactsController {
   }
 
   @Patch('locations/contact-persons/:linkId')
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE)
+  @Roles(...OFFICE_ROLES)
   @ApiOperation({ summary: 'Opmerkingen koppeling bijwerken' })
   @ApiResponse({ status: 200, description: 'Koppeling bijgewerkt' })
   async updateLocationContactPerson(
@@ -371,7 +318,7 @@ export class ContactsController {
   }
 
   @Delete('locations/contact-persons/:linkId')
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE)
+  @Roles(...OFFICE_ROLES)
   @ApiOperation({ summary: 'Contactpersoon ontkoppelen van locatie' })
   @ApiResponse({ status: 200, description: 'Contactpersoon ontkoppeld' })
   async removeLocationContactPerson(
@@ -385,7 +332,7 @@ export class ContactsController {
   // ─── Nested: Locations ─────────────────────────────────
 
   @Post(':id/locations')
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE)
+  @Roles(...OFFICE_ROLES)
   @ApiOperation({ summary: 'Locatie toevoegen aan relatie' })
   @ApiResponse({ status: 201, description: 'Locatie toegevoegd' })
   async addLocation(
@@ -398,13 +345,7 @@ export class ContactsController {
   }
 
   @Get(':id/locations')
-  @Roles(
-    Role.SUPERUSER,
-    Role.ORG_ADMIN,
-    Role.MANAGER,
-    Role.BACKOFFICE,
-    Role.WERKVOORBEREIDER,
-  )
+  @Roles(...CRM_ROLES)
   @ApiOperation({ summary: 'Locaties van relatie ophalen' })
   @ApiResponse({ status: 200, description: 'Lijst locaties' })
   async findLocations(
@@ -416,7 +357,7 @@ export class ContactsController {
   }
 
   @Patch('locations/:locationId')
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE)
+  @Roles(...OFFICE_ROLES)
   @ApiOperation({ summary: 'Locatie bijwerken' })
   @ApiResponse({ status: 200, description: 'Locatie bijgewerkt' })
   async updateLocation(
@@ -429,7 +370,7 @@ export class ContactsController {
   }
 
   @Delete('locations/:locationId')
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE)
+  @Roles(...OFFICE_ROLES)
   @ApiOperation({ summary: 'Locatie verwijderen' })
   @ApiResponse({ status: 200, description: 'Locatie verwijderd' })
   async deleteLocation(
@@ -443,7 +384,7 @@ export class ContactsController {
   // ─── Nested: Logs ──────────────────────────────────────
 
   @Post(':id/logs')
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE)
+  @Roles(...OFFICE_ROLES)
   @ApiOperation({ summary: 'Contactmoment loggen' })
   @ApiResponse({ status: 201, description: 'Contactmoment gelogd' })
   async addLog(
@@ -456,13 +397,7 @@ export class ContactsController {
   }
 
   @Get(':id/logs')
-  @Roles(
-    Role.SUPERUSER,
-    Role.ORG_ADMIN,
-    Role.MANAGER,
-    Role.BACKOFFICE,
-    Role.WERKVOORBEREIDER,
-  )
+  @Roles(...CRM_ROLES)
   @ApiOperation({ summary: 'Contactgeschiedenis ophalen' })
   @ApiResponse({ status: 200, description: 'Lijst contactmomenten' })
   async findLogs(
@@ -476,7 +411,7 @@ export class ContactsController {
   // ─── Nested: Email ─────────────────────────────────────
 
   @Post(':id/email')
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE)
+  @Roles(...OFFICE_ROLES)
   @ApiOperation({ summary: 'Email versturen naar relatie' })
   @ApiResponse({ status: 201, description: 'Email verstuurd' })
   async sendEmail(

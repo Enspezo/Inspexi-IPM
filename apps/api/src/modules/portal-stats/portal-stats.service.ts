@@ -1,7 +1,14 @@
 import { Injectable } from '@nestjs/common';
 import { User } from '@prisma/client';
 import { PrismaService } from '@/prisma';
-import { orgScope } from '@/common';
+import {
+  orgScope,
+  STATUS_PENDING_REVIEW,
+  STATUS_REVIEWED,
+  STATUS_APPROVED,
+  STATUS_COMPLETED,
+  STATUS_OPEN,
+} from '@/common';
 
 /** PWA-dashboard samenvatting (org-scoped, read-only). */
 export interface DashboardStats {
@@ -69,7 +76,7 @@ export class PortalStatsService {
       where: {
         ...scope,
         deletedAt: null,
-        statusCode: { in: ['pending_review', 'reviewed'] },
+        statusCode: { in: [STATUS_PENDING_REVIEW, STATUS_REVIEWED] },
       },
     });
 
@@ -78,7 +85,7 @@ export class PortalStatsService {
       where: {
         ...scope,
         deletedAt: null,
-        statusCode: { in: ['completed', 'approved'] },
+        statusCode: { in: [STATUS_COMPLETED, STATUS_APPROVED] },
         updatedAt: { gte: startOfWeek },
       },
     });
@@ -90,7 +97,7 @@ export class PortalStatsService {
       where: {
         ...scope,
         deletedAt: null,
-        statusCode: 'open',
+        statusCode: STATUS_OPEN,
       },
     });
 
@@ -162,7 +169,7 @@ export class PortalStatsService {
         ...scope,
         deletedAt: null,
         statusCode: {
-          in: ['pending_review', 'approved', 'reviewed', 'completed'],
+          in: [STATUS_PENDING_REVIEW, STATUS_APPROVED, STATUS_REVIEWED, STATUS_COMPLETED],
         },
       },
       orderBy: { updatedAt: 'desc' },
@@ -180,13 +187,13 @@ export class PortalStatsService {
       let title: string;
 
       switch (inspection.statusCode) {
-        case 'pending_review':
-        case 'reviewed':
+        case STATUS_PENDING_REVIEW:
+        case STATUS_REVIEWED:
           type = 'inspection_submitted';
           title = 'Inspectie ingediend';
           break;
-        case 'approved':
-        case 'completed':
+        case STATUS_APPROVED:
+        case STATUS_COMPLETED:
           type = 'inspection_approved';
           title = 'Inspectie goedgekeurd';
           break;

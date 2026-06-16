@@ -19,6 +19,7 @@ import {
 } from '@nestjs/swagger';
 import { User, Role } from '@prisma/client';
 import { Roles, CurrentUser } from '@/common/decorators';
+import { ALL_STAFF, CRM_ROLES } from '@/common/auth/roles';
 import { InspectionPlansService } from './inspection-plans.service';
 import {
   CreateInspectionPlanDto,
@@ -28,15 +29,9 @@ import {
   ReviewInspectionPlanDto,
 } from './dto';
 
-const WRITE_ROLES = [
-  Role.SUPERUSER,
-  Role.ORG_ADMIN,
-  Role.MANAGER,
-  Role.BACKOFFICE,
-  Role.WERKVOORBEREIDER,
-] as const;
+const WRITE_ROLES = CRM_ROLES;
 
-const ALL_ROLES = [...WRITE_ROLES, Role.INSPECTEUR] as const;
+const ALL_ROLES = ALL_STAFF;
 
 const REVIEW_ROLES = [
   Role.SUPERUSER,

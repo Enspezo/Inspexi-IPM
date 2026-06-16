@@ -52,15 +52,35 @@ export interface LookupRow {
   isSystem: boolean;
 }
 
+/**
+ * Minimale delegate-vorm die de 11 structureel identieke lookup-modellen delen.
+ * Prisma genereert per model een eigen, generiek delegate-type, dus een dynamische
+ * index levert geen bruikbaar gemeenschappelijk type op. We benaderen de gedeelde
+ * CRUD-subset via deze interface zodat de call-sites getypeerd blijven (LookupRow).
+ */
+interface LookupDelegate {
+  findMany(args: {
+    where?: Record<string, unknown>;
+    orderBy?: unknown;
+    take?: number;
+  }): Promise<LookupRow[]>;
+  findUnique(args: { where: { id: string } }): Promise<LookupRow | null>;
+  create(args: { data: Record<string, unknown> }): Promise<LookupRow>;
+  update(args: { where: { id: string }; data: Record<string, unknown> }): Promise<LookupRow>;
+  delete(args: { where: { id: string } }): Promise<LookupRow>;
+}
+
 @Injectable()
 export class LookupService {
   constructor(private prisma: PrismaService) {}
 
-  private delegate(kind: LookupKind): any {
+  private delegate(kind: LookupKind): LookupDelegate {
     const model = LOOKUP_KINDS[kind];
     if (!model) throw new BadRequestException(`Onbekende lookup: ${kind}`);
-    // Alle 11 modellen delen dezelfde velden; delegate is structureel identiek.
-    return (this.prisma as any)[model];
+    // Cast via `unknown` (geen `any`): de 11 delegates zijn structureel identiek aan
+    // LookupDelegate, maar Prisma's per-model generics unificeren niet bij een
+    // dynamische index. De gedeelde velden (LookupRow) maken dit runtime-veilig.
+    return this.prisma[model] as unknown as LookupDelegate;
   }
 
   /**

@@ -3,22 +3,37 @@
 // NB: MeasurementSheetTemplate heeft GEEN isSystem-veld, dus geen herkomst-kolom.
 
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import type { MeasurementSheetTemplate } from '@/types';
-import { ErrorBox, Spinner, Table, Input, StatusBadge } from '@/components/ui';
+import { Button, ErrorBox, Spinner, Table, Input, StatusBadge } from '@/components/ui';
 import { DetailPageLayout } from '@/components/layout/detail-page-layout';
 import { PageHeader } from '@/components/layout/page-header';
 import { TableConfigSidebar, useTableConfig, type ColumnDef } from '@/components/table-config';
+import { useAuth } from '@/providers/auth-provider';
+import { Role } from '@/types';
 import { MEASUREMENT_SHEET_STATUS } from '@/lib/status';
 import { useMeasurementSheetTemplates } from './hooks/use-measurement-sheet-templates';
+import { CreateTemplateModal } from './components/create-template-modal';
 
 export default function MeasurementSheetTemplatesPage() {
   const [search, setSearch] = useState('');
+  const [createOpen, setCreateOpen] = useState(false);
+  const { user } = useAuth();
   const { data, isLoading, error } = useMeasurementSheetTemplates();
+
+  const isSuperuser = !!user && user.roles.includes(Role.SUPERUSER);
 
   const columns: ColumnDef<MeasurementSheetTemplate>[] = [
     {
       key: 'name', header: 'Naam', pinned: true, sortable: true, sortKey: 'name',
-      render: (t) => <span className="font-medium text-gray-900">{t.name}</span>,
+      render: (t) => (
+        <Link
+          to={`/measurement-sheet-templates/${t.id}`}
+          className="font-medium text-primary-600 hover:text-primary-700 hover:underline"
+        >
+          {t.name}
+        </Link>
+      ),
     },
     {
       key: 'code', header: 'Code', sortable: true, sortKey: 'code',
@@ -76,7 +91,15 @@ export default function MeasurementSheetTemplatesPage() {
       }
     >
       <div className="space-y-6">
-        <PageHeader title="Meetstaat-templates" description="Meetstaat-templates beheren en doorzoeken" />
+        <PageHeader
+          title="Meetstaat-templates"
+          description="Meetstaat-templates beheren en doorzoeken"
+          actions={
+            isSuperuser ? (
+              <Button onClick={() => setCreateOpen(true)}>Nieuw</Button>
+            ) : undefined
+          }
+        />
 
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
           <div className="flex-1">
@@ -95,6 +118,8 @@ export default function MeasurementSheetTemplatesPage() {
 
         <p className="text-sm text-gray-500">{searched.length} {searched.length !== 1 ? 'resultaten' : 'resultaat'}</p>
       </div>
+
+      <CreateTemplateModal isOpen={createOpen} onClose={() => setCreateOpen(false)} />
     </DetailPageLayout>
   );
 }

@@ -158,14 +158,23 @@ describe('InspectionPlansService', () => {
       );
     });
 
-    it('should throw ForbiddenException for cross-org access', async () => {
-      mockPrismaService.inspectionPlan.findFirst.mockResolvedValue({
-        id: 'plan-1',
-        orgId: 'other-org',
-      });
+    it('should scope the query to the user org → cross-org plan yields 404', async () => {
+      // Cross-tenant reads are org-scoped in the query itself: another org's
+      // plan falls outside the filter and surfaces as NotFound (404), so we
+      // never disclose that the record exists (consistent with assets/findings).
+      mockPrismaService.inspectionPlan.findFirst.mockResolvedValue(null);
 
       await expect(service.findOne('plan-1', mockUser)).rejects.toThrow(
-        ForbiddenException,
+        NotFoundException,
+      );
+      expect(mockPrismaService.inspectionPlan.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            id: 'plan-1',
+            orgId: 'org-1',
+            deletedAt: null,
+          }),
+        }),
       );
     });
 

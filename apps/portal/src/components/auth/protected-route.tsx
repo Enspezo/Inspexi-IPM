@@ -1,4 +1,4 @@
-import { Navigate, Outlet } from 'react-router-dom';
+import { Navigate, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '@/providers/auth-provider';
 import { useTenant } from '@/providers/tenant-provider';
 import { Spinner } from '@/components/ui';
@@ -7,10 +7,14 @@ import { hasRole } from '@/lib/has-role';
 import { getOrgUrl } from '@/lib/tenant';
 
 export function ProtectedRoute() {
-  const { user, isAuthenticated, isLoading } = useAuth();
-  const { tenantInfo } = useTenant();
+  const { user, isAuthenticated, isLoading: authLoading } = useAuth();
+  const { tenantInfo, isLoading: tenantLoading } = useTenant();
+  const location = useLocation();
 
-  if (isLoading) {
+  // Take no routing decision until BOTH auth-init and tenant resolution have
+  // settled. This closes the load race that intermittently bounced a refreshed
+  // deeplink through /login to /dashboard.
+  if (authLoading || tenantLoading) {
     return (
       <div className="flex h-screen items-center justify-center">
         <Spinner size="lg" />
@@ -19,27 +23,25 @@ export function ProtectedRoute() {
   }
 
   if (!isAuthenticated || !user) {
-    return <Navigate to="/login" replace />;
+    // Remember where the user was headed so login can return them there.
+    return <Navigate to="/login" replace state={{ from: location }} />;
   }
 
-  // Base domain (mijn.inspexi.nl) + non-SUPERUSER → redirect to org subdomain
+  // Base domain (mijn.inspexi.nl) + non-SUPERUSER → redirect to org subdomain,
+  // preserving the originally requested path instead of forcing /dashboard.
   if (tenantInfo.isBaseDomain && !hasRole(user, Role.SUPERUSER)) {
     const orgSlug = user.organization?.slug;
     if (orgSlug) {
-      window.location.href = getOrgUrl(orgSlug, '/dashboard');
+      window.location.href = getOrgUrl(
+        orgSlug,
+        location.pathname + location.search,
+      );
       return (
         <div className="flex h-screen items-center justify-center">
           <Spinner size="lg" />
         </div>
       );
     }
-  }
-
-  // Org subdomain + user.orgId ≠ org (and not SUPERUSER) → redirect to login
-  // This is mostly handled by the backend TenantGuard, but as a safety net:
-  if (!tenantInfo.isBaseDomain && !hasRole(user, Role.SUPERUSER)) {
-    // If user got here with wrong org token, the API will 403 anyway
-    // We don't need to check explicitly since TenantGuard handles it
   }
 
   return <Outlet />;

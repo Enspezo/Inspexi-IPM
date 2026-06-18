@@ -4,6 +4,7 @@ import {
   useState,
   useEffect,
   useCallback,
+  useRef,
   type ReactNode,
 } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -44,8 +45,16 @@ export function AuthProvider({ children }: AuthProviderProps) {
     await fetchUser();
   }, [fetchUser]);
 
-  // On mount: try to refresh the token from httpOnly cookie
+  // On mount: try to refresh the token from the httpOnly cookie.
+  // Guard against React 18 StrictMode's double-invoked effect: two concurrent
+  // /auth/refresh calls race with refresh-token rotation, and the losing call
+  // flips isLoading to false while `user` is still null — which would bounce a
+  // valid deeplink through /login to /dashboard. Running init once avoids that.
+  const didInitAuth = useRef(false);
   useEffect(() => {
+    if (didInitAuth.current) return;
+    didInitAuth.current = true;
+
     const initAuth = async () => {
       try {
         const response = await fetch('/api/v1/auth/refresh', {
@@ -79,9 +88,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
       );
       setAccessToken(data.accessToken);
       await fetchUser();
-      navigate('/dashboard');
+      // Navigation (incl. returnTo) is handled by LoginPage once `user` is set —
+      // don't hard-redirect to /dashboard here or we'd discard the original route.
     },
-    [fetchUser, navigate],
+    [fetchUser],
   );
 
   const logout = useCallback(async () => {

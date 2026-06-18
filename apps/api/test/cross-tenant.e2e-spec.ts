@@ -587,6 +587,20 @@ describe('Cross-tenant FK isolation (e2e)', () => {
     });
   });
 
+  // ─── Cross-tenant detail reads (404, geen bestaan prijsgeven) ─────────
+  // Een GET op een resource uit een andere org wordt org-scoped geladen, dus de
+  // vreemde-org id valt buiten het filter → 404 (identiek aan een onbekend id),
+  // consistent met de path-scoped asset/finding-checks hierboven. Géén 403: dat
+  // zou het bestaan van andermans data verraden.
+  describe('cross-tenant detail reads (404)', () => {
+    it("returns 404 when reading another org's inspection plan", async () => {
+      await request(app.getHttpServer())
+        .get(`/api/v1/inspection-plans/${planBId}`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .expect(404);
+    });
+  });
+
   // ─── Body-FK isolation (assertSameOrg → 403) ──────────
   describe('cross-tenant body FKs (inspection execution + config)', () => {
     it('rejects a measurement-sheet-record with a cross-tenant assetId (403)', async () => {

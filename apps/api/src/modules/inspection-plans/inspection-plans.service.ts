@@ -3,7 +3,7 @@ import {
   ForbiddenException,
   BadRequestException,
 } from '@nestjs/common';
-import { User, Role, Prisma, NotificationType } from '@prisma/client';
+import { User, Prisma, NotificationType } from '@prisma/client';
 import { PrismaService } from '@/prisma';
 import {
   paginate,
@@ -173,9 +173,13 @@ export class InspectionPlansService {
   }
 
   async findOne(id: string, user: User) {
-    const plan = assertFound(
+    // Org-scoping zit in de query zelf: een plan van een andere org valt buiten
+    // het filter en geeft een 404 (net als assets/findings) i.p.v. een 403 — zo
+    // lekken we niet het bestaan van andermans data. SUPERUSER (orgId null)
+    // krijgt {} van orgScope en ziet dus alle organisaties.
+    return assertFound(
       await this.prisma.inspectionPlan.findFirst({
-        where: { id, deletedAt: null },
+        where: { id, ...orgScope(user), deletedAt: null },
         include: {
           contact: { select: contactSelect },
           project: { select: { id: true, title: true, projectNumber: true } },
@@ -188,10 +192,6 @@ export class InspectionPlansService {
       }),
       'Inspectieplan',
     );
-    if (!user.roles.includes(Role.SUPERUSER) && plan.orgId !== user.orgId) {
-      throw new ForbiddenException('Geen toegang tot dit inspectieplan');
-    }
-    return plan;
   }
 
   async create(dto: CreateInspectionPlanDto, user: User) {

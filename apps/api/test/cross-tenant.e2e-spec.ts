@@ -44,6 +44,16 @@ describe('Cross-tenant FK isolation (e2e)', () => {
   let assetBId: string;
   let categoryBId: string;
   let cmBId: string;
+  // Stream B — extra org-B fixtures (read-isolatie + body-FK aanvallen)
+  let findingBId: string;
+  let assetTypeBId: string;
+  let findingTemplateBId: string;
+  // Stream B — org-A inspectiedomein-fixtures (positieve controles + read-isolatie)
+  let assetTypeAId: string;
+  let planAId: string;
+  let assetAId: string;
+  let findingAId: string;
+  let findingTemplateAId: string;
 
   const createdPlanningIds: string[] = [];
   const createdTaskIds: string[] = [];
@@ -226,6 +236,83 @@ describe('Cross-tenant FK isolation (e2e)', () => {
     });
     categoryBId = categoryB.id;
 
+    // ─── Stream B: extra org B-fixtures ─────────────────
+    // Constatering op org B's asset (read-isolatie GET /findings/:id → 404).
+    const findingB = await prisma.finding.create({
+      data: {
+        orgId: orgB.id,
+        assetId: assetB.id,
+        inspectionType: 'visual',
+        shortDescription: 'Finding B',
+        createdBy: userB.id,
+      },
+    });
+    findingBId = findingB.id;
+    // Org B's asset-type (config-isolatie GET/PATCH /asset-types/:id → 404).
+    const assetTypeB = await prisma.assetTypeDefinition.create({
+      data: { orgId: orgB.id, code: 'e2extatb', name: 'XTenant AssetType B', isSystem: false },
+    });
+    assetTypeBId = assetTypeB.id;
+    // Org B's constatering-template (body-FK findingTemplateId aanval). CM's zijn globaal.
+    const findingTemplateB = await prisma.findingTemplate.create({
+      data: {
+        orgId: orgB.id,
+        code: 'e2extftb',
+        shortDescription: 'Template B',
+        classificationModelId: cmB.id,
+        defaultClassification: {},
+        createdBy: userB.id,
+      },
+    });
+    findingTemplateBId = findingTemplateB.id;
+
+    // ─── Stream B: org A-fixtures (positieve controles + read-isolatie) ──
+    const assetTypeA = await prisma.assetTypeDefinition.create({
+      data: { orgId: orgA.id, code: 'e2extata', name: 'XTenant AssetType A', isSystem: false },
+    });
+    assetTypeAId = assetTypeA.id;
+    const planA = await prisma.inspectionPlan.create({
+      data: {
+        orgId: orgA.id,
+        contactId: contactA.id,
+        projectName: 'Plan A',
+        normTypeCode: 'e2extnorm',
+        createdBy: userA.id,
+      },
+    });
+    planAId = planA.id;
+    const assetA = await prisma.asset.create({
+      data: {
+        orgId: orgA.id,
+        inspectionPlanId: planA.id,
+        assetType: 'e2extata',
+        name: 'Asset A',
+        createdBy: userA.id,
+      },
+    });
+    assetAId = assetA.id;
+    const findingTemplateA = await prisma.findingTemplate.create({
+      data: {
+        orgId: orgA.id,
+        code: 'e2extfta',
+        shortDescription: 'Template A',
+        classificationModelId: cmB.id,
+        defaultClassification: {},
+        createdBy: userA.id,
+      },
+    });
+    findingTemplateAId = findingTemplateA.id;
+    const findingA = await prisma.finding.create({
+      data: {
+        orgId: orgA.id,
+        assetId: assetA.id,
+        inspectionType: 'visual',
+        shortDescription: 'Finding A',
+        createdBy: userA.id,
+      },
+    });
+    findingAId = findingA.id;
+
     // Login as org A's admin
     const loginRes = await request(app.getHttpServer())
       .post('/api/v1/auth/login')
@@ -257,6 +344,7 @@ describe('Cross-tenant FK isolation (e2e)', () => {
       await prisma.inspectionPlan.deleteMany({ where: { orgId: { in: orgIds } } });
       await prisma.findingTemplate.deleteMany({ where: { orgId: { in: orgIds } } });
       await prisma.inspectionTemplate.deleteMany({ where: { orgId: { in: orgIds } } });
+      await prisma.assetTypeDefinition.deleteMany({ where: { orgId: { in: orgIds } } });
       await prisma.category.deleteMany({ where: { orgId: { in: orgIds } } });
       await prisma.classificationModel.deleteMany({ where: { code: 'e2extcm' } });
       await prisma.normTypeDefinition.deleteMany({ where: { code: 'e2extnorm' } });
@@ -611,6 +699,138 @@ describe('Cross-tenant FK isolation (e2e)', () => {
           categoryId: categoryBId,
         })
         .expect(403);
+    });
+  });
+
+  // ─── B1: asset/finding body-FK hardening + positieve controles ──────
+  // De asset-/finding-create FK's worden org-scoped geladen met assertFound
+  // (ouder binnen hetzelfde plan; template binnen org-of-systeem), dus een
+  // vreemde-org id wordt niet gevonden → 404 (geen leak), niet 403.
+  describe('B1 — assets/findings body-FK isolation', () => {
+    it('rejects an asset whose parentAssetId belongs to another org (404)', async () => {
+      await request(app.getHttpServer())
+        .post(`/api/v1/inspection-plans/${planAId}/assets`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({ assetType: 'e2extata', name: 'Sneaky child', parentAssetId: assetBId })
+        .expect(404);
+    });
+
+    it('allows an asset with an own-org parent (positive control)', async () => {
+      await request(app.getHttpServer())
+        .post(`/api/v1/inspection-plans/${planAId}/assets`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({ assetType: 'e2extata', name: 'Legit child', parentAssetId: assetAId })
+        .expect(201);
+    });
+
+    it("rejects patching another org's asset (404)", async () => {
+      await request(app.getHttpServer())
+        .patch(`/api/v1/assets/${assetBId}`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({ name: 'Hacked' })
+        .expect(404);
+    });
+
+    it('allows patching an own-org asset (positive control)', async () => {
+      await request(app.getHttpServer())
+        .patch(`/api/v1/assets/${assetAId}`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({ name: 'Asset A (bijgewerkt)' })
+        .expect(200);
+    });
+
+    it('rejects a finding whose findingTemplateId belongs to another org (404)', async () => {
+      await request(app.getHttpServer())
+        .post(`/api/v1/assets/${assetAId}/findings`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({
+          inspectionType: 'visual',
+          shortDescription: 'Sneaky',
+          findingTemplateId: findingTemplateBId,
+        })
+        .expect(404);
+    });
+
+    it('allows a finding with an own-org findingTemplate (positive control)', async () => {
+      await request(app.getHttpServer())
+        .post(`/api/v1/assets/${assetAId}/findings`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({
+          inspectionType: 'visual',
+          shortDescription: 'Legit',
+          findingTemplateId: findingTemplateAId,
+        })
+        .expect(201);
+    });
+  });
+
+  // ─── B1: asset-types config-isolatie ───────────────────────────────
+  // asset-types worden org-scoped geladen (eigen org OR systeem) → 404.
+  describe('B1 — asset-types isolation', () => {
+    it("rejects reading another org's asset-type (404)", async () => {
+      await request(app.getHttpServer())
+        .get(`/api/v1/asset-types/${assetTypeBId}`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .expect(404);
+    });
+
+    it("rejects updating another org's asset-type (404)", async () => {
+      await request(app.getHttpServer())
+        .patch(`/api/v1/asset-types/${assetTypeBId}`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({ name: 'Hacked' })
+        .expect(404);
+    });
+
+    it('allows reading an own-org asset-type (positive control)', async () => {
+      const res = await request(app.getHttpServer())
+        .get(`/api/v1/asset-types/${assetTypeAId}`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .expect(200);
+      expect(res.body.data.id).toBe(assetTypeAId);
+    });
+  });
+
+  // ─── B2: cross-tenant read-isolatie (detail-reads) ─────────────────
+  // assets/findings laden met orgScope() → niet gevonden → 404. Een
+  // inspectieplan wordt zonder org-scope geladen en daarna expliciet op
+  // eigenaarschap gecontroleerd (plan.orgId !== user.orgId) → 403. Beide
+  // zijn lek-vrij; de statuscodes volgen de bestaande service-conventies.
+  describe('B2 — cross-tenant read isolation', () => {
+    it("inspection-plan detail of another org → 403", async () => {
+      await request(app.getHttpServer())
+        .get(`/api/v1/inspection-plans/${planBId}`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .expect(403);
+    });
+
+    it('asset detail of another org → 404', async () => {
+      await request(app.getHttpServer())
+        .get(`/api/v1/assets/${assetBId}`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .expect(404);
+    });
+
+    it('finding detail of another org → 404', async () => {
+      await request(app.getHttpServer())
+        .get(`/api/v1/findings/${findingBId}`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .expect(404);
+    });
+
+    it('reads own-org plan/asset/finding (positive control)', async () => {
+      await request(app.getHttpServer())
+        .get(`/api/v1/inspection-plans/${planAId}`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .expect(200);
+      await request(app.getHttpServer())
+        .get(`/api/v1/assets/${assetAId}`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .expect(200);
+      await request(app.getHttpServer())
+        .get(`/api/v1/findings/${findingAId}`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .expect(200);
     });
   });
 

@@ -41,7 +41,8 @@ describe('Client Portal (e2e)', () => {
   const magicToken = 'e2e-magic-token-register-flow';
 
   // tijdens de run vastgelegd
-  let tokenA: string;
+  let tokenA: string; // client-realm access token (org A)
+  let staffTokenA: string; // staf-realm access token (org A) — voor realm-kruising
 
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
@@ -206,6 +207,13 @@ describe('Client Portal (e2e)', () => {
         createdBy: staffA.id,
       },
     });
+
+    // Staf-realm token (org A). Login op de "unknown host" (127.0.0.1) zoals de
+    // overige staf-suites; nodig voor de realm-kruising-tests verderop.
+    const staffLogin = await request(app.getHttpServer())
+      .post('/api/v1/auth/login')
+      .send({ email: 'e2e-staff-a@test.nl', password: 'TestPass123!' });
+    staffTokenA = staffLogin.body.data.accessToken;
   });
 
   afterAll(async () => {
@@ -445,5 +453,28 @@ describe('Client Portal (e2e)', () => {
       .expect(201);
     expect(res.body.data.accessToken).toBeDefined();
     expect(res.body.data.refreshToken).toBeDefined();
+  });
+
+  // ── B4: realm-kruising ──
+  // De twee auth-realms zijn volledig gescheiden: aparte passport-strategieën
+  // en aparte JWT-secrets (JWT_SECRET vs CLIENT_JWT_SECRET). Een token uit het
+  // ene realm is in het andere ongeldig → 401 (geen 403; auth faalt al vóór
+  // enige autorisatie- of tenant-check).
+  describe('REALM-CROSSING (B4)', () => {
+    it('weigert een client-token op een staf-endpoint (401)', async () => {
+      await request(app.getHttpServer())
+        .get('/api/v1/inspection-plans')
+        .set('Host', HOST_A)
+        .set(bearer(tokenA))
+        .expect(401);
+    });
+
+    it('weigert een staf-token op een client-endpoint (401)', async () => {
+      await request(app.getHttpServer())
+        .get('/api/v1/client/inspections')
+        .set('Host', HOST_A)
+        .set(bearer(staffTokenA))
+        .expect(401);
+    });
   });
 });

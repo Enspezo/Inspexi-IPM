@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -23,8 +23,16 @@ export default function LoginPage() {
   const { login, isAuthenticated, isLoading: authLoading } = useAuth();
   const { orgBranding, isLoading: tenantLoading, error: tenantError } = useTenant();
   const navigate = useNavigate();
+  const location = useLocation();
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Where to send the user once authenticated: back to the route they were
+  // trying to reach (set by ProtectedRoute), falling back to the dashboard.
+  const from = (
+    location.state as { from?: { pathname: string; search?: string } } | null
+  )?.from;
+  const redirectTo = from ? `${from.pathname}${from.search ?? ''}` : '/dashboard';
 
   const {
     register,
@@ -36,9 +44,9 @@ export default function LoginPage() {
 
   useEffect(() => {
     if (!authLoading && isAuthenticated) {
-      navigate('/dashboard', { replace: true });
+      navigate(redirectTo, { replace: true });
     }
-  }, [isAuthenticated, authLoading, navigate]);
+  }, [isAuthenticated, authLoading, navigate, redirectTo]);
 
   const onSubmit = async (data: LoginFormData) => {
     setError(null);

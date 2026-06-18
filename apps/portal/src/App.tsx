@@ -135,6 +135,7 @@ const InspectionTemplatesPage = lazy(() => import('@/pages/inspection-templates/
 const InspectionTemplateDetailPage = lazy(() => import('@/pages/inspection-templates/inspection-template-detail-page'));
 const LookupsIndexPage = lazy(() => import('@/pages/lookups/lookups-index-page'));
 const LookupManagePage = lazy(() => import('@/pages/lookups/lookup-manage-page'));
+const NotFoundPage = lazy(() => import('@/pages/not-found-page'));
 
 function PageLoader() {
   return (
@@ -239,8 +240,9 @@ export default function App() {
           </Route>
         </Route>
 
-        {/* Catch-all */}
-        <Route path="*" element={<Navigate to="/dashboard" replace />} />
+        {/* Catch-all → real 404 page. A static page (not a silent redirect to
+            /dashboard) can never swallow a valid route during the load race. */}
+        <Route path="*" element={<NotFoundPage />} />
       </Routes>
     </Suspense>
     </ErrorBoundary>

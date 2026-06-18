@@ -1,4 +1,4 @@
-import { PrismaClient, Role, ContactType, LogType, PriceType, RequestSource, RequestStatus, Priority, QuoteStatus, NotificationType, PlanningStatus, AcceptanceStatus, ProjectStatus, AssetFieldType, ChecklistStatus, TemplateStatus, MeasurementSheetTemplateStatus, MeasurementSheetFieldType, FindingInspectionType, DocumentType, TemplateMode, SectionType } from '@prisma/client';
+import { PrismaClient, Role, ContactType, LogType, PriceType, RequestSource, RequestStatus, Priority, QuoteStatus, NotificationType, PlanningStatus, AcceptanceStatus, ProjectStatus, AssetFieldType, ChecklistStatus, TemplateStatus, MeasurementSheetTemplateStatus, MeasurementSheetFieldType, FindingInspectionType, DocumentType, TemplateMode, SectionType, ClientUserStatus, ClientAccessRole, GeneratedDocumentStatus, SignatureStatus } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { randomUUID } from 'crypto';
 import { seedLookups } from './seed-lookups';
@@ -1587,7 +1587,7 @@ async function main() {
   console.log('  ✓ Inspection template (1)');
 
   // 7b. Document-template (PLAN) voor de demo-inspectietemplate — t.b.v. document-generatie (Fase 4)
-  await prisma.documentTemplate.create({
+  const planDocTemplate = await prisma.documentTemplate.create({
     data: {
       inspectionTemplateId: inspTemplate.id,
       documentType: DocumentType.PLAN,
@@ -1711,6 +1711,137 @@ async function main() {
   });
   console.log('  ✓ Demo inspection plan + 2 assets + 2 findings');
 
+  // ─── Client-portal demo (Fase 6) ───────────────────────
+  // Onboarded demo-klant met een vaste, niet-gebruikte magic-link op het bestaande
+  // demo-inspectieplan. Logt direct in (issueTokens) — geen wachtwoord, geen registratie —
+  // omdat de ClientUser bestaat én ClientAccess heeft op het Contact van het plan.
+  // Zie client-auth.service.ts → validateMagicLink. Alle records zijn additief en worden
+  // door de bestaande deleteMany-volgorde bovenin (kinderen eerst) weer opgeruimd.
+  console.log('\n👤 Seeding client-portal demo...');
+
+  const orgAdminId = createdOrg1Users[Role.ORG_ADMIN];
+
+  // 1. Geclassificeerde bevinding op het demo-plan (naast de 2 open bevindingen), zodat het
+  //    ondertekenbare document ook een geclassificeerde bevinding toont (SEVERITY → C2).
+  await prisma.finding.create({
+    data: {
+      orgId: org1.id,
+      assetId: asset1.id,
+      inspectionType: FindingInspectionType.visual,
+      shortDescription: 'Beschadigde mantel op hoofdvoedingskabel',
+      longDescription: 'De mantel van de hoofdvoedingskabel is plaatselijk beschadigd; de isolatie is zichtbaar aangetast.',
+      classificationValues: { SEVERITY: 'C2' },
+      normReference: 'NEN 1010 art. 526',
+      statusCode: 'open',
+      createdBy: createdOrg1Users[Role.INSPECTEUR],
+    },
+  });
+
+  // 2. Gegenereerd document (PLAN) op het demo-plan — wacht op de klant-handtekening.
+  //    De inspecteur heeft al getekend; de CLIENT-handtekening staat PENDING, zodat de klant
+  //    via het portal kan ondertekenen (client-documents.service.ts → sign()).
+  const demoDocHtml = [
+    '<h1>Inspectieplan — NEN 1010</h1>',
+    '<table>',
+    `<tr><th>Referentie</th><td>${demoPlan.referenceNumber}</td></tr>`,
+    `<tr><th>Project</th><td>${demoPlan.projectName}</td></tr>`,
+    '<tr><th>Norm</th><td>NEN 1010</td></tr>',
+    `<tr><th>Opdrachtgever</th><td>${contact1.companyName}</td></tr>`,
+    `<tr><th>Locatie</th><td>${demoPlan.addressStreet} ${demoPlan.addressHouseNumber}, ${demoPlan.addressCity}</td></tr>`,
+    '</table>',
+    '<h2>Bevindingen</h2>',
+    '<ul>',
+    '<li>Ontbrekende afdekking op verdeelinrichting — <em>open</em></li>',
+    '<li>Isolatieweerstand onder norm op groep 3 — <em>open</em></li>',
+    '<li>Beschadigde mantel op hoofdvoedingskabel — <strong>C2 — Onveilig, herstel aanbevolen</strong></li>',
+    '</ul>',
+    '<h2>Ondertekening</h2>',
+    '<p>Inspecteur: Tom Visser (getekend)</p>',
+    '<p>Opdrachtgever: Demo Klant (in afwachting)</p>',
+  ].join('\n');
+
+  await prisma.generatedDocument.create({
+    data: {
+      orgId: org1.id,
+      documentTemplateId: planDocTemplate.id,
+      inspectionPlanId: demoPlan.id,
+      documentType: DocumentType.PLAN,
+      htmlContent: demoDocHtml,
+      status: GeneratedDocumentStatus.PENDING_SIGNATURES,
+      generatedBy: orgAdminId,
+      signatures: {
+        create: [
+          {
+            signerRoleCode: 'INSPECTOR',
+            signerName: 'Tom Visser',
+            signerFunction: 'Inspecteur',
+            status: SignatureStatus.SIGNED,
+            signedAt: new Date('2026-06-15T10:00:00Z'),
+            signatureImage: 'data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=',
+          },
+          {
+            signerRoleCode: 'CLIENT',
+            signerName: 'Demo Klant',
+            signerFunction: 'Facilitair manager',
+            status: SignatureStatus.PENDING,
+          },
+        ],
+      },
+    },
+  });
+  console.log('  ✓ Generated document (PLAN, PENDING_SIGNATURES) + 2 handtekeningen (inspecteur getekend, klant open)');
+
+  // 3. Onboarded demo-klant (ClientUser). Login loopt via magic-link; passwordHash is fallback.
+  const demoClient = await prisma.clientUser.create({
+    data: {
+      email: 'klant@inspexi-demo.nl',
+      firstName: 'Demo',
+      lastName: 'Klant',
+      function: 'Facilitair manager',
+      emailVerified: true,
+      status: ClientUserStatus.ACTIVE,
+      passwordHash: await bcrypt.hash('Password123!', 10),
+    },
+  });
+  console.log(`  ✓ ClientUser: ${demoClient.email} (ACTIVE)`);
+
+  // 4. ClientAccess → Contact van het plan: bepaalt de org-scope van de klant (subdomein-org).
+  await prisma.clientAccess.create({
+    data: {
+      clientUserId: demoClient.id,
+      contactId: contact1.id,
+      role: ClientAccessRole.VIEWER,
+      grantedBy: orgAdminId,
+    },
+  });
+
+  // 5. Expliciete plan-toegang: bekijken én ondertekenen van het demo-plan.
+  await prisma.inspectionClientAccess.create({
+    data: {
+      inspectionPlanId: demoPlan.id,
+      clientUserId: demoClient.id,
+      canView: true,
+      canSign: true,
+      invitedBy: orgAdminId,
+    },
+  });
+  console.log(`  ✓ ClientAccess (VIEWER → ${contact1.companyName}) + InspectionClientAccess (canView/canSign)`);
+
+  // 6. Vaste, niet-gebruikte magic-link (ver in de toekomst verlopend) → directe login.
+  //    validateMagicLink markeert 'm bij eerste gebruik als usedAt; re-seed maakt 'm opnieuw.
+  await prisma.clientMagicLink.create({
+    data: {
+      clientUserId: demoClient.id,
+      email: 'klant@inspexi-demo.nl',
+      token: 'demo-klant-magic',
+      inspectionPlanId: demoPlan.id,
+      expiresAt: new Date('2099-12-31T00:00:00Z'),
+      usedAt: null,
+      createdBy: orgAdminId,
+    },
+  });
+  console.log('  ✓ ClientMagicLink: token "demo-klant-magic" (verloopt 2099-12-31, ongebruikt)');
+
   console.log('\n✅ Seed completed successfully!');
   console.log('\n📋 Login credentials (all use Password123!):');
   console.log('   superuser@inspexi.nl      → SUPERUSER');
@@ -1718,6 +1849,8 @@ async function main() {
   console.log('   manager@inspexi-demo.nl   → MANAGER (InspeXi Demo)');
   console.log('   backoffice@inspexi-demo.nl → BACKOFFICE (InspeXi Demo)');
   console.log('   admin@testbedrijf.nl      → ORG_ADMIN (Test Bedrijf)');
+  console.log('\n🔗 Demo-klant (client-portal) — directe login via magic-link:');
+  console.log('   http://inspexidemo.localhost:5174/magic/demo-klant-magic');
 }
 
 main()

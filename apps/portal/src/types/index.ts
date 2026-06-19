@@ -1572,6 +1572,40 @@ export enum SignatureStatus {
   EXPIRED = 'EXPIRED',
 }
 
+export interface DocumentSignature {
+  id: string;
+  generatedDocumentId: string;
+  signerRoleCode: string;
+  signerName: string | null;
+  signerEmail: string | null;
+  signerFunction: string | null;
+  signatureImage: string | null;
+  signedAt: string | null;
+  signedIpAddress: string | null;
+  signatureRequestId: string | null;
+  signatureRequestSentAt: string | null;
+  signatureRequestUrl: string | null;
+  status: SignatureStatus;
+}
+
+/** Gegenereerd inspectie-document (plan of rapport) — lifecycle + ondertekening. */
+export interface GeneratedDocument {
+  id: string;
+  orgId: string;
+  documentTemplateId: string;
+  inspectionPlanId: string;
+  documentType: DocumentType;
+  status: GeneratedDocumentStatus;
+  isEdited: boolean;
+  editedAt: string | null;
+  pdfUrl: string | null;
+  wordUrl: string | null;
+  generatedAt: string;
+  generatedBy: string;
+  finalizedAt: string | null;
+  signatures?: DocumentSignature[];
+}
+
 export enum MeasurementSheetTemplateStatus {
   CONCEPT = 'CONCEPT',
   ACTIEF = 'ACTIEF',

@@ -33,13 +33,14 @@ import {
 } from './hooks/use-inspections';
 import { useInspectionAssets } from './hooks/use-location-images';
 import { AssetsTab } from './components/assets-tab';
+import { DocumentsTab } from './components/documents-tab';
 
 // Konva-zware tab apart laden: alleen wanneer de gebruiker hem opent.
 const FloorPlanTab = lazy(() =>
   import('./components/floor-plan-tab').then((m) => ({ default: m.FloorPlanTab })),
 );
 
-type Tab = 'overzicht' | 'assets' | 'plattegrond' | 'instellingen';
+type Tab = 'overzicht' | 'assets' | 'plattegrond' | 'documenten' | 'instellingen';
 
 const canWriteRoles = [Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE, Role.WERKVOORBEREIDER];
 const canReviewRoles = [Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.WERKVOORBEREIDER];
@@ -190,6 +191,7 @@ export default function InspectionDetailPage() {
     { key: 'overzicht' as const, label: 'Overzicht' },
     { key: 'assets' as const, label: 'Assets', count: assets.length },
     { key: 'plattegrond' as const, label: 'Plattegrond' },
+    { key: 'documenten' as const, label: 'Documenten' },
     { key: 'instellingen' as const, label: 'Instellingen' },
   ];
 
@@ -314,6 +316,10 @@ export default function InspectionDetailPage() {
           >
             <FloorPlanTab planId={id!} canWrite={userCanWrite} />
           </Suspense>
+        )}
+
+        {activeTab === 'documenten' && (
+          <DocumentsTab planId={id!} canWrite={userCanWrite} canFinalize={userCanReview} />
         )}
 
         {activeTab === 'instellingen' && (

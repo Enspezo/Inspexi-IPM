@@ -88,6 +88,9 @@ const QuoteTemplateDetailPage = lazy(
 const PublicQuotePage = lazy(
   () => import('@/pages/quotes/public-quote-page'),
 );
+const PublicSignPage = lazy(
+  () => import('@/pages/inspections/public-sign-page'),
+);
 const NotificationsPage = lazy(
   () => import('@/pages/notifications/notifications-page'),
 );
@@ -157,6 +160,7 @@ export default function App() {
         <Route path="/reset-password" element={<ResetPasswordPage />} />
         <Route path="/offerte/:token" element={<PublicQuotePage />} />
         <Route path="/afspraak/:token" element={<PlanningPublicPage />} />
+        <Route path="/sign/:requestId" element={<PublicSignPage />} />
 
         {/* Root redirect */}
         <Route path="/" element={<Navigate to="/dashboard" replace />} />

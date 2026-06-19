@@ -127,6 +127,10 @@ const entityLabels: Record<string, Record<string, string>> = {
   User: {
     emailVerifiedAt: 'E-mail geverifieerd op',
     color: 'Kleur',
+    contactPhone: 'Telefoonnummer klantportaal',
+    contactEmail: 'E-mailadres klantportaal',
+    sharePhoneWithClients: 'Telefoon tonen in klantportaal',
+    shareEmailWithClients: 'E-mail tonen in klantportaal',
   },
   Organization: {
     slug: 'Slug',
@@ -134,6 +138,10 @@ const entityLabels: Record<string, Record<string, string>> = {
     primaryColor: 'Primaire kleur',
     defaultVat: 'Standaard BTW',
     defaultValidityDays: 'Standaard geldigheidsdagen',
+    inspectorPhoneDisplay: 'Telefoon-weergave klantportaal',
+    inspectorEmailDisplay: 'E-mail-weergave klantportaal',
+    inspectorStaticPhone: 'Statisch telefoonnummer klantportaal',
+    inspectorStaticEmail: 'Statisch e-mailadres klantportaal',
   },
   CustomFieldDefinition: {
     entityType: 'Entiteitstype',

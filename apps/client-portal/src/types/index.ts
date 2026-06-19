@@ -31,6 +31,11 @@ export interface UserRef {
   id: string;
   firstName: string;
   lastName: string;
+  // Server-resolved, client-safe contactgegevens. Alleen gevuld voor de toegewezen
+  // inspecteur (`assignedUser` op InspectionDetail) — de backend past alle privacy-regels toe
+  // (org weergavemodus + consent + statische fallback). `reviewer` draagt deze NOOIT.
+  phone?: string | null;
+  email?: string | null;
 }
 
 export interface ClientAccessEntry {

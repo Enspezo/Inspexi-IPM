@@ -85,10 +85,34 @@ export function OverviewTab({ inspection, onNavigateTab }: OverviewTabProps) {
           />
           <InfoField label="Norm" value={normTypeLabel(inspection.normTypeCode)} />
           <InfoField label="Inspectiedatum" value={formatDate(inspection.plannedDate)} />
-          <InfoField
-            label="Inspecteur"
-            value={inspection.assignedUser ? personName(inspection.assignedUser) : null}
-          />
+          <div>
+            <dt className="text-sm font-medium text-gray-500">Inspecteur</dt>
+            <dd className="mt-1 text-sm text-gray-900">
+              {inspection.assignedUser ? (
+                <>
+                  <span>{personName(inspection.assignedUser)}</span>
+                  {inspection.assignedUser.phone && (
+                    <a
+                      href={`tel:${inspection.assignedUser.phone}`}
+                      className="mt-0.5 block text-sm text-primary-600 hover:underline"
+                    >
+                      {inspection.assignedUser.phone}
+                    </a>
+                  )}
+                  {inspection.assignedUser.email && (
+                    <a
+                      href={`mailto:${inspection.assignedUser.email}`}
+                      className="mt-0.5 block text-sm text-primary-600 hover:underline"
+                    >
+                      {inspection.assignedUser.email}
+                    </a>
+                  )}
+                </>
+              ) : (
+                '—'
+              )}
+            </dd>
+          </div>
           <InfoField label="Reviewer" value={inspection.reviewer ? personName(inspection.reviewer) : null} />
           <InfoField
             label="Installatieverantwoordelijke"

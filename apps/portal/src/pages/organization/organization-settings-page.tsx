@@ -3,7 +3,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useAuth } from '@/providers/auth-provider';
-import { Card, Input, Button, Spinner, Tabs, useToast } from '@/components/ui';
+import { Card, Input, Button, Select, Spinner, Tabs, useToast } from '@/components/ui';
 import {
   useOrganization,
   useUpdateOrganization,
@@ -17,8 +17,14 @@ import {
   useGroupNotificationPrefs,
   useSaveGroupNotificationPrefs,
 } from '@/pages/notifications/hooks/use-notifications';
-import { NotificationType, Role } from '@/types';
+import { ContactDisplayMode, NotificationType, Role } from '@/types';
 import { getErrorMessage } from '@/lib/api-client';
+
+const CONTACT_DISPLAY_OPTIONS = [
+  { value: ContactDisplayMode.NONE, label: 'Geen' },
+  { value: ContactDisplayMode.STATIC, label: 'Statisch' },
+  { value: ContactDisplayMode.INSPECTOR, label: 'Inspecteur (met statische terugval)' },
+];
 
 const orgSchema = z.object({
   name: z.string().min(1, 'Organisatienaam is verplicht'),
@@ -38,6 +44,12 @@ const orgSchema = z.object({
     .optional(),
   workdayStart: z.coerce.number().int().min(0).max(23),
   workdayEnd: z.coerce.number().int().min(1).max(24),
+  inspectorPhoneDisplay: z.nativeEnum(ContactDisplayMode),
+  inspectorEmailDisplay: z.nativeEnum(ContactDisplayMode),
+  inspectorStaticPhone: z.string().optional(),
+  inspectorStaticEmail: z
+    .union([z.string().email('Voer een geldig e-mailadres in'), z.literal('')])
+    .optional(),
 }).refine((d) => d.workdayEnd > d.workdayStart, {
   message: 'Eindtijd moet na begintijd liggen',
   path: ['workdayEnd'],
@@ -267,7 +279,7 @@ export default function OrganizationSettingsPage() {
   const deleteLogoMutation = useDeleteLogo(user?.orgId);
 
   // Tab state
-  const [activeTab, setActiveTab] = useState<'huisstijl' | 'financieel' | 'communicatie' | 'notificaties' | 'eigen-velden' | 'quota'>('huisstijl');
+  const [activeTab, setActiveTab] = useState<'huisstijl' | 'financieel' | 'communicatie' | 'inspecteur-portal' | 'notificaties' | 'eigen-velden' | 'quota'>('huisstijl');
 
   // Logo preview state
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
@@ -280,10 +292,14 @@ export default function OrganizationSettingsPage() {
     register,
     handleSubmit,
     reset,
+    watch,
     formState: { errors, isDirty },
   } = useForm<OrgFormData>({
     resolver: zodResolver(orgSchema),
   });
+
+  const phoneDisplayMode = watch('inspectorPhoneDisplay');
+  const emailDisplayMode = watch('inspectorEmailDisplay');
 
   useEffect(() => {
     if (organization) {
@@ -297,6 +313,10 @@ export default function OrganizationSettingsPage() {
         senderEmail: organization.senderEmail ?? '',
         workdayStart: organization.workdayStart ?? 8,
         workdayEnd: organization.workdayEnd ?? 17,
+        inspectorPhoneDisplay: organization.inspectorPhoneDisplay ?? ContactDisplayMode.NONE,
+        inspectorEmailDisplay: organization.inspectorEmailDisplay ?? ContactDisplayMode.NONE,
+        inspectorStaticPhone: organization.inspectorStaticPhone ?? '',
+        inspectorStaticEmail: organization.inspectorStaticEmail ?? '',
       });
     }
   }, [organization, reset]);
@@ -312,6 +332,10 @@ export default function OrganizationSettingsPage() {
         senderEmail: data.senderEmail || null,
         workdayStart: data.workdayStart,
         workdayEnd: data.workdayEnd,
+        inspectorPhoneDisplay: data.inspectorPhoneDisplay,
+        inspectorEmailDisplay: data.inspectorEmailDisplay,
+        inspectorStaticPhone: data.inspectorStaticPhone?.trim() || null,
+        inspectorStaticEmail: data.inspectorStaticEmail?.trim() || null,
       });
       showToast('Organisatie-instellingen opgeslagen', 'success');
     } catch (err) {
@@ -396,6 +420,7 @@ export default function OrganizationSettingsPage() {
     { key: 'huisstijl', label: 'Huisstijl' },
     { key: 'financieel', label: 'Financieel' },
     { key: 'communicatie', label: 'Communicatie' },
+    { key: 'inspecteur-portal', label: 'Inspecteur klantportaal' },
     { key: 'notificaties', label: 'Notificaties' },
     { key: 'eigen-velden', label: 'Eigen velden' },
     { key: 'quota', label: 'Quota' },
@@ -697,6 +722,84 @@ export default function OrganizationSettingsPage() {
                 <p className="text-xs text-red-600">{errors.workdayEnd.message}</p>
               )}
             </div>
+          </div>
+
+          <div className="flex justify-end border-t border-gray-200 pt-4">
+            <Button
+              type="submit"
+              isLoading={updateMutation.isPending}
+              disabled={!isDirty}
+            >
+              Opslaan
+            </Button>
+          </div>
+        </form>
+      </Card>
+      )}
+
+      {activeTab === 'inspecteur-portal' && (
+      <Card>
+        <form onSubmit={handleSubmit(onSubmit)} className="space-y-8">
+          <div>
+            <h3 className="text-base font-semibold text-gray-900">
+              Contactgegevens inspecteur in klantportaal
+            </h3>
+            <p className="mt-1 text-sm text-gray-500">
+              Bepaal per kanaal of en hoe de contactgegevens van de inspecteur aan klanten worden getoond in het klantportaal.
+            </p>
+          </div>
+
+          {/* Telefoon */}
+          <div className="space-y-3">
+            <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
+              <Select
+                label="Telefoon weergave"
+                options={CONTACT_DISPLAY_OPTIONS}
+                error={errors.inspectorPhoneDisplay?.message}
+                {...register('inspectorPhoneDisplay')}
+              />
+              {(phoneDisplayMode === ContactDisplayMode.STATIC ||
+                phoneDisplayMode === ContactDisplayMode.INSPECTOR) && (
+                <Input
+                  label="Statisch telefoonnummer"
+                  placeholder="Bijv. 088 123 4567"
+                  error={errors.inspectorStaticPhone?.message}
+                  {...register('inspectorStaticPhone')}
+                />
+              )}
+            </div>
+            <p className="text-xs text-gray-500">
+              <strong>Geen</strong>: telefoonnummer niet tonen.{' '}
+              <strong>Statisch</strong>: toon altijd het ingevoerde vaste nummer.{' '}
+              <strong>Inspecteur</strong>: toon het nummer van de inspecteur zelf, met terugval op het statische nummer als de inspecteur niets heeft ingevuld of geen toestemming geeft.
+            </p>
+          </div>
+
+          {/* E-mail */}
+          <div className="space-y-3">
+            <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
+              <Select
+                label="E-mail weergave"
+                options={CONTACT_DISPLAY_OPTIONS}
+                error={errors.inspectorEmailDisplay?.message}
+                {...register('inspectorEmailDisplay')}
+              />
+              {(emailDisplayMode === ContactDisplayMode.STATIC ||
+                emailDisplayMode === ContactDisplayMode.INSPECTOR) && (
+                <Input
+                  label="Statisch e-mailadres"
+                  type="email"
+                  placeholder="Bijv. inspecteur@mijnbedrijf.nl"
+                  error={errors.inspectorStaticEmail?.message}
+                  {...register('inspectorStaticEmail')}
+                />
+              )}
+            </div>
+            <p className="text-xs text-gray-500">
+              <strong>Geen</strong>: e-mailadres niet tonen.{' '}
+              <strong>Statisch</strong>: toon altijd het ingevoerde vaste e-mailadres.{' '}
+              <strong>Inspecteur</strong>: toon het e-mailadres van de inspecteur zelf, met terugval op het statische e-mailadres als de inspecteur niets heeft ingevuld of geen toestemming geeft.
+            </p>
           </div>
 
           <div className="flex justify-end border-t border-gray-200 pt-4">

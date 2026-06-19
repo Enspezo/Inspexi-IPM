@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api-client';
-import type { Organization } from '@/types';
+import type { ContactDisplayMode, Organization } from '@/types';
 
 export function useOrganization(orgId: string | null | undefined) {
   return useQuery<Organization>({
@@ -20,6 +20,10 @@ interface UpdateOrganizationDto {
   senderEmail?: string | null;
   workdayStart?: number;
   workdayEnd?: number;
+  inspectorPhoneDisplay?: ContactDisplayMode;
+  inspectorEmailDisplay?: ContactDisplayMode;
+  inspectorStaticPhone?: string | null;
+  inspectorStaticEmail?: string | null;
 }
 
 export function useUpdateOrganization(orgId: string | null | undefined) {

@@ -346,6 +346,17 @@ export class UsersService {
     if ('homeLat' in dto) data.homeLat = dto.homeLat ?? null;
     if ('homeLng' in dto) data.homeLng = dto.homeLng ?? null;
 
+    // Klantportaal-contactgegevens + per-kanaal toestemming.
+    if ('contactPhone' in dto) data.contactPhone = (dto.contactPhone || '').trim() || null;
+    if ('contactEmail' in dto) data.contactEmail = (dto.contactEmail || '').trim() || null;
+    if (dto.sharePhoneWithClients !== undefined) data.sharePhoneWithClients = dto.sharePhoneWithClients;
+    if (dto.shareEmailWithClients !== undefined) data.shareEmailWithClients = dto.shareEmailWithClients;
+    // Toestemming heeft alleen effect bij een ingevulde waarde: wordt de waarde in dit verzoek
+    // leeggemaakt, dan vervalt de bijbehorende toestemming automatisch (defensief; de resolutie
+    // dwingt dit ook al af).
+    if ('contactPhone' in dto && !data.contactPhone) data.sharePhoneWithClients = false;
+    if ('contactEmail' in dto && !data.contactEmail) data.shareEmailWithClients = false;
+
     return this.prisma.user.update({
       where: { id },
       data,

@@ -11,6 +11,7 @@ import { Role } from '@/types';
 import { hasRole } from '@/lib/has-role';
 import type { User } from '@/types';
 import { InspectorCard } from './components/inspector-card';
+import { ClientContactCard } from './components/client-contact-card';
 import { NotificationPrefsCard } from './components/notification-prefs-card';
 import { SessionsCard } from './components/sessions-card';
 import { AvatarCard } from './components/avatar-card';
@@ -120,6 +121,9 @@ export default function ProfilePage() {
 
           {/* Inspector color + iCal (only for inspectors) */}
           {user && hasRole(user, Role.INSPECTEUR) && <InspectorCard />}
+
+          {/* Contactgegevens klantportaal (only for inspectors) */}
+          {user && hasRole(user, Role.INSPECTEUR) && <ClientContactCard />}
 
           {/* Signature */}
           <SignatureCard />

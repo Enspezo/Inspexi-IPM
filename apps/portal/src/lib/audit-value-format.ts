@@ -111,6 +111,11 @@ const enumLabels: Record<string, string> = {
   REQUEST: 'Aanvraag',
   QUOTE: 'Offerte',
   PRODUCT: 'Product',
+
+  // ContactDisplayMode (inspecteur-contactgegevens klantportaal)
+  NONE: 'Geen',
+  STATIC: 'Statisch',
+  INSPECTOR: 'Inspecteur (met statische terugval)',
 };
 
 /** Currency fields that should be formatted as EUR */

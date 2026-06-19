@@ -7,6 +7,12 @@ export enum Role {
   INSPECTEUR = 'INSPECTEUR',
 }
 
+export enum ContactDisplayMode {
+  NONE = 'NONE',
+  STATIC = 'STATIC',
+  INSPECTOR = 'INSPECTOR',
+}
+
 export interface Organization {
   id: string;
   name: string;
@@ -19,6 +25,10 @@ export interface Organization {
   senderEmail: string | null;
   workdayStart: number;
   workdayEnd: number;
+  inspectorPhoneDisplay: ContactDisplayMode;
+  inspectorEmailDisplay: ContactDisplayMode;
+  inspectorStaticPhone: string | null;
+  inspectorStaticEmail: string | null;
   isActive: boolean;
   createdAt: string;
   _count?: { users: number };
@@ -58,6 +68,10 @@ export interface User {
   homeLat: number | null;
   homeLng: number | null;
   icalToken: string | null;
+  contactPhone: string | null;
+  contactEmail: string | null;
+  sharePhoneWithClients: boolean;
+  shareEmailWithClients: boolean;
   createdAt: string;
   organization?: Organization;
 }
@@ -399,7 +413,10 @@ export interface UserSummary {
   id: string;
   firstName: string;
   lastName: string;
+  // On the PUBLIC planning endpoint, `phone`/`email` are the server-resolved
+  // client-safe values (per-channel display mode), NOT the login email.
   email: string;
+  phone?: string | null;
   color?: string | null;
   initials?: string | null;
   homeLat?: number | null;

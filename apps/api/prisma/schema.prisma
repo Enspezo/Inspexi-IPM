@@ -23,6 +23,14 @@ enum ContactType {
   INDIVIDUAL
 }
 
+// Weergavemodus voor inspecteur-contactgegevens in het klantportaal (per kanaal: telefoon/e-mail).
+// INSPECTOR impliceert altijd een statische terugval wanneer de inspecteur-waarde ontbreekt of zonder toestemming is.
+enum ContactDisplayMode {
+  NONE
+  STATIC
+  INSPECTOR
+}
+
 enum LogType {
   EMAIL
   PHONE
@@ -273,6 +281,13 @@ model Organization {
   isActive            Boolean  @default(true) @map("is_active")
   createdAt           DateTime @default(now()) @map("created_at")
 
+  // Zichtbaarheid inspecteur-contactgegevens in klantportaal (per kanaal onafhankelijk).
+  // De getoonde waarde wordt altijd server-side geresolved (zie resolveInspectorContact).
+  inspectorPhoneDisplay ContactDisplayMode @default(NONE) @map("inspector_phone_display")
+  inspectorEmailDisplay ContactDisplayMode @default(NONE) @map("inspector_email_display")
+  inspectorStaticPhone  String?            @map("inspector_static_phone")
+  inspectorStaticEmail  String?            @map("inspector_static_email")
+
   users                    User[]
   invitations              Invitation[]
   contacts                 Contact[]
@@ -368,6 +383,13 @@ model User {
   homeLng         Float?         @map("home_lng")
   icalToken       String         @unique @default(uuid()) @map("ical_token")
   createdAt       DateTime       @default(now()) @map("created_at")
+
+  // Klantportaal-contactgegevens (los van login-`email`; nooit automatisch met klanten gedeeld).
+  // Worden alleen getoond bij org-modus INSPECTOR én expliciete toestemming per kanaal.
+  contactPhone          String?  @map("contact_phone")
+  contactEmail          String?  @map("contact_email")
+  sharePhoneWithClients Boolean  @default(false) @map("share_phone_with_clients")
+  shareEmailWithClients Boolean  @default(false) @map("share_email_with_clients")
 
   organization  Organization?  @relation(fields: [orgId], references: [id])
   refreshTokens RefreshToken[]

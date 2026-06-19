@@ -5,7 +5,7 @@ import {
   RescheduleStatus,
 } from '@prisma/client';
 import { PrismaService } from '@/prisma';
-import { assertFound } from '@/common';
+import { assertFound, resolveInspectorContact } from '@/common';
 import { NotificationsService } from '../notifications/notifications.service';
 import { PlanningService } from './planning.service';
 import { AddQuestionDto, CreateRescheduleRequestDto } from './dto';
@@ -41,7 +41,18 @@ export class PlanningPublicService {
           where: { acceptanceStatus: AcceptanceStatus.ACCEPTED },
           include: {
             user: {
-              select: { id: true, firstName: true, lastName: true, color: true, initials: true },
+              // Rauwe contact-/consent-velden alleen voor server-side resolutie (zie leak-strip).
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+                color: true,
+                initials: true,
+                contactPhone: true,
+                contactEmail: true,
+                sharePhoneWithClients: true,
+                shareEmailWithClients: true,
+              },
             },
           },
           orderBy: [{ isPrimary: 'desc' }],
@@ -53,7 +64,20 @@ export class PlanningPublicService {
             sessionInspectors: {
               where: { acceptanceStatus: AcceptanceStatus.ACCEPTED },
               include: {
-                user: { select: { id: true, firstName: true, lastName: true, color: true, initials: true } },
+                user: {
+                  // Rauwe contact-/consent-velden alleen voor server-side resolutie (zie leak-strip).
+                  select: {
+                    id: true,
+                    firstName: true,
+                    lastName: true,
+                    color: true,
+                    initials: true,
+                    contactPhone: true,
+                    contactEmail: true,
+                    sharePhoneWithClients: true,
+                    shareEmailWithClients: true,
+                  },
+                },
               },
               orderBy: [{ isPrimary: 'desc' as const }],
             },
@@ -63,9 +87,56 @@ export class PlanningPublicService {
       },
     }), 'Afspraak');
 
+    // Org-modus + statische waarden apart ophalen — deze verlaten de response nooit.
+    const orgContactSettings = assertFound(
+      await this.prisma.organization.findUnique({
+        where: { id: item.orgId },
+        select: {
+          inspectorPhoneDisplay: true,
+          inspectorEmailDisplay: true,
+          inspectorStaticPhone: true,
+          inspectorStaticEmail: true,
+        },
+      }),
+      'Organisatie',
+    );
+
+    // Leak-strip: vervang elke inspecteur-`user` door alleen veilige velden + server-side
+    // geresolveerd telefoon/e-mail (of null). Rauwe contactgegevens/consent gaan nooit mee.
+    type RawInspectorUser = {
+      id: string;
+      firstName: string;
+      lastName: string;
+      color: string | null;
+      initials: string | null;
+      contactPhone: string | null;
+      contactEmail: string | null;
+      sharePhoneWithClients: boolean;
+      shareEmailWithClients: boolean;
+    };
+    const toPublicInspectorUser = (user: RawInspectorUser) => ({
+      id: user.id,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      color: user.color,
+      initials: user.initials,
+      ...resolveInspectorContact(orgContactSettings, user),
+    });
+    const inspectors = item.inspectors.map((i) => ({
+      ...i,
+      user: toPublicInspectorUser(i.user),
+    }));
+    const sessions = item.sessions.map((s) => ({
+      ...s,
+      sessionInspectors: s.sessionInspectors.map((si) => ({
+        ...si,
+        user: toPublicInspectorUser(si.user),
+      })),
+    }));
+
     // Attach shared documents (from this planning item + linked quote + linked request)
     const documents = await this.getSharedDocuments(token);
-    return { ...item, documents };
+    return { ...item, inspectors, sessions, documents };
   }
 
   async addClientQuestion(token: string, dto: AddQuestionDto) {

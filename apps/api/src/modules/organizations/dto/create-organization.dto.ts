@@ -1,4 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { ContactDisplayMode } from '@prisma/client';
 import {
   IsString,
   MinLength,
@@ -9,6 +10,8 @@ import {
   Max,
   IsInt,
   IsEmail,
+  IsEnum,
+  ValidateIf,
 } from 'class-validator';
 
 export class CreateOrganizationDto {
@@ -70,4 +73,34 @@ export class CreateOrganizationDto {
   @Min(1)
   @Max(24)
   workdayEnd?: number;
+
+  // ─── Zichtbaarheid inspecteur-contactgegevens in klantportaal (per kanaal) ───
+
+  @ApiPropertyOptional({
+    enum: ContactDisplayMode,
+    description: 'Weergavemodus telefoonnummer inspecteur in klantportaal',
+  })
+  @IsOptional()
+  @IsEnum(ContactDisplayMode)
+  inspectorPhoneDisplay?: ContactDisplayMode;
+
+  @ApiPropertyOptional({
+    enum: ContactDisplayMode,
+    description: 'Weergavemodus e-mailadres inspecteur in klantportaal',
+  })
+  @IsOptional()
+  @IsEnum(ContactDisplayMode)
+  inspectorEmailDisplay?: ContactDisplayMode;
+
+  @ApiPropertyOptional({ example: '+31 20 123 4567', nullable: true })
+  @IsOptional()
+  @ValidateIf((o) => o.inspectorStaticPhone !== null)
+  @IsString()
+  inspectorStaticPhone?: string | null;
+
+  @ApiPropertyOptional({ example: 'klantcontact@mijnbedrijf.nl', nullable: true })
+  @IsOptional()
+  @ValidateIf((o) => o.inspectorStaticEmail !== null && o.inspectorStaticEmail !== '')
+  @IsEmail()
+  inspectorStaticEmail?: string | null;
 }

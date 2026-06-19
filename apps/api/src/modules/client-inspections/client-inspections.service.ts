@@ -14,7 +14,7 @@ import {
 } from '@nestjs/common';
 import { SignatureStatus } from '@prisma/client';
 import { PrismaService } from '@/prisma';
-import { STATUS_OPEN, STATUS_RESOLVED } from '@/common';
+import { STATUS_OPEN, STATUS_RESOLVED, resolveInspectorContact } from '@/common';
 import type { CurrentClientUserData } from '@/common/decorators/current-client-user.decorator';
 
 @Injectable()
@@ -119,10 +119,32 @@ export class ClientInspectionsService {
       where: { id, orgId: org, deletedAt: null },
       include: {
         contact: { select: { id: true, companyName: true, firstName: true, lastName: true } },
-        assignedUser: { select: { id: true, firstName: true, lastName: true } },
+        // Rauwe inspecteur-contactvelden + consent worden alleen geselecteerd om ze server-side
+        // te resolven; ze worden hieronder NIET in de response opgenomen (zie leak-strip).
+        assignedUser: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            contactPhone: true,
+            contactEmail: true,
+            sharePhoneWithClients: true,
+            shareEmailWithClients: true,
+          },
+        },
+        // reviewer is bewust GEEN klant-facing inspecteur → geen contactgegevens.
         reviewer: { select: { id: true, firstName: true, lastName: true } },
         installationResponsible: {
           select: { id: true, firstName: true, lastName: true, phone: true, email: true },
+        },
+        // Org-modus + statische waarden, enkel voor de resolutie (worden niet teruggegeven).
+        organization: {
+          select: {
+            inspectorPhoneDisplay: true,
+            inspectorEmailDisplay: true,
+            inspectorStaticPhone: true,
+            inspectorStaticEmail: true,
+          },
         },
         assets: {
           where: { deletedAt: null },
@@ -160,13 +182,25 @@ export class ClientInspectionsService {
     });
     if (!plan) throw new NotFoundException('Inspectie niet gevonden');
 
-    const allFindings = plan.assets.flatMap((a) => a.findings);
+    // Leak-strip: verwijder de org-modus en de rauwe inspecteur-velden uit de response en vervang
+    // de inspecteur-ref door uitsluitend het server-side geresolveerde telefoon/e-mail (of null).
+    const { organization, assignedUser, ...planRest } = plan;
+    const assignedInspector = assignedUser
+      ? {
+          id: assignedUser.id,
+          firstName: assignedUser.firstName,
+          lastName: assignedUser.lastName,
+          ...resolveInspectorContact(organization, assignedUser),
+        }
+      : null;
+
+    const allFindings = planRest.assets.flatMap((a) => a.findings);
     const findingCounts = {
       total: allFindings.length,
       open: allFindings.filter((f) => f.statusCode === STATUS_OPEN).length,
       resolved: allFindings.filter((f) => f.statusCode === STATUS_RESOLVED).length,
     };
-    return { ...plan, findingCounts };
+    return { ...planRest, assignedUser: assignedInspector, findingCounts };
   }
 
   /** Documenten van een inspectie (klant). */

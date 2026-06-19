@@ -1695,6 +1695,11 @@ export interface Asset {
   childAssets?: Asset[];
   location?: InspectionLocation | null;
   findings?: Finding[];
+  // Berekende projectie-velden uit de lijst-endpoints (GET /inspection-plans/:id/assets):
+  childCount?: number;
+  findingCount?: number;
+  visualInspectionStatus?: string;
+  measurementStatus?: string;
 }
 
 export interface Finding {

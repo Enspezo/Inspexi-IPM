@@ -12,12 +12,10 @@ import {
   Input,
   Select,
   Spinner,
-  Table,
   Tabs,
   LookupBadge,
   useConfirm,
   useToast,
-  type Column,
 } from '@/components/ui';
 import { DetailPageLayout } from '@/components/layout/detail-page-layout';
 import { HistorySidebarSection } from '@/components/layout/sidebar-sections';
@@ -25,7 +23,7 @@ import { PageHeader } from '@/components/layout/page-header';
 import { useAuth } from '@/providers/auth-provider';
 import { useLookups } from '@/lib/lookups';
 import { getErrorMessage } from '@/lib/api-client';
-import type { Asset, InspectionPlan } from '@/types';
+import type { InspectionPlan } from '@/types';
 import {
   useInspectionPlan,
   useUpdateInspectionPlan,
@@ -33,6 +31,8 @@ import {
   useSubmitInspectionPlan,
   useDeleteInspectionPlan,
 } from './hooks/use-inspections';
+import { useInspectionAssets } from './hooks/use-location-images';
+import { AssetsTab } from './components/assets-tab';
 
 // Konva-zware tab apart laden: alleen wanneer de gebruiker hem opent.
 const FloorPlanTab = lazy(() =>
@@ -75,6 +75,7 @@ export default function InspectionDetailPage() {
   const confirm = useConfirm();
 
   const { data: plan, isLoading, error } = useInspectionPlan(id!);
+  const { data: assets = [], isLoading: assetsLoading } = useInspectionAssets(id);
   const updateMutation = useUpdateInspectionPlan();
   const reviewMutation = useReviewInspectionPlan();
   const submitMutation = useSubmitInspectionPlan();
@@ -184,14 +185,6 @@ export default function InspectionDetailPage() {
 
   const awaitingReview = !!plan.submittedAt && !plan.reviewedAt;
   const canSubmit = userCanWrite && !plan.submittedAt;
-
-  const assets = plan.assets ?? [];
-  const assetColumns: Column<Asset>[] = [
-    { key: 'name', header: 'Naam', render: (a) => <span className="font-medium text-gray-900">{a.name}</span> },
-    { key: 'identifier', header: 'Kenmerk', render: (a) => <span className="text-gray-600">{a.identifier || '—'}</span> },
-    { key: 'assetType', header: 'Type', render: (a) => <span className="text-gray-600">{a.assetType}</span> },
-    { key: 'statusCode', header: 'Status', render: (a) => <LookupBadge kind="asset-status-types" code={a.statusCode} /> },
-  ];
 
   const tabs = [
     { key: 'overzicht' as const, label: 'Overzicht' },
@@ -309,11 +302,7 @@ export default function InspectionDetailPage() {
           </div>
         )}
 
-        {activeTab === 'assets' && (
-          <Card title={`Assets (${assets.length})`}>
-            <Table columns={assetColumns} data={assets} keyExtractor={(a) => a.id} emptyMessage="Geen assets gekoppeld" />
-          </Card>
-        )}
+        {activeTab === 'assets' && <AssetsTab assets={assets} isLoading={assetsLoading} />}
 
         {activeTab === 'plattegrond' && (
           <Suspense

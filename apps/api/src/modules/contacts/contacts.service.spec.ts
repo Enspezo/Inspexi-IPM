@@ -256,7 +256,13 @@ describe('ContactsService', () => {
           include: expect.objectContaining({
             addresses: true,
             owner: { select: { id: true, firstName: true, lastName: true } },
-            locations: true,
+            locations: {
+              include: {
+                locationType: {
+                  select: { id: true, code: true, name: true, color: true, icon: true },
+                },
+              },
+            },
             logs: {
               include: { user: { select: { firstName: true, lastName: true } } },
               orderBy: { loggedAt: 'desc' },

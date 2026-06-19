@@ -7,6 +7,8 @@ import {
   Matches,
   MaxLength,
   IsNumber,
+  IsBoolean,
+  ValidateIf,
 } from 'class-validator';
 
 export class UpdateProfileDto {
@@ -64,4 +66,28 @@ export class UpdateProfileDto {
   @IsOptional()
   @IsNumber()
   homeLng?: number | null;
+
+  // ─── Klantportaal-contactgegevens (los van login-`email`) ───
+
+  @ApiPropertyOptional({ example: '+31 6 12345678', nullable: true })
+  @IsOptional()
+  @ValidateIf((o) => o.contactPhone !== null)
+  @IsString()
+  contactPhone?: string | null;
+
+  @ApiPropertyOptional({ example: 'tom.visser@bedrijf.nl', nullable: true })
+  @IsOptional()
+  @ValidateIf((o) => o.contactEmail !== null && o.contactEmail !== '')
+  @IsEmail()
+  contactEmail?: string | null;
+
+  @ApiPropertyOptional({ description: 'Toestemming telefoonnummer in klantportaal te tonen' })
+  @IsOptional()
+  @IsBoolean()
+  sharePhoneWithClients?: boolean;
+
+  @ApiPropertyOptional({ description: 'Toestemming e-mailadres in klantportaal te tonen' })
+  @IsOptional()
+  @IsBoolean()
+  shareEmailWithClients?: boolean;
 }

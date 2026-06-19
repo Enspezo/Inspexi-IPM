@@ -26,6 +26,9 @@ describe('PlanningPublicService', () => {
       findMany: jest.fn(),
       create: jest.fn(),
     },
+    organization: {
+      findUnique: jest.fn(),
+    },
     quote: {
       findUnique: jest.fn(),
     },
@@ -138,6 +141,13 @@ describe('PlanningPublicService', () => {
       mockPrismaService.planningItem.findUnique
         .mockResolvedValueOnce(itemWithOrg)  // findByPublicToken
         .mockResolvedValueOnce({ id: 'plan-1', quoteId: null }); // getSharedDocuments
+      // Org-modus voor inspecteur-contactresolutie (apart opgehaald, lekt niet naar de response).
+      mockPrismaService.organization.findUnique.mockResolvedValue({
+        inspectorPhoneDisplay: 'NONE',
+        inspectorEmailDisplay: 'NONE',
+        inspectorStaticPhone: null,
+        inspectorStaticEmail: null,
+      });
       mockPrismaService.document.findMany.mockResolvedValue([]);
 
       const result = await service.findByPublicToken('token-abc');

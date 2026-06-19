@@ -21,6 +21,7 @@ describe('AuditLogService', () => {
     quoteTemplate: { findMany: jest.fn() },
     location: { findMany: jest.fn() },
     customerGroup: { findMany: jest.fn() },
+    inspectionLocation: { findMany: jest.fn() },
   };
 
   beforeEach(async () => {
@@ -239,6 +240,35 @@ describe('AuditLogService', () => {
       });
 
       expect(result.data[0].snapshot.ownerId).toBe('Piet Jansen');
+    });
+
+    it('should resolve Asset.locationId against InspectionLocation (not Beheer Location)', async () => {
+      const locId = '55555555-5555-5555-5555-555555555555';
+      const mockEntries = [
+        {
+          id: 'log-1',
+          entityType: 'Asset',
+          entityId: 'asset-1',
+          changes: null,
+          snapshot: { locationId: locId },
+          user: { id: 'user-1', firstName: 'Jan', lastName: 'Test' },
+        },
+      ];
+      mockPrismaService.auditLog.findMany.mockResolvedValue(mockEntries);
+      mockPrismaService.auditLog.count.mockResolvedValue(1);
+      mockPrismaService.inspectionLocation.findMany.mockResolvedValue([
+        { id: locId, name: 'Hal 3', identifier: 'L-3' },
+      ]);
+
+      const result = await service.findByEntity('Asset', 'asset-1', 'org-1', {
+        page: 1,
+        limit: 10,
+      });
+
+      // Resolved via the inspectionLocation delegate, NOT the Beheer location delegate
+      expect(mockPrismaService.inspectionLocation.findMany).toHaveBeenCalled();
+      expect(mockPrismaService.location.findMany).not.toHaveBeenCalled();
+      expect(result.data[0].snapshot.locationId).toBe('Hal 3');
     });
 
     it('should return entries unchanged when no UUIDs to resolve', async () => {

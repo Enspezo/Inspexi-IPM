@@ -43,6 +43,41 @@ import { VatModule } from './modules/vat/vat.module';
 import { ErrorReportsModule } from './modules/error-reports/error-reports.module';
 import { NotesModule } from './modules/notes/notes.module';
 import { WorkOrdersModule } from './modules/work-orders/work-orders.module';
+import { LookupModule } from './modules/lookups/lookup.module';
+import { InspectionPlansModule } from './modules/inspection-plans/inspection-plans.module';
+import { AssetTypesModule } from './modules/asset-types/asset-types.module';
+import { AssetsModule } from './modules/assets/assets.module';
+import { FindingsModule } from './modules/findings/findings.module';
+import { NormTypesModule } from './modules/norm-types/norm-types.module';
+import { ClassificationModelsModule } from './modules/classification-models/classification-models.module';
+import { CategoriesModule } from './modules/categories/categories.module';
+import { FindingTemplatesModule } from './modules/finding-templates/finding-templates.module';
+import { LocationTypesModule } from './modules/location-types/location-types.module';
+import { ChecklistsModule } from './modules/checklists/checklists.module';
+import { MeasurementSheetTemplatesModule } from './modules/measurement-sheet-templates/measurement-sheet-templates.module';
+import { InspectionTemplatesModule } from './modules/inspection-templates/inspection-templates.module';
+import { DocumentGenerationModule } from './modules/document-generation/document-generation.module';
+import { DocumentTemplatesModule } from './modules/document-templates/document-templates.module';
+import { InspectionLocationsModule } from './modules/inspection-locations/inspection-locations.module';
+import { VisualInspectionsModule } from './modules/visual-inspections/visual-inspections.module';
+import { MeasurementRecordsModule } from './modules/measurement-records/measurement-records.module';
+import { MeasurementSheetRecordsModule } from './modules/measurement-sheet-records/measurement-sheet-records.module';
+import { StandaloneMeasurementsModule } from './modules/standalone-measurements/standalone-measurements.module';
+import { LocationImagesModule } from './modules/location-images/location-images.module';
+import { PortalStatsModule } from './modules/portal-stats/portal-stats.module';
+import { SyncModule } from './modules/sync/sync.module';
+import { PhotosModule } from './modules/photos/photos.module';
+import { GeneratedDocumentsModule } from './modules/generated-documents/generated-documents.module';
+// Inspectiedomein Fase 6 — client-portal (2e auth-realm + klant-endpoints)
+import { ClientAuthModule } from './modules/client-auth/client-auth.module';
+import { ClientInspectionsModule } from './modules/client-inspections/client-inspections.module';
+import { ClientDocumentsModule } from './modules/client-documents/client-documents.module';
+import { ClientFindingsModule } from './modules/client-findings/client-findings.module';
+import { ClientMessagesModule } from './modules/client-messages/client-messages.module';
+import { ClientRequestsModule } from './modules/client-requests/client-requests.module';
+import { ClientLookupsModule } from './modules/client-lookups/client-lookups.module';
+// Inspectiedomein Fase 7 — voice-input (AI spraak-naar-meting + 3-lagen prompts)
+import { VoiceModule } from './modules/voice/voice.module';
 
 @Module({
   imports: [
@@ -82,6 +117,44 @@ import { WorkOrdersModule } from './modules/work-orders/work-orders.module';
     ErrorReportsModule,
     NotesModule,
     WorkOrdersModule,
+    LookupModule,
+    // Inspectiedomein Fase 2 — uitvoering + config
+    InspectionPlansModule,
+    AssetTypesModule,
+    AssetsModule,
+    FindingsModule,
+    NormTypesModule,
+    ClassificationModelsModule,
+    CategoriesModule,
+    FindingTemplatesModule,
+    LocationTypesModule,
+    ChecklistsModule,
+    MeasurementSheetTemplatesModule,
+    InspectionTemplatesModule,
+    DocumentGenerationModule,
+    DocumentTemplatesModule,
+    InspectionLocationsModule,
+    VisualInspectionsModule,
+    MeasurementRecordsModule,
+    MeasurementSheetRecordsModule,
+    StandaloneMeasurementsModule,
+    LocationImagesModule,
+    PortalStatsModule,
+    // Inspectiedomein Fase 3 — PWA-sync + foto-upload
+    SyncModule,
+    PhotosModule,
+    // Inspectiedomein Fase 4 — gegenereerde documenten + ondertekening
+    GeneratedDocumentsModule,
+    // Inspectiedomein Fase 6 — client-portal (2e auth-realm + klant-endpoints)
+    ClientAuthModule,
+    ClientInspectionsModule,
+    ClientDocumentsModule,
+    ClientFindingsModule,
+    ClientMessagesModule,
+    ClientRequestsModule,
+    ClientLookupsModule,
+    // Inspectiedomein Fase 7 — voice-input (AI spraak-naar-meting + 3-lagen prompts)
+    VoiceModule,
   ],
   providers: [
     {

@@ -2,30 +2,7 @@ import { Injectable, Logger, OnModuleInit, OnModuleDestroy } from '@nestjs/commo
 import { Prisma, PrismaClient } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import { requestContext } from '../common/services/request-context';
-
-/** Models that are audited */
-const AUDITED_MODELS = new Set([
-  'Contact',
-  'ContactPerson',
-  'Location',
-  'CustomerGroup',
-  'Product',
-  'PriceTable',
-  'PriceTableItem',
-  'Request',
-  'Quote',
-  'QuoteLine',
-  'QuoteTemplate',
-  'User',
-  'Organization',
-  'Document',
-  'PlanningItem',
-  'CustomFieldDefinition',
-  'EmailTemplate',
-  'Project',
-  'WorkOrder',
-  'WorkOrderLine',
-]);
+import { AUDITED_MODELS, MODEL_TABLE_MAP } from '../common/audit';
 
 /** Fields excluded from change tracking */
 const EXCLUDED_FIELDS = new Set([
@@ -34,30 +11,6 @@ const EXCLUDED_FIELDS = new Set([
   'createdAt',
   'updatedAt',
 ]);
-
-/** Prisma model → database table mapping */
-const MODEL_TABLE_MAP: Record<string, string> = {
-  Contact: 'imp_contacts',
-  ContactPerson: 'imp_contact_persons',
-  Location: 'imp_locations',
-  CustomerGroup: 'imp_customer_groups',
-  Product: 'imp_products',
-  PriceTable: 'imp_price_tables',
-  PriceTableItem: 'imp_price_table_items',
-  Request: 'imp_requests',
-  Quote: 'imp_quotes',
-  QuoteLine: 'imp_quote_lines',
-  QuoteTemplate: 'imp_quote_templates',
-  User: 'imp_users',
-  Organization: 'imp_organizations',
-  Document: 'imp_documents',
-  PlanningItem: 'imp_planning_items',
-  CustomFieldDefinition: 'imp_custom_field_definitions',
-  EmailTemplate: 'imp_email_templates',
-  Project: 'imp_projects',
-  WorkOrder: 'imp_work_orders',
-  WorkOrderLine: 'imp_work_order_lines',
-};
 
 /** Audit-failure alerting thresholds (in-memory, single process) */
 const AUDIT_FAILURE_THRESHOLD = 5; // failures within the window before alerting

@@ -27,7 +27,8 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { Response } from 'express';
-import { User, Role } from '@prisma/client';
+import { User } from '@prisma/client';
+import { ALL_STAFF, CRM_ROLES, ORG_ADMINS } from '@/common/auth/roles';
 import { DocumentsService } from './documents.service';
 import { UploadDocumentDto, ListDocumentsQueryDto, UpdateDocumentDto } from './dto';
 import { Roles, CurrentUser } from '@/common/decorators';
@@ -64,13 +65,7 @@ export class DocumentsController {
   constructor(private documentsService: DocumentsService) {}
 
   @Post()
-  @Roles(
-    Role.SUPERUSER,
-    Role.ORG_ADMIN,
-    Role.MANAGER,
-    Role.BACKOFFICE,
-    Role.WERKVOORBEREIDER,
-  )
+  @Roles(...CRM_ROLES)
   @UseInterceptors(
     FileInterceptor('file', {
       storage: memoryStorage(),
@@ -99,7 +94,7 @@ export class DocumentsController {
   }
 
   @Get('storage-stats')
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN)
+  @Roles(...ORG_ADMINS)
   @ApiOperation({ summary: 'Opslag statistieken ophalen voor organisatie' })
   @ApiResponse({ status: 200, description: 'Opslag quota en gebruik' })
   async storageStats(@CurrentUser() user: User) {
@@ -108,14 +103,7 @@ export class DocumentsController {
   }
 
   @Get()
-  @Roles(
-    Role.SUPERUSER,
-    Role.ORG_ADMIN,
-    Role.MANAGER,
-    Role.BACKOFFICE,
-    Role.WERKVOORBEREIDER,
-    Role.INSPECTEUR,
-  )
+  @Roles(...ALL_STAFF)
   @ApiOperation({ summary: 'Documenten ophalen' })
   @ApiResponse({ status: 200, description: 'Gepagineerde lijst documenten' })
   async findAll(
@@ -127,14 +115,7 @@ export class DocumentsController {
   }
 
   @Get(':id')
-  @Roles(
-    Role.SUPERUSER,
-    Role.ORG_ADMIN,
-    Role.MANAGER,
-    Role.BACKOFFICE,
-    Role.WERKVOORBEREIDER,
-    Role.INSPECTEUR,
-  )
+  @Roles(...ALL_STAFF)
   @ApiOperation({ summary: 'Document metadata ophalen' })
   @ApiResponse({ status: 200, description: 'Document details' })
   @ApiResponse({ status: 404, description: 'Niet gevonden' })
@@ -147,14 +128,7 @@ export class DocumentsController {
   }
 
   @Get(':id/download')
-  @Roles(
-    Role.SUPERUSER,
-    Role.ORG_ADMIN,
-    Role.MANAGER,
-    Role.BACKOFFICE,
-    Role.WERKVOORBEREIDER,
-    Role.INSPECTEUR,
-  )
+  @Roles(...ALL_STAFF)
   @ApiOperation({ summary: 'Document downloaden' })
   @ApiResponse({ status: 200, description: 'Bestand gedownload' })
   @ApiResponse({ status: 404, description: 'Niet gevonden' })
@@ -173,13 +147,7 @@ export class DocumentsController {
   }
 
   @Patch(':id')
-  @Roles(
-    Role.SUPERUSER,
-    Role.ORG_ADMIN,
-    Role.MANAGER,
-    Role.BACKOFFICE,
-    Role.WERKVOORBEREIDER,
-  )
+  @Roles(...CRM_ROLES)
   @ApiOperation({ summary: 'Document beschrijving bijwerken' })
   @ApiResponse({ status: 200, description: 'Document bijgewerkt' })
   async update(
@@ -192,13 +160,7 @@ export class DocumentsController {
   }
 
   @Delete(':id')
-  @Roles(
-    Role.SUPERUSER,
-    Role.ORG_ADMIN,
-    Role.MANAGER,
-    Role.BACKOFFICE,
-    Role.WERKVOORBEREIDER,
-  )
+  @Roles(...CRM_ROLES)
   @ApiOperation({ summary: 'Document verwijderen' })
   @ApiResponse({ status: 200, description: 'Document verwijderd' })
   async remove(

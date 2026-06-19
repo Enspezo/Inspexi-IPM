@@ -53,3 +53,6 @@ lerna-debug.log*
 
 # Document uploads (local dev storage)
 apps/api/uploads/
+
+# Claude Code local settings
+.claude/settings.local.json

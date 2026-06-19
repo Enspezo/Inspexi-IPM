@@ -18,6 +18,9 @@
     "prisma:generate": "prisma generate"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.104.2",
+    "@aws-sdk/client-s3": "^3.1068.0",
+    "@aws-sdk/s3-request-presigner": "^3.1068.0",
     "@nestjs/common": "^10.4.15",
     "@nestjs/config": "^3.3.0",
     "@nestjs/core": "^10.4.15",
@@ -33,6 +36,8 @@
     "class-validator": "^0.14.1",
     "cookie-parser": "^1.4.7",
     "docxtemplater": "^3.68.3",
+    "handlebars": "^4.7.8",
+    "html-docx-js": "^0.3.1",
     "mammoth": "^1.11.0",
     "multer": "^2.0.2",
     "passport": "^0.7.0",
@@ -43,6 +48,7 @@
     "reflect-metadata": "^0.2.2",
     "resend": "^4.1.0",
     "rxjs": "^7.8.1",
+    "sharp": "^0.35.1",
     "svix": "^1.86.0",
     "uuid": "^10.0.0"
   },
@@ -53,6 +59,7 @@
     "@types/bcrypt": "^5.0.2",
     "@types/cookie-parser": "^1.4.7",
     "@types/express": "^5.0.0",
+    "@types/html-docx-js": "^0.3.4",
     "@types/jest": "^29.5.14",
     "@types/multer": "^2.0.0",
     "@types/node": "^22.13.4",

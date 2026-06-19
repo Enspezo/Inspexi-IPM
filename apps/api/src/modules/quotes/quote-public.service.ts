@@ -10,7 +10,7 @@ import { ProjectsService } from '../projects/projects.service';
 import { EmailTemplatesService } from '../email-templates/email-templates.service';
 import { PdfService } from './pdf.service';
 import { SignQuoteDto } from './dto';
-import { QUOTE_INCLUDE } from './quotes.helpers';
+import { QUOTE_INCLUDE, serializeQuote } from './quotes.helpers';
 
 @Injectable()
 export class QuotePublicService {
@@ -41,13 +41,15 @@ export class QuotePublicService {
       throw new ForbiddenException('Offerte is nog niet verstuurd');
     }
     if (!quote.viewedAt) {
-      await this.prisma.quote.update({
+      const updated = await this.prisma.quote.update({
         where: { id: quote.id },
         data: { viewedAt: new Date(), status: quote.status === QuoteStatus.VERSTUURD ? QuoteStatus.BEKEKEN : quote.status },
       });
       this.notifications.dispatch({ type: NotificationType.OFFERTE_BEKEKEN, orgId: quote.orgId, recipientUserIds: [quote.createdBy], title: 'Offerte bekeken', body: `Klant heeft offerte ${quote.quoteNumber} voor het eerst geopend.`, entityType: 'quote', entityId: quote.id });
+      quote.viewedAt = updated.viewedAt;
+      quote.status = updated.status;
     }
-    return quote;
+    return serializeQuote(quote);
   }
 
   async signQuote(token: string, dto: SignQuoteDto, clientIp?: string, userAgent?: string) {

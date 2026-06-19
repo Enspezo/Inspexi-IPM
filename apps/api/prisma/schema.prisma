@@ -98,6 +98,10 @@ enum NotificationType {
   PROJECT_AANGEMAAKT
   PROJECT_STATUS_GEWIJZIGD
   FOUTMELDING_INGEDIEND
+  INSPECTIEPLAN_TOEGEWEZEN
+  INSPECTIEPLAN_TER_REVIEW
+  INSPECTIEPLAN_GOEDGEKEURD
+  INSPECTIEPLAN_AFGEKEURD
 }
 
 enum AuditAction {
@@ -264,67 +268,106 @@ model Organization {
   senderName          String?  @map("sender_name")
   senderEmail         String?  @map("sender_email")
   timezone            String   @default("Europe/Amsterdam")
-  workdayStart        Int      @default(8)  @map("workday_start")
+  workdayStart        Int      @default(8) @map("workday_start")
   workdayEnd          Int      @default(17) @map("workday_end")
   isActive            Boolean  @default(true) @map("is_active")
   createdAt           DateTime @default(now()) @map("created_at")
 
-  users       User[]
-  invitations Invitation[]
-  contacts       Contact[]
-  contactPersons ContactPerson[]
-  customerGroups CustomerGroup[]
-  locations      Location[]
-  productGroups  ProductGroup[]
-  products       Product[]
-  priceTables    PriceTable[]
-  requests       Request[]
-  quoteTemplates         QuoteTemplate[]
-  quotes                 Quote[]
-  notifications          Notification[]
-  notificationGroupPrefs NotificationGroupPref[]
-  tasks                  Task[]
-  documents              Document[]
-  notes                  Note[]
-  planningItems          PlanningItem[]
-  customFieldDefinitions CustomFieldDefinition[]
-  emailTemplates         EmailTemplate[]
+  users                    User[]
+  invitations              Invitation[]
+  contacts                 Contact[]
+  contactPersons           ContactPerson[]
+  customerGroups           CustomerGroup[]
+  locations                Location[]
+  productGroups            ProductGroup[]
+  products                 Product[]
+  priceTables              PriceTable[]
+  requests                 Request[]
+  quoteTemplates           QuoteTemplate[]
+  quotes                   Quote[]
+  notifications            Notification[]
+  notificationGroupPrefs   NotificationGroupPref[]
+  tasks                    Task[]
+  documents                Document[]
+  notes                    Note[]
+  planningItems            PlanningItem[]
+  customFieldDefinitions   CustomFieldDefinition[]
+  emailTemplates           EmailTemplate[]
   emailTemplateAttachments EmailTemplateAttachment[]
-  projects               Project[]
-  errorReports           ErrorReport[]
-  workOrders             WorkOrder[]
-  locationContactPersons LocationContactPerson[]
-  lostReasons            LostReason[]
-  contactPersonRoles     ContactPersonRoleOption[]
+  projects                 Project[]
+  errorReports             ErrorReport[]
+  workOrders               WorkOrder[]
+  locationContactPersons   LocationContactPerson[]
+  lostReasons              LostReason[]
+  contactPersonRoles       ContactPersonRoleOption[]
+
+  // Inspectiedomein (Fase 1)
+  normConfigurations       NormConfiguration[]
+  inspectionPlans          InspectionPlan[]
+  assets                   Asset[]
+  visualInspections        VisualInspection[]
+  measurementRecords       MeasurementRecord[]
+  findings                 Finding[]
+  inspectionPhotos         Photo[]
+  inspectionSignatures     Signature[]
+  reports                  Report[]
+  inspectionLocations      InspectionLocation[]
+  checklistItems           ChecklistItem[]
+  checklists               Checklist[]
+  categories               Category[]
+  findingTemplates         FindingTemplate[]
+  reportTemplates          ReportTemplate[]
+  assetTypeDefinitions     AssetTypeDefinition[]
+  locationTypeDefinitions  LocationTypeDefinition[]
+  inspectionTemplates      InspectionTemplate[]
+  generatedDocuments       GeneratedDocument[]
+  measurementSheetRecords  MeasurementSheetRecord[]
+  standaloneMeasurements   StandaloneMeasurement[]
+  locationImages           LocationImage[]
+  locationImageMarkers     LocationImageMarker[]
+  clientRequests           ClientRequest[]
+  voiceTemplatePrompts     VoiceTemplatePrompt[]
+  // Per-org lookup-tabellen (overschrijfbare status/type-lijsten)
+  inspectionTypeOptions    InspectionTypeOption[]
+  planStatusTypes          PlanStatusType[]
+  assetStatusTypes         AssetStatusType[]
+  findingStatusTypes       FindingStatusType[]
+  reportStatusTypes        ReportStatusType[]
+  signatoryTypeOptions     SignatoryTypeOption[]
+  signerRoleOptions        SignerRoleOption[]
+  passFailStatusTypes      PassFailStatusType[]
+  resolutionStatusTypes    ResolutionStatusType[]
+  clientRequestTypeOptions ClientRequestTypeOption[]
+  clientRequestStatusTypes ClientRequestStatusType[]
 
   @@map("imp_organizations")
 }
 
 model User {
-  id              String    @id @default(uuid()) @db.Uuid
-  orgId           String?   @map("org_id") @db.Uuid
-  email           String    @unique
-  passwordHash    String    @map("password_hash")
-  firstName       String    @map("first_name")
-  lastName        String    @map("last_name")
-  roles           Role[]    @default([])
-  isActive        Boolean   @default(true) @map("is_active")
-  isDeleted       Boolean   @default(false) @map("is_deleted")
-  deletedAt       DateTime? @map("deleted_at")
-  emailVerifiedAt DateTime? @map("email_verified_at")
-  initials        String?   @map("initials")
-  avatarUrl       String?   @map("avatar_url")
+  id              String         @id @default(uuid()) @db.Uuid
+  orgId           String?        @map("org_id") @db.Uuid
+  email           String         @unique
+  passwordHash    String         @map("password_hash")
+  firstName       String         @map("first_name")
+  lastName        String         @map("last_name")
+  roles           Role[]         @default([])
+  isActive        Boolean        @default(true) @map("is_active")
+  isDeleted       Boolean        @default(false) @map("is_deleted")
+  deletedAt       DateTime?      @map("deleted_at")
+  emailVerifiedAt DateTime?      @map("email_verified_at")
+  initials        String?        @map("initials")
+  avatarUrl       String?        @map("avatar_url")
   signatureType   SignatureType? @map("signature_type")
-  signatureData   String?   @map("signature_data")
-  color           String?   // HEX kleurcode voor kalenderweergave, bijv. "#3B82F6"
-  homeStreet      String?   @map("home_street")
-  homeHouseNumber String?   @map("home_house_number")
-  homePostalCode  String?   @map("home_postal_code")
-  homeCity        String?   @map("home_city")
-  homeLat         Float?    @map("home_lat")
-  homeLng         Float?    @map("home_lng")
-  icalToken       String    @unique @default(uuid()) @map("ical_token")
-  createdAt       DateTime  @default(now()) @map("created_at")
+  signatureData   String?        @map("signature_data")
+  color           String? // HEX kleurcode voor kalenderweergave, bijv. "#3B82F6"
+  homeStreet      String?        @map("home_street")
+  homeHouseNumber String?        @map("home_house_number")
+  homePostalCode  String?        @map("home_postal_code")
+  homeCity        String?        @map("home_city")
+  homeLat         Float?         @map("home_lat")
+  homeLng         Float?         @map("home_lng")
+  icalToken       String         @unique @default(uuid()) @map("ical_token")
+  createdAt       DateTime       @default(now()) @map("created_at")
 
   organization  Organization?  @relation(fields: [orgId], references: [id])
   refreshTokens RefreshToken[]
@@ -332,38 +375,60 @@ model User {
   contactLogs   ContactLog[]
   contactEmails ContactEmail[]
 
-  assignedRequests       Request[]              @relation("AssignedToUser")
-  createdRequests        Request[]              @relation("CreatedByUser")
-  requestStatusChanges   RequestStatusHistory[] @relation("StatusChangedByUser")
+  assignedRequests     Request[]              @relation("AssignedToUser")
+  createdRequests      Request[]              @relation("CreatedByUser")
+  requestStatusChanges RequestStatusHistory[] @relation("StatusChangedByUser")
 
-  createdQuotes          Quote[]                @relation("QuoteCreatedByUser")
-  requestedApprovals     QuoteApprovalRequest[] @relation("ApprovalRequestedByUser")
-  reviewedApprovals      QuoteApprovalRequest[] @relation("ApprovalReviewedByUser")
-  quoteQuestions         QuoteQuestion[]        @relation("QuoteQuestionUser")
+  createdQuotes      Quote[]                @relation("QuoteCreatedByUser")
+  requestedApprovals QuoteApprovalRequest[] @relation("ApprovalRequestedByUser")
+  reviewedApprovals  QuoteApprovalRequest[] @relation("ApprovalReviewedByUser")
+  quoteQuestions     QuoteQuestion[]        @relation("QuoteQuestionUser")
 
-  notifications          Notification[]
-  notificationPrefs      NotificationPref[]
-  auditLogs              AuditLog[]
+  notifications     Notification[]
+  notificationPrefs NotificationPref[]
+  auditLogs         AuditLog[]
 
-  assignedTasks          Task[]                 @relation("TaskAssignee")
-  createdTasks           Task[]                 @relation("TaskCreatedBy")
-  followUpAssignments    QuoteTemplateFollowUp[] @relation("FollowUpAssignee")
-  createdNotes           Note[]                 @relation("NoteCreatedBy")
-  uploadedDocuments      Document[]             @relation("DocumentUploadedBy")
+  assignedTasks       Task[]                  @relation("TaskAssignee")
+  createdTasks        Task[]                  @relation("TaskCreatedBy")
+  followUpAssignments QuoteTemplateFollowUp[] @relation("FollowUpAssignee")
+  createdNotes        Note[]                  @relation("NoteCreatedBy")
+  uploadedDocuments   Document[]              @relation("DocumentUploadedBy")
 
   planningInspectors        PlanningInspector[]
   planningFollowers         PlanningFollower[]
   planningHistory           PlanningHistory[]
-  createdPlanningItems      PlanningItem[]            @relation("PlanningCreatedByUser")
+  createdPlanningItems      PlanningItem[]             @relation("PlanningCreatedByUser")
   planningSessionInspectors PlanningSessionInspector[]
   emailTemplates            EmailTemplate[]            @relation("EmailTemplateCreatedBy")
 
-  managedProjects           Project[]                  @relation("ProjectManager")
-  createdProjects           Project[]                  @relation("ProjectCreatedByUser")
-  projectFollowers          ProjectFollower[]
-  errorReports              ErrorReport[]
-  docxRevisions             QuoteTemplateDocxRevision[]
-  createdWorkOrders         WorkOrder[]                    @relation("WorkOrderCreatedByUser")
+  managedProjects   Project[]                   @relation("ProjectManager")
+  createdProjects   Project[]                   @relation("ProjectCreatedByUser")
+  projectFollowers  ProjectFollower[]
+  errorReports      ErrorReport[]
+  docxRevisions     QuoteTemplateDocxRevision[]
+  createdWorkOrders WorkOrder[]                 @relation("WorkOrderCreatedByUser")
+
+  // Inspectiedomein (Fase 1)
+  assignedInspectionPlans    InspectionPlan[]               @relation("InspectionPlanAssignee")
+  reviewingInspectionPlans   InspectionPlan[]               @relation("InspectionPlanReviewer")
+  createdInspectionPlans     InspectionPlan[]               @relation("InspectionPlanCreatedBy")
+  modifiedInspectionPlans    InspectionPlan[]               @relation("InspectionPlanModifiedBy")
+  createdAssets              Asset[]                        @relation("AssetCreatedBy")
+  visualInspections          VisualInspection[]             @relation("VisualInspectionInspector")
+  measurementRecords         MeasurementRecord[]            @relation("MeasurementRecordInspector")
+  createdFindings            Finding[]                      @relation("FindingCreatedBy")
+  resolvedFindings           Finding[]                      @relation("FindingResolvedBy")
+  uploadedInspectionPhotos   Photo[]                        @relation("PhotoUploadedBy")
+  inspectionSignatures       Signature[]                    @relation("SignatoryUser")
+  approvedReports            Report[]                       @relation("ReportApprovedBy")
+  createdReports             Report[]                       @relation("ReportCreatedBy")
+  createdInspectionLocations InspectionLocation[]           @relation("InspectionLocationCreatedBy")
+  syncQueueItems             SyncQueue[]                    @relation("SyncQueueUser")
+  resolvedSyncItems          SyncQueue[]                    @relation("SyncResolvedBy")
+  deviceRegistrations        DeviceRegistration[]
+  inspectionMessages         InspectionMessage[]            @relation("MessageUser")
+  voiceUserPrompts           VoiceUserPrompt[]              @relation("VoiceUserPromptUser")
+  uploadedInspectionDocx     DocumentTemplateDocxRevision[] @relation("InspectionDocxRevisionUploadedBy")
 
   @@map("imp_users")
 }
@@ -380,6 +445,8 @@ model RefreshToken {
 
   user User @relation(fields: [userId], references: [id])
 
+  @@index([userId])
+  @@index([expiresAt])
   @@map("imp_refresh_tokens")
 }
 
@@ -395,33 +462,35 @@ model Invitation {
 
   organization Organization @relation(fields: [orgId], references: [id])
 
+  @@index([orgId, email])
   @@map("imp_invitations")
 }
 
 // ─── PRD-02: CRM Models ────────────────────────────────
 
 model Contact {
-  id           String      @id @default(uuid()) @db.Uuid
-  orgId        String      @map("org_id") @db.Uuid
-  type         ContactType
-  companyName  String?     @map("company_name")
-  firstName    String?     @map("first_name")
-  lastName     String?     @map("last_name")
-  email        String?
-  phone        String?
-  website      String?
+  id            String      @id @default(uuid()) @db.Uuid
+  orgId         String      @map("org_id") @db.Uuid
+  type          ContactType
+  companyName   String?     @map("company_name")
+  firstName     String?     @map("first_name")
+  lastName      String?     @map("last_name")
+  email         String?
+  phone         String?
+  website       String?
   vatNumber     String?     @map("vat_number")
   vatValidation Json?       @map("vat_validation")
   cocNumber     String?     @map("coc_number")
-  notes        String?
-  priceTableId String?     @map("price_table_id") @db.Uuid
-  ownerId      String?     @map("owner_id") @db.Uuid
-  customFields Json?       @map("custom_fields")
-  isDeleted    Boolean     @default(false) @map("is_deleted")
-  createdAt    DateTime    @default(now()) @map("created_at")
+  notes         String?
+  priceTableId  String?     @map("price_table_id") @db.Uuid
+  ownerId       String?     @map("owner_id") @db.Uuid
+  customFields  Json?       @map("custom_fields")
+  isDeleted     Boolean     @default(false) @map("is_deleted")
+  createdAt     DateTime    @default(now()) @map("created_at")
+  updatedAt     DateTime    @updatedAt @map("updated_at")
 
-  organization       Organization        @relation(fields: [orgId], references: [id])
-  owner              User?               @relation("ContactOwner", fields: [ownerId], references: [id])
+  organization       Organization           @relation(fields: [orgId], references: [id])
+  owner              User?                  @relation("ContactOwner", fields: [ownerId], references: [id])
   addresses          ContactAddress[]
   contactPersons     ContactPerson[]
   customerGroups     ContactCustomerGroup[]
@@ -434,26 +503,34 @@ model Contact {
   planningItems      PlanningItem[]
   projects           Project[]
 
+  // Inspectiedomein (Fase 1)
+  inspectionPlans InspectionPlan[]
+  clientAccess    ClientAccess[]
+  clientRequests  ClientRequest[]
+
   @@index([orgId])
+  @@index([ownerId])
   @@map("imp_contacts")
 }
 
 model ContactAddress {
-  id          String  @id @default(uuid()) @db.Uuid
-  contactId   String  @map("contact_id") @db.Uuid
-  label       String
-  street      String
-  houseNumber String  @map("house_number")
-  postalCode  String  @map("postal_code")
-  city        String
-  country     String  @default("NL")
-  isPrimary    Boolean @default(false) @map("is_primary")
-  isPostal     Boolean @default(false) @map("is_postal")
-  isInvoice    Boolean @default(false) @map("is_invoice")
-  customFields Json?   @map("custom_fields")
+  id           String   @id @default(uuid()) @db.Uuid
+  contactId    String   @map("contact_id") @db.Uuid
+  label        String
+  street       String
+  houseNumber  String   @map("house_number")
+  postalCode   String   @map("postal_code")
+  city         String
+  country      String   @default("NL")
+  isPrimary    Boolean  @default(false) @map("is_primary")
+  isPostal     Boolean  @default(false) @map("is_postal")
+  isInvoice    Boolean  @default(false) @map("is_invoice")
+  customFields Json?    @map("custom_fields")
+  updatedAt    DateTime @updatedAt @map("updated_at")
 
   contact Contact @relation(fields: [contactId], references: [id])
 
+  @@index([contactId])
   @@map("imp_contact_addresses")
 }
 
@@ -472,48 +549,53 @@ model CustomerGroup {
 }
 
 model ContactCustomerGroup {
-  id              String @id @default(uuid()) @db.Uuid
   contactId       String @map("contact_id") @db.Uuid
   customerGroupId String @map("customer_group_id") @db.Uuid
 
   contact       Contact       @relation(fields: [contactId], references: [id])
   customerGroup CustomerGroup @relation(fields: [customerGroupId], references: [id])
 
-  @@unique([contactId, customerGroupId])
+  @@id([contactId, customerGroupId])
   @@map("imp_contact_customer_groups")
 }
 
 model ContactPerson {
-  id        String            @id @default(uuid()) @db.Uuid
-  contactId String            @map("contact_id") @db.Uuid
-  orgId     String            @map("org_id") @db.Uuid
-  firstName String            @map("first_name")
-  lastName  String            @map("last_name")
+  id        String   @id @default(uuid()) @db.Uuid
+  contactId String   @map("contact_id") @db.Uuid
+  orgId     String   @map("org_id") @db.Uuid
+  firstName String   @map("first_name")
+  lastName  String   @map("last_name")
   email     String?
   phone     String?
-  roleId    String?           @map("role_id") @db.Uuid
+  roleId    String?  @map("role_id") @db.Uuid
   notes     String?
-  isDeleted Boolean           @default(false) @map("is_deleted")
-  createdAt DateTime          @default(now()) @map("created_at")
+  isDeleted Boolean  @default(false) @map("is_deleted")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
-  contact      Contact      @relation(fields: [contactId], references: [id])
-  organization Organization @relation(fields: [orgId], references: [id])
-  role         ContactPersonRoleOption? @relation(fields: [roleId], references: [id])
-  planningItems PlanningItem[]
+  contact                Contact                  @relation(fields: [contactId], references: [id])
+  organization           Organization             @relation(fields: [orgId], references: [id])
+  role                   ContactPersonRoleOption? @relation(fields: [roleId], references: [id])
+  planningItems          PlanningItem[]
   locationContactPersons LocationContactPerson[]
 
+  // Inspectiedomein (Fase 1)
+  installationResponsiblePlans InspectionPlan[] @relation("PlanInstallationResponsible")
+  inspectionSignatures         Signature[]      @relation("SignatoryContactPerson")
+
+  @@index([contactId])
   @@map("imp_contact_persons")
 }
 
 model Location {
-  id          String   @id @default(uuid()) @db.Uuid
-  contactId   String   @map("contact_id") @db.Uuid
-  orgId       String   @map("org_id") @db.Uuid
-  name        String
-  street      String
-  houseNumber String   @map("house_number")
-  postalCode  String   @map("postal_code")
-  city        String
+  id           String   @id @default(uuid()) @db.Uuid
+  contactId    String   @map("contact_id") @db.Uuid
+  orgId        String   @map("org_id") @db.Uuid
+  name         String
+  street       String
+  houseNumber  String   @map("house_number")
+  postalCode   String   @map("postal_code")
+  city         String
   objectType   String?  @map("object_type")
   notes        String?
   pdokData     Json?    @map("pdok_data")
@@ -521,25 +603,27 @@ model Location {
   lng          Float?
   customFields Json?    @map("custom_fields")
   createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
 
-  contact      Contact      @relation(fields: [contactId], references: [id])
-  organization Organization @relation(fields: [orgId], references: [id])
-  requests     Request[]
-  quotes       Quote[]
-  planningItems PlanningItem[]
-  projects      Project[]
+  contact                Contact                 @relation(fields: [contactId], references: [id])
+  organization           Organization            @relation(fields: [orgId], references: [id])
+  requests               Request[]
+  quotes                 Quote[]
+  planningItems          PlanningItem[]
+  projects               Project[]
   locationContactPersons LocationContactPerson[]
 
+  @@index([contactId])
   @@map("imp_locations")
 }
 
 model LocationContactPerson {
-  id              String        @id @default(uuid()) @db.Uuid
-  locationId      String        @map("location_id") @db.Uuid
-  contactPersonId String        @map("contact_person_id") @db.Uuid
-  orgId           String        @map("org_id") @db.Uuid
+  id              String   @id @default(uuid()) @db.Uuid
+  locationId      String   @map("location_id") @db.Uuid
+  contactPersonId String   @map("contact_person_id") @db.Uuid
+  orgId           String   @map("org_id") @db.Uuid
   notes           String?
-  createdAt       DateTime      @default(now()) @map("created_at")
+  createdAt       DateTime @default(now()) @map("created_at")
 
   location      Location      @relation(fields: [locationId], references: [id])
   contactPerson ContactPerson @relation(fields: [contactPersonId], references: [id])
@@ -563,23 +647,25 @@ model ContactLog {
   contact Contact @relation(fields: [contactId], references: [id])
   user    User    @relation(fields: [userId], references: [id])
 
+  @@index([contactId])
   @@map("imp_contact_logs")
 }
 
 model ContactEmail {
-  id       String    @id @default(uuid()) @db.Uuid
-  contactId String   @map("contact_id") @db.Uuid
-  orgId    String    @map("org_id") @db.Uuid
-  userId   String    @map("user_id") @db.Uuid
-  resendId String?   @map("resend_id")
-  subject  String
-  bodyHtml String    @map("body_html")
-  sentAt   DateTime  @default(now()) @map("sent_at")
-  openedAt DateTime? @map("opened_at")
+  id        String    @id @default(uuid()) @db.Uuid
+  contactId String    @map("contact_id") @db.Uuid
+  orgId     String    @map("org_id") @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  resendId  String?   @map("resend_id")
+  subject   String
+  bodyHtml  String    @map("body_html")
+  sentAt    DateTime  @default(now()) @map("sent_at")
+  openedAt  DateTime? @map("opened_at")
 
   contact Contact @relation(fields: [contactId], references: [id])
   user    User    @relation(fields: [userId], references: [id])
 
+  @@index([contactId])
   @@map("imp_contact_emails")
 }
 
@@ -640,19 +726,19 @@ model ProductGroup {
 }
 
 model Product {
-  id             String  @id @default(uuid()) @db.Uuid
-  orgId          String  @map("org_id") @db.Uuid
-  productGroupId String? @map("product_group_id") @db.Uuid
+  id             String   @id @default(uuid()) @db.Uuid
+  orgId          String   @map("org_id") @db.Uuid
+  productGroupId String?  @map("product_group_id") @db.Uuid
   name           String
   description    String?
   unit           String
-  defaultVat     Float   @default(21) @map("default_vat")
-  isActive       Boolean @default(true) @map("is_active")
+  defaultVat     Float    @default(21) @map("default_vat")
+  isActive       Boolean  @default(true) @map("is_active")
   customFields   Json?    @map("custom_fields")
   createdAt      DateTime @default(now()) @map("created_at")
 
-  organization  Organization  @relation(fields: [orgId], references: [id])
-  productGroup  ProductGroup? @relation(fields: [productGroupId], references: [id])
+  organization    Organization     @relation(fields: [orgId], references: [id])
+  productGroup    ProductGroup?    @relation(fields: [productGroupId], references: [id])
   priceTableItems PriceTableItem[]
   quoteLines      QuoteLine[]
   workOrderLines  WorkOrderLine[]
@@ -680,25 +766,28 @@ model PriceTableItem {
   priceTableId String    @map("price_table_id") @db.Uuid
   productId    String    @map("product_id") @db.Uuid
   priceType    PriceType @map("price_type")
-  basePrice    Float?    @map("base_price")
+  basePrice    Decimal?  @map("base_price") @db.Decimal(12, 2)
   createdAt    DateTime  @default(now()) @map("created_at")
 
-  priceTable PriceTable @relation(fields: [priceTableId], references: [id])
-  product    Product    @relation(fields: [productId], references: [id])
+  priceTable PriceTable  @relation(fields: [priceTableId], references: [id])
+  product    Product     @relation(fields: [productId], references: [id])
   tiers      PriceTier[]
 
+  @@index([priceTableId])
+  @@index([productId])
   @@map("imp_price_table_items")
 }
 
 model PriceTier {
-  id               String @id @default(uuid()) @db.Uuid
-  priceTableItemId String @map("price_table_item_id") @db.Uuid
-  fromQty          Float  @map("from_qty")
-  toQty            Float? @map("to_qty")
-  price            Float
+  id               String  @id @default(uuid()) @db.Uuid
+  priceTableItemId String  @map("price_table_item_id") @db.Uuid
+  fromQty          Float   @map("from_qty")
+  toQty            Float?  @map("to_qty")
+  price            Decimal @db.Decimal(12, 2)
 
   priceTableItem PriceTableItem @relation(fields: [priceTableItemId], references: [id])
 
+  @@index([priceTableItemId])
   @@map("imp_price_tiers")
 }
 
@@ -716,17 +805,17 @@ model ContactPriceTable {
 // ─── PRD-03: Requests (Leads & Aanvragen) ────────────────
 
 model Request {
-  id          String        @id @default(uuid()) @db.Uuid
-  orgId       String        @map("org_id") @db.Uuid
-  contactId   String        @map("contact_id") @db.Uuid
-  locationId  String?       @map("location_id") @db.Uuid
-  assignedTo  String?       @map("assigned_to") @db.Uuid
-  source      RequestSource
-  status      RequestStatus @default(NIEUW)
-  lostReasonId String?      @map("lost_reason_id") @db.Uuid
-  lostNote    String?       @map("lost_note")
-  title       String
-  description String?
+  id           String        @id @default(uuid()) @db.Uuid
+  orgId        String        @map("org_id") @db.Uuid
+  contactId    String        @map("contact_id") @db.Uuid
+  locationId   String?       @map("location_id") @db.Uuid
+  assignedTo   String?       @map("assigned_to") @db.Uuid
+  source       RequestSource
+  status       RequestStatus @default(NIEUW)
+  lostReasonId String?       @map("lost_reason_id") @db.Uuid
+  lostNote     String?       @map("lost_note")
+  title        String
+  description  String?
   priority     Priority      @default(NORMAL)
   customFields Json?         @map("custom_fields")
   createdBy    String        @map("created_by") @db.Uuid
@@ -734,7 +823,7 @@ model Request {
   createdAt    DateTime      @default(now()) @map("created_at")
   updatedAt    DateTime      @updatedAt @map("updated_at")
 
-  projectId     String?                @map("project_id") @db.Uuid
+  projectId String? @map("project_id") @db.Uuid
 
   organization  Organization           @relation(fields: [orgId], references: [id])
   contact       Contact                @relation(fields: [contactId], references: [id])
@@ -747,6 +836,9 @@ model Request {
   quotes        Quote[]
 
   @@index([orgId, status])
+  @@index([contactId])
+  @@index([assignedTo])
+  @@index([projectId])
   @@map("imp_requests")
 }
 
@@ -762,39 +854,40 @@ model RequestStatusHistory {
   request       Request @relation(fields: [requestId], references: [id])
   changedByUser User    @relation("StatusChangedByUser", fields: [changedBy], references: [id])
 
+  @@index([requestId])
   @@map("imp_request_status_history")
 }
 
 // ─── PRD-05: Quotes (Offertes) ────────────────────────────
 
 model QuoteTemplate {
-  id                  String             @id @default(uuid()) @db.Uuid
-  orgId               String             @map("org_id") @db.Uuid
-  name                String
-  description         String?            @db.Text
-  templateType        QuoteTemplateType  @default(BLOCKS) @map("template_type")
-  coverBlocks         Json?              @map("cover_blocks")
-  contentBlocks       Json?              @map("content_blocks")
-  closingBlocks       Json?              @map("closing_blocks")
-  docxStorageKey      String?            @map("docx_storage_key")
-  docxFileName        String?            @map("docx_file_name")
-  docxFileSize        Int?               @map("docx_file_size")
-  defaultValidityDays Int                @default(30) @map("default_validity_days")
-  requiresApproval    Boolean            @default(false) @map("requires_approval")
-  isActive            Boolean            @default(true) @map("is_active")
-  sendEmailTemplateId     String?        @map("send_email_template_id") @db.Uuid
-  sendEmailEnabled        Boolean        @default(true) @map("send_email_enabled")
-  acceptedEmailTemplateId String?        @map("accepted_email_template_id") @db.Uuid
-  acceptedEmailEnabled    Boolean        @default(true) @map("accepted_email_enabled")
-  createdAt           DateTime           @default(now()) @map("created_at")
-  updatedAt           DateTime           @updatedAt @map("updated_at")
+  id                      String            @id @default(uuid()) @db.Uuid
+  orgId                   String            @map("org_id") @db.Uuid
+  name                    String
+  description             String?           @db.Text
+  templateType            QuoteTemplateType @default(BLOCKS) @map("template_type")
+  coverBlocks             Json?             @map("cover_blocks")
+  contentBlocks           Json?             @map("content_blocks")
+  closingBlocks           Json?             @map("closing_blocks")
+  docxStorageKey          String?           @map("docx_storage_key")
+  docxFileName            String?           @map("docx_file_name")
+  docxFileSize            Int?              @map("docx_file_size")
+  defaultValidityDays     Int               @default(30) @map("default_validity_days")
+  requiresApproval        Boolean           @default(false) @map("requires_approval")
+  isActive                Boolean           @default(true) @map("is_active")
+  sendEmailTemplateId     String?           @map("send_email_template_id") @db.Uuid
+  sendEmailEnabled        Boolean           @default(true) @map("send_email_enabled")
+  acceptedEmailTemplateId String?           @map("accepted_email_template_id") @db.Uuid
+  acceptedEmailEnabled    Boolean           @default(true) @map("accepted_email_enabled")
+  createdAt               DateTime          @default(now()) @map("created_at")
+  updatedAt               DateTime          @updatedAt @map("updated_at")
 
-  organization          Organization              @relation(fields: [orgId], references: [id])
+  organization          Organization                @relation(fields: [orgId], references: [id])
   quotes                Quote[]
   attachments           QuoteTemplateAttachment[]
   docxRevisions         QuoteTemplateDocxRevision[]
-  sendEmailTemplate     EmailTemplate?             @relation("QuoteTemplateSendEmail", fields: [sendEmailTemplateId], references: [id], onDelete: SetNull)
-  acceptedEmailTemplate EmailTemplate?             @relation("QuoteTemplateAcceptedEmail", fields: [acceptedEmailTemplateId], references: [id], onDelete: SetNull)
+  sendEmailTemplate     EmailTemplate?              @relation("QuoteTemplateSendEmail", fields: [sendEmailTemplateId], references: [id], onDelete: SetNull)
+  acceptedEmailTemplate EmailTemplate?              @relation("QuoteTemplateAcceptedEmail", fields: [acceptedEmailTemplateId], references: [id], onDelete: SetNull)
   followUpRules         QuoteTemplateFollowUp[]
 
   @@map("imp_quote_templates")
@@ -868,10 +961,10 @@ model Quote {
   coverBlocks      Json?       @map("cover_blocks")
   contentBlocks    Json?       @map("content_blocks")
   closingBlocks    Json?       @map("closing_blocks")
-  subtotal         Float       @default(0)
-  discountTotal    Float       @default(0) @map("discount_total")
-  vatTotal         Float       @default(0) @map("vat_total")
-  total            Float       @default(0)
+  subtotal         Decimal     @default(0) @db.Decimal(12, 2)
+  discountTotal    Decimal     @default(0) @map("discount_total") @db.Decimal(12, 2)
+  vatTotal         Decimal     @default(0) @map("vat_total") @db.Decimal(12, 2)
+  total            Decimal     @default(0) @db.Decimal(12, 2)
   validUntil       DateTime?   @map("valid_until")
   requiresApproval Boolean     @default(false) @map("requires_approval")
   internalNotes    String?     @map("internal_notes")
@@ -879,32 +972,32 @@ model Quote {
   createdBy        String      @map("created_by") @db.Uuid
 
   // Send & client portal fields
-  sentAt           DateTime?   @map("sent_at")
-  viewedAt         DateTime?   @map("viewed_at")
-  signedAt         DateTime?   @map("signed_at")
-  clientName       String?     @map("client_name")
-  clientSignature  String?     @map("client_signature")
-  clientIp         String?     @map("client_ip")
-  clientUserAgent  String?     @map("client_user_agent")
-  managerSignature    String?     @map("manager_signature")
-  publicToken         String?     @unique @map("public_token")
+  sentAt           DateTime? @map("sent_at")
+  viewedAt         DateTime? @map("viewed_at")
+  signedAt         DateTime? @map("signed_at")
+  clientName       String?   @map("client_name")
+  clientSignature  String?   @map("client_signature")
+  clientIp         String?   @map("client_ip")
+  clientUserAgent  String?   @map("client_user_agent")
+  managerSignature String?   @map("manager_signature")
+  publicToken      String?   @unique @map("public_token")
 
   // Generated PDF fields
-  pdfStorageKey       String?     @map("pdf_storage_key")
-  signedPdfStorageKey String?     @map("signed_pdf_storage_key")
+  pdfStorageKey       String? @map("pdf_storage_key")
+  signedPdfStorageKey String? @map("signed_pdf_storage_key")
 
-  createdAt        DateTime    @default(now()) @map("created_at")
-  updatedAt        DateTime    @updatedAt @map("updated_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
-  projectId        String?               @map("project_id") @db.Uuid
+  projectId String? @map("project_id") @db.Uuid
 
-  organization     Organization          @relation(fields: [orgId], references: [id])
-  template         QuoteTemplate?        @relation(fields: [templateId], references: [id])
-  request          Request?              @relation(fields: [requestId], references: [id])
-  contact          Contact               @relation(fields: [contactId], references: [id])
-  location         Location?             @relation(fields: [locationId], references: [id])
-  createdByUser    User                  @relation("QuoteCreatedByUser", fields: [createdBy], references: [id])
-  project          Project?              @relation(fields: [projectId], references: [id])
+  organization     Organization           @relation(fields: [orgId], references: [id])
+  template         QuoteTemplate?         @relation(fields: [templateId], references: [id])
+  request          Request?               @relation(fields: [requestId], references: [id])
+  contact          Contact                @relation(fields: [contactId], references: [id])
+  location         Location?              @relation(fields: [locationId], references: [id])
+  createdByUser    User                   @relation("QuoteCreatedByUser", fields: [createdBy], references: [id])
+  project          Project?               @relation(fields: [projectId], references: [id])
   lines            QuoteLine[]
   approvalRequests QuoteApprovalRequest[]
   questions        QuoteQuestion[]
@@ -912,6 +1005,9 @@ model Quote {
 
   @@unique([orgId, quoteNumber])
   @@index([orgId, status])
+  @@index([contactId])
+  @@index([requestId])
+  @@index([projectId])
   @@map("imp_quotes")
 }
 
@@ -931,15 +1027,15 @@ model QuoteQuestion {
 }
 
 model QuoteAttachment {
-  id          String  @id @default(uuid()) @db.Uuid
-  quoteId     String  @map("quote_id") @db.Uuid
-  storageKey  String  @map("storage_key")
-  fileName    String  @map("file_name")
-  mimeType    String  @map("mime_type")
-  fileSize    Int     @map("file_size")
-  isStandard  Boolean @default(false) @map("is_standard")
-  sortOrder   Int     @default(0) @map("sort_order")
-  createdAt   DateTime @default(now()) @map("created_at")
+  id         String   @id @default(uuid()) @db.Uuid
+  quoteId    String   @map("quote_id") @db.Uuid
+  storageKey String   @map("storage_key")
+  fileName   String   @map("file_name")
+  mimeType   String   @map("mime_type")
+  fileSize   Int      @map("file_size")
+  isStandard Boolean  @default(false) @map("is_standard")
+  sortOrder  Int      @default(0) @map("sort_order")
+  createdAt  DateTime @default(now()) @map("created_at")
 
   quote Quote @relation(fields: [quoteId], references: [id], onDelete: Cascade)
 
@@ -954,15 +1050,16 @@ model QuoteLine {
   description String
   quantity    Float
   unit        String
-  unitPrice   Float   @map("unit_price")
+  unitPrice   Decimal @map("unit_price") @db.Decimal(12, 2)
   vatRate     Float   @default(21) @map("vat_rate")
   discountPct Float   @default(0) @map("discount_pct")
-  lineTotal   Float   @map("line_total")
+  lineTotal   Decimal @map("line_total") @db.Decimal(12, 2)
   sortOrder   Int     @default(0) @map("sort_order")
 
   quote   Quote    @relation(fields: [quoteId], references: [id], onDelete: Cascade)
   product Product? @relation(fields: [productId], references: [id])
 
+  @@index([quoteId])
   @@map("imp_quote_lines")
 }
 
@@ -980,6 +1077,7 @@ model QuoteApprovalRequest {
   requestedByUser User  @relation("ApprovalRequestedByUser", fields: [requestedBy], references: [id])
   reviewedByUser  User? @relation("ApprovalReviewedByUser", fields: [reviewedBy], references: [id])
 
+  @@index([quoteId])
   @@map("imp_quote_approval_requests")
 }
 
@@ -1001,6 +1099,8 @@ model Notification {
   organization Organization? @relation(fields: [orgId], references: [id])
   user         User          @relation(fields: [userId], references: [id])
 
+  @@index([userId, isRead])
+  @@index([userId, createdAt])
   @@map("imp_notifications")
 }
 
@@ -1077,21 +1177,23 @@ model Task {
   @@index([orgId, status])
   @@index([assigneeId])
   @@index([entityType, entityId])
+  @@index([orgId, deadline])
+  @@index([createdById])
   @@map("imp_tasks")
 }
 
 // ─── Document Management ────────────────────────────────
 
 model Document {
-  id           String             @id @default(uuid()) @db.Uuid
-  orgId        String             @map("org_id") @db.Uuid
-  entityType   DocumentEntityType @map("entity_type")
-  entityId     String             @map("entity_id") @db.Uuid
-  fileName     String             @map("file_name")
-  originalName String             @map("original_name")
-  mimeType     String             @map("mime_type")
-  size         Int
-  storageKey   String             @map("storage_key")
+  id                 String             @id @default(uuid()) @db.Uuid
+  orgId              String             @map("org_id") @db.Uuid
+  entityType         DocumentEntityType @map("entity_type")
+  entityId           String             @map("entity_id") @db.Uuid
+  fileName           String             @map("file_name")
+  originalName       String             @map("original_name")
+  mimeType           String             @map("mime_type")
+  size               Int
+  storageKey         String             @map("storage_key")
   description        String?
   uploadedById       String             @map("uploaded_by_id") @db.Uuid
   isDeleted          Boolean            @default(false) @map("is_deleted")
@@ -1109,58 +1211,60 @@ model Document {
 // ─── PRD-07: Planning & Afspraken ───────────────────────
 
 model PlanningItem {
-  id             String         @id @default(uuid()) @db.Uuid
-  orgId          String         @map("org_id") @db.Uuid
-  quoteId        String?        @map("quote_id") @db.Uuid
-  contactId      String         @map("contact_id") @db.Uuid
-  contactPersonId String?       @map("contact_person_id") @db.Uuid
-  locationId     String?        @map("location_id") @db.Uuid
-  productId      String?        @map("product_id") @db.Uuid
-  productName    String         @map("product_name")
-  status         PlanningStatus @default(NOG_TE_PLANNEN)
-  isCancelled    Boolean        @default(false) @map("is_cancelled")
-  cancelledAt    DateTime?      @map("cancelled_at")
-  cancelledBy    String?        @map("cancelled_by") @db.Uuid
-  cancelReason   String?        @map("cancel_reason")
+  id              String         @id @default(uuid()) @db.Uuid
+  orgId           String         @map("org_id") @db.Uuid
+  quoteId         String?        @map("quote_id") @db.Uuid
+  contactId       String         @map("contact_id") @db.Uuid
+  contactPersonId String?        @map("contact_person_id") @db.Uuid
+  locationId      String?        @map("location_id") @db.Uuid
+  productId       String?        @map("product_id") @db.Uuid
+  productName     String         @map("product_name")
+  status          PlanningStatus @default(NOG_TE_PLANNEN)
+  isCancelled     Boolean        @default(false) @map("is_cancelled")
+  cancelledAt     DateTime?      @map("cancelled_at")
+  cancelledBy     String?        @map("cancelled_by") @db.Uuid
+  cancelReason    String?        @map("cancel_reason")
 
-  scheduledDate  DateTime?      @map("scheduled_date")
-  durationHours  Float?         @map("duration_hours")
-  endTime        DateTime?      @map("end_time")
+  scheduledDate DateTime? @map("scheduled_date")
+  durationHours Float?    @map("duration_hours")
+  endTime       DateTime? @map("end_time")
 
-  isMultiDay     Boolean        @default(false) @map("is_multi_day")
-  sessionCount   Int?           @map("session_count")
+  isMultiDay   Boolean @default(false) @map("is_multi_day")
+  sessionCount Int?    @map("session_count")
 
-  labels         String[]       @default([])
-  internalNotes  String?        @map("internal_notes")
-  publicToken    String         @unique @default(uuid()) @map("public_token")
+  labels        String[] @default([])
+  internalNotes String?  @map("internal_notes")
+  publicToken   String   @unique @default(uuid()) @map("public_token")
 
   // Stored as plain strings (not Prisma relations) to avoid self-referential complexity
-  replacedById   String?        @map("replaced_by_id") @db.Uuid
-  replacesId     String?        @map("replaces_id") @db.Uuid
-  originalDate   DateTime?      @map("original_date")
+  replacedById String?   @map("replaced_by_id") @db.Uuid
+  replacesId   String?   @map("replaces_id") @db.Uuid
+  originalDate DateTime? @map("original_date")
 
-  createdBy      String         @map("created_by") @db.Uuid
-  createdAt      DateTime       @default(now()) @map("created_at")
-  updatedAt      DateTime       @updatedAt @map("updated_at")
+  createdBy String   @map("created_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
-  projectId      String?        @map("project_id") @db.Uuid
+  projectId String? @map("project_id") @db.Uuid
 
-  organization   Organization   @relation(fields: [orgId], references: [id])
-  contact        Contact        @relation(fields: [contactId], references: [id])
-  contactPerson  ContactPerson? @relation(fields: [contactPersonId], references: [id])
-  location       Location?      @relation(fields: [locationId], references: [id])
-  createdByUser  User           @relation("PlanningCreatedByUser", fields: [createdBy], references: [id])
-  project        Project?       @relation(fields: [projectId], references: [id])
-  inspectors     PlanningInspector[]
-  history        PlanningHistory[]
+  organization       Organization        @relation(fields: [orgId], references: [id])
+  contact            Contact             @relation(fields: [contactId], references: [id])
+  contactPerson      ContactPerson?      @relation(fields: [contactPersonId], references: [id])
+  location           Location?           @relation(fields: [locationId], references: [id])
+  createdByUser      User                @relation("PlanningCreatedByUser", fields: [createdBy], references: [id])
+  project            Project?            @relation(fields: [projectId], references: [id])
+  inspectors         PlanningInspector[]
+  history            PlanningHistory[]
   rescheduleRequests RescheduleRequest[]
-  followers      PlanningFollower[]
-  sessions       PlanningSession[]
-  workOrders     WorkOrder[]
+  followers          PlanningFollower[]
+  sessions           PlanningSession[]
+  workOrders         WorkOrder[]
 
   @@index([orgId, status])
   @@index([orgId, scheduledDate])
   @@index([contactId])
+  @@index([quoteId])
+  @@index([projectId])
   @@map("imp_planning_items")
 }
 
@@ -1232,23 +1336,23 @@ model PlanningFollower {
 }
 
 model PlanningSession {
-  id              String        @id @default(uuid()) @db.Uuid
-  planningItemId  String        @map("planning_item_id") @db.Uuid
-  sessionNumber   Int           @map("session_number")
-  scheduledDate   DateTime?     @map("scheduled_date")
-  durationHours   Float?        @map("duration_hours")
-  status          SessionStatus @default(NOG_TE_PLANNEN)
-  notes           String?
-  isDefinitief    Boolean       @default(false) @map("is_definitief")
-  confirmedAt     DateTime?     @map("confirmed_at")
-  confirmedBy     String?       @map("confirmed_by") @db.Uuid
+  id             String        @id @default(uuid()) @db.Uuid
+  planningItemId String        @map("planning_item_id") @db.Uuid
+  sessionNumber  Int           @map("session_number")
+  scheduledDate  DateTime?     @map("scheduled_date")
+  durationHours  Float?        @map("duration_hours")
+  status         SessionStatus @default(NOG_TE_PLANNEN)
+  notes          String?
+  isDefinitief   Boolean       @default(false) @map("is_definitief")
+  confirmedAt    DateTime?     @map("confirmed_at")
+  confirmedBy    String?       @map("confirmed_by") @db.Uuid
   // Reschedule tracking (same pattern as PlanningItem — stored as plain strings)
-  replacedById    String?       @map("replaced_by_id")
-  replacesId      String?       @map("replaces_id")
-  originalDate    DateTime?     @map("original_date")
-  isCancelled     Boolean       @default(false) @map("is_cancelled")
-  createdAt       DateTime      @default(now()) @map("created_at")
-  updatedAt       DateTime      @updatedAt @map("updated_at")
+  replacedById   String?       @map("replaced_by_id") @db.Uuid
+  replacesId     String?       @map("replaces_id") @db.Uuid
+  originalDate   DateTime?     @map("original_date")
+  isCancelled    Boolean       @default(false) @map("is_cancelled")
+  createdAt      DateTime      @default(now()) @map("created_at")
+  updatedAt      DateTime      @updatedAt @map("updated_at")
 
   planningItem      PlanningItem               @relation(fields: [planningItemId], references: [id], onDelete: Cascade)
   sessionInspectors PlanningSessionInspector[]
@@ -1268,8 +1372,8 @@ model PlanningSessionInspector {
   rejectedAt       DateTime?        @map("rejected_at")
   rejectionNote    String?          @map("rejection_note")
 
-  session   PlanningSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  user      User            @relation(fields: [userId], references: [id])
+  session PlanningSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  user    User            @relation(fields: [userId], references: [id])
 
   @@unique([sessionId, userId])
   @@index([sessionId])
@@ -1307,6 +1411,9 @@ model Project {
   quotes         Quote[]
   planningItems  PlanningItem[]
 
+  // Inspectiedomein (Fase 1)
+  inspectionPlans InspectionPlan[]
+
   @@unique([orgId, projectNumber])
   @@index([orgId, status])
   @@index([contactId])
@@ -1337,18 +1444,18 @@ model ProjectFollower {
 // ─── Custom Fields ──────────────────────────────────────
 
 model CustomFieldDefinition {
-  id          String                @id @default(uuid()) @db.Uuid
-  orgId       String                @map("org_id") @db.Uuid
-  entityType  CustomFieldEntityType @map("entity_type")
-  fieldName   String                @map("field_name")
-  label       String
-  fieldType   CustomFieldType       @map("field_type")
-  options     Json?
-  isRequired  Boolean               @default(false) @map("is_required")
-  sortOrder   Int                   @default(0) @map("sort_order")
-  isDeleted   Boolean               @default(false) @map("is_deleted")
-  createdAt   DateTime              @default(now()) @map("created_at")
-  updatedAt   DateTime              @updatedAt @map("updated_at")
+  id         String                @id @default(uuid()) @db.Uuid
+  orgId      String                @map("org_id") @db.Uuid
+  entityType CustomFieldEntityType @map("entity_type")
+  fieldName  String                @map("field_name")
+  label      String
+  fieldType  CustomFieldType       @map("field_type")
+  options    Json?
+  isRequired Boolean               @default(false) @map("is_required")
+  sortOrder  Int                   @default(0) @map("sort_order")
+  isDeleted  Boolean               @default(false) @map("is_deleted")
+  createdAt  DateTime              @default(now()) @map("created_at")
+  updatedAt  DateTime              @updatedAt @map("updated_at")
 
   organization Organization @relation(fields: [orgId], references: [id])
 
@@ -1372,11 +1479,11 @@ model EmailTemplate {
   createdAt DateTime          @default(now()) @map("created_at")
   updatedAt DateTime          @updatedAt @map("updated_at")
 
-  organization           Organization    @relation(fields: [orgId], references: [id])
-  creator                User            @relation("EmailTemplateCreatedBy", fields: [createdBy], references: [id])
-  quoteTemplatesSend     QuoteTemplate[] @relation("QuoteTemplateSendEmail")
-  quoteTemplatesAccepted QuoteTemplate[] @relation("QuoteTemplateAcceptedEmail")
-  followUpRules          QuoteTemplateFollowUp[] @relation("FollowUpEmailTemplate")
+  organization           Organization              @relation(fields: [orgId], references: [id])
+  creator                User                      @relation("EmailTemplateCreatedBy", fields: [createdBy], references: [id])
+  quoteTemplatesSend     QuoteTemplate[]           @relation("QuoteTemplateSendEmail")
+  quoteTemplatesAccepted QuoteTemplate[]           @relation("QuoteTemplateAcceptedEmail")
+  followUpRules          QuoteTemplateFollowUp[]   @relation("FollowUpEmailTemplate")
   attachments            EmailTemplateAttachment[]
 
   @@index([orgId, type])
@@ -1418,8 +1525,8 @@ model ErrorReport {
   createdAt       DateTime          @default(now()) @map("created_at")
   updatedAt       DateTime          @updatedAt @map("updated_at")
 
-  organization    Organization?     @relation(fields: [orgId], references: [id])
-  user            User?             @relation(fields: [userId], references: [id])
+  organization Organization? @relation(fields: [orgId], references: [id])
+  user         User?         @relation(fields: [userId], references: [id])
 
   @@index([status, createdAt])
   @@map("imp_error_reports")
@@ -1465,10 +1572,10 @@ model WorkOrder {
   createdAt       DateTime        @default(now()) @map("created_at")
   updatedAt       DateTime        @updatedAt @map("updated_at")
 
-  organization    Organization    @relation(fields: [orgId], references: [id])
-  planningItem    PlanningItem?   @relation(fields: [planningItemId], references: [id])
-  createdByUser   User            @relation("WorkOrderCreatedByUser", fields: [createdBy], references: [id])
-  lines           WorkOrderLine[]
+  organization  Organization    @relation(fields: [orgId], references: [id])
+  planningItem  PlanningItem?   @relation(fields: [planningItemId], references: [id])
+  createdByUser User            @relation("WorkOrderCreatedByUser", fields: [createdBy], references: [id])
+  lines         WorkOrderLine[]
 
   @@unique([orgId, workOrderNumber])
   @@index([orgId, status])
@@ -1477,19 +1584,2055 @@ model WorkOrder {
 }
 
 model WorkOrderLine {
-  id          String    @id @default(uuid()) @db.Uuid
-  workOrderId String    @map("work_order_id") @db.Uuid
-  productId   String?   @map("product_id") @db.Uuid
+  id          String  @id @default(uuid()) @db.Uuid
+  workOrderId String  @map("work_order_id") @db.Uuid
+  productId   String? @map("product_id") @db.Uuid
   description String
   quantity    Float
   unit        String
-  unitPrice   Float     @map("unit_price")
-  vatRate     Float     @default(21) @map("vat_rate")
-  lineTotal   Float     @map("line_total")
-  sortOrder   Int       @default(0) @map("sort_order")
+  unitPrice   Decimal @map("unit_price") @db.Decimal(12, 2)
+  vatRate     Float   @default(21) @map("vat_rate")
+  lineTotal   Decimal @map("line_total") @db.Decimal(12, 2)
+  sortOrder   Int     @default(0) @map("sort_order")
 
-  workOrder   WorkOrder @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
-  product     Product?  @relation(fields: [productId], references: [id])
+  workOrder WorkOrder @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
+  product   Product?  @relation(fields: [productId], references: [id])
 
+  @@index([workOrderId])
   @@map("imp_work_order_lines")
+}
+
+// =====================================================================
+// FASE 1 — Inspectiedomein voor InspeXi-Beheer
+// =====================================================================
+// Paste-ready Prisma-fragment. Geport uit Inspexi-App en omgezet naar
+// Beheer-conventies:
+//   - id/FK: String @db.Uuid
+//   - tenant: orgId @map("org_id") @db.Uuid  (was organizationId)
+//   - tabellen: @@map("imp_...")
+//   - soft-delete: deletedAt (BEHOUDEN op sync-tabellen voor tombstones)
+//   - rollen/relaties: naar Beheer's Contact / Project / User
+//
+// NIET overgenomen (keuze: hergebruik Beheer-CRM): Client, ClientAddress,
+//   ClientContact, App's Project, OrganizationContact, Team, TeamMember,
+//   App's AuditLog (Beheer-audit blijft leidend), ChecklistCategory (legacy).
+//
+// Dit fragment hoort samen met de "EDITS TO EXISTING MODELS" uit
+// FASE1-SCHEMA.md (back-relations op Organization/User/Contact/
+// ContactPerson/Project). Samen valideren ze met `prisma validate`.
+//
+// Norm: gemodelleerd als vrije code-string (`normTypeCode`) + lookup-model
+//   NormTypeDefinition voor beheer-UI. Status-enums blijven Prisma-enums
+//   (vaste domeinwaarden, niet org-uitbreidbaar) — zie FASE1-SCHEMA.md §3.
+// =====================================================================
+
+// ─── Enums (inspectiedomein) ─────────────────────────────
+// NB: status-/type-LIJSTEN die per org overschrijfbaar zijn, staan NIET hier
+// maar als lookup-tabellen onder "Per-org lookup-tabellen" (kolommen verwijzen
+// ernaar via een vrije code-string, met org-override-resolutie in de service).
+// Hieronder alleen de vaste, code-gebonden enums (state-machine, veldtypes,
+// sync, template-lifecycle) die door backend én PWA gedeeld worden.
+
+enum InspectionExecStatus {
+  not_started
+  in_progress
+  completed
+}
+
+enum FindingInspectionType {
+  visual
+  measurement
+}
+
+enum PhotoEntityType {
+  asset
+  finding
+  inspection_plan
+  location
+}
+
+enum MeasurementDataType {
+  number
+  text
+  select
+  boolean
+}
+
+enum SyncOperation {
+  create
+  update
+  delete
+}
+
+enum SyncStatus {
+  pending
+  processing
+  completed
+  failed
+  conflict
+}
+
+enum ChecklistStatus {
+  CONCEPT
+  ACTIEF
+  VERVALLEN
+}
+
+enum AssetFieldType {
+  text
+  number
+  select
+  checkbox
+  date
+  textarea
+}
+
+enum TemplateStatus {
+  CONCEPT
+  ACTIEF
+  VERVALLEN
+}
+
+enum DocumentType {
+  PLAN
+  REPORT
+}
+
+enum TemplateMode {
+  SECTIONS
+  BLOCKS
+  DOCX
+}
+
+enum SectionType {
+  STATIC
+  REPEATING
+  TABLE_OF_CONTENTS
+  SIGNATURE_BLOCK
+  CONDITIONAL
+}
+
+enum GeneratedDocumentStatus {
+  DRAFT
+  PENDING_SIGNATURES
+  SIGNED
+  FINALIZED
+}
+
+enum SignatureStatus {
+  PENDING
+  REQUESTED
+  SIGNED
+  DECLINED
+  EXPIRED
+}
+
+enum MeasurementSheetTemplateStatus {
+  CONCEPT
+  ACTIEF
+  VERVALLEN
+}
+
+enum MeasurementSheetFieldType {
+  NUMBER
+  TEXT
+  TEXTAREA
+  CHECKBOX
+  DROPDOWN
+  CALCULATED
+  PHOTO
+}
+
+enum MeasurementSheetFieldWidth {
+  QUARTER
+  THIRD
+  HALF
+  TWO_THIRDS
+  THREE_QUARTERS
+  FULL
+}
+
+enum PassFailOperator {
+  GTE
+  GT
+  LTE
+  LT
+  EQ
+  RANGE
+  IN
+}
+
+enum MeasurementSheetRecordStatus {
+  IN_PROGRESS
+  COMPLETED
+  VALIDATED
+}
+
+enum ClientUserStatus {
+  PENDING
+  ACTIVE
+  INACTIVE
+}
+
+enum ClientAccessRole {
+  VIEWER
+  SIGNER
+  ADMIN
+}
+
+enum MarkerType {
+  ASSET
+  MEASUREMENT
+  FINDING
+}
+
+// ─── Per-org lookup-tabellen (overschrijfbare status/type-lijsten) ──
+// Beheer-stijl: orgId null = globale systeemdefault; org-rij met dezelfde
+// `code` overschrijft label/kleur/volgorde/actief voor die org. Entiteiten
+// bewaren alleen de `code`-string; de service resolveert met org-voorrang:
+//   WHERE code = :code AND (org_id = :orgId OR org_id IS NULL) ORDER BY org_id NULLS LAST
+// Geen harde Prisma-relatie (code is niet globaal uniek); validatie in service.
+// Vaste systeemcodes blijven leidend voor state-machine-logica; orgs mogen
+// herlabelen of EIGEN extra codes toevoegen.
+
+model InspectionTypeOption {
+  id        String   @id @default(uuid()) @db.Uuid
+  orgId     String?  @map("org_id") @db.Uuid
+  code      String
+  label     String
+  color     String?
+  sortOrder Int      @default(0) @map("sort_order")
+  isActive  Boolean  @default(true) @map("is_active")
+  isSystem  Boolean  @default(false) @map("is_system")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  organization Organization? @relation(fields: [orgId], references: [id])
+
+  @@unique([orgId, code])
+  @@index([orgId, isActive])
+  @@map("imp_inspection_types")
+}
+
+model PlanStatusType {
+  id        String   @id @default(uuid()) @db.Uuid
+  orgId     String?  @map("org_id") @db.Uuid
+  code      String
+  label     String
+  color     String?
+  sortOrder Int      @default(0) @map("sort_order")
+  isActive  Boolean  @default(true) @map("is_active")
+  isSystem  Boolean  @default(false) @map("is_system")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  organization Organization? @relation(fields: [orgId], references: [id])
+
+  @@unique([orgId, code])
+  @@index([orgId, isActive])
+  @@map("imp_plan_status_types")
+}
+
+model AssetStatusType {
+  id        String   @id @default(uuid()) @db.Uuid
+  orgId     String?  @map("org_id") @db.Uuid
+  code      String
+  label     String
+  color     String?
+  sortOrder Int      @default(0) @map("sort_order")
+  isActive  Boolean  @default(true) @map("is_active")
+  isSystem  Boolean  @default(false) @map("is_system")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  organization Organization? @relation(fields: [orgId], references: [id])
+
+  @@unique([orgId, code])
+  @@index([orgId, isActive])
+  @@map("imp_asset_status_types")
+}
+
+model FindingStatusType {
+  id        String   @id @default(uuid()) @db.Uuid
+  orgId     String?  @map("org_id") @db.Uuid
+  code      String
+  label     String
+  color     String?
+  sortOrder Int      @default(0) @map("sort_order")
+  isActive  Boolean  @default(true) @map("is_active")
+  isSystem  Boolean  @default(false) @map("is_system")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  organization Organization? @relation(fields: [orgId], references: [id])
+
+  @@unique([orgId, code])
+  @@index([orgId, isActive])
+  @@map("imp_finding_status_types")
+}
+
+model ReportStatusType {
+  id        String   @id @default(uuid()) @db.Uuid
+  orgId     String?  @map("org_id") @db.Uuid
+  code      String
+  label     String
+  color     String?
+  sortOrder Int      @default(0) @map("sort_order")
+  isActive  Boolean  @default(true) @map("is_active")
+  isSystem  Boolean  @default(false) @map("is_system")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  organization Organization? @relation(fields: [orgId], references: [id])
+
+  @@unique([orgId, code])
+  @@index([orgId, isActive])
+  @@map("imp_report_status_types")
+}
+
+model SignatoryTypeOption {
+  id        String   @id @default(uuid()) @db.Uuid
+  orgId     String?  @map("org_id") @db.Uuid
+  code      String
+  label     String
+  color     String?
+  sortOrder Int      @default(0) @map("sort_order")
+  isActive  Boolean  @default(true) @map("is_active")
+  isSystem  Boolean  @default(false) @map("is_system")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  organization Organization? @relation(fields: [orgId], references: [id])
+
+  @@unique([orgId, code])
+  @@index([orgId, isActive])
+  @@map("imp_signatory_types")
+}
+
+model SignerRoleOption {
+  id        String   @id @default(uuid()) @db.Uuid
+  orgId     String?  @map("org_id") @db.Uuid
+  code      String
+  label     String
+  color     String?
+  sortOrder Int      @default(0) @map("sort_order")
+  isActive  Boolean  @default(true) @map("is_active")
+  isSystem  Boolean  @default(false) @map("is_system")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  organization Organization? @relation(fields: [orgId], references: [id])
+
+  @@unique([orgId, code])
+  @@index([orgId, isActive])
+  @@map("imp_signer_roles")
+}
+
+model PassFailStatusType {
+  id        String   @id @default(uuid()) @db.Uuid
+  orgId     String?  @map("org_id") @db.Uuid
+  code      String
+  label     String
+  color     String?
+  sortOrder Int      @default(0) @map("sort_order")
+  isActive  Boolean  @default(true) @map("is_active")
+  isSystem  Boolean  @default(false) @map("is_system")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  organization Organization? @relation(fields: [orgId], references: [id])
+
+  @@unique([orgId, code])
+  @@index([orgId, isActive])
+  @@map("imp_pass_fail_status_types")
+}
+
+model ResolutionStatusType {
+  id        String   @id @default(uuid()) @db.Uuid
+  orgId     String?  @map("org_id") @db.Uuid
+  code      String
+  label     String
+  color     String?
+  sortOrder Int      @default(0) @map("sort_order")
+  isActive  Boolean  @default(true) @map("is_active")
+  isSystem  Boolean  @default(false) @map("is_system")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  organization Organization? @relation(fields: [orgId], references: [id])
+
+  @@unique([orgId, code])
+  @@index([orgId, isActive])
+  @@map("imp_resolution_status_types")
+}
+
+model ClientRequestTypeOption {
+  id        String   @id @default(uuid()) @db.Uuid
+  orgId     String?  @map("org_id") @db.Uuid
+  code      String
+  label     String
+  color     String?
+  sortOrder Int      @default(0) @map("sort_order")
+  isActive  Boolean  @default(true) @map("is_active")
+  isSystem  Boolean  @default(false) @map("is_system")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  organization Organization? @relation(fields: [orgId], references: [id])
+
+  @@unique([orgId, code])
+  @@index([orgId, isActive])
+  @@map("imp_client_request_types")
+}
+
+model ClientRequestStatusType {
+  id        String   @id @default(uuid()) @db.Uuid
+  orgId     String?  @map("org_id") @db.Uuid
+  code      String
+  label     String
+  color     String?
+  sortOrder Int      @default(0) @map("sort_order")
+  isActive  Boolean  @default(true) @map("is_active")
+  isSystem  Boolean  @default(false) @map("is_system")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  organization Organization? @relation(fields: [orgId], references: [id])
+
+  @@unique([orgId, code])
+  @@index([orgId, isActive])
+  @@map("imp_client_request_status_types")
+}
+
+// ─── Norm & Classificatie ────────────────────────────────
+
+/// Lookup van inspectienormen (NEN1010, SCOPE_8, ...). Globaal (geen orgId).
+model NormTypeDefinition {
+  id          String   @id @default(uuid()) @db.Uuid
+  code        String   @unique
+  label       String
+  description String?
+  assetTypes  String[] @map("asset_types")
+
+  classificationModelId String?              @map("classification_model_id") @db.Uuid
+  classificationModel   ClassificationModel? @relation(fields: [classificationModelId], references: [id])
+
+  isActive  Boolean   @default(true) @map("is_active")
+  sortOrder Int       @default(0) @map("sort_order")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+  createdBy String    @map("created_by") @db.Uuid
+
+  @@index([isActive])
+  @@index([code])
+  @@index([classificationModelId])
+  @@map("imp_norm_type_definitions")
+}
+
+/// Per-org of globale (orgId null) configuratie van een norm-versie.
+model NormConfiguration {
+  id           String    @id @default(uuid()) @db.Uuid
+  orgId        String?   @map("org_id") @db.Uuid
+  normTypeCode String    @map("norm_type")
+  normVersion  String    @map("norm_version")
+  name         String
+  description  String?
+  assetTypes   Json      @default("[]") @map("asset_types")
+  isActive     Boolean   @default(true) @map("is_active")
+  validFrom    DateTime? @map("valid_from") @db.Date
+  validUntil   DateTime? @map("valid_until") @db.Date
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  organization              Organization?              @relation(fields: [orgId], references: [id])
+  measurementFieldTemplates MeasurementFieldTemplate[]
+
+  @@index([orgId])
+  @@index([normTypeCode])
+  @@map("imp_norm_configurations")
+}
+
+/// Classificatiemodel (alleen systeemniveau).
+model ClassificationModel {
+  id          String   @id @default(uuid()) @db.Uuid
+  code        String   @unique
+  name        String
+  description String?
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  createdBy   String   @map("created_by") @db.Uuid
+
+  characteristics     ClassificationCharacteristic[]
+  findingTemplates    FindingTemplate[]
+  normTypeDefinitions NormTypeDefinition[]
+  inspectionTemplates InspectionTemplate[]
+
+  @@index([isActive])
+  @@map("imp_classification_models")
+}
+
+model ClassificationCharacteristic {
+  id                    String  @id @default(uuid()) @db.Uuid
+  classificationModelId String  @map("classification_model_id") @db.Uuid
+  code                  String
+  name                  String
+  description           String?
+  sortOrder             Int     @default(0) @map("sort_order")
+
+  classificationModel ClassificationModel    @relation(fields: [classificationModelId], references: [id], onDelete: Cascade)
+  options             ClassificationOption[]
+
+  @@unique([classificationModelId, code])
+  @@index([classificationModelId, sortOrder])
+  @@map("imp_classification_characteristics")
+}
+
+model ClassificationOption {
+  id               String  @id @default(uuid()) @db.Uuid
+  characteristicId String  @map("characteristic_id") @db.Uuid
+  code             String
+  name             String
+  description      String?
+  color            String
+  sortOrder        Int     @default(0) @map("sort_order")
+
+  characteristic ClassificationCharacteristic @relation(fields: [characteristicId], references: [id], onDelete: Cascade)
+
+  @@unique([characteristicId, code])
+  @@index([characteristicId, sortOrder])
+  @@map("imp_classification_options")
+}
+
+// ─── Inspectieplan (kern) ────────────────────────────────
+
+model InspectionPlan {
+  id        String  @id @default(uuid()) @db.Uuid
+  orgId     String  @map("org_id") @db.Uuid
+  contactId String  @map("contact_id") @db.Uuid // was clientId → Beheer Contact
+  projectId String? @map("project_id") @db.Uuid // Beheer Project
+
+  inspectionTemplateId String? @map("inspection_template_id") @db.Uuid
+
+  projectName     String  @map("project_name")
+  description     String?
+  referenceNumber String? @map("reference_number")
+
+  normTypeCode       String @map("norm_type")
+  inspectionTypeCode String @default("initial") @map("inspection_type") // → imp_inspection_types.code
+
+  addressStreet      String?  @map("address_street")
+  addressHouseNumber String?  @map("address_house_number")
+  addressPostalCode  String?  @map("address_postal_code")
+  addressCity        String?  @map("address_city")
+  gpsLatitude        Decimal? @map("gps_latitude") @db.Decimal(10, 8)
+  gpsLongitude       Decimal? @map("gps_longitude") @db.Decimal(11, 8)
+
+  plannedDate          DateTime? @map("planned_date") @db.Date
+  plannedDurationHours Decimal?  @map("planned_duration_hours") @db.Decimal(4, 1)
+  deadline             DateTime? @db.Date
+
+  assignedTo String? @map("assigned_to") @db.Uuid
+  reviewerId String? @map("reviewer_id") @db.Uuid
+
+  statusCode  String    @default("draft") @map("status") // → imp_plan_status_types.code
+  startedAt   DateTime? @map("started_at")
+  submittedAt DateTime? @map("submitted_at")
+  reviewedAt  DateTime? @map("reviewed_at")
+  approvedAt  DateTime? @map("approved_at")
+  completedAt DateTime? @map("completed_at")
+
+  installationResponsibleId String? @map("installation_responsible_id") @db.Uuid // → ContactPerson
+
+  notes         String?
+  internalNotes String? @map("internal_notes")
+  metadata      Json    @default("{}")
+
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+  syncedAt       DateTime? @map("synced_at")
+  createdBy      String?   @map("created_by") @db.Uuid
+  lastModifiedBy String?   @map("last_modified_by") @db.Uuid
+  deviceId       String?   @map("device_id")
+  deletedAt      DateTime? @map("deleted_at")
+
+  organization            Organization        @relation(fields: [orgId], references: [id])
+  contact                 Contact             @relation(fields: [contactId], references: [id])
+  project                 Project?            @relation(fields: [projectId], references: [id])
+  assignedUser            User?               @relation("InspectionPlanAssignee", fields: [assignedTo], references: [id])
+  reviewer                User?               @relation("InspectionPlanReviewer", fields: [reviewerId], references: [id])
+  installationResponsible ContactPerson?      @relation("PlanInstallationResponsible", fields: [installationResponsibleId], references: [id])
+  createdByUser           User?               @relation("InspectionPlanCreatedBy", fields: [createdBy], references: [id])
+  lastModifiedByUser      User?               @relation("InspectionPlanModifiedBy", fields: [lastModifiedBy], references: [id])
+  inspectionTemplate      InspectionTemplate? @relation(fields: [inspectionTemplateId], references: [id])
+
+  assets                  Asset[]
+  locations               InspectionLocation[]
+  signatures              Signature[]
+  reports                 Report[]
+  measurementSheetRecords MeasurementSheetRecord[]
+  generatedDocuments      GeneratedDocument[]
+  clientAccess            InspectionClientAccess[]
+  magicLinks              ClientMagicLink[]
+  inspectionMessages      InspectionMessage[]
+  clientRequests          ClientRequest[]          @relation("RelatedInspectionPlan")
+  standaloneMeasurements  StandaloneMeasurement[]
+
+  @@index([orgId, statusCode])
+  @@index([contactId])
+  @@index([projectId])
+  @@index([assignedTo])
+  @@map("imp_inspection_plans")
+}
+
+model Asset {
+  id               String  @id @default(uuid()) @db.Uuid
+  orgId            String  @map("org_id") @db.Uuid // denormaliseerd voor tenant-scope
+  inspectionPlanId String  @map("inspection_plan_id") @db.Uuid
+  parentAssetId    String? @map("parent_asset_id") @db.Uuid
+  locationId       String? @map("location_id") @db.Uuid
+
+  assetType           String  @map("asset_type")
+  name                String
+  identifier          String?
+  locationDescription String? @map("location_description")
+
+  sortOrder     Int     @default(0) @map("sort_order")
+  treePath      String? @map("tree_path")
+  statusCode    String  @default("new") @map("status") // → imp_asset_status_types.code
+  technicalData Json    @default("{}") @map("technical_data")
+  notes         String?
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  syncedAt  DateTime? @map("synced_at")
+  createdBy String?   @map("created_by") @db.Uuid
+  deviceId  String?   @map("device_id")
+  deletedAt DateTime? @map("deleted_at")
+
+  organization            Organization             @relation(fields: [orgId], references: [id])
+  inspectionPlan          InspectionPlan           @relation(fields: [inspectionPlanId], references: [id], onDelete: Cascade)
+  parentAsset             Asset?                   @relation("AssetHierarchy", fields: [parentAssetId], references: [id])
+  childAssets             Asset[]                  @relation("AssetHierarchy")
+  location                InspectionLocation?      @relation("AssetLocation", fields: [locationId], references: [id])
+  createdByUser           User?                    @relation("AssetCreatedBy", fields: [createdBy], references: [id])
+  visualInspections       VisualInspection[]
+  measurementRecords      MeasurementRecord[]
+  findings                Finding[]
+  measurementSheetRecords MeasurementSheetRecord[]
+  markers                 LocationImageMarker[]
+  linkedMeasurements      StandaloneMeasurement[]  @relation("LinkedAsset")
+
+  @@index([orgId])
+  @@index([inspectionPlanId])
+  @@map("imp_assets")
+}
+
+model VisualInspection {
+  id      String @id @default(uuid()) @db.Uuid
+  orgId   String @map("org_id") @db.Uuid
+  assetId String @map("asset_id") @db.Uuid
+
+  status           InspectionExecStatus @default(not_started)
+  checklistResults Json                 @default("[]") @map("checklist_results")
+
+  startedAt   DateTime? @map("started_at")
+  completedAt DateTime? @map("completed_at")
+  inspectorId String?   @map("inspector_id") @db.Uuid
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  syncedAt  DateTime? @map("synced_at")
+  deviceId  String?   @map("device_id")
+
+  organization Organization @relation(fields: [orgId], references: [id])
+  asset        Asset        @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  inspector    User?        @relation("VisualInspectionInspector", fields: [inspectorId], references: [id])
+  findings     Finding[]
+
+  @@index([orgId])
+  @@index([assetId])
+  @@map("imp_visual_inspections")
+}
+
+model MeasurementRecord {
+  id      String @id @default(uuid()) @db.Uuid
+  orgId   String @map("org_id") @db.Uuid
+  assetId String @map("asset_id") @db.Uuid
+
+  status       InspectionExecStatus @default(not_started)
+  measurements Json                 @default("[]")
+
+  instrumentType   String?   @map("instrument_type")
+  instrumentSerial String?   @map("instrument_serial")
+  calibrationDate  DateTime? @map("calibration_date") @db.Date
+
+  startedAt   DateTime? @map("started_at")
+  completedAt DateTime? @map("completed_at")
+  inspectorId String?   @map("inspector_id") @db.Uuid
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  syncedAt  DateTime? @map("synced_at")
+  deviceId  String?   @map("device_id")
+
+  organization Organization @relation(fields: [orgId], references: [id])
+  asset        Asset        @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  inspector    User?        @relation("MeasurementRecordInspector", fields: [inspectorId], references: [id])
+  findings     Finding[]
+
+  @@index([orgId])
+  @@index([assetId])
+  @@map("imp_measurement_records")
+}
+
+model Finding {
+  id                  String  @id @default(uuid()) @db.Uuid
+  orgId               String  @map("org_id") @db.Uuid
+  assetId             String  @map("asset_id") @db.Uuid
+  visualInspectionId  String? @map("visual_inspection_id") @db.Uuid
+  measurementRecordId String? @map("measurement_record_id") @db.Uuid
+  findingTemplateId   String? @map("finding_template_id") @db.Uuid
+
+  inspectionType FindingInspectionType @map("inspection_type")
+
+  shortDescription     String  @map("short_description")
+  longDescription      String? @map("long_description")
+  classificationValues Json    @default("{}") @map("classification_values")
+
+  locationDescription String? @map("location_description")
+  locationMarker      Json?   @map("location_marker")
+
+  recommendation       String?
+  recommendationCustom String? @map("recommendation_custom")
+  normReference        String? @map("norm_reference")
+  checklistItemId      String? @map("checklist_item_id") @db.Uuid
+
+  statusCode      String    @default("open") @map("status") // → imp_finding_status_types.code
+  resolvedAt      DateTime? @map("resolved_at")
+  resolvedBy      String?   @map("resolved_by") @db.Uuid
+  resolutionNotes String?   @map("resolution_notes")
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  syncedAt  DateTime? @map("synced_at")
+  createdBy String?   @map("created_by") @db.Uuid
+  deviceId  String?   @map("device_id")
+  deletedAt DateTime? @map("deleted_at")
+
+  organization      Organization          @relation(fields: [orgId], references: [id])
+  asset             Asset                 @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  visualInspection  VisualInspection?     @relation(fields: [visualInspectionId], references: [id])
+  measurementRecord MeasurementRecord?    @relation(fields: [measurementRecordId], references: [id])
+  findingTemplate   FindingTemplate?      @relation(fields: [findingTemplateId], references: [id])
+  createdByUser     User?                 @relation("FindingCreatedBy", fields: [createdBy], references: [id])
+  resolvedByUser    User?                 @relation("FindingResolvedBy", fields: [resolvedBy], references: [id])
+  resolutions       FindingResolution[]
+  markers           LocationImageMarker[]
+
+  @@index([orgId])
+  @@index([assetId])
+  @@index([findingTemplateId])
+  @@map("imp_findings")
+}
+
+model Photo {
+  id    String @id @default(uuid()) @db.Uuid
+  orgId String @map("org_id") @db.Uuid
+
+  entityType PhotoEntityType @map("entity_type")
+  entityId   String          @map("entity_id") @db.Uuid
+
+  storagePath      String  @map("storage_path")
+  thumbnailPath    String? @map("thumbnail_path")
+  originalFilename String? @map("original_filename")
+  fileSize         Int?    @map("file_size")
+  mimeType         String  @default("image/jpeg") @map("mime_type")
+  width            Int?
+  height           Int?
+
+  capturedAt   DateTime? @map("captured_at")
+  gpsLatitude  Decimal?  @map("gps_latitude") @db.Decimal(10, 8)
+  gpsLongitude Decimal?  @map("gps_longitude") @db.Decimal(11, 8)
+  deviceInfo   Json?     @map("device_info")
+  annotations  Json      @default("[]")
+  sortOrder    Int       @default(0) @map("sort_order")
+  caption      String?
+
+  createdAt  DateTime  @default(now()) @map("created_at")
+  syncedAt   DateTime? @map("synced_at")
+  uploadedBy String?   @map("uploaded_by") @db.Uuid
+  deviceId   String?   @map("device_id")
+  deletedAt  DateTime? @map("deleted_at")
+
+  organization   Organization @relation(fields: [orgId], references: [id])
+  uploadedByUser User?        @relation("PhotoUploadedBy", fields: [uploadedBy], references: [id])
+
+  @@index([orgId])
+  @@index([entityType, entityId])
+  @@map("imp_photos")
+}
+
+model Signature {
+  id               String @id @default(uuid()) @db.Uuid
+  orgId            String @map("org_id") @db.Uuid
+  inspectionPlanId String @map("inspection_plan_id") @db.Uuid
+
+  signatoryTypeCode  String  @map("signatory_type") // → imp_signatory_types.code
+  signatoryName      String  @map("signatory_name")
+  signatoryFunction  String? @map("signatory_function")
+  signatoryUserId    String? @map("signatory_user_id") @db.Uuid
+  signatoryContactId String? @map("signatory_contact_id") @db.Uuid // → ContactPerson
+
+  signatureData String  @map("signature_data")
+  signatureHash String? @map("signature_hash")
+
+  signedAt     DateTime @default(now()) @map("signed_at")
+  ipAddress    String?  @map("ip_address")
+  deviceInfo   Json?    @map("device_info")
+  gpsLatitude  Decimal? @map("gps_latitude") @db.Decimal(10, 8)
+  gpsLongitude Decimal? @map("gps_longitude") @db.Decimal(11, 8)
+
+  syncedAt DateTime? @map("synced_at")
+  deviceId String?   @map("device_id")
+
+  organization     Organization   @relation(fields: [orgId], references: [id])
+  inspectionPlan   InspectionPlan @relation(fields: [inspectionPlanId], references: [id], onDelete: Cascade)
+  signatoryUser    User?          @relation("SignatoryUser", fields: [signatoryUserId], references: [id])
+  signatoryContact ContactPerson? @relation("SignatoryContactPerson", fields: [signatoryContactId], references: [id])
+
+  @@index([orgId])
+  @@index([inspectionPlanId])
+  @@map("imp_signatures")
+}
+
+model Report {
+  id               String @id @default(uuid()) @db.Uuid
+  orgId            String @map("org_id") @db.Uuid
+  inspectionPlanId String @map("inspection_plan_id") @db.Uuid
+
+  version       Int     @default(1)
+  templateId    String? @map("template_id") @db.Uuid
+  statusCode    String  @default("draft") @map("status") // → imp_report_status_types.code
+  customContent Json    @default("{}") @map("custom_content")
+  pdfPath       String? @map("pdf_path")
+  wordPath      String? @map("word_path")
+
+  approvedBy    String?   @map("approved_by") @db.Uuid
+  approvedAt    DateTime? @map("approved_at")
+  approvalNotes String?   @map("approval_notes")
+
+  sentAt         DateTime? @map("sent_at")
+  sentTo         Json      @default("[]") @map("sent_to")
+  deliveryStatus String?   @map("delivery_status")
+
+  generatedAt DateTime? @map("generated_at")
+  fileSize    Int?      @map("file_size")
+  pageCount   Int?      @map("page_count")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  createdBy String?  @map("created_by") @db.Uuid
+
+  organization   Organization    @relation(fields: [orgId], references: [id])
+  inspectionPlan InspectionPlan  @relation(fields: [inspectionPlanId], references: [id])
+  template       ReportTemplate? @relation(fields: [templateId], references: [id])
+  approvedByUser User?           @relation("ReportApprovedBy", fields: [approvedBy], references: [id])
+  createdByUser  User?           @relation("ReportCreatedBy", fields: [createdBy], references: [id])
+
+  @@index([orgId])
+  @@index([inspectionPlanId])
+  @@map("imp_reports")
+}
+
+// ─── Inspectie-locaties (hernoemd t.o.v. Beheer's Location) ──
+
+model InspectionLocation {
+  id               String  @id @default(uuid()) @db.Uuid
+  orgId            String  @map("org_id") @db.Uuid
+  inspectionPlanId String  @map("inspection_plan_id") @db.Uuid
+  parentLocationId String? @map("parent_location_id") @db.Uuid
+
+  locationType  String  @map("location_type")
+  name          String
+  identifier    String?
+  description   String?
+  sortOrder     Int     @default(0) @map("sort_order")
+  treePath      String? @map("tree_path")
+  technicalData Json    @default("{}") @map("technical_data")
+  notes         String?
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  syncedAt  DateTime? @map("synced_at")
+  createdBy String?   @map("created_by") @db.Uuid
+  deviceId  String?   @map("device_id")
+  deletedAt DateTime? @map("deleted_at")
+
+  organization           Organization            @relation(fields: [orgId], references: [id])
+  inspectionPlan         InspectionPlan          @relation(fields: [inspectionPlanId], references: [id], onDelete: Cascade)
+  parentLocation         InspectionLocation?     @relation("InspectionLocationHierarchy", fields: [parentLocationId], references: [id])
+  childLocations         InspectionLocation[]    @relation("InspectionLocationHierarchy")
+  createdByUser          User?                   @relation("InspectionLocationCreatedBy", fields: [createdBy], references: [id])
+  assets                 Asset[]                 @relation("AssetLocation")
+  image                  LocationImage?
+  standaloneMeasurements StandaloneMeasurement[]
+
+  @@index([orgId])
+  @@index([inspectionPlanId])
+  @@map("imp_inspection_locations")
+}
+
+// ─── Checklistbeheer ─────────────────────────────────────
+
+model ChecklistItem {
+  id       String  @id @default(uuid()) @db.Uuid
+  isSystem Boolean @default(false) @map("is_system")
+  orgId    String? @map("org_id") @db.Uuid
+
+  code          String?
+  question      String
+  instruction   String?
+  normReference String? @map("norm_reference")
+  categoryId    String? @map("category_id") @db.Uuid
+
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  createdBy String   @map("created_by") @db.Uuid
+
+  organization       Organization?       @relation(fields: [orgId], references: [id])
+  category           Category?           @relation(fields: [categoryId], references: [id])
+  checklistItemLinks ChecklistItemLink[]
+
+  @@unique([orgId, code])
+  @@index([orgId, isSystem])
+  @@index([categoryId])
+  @@map("imp_checklist_items")
+}
+
+model Checklist {
+  id       String  @id @default(uuid()) @db.Uuid
+  isSystem Boolean @default(false) @map("is_system")
+  orgId    String? @map("org_id") @db.Uuid
+
+  code          String?
+  name          String
+  description   String?
+  normTypeCode  String   @map("norm_type")
+  assetTypes    String[] @map("asset_types")
+  locationTypes String[] @map("location_types")
+
+  version           String          @default("1.0")
+  status            ChecklistStatus @default(CONCEPT)
+  previousVersionId String?         @map("previous_version_id") @db.Uuid
+
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  publishedAt DateTime? @map("published_at")
+  retiredAt   DateTime? @map("retired_at")
+  createdBy   String    @map("created_by") @db.Uuid
+  updatedBy   String?   @map("updated_by") @db.Uuid
+
+  organization            Organization?                     @relation(fields: [orgId], references: [id])
+  previousVersion         Checklist?                        @relation("ChecklistVersionHistory", fields: [previousVersionId], references: [id])
+  nextVersions            Checklist[]                       @relation("ChecklistVersionHistory")
+  itemLinks               ChecklistItemLink[]
+  versionHistory          ChecklistVersionHistory[]
+  inspectionTemplateLinks InspectionTemplateChecklistLink[]
+
+  @@unique([orgId, code, version])
+  @@index([orgId, isSystem])
+  @@index([normTypeCode])
+  @@index([status])
+  @@map("imp_checklists")
+}
+
+model ChecklistItemLink {
+  id              String @id @default(uuid()) @db.Uuid
+  checklistId     String @map("checklist_id") @db.Uuid
+  checklistItemId String @map("checklist_item_id") @db.Uuid
+
+  sortOrder        Int     @default(0) @map("sort_order")
+  isRequired       Boolean @default(true) @map("is_required")
+  categoryOverride String? @map("category_override")
+
+  checklist     Checklist     @relation(fields: [checklistId], references: [id], onDelete: Cascade)
+  checklistItem ChecklistItem @relation(fields: [checklistItemId], references: [id])
+
+  @@unique([checklistId, checklistItemId])
+  @@index([checklistId, sortOrder])
+  @@map("imp_checklist_item_links")
+}
+
+model ChecklistVersionHistory {
+  id          String @id @default(uuid()) @db.Uuid
+  checklistId String @map("checklist_id") @db.Uuid
+
+  fromVersion       String          @map("from_version")
+  toVersion         String          @map("to_version")
+  fromStatus        ChecklistStatus @map("from_status")
+  toStatus          ChecklistStatus @map("to_status")
+  changeDescription String          @map("change_description")
+  approvalReason    String?         @map("approval_reason")
+  changedBy         String          @map("changed_by") @db.Uuid
+  changedAt         DateTime        @default(now()) @map("changed_at")
+  snapshot          Json?
+
+  checklist Checklist @relation(fields: [checklistId], references: [id])
+
+  @@index([checklistId, changedAt])
+  @@map("imp_checklist_version_history")
+}
+
+/// Uniforme categorieën voor checklists én constateringen.
+model Category {
+  id       String  @id @default(uuid()) @db.Uuid
+  isSystem Boolean @default(false) @map("is_system")
+  orgId    String? @map("org_id") @db.Uuid
+
+  name        String
+  description String?
+  color       String?
+  icon        String?
+  parentId    String? @map("parent_id") @db.Uuid
+  sortOrder   Int     @default(0) @map("sort_order")
+  isActive    Boolean @default(true) @map("is_active")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  createdBy String   @map("created_by") @db.Uuid
+
+  organization     Organization?     @relation(fields: [orgId], references: [id])
+  parent           Category?         @relation("CategoryHierarchy", fields: [parentId], references: [id])
+  children         Category[]        @relation("CategoryHierarchy")
+  checklistItems   ChecklistItem[]
+  findingTemplates FindingTemplate[]
+
+  @@unique([orgId, name, parentId])
+  @@index([orgId, isSystem])
+  @@index([parentId])
+  @@map("imp_categories")
+}
+
+// ─── Templates (constatering / meting / rapport) ─────────
+
+model FindingTemplate {
+  id       String  @id @default(uuid()) @db.Uuid
+  isSystem Boolean @default(false) @map("is_system")
+  orgId    String? @map("org_id") @db.Uuid
+
+  code             String?
+  categoryId       String? @map("category_id") @db.Uuid
+  shortDescription String  @map("short_description")
+  longDescription  String? @map("long_description")
+  explanation      String?
+  normReference    String? @map("norm_reference")
+
+  classificationModelId String @map("classification_model_id") @db.Uuid
+  defaultClassification Json   @default("{}") @map("default_classification")
+
+  usageCount Int       @default(0) @map("usage_count")
+  lastUsedAt DateTime? @map("last_used_at")
+  isActive   Boolean   @default(true) @map("is_active")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+  createdBy  String    @map("created_by") @db.Uuid
+
+  organization        Organization?           @relation(fields: [orgId], references: [id])
+  category            Category?               @relation(fields: [categoryId], references: [id])
+  classificationModel ClassificationModel     @relation(fields: [classificationModelId], references: [id])
+  findings            Finding[]
+  autoFindingFields   MeasurementSheetField[] @relation("FieldAutoFinding")
+
+  @@unique([orgId, code])
+  @@index([orgId, isSystem])
+  @@index([categoryId])
+  @@index([classificationModelId])
+  @@map("imp_finding_templates")
+}
+
+model MeasurementFieldTemplate {
+  id                  String @id @default(uuid()) @db.Uuid
+  normConfigurationId String @map("norm_configuration_id") @db.Uuid
+
+  fieldId     String              @map("field_id")
+  name        String
+  description String?
+  dataType    MeasurementDataType @map("data_type")
+  unit        String?
+
+  minValue      Decimal? @map("min_value") @db.Decimal(12, 4)
+  maxValue      Decimal? @map("max_value") @db.Decimal(12, 4)
+  allowedValues Json?    @map("allowed_values")
+  regexPattern  String?  @map("regex_pattern")
+  passCriteria  Json?    @map("pass_criteria")
+  assetTypes    Json     @default("[]") @map("asset_types")
+
+  sortOrder  Int      @default(0) @map("sort_order")
+  isRequired Boolean  @default(true) @map("is_required")
+  isActive   Boolean  @default(true) @map("is_active")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  normConfiguration           NormConfiguration            @relation(fields: [normConfigurationId], references: [id])
+  assetTypeMeasurementConfigs AssetTypeMeasurementConfig[]
+
+  @@map("imp_measurement_field_templates")
+}
+
+model ReportTemplate {
+  id    String  @id @default(uuid()) @db.Uuid
+  orgId String? @map("org_id") @db.Uuid
+
+  name        String
+  description String?
+  normTypes   Json    @default("[]") @map("norm_types")
+
+  headerTemplate  String? @map("header_template")
+  footerTemplate  String? @map("footer_template")
+  coverTemplate   String? @map("cover_template")
+  tocTemplate     String? @map("toc_template")
+  contentTemplate String? @map("content_template")
+  stylesCss       String? @map("styles_css")
+  logoPath        String? @map("logo_path")
+
+  isDefault Boolean  @default(false) @map("is_default")
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  organization Organization? @relation(fields: [orgId], references: [id])
+  reports      Report[]
+
+  @@map("imp_report_templates")
+}
+
+// ─── Asset-/locatietype-configuratie ─────────────────────
+
+model AssetTypeDefinition {
+  id    String  @id @default(uuid()) @db.Uuid
+  orgId String? @map("org_id") @db.Uuid
+
+  code        String
+  name        String
+  description String?
+  icon        String?
+  color       String?
+  normTypes   Json    @default("[]") @map("norm_types")
+  isActive    Boolean @default(true) @map("is_active")
+  isSystem    Boolean @default(false) @map("is_system")
+  sortOrder   Int     @default(0) @map("sort_order")
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  organization       Organization?                @relation(fields: [orgId], references: [id])
+  fields             AssetTypeField[]
+  parentConstraints  AssetTypeConstraint[]        @relation("ConstraintAssetType")
+  allowedParentTypes AssetTypeConstraint[]        @relation("ConstraintAllowedParent")
+  measurementConfigs AssetTypeMeasurementConfig[]
+
+  @@unique([orgId, code])
+  @@map("imp_asset_type_definitions")
+}
+
+model AssetTypeField {
+  id                    String @id @default(uuid()) @db.Uuid
+  assetTypeDefinitionId String @map("asset_type_definition_id") @db.Uuid
+
+  fieldKey        String         @map("field_key")
+  label           String
+  description     String?
+  helpText        String?        @map("help_text")
+  fieldType       AssetFieldType @map("field_type")
+  isRequired      Boolean        @default(false) @map("is_required")
+  defaultValue    String?        @map("default_value")
+  placeholder     String?
+  validationRules Json           @default("{}") @map("validation_rules")
+  unit            String?
+  sortOrder       Int            @default(0) @map("sort_order")
+  isActive        Boolean        @default(true) @map("is_active")
+  displayWidth    String?        @map("display_width")
+  groupName       String?        @map("group_name")
+  createdAt       DateTime       @default(now()) @map("created_at")
+  updatedAt       DateTime       @updatedAt @map("updated_at")
+
+  assetTypeDefinition AssetTypeDefinition @relation(fields: [assetTypeDefinitionId], references: [id], onDelete: Cascade)
+
+  @@unique([assetTypeDefinitionId, fieldKey])
+  @@map("imp_asset_type_fields")
+}
+
+model AssetTypeConstraint {
+  id                    String   @id @default(uuid()) @db.Uuid
+  assetTypeDefinitionId String   @map("asset_type_definition_id") @db.Uuid
+  allowedParentTypeId   String?  @map("allowed_parent_type_id") @db.Uuid
+  isRequired            Boolean  @default(false) @map("is_required")
+  createdAt             DateTime @default(now()) @map("created_at")
+
+  assetTypeDefinition AssetTypeDefinition  @relation("ConstraintAssetType", fields: [assetTypeDefinitionId], references: [id], onDelete: Cascade)
+  allowedParentType   AssetTypeDefinition? @relation("ConstraintAllowedParent", fields: [allowedParentTypeId], references: [id], onDelete: Cascade)
+
+  @@unique([assetTypeDefinitionId, allowedParentTypeId])
+  @@map("imp_asset_type_constraints")
+}
+
+model AssetTypeMeasurementConfig {
+  id                         String @id @default(uuid()) @db.Uuid
+  assetTypeDefinitionId      String @map("asset_type_definition_id") @db.Uuid
+  measurementFieldTemplateId String @map("measurement_field_template_id") @db.Uuid
+
+  isEnabled  Boolean  @default(true) @map("is_enabled")
+  isRequired Boolean  @default(false) @map("is_required")
+  sortOrder  Int      @default(0) @map("sort_order")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  assetTypeDefinition      AssetTypeDefinition      @relation(fields: [assetTypeDefinitionId], references: [id], onDelete: Cascade)
+  measurementFieldTemplate MeasurementFieldTemplate @relation(fields: [measurementFieldTemplateId], references: [id], onDelete: Cascade)
+
+  @@unique([assetTypeDefinitionId, measurementFieldTemplateId])
+  @@map("imp_asset_type_measurement_configs")
+}
+
+model LocationTypeDefinition {
+  id    String  @id @default(uuid()) @db.Uuid
+  orgId String? @map("org_id") @db.Uuid
+
+  code        String
+  name        String
+  description String?
+  icon        String?
+  color       String?
+  normTypes   Json    @default("[]") @map("norm_types")
+  isActive    Boolean @default(true) @map("is_active")
+  isSystem    Boolean @default(false) @map("is_system")
+  sortOrder   Int     @default(0) @map("sort_order")
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  organization       Organization?            @relation(fields: [orgId], references: [id])
+  fields             LocationTypeField[]
+  parentConstraints  LocationTypeConstraint[] @relation("ConstraintLocationType")
+  allowedParentTypes LocationTypeConstraint[] @relation("ConstraintLocationAllowedParent")
+
+  @@unique([orgId, code])
+  @@map("imp_location_type_definitions")
+}
+
+model LocationTypeField {
+  id                       String @id @default(uuid()) @db.Uuid
+  locationTypeDefinitionId String @map("location_type_definition_id") @db.Uuid
+
+  fieldKey        String         @map("field_key")
+  label           String
+  description     String?
+  helpText        String?        @map("help_text")
+  fieldType       AssetFieldType @map("field_type")
+  isRequired      Boolean        @default(false) @map("is_required")
+  defaultValue    String?        @map("default_value")
+  placeholder     String?
+  validationRules Json           @default("{}") @map("validation_rules")
+  unit            String?
+  sortOrder       Int            @default(0) @map("sort_order")
+  isActive        Boolean        @default(true) @map("is_active")
+  displayWidth    String?        @map("display_width")
+  groupName       String?        @map("group_name")
+  createdAt       DateTime       @default(now()) @map("created_at")
+  updatedAt       DateTime       @updatedAt @map("updated_at")
+
+  locationTypeDefinition LocationTypeDefinition @relation(fields: [locationTypeDefinitionId], references: [id], onDelete: Cascade)
+
+  @@unique([locationTypeDefinitionId, fieldKey])
+  @@map("imp_location_type_fields")
+}
+
+model LocationTypeConstraint {
+  id                       String   @id @default(uuid()) @db.Uuid
+  locationTypeDefinitionId String   @map("location_type_definition_id") @db.Uuid
+  allowedParentTypeId      String?  @map("allowed_parent_type_id") @db.Uuid
+  isRequired               Boolean  @default(false) @map("is_required")
+  createdAt                DateTime @default(now()) @map("created_at")
+
+  locationTypeDefinition LocationTypeDefinition  @relation("ConstraintLocationType", fields: [locationTypeDefinitionId], references: [id], onDelete: Cascade)
+  allowedParentType      LocationTypeDefinition? @relation("ConstraintLocationAllowedParent", fields: [allowedParentTypeId], references: [id], onDelete: Cascade)
+
+  @@unique([locationTypeDefinitionId, allowedParentTypeId])
+  @@map("imp_location_type_constraints")
+}
+
+// ─── Inspectie-templates & documentgeneratie ─────────────
+
+model InspectionTemplate {
+  id       String  @id @default(uuid()) @db.Uuid
+  isSystem Boolean @default(false) @map("is_system")
+  orgId    String? @map("org_id") @db.Uuid
+
+  forkedFromId String? @map("forked_from_id") @db.Uuid
+
+  code                  String
+  name                  String
+  description           String?
+  normTypeCode          String  @map("norm_type")
+  classificationModelId String  @map("classification_model_id") @db.Uuid
+
+  version           String         @default("1.0")
+  status            TemplateStatus @default(CONCEPT)
+  previousVersionId String?        @map("previous_version_id") @db.Uuid
+
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  publishedAt DateTime? @map("published_at")
+  retiredAt   DateTime? @map("retired_at")
+  createdBy   String    @map("created_by") @db.Uuid
+  updatedBy   String?   @map("updated_by") @db.Uuid
+
+  organization        Organization?        @relation(fields: [orgId], references: [id])
+  classificationModel ClassificationModel  @relation(fields: [classificationModelId], references: [id])
+  forkedFrom          InspectionTemplate?  @relation("ForkHistory", fields: [forkedFromId], references: [id])
+  forks               InspectionTemplate[] @relation("ForkHistory")
+  previousVersion     InspectionTemplate?  @relation("InspectionTemplateVersion", fields: [previousVersionId], references: [id])
+  nextVersions        InspectionTemplate[] @relation("InspectionTemplateVersion")
+
+  checklistLinks        InspectionTemplateChecklistLink[]
+  measurementSheetLinks InspectionTemplateMeasurementSheetLink[]
+  documentTemplates     DocumentTemplate[]
+  versionHistory        InspectionTemplateVersionHistory[]
+  inspectionPlans       InspectionPlan[]
+
+  @@unique([orgId, code, version])
+  @@index([orgId, isSystem])
+  @@index([normTypeCode])
+  @@index([status])
+  @@map("imp_inspection_templates")
+}
+
+model InspectionTemplateChecklistLink {
+  id                   String   @id @default(uuid()) @db.Uuid
+  inspectionTemplateId String   @map("inspection_template_id") @db.Uuid
+  checklistId          String   @map("checklist_id") @db.Uuid
+  assetTypes           String[] @map("asset_types")
+  sortOrder            Int      @map("sort_order")
+
+  inspectionTemplate InspectionTemplate @relation(fields: [inspectionTemplateId], references: [id], onDelete: Cascade)
+  checklist          Checklist          @relation(fields: [checklistId], references: [id])
+
+  @@unique([inspectionTemplateId, checklistId])
+  @@map("imp_inspection_template_checklist_links")
+}
+
+model InspectionTemplateMeasurementSheetLink {
+  id                         String   @id @default(uuid()) @db.Uuid
+  inspectionTemplateId       String   @map("inspection_template_id") @db.Uuid
+  measurementSheetTemplateId String   @map("measurement_sheet_template_id") @db.Uuid
+  assetTypes                 String[] @map("asset_types")
+  sortOrder                  Int      @map("sort_order")
+
+  inspectionTemplate       InspectionTemplate       @relation(fields: [inspectionTemplateId], references: [id], onDelete: Cascade)
+  measurementSheetTemplate MeasurementSheetTemplate @relation(fields: [measurementSheetTemplateId], references: [id])
+
+  @@unique([inspectionTemplateId, measurementSheetTemplateId])
+  @@map("imp_inspection_template_measurement_sheet_links")
+}
+
+model InspectionTemplateVersionHistory {
+  id                   String         @id @default(uuid()) @db.Uuid
+  inspectionTemplateId String         @map("inspection_template_id") @db.Uuid
+  fromVersion          String         @map("from_version")
+  toVersion            String         @map("to_version")
+  fromStatus           TemplateStatus @map("from_status")
+  toStatus             TemplateStatus @map("to_status")
+  changeDescription    String?        @map("change_description")
+  changedBy            String         @map("changed_by") @db.Uuid
+  changedAt            DateTime       @default(now()) @map("changed_at")
+  snapshot             Json?
+
+  inspectionTemplate InspectionTemplate @relation(fields: [inspectionTemplateId], references: [id])
+
+  @@index([inspectionTemplateId, changedAt])
+  @@map("imp_inspection_template_version_history")
+}
+
+model DocumentTemplate {
+  id                   String       @id @default(uuid()) @db.Uuid
+  inspectionTemplateId String       @map("inspection_template_id") @db.Uuid
+  documentType         DocumentType @map("document_type")
+
+  pageSize     String @default("A4") @map("page_size")
+  orientation  String @default("portrait")
+  marginTop    Int    @default(20) @map("margin_top")
+  marginBottom Int    @default(20) @map("margin_bottom")
+  marginLeft   Int    @default(25) @map("margin_left")
+  marginRight  Int    @default(20) @map("margin_right")
+
+  headerHtml    String? @map("header_html") @db.Text
+  footerHtml    String? @map("footer_html") @db.Text
+  coverPageHtml String? @map("cover_page_html") @db.Text
+
+  templateMode   TemplateMode @default(SECTIONS) @map("template_mode")
+  contentBlocks  Json?        @map("content_blocks")
+  docxStorageKey String?      @map("docx_storage_key")
+  docxFileName   String?      @map("docx_file_name")
+  docxFileSize   Int?         @map("docx_file_size")
+
+  inspectionTemplate InspectionTemplate             @relation(fields: [inspectionTemplateId], references: [id], onDelete: Cascade)
+  sections           DocumentSection[]
+  generatedDocuments GeneratedDocument[]
+  docxRevisions      DocumentTemplateDocxRevision[]
+
+  @@unique([inspectionTemplateId, documentType])
+  @@map("imp_document_templates")
+}
+
+model DocumentTemplateDocxRevision {
+  id                 String   @id @default(uuid()) @db.Uuid
+  documentTemplateId String   @map("document_template_id") @db.Uuid
+  storageKey         String   @map("storage_key")
+  fileName           String   @map("file_name")
+  fileSize           Int      @map("file_size")
+  uploadedById       String   @map("uploaded_by_id") @db.Uuid
+  version            Int
+  createdAt          DateTime @default(now()) @map("created_at")
+
+  documentTemplate DocumentTemplate @relation(fields: [documentTemplateId], references: [id], onDelete: Cascade)
+  uploadedBy       User             @relation("InspectionDocxRevisionUploadedBy", fields: [uploadedById], references: [id])
+
+  @@map("imp_document_template_docx_revisions")
+}
+
+model DocumentSection {
+  id                 String @id @default(uuid()) @db.Uuid
+  documentTemplateId String @map("document_template_id") @db.Uuid
+
+  code        String
+  title       String
+  sectionType SectionType @map("section_type")
+  contentHtml String?     @map("content_html") @db.Text
+
+  repeatOn           String? @map("repeat_on")
+  repeatItemTemplate String? @map("repeat_item_template") @db.Text
+  condition          String?
+
+  sortOrder       Int     @default(0) @map("sort_order")
+  includeInToc    Boolean @default(true) @map("include_in_toc")
+  pageBreakBefore Boolean @default(false) @map("page_break_before")
+  pageBreakAfter  Boolean @default(false) @map("page_break_after")
+  parentSectionId String? @map("parent_section_id") @db.Uuid
+
+  documentTemplate DocumentTemplate  @relation(fields: [documentTemplateId], references: [id], onDelete: Cascade)
+  parentSection    DocumentSection?  @relation("DocumentSectionHierarchy", fields: [parentSectionId], references: [id])
+  childSections    DocumentSection[] @relation("DocumentSectionHierarchy")
+
+  @@unique([documentTemplateId, code])
+  @@index([documentTemplateId, sortOrder])
+  @@map("imp_document_sections")
+}
+
+model GeneratedDocument {
+  id                 String       @id @default(uuid()) @db.Uuid
+  orgId              String       @map("org_id") @db.Uuid
+  documentTemplateId String       @map("document_template_id") @db.Uuid
+  inspectionPlanId   String       @map("inspection_plan_id") @db.Uuid
+  documentType       DocumentType @map("document_type")
+
+  htmlContent String                  @map("html_content") @db.Text
+  status      GeneratedDocumentStatus @default(DRAFT)
+
+  isEdited      Boolean   @default(false) @map("is_edited")
+  editedContent String?   @map("edited_content") @db.Text
+  editedBy      String?   @map("edited_by") @db.Uuid
+  editedAt      DateTime? @map("edited_at")
+
+  pdfUrl  String? @map("pdf_url")
+  wordUrl String? @map("word_url")
+
+  generatedAt DateTime  @default(now()) @map("generated_at")
+  generatedBy String    @map("generated_by") @db.Uuid
+  finalizedAt DateTime? @map("finalized_at")
+
+  organization     Organization        @relation(fields: [orgId], references: [id])
+  documentTemplate DocumentTemplate    @relation(fields: [documentTemplateId], references: [id])
+  inspectionPlan   InspectionPlan      @relation(fields: [inspectionPlanId], references: [id])
+  signatures       DocumentSignature[]
+
+  @@index([orgId])
+  @@index([inspectionPlanId, documentType])
+  @@map("imp_generated_documents")
+}
+
+model DocumentSignature {
+  id                  String @id @default(uuid()) @db.Uuid
+  generatedDocumentId String @map("generated_document_id") @db.Uuid
+
+  signerRoleCode String  @map("signer_role") // → imp_signer_roles.code
+  signerName     String? @map("signer_name")
+  signerEmail    String? @map("signer_email")
+  signerFunction String? @map("signer_function")
+
+  signatureImage  String?   @map("signature_image") @db.Text
+  signedAt        DateTime? @map("signed_at")
+  signedIpAddress String?   @map("signed_ip_address")
+
+  signatureRequestId     String?         @map("signature_request_id")
+  signatureRequestSentAt DateTime?       @map("signature_request_sent_at")
+  signatureRequestUrl    String?         @map("signature_request_url")
+  status                 SignatureStatus @default(PENDING)
+
+  generatedDocument GeneratedDocument @relation(fields: [generatedDocumentId], references: [id], onDelete: Cascade)
+
+  @@index([generatedDocumentId, signerRoleCode])
+  @@map("imp_document_signatures")
+}
+
+// ─── Meetstaten (meetstaat-templates + ingevulde records) ──
+
+model MeasurementSheetTemplate {
+  id String @id @default(uuid()) @db.Uuid
+
+  code          String
+  name          String
+  description   String?
+  normTypeCode  String   @map("norm_type")
+  assetTypes    String[] @map("asset_types")
+  locationTypes String[] @map("location_types")
+
+  version           String                         @default("1.0")
+  status            MeasurementSheetTemplateStatus @default(CONCEPT)
+  previousVersionId String?                        @map("previous_version_id") @db.Uuid
+  finalCheckRules   Json                           @default("[]") @map("final_check_rules")
+
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  publishedAt DateTime? @map("published_at")
+  retiredAt   DateTime? @map("retired_at")
+  createdBy   String    @map("created_by") @db.Uuid
+  updatedBy   String?   @map("updated_by") @db.Uuid
+
+  previousVersion         MeasurementSheetTemplate?                @relation("MeasurementSheetTemplateVersion", fields: [previousVersionId], references: [id])
+  nextVersions            MeasurementSheetTemplate[]               @relation("MeasurementSheetTemplateVersion")
+  sections                MeasurementSheetSection[]
+  versionHistory          MeasurementSheetVersionHistory[]
+  records                 MeasurementSheetRecord[]
+  inspectionTemplateLinks InspectionTemplateMeasurementSheetLink[]
+  voiceTemplatePrompts    VoiceTemplatePrompt[]
+  voiceUserPrompts        VoiceUserPrompt[]
+
+  @@unique([code, version])
+  @@index([normTypeCode])
+  @@index([status])
+  @@index([previousVersionId])
+  @@map("imp_measurement_sheet_templates")
+}
+
+model MeasurementSheetSection {
+  id         String @id @default(uuid()) @db.Uuid
+  templateId String @map("template_id") @db.Uuid
+
+  code               String
+  name               String
+  description        String?
+  isRepeating        Boolean @default(false) @map("is_repeating")
+  minRows            Int     @default(1) @map("min_rows")
+  sortOrder          Int     @default(0) @map("sort_order")
+  collapsible        Boolean @default(true)
+  defaultCollapsed   Boolean @default(false) @map("default_collapsed")
+  rowValidationRules Json    @default("[]") @map("row_validation_rules")
+
+  template MeasurementSheetTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  fields   MeasurementSheetField[]
+
+  @@unique([templateId, code])
+  @@index([templateId, sortOrder])
+  @@map("imp_measurement_sheet_sections")
+}
+
+model MeasurementSheetField {
+  id        String @id @default(uuid()) @db.Uuid
+  sectionId String @map("section_id") @db.Uuid
+
+  code        String
+  name        String
+  description String?
+  fieldType   MeasurementSheetFieldType  @map("field_type")
+  sortOrder   Int                        @default(0) @map("sort_order")
+  placeholder String?
+  width       MeasurementSheetFieldWidth @default(FULL)
+
+  unit            String?
+  decimals        Int?
+  minValue        Decimal? @map("min_value") @db.Decimal(18, 6)
+  maxValue        Decimal? @map("max_value") @db.Decimal(18, 6)
+  dropdownOptions Json?    @map("dropdown_options")
+
+  formula             String?
+  formulaDependencies String[] @map("formula_dependencies")
+  isRequired          Boolean  @default(false) @map("is_required")
+
+  passFailEnabled     Boolean           @default(false) @map("pass_fail_enabled")
+  passFailOperator    PassFailOperator? @map("pass_fail_operator")
+  passFailValue       Decimal?          @map("pass_fail_value") @db.Decimal(18, 6)
+  passFailMinValue    Decimal?          @map("pass_fail_min_value") @db.Decimal(18, 6)
+  passFailMaxValue    Decimal?          @map("pass_fail_max_value") @db.Decimal(18, 6)
+  passFailValues      Json?             @map("pass_fail_values")
+  passFailFailMessage String?           @map("pass_fail_fail_message")
+
+  autoFindingEnabled    Boolean @default(false) @map("auto_finding_enabled")
+  autoFindingTemplateId String? @map("auto_finding_template_id") @db.Uuid
+  copyValueOnNewRow     Boolean @default(false) @map("copy_value_on_new_row")
+  allowBulkEdit         Boolean @default(false) @map("allow_bulk_edit")
+
+  section             MeasurementSheetSection @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  autoFindingTemplate FindingTemplate?        @relation("FieldAutoFinding", fields: [autoFindingTemplateId], references: [id])
+
+  @@unique([sectionId, code])
+  @@index([sectionId, sortOrder])
+  @@index([autoFindingTemplateId])
+  @@map("imp_measurement_sheet_fields")
+}
+
+model MeasurementSheetVersionHistory {
+  id         String @id @default(uuid()) @db.Uuid
+  templateId String @map("template_id") @db.Uuid
+
+  fromVersion       String                         @map("from_version")
+  toVersion         String                         @map("to_version")
+  fromStatus        MeasurementSheetTemplateStatus @map("from_status")
+  toStatus          MeasurementSheetTemplateStatus @map("to_status")
+  changeDescription String                         @map("change_description")
+  approvalReason    String?                        @map("approval_reason")
+  changedBy         String                         @map("changed_by") @db.Uuid
+  changedAt         DateTime                       @default(now()) @map("changed_at")
+  snapshot          Json?
+
+  template MeasurementSheetTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+
+  @@index([templateId, changedAt])
+  @@map("imp_measurement_sheet_version_history")
+}
+
+model MeasurementSheetRecord {
+  id               String  @id @default(uuid()) @db.Uuid
+  orgId            String  @map("org_id") @db.Uuid
+  templateId       String  @map("template_id") @db.Uuid
+  assetId          String  @map("asset_id") @db.Uuid
+  inspectionPlanId String? @map("inspection_plan_id") @db.Uuid
+
+  templateVersion  String                       @map("template_version")
+  templateSnapshot Json                         @map("template_snapshot")
+  status           MeasurementSheetRecordStatus @default(IN_PROGRESS)
+  data             Json                         @default("{}")
+
+  finalCheckExecuted Boolean  @default(false) @map("final_check_executed")
+  finalCheckPassed   Boolean? @map("final_check_passed")
+  finalCheckResults  Json?    @map("final_check_results")
+
+  syncedAt    DateTime? @map("synced_at")
+  deviceId    String?   @map("device_id")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  completedAt DateTime? @map("completed_at")
+  createdBy   String    @map("created_by") @db.Uuid
+
+  organization   Organization             @relation(fields: [orgId], references: [id])
+  template       MeasurementSheetTemplate @relation(fields: [templateId], references: [id])
+  asset          Asset                    @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  inspectionPlan InspectionPlan?          @relation(fields: [inspectionPlanId], references: [id])
+
+  @@index([orgId])
+  @@index([templateId])
+  @@index([assetId])
+  @@index([inspectionPlanId])
+  @@index([status])
+  @@map("imp_measurement_sheet_records")
+}
+
+// ─── Location images & standalone measurements ───────────
+
+model LocationImage {
+  id         String @id @default(uuid()) @db.Uuid
+  orgId      String @map("org_id") @db.Uuid
+  locationId String @unique @map("location_id") @db.Uuid
+
+  storagePath      String  @map("storage_path")
+  thumbnailPath    String? @map("thumbnail_path")
+  originalFilename String? @map("original_filename")
+  fileSize         Int?    @map("file_size")
+  mimeType         String  @default("image/jpeg") @map("mime_type")
+  width            Int?
+  height           Int?
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  syncedAt  DateTime? @map("synced_at")
+  createdBy String?   @map("created_by") @db.Uuid
+  deviceId  String?   @map("device_id")
+
+  organization Organization          @relation(fields: [orgId], references: [id])
+  location     InspectionLocation    @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  markers      LocationImageMarker[]
+
+  @@index([orgId])
+  @@index([locationId])
+  @@map("imp_location_images")
+}
+
+model LocationImageMarker {
+  id              String @id @default(uuid()) @db.Uuid
+  orgId           String @map("org_id") @db.Uuid
+  locationImageId String @map("location_image_id") @db.Uuid
+
+  positionX  Float      @map("position_x")
+  positionY  Float      @map("position_y")
+  markerType MarkerType @map("marker_type")
+
+  assetId                 String? @map("asset_id") @db.Uuid
+  findingId               String? @map("finding_id") @db.Uuid
+  standaloneMeasurementId String? @map("standalone_measurement_id") @db.Uuid
+
+  annotation Json?
+  label      String?
+  color      String?
+  icon       String?
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  syncedAt  DateTime? @map("synced_at")
+  createdBy String?   @map("created_by") @db.Uuid
+  deviceId  String?   @map("device_id")
+
+  organization          Organization           @relation(fields: [orgId], references: [id])
+  locationImage         LocationImage          @relation(fields: [locationImageId], references: [id], onDelete: Cascade)
+  asset                 Asset?                 @relation(fields: [assetId], references: [id], onDelete: SetNull)
+  finding               Finding?               @relation(fields: [findingId], references: [id], onDelete: SetNull)
+  standaloneMeasurement StandaloneMeasurement? @relation(fields: [standaloneMeasurementId], references: [id], onDelete: SetNull)
+
+  @@index([orgId])
+  @@index([locationImageId])
+  @@index([assetId])
+  @@index([findingId])
+  @@index([standaloneMeasurementId])
+  @@map("imp_location_image_markers")
+}
+
+model StandaloneMeasurement {
+  id               String @id @default(uuid()) @db.Uuid
+  orgId            String @map("org_id") @db.Uuid
+  inspectionPlanId String @map("inspection_plan_id") @db.Uuid
+  locationId       String @map("location_id") @db.Uuid
+
+  measurementType String  @map("measurement_type")
+  description     String?
+  linkedAssetId   String? @map("linked_asset_id") @db.Uuid
+  sampleId        String? @map("sample_id") @db.Uuid
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  syncedAt  DateTime? @map("synced_at")
+  createdBy String?   @map("created_by") @db.Uuid
+  deviceId  String?   @map("device_id")
+  deletedAt DateTime? @map("deleted_at")
+
+  organization   Organization                 @relation(fields: [orgId], references: [id])
+  inspectionPlan InspectionPlan               @relation(fields: [inspectionPlanId], references: [id], onDelete: Cascade)
+  location       InspectionLocation           @relation(fields: [locationId], references: [id])
+  linkedAsset    Asset?                       @relation("LinkedAsset", fields: [linkedAssetId], references: [id])
+  values         StandaloneMeasurementValue[]
+  markers        LocationImageMarker[]
+
+  @@index([orgId])
+  @@index([inspectionPlanId])
+  @@index([locationId])
+  @@index([linkedAssetId])
+  @@map("imp_standalone_measurements")
+}
+
+model StandaloneMeasurementValue {
+  id                      String @id @default(uuid()) @db.Uuid
+  standaloneMeasurementId String @map("standalone_measurement_id") @db.Uuid
+
+  fieldName    String  @map("field_name")
+  fieldType    String  @map("field_type")
+  value        String
+  unit         String?
+  passFailCode String? @map("pass_fail") // → imp_pass_fail_status_types.code
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  standaloneMeasurement StandaloneMeasurement @relation(fields: [standaloneMeasurementId], references: [id], onDelete: Cascade)
+
+  @@index([standaloneMeasurementId])
+  @@map("imp_standalone_measurement_values")
+}
+
+// ─── Sync & devices (PWA) ────────────────────────────────
+
+model SyncQueue {
+  id String @id @default(uuid()) @db.Uuid
+
+  deviceId String  @map("device_id")
+  userId   String? @map("user_id") @db.Uuid
+
+  entityType String        @map("entity_type")
+  entityId   String        @map("entity_id") @db.Uuid
+  operation  SyncOperation
+  payload    Json
+
+  status       SyncStatus @default(pending)
+  errorMessage String?    @map("error_message")
+  retryCount   Int        @default(0) @map("retry_count")
+
+  createdAt    DateTime  @default(now()) @map("created_at")
+  processedAt  DateTime? @map("processed_at")
+  conflictData Json?     @map("conflict_data")
+  resolvedAt   DateTime? @map("resolved_at")
+  resolvedBy   String?   @map("resolved_by") @db.Uuid
+
+  user         User? @relation("SyncQueueUser", fields: [userId], references: [id])
+  resolvedUser User? @relation("SyncResolvedBy", fields: [resolvedBy], references: [id])
+
+  @@map("imp_sync_queue")
+}
+
+model DeviceRegistration {
+  id       String @id @default(uuid()) @db.Uuid
+  userId   String @map("user_id") @db.Uuid
+  deviceId String @map("device_id")
+
+  deviceName String? @map("device_name")
+  deviceType String? @map("device_type")
+  osName     String? @map("os_name")
+  osVersion  String? @map("os_version")
+  appVersion String? @map("app_version")
+  pushToken  String? @map("push_token")
+
+  lastSyncAt   DateTime? @map("last_sync_at")
+  lastActiveAt DateTime? @map("last_active_at")
+  isActive     Boolean   @default(true) @map("is_active")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@unique([userId, deviceId])
+  @@map("imp_device_registrations")
+}
+
+// ─── Client-portal (2e auth-realm) ───────────────────────
+// ClientUser is org-agnostisch; toegang loopt via ClientAccess → Contact.
+
+model ClientUser {
+  id            String           @id @default(uuid()) @db.Uuid
+  email         String           @unique
+  passwordHash  String?          @map("password_hash")
+  emailVerified Boolean          @default(false) @map("email_verified")
+  firstName     String           @map("first_name")
+  lastName      String           @map("last_name")
+  phone         String?
+  function      String?
+  status        ClientUserStatus @default(ACTIVE)
+  lastLoginAt   DateTime?        @map("last_login_at")
+  createdAt     DateTime         @default(now()) @map("created_at")
+  updatedAt     DateTime         @updatedAt @map("updated_at")
+
+  clientAccess       ClientAccess[]
+  magicLinks         ClientMagicLink[]
+  inspectionAccess   InspectionClientAccess[]
+  messages           InspectionMessage[]      @relation("MessageClientUser")
+  findingResolutions FindingResolution[]
+  clientRequests     ClientRequest[]
+
+  @@index([email])
+  @@map("imp_client_users")
+}
+
+/// Koppeling ClientUser → Contact (opdrachtgever). Was: → Client.
+model ClientAccess {
+  id           String           @id @default(uuid()) @db.Uuid
+  clientUserId String           @map("client_user_id") @db.Uuid
+  contactId    String           @map("contact_id") @db.Uuid
+  role         ClientAccessRole @default(VIEWER)
+  grantedAt    DateTime         @default(now()) @map("granted_at")
+  grantedBy    String?          @map("granted_by") @db.Uuid
+
+  clientUser ClientUser @relation(fields: [clientUserId], references: [id], onDelete: Cascade)
+  contact    Contact    @relation(fields: [contactId], references: [id])
+
+  @@unique([clientUserId, contactId])
+  @@index([contactId])
+  @@map("imp_client_access")
+}
+
+model ClientMagicLink {
+  id               String    @id @default(uuid()) @db.Uuid
+  clientUserId     String?   @map("client_user_id") @db.Uuid
+  email            String
+  token            String    @unique
+  inspectionPlanId String?   @map("inspection_plan_id") @db.Uuid
+  expiresAt        DateTime  @map("expires_at")
+  usedAt           DateTime? @map("used_at")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  createdBy        String?   @map("created_by") @db.Uuid
+
+  clientUser     ClientUser?     @relation(fields: [clientUserId], references: [id], onDelete: Cascade)
+  inspectionPlan InspectionPlan? @relation(fields: [inspectionPlanId], references: [id])
+
+  @@index([token])
+  @@index([email])
+  @@map("imp_client_magic_links")
+}
+
+model InspectionClientAccess {
+  id               String    @id @default(uuid()) @db.Uuid
+  inspectionPlanId String    @map("inspection_plan_id") @db.Uuid
+  clientUserId     String?   @map("client_user_id") @db.Uuid
+  invitedEmail     String?   @map("invited_email")
+  canView          Boolean   @default(true) @map("can_view")
+  canSign          Boolean   @default(false) @map("can_sign")
+  invitedAt        DateTime  @default(now()) @map("invited_at")
+  invitedBy        String    @map("invited_by") @db.Uuid
+  acceptedAt       DateTime? @map("accepted_at")
+
+  inspectionPlan InspectionPlan @relation(fields: [inspectionPlanId], references: [id], onDelete: Cascade)
+  clientUser     ClientUser?    @relation(fields: [clientUserId], references: [id])
+
+  @@unique([inspectionPlanId, clientUserId])
+  @@unique([inspectionPlanId, invitedEmail])
+  @@map("imp_inspection_client_access")
+}
+
+model InspectionMessage {
+  id               String    @id @default(uuid()) @db.Uuid
+  inspectionPlanId String    @map("inspection_plan_id") @db.Uuid
+  clientUserId     String?   @map("client_user_id") @db.Uuid
+  userId           String?   @map("user_id") @db.Uuid
+  content          String    @db.Text
+  readAt           DateTime? @map("read_at")
+  createdAt        DateTime  @default(now()) @map("created_at")
+
+  inspectionPlan InspectionPlan      @relation(fields: [inspectionPlanId], references: [id], onDelete: Cascade)
+  clientUser     ClientUser?         @relation("MessageClientUser", fields: [clientUserId], references: [id])
+  user           User?               @relation("MessageUser", fields: [userId], references: [id])
+  attachments    MessageAttachment[]
+
+  @@index([inspectionPlanId, createdAt])
+  @@map("imp_inspection_messages")
+}
+
+model MessageAttachment {
+  id        String @id @default(uuid()) @db.Uuid
+  messageId String @map("message_id") @db.Uuid
+  fileName  String @map("file_name")
+  fileUrl   String @map("file_url")
+  fileSize  Int    @map("file_size")
+  mimeType  String @map("mime_type")
+
+  message InspectionMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@map("imp_message_attachments")
+}
+
+model FindingResolution {
+  id                     String    @id @default(uuid()) @db.Uuid
+  findingId              String    @map("finding_id") @db.Uuid
+  resolvedByClientUserId String    @map("resolved_by_client_user_id") @db.Uuid
+  description            String?   @db.Text
+  resolvedAt             DateTime  @default(now()) @map("resolved_at")
+  statusCode             String    @default("PENDING_VERIFICATION") @map("status") // → imp_resolution_status_types.code
+  verifiedAt             DateTime? @map("verified_at")
+  verifiedBy             String?   @map("verified_by") @db.Uuid
+  verificationNotes      String?   @map("verification_notes")
+
+  finding              Finding                  @relation(fields: [findingId], references: [id], onDelete: Cascade)
+  resolvedByClientUser ClientUser               @relation(fields: [resolvedByClientUserId], references: [id])
+  photos               FindingResolutionPhoto[]
+
+  @@index([findingId])
+  @@map("imp_finding_resolutions")
+}
+
+model FindingResolutionPhoto {
+  id           String   @id @default(uuid()) @db.Uuid
+  resolutionId String   @map("resolution_id") @db.Uuid
+  photoUrl     String   @map("photo_url")
+  caption      String?
+  uploadedAt   DateTime @default(now()) @map("uploaded_at")
+
+  resolution FindingResolution @relation(fields: [resolutionId], references: [id], onDelete: Cascade)
+
+  @@map("imp_finding_resolution_photos")
+}
+
+model ClientRequest {
+  id           String @id @default(uuid()) @db.Uuid
+  orgId        String @map("org_id") @db.Uuid
+  contactId    String @map("contact_id") @db.Uuid // was clientId → Contact
+  clientUserId String @map("client_user_id") @db.Uuid
+
+  requestTypeCode           String    @map("request_type") // → imp_client_request_types.code
+  relatedInspectionPlanId   String?   @map("related_inspection_plan_id") @db.Uuid
+  subject                   String
+  description               String    @db.Text
+  preferredDate             DateTime? @map("preferred_date")
+  statusCode                String    @default("PENDING_REQUEST") @map("status") // → imp_client_request_status_types.code
+  handledBy                 String?   @map("handled_by") @db.Uuid
+  handledAt                 DateTime? @map("handled_at")
+  responseNotes             String?   @map("response_notes")
+  resultingInspectionPlanId String?   @map("resulting_inspection_plan_id") @db.Uuid
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  organization          Organization    @relation(fields: [orgId], references: [id])
+  contact               Contact         @relation(fields: [contactId], references: [id])
+  clientUser            ClientUser      @relation(fields: [clientUserId], references: [id])
+  relatedInspectionPlan InspectionPlan? @relation("RelatedInspectionPlan", fields: [relatedInspectionPlanId], references: [id])
+
+  @@index([orgId, statusCode])
+  @@index([contactId])
+  @@map("imp_client_requests")
+}
+
+// ─── Voice-prompt-lagen ──────────────────────────────────
+
+model VoiceBasePrompt {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String   @unique
+  content   String   @db.Text
+  isActive  Boolean  @default(true) @map("is_active")
+  version   Int      @default(1)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("imp_voice_base_prompts")
+}
+
+model VoiceTemplatePrompt {
+  id         String   @id @default(uuid()) @db.Uuid
+  orgId      String   @map("org_id") @db.Uuid
+  templateId String   @map("template_id") @db.Uuid
+  content    String   @db.Text
+  isActive   Boolean  @default(true) @map("is_active")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  organization Organization             @relation(fields: [orgId], references: [id])
+  template     MeasurementSheetTemplate @relation(fields: [templateId], references: [id])
+
+  @@unique([orgId, templateId])
+  @@index([orgId])
+  @@index([templateId])
+  @@map("imp_voice_template_prompts")
+}
+
+model VoiceUserPrompt {
+  id         String   @id @default(uuid()) @db.Uuid
+  userId     String   @map("user_id") @db.Uuid
+  templateId String?  @map("template_id") @db.Uuid
+  content    String   @db.Text
+  isActive   Boolean  @default(true) @map("is_active")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  user     User                      @relation("VoiceUserPromptUser", fields: [userId], references: [id])
+  template MeasurementSheetTemplate? @relation(fields: [templateId], references: [id])
+
+  @@unique([userId, templateId])
+  @@index([userId])
+  @@index([templateId])
+  @@map("imp_voice_user_prompts")
 }

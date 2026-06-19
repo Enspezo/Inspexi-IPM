@@ -1,0 +1,109 @@
+// Doel in apps/api: src/common/services/storage/r2-storage.provider.ts
+//
+// Cloudflare R2 implementatie achter Beheer's STORAGE_PROVIDER interface.
+// Voegt twee EXTRA methoden toe (getSignedUrl/getPublicUrl) bovenop de 4 uit
+// StorageProvider — services die directe/tijdelijke URL's nodig hebben (foto's,
+// client-portal downloads) feature-detecten via `supportsSignedUrls()`.
+//
+// Vereist deps (apps/api): pnpm add @aws-sdk/client-s3 @aws-sdk/s3-request-presigner
+// Env: R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET_NAME, R2_PUBLIC_URL
+
+import { Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import {
+  S3Client,
+  PutObjectCommand,
+  GetObjectCommand,
+  DeleteObjectCommand,
+  HeadObjectCommand,
+} from '@aws-sdk/client-s3';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+import type { StorageProvider } from './storage.interface';
+
+/** Optionele capability bovenop StorageProvider; door services feature-gedetecteerd. */
+export interface SignedUrlCapableStorage extends StorageProvider {
+  supportsSignedUrls(): true;
+  getSignedUrl(key: string, expiresInSeconds?: number): Promise<string>;
+  getPublicUrl(key: string): string;
+}
+
+@Injectable()
+export class R2StorageProvider implements SignedUrlCapableStorage {
+  private readonly logger = new Logger(R2StorageProvider.name);
+  private readonly client: S3Client;
+  private readonly bucket: string;
+  private readonly publicBaseUrl: string;
+
+  constructor(private config: ConfigService) {
+    const accountId = this.config.getOrThrow<string>('R2_ACCOUNT_ID');
+    this.bucket = this.config.getOrThrow<string>('R2_BUCKET_NAME');
+    this.publicBaseUrl = this.config.get<string>('R2_PUBLIC_URL', '').replace(/\/$/, '');
+
+    this.client = new S3Client({
+      region: 'auto',
+      endpoint: `https://${accountId}.r2.cloudflarestorage.com`,
+      credentials: {
+        accessKeyId: this.config.getOrThrow<string>('R2_ACCESS_KEY_ID'),
+        secretAccessKey: this.config.getOrThrow<string>('R2_SECRET_ACCESS_KEY'),
+      },
+    });
+  }
+
+  supportsSignedUrls(): true {
+    return true;
+  }
+
+  async upload(key: string, buffer: Buffer, mimeType: string): Promise<void> {
+    await this.client.send(
+      new PutObjectCommand({
+        Bucket: this.bucket,
+        Key: key,
+        Body: buffer,
+        ContentType: mimeType,
+      }),
+    );
+  }
+
+  async download(key: string): Promise<Buffer> {
+    const res = await this.client.send(
+      new GetObjectCommand({ Bucket: this.bucket, Key: key }),
+    );
+    const body = res.Body as NodeJS.ReadableStream;
+    const chunks: Buffer[] = [];
+    for await (const chunk of body) {
+      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+    }
+    return Buffer.concat(chunks);
+  }
+
+  async delete(key: string): Promise<void> {
+    await this.client.send(
+      new DeleteObjectCommand({ Bucket: this.bucket, Key: key }),
+    );
+  }
+
+  async exists(key: string): Promise<boolean> {
+    try {
+      await this.client.send(
+        new HeadObjectCommand({ Bucket: this.bucket, Key: key }),
+      );
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /** Tijdelijke, gesigneerde GET-URL (default 1 uur). Voor client-portal downloads / foto-preview. */
+  async getSignedUrl(key: string, expiresInSeconds = 3600): Promise<string> {
+    return getSignedUrl(
+      this.client,
+      new GetObjectCommand({ Bucket: this.bucket, Key: key }),
+      { expiresIn: expiresInSeconds },
+    );
+  }
+
+  /** Publieke URL (alleen zinvol als de bucket/publieke-domein read-public is). */
+  getPublicUrl(key: string): string {
+    return `${this.publicBaseUrl}/${key}`;
+  }
+}

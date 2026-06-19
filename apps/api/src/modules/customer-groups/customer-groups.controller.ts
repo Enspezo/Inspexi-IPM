@@ -15,7 +15,8 @@ import {
   ApiResponse,
   ApiBearerAuth,
 } from '@nestjs/swagger';
-import { User, Role } from '@prisma/client';
+import { User } from '@prisma/client';
+import { CRM_ROLES, OFFICE_ROLES, ORG_ADMINS } from '@/common/auth/roles';
 import { CustomerGroupsService } from './customer-groups.service';
 import {
   CreateCustomerGroupDto,
@@ -31,13 +32,7 @@ export class CustomerGroupsController {
   constructor(private customerGroupsService: CustomerGroupsService) {}
 
   @Get()
-  @Roles(
-    Role.SUPERUSER,
-    Role.ORG_ADMIN,
-    Role.MANAGER,
-    Role.BACKOFFICE,
-    Role.WERKVOORBEREIDER,
-  )
+  @Roles(...CRM_ROLES)
   @ApiOperation({ summary: 'Lijst klantgroepen ophalen' })
   @ApiResponse({ status: 200, description: 'Gepagineerde lijst van klantgroepen' })
   async findAll(
@@ -49,13 +44,7 @@ export class CustomerGroupsController {
   }
 
   @Get('compact')
-  @Roles(
-    Role.SUPERUSER,
-    Role.ORG_ADMIN,
-    Role.MANAGER,
-    Role.BACKOFFICE,
-    Role.WERKVOORBEREIDER,
-  )
+  @Roles(...CRM_ROLES)
   @ApiOperation({ summary: 'Compacte lijst klantgroepen (voor dropdowns)' })
   async findAllCompact(@CurrentUser() user: User) {
     const data = await this.customerGroupsService.findAllCompact(user);
@@ -63,13 +52,7 @@ export class CustomerGroupsController {
   }
 
   @Get(':id')
-  @Roles(
-    Role.SUPERUSER,
-    Role.ORG_ADMIN,
-    Role.MANAGER,
-    Role.BACKOFFICE,
-    Role.WERKVOORBEREIDER,
-  )
+  @Roles(...CRM_ROLES)
   @ApiOperation({ summary: 'Klantgroep detail ophalen' })
   async findOne(
     @Param('id', ParseUUIDPipe) id: string,
@@ -80,7 +63,7 @@ export class CustomerGroupsController {
   }
 
   @Post()
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN)
+  @Roles(...ORG_ADMINS)
   @ApiOperation({ summary: 'Klantgroep aanmaken' })
   @ApiResponse({ status: 201, description: 'Klantgroep aangemaakt' })
   async create(
@@ -92,7 +75,7 @@ export class CustomerGroupsController {
   }
 
   @Patch(':id')
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN)
+  @Roles(...ORG_ADMINS)
   @ApiOperation({ summary: 'Klantgroep bijwerken' })
   async update(
     @Param('id', ParseUUIDPipe) id: string,
@@ -104,7 +87,7 @@ export class CustomerGroupsController {
   }
 
   @Delete(':id')
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN)
+  @Roles(...ORG_ADMINS)
   @ApiOperation({ summary: 'Klantgroep verwijderen (soft delete)' })
   async remove(
     @Param('id', ParseUUIDPipe) id: string,
@@ -117,7 +100,7 @@ export class CustomerGroupsController {
   // ─── Contact toewijzing ─────────────────────────────────
 
   @Post(':id/contacts')
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE)
+  @Roles(...OFFICE_ROLES)
   @ApiOperation({ summary: 'Relatie toevoegen aan klantgroep' })
   @ApiResponse({ status: 201, description: 'Relatie toegevoegd aan groep' })
   async addContact(
@@ -134,7 +117,7 @@ export class CustomerGroupsController {
   }
 
   @Delete(':id/contacts/:contactId')
-  @Roles(Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE)
+  @Roles(...OFFICE_ROLES)
   @ApiOperation({ summary: 'Relatie verwijderen uit klantgroep' })
   @ApiResponse({ status: 200, description: 'Relatie verwijderd uit groep' })
   async removeContact(

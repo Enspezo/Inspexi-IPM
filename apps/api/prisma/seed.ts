@@ -1,13 +1,236 @@
-import { PrismaClient, Role, ContactType, LogType, PriceType, RequestSource, RequestStatus, Priority, QuoteStatus, NotificationType, PlanningStatus, AcceptanceStatus, ProjectStatus } from '@prisma/client';
+import { PrismaClient, Role, ContactType, LogType, PriceType, RequestSource, RequestStatus, Priority, QuoteStatus, NotificationType, PlanningStatus, AcceptanceStatus, ProjectStatus, AssetFieldType, ChecklistStatus, TemplateStatus, MeasurementSheetTemplateStatus, MeasurementSheetFieldType, FindingInspectionType, DocumentType, TemplateMode, SectionType, ClientUserStatus, ClientAccessRole, GeneratedDocumentStatus, SignatureStatus, MarkerType, MeasurementSheetRecordStatus, PassFailOperator } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { randomUUID } from 'crypto';
+import * as fs from 'fs';
+import * as path from 'path';
+import * as zlib from 'zlib';
+import { seedLookups } from './seed-lookups';
+import { DEFAULT_VOICE_BASE_PROMPT } from '../src/modules/voice/default-base-prompt';
 
 const prisma = new PrismaClient();
+
+// ─── Demo-helpers (plattegrond-PNG + meetstaat-snapshot) ────────────────────
+
+/** CRC-32 (IEEE) voor PNG-chunks. */
+function crc32(buf: Buffer): number {
+  let crc = 0xffffffff;
+  for (let i = 0; i < buf.length; i++) {
+    crc ^= buf[i];
+    for (let k = 0; k < 8; k++) crc = (crc >>> 1) ^ (0xedb88320 & -(crc & 1));
+  }
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+/** Bouwt één PNG-chunk (length + type + data + crc). */
+function pngChunk(type: string, data: Buffer): Buffer {
+  const length = Buffer.alloc(4);
+  length.writeUInt32BE(data.length, 0);
+  const typeBuf = Buffer.from(type, 'ascii');
+  const crc = Buffer.alloc(4);
+  crc.writeUInt32BE(crc32(Buffer.concat([typeBuf, data])), 0);
+  return Buffer.concat([length, typeBuf, data, crc]);
+}
+
+/** Genereert een geldige 800x600 plattegrond-PNG (blueprint-stijl) als Buffer. */
+function makeFloorPlanPng(width = 800, height = 600): Buffer {
+  const stride = width * 3;
+  const raw = Buffer.alloc(height * (stride + 1)); // filter-byte 0 + RGB per rij
+  const bg: [number, number, number] = [0xe9, 0xee, 0xf4];
+  const wall: [number, number, number] = [0x33, 0x49, 0x66];
+
+  // Achtergrond: één rij vullen en naar alle rijen kopiëren.
+  const row = Buffer.alloc(stride + 1);
+  for (let x = 0; x < width; x++) {
+    row[1 + x * 3] = bg[0];
+    row[1 + x * 3 + 1] = bg[1];
+    row[1 + x * 3 + 2] = bg[2];
+  }
+  for (let y = 0; y < height; y++) row.copy(raw, y * (stride + 1));
+
+  const px = (x: number, y: number, c: [number, number, number]) => {
+    if (x < 0 || x >= width || y < 0 || y >= height) return;
+    const off = y * (stride + 1) + 1 + x * 3;
+    raw[off] = c[0];
+    raw[off + 1] = c[1];
+    raw[off + 2] = c[2];
+  };
+  const hLine = (y: number, x0: number, x1: number, t = 4) => {
+    for (let dy = 0; dy < t; dy++) for (let x = x0; x <= x1; x++) px(x, y + dy, wall);
+  };
+  const vLine = (x: number, y0: number, y1: number, t = 4) => {
+    for (let dx = 0; dx < t; dx++) for (let y = y0; y <= y1; y++) px(x + dx, y, wall);
+  };
+
+  // Buitenmuur + een paar binnenmuren voor een eenvoudige ruimte-indeling.
+  hLine(0, 0, width - 1);
+  hLine(height - 4, 0, width - 1);
+  vLine(0, 0, height - 1);
+  vLine(width - 4, 0, height - 1);
+  vLine(Math.floor(width * 0.5), 0, height - 1);
+  hLine(Math.floor(height * 0.5), Math.floor(width * 0.5), width - 1);
+  hLine(Math.floor(height * 0.5), 0, Math.floor(width * 0.25));
+
+  const idat = zlib.deflateSync(raw, { level: 9 });
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(width, 0);
+  ihdr.writeUInt32BE(height, 4);
+  ihdr[8] = 8; // bit depth
+  ihdr[9] = 2; // color type: truecolor (RGB)
+  return Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    pngChunk('IHDR', ihdr),
+    pngChunk('IDAT', idat),
+    pngChunk('IEND', Buffer.alloc(0)),
+  ]);
+}
+
+/**
+ * Bevriest een meetstaat-template (+secties+velden) tot een snapshot, identiek
+ * aan MeasurementSheetRecordsService.createTemplateSnapshot (Decimals → string).
+ */
+function buildMeasurementSnapshot(t: any) {
+  return {
+    id: t.id,
+    code: t.code,
+    name: t.name,
+    version: t.version,
+    normTypeCode: t.normTypeCode,
+    assetTypes: t.assetTypes,
+    locationTypes: t.locationTypes,
+    finalCheckRules: t.finalCheckRules,
+    sections: t.sections.map((section: any) => ({
+      code: section.code,
+      name: section.name,
+      description: section.description,
+      isRepeating: section.isRepeating,
+      minRows: section.minRows,
+      sortOrder: section.sortOrder,
+      collapsible: section.collapsible,
+      defaultCollapsed: section.defaultCollapsed,
+      rowValidationRules: section.rowValidationRules,
+      fields: section.fields.map((field: any) => ({
+        code: field.code,
+        name: field.name,
+        description: field.description,
+        fieldType: field.fieldType,
+        sortOrder: field.sortOrder,
+        placeholder: field.placeholder,
+        width: field.width,
+        unit: field.unit,
+        decimals: field.decimals,
+        minValue: field.minValue?.toString() ?? null,
+        maxValue: field.maxValue?.toString() ?? null,
+        dropdownOptions: field.dropdownOptions,
+        formula: field.formula,
+        formulaDependencies: field.formulaDependencies,
+        isRequired: field.isRequired,
+        passFailEnabled: field.passFailEnabled,
+        passFailOperator: field.passFailOperator,
+        passFailValue: field.passFailValue?.toString() ?? null,
+        passFailMinValue: field.passFailMinValue?.toString() ?? null,
+        passFailMaxValue: field.passFailMaxValue?.toString() ?? null,
+        passFailValues: field.passFailValues,
+        passFailFailMessage: field.passFailFailMessage,
+        autoFindingEnabled: field.autoFindingEnabled,
+        autoFindingTemplateId: field.autoFindingTemplateId,
+        copyValueOnNewRow: field.copyValueOnNewRow,
+        allowBulkEdit: field.allowBulkEdit,
+      })),
+    })),
+  };
+}
 
 async function main() {
   console.log('🌱 Seeding database...');
 
   // Clean existing imp_ data (safe for shared DB — only deletes our tables)
+  // ─── Inspectiedomein (Fase 1) — fully downstream, clean children-first ───
+  // client-portal
+  await prisma.findingResolutionPhoto.deleteMany();
+  await prisma.findingResolution.deleteMany();
+  await prisma.messageAttachment.deleteMany();
+  await prisma.inspectionMessage.deleteMany();
+  await prisma.clientMagicLink.deleteMany();
+  await prisma.inspectionClientAccess.deleteMany();
+  await prisma.clientAccess.deleteMany();
+  await prisma.clientRequest.deleteMany();
+  await prisma.clientUser.deleteMany();
+  // sync & devices
+  await prisma.syncQueue.deleteMany();
+  await prisma.deviceRegistration.deleteMany();
+  // voice
+  await prisma.voiceUserPrompt.deleteMany();
+  await prisma.voiceTemplatePrompt.deleteMany();
+  await prisma.voiceBasePrompt.deleteMany();
+  // document generation
+  await prisma.documentSignature.deleteMany();
+  await prisma.generatedDocument.deleteMany();
+  await prisma.documentSection.deleteMany();
+  await prisma.documentTemplateDocxRevision.deleteMany();
+  await prisma.documentTemplate.deleteMany();
+  // location images & standalone measurements
+  await prisma.locationImageMarker.deleteMany();
+  await prisma.standaloneMeasurementValue.deleteMany();
+  await prisma.standaloneMeasurement.deleteMany();
+  await prisma.locationImage.deleteMany();
+  // measurement sheets
+  await prisma.measurementSheetRecord.deleteMany();
+  await prisma.measurementSheetVersionHistory.deleteMany();
+  await prisma.measurementSheetField.deleteMany();
+  await prisma.measurementSheetSection.deleteMany();
+  // inspection templates (links before the measurement-sheet templates they reference)
+  await prisma.inspectionTemplateVersionHistory.deleteMany();
+  await prisma.inspectionTemplateMeasurementSheetLink.deleteMany();
+  await prisma.inspectionTemplateChecklistLink.deleteMany();
+  await prisma.measurementSheetTemplate.deleteMany();
+  // execution
+  await prisma.finding.deleteMany();
+  await prisma.measurementRecord.deleteMany();
+  await prisma.visualInspection.deleteMany();
+  await prisma.photo.deleteMany();
+  await prisma.signature.deleteMany();
+  await prisma.report.deleteMany();
+  await prisma.asset.deleteMany();
+  await prisma.inspectionLocation.deleteMany();
+  await prisma.inspectionPlan.deleteMany();
+  // checklists
+  await prisma.checklistVersionHistory.deleteMany();
+  await prisma.checklistItemLink.deleteMany();
+  await prisma.checklist.deleteMany();
+  await prisma.checklistItem.deleteMany();
+  // templates & types (finding-templates before category + classification model;
+  // measurement-field-templates before norm-configurations they belong to)
+  await prisma.findingTemplate.deleteMany();
+  await prisma.category.deleteMany();
+  await prisma.reportTemplate.deleteMany();
+  await prisma.assetTypeMeasurementConfig.deleteMany();
+  await prisma.assetTypeConstraint.deleteMany();
+  await prisma.assetTypeField.deleteMany();
+  await prisma.assetTypeDefinition.deleteMany();
+  await prisma.measurementFieldTemplate.deleteMany();
+  await prisma.locationTypeConstraint.deleteMany();
+  await prisma.locationTypeField.deleteMany();
+  await prisma.locationTypeDefinition.deleteMany();
+  await prisma.inspectionTemplate.deleteMany();
+  // norm & classification (norm-type-definitions before classification models)
+  await prisma.normConfiguration.deleteMany();
+  await prisma.classificationOption.deleteMany();
+  await prisma.classificationCharacteristic.deleteMany();
+  await prisma.normTypeDefinition.deleteMany();
+  await prisma.classificationModel.deleteMany();
+  // per-org lookups (relate only to Organization → before organization delete)
+  await prisma.inspectionTypeOption.deleteMany();
+  await prisma.planStatusType.deleteMany();
+  await prisma.assetStatusType.deleteMany();
+  await prisma.findingStatusType.deleteMany();
+  await prisma.reportStatusType.deleteMany();
+  await prisma.signatoryTypeOption.deleteMany();
+  await prisma.signerRoleOption.deleteMany();
+  await prisma.passFailStatusType.deleteMany();
+  await prisma.resolutionStatusType.deleteMany();
+  await prisma.clientRequestTypeOption.deleteMany();
+  await prisma.clientRequestStatusType.deleteMany();
+  // ─── Beheer-domein ───────────────────────────────────────
   // PRD-06 tables (no dependents)
   await prisma.notificationGroupPref.deleteMany();
   await prisma.notificationPref.deleteMany();
@@ -160,7 +383,7 @@ async function main() {
   const passwordHash = await bcrypt.hash('Password123!', 10);
 
   // Superuser (no org)
-  await prisma.user.create({
+  const superuser = await prisma.user.create({
     data: {
       email: 'superuser@inspexi.nl',
       passwordHash,
@@ -1275,6 +1498,671 @@ async function main() {
   console.log(`  ✓ Project: ${project2.projectNumber}`);
   void project2;
 
+  // ─── Inspectiedomein (Fase 1) ──────────────────────────
+  console.log('\n🔍 Seeding inspection domain...');
+
+  // 1. Globale lookup-defaults (orgId null, isSystem)
+  await seedLookups(prisma);
+  console.log('  ✓ Inspection lookup defaults (11 sets)');
+
+  // 2. Classificatiemodel (systeem) met kenmerken + opties
+  const classModelNen = await prisma.classificationModel.create({
+    data: {
+      code: 'NEN1010_DEFAULT',
+      name: 'NEN 1010 standaardclassificatie',
+      description: 'Standaardclassificatie voor NEN 1010-inspecties',
+      createdBy: superuser.id,
+      characteristics: {
+        create: [
+          {
+            code: 'SEVERITY',
+            name: 'Ernst',
+            sortOrder: 0,
+            options: {
+              create: [
+                { code: 'C1', name: 'Gevaarlijk — direct herstellen', color: '#DC2626', sortOrder: 0 },
+                { code: 'C2', name: 'Onveilig — herstel aanbevolen', color: '#D97706', sortOrder: 1 },
+                { code: 'C3', name: 'Verbetering mogelijk', color: '#CA8A04', sortOrder: 2 },
+                { code: 'FI', name: 'Nader onderzoek nodig', color: '#7C3AED', sortOrder: 3 },
+              ],
+            },
+          },
+        ],
+      },
+    },
+  });
+
+  const classModelScios = await prisma.classificationModel.create({
+    data: {
+      code: 'SCOPE8_DEFAULT',
+      name: 'SCIOS Scope 8 classificatie',
+      description: 'Standaardclassificatie voor SCIOS Scope 8-inspecties',
+      createdBy: superuser.id,
+      characteristics: {
+        create: [
+          {
+            code: 'CATEGORY',
+            name: 'Categorie',
+            sortOrder: 0,
+            options: {
+              create: [
+                { code: 'A', name: 'Categorie A — ernstig', color: '#DC2626', sortOrder: 0 },
+                { code: 'B', name: 'Categorie B — matig', color: '#D97706', sortOrder: 1 },
+                { code: 'C', name: 'Categorie C — gering', color: '#16A34A', sortOrder: 2 },
+              ],
+            },
+          },
+        ],
+      },
+    },
+  });
+  console.log('  ✓ Classification models (2)');
+
+  // 3. Norm-type-definitions (systeem, globaal)
+  const normDefs = [
+    { code: 'NEN1010', label: 'NEN 1010', description: 'Veiligheidsbepalingen voor laagspanningsinstallaties', assetTypes: ['electrical_installation'], classificationModelId: classModelNen.id, sortOrder: 0 },
+    { code: 'NEN3140', label: 'NEN 3140', description: 'Bedrijfsvoering van elektrische installaties — laagspanning', assetTypes: ['electrical_installation'], classificationModelId: classModelNen.id, sortOrder: 1 },
+    { code: 'SCOPE_8', label: 'SCIOS Scope 8', description: 'Inspectie elektrisch materieel op brandrisico', assetTypes: ['electrical_installation'], classificationModelId: classModelScios.id, sortOrder: 2 },
+    { code: 'SCOPE_10', label: 'SCIOS Scope 10', description: 'Inspectie zonnestroominstallaties', assetTypes: ['pv_installation'], classificationModelId: null, sortOrder: 3 },
+    { code: 'IEC62446_1', label: 'IEC 62446-1', description: 'Inspectie en testen van PV-systemen', assetTypes: ['pv_installation'], classificationModelId: null, sortOrder: 4 },
+    { code: 'SCOPE_12', label: 'SCIOS Scope 12', description: 'Inspectie zonnestroominstallaties — brandveiligheid', assetTypes: ['pv_installation'], classificationModelId: null, sortOrder: 5 },
+  ];
+  for (const n of normDefs) {
+    await prisma.normTypeDefinition.create({ data: { ...n, createdBy: superuser.id } });
+  }
+  console.log('  ✓ Norm type definitions (6)');
+
+  // 4. Asset- en locatietype-definitions (systeem) met velden
+  await prisma.assetTypeDefinition.create({
+    data: {
+      code: 'electrical_installation',
+      name: 'Elektrische installatie',
+      description: 'Laagspanningsinstallatie',
+      icon: 'zap',
+      color: '#2563EB',
+      normTypes: ['NEN1010', 'NEN3140', 'SCOPE_8'],
+      isSystem: true,
+      sortOrder: 0,
+      fields: {
+        create: [
+          { fieldKey: 'rated_current', label: 'Nominale stroom', fieldType: AssetFieldType.number, unit: 'A', sortOrder: 0 },
+          { fieldKey: 'phases', label: 'Aantal fasen', fieldType: AssetFieldType.select, sortOrder: 1 },
+        ],
+      },
+    },
+  });
+  await prisma.assetTypeDefinition.create({
+    data: {
+      code: 'pv_installation',
+      name: 'Zonnestroominstallatie',
+      description: 'PV-installatie',
+      icon: 'sun',
+      color: '#CA8A04',
+      normTypes: ['SCOPE_10', 'IEC62446_1', 'SCOPE_12'],
+      isSystem: true,
+      sortOrder: 1,
+      fields: {
+        create: [
+          { fieldKey: 'peak_power', label: 'Piekvermogen', fieldType: AssetFieldType.number, unit: 'Wp', sortOrder: 0 },
+        ],
+      },
+    },
+  });
+  await prisma.locationTypeDefinition.create({
+    data: {
+      code: 'distribution_room',
+      name: 'Verdeelruimte',
+      description: 'Ruimte met verdeelinrichting',
+      icon: 'door-open',
+      color: '#0891B2',
+      normTypes: ['NEN1010', 'NEN3140'],
+      isSystem: true,
+      sortOrder: 0,
+      fields: {
+        create: [
+          { fieldKey: 'floor', label: 'Verdieping', fieldType: AssetFieldType.text, sortOrder: 0 },
+        ],
+      },
+    },
+  });
+  console.log('  ✓ Asset/location type definitions (3)');
+
+  // 5. Checklist (systeem) met items + links
+  const checklistItemA = await prisma.checklistItem.create({
+    data: { isSystem: true, code: 'NEN1010-001', question: 'Is de hoofdschakelaar correct geïnstalleerd en bereikbaar?', normReference: 'NEN 1010 art. 462', createdBy: superuser.id },
+  });
+  const checklistItemB = await prisma.checklistItem.create({
+    data: { isSystem: true, code: 'NEN1010-002', question: 'Zijn alle aardverbindingen aanwezig en deugdelijk?', normReference: 'NEN 1010 art. 411', createdBy: superuser.id },
+  });
+  const checklistNen = await prisma.checklist.create({
+    data: {
+      isSystem: true,
+      code: 'CL-NEN1010',
+      name: 'NEN 1010 basis-inspectiechecklist',
+      description: 'Standaardchecklist voor NEN 1010-eerstinspecties',
+      normTypeCode: 'NEN1010',
+      assetTypes: ['electrical_installation'],
+      locationTypes: ['distribution_room'],
+      status: ChecklistStatus.ACTIEF,
+      publishedAt: new Date(),
+      createdBy: superuser.id,
+      itemLinks: {
+        create: [
+          { checklistItemId: checklistItemA.id, sortOrder: 0, isRequired: true },
+          { checklistItemId: checklistItemB.id, sortOrder: 1, isRequired: true },
+        ],
+      },
+    },
+  });
+  console.log('  ✓ Checklist + items (1 checklist, 2 items)');
+
+  // 6. Meetstaat-template (globaal) met sectie + velden
+  const measSheet = await prisma.measurementSheetTemplate.create({
+    data: {
+      code: 'MS-NEN1010-ISO',
+      name: 'NEN 1010 isolatieweerstandmeting',
+      description: 'Meetstaat voor isolatieweerstand- en doorgangsmetingen',
+      normTypeCode: 'NEN1010',
+      assetTypes: ['electrical_installation'],
+      locationTypes: [],
+      status: MeasurementSheetTemplateStatus.ACTIEF,
+      publishedAt: new Date(),
+      createdBy: superuser.id,
+      sections: {
+        create: [
+          {
+            code: 'isolation',
+            name: 'Isolatieweerstand',
+            sortOrder: 0,
+            isRepeating: true,
+            minRows: 1,
+            fields: {
+              create: [
+                { code: 'group', name: 'Groep', fieldType: MeasurementSheetFieldType.TEXT, sortOrder: 0, isRequired: true },
+                {
+                  code: 'r_iso',
+                  name: 'Isolatieweerstand',
+                  fieldType: MeasurementSheetFieldType.NUMBER,
+                  unit: 'MΩ',
+                  decimals: 2,
+                  sortOrder: 1,
+                  isRequired: true,
+                  passFailEnabled: true,
+                  passFailOperator: PassFailOperator.GTE,
+                  passFailValue: 1,
+                  passFailFailMessage: 'Isolatieweerstand onder de minimumwaarde van 1 MΩ',
+                },
+              ],
+            },
+          },
+        ],
+      },
+    },
+  });
+  console.log('  ✓ Measurement sheet template + section/fields (1)');
+
+  // 6b. Voice base-prompt (Fase 7) — één actieve prompt zodat /voice/parse-measurement
+  //     direct werkt zonder aparte configuratiestap (fallback blijft de geporte default).
+  await prisma.voiceBasePrompt.create({
+    data: {
+      name: 'Standaard NL meet-prompt',
+      content: DEFAULT_VOICE_BASE_PROMPT,
+      isActive: true,
+    },
+  });
+  console.log('  ✓ Voice base-prompt (1, actief)');
+
+  // 7. Inspectie-template (verwijst naar classificatiemodel; links naar checklist + meetstaat)
+  const inspTemplate = await prisma.inspectionTemplate.create({
+    data: {
+      isSystem: true,
+      code: 'IT-NEN1010-INITIAL',
+      name: 'NEN 1010 eerste inspectie',
+      description: 'Inspectietemplate voor NEN 1010-eerstinspecties',
+      normTypeCode: 'NEN1010',
+      classificationModelId: classModelNen.id,
+      status: TemplateStatus.ACTIEF,
+      publishedAt: new Date(),
+      createdBy: superuser.id,
+      checklistLinks: {
+        create: [{ checklistId: checklistNen.id, assetTypes: ['electrical_installation'], sortOrder: 0 }],
+      },
+      measurementSheetLinks: {
+        create: [{ measurementSheetTemplateId: measSheet.id, assetTypes: ['electrical_installation'], sortOrder: 0 }],
+      },
+    },
+  });
+  console.log('  ✓ Inspection template (1)');
+
+  // 7b. Document-template (PLAN) voor de demo-inspectietemplate — t.b.v. document-generatie (Fase 4)
+  const planDocTemplate = await prisma.documentTemplate.create({
+    data: {
+      inspectionTemplateId: inspTemplate.id,
+      documentType: DocumentType.PLAN,
+      templateMode: TemplateMode.SECTIONS,
+      pageSize: 'A4',
+      orientation: 'portrait',
+      headerHtml: '<div>{{organization.name}} — Inspectieplan</div>',
+      footerHtml: '<div>Pagina {{pageNumber}} van {{totalPages}}</div>',
+      sections: {
+        create: [
+          {
+            code: 'projectgegevens',
+            title: 'Projectgegevens',
+            sectionType: SectionType.STATIC,
+            sortOrder: 0,
+            contentHtml: [
+              '<table>',
+              '<tr><th>Referentie</th><td>{{plan.reference}}</td></tr>',
+              '<tr><th>Project</th><td>{{plan.projectName}}</td></tr>',
+              '<tr><th>Norm</th><td>{{plan.normTypeName}}</td></tr>',
+              '<tr><th>Opdrachtgever</th><td>{{client.name}}</td></tr>',
+              '<tr><th>Locatie</th><td>{{location.address}}, {{location.city}}</td></tr>',
+              '<tr><th>Inspecteur</th><td>{{inspector.name}}</td></tr>',
+              '</table>',
+            ].join('\n'),
+          },
+          {
+            code: 'bevindingen',
+            title: 'Bevindingen',
+            sectionType: SectionType.STATIC,
+            sortOrder: 1,
+            contentHtml: [
+              '<p>Totaal aantal bevindingen: {{findingsSummary.total}}</p>',
+              '{{#each findings}}',
+              '<div class="finding-item">',
+              '<p><strong>{{this.shortDescription}}</strong> — <span class="classification-badge">{{this.classificationName}}</span></p>',
+              '{{#if this.longDescription}}<p>{{this.longDescription}}</p>{{/if}}',
+              '<p>Asset: {{this.assetName}}</p>',
+              '</div>',
+              '{{/each}}',
+            ].join('\n'),
+          },
+          {
+            code: 'ondertekening',
+            title: 'Ondertekening',
+            sectionType: SectionType.SIGNATURE_BLOCK,
+            sortOrder: 2,
+          },
+        ],
+      },
+    },
+  });
+  console.log('  ✓ Document template (PLAN) (1)');
+
+  // 8. Demo-inspectieplan (org1, contact1, inspecteur) met assets + findings
+  const demoPlan = await prisma.inspectionPlan.create({
+    data: {
+      orgId: org1.id,
+      contactId: contact1.id,
+      projectName: 'NEN 1010 inspectie hoofdkantoor De Vries',
+      description: 'Periodieke veiligheidsinspectie van de elektrische installatie',
+      referenceNumber: 'INSP-2026-0001',
+      normTypeCode: 'NEN1010',
+      inspectionTypeCode: 'initial',
+      statusCode: 'draft',
+      inspectionTemplateId: inspTemplate.id,
+      assignedTo: createdOrg1Users[Role.INSPECTEUR],
+      addressStreet: 'Industrieweg',
+      addressHouseNumber: '12',
+      addressPostalCode: '1234 AB',
+      addressCity: 'Amsterdam',
+      plannedDate: new Date('2026-07-01'),
+      createdBy: createdOrg1Users[Role.ORG_ADMIN],
+    },
+  });
+
+  const asset1 = await prisma.asset.create({
+    data: {
+      orgId: org1.id,
+      inspectionPlanId: demoPlan.id,
+      assetType: 'electrical_installation',
+      name: 'Hoofdverdeler HVK',
+      identifier: 'HVK-01',
+      statusCode: 'new',
+      sortOrder: 0,
+    },
+  });
+  const asset2 = await prisma.asset.create({
+    data: {
+      orgId: org1.id,
+      inspectionPlanId: demoPlan.id,
+      assetType: 'electrical_installation',
+      name: 'Onderverdeler kantoor',
+      identifier: 'OVK-02',
+      statusCode: 'new',
+      sortOrder: 1,
+    },
+  });
+
+  const finding1 = await prisma.finding.create({
+    data: {
+      orgId: org1.id,
+      assetId: asset1.id,
+      inspectionType: FindingInspectionType.visual,
+      shortDescription: 'Ontbrekende afdekking op verdeelinrichting',
+      longDescription: 'De afdekking van de hoofdverdeler ontbreekt, aanraakgevaar voor spanningvoerende delen.',
+      normReference: 'NEN 1010 art. 412',
+      statusCode: 'open',
+    },
+  });
+  await prisma.finding.create({
+    data: {
+      orgId: org1.id,
+      assetId: asset2.id,
+      inspectionType: FindingInspectionType.measurement,
+      shortDescription: 'Isolatieweerstand onder norm op groep 3',
+      longDescription: 'Gemeten isolatieweerstand 0,3 MΩ, onder de minimumwaarde van 1 MΩ.',
+      normReference: 'NEN 1010 art. 612',
+      statusCode: 'open',
+    },
+  });
+  console.log('  ✓ Demo inspection plan + 2 assets + 2 findings');
+
+  // ─── Locaties, plattegrond & meetstaten (inspectiedomein) ───────────────
+  // Additief op het bestaande demo-plan. treePath blijft leeg (de
+  // inspection-locations.service bouwt de boom via parentLocationId, niet via treePath).
+  const inspecteurId = createdOrg1Users[Role.INSPECTEUR];
+
+  const rootLocation = await prisma.inspectionLocation.create({
+    data: {
+      orgId: org1.id,
+      inspectionPlanId: demoPlan.id,
+      locationType: 'distribution_room',
+      name: 'Hoofdkantoor',
+      identifier: 'LOC-HK',
+      sortOrder: 0,
+      createdBy: inspecteurId,
+    },
+  });
+  const floorLocation = await prisma.inspectionLocation.create({
+    data: {
+      orgId: org1.id,
+      inspectionPlanId: demoPlan.id,
+      parentLocationId: rootLocation.id,
+      locationType: 'distribution_room',
+      name: 'Verdieping 1',
+      identifier: 'LOC-V1',
+      sortOrder: 0,
+      createdBy: inspecteurId,
+    },
+  });
+
+  // Assets aan de verdieping koppelen (Asset.locationId / relation "AssetLocation").
+  await prisma.asset.updateMany({
+    where: { id: { in: [asset1.id, asset2.id] } },
+    data: { locationId: floorLocation.id },
+  });
+  console.log('  ✓ Locatieboom (2 niveaus: Hoofdkantoor → Verdieping 1) + assets gekoppeld');
+
+  // Plattegrond op de root-locatie: genereer een echte 800x600 PNG en schrijf 'm naar
+  // de lokale storage (UPLOAD_DIR), zodat de afbeelding in het portal daadwerkelijk
+  // rendert. Key-patroon = location-images.service: `${orgId}/${uuid}-${filename}`.
+  // uploads/ is gitignored → niet gecommit; herseed genereert 'm opnieuw.
+  const floorPlanFilename = 'plattegrond-demo.png';
+  const floorPlanKey = `${org1.id}/${randomUUID()}-${floorPlanFilename}`;
+  const floorPlanBytes = makeFloorPlanPng(800, 600);
+  const uploadDir = process.env.UPLOAD_DIR || './uploads';
+  const floorPlanFullPath = path.join(uploadDir, floorPlanKey);
+  fs.mkdirSync(path.dirname(floorPlanFullPath), { recursive: true });
+  fs.writeFileSync(floorPlanFullPath, floorPlanBytes);
+
+  const floorPlanImage = await prisma.locationImage.create({
+    data: {
+      orgId: org1.id,
+      locationId: rootLocation.id,
+      storagePath: floorPlanKey,
+      originalFilename: floorPlanFilename,
+      fileSize: floorPlanBytes.length,
+      mimeType: 'image/png',
+      width: 800,
+      height: 600,
+      createdBy: inspecteurId,
+    },
+  });
+
+  // Markers op de plattegrond (positionX/Y = percentage 0-100). Twee assets + één
+  // constatering, gekoppeld via FK. Kleur/icon laten we leeg → frontend kleurt o.b.v. lookups.
+  await prisma.locationImageMarker.createMany({
+    data: [
+      {
+        orgId: org1.id,
+        locationImageId: floorPlanImage.id,
+        positionX: 27,
+        positionY: 30,
+        markerType: MarkerType.ASSET,
+        assetId: asset1.id,
+        label: 'Hoofdverdeler HVK',
+        createdBy: inspecteurId,
+      },
+      {
+        orgId: org1.id,
+        locationImageId: floorPlanImage.id,
+        positionX: 73,
+        positionY: 64,
+        markerType: MarkerType.ASSET,
+        assetId: asset2.id,
+        label: 'Onderverdeler kantoor',
+        createdBy: inspecteurId,
+      },
+      {
+        orgId: org1.id,
+        locationImageId: floorPlanImage.id,
+        positionX: 34,
+        positionY: 46,
+        markerType: MarkerType.FINDING,
+        findingId: finding1.id,
+        label: 'Ontbrekende afdekking',
+        createdBy: inspecteurId,
+      },
+    ],
+  });
+  console.log('  ✓ Plattegrond (LocationImage 800x600) + 3 markers (2 assets, 1 constatering)');
+
+  // Meetstaat-records (snapshot van de measSheet-template). Eén geslaagde meting op
+  // asset1 en één afgekeurde op asset2 (groep 3 < 1 MΩ → finalCheckPassed false),
+  // passend bij de bestaande constatering "Isolatieweerstand onder norm op groep 3".
+  const measSheetFull = await prisma.measurementSheetTemplate.findUnique({
+    where: { id: measSheet.id },
+    include: {
+      sections: {
+        include: { fields: { orderBy: { sortOrder: 'asc' } } },
+        orderBy: { sortOrder: 'asc' },
+      },
+    },
+  });
+  const measSnapshot = buildMeasurementSnapshot(measSheetFull!);
+
+  await prisma.measurementSheetRecord.create({
+    data: {
+      orgId: org1.id,
+      templateId: measSheet.id,
+      assetId: asset1.id,
+      inspectionPlanId: demoPlan.id,
+      templateVersion: measSheet.version,
+      templateSnapshot: measSnapshot as any,
+      status: MeasurementSheetRecordStatus.COMPLETED,
+      data: {
+        isolation: {
+          '0': { group: { value: 'Hoofdgroep', passFail: null }, r_iso: { value: 250, passFail: 'pass' } },
+          '1': { group: { value: 'Groep 1', passFail: null }, r_iso: { value: 180.5, passFail: 'pass' } },
+        },
+      } as any,
+      finalCheckExecuted: true,
+      finalCheckPassed: true,
+      finalCheckResults: { passed: true, results: [] } as any,
+      completedAt: new Date('2026-06-15T11:00:00Z'),
+      createdBy: inspecteurId,
+    },
+  });
+
+  await prisma.measurementSheetRecord.create({
+    data: {
+      orgId: org1.id,
+      templateId: measSheet.id,
+      assetId: asset2.id,
+      inspectionPlanId: demoPlan.id,
+      templateVersion: measSheet.version,
+      templateSnapshot: measSnapshot as any,
+      status: MeasurementSheetRecordStatus.COMPLETED,
+      data: {
+        isolation: {
+          '0': { group: { value: 'Groep 1', passFail: null }, r_iso: { value: 120, passFail: 'pass' } },
+          '1': { group: { value: 'Groep 2', passFail: null }, r_iso: { value: 95.2, passFail: 'pass' } },
+          '2': { group: { value: 'Groep 3', passFail: null }, r_iso: { value: 0.3, passFail: 'fail' } },
+        },
+      } as any,
+      finalCheckExecuted: true,
+      finalCheckPassed: false,
+      finalCheckResults: {
+        passed: false,
+        results: [
+          {
+            ruleType: 'passFail',
+            passed: false,
+            message: 'Isolatieweerstand 0,30 MΩ ligt onder de norm (≥ 1 MΩ) op groep 3',
+            details: { sectionCode: 'isolation', rowIndex: '2', fieldCode: 'r_iso' },
+          },
+        ],
+      } as any,
+      completedAt: new Date('2026-06-15T11:05:00Z'),
+      createdBy: inspecteurId,
+    },
+  });
+  console.log('  ✓ Meetstaat-records (2: asset1 geslaagd, asset2 afgekeurd op groep 3)');
+  console.log('  → Demo-inspectie compleet: + 2 locaties, 1 plattegrond + 3 markers, 2 meetstaat-records');
+
+  // ─── Client-portal demo (Fase 6) ───────────────────────
+  // Onboarded demo-klant met een vaste, niet-gebruikte magic-link op het bestaande
+  // demo-inspectieplan. Logt direct in (issueTokens) — geen wachtwoord, geen registratie —
+  // omdat de ClientUser bestaat én ClientAccess heeft op het Contact van het plan.
+  // Zie client-auth.service.ts → validateMagicLink. Alle records zijn additief en worden
+  // door de bestaande deleteMany-volgorde bovenin (kinderen eerst) weer opgeruimd.
+  console.log('\n👤 Seeding client-portal demo...');
+
+  const orgAdminId = createdOrg1Users[Role.ORG_ADMIN];
+
+  // 1. Geclassificeerde bevinding op het demo-plan (naast de 2 open bevindingen), zodat het
+  //    ondertekenbare document ook een geclassificeerde bevinding toont (SEVERITY → C2).
+  await prisma.finding.create({
+    data: {
+      orgId: org1.id,
+      assetId: asset1.id,
+      inspectionType: FindingInspectionType.visual,
+      shortDescription: 'Beschadigde mantel op hoofdvoedingskabel',
+      longDescription: 'De mantel van de hoofdvoedingskabel is plaatselijk beschadigd; de isolatie is zichtbaar aangetast.',
+      classificationValues: { SEVERITY: 'C2' },
+      normReference: 'NEN 1010 art. 526',
+      statusCode: 'open',
+      createdBy: createdOrg1Users[Role.INSPECTEUR],
+    },
+  });
+
+  // 2. Gegenereerd document (PLAN) op het demo-plan — wacht op de klant-handtekening.
+  //    De inspecteur heeft al getekend; de CLIENT-handtekening staat PENDING, zodat de klant
+  //    via het portal kan ondertekenen (client-documents.service.ts → sign()).
+  const demoDocHtml = [
+    '<h1>Inspectieplan — NEN 1010</h1>',
+    '<table>',
+    `<tr><th>Referentie</th><td>${demoPlan.referenceNumber}</td></tr>`,
+    `<tr><th>Project</th><td>${demoPlan.projectName}</td></tr>`,
+    '<tr><th>Norm</th><td>NEN 1010</td></tr>',
+    `<tr><th>Opdrachtgever</th><td>${contact1.companyName}</td></tr>`,
+    `<tr><th>Locatie</th><td>${demoPlan.addressStreet} ${demoPlan.addressHouseNumber}, ${demoPlan.addressCity}</td></tr>`,
+    '</table>',
+    '<h2>Bevindingen</h2>',
+    '<ul>',
+    '<li>Ontbrekende afdekking op verdeelinrichting — <em>open</em></li>',
+    '<li>Isolatieweerstand onder norm op groep 3 — <em>open</em></li>',
+    '<li>Beschadigde mantel op hoofdvoedingskabel — <strong>C2 — Onveilig, herstel aanbevolen</strong></li>',
+    '</ul>',
+    '<h2>Ondertekening</h2>',
+    '<p>Inspecteur: Tom Visser (getekend)</p>',
+    '<p>Opdrachtgever: Demo Klant (in afwachting)</p>',
+  ].join('\n');
+
+  await prisma.generatedDocument.create({
+    data: {
+      orgId: org1.id,
+      documentTemplateId: planDocTemplate.id,
+      inspectionPlanId: demoPlan.id,
+      documentType: DocumentType.PLAN,
+      htmlContent: demoDocHtml,
+      status: GeneratedDocumentStatus.PENDING_SIGNATURES,
+      generatedBy: orgAdminId,
+      signatures: {
+        create: [
+          {
+            signerRoleCode: 'INSPECTOR',
+            signerName: 'Tom Visser',
+            signerFunction: 'Inspecteur',
+            status: SignatureStatus.SIGNED,
+            signedAt: new Date('2026-06-15T10:00:00Z'),
+            signatureImage: 'data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=',
+          },
+          {
+            signerRoleCode: 'CLIENT',
+            signerName: 'Demo Klant',
+            signerFunction: 'Facilitair manager',
+            status: SignatureStatus.PENDING,
+          },
+        ],
+      },
+    },
+  });
+  console.log('  ✓ Generated document (PLAN, PENDING_SIGNATURES) + 2 handtekeningen (inspecteur getekend, klant open)');
+
+  // 3. Onboarded demo-klant (ClientUser). Login loopt via magic-link; passwordHash is fallback.
+  const demoClient = await prisma.clientUser.create({
+    data: {
+      email: 'klant@inspexi-demo.nl',
+      firstName: 'Demo',
+      lastName: 'Klant',
+      function: 'Facilitair manager',
+      emailVerified: true,
+      status: ClientUserStatus.ACTIVE,
+      passwordHash: await bcrypt.hash('Password123!', 10),
+    },
+  });
+  console.log(`  ✓ ClientUser: ${demoClient.email} (ACTIVE)`);
+
+  // 4. ClientAccess → Contact van het plan: bepaalt de org-scope van de klant (subdomein-org).
+  await prisma.clientAccess.create({
+    data: {
+      clientUserId: demoClient.id,
+      contactId: contact1.id,
+      role: ClientAccessRole.VIEWER,
+      grantedBy: orgAdminId,
+    },
+  });
+
+  // 5. Expliciete plan-toegang: bekijken én ondertekenen van het demo-plan.
+  await prisma.inspectionClientAccess.create({
+    data: {
+      inspectionPlanId: demoPlan.id,
+      clientUserId: demoClient.id,
+      canView: true,
+      canSign: true,
+      invitedBy: orgAdminId,
+    },
+  });
+  console.log(`  ✓ ClientAccess (VIEWER → ${contact1.companyName}) + InspectionClientAccess (canView/canSign)`);
+
+  // 6. Vaste, niet-gebruikte magic-link (ver in de toekomst verlopend) → directe login.
+  //    validateMagicLink markeert 'm bij eerste gebruik als usedAt; re-seed maakt 'm opnieuw.
+  await prisma.clientMagicLink.create({
+    data: {
+      clientUserId: demoClient.id,
+      email: 'klant@inspexi-demo.nl',
+      token: 'demo-klant-magic',
+      inspectionPlanId: demoPlan.id,
+      expiresAt: new Date('2099-12-31T00:00:00Z'),
+      usedAt: null,
+      createdBy: orgAdminId,
+    },
+  });
+  console.log('  ✓ ClientMagicLink: token "demo-klant-magic" (verloopt 2099-12-31, ongebruikt)');
+
   console.log('\n✅ Seed completed successfully!');
   console.log('\n📋 Login credentials (all use Password123!):');
   console.log('   superuser@inspexi.nl      → SUPERUSER');
@@ -1282,6 +2170,8 @@ async function main() {
   console.log('   manager@inspexi-demo.nl   → MANAGER (InspeXi Demo)');
   console.log('   backoffice@inspexi-demo.nl → BACKOFFICE (InspeXi Demo)');
   console.log('   admin@testbedrijf.nl      → ORG_ADMIN (Test Bedrijf)');
+  console.log('\n🔗 Demo-klant (client-portal) — directe login via magic-link:');
+  console.log('   http://inspexidemo.localhost:5174/magic/demo-klant-magic');
 }
 
 main()

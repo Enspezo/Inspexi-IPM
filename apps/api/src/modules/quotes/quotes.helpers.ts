@@ -19,6 +19,53 @@ export function calculateLineTotal(quantity: number, unitPrice: number, discount
   return Math.round(quantity * unitPrice * (1 - discountPct / 100) * 100) / 100;
 }
 
+/** Convert a Prisma.Decimal (or null) to a JS number, preserving null/undefined. */
+function toNum(value: unknown): number | null {
+  if (value === null || value === undefined) return value as null;
+  return Number(value);
+}
+
+/** Override the listed keys K of T to `number` (preserving null on nullable keys). */
+type MoneyToNumber<T, K extends string> = T extends null | undefined
+  ? T
+  : Omit<T, K & keyof T> & {
+      [P in K & keyof T]: null extends T[P] ? number | null : number;
+    };
+
+type SerializedQuoteLine<L> = MoneyToNumber<L, 'unitPrice' | 'lineTotal'>;
+type SerializedQuote<T> = T extends null | undefined
+  ? T
+  : MoneyToNumber<T, 'subtotal' | 'discountTotal' | 'vatTotal' | 'total'> &
+      (T extends { lines: infer L extends readonly any[] }
+        ? { lines: SerializedQuoteLine<L[number]>[] }
+        : unknown);
+
+/**
+ * Serialize a quote (with lines) so the money fields are plain numbers instead of
+ * Prisma.Decimal. Prisma.Decimal serializes to a string in JSON; the portal expects numbers.
+ * Safe to call on any quote-shaped object (lines optional).
+ */
+export function serializeQuote<T extends Record<string, any> | null | undefined>(
+  quote: T,
+): SerializedQuote<T> {
+  if (!quote) return quote as SerializedQuote<T>;
+  const lines = Array.isArray((quote as any).lines)
+    ? (quote as any).lines.map((line: any) => ({
+        ...line,
+        unitPrice: toNum(line.unitPrice),
+        lineTotal: toNum(line.lineTotal),
+      }))
+    : (quote as any).lines;
+  return {
+    ...(quote as any),
+    subtotal: toNum((quote as any).subtotal),
+    discountTotal: toNum((quote as any).discountTotal),
+    vatTotal: toNum((quote as any).vatTotal),
+    total: toNum((quote as any).total),
+    ...(lines !== undefined ? { lines } : {}),
+  } as SerializedQuote<T>;
+}
+
 export const QUOTE_INCLUDE = {
   contact: { select: { id: true, type: true, companyName: true, firstName: true, lastName: true, email: true } },
   location: { select: { id: true, name: true, city: true, street: true, houseNumber: true, postalCode: true } },

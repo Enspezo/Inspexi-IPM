@@ -1,0 +1,291 @@
+import { Test, TestingModule } from '@nestjs/testing';
+import { INestApplication, ValidationPipe } from '@nestjs/common';
+import request from 'supertest';
+import cookieParser from 'cookie-parser';
+import { AppModule } from '@/app.module';
+import { PrismaService } from '@/prisma';
+import bcrypt from 'bcrypt';
+
+describe('Standalone Measurements (e2e)', () => {
+  let app: INestApplication;
+  let prisma: PrismaService;
+  let testUserId: string;
+  let testOrgId: string;
+  let testContactId: string;
+  let testNormCode: string;
+  let testLocationTypeCode: string;
+  let testPlanId: string;
+  let testLocationId: string;
+  let testAssetId: string;
+  let accessToken: string;
+  let measurementId: string;
+
+  beforeAll(async () => {
+    const moduleFixture: TestingModule = await Test.createTestingModule({
+      imports: [AppModule],
+    }).compile();
+
+    app = moduleFixture.createNestApplication();
+    app.use(cookieParser());
+    app.setGlobalPrefix('api/v1');
+    app.useGlobalPipes(
+      new ValidationPipe({
+        whitelist: true,
+        forbidNonWhitelisted: true,
+        transform: true,
+      }),
+    );
+    await app.init();
+
+    prisma = app.get(PrismaService);
+
+    // Org
+    const org = await prisma.organization.create({
+      data: { name: 'E2E SM Org', slug: 'e2esm' },
+    });
+    testOrgId = org.id;
+
+    // User (ORG_ADMIN)
+    const passwordHash = await bcrypt.hash('TestPass123!', 10);
+    const user = await prisma.user.create({
+      data: {
+        email: 'e2e-sm@test.nl',
+        passwordHash,
+        firstName: 'Meting',
+        lastName: 'Tester',
+        roles: ['ORG_ADMIN'],
+        orgId: org.id,
+        emailVerifiedAt: new Date(),
+      },
+    });
+    testUserId = user.id;
+
+    // Contact (opdrachtgever)
+    const contact = await prisma.contact.create({
+      data: {
+        orgId: org.id,
+        type: 'COMPANY',
+        companyName: 'E2E SM Contact',
+        email: 'e2e-sm-contact@test.nl',
+        ownerId: user.id,
+      },
+    });
+    testContactId = contact.id;
+
+    // Global norm-type definition
+    testNormCode = 'e2esmnorm';
+    await prisma.normTypeDefinition.create({
+      data: {
+        code: testNormCode,
+        label: 'E2E SM Norm',
+        createdBy: user.id,
+        isActive: true,
+        assetTypes: [],
+      },
+    });
+
+    // Inspection plan
+    const plan = await prisma.inspectionPlan.create({
+      data: {
+        orgId: org.id,
+        contactId: contact.id,
+        projectName: 'E2E SM Plan',
+        normTypeCode: testNormCode,
+        createdBy: user.id,
+      },
+    });
+    testPlanId = plan.id;
+
+    // Location-type definition (org-scoped)
+    testLocationTypeCode = 'e2esmroom';
+    await prisma.locationTypeDefinition.create({
+      data: {
+        orgId: org.id,
+        code: testLocationTypeCode,
+        name: 'Ruimte',
+        isSystem: false,
+      },
+    });
+
+    // Inspection location (target for the measurement)
+    const location = await prisma.inspectionLocation.create({
+      data: {
+        orgId: org.id,
+        inspectionPlanId: plan.id,
+        locationType: testLocationTypeCode,
+        name: 'Meterkast',
+        createdBy: user.id,
+      },
+    });
+    testLocationId = location.id;
+
+    // Asset (target for link-asset)
+    const asset = await prisma.asset.create({
+      data: {
+        orgId: org.id,
+        inspectionPlanId: plan.id,
+        assetType: 'verdeler',
+        name: 'Hoofdverdeler',
+        createdBy: user.id,
+      },
+    });
+    testAssetId = asset.id;
+
+    // Login
+    const loginRes = await request(app.getHttpServer())
+      .post('/api/v1/auth/login')
+      .send({ email: 'e2e-sm@test.nl', password: 'TestPass123!' });
+    accessToken = loginRes.body.data.accessToken;
+  });
+
+  afterAll(async () => {
+    try {
+      // Children first, then the rest in FK order
+      await prisma.standaloneMeasurementValue.deleteMany({
+        where: { standaloneMeasurement: { inspectionPlanId: testPlanId } },
+      });
+      await prisma.standaloneMeasurement.deleteMany({ where: { inspectionPlanId: testPlanId } });
+      await prisma.asset.deleteMany({ where: { inspectionPlanId: testPlanId } });
+      await prisma.inspectionLocation.deleteMany({ where: { inspectionPlanId: testPlanId } });
+      await prisma.locationTypeDefinition.deleteMany({
+        where: { orgId: testOrgId, code: testLocationTypeCode },
+      });
+      await prisma.inspectionPlan.deleteMany({ where: { id: testPlanId } });
+      await prisma.normTypeDefinition.deleteMany({ where: { code: testNormCode } });
+      await prisma.contact.deleteMany({ where: { id: testContactId } });
+      await prisma.auditLog.deleteMany({ where: { userId: testUserId } });
+      await prisma.refreshToken.deleteMany({ where: { userId: testUserId } });
+      await prisma.user.deleteMany({ where: { id: testUserId } });
+      await prisma.organization.deleteMany({ where: { id: testOrgId } });
+    } finally {
+      await app.close();
+    }
+  });
+
+  describe('POST /api/v1/inspection-plans/:planId/standalone-measurements', () => {
+    it('should create a measurement under a plan', async () => {
+      const res = await request(app.getHttpServer())
+        .post(`/api/v1/inspection-plans/${testPlanId}/standalone-measurements`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ locationId: testLocationId, measurementType: 'isolatiemeting' })
+        .expect(201);
+
+      expect(res.body.success).toBe(true);
+      expect(res.body.data.id).toBeDefined();
+      measurementId = res.body.data.id;
+    });
+
+    it('should return 401 without authentication', async () => {
+      await request(app.getHttpServer())
+        .post(`/api/v1/inspection-plans/${testPlanId}/standalone-measurements`)
+        .send({ locationId: testLocationId, measurementType: 'isolatiemeting' })
+        .expect(401);
+    });
+
+    it('should return 400 for missing required fields', async () => {
+      await request(app.getHttpServer())
+        .post(`/api/v1/inspection-plans/${testPlanId}/standalone-measurements`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ measurementType: 'no-location' })
+        .expect(400);
+    });
+  });
+
+  describe('GET /api/v1/inspection-plans/:planId/standalone-measurements', () => {
+    it('should list measurements for a plan', async () => {
+      const res = await request(app.getHttpServer())
+        .get(`/api/v1/inspection-plans/${testPlanId}/standalone-measurements`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(200);
+
+      expect(res.body.success).toBe(true);
+      expect(Array.isArray(res.body.data)).toBe(true);
+      expect(res.body.data.length).toBeGreaterThanOrEqual(1);
+    });
+
+    it('should filter by locationId', async () => {
+      const res = await request(app.getHttpServer())
+        .get(
+          `/api/v1/inspection-plans/${testPlanId}/standalone-measurements?locationId=${testLocationId}`,
+        )
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(200);
+
+      expect(res.body.success).toBe(true);
+      expect(res.body.data.every((m: any) => m.locationId === testLocationId)).toBe(true);
+    });
+  });
+
+  describe('GET /api/v1/standalone-measurements/:id', () => {
+    it('should return measurement detail', async () => {
+      const res = await request(app.getHttpServer())
+        .get(`/api/v1/standalone-measurements/${measurementId}`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(200);
+
+      expect(res.body.success).toBe(true);
+      expect(res.body.data.id).toBe(measurementId);
+    });
+
+    it('should return 404 for non-existent measurement', async () => {
+      await request(app.getHttpServer())
+        .get('/api/v1/standalone-measurements/00000000-0000-0000-0000-000000000000')
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(404);
+    });
+  });
+
+  describe('POST /api/v1/standalone-measurements/:id/values', () => {
+    it('should add a value to the measurement', async () => {
+      const res = await request(app.getHttpServer())
+        .post(`/api/v1/standalone-measurements/${measurementId}/values`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ fieldName: 'isolatieweerstand', fieldType: 'number', value: '500', unit: 'MOhm' })
+        .expect(201);
+
+      expect(res.body.success).toBe(true);
+      expect(res.body.data.id).toBeDefined();
+      expect(res.body.data.fieldName).toBe('isolatieweerstand');
+    });
+  });
+
+  describe('POST /api/v1/standalone-measurements/:id/link-asset', () => {
+    it('should link an asset to the measurement', async () => {
+      const res = await request(app.getHttpServer())
+        .post(`/api/v1/standalone-measurements/${measurementId}/link-asset`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ assetId: testAssetId })
+        .expect(201);
+
+      expect(res.body.success).toBe(true);
+      expect(res.body.data.linkedAssetId).toBe(testAssetId);
+    });
+  });
+
+  describe('PATCH /api/v1/standalone-measurements/:id', () => {
+    it('should update the measurementType', async () => {
+      const res = await request(app.getHttpServer())
+        .patch(`/api/v1/standalone-measurements/${measurementId}`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ measurementType: 'continuiteitsmeting' })
+        .expect(200);
+
+      expect(res.body.success).toBe(true);
+      expect(res.body.data.measurementType).toBe('continuiteitsmeting');
+    });
+  });
+
+  describe('DELETE /api/v1/standalone-measurements/:id', () => {
+    it('should soft-delete a measurement and 404 afterwards', async () => {
+      await request(app.getHttpServer())
+        .delete(`/api/v1/standalone-measurements/${measurementId}`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(200);
+
+      await request(app.getHttpServer())
+        .get(`/api/v1/standalone-measurements/${measurementId}`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(404);
+    });
+  });
+});

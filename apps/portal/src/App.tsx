@@ -88,6 +88,9 @@ const QuoteTemplateDetailPage = lazy(
 const PublicQuotePage = lazy(
   () => import('@/pages/quotes/public-quote-page'),
 );
+const PublicSignPage = lazy(
+  () => import('@/pages/inspections/public-sign-page'),
+);
 const NotificationsPage = lazy(
   () => import('@/pages/notifications/notifications-page'),
 );
@@ -109,6 +112,33 @@ const ErrorReportsPage = lazy(() => import('@/pages/error-reports/error-reports-
 const NotesPage = lazy(() => import('@/pages/notes/notes-page'));
 const WorkOrdersPage = lazy(() => import('@/pages/work-orders/work-orders-page'));
 const WorkOrderDetailPage = lazy(() => import('@/pages/work-orders/work-order-detail-page'));
+// Inspectiedomein (Fase 5)
+const InspectionsPage = lazy(() => import('@/pages/inspections/inspections-page'));
+const InspectionDetailPage = lazy(() => import('@/pages/inspections/inspection-detail-page'));
+const AssetsPage = lazy(() => import('@/pages/assets/assets-page'));
+const AssetDetailPage = lazy(() => import('@/pages/assets/asset-detail-page'));
+const ChecklistsPage = lazy(() => import('@/pages/checklists/checklists-page'));
+const ChecklistDetailPage = lazy(() => import('@/pages/checklists/checklist-detail-page'));
+const ChecklistItemsPage = lazy(() => import('@/pages/checklist-items/checklist-items-page'));
+const FindingTemplatesPage = lazy(() => import('@/pages/finding-templates/finding-templates-page'));
+const FindingTemplateDetailPage = lazy(() => import('@/pages/finding-templates/finding-template-detail-page'));
+const ClassificationModelsPage = lazy(() => import('@/pages/classification-models/classification-models-page'));
+const ClassificationModelDetailPage = lazy(() => import('@/pages/classification-models/classification-model-detail-page'));
+const NormTypesPage = lazy(() => import('@/pages/norm-types/norm-types-page'));
+const NormTypeDetailPage = lazy(() => import('@/pages/norm-types/norm-type-detail-page'));
+const AssetTypesPage = lazy(() => import('@/pages/asset-types/asset-types-page'));
+const AssetTypeDetailPage = lazy(() => import('@/pages/asset-types/asset-type-detail-page'));
+const LocationTypesPage = lazy(() => import('@/pages/location-types/location-types-page'));
+const LocationTypeDetailPage = lazy(() => import('@/pages/location-types/location-type-detail-page'));
+const MeasurementSheetTemplatesPage = lazy(() => import('@/pages/measurement-sheet-templates/measurement-sheet-templates-page'));
+const MeasurementSheetTemplateDetailPage = lazy(() => import('@/pages/measurement-sheet-templates/measurement-sheet-template-detail-page'));
+const VoiceBasePromptsPage = lazy(() => import('@/pages/voice-prompts/voice-base-prompts-page'));
+const VoiceTemplatePromptsPage = lazy(() => import('@/pages/voice-prompts/voice-template-prompts-page'));
+const InspectionTemplatesPage = lazy(() => import('@/pages/inspection-templates/inspection-templates-page'));
+const InspectionTemplateDetailPage = lazy(() => import('@/pages/inspection-templates/inspection-template-detail-page'));
+const LookupsIndexPage = lazy(() => import('@/pages/lookups/lookups-index-page'));
+const LookupManagePage = lazy(() => import('@/pages/lookups/lookup-manage-page'));
+const NotFoundPage = lazy(() => import('@/pages/not-found-page'));
 
 function PageLoader() {
   return (
@@ -130,6 +160,7 @@ export default function App() {
         <Route path="/reset-password" element={<ResetPasswordPage />} />
         <Route path="/offerte/:token" element={<PublicQuotePage />} />
         <Route path="/afspraak/:token" element={<PlanningPublicPage />} />
+        <Route path="/sign/:requestId" element={<PublicSignPage />} />
 
         {/* Root redirect */}
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
@@ -184,11 +215,38 @@ export default function App() {
             <Route path="/search" element={<SearchPage />} />
             <Route path="/error-reports" element={<ErrorReportsPage />} />
             <Route path="/notities" element={<NotesPage />} />
+            {/* Inspectiedomein (Fase 5) */}
+            <Route path="/inspections" element={<InspectionsPage />} />
+            <Route path="/inspections/:id" element={<InspectionDetailPage />} />
+            <Route path="/assets" element={<AssetsPage />} />
+            <Route path="/assets/:id" element={<AssetDetailPage />} />
+            <Route path="/checklists" element={<ChecklistsPage />} />
+            <Route path="/checklists/:id" element={<ChecklistDetailPage />} />
+            <Route path="/checklist-items" element={<ChecklistItemsPage />} />
+            <Route path="/finding-templates" element={<FindingTemplatesPage />} />
+            <Route path="/finding-templates/:id" element={<FindingTemplateDetailPage />} />
+            <Route path="/classification-models" element={<ClassificationModelsPage />} />
+            <Route path="/classification-models/:id" element={<ClassificationModelDetailPage />} />
+            <Route path="/norm-types" element={<NormTypesPage />} />
+            <Route path="/norm-types/:id" element={<NormTypeDetailPage />} />
+            <Route path="/asset-types" element={<AssetTypesPage />} />
+            <Route path="/asset-types/:id" element={<AssetTypeDetailPage />} />
+            <Route path="/location-types" element={<LocationTypesPage />} />
+            <Route path="/location-types/:id" element={<LocationTypeDetailPage />} />
+            <Route path="/measurement-sheet-templates" element={<MeasurementSheetTemplatesPage />} />
+            <Route path="/measurement-sheet-templates/:id" element={<MeasurementSheetTemplateDetailPage />} />
+            <Route path="/admin/voice-prompts" element={<VoiceBasePromptsPage />} />
+            <Route path="/voice-prompts/template" element={<VoiceTemplatePromptsPage />} />
+            <Route path="/inspection-templates" element={<InspectionTemplatesPage />} />
+            <Route path="/inspection-templates/:id" element={<InspectionTemplateDetailPage />} />
+            <Route path="/lookups" element={<LookupsIndexPage />} />
+            <Route path="/lookups/:kind" element={<LookupManagePage />} />
           </Route>
         </Route>
 
-        {/* Catch-all */}
-        <Route path="*" element={<Navigate to="/dashboard" replace />} />
+        {/* Catch-all → real 404 page. A static page (not a silent redirect to
+            /dashboard) can never swallow a valid route during the load race. */}
+        <Route path="*" element={<NotFoundPage />} />
       </Routes>
     </Suspense>
     </ErrorBoundary>

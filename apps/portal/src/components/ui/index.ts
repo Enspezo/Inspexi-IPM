@@ -1,5 +1,6 @@
 export { ActionMenu, type ActionMenuItem } from './action-menu';
 export { StatusBadge } from './status-badge';
+export { LookupBadge } from './lookup-badge';
 export { ErrorBox } from './error-box';
 export { InfoField } from './info-field';
 export { Tabs, type TabDef } from './tabs';
@@ -12,6 +13,7 @@ export { Checkbox } from './checkbox';
 export { Table, type Column, type TableSort } from './table';
 export { Modal } from './modal';
 export { Card } from './card';
+export { SortableList, DragHandle, type SortableRenderProps } from './sortable-list';
 export { Spinner } from './spinner';
 export { ToastProvider, useToast } from './toast';
 export { RichTextEditor } from './rich-text-editor';

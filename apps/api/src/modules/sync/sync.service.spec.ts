@@ -1,0 +1,363 @@
+import { Test, TestingModule } from '@nestjs/testing';
+import { BadRequestException } from '@nestjs/common';
+import { Role, SyncStatus } from '@prisma/client';
+import { SyncService } from './sync.service';
+import { PrismaService } from '@/prisma';
+
+describe('SyncService', () => {
+  let service: SyncService;
+
+  const delegate = () => ({
+    findMany: jest.fn(),
+    findFirst: jest.fn(),
+    findUnique: jest.fn(),
+    create: jest.fn(),
+    update: jest.fn(),
+  });
+
+  const mockPrisma = {
+    inspectionPlan: delegate(),
+    asset: delegate(),
+    finding: delegate(),
+    photo: delegate(),
+    contact: delegate(),
+    syncQueue: delegate(),
+  };
+
+  const user = { id: 'user-1', orgId: 'org-1', roles: [Role.INSPECTEUR] } as any;
+  const superuser = { id: 'su', orgId: null, roles: [Role.SUPERUSER] } as any;
+
+  beforeEach(async () => {
+    jest.clearAllMocks();
+
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        SyncService,
+        { provide: PrismaService, useValue: mockPrisma },
+      ],
+    }).compile();
+
+    service = module.get<SyncService>(SyncService);
+  });
+
+  // ── PUSH: create ──────────────────────────────────────
+  describe('push — create', () => {
+    it('creates an inspection plan with injected orgId + createdBy', async () => {
+      mockPrisma.inspectionPlan.create.mockResolvedValue({ id: 'p1' });
+
+      const dto = {
+        deviceId: 'dev-1',
+        changes: {
+          inspectionPlans: [
+            { operation: 'create', data: { id: 'p1', contactId: 'c1', projectName: 'X', normTypeCode: 'NEN1010' } },
+          ],
+        },
+      } as any;
+
+      const result = await service.push(user, dto);
+
+      expect(mockPrisma.inspectionPlan.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ id: 'p1', orgId: 'org-1', createdBy: 'user-1' }),
+        }),
+      );
+      expect(result.processed.inspectionPlans).toBe(1);
+      expect(result.errors).toHaveLength(0);
+      expect(result.conflicts).toHaveLength(0);
+    });
+
+    it('creates an asset when the parent plan is in the SAME org', async () => {
+      // covers both assertSameOrg's internal findUnique and resolveOrgId's findUnique
+      mockPrisma.inspectionPlan.findUnique.mockResolvedValue({ orgId: 'org-1' });
+      mockPrisma.asset.create.mockResolvedValue({ id: 'a1' });
+
+      const dto = {
+        deviceId: 'dev-1',
+        changes: {
+          assets: [
+            { operation: 'create', data: { id: 'a1', inspectionPlanId: 'p1', assetType: 'electrical_installation', name: 'Board' } },
+          ],
+        },
+      } as any;
+
+      const result = await service.push(user, dto);
+
+      expect(mockPrisma.asset.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ orgId: 'org-1' }),
+        }),
+      );
+      expect(result.processed.assets).toBe(1);
+      expect(result.errors).toHaveLength(0);
+    });
+
+    it('rejects an asset whose parent plan is in ANOTHER org (cross-tenant)', async () => {
+      mockPrisma.inspectionPlan.findUnique.mockResolvedValue({ orgId: 'org-2' });
+
+      const dto = {
+        deviceId: 'dev-1',
+        changes: {
+          assets: [
+            { operation: 'create', data: { id: 'a1', inspectionPlanId: 'p1', assetType: 'electrical_installation', name: 'Board' } },
+          ],
+        },
+      } as any;
+
+      const result = await service.push(user, dto);
+
+      expect(mockPrisma.asset.create).not.toHaveBeenCalled();
+      expect(result.errors).toHaveLength(1);
+      expect(result.processed.assets).toBe(0);
+    });
+
+    it('records an error when a create record is missing its id', async () => {
+      const dto = {
+        deviceId: 'dev-1',
+        changes: {
+          inspectionPlans: [
+            { operation: 'create', data: { projectName: 'No id' } },
+          ],
+        },
+      } as any;
+
+      const result = await service.push(user, dto);
+
+      expect(mockPrisma.inspectionPlan.create).not.toHaveBeenCalled();
+      expect(result.errors).toHaveLength(1);
+      expect(result.errors[0].error).toContain('id');
+    });
+  });
+
+  // ── PUSH: update ──────────────────────────────────────
+  describe('push — update', () => {
+    it('updates a plan when there is no conflict', async () => {
+      mockPrisma.inspectionPlan.findFirst.mockResolvedValue({
+        id: 'p1', orgId: 'org-1', updatedAt: new Date('2020-01-01'),
+      });
+      mockPrisma.inspectionPlan.update.mockResolvedValue({ id: 'p1' });
+
+      const dto = {
+        deviceId: 'dev-1',
+        changes: {
+          inspectionPlans: [
+            { operation: 'update', data: { id: 'p1', projectName: 'Y', syncedAt: '2025-01-01T00:00:00Z' } },
+          ],
+        },
+      } as any;
+
+      const result = await service.push(user, dto);
+
+      expect(mockPrisma.inspectionPlan.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'p1' },
+          data: expect.objectContaining({ syncedAt: expect.any(Date) }),
+        }),
+      );
+      expect(result.processed.inspectionPlans).toBe(1);
+      expect(result.conflicts).toHaveLength(0);
+    });
+
+    it('records a conflict when the server is newer than the client', async () => {
+      mockPrisma.inspectionPlan.findFirst.mockResolvedValue({
+        id: 'p1', orgId: 'org-1', updatedAt: new Date(),
+      });
+      mockPrisma.syncQueue.create.mockResolvedValue({ id: 'q1' });
+
+      const dto = {
+        deviceId: 'dev-1',
+        changes: {
+          inspectionPlans: [
+            { operation: 'update', data: { id: 'p1', projectName: 'Y', syncedAt: '2020-01-01T00:00:00Z' } },
+          ],
+        },
+      } as any;
+
+      const result = await service.push(user, dto);
+
+      expect(mockPrisma.syncQueue.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ status: SyncStatus.conflict }),
+        }),
+      );
+      expect(mockPrisma.inspectionPlan.update).not.toHaveBeenCalled();
+      expect(result.conflicts).toHaveLength(1);
+    });
+  });
+
+  // ── PUSH: delete ──────────────────────────────────────
+  describe('push — delete', () => {
+    it('soft-deletes an existing record then errors on a missing one', async () => {
+      mockPrisma.inspectionPlan.findFirst
+        .mockResolvedValueOnce({ id: 'p1', orgId: 'org-1' })
+        .mockResolvedValueOnce(null);
+      mockPrisma.inspectionPlan.update.mockResolvedValue({ id: 'p1' });
+
+      const okDto = {
+        deviceId: 'dev-1',
+        changes: { inspectionPlans: [{ operation: 'delete', data: { id: 'p1' } }] },
+      } as any;
+      const okResult = await service.push(user, okDto);
+
+      expect(mockPrisma.inspectionPlan.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'p1' },
+          data: { deletedAt: expect.any(Date) },
+        }),
+      );
+      expect(okResult.processed.inspectionPlans).toBe(1);
+
+      const missingDto = {
+        deviceId: 'dev-1',
+        changes: { inspectionPlans: [{ operation: 'delete', data: { id: 'gone' } }] },
+      } as any;
+      const missingResult = await service.push(user, missingDto);
+
+      expect(missingResult.errors).toHaveLength(1);
+    });
+  });
+
+  // ── PUSH: superuser ───────────────────────────────────
+  describe('push — superuser', () => {
+    it('throws BadRequestException because a superuser has no org', async () => {
+      const dto = { deviceId: 'dev-1', changes: {} } as any;
+      await expect(service.push(superuser, dto)).rejects.toThrow(BadRequestException);
+    });
+  });
+
+  // ── RESOLVE ───────────────────────────────────────────
+  describe('resolve', () => {
+    const conflictQueueItem = {
+      id: 'q1',
+      payload: { id: 'p1', projectName: 'CLIENT' },
+      conflictData: { serverData: { id: 'p1', projectName: 'SERVER' } },
+      status: 'conflict',
+    };
+
+    it('applies the client version', async () => {
+      mockPrisma.syncQueue.findFirst.mockResolvedValue(conflictQueueItem);
+      mockPrisma.inspectionPlan.findFirst.mockResolvedValue({ id: 'p1', orgId: 'org-1' });
+      mockPrisma.inspectionPlan.update.mockResolvedValue({ id: 'p1' });
+      mockPrisma.syncQueue.update.mockResolvedValue({ id: 'q1' });
+
+      const dto = {
+        deviceId: 'dev-1',
+        resolutions: [{ entityType: 'inspectionPlan', entityId: 'p1', resolution: 'client' }],
+      } as any;
+
+      const result = await service.resolve(user, dto);
+
+      expect(mockPrisma.inspectionPlan.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'p1' },
+          data: expect.objectContaining({ projectName: 'CLIENT', syncedAt: expect.any(Date) }),
+        }),
+      );
+      expect(mockPrisma.syncQueue.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ status: SyncStatus.completed }),
+        }),
+      );
+      expect(result.resolved).toBe(1);
+    });
+
+    it('applies the server version', async () => {
+      mockPrisma.syncQueue.findFirst.mockResolvedValue(conflictQueueItem);
+      mockPrisma.inspectionPlan.findFirst.mockResolvedValue({ id: 'p1', orgId: 'org-1' });
+      mockPrisma.inspectionPlan.update.mockResolvedValue({ id: 'p1' });
+      mockPrisma.syncQueue.update.mockResolvedValue({ id: 'q1' });
+
+      const dto = {
+        deviceId: 'dev-1',
+        resolutions: [{ entityType: 'inspectionPlan', entityId: 'p1', resolution: 'server' }],
+      } as any;
+
+      await service.resolve(user, dto);
+
+      expect(mockPrisma.inspectionPlan.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ projectName: 'SERVER' }),
+        }),
+      );
+    });
+
+    it('applies merged data', async () => {
+      mockPrisma.syncQueue.findFirst.mockResolvedValue(conflictQueueItem);
+      mockPrisma.inspectionPlan.findFirst.mockResolvedValue({ id: 'p1', orgId: 'org-1' });
+      mockPrisma.inspectionPlan.update.mockResolvedValue({ id: 'p1' });
+      mockPrisma.syncQueue.update.mockResolvedValue({ id: 'q1' });
+
+      const dto = {
+        deviceId: 'dev-1',
+        resolutions: [
+          { entityType: 'inspectionPlan', entityId: 'p1', resolution: 'merge', mergedData: { projectName: 'MERGED' } },
+        ],
+      } as any;
+
+      await service.resolve(user, dto);
+
+      expect(mockPrisma.inspectionPlan.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ projectName: 'MERGED' }),
+        }),
+      );
+    });
+
+    it('records an error when there is no matching conflict', async () => {
+      mockPrisma.syncQueue.findFirst.mockResolvedValue(null);
+
+      const dto = {
+        deviceId: 'dev-1',
+        resolutions: [{ entityType: 'inspectionPlan', entityId: 'p1', resolution: 'client' }],
+      } as any;
+
+      const result = await service.resolve(user, dto);
+
+      expect(result.errors).toHaveLength(1);
+      expect(result.resolved).toBe(0);
+      expect(mockPrisma.inspectionPlan.update).not.toHaveBeenCalled();
+    });
+  });
+
+  // ── PULL ──────────────────────────────────────────────
+  describe('pull', () => {
+    it('returns grouped changes, strips internal fields and shapes photos/contacts', async () => {
+      // changed plans (first call), deleted plans (second call)
+      mockPrisma.inspectionPlan.findMany
+        .mockResolvedValueOnce([{ id: 'p1', projectName: 'X', internalNotes: 'SECRET', orgId: 'org-1' }])
+        .mockResolvedValueOnce([]);
+      mockPrisma.asset.findMany.mockResolvedValue([]);
+      mockPrisma.finding.findMany.mockResolvedValue([]);
+      mockPrisma.photo.findMany.mockResolvedValue([
+        { id: 'ph1', entityType: 'inspection_plan', entityId: 'p1' },
+      ]);
+      mockPrisma.contact.findMany.mockResolvedValue([
+        { id: 'c1', orgId: 'org-1', companyName: 'Acme', firstName: null, lastName: null, type: 'COMPANY' },
+      ]);
+
+      const result = await service.pull(user);
+
+      expect(result).toHaveProperty('inspectionPlans');
+      expect(result).toHaveProperty('assets');
+      expect(result).toHaveProperty('findings');
+      expect(result).toHaveProperty('photos');
+      expect(result).toHaveProperty('contacts');
+      expect(result).toHaveProperty('deletedIds');
+      expect(result).toHaveProperty('serverTime');
+
+      // toWire strips internalNotes
+      expect(result.inspectionPlans[0]).not.toHaveProperty('internalNotes');
+      expect(result.inspectionPlans[0]).toHaveProperty('projectName', 'X');
+
+      // photo entityType normalized + download url
+      expect(result.photos[0].entityType).toBe('inspectionPlan');
+      expect(result.photos[0].url).toBe('/api/v1/photos/ph1/download');
+
+      // contact name derived from companyName
+      expect(result.contacts[0].name).toBe('Acme');
+
+      // serverTime is an ISO string
+      expect(typeof result.serverTime).toBe('string');
+      expect(new Date(result.serverTime).toISOString()).toBe(result.serverTime);
+    });
+  });
+});

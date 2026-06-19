@@ -153,6 +153,17 @@ const entityLabels: Record<string, Record<string, string>> = {
     isActive: 'Actief',
     createdBy: 'Aangemaakt door',
   },
+  Task: {
+    title: 'Titel',
+    status: 'Status',
+    taskType: 'Taaktype',
+    description: 'Omschrijving',
+    entityType: 'Gekoppeld type',
+    entityId: 'Gekoppeld aan',
+    assigneeId: 'Toegewezen aan',
+    createdById: 'Aangemaakt door',
+    deadline: 'Deadline',
+  },
   PlanningItem: {
     status: 'Status',
     contactId: 'Relatie',

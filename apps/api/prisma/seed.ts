@@ -305,6 +305,12 @@ async function main() {
       primaryColor: '#1E40AF',
       defaultVat: 21,
       defaultValidityDays: 30,
+      // Klantportaal inspecteur-contact: telefoon toont de inspecteur zelf (mét toestemming),
+      // e-mail valt terug op de statische waarde omdat de inspecteur géén e-mail-toestemming geeft.
+      inspectorPhoneDisplay: 'INSPECTOR',
+      inspectorEmailDisplay: 'INSPECTOR',
+      inspectorStaticPhone: '+31 20 123 4567',
+      inspectorStaticEmail: 'klantcontact@inspexi-demo.nl',
     },
   });
   console.log(`  ✓ Organization: ${org1.name} (${org1.slug})`);
@@ -401,7 +407,18 @@ async function main() {
     { email: 'manager@inspexi-demo.nl', firstName: 'Pieter', lastName: 'Bakker', roles: [Role.MANAGER] },
     { email: 'backoffice@inspexi-demo.nl', firstName: 'Maria', lastName: 'Jansen', roles: [Role.BACKOFFICE] },
     { email: 'werkvoorbereider@inspexi-demo.nl', firstName: 'Kees', lastName: 'Smit', roles: [Role.WERKVOORBEREIDER] },
-    { email: 'inspecteur@inspexi-demo.nl', firstName: 'Tom', lastName: 'Visser', roles: [Role.INSPECTEUR] },
+    {
+      email: 'inspecteur@inspexi-demo.nl',
+      firstName: 'Tom',
+      lastName: 'Visser',
+      roles: [Role.INSPECTEUR],
+      // Eigen contactgegevens + per-kanaal toestemming voor het klantportaal.
+      // Telefoon gedeeld (→ getoond), e-mail niet gedeeld (→ statische terugval).
+      contactPhone: '+31 6 12 34 56 78',
+      contactEmail: 'tom.visser@inspexi-demo.nl',
+      sharePhoneWithClients: true,
+      shareEmailWithClients: false,
+    },
   ];
 
   const createdOrg1Users: Record<string, string> = {};

@@ -33,6 +33,7 @@ describe('Inspecteur-contact zichtbaarheid (e2e)', () => {
   let planId: string;
   let clientUserId: string;
   let planningItemId: string;
+  let planningSessionId: string;
   let token: string; // client-realm access token
 
   const clientEmail = 'e2e-req35-client@test.nl';
@@ -174,6 +175,21 @@ describe('Inspecteur-contact zichtbaarheid (e2e)', () => {
       },
     });
 
+    // Sessie + sessie-inspecteur: aparte mapping in de service, dus apart bewijzen.
+    const session = await prisma.planningSession.create({
+      data: { planningItemId: planningItem.id, sessionNumber: 1 },
+    });
+    planningSessionId = session.id;
+    await prisma.planningSessionInspector.create({
+      data: {
+        sessionId: session.id,
+        userId: inspector.id,
+        isPrimary: true,
+        acceptanceStatus: 'ACCEPTED',
+        acceptedAt: new Date(),
+      },
+    });
+
     const login = await postHost('/api/v1/client/auth/login')
       .send({ email: clientEmail, password: CLIENT_PW })
       .expect(201);
@@ -185,6 +201,8 @@ describe('Inspecteur-contact zichtbaarheid (e2e)', () => {
       await prisma.inspectionClientAccess.deleteMany({ where: { inspectionPlanId: planId } });
       await prisma.clientAccess.deleteMany({ where: { clientUserId } });
       await prisma.clientUser.deleteMany({ where: { id: clientUserId } });
+      await prisma.planningSessionInspector.deleteMany({ where: { sessionId: planningSessionId } });
+      await prisma.planningSession.deleteMany({ where: { planningItemId } });
       await prisma.planningInspector.deleteMany({ where: { planningItemId } });
       await prisma.planningItem.deleteMany({ where: { id: planningItemId } });
       await prisma.inspectionPlan.deleteMany({ where: { id: planId } });
@@ -277,6 +295,25 @@ describe('Inspecteur-contact zichtbaarheid (e2e)', () => {
       expect(Object.keys(user).sort()).toEqual(
         ['color', 'email', 'firstName', 'id', 'initials', 'lastName', 'phone'].sort(),
       );
+
+      // Sessie-inspecteur loopt door een aparte mapping → apart bewijzen (incl. exacte sleutels).
+      const sessionUser = res.body.data.sessions[0].sessionInspectors[0].user;
+      expect(sessionUser.phone).toBe(INSPECTOR_CONTACT_PHONE);
+      expect(sessionUser.email).toBe(STATIC_EMAIL);
+      expect(Object.keys(sessionUser).sort()).toEqual(
+        ['color', 'email', 'firstName', 'id', 'initials', 'lastName', 'phone'].sort(),
+      );
+    });
+
+    it('STATIC-modus: statische waarden op item- én sessieniveau (negeert inspecteur)', async () => {
+      await setOrgModes({ phone: 'STATIC', email: 'STATIC' });
+      const res = await onHost(`/api/v1/public/planning/${PUBLIC_TOKEN}`).expect(200);
+
+      expect(res.body.data.inspectors[0].user.phone).toBe(STATIC_PHONE);
+      expect(res.body.data.inspectors[0].user.email).toBe(STATIC_EMAIL);
+      expect(res.body.data.sessions[0].sessionInspectors[0].user.phone).toBe(STATIC_PHONE);
+      expect(res.body.data.sessions[0].sessionInspectors[0].user.email).toBe(STATIC_EMAIL);
+      expect(JSON.stringify(res.body.data)).not.toContain(INSPECTOR_CONTACT_PHONE);
     });
 
     it('LEK-TEST: geen rauwe contactvelden/consent/org-modus/login-e-mail in de response', async () => {

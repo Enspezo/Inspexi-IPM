@@ -887,16 +887,16 @@ describe('Cross-tenant FK isolation (e2e)', () => {
   });
 
   // ─── B2: cross-tenant read-isolatie (detail-reads) ─────────────────
-  // assets/findings laden met orgScope() → niet gevonden → 404. Een
-  // inspectieplan wordt zonder org-scope geladen en daarna expliciet op
-  // eigenaarschap gecontroleerd (plan.orgId !== user.orgId) → 403. Beide
-  // zijn lek-vrij; de statuscodes volgen de bestaande service-conventies.
+  // assets/findings/inspectieplannen laden allemaal met orgScope() → een id van
+  // een andere org valt buiten het filter → 404 (identiek aan een onbekend id),
+  // zodat we het bestaan van andermans data niet prijsgeven. Statuscodes volgen
+  // de bestaande service-conventies (zie inspection-plans.service.findOne).
   describe('B2 — cross-tenant read isolation', () => {
-    it("inspection-plan detail of another org → 403", async () => {
+    it('inspection-plan detail of another org → 404', async () => {
       await request(app.getHttpServer())
         .get(`/api/v1/inspection-plans/${planBId}`)
         .set('Authorization', `Bearer ${tokenA}`)
-        .expect(403);
+        .expect(404);
     });
 
     it('asset detail of another org → 404', async () => {

@@ -1,5 +1,6 @@
 import { useNavigate } from 'react-router-dom';
 import { Button, Card, useConfirm, useToast } from '@/components/ui';
+import { LocationTypeBadge } from '@/components/location-type-badge';
 import type { Contact, Location } from '@/types';
 import type { useDeleteLocation } from '../hooks/use-contacts';
 import { CardMenu } from './card-menu';
@@ -52,10 +53,8 @@ export function ContactLocationsTab({
                       >
                         {loc.name}
                       </button>
-                      {loc.objectType && (
-                        <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-700">
-                          {loc.objectType}
-                        </span>
+                      {loc.locationType && (
+                        <LocationTypeBadge locationType={loc.locationType} />
                       )}
                     </div>
                   </div>

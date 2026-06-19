@@ -28,6 +28,7 @@ describe('Cross-tenant FK isolation (e2e)', () => {
   let userAId: string;
   let contactAId: string;
   let groupAId: string;
+  let locationAId: string;
   let tokenA: string;
 
   // Org B (victim)
@@ -35,6 +36,7 @@ describe('Cross-tenant FK isolation (e2e)', () => {
   let userBId: string;
   let contactBId: string;
   let locationBId: string;
+  let locationTypeBId: string;
   let quoteBId: string;
   let productBId: string;
   let contactPersonBId: string;
@@ -114,6 +116,20 @@ describe('Cross-tenant FK isolation (e2e)', () => {
     });
     groupAId = groupA.id;
 
+    // Org A's eigen locatie (PATCH-doelwit voor de cross-tenant locationType-aanval).
+    const locationA = await prisma.location.create({
+      data: {
+        orgId: orgA.id,
+        contactId: contactA.id,
+        name: 'Locatie A',
+        street: 'Teststraat',
+        houseNumber: '1',
+        postalCode: '1000AA',
+        city: 'Teststad',
+      },
+    });
+    locationAId = locationA.id;
+
     // ─── Org B (victim) ─────────────────────────────────
     const orgB = await prisma.organization.create({
       data: { name: 'E2E XTenant Org B', slug: 'e2extenantb' },
@@ -156,6 +172,18 @@ describe('Cross-tenant FK isolation (e2e)', () => {
       },
     });
     locationBId = locationB.id;
+
+    // Org B's eigen CRM-locatietype (body-FK aanval: org A probeert dit te koppelen).
+    const locationTypeB = await prisma.locationTypeDefinition.create({
+      data: {
+        orgId: orgB.id,
+        code: 'e2extlocb',
+        name: 'XTenant LocationType B',
+        scope: 'CRM',
+        isSystem: false,
+      },
+    });
+    locationTypeBId = locationTypeB.id;
 
     const productB = await prisma.product.create({
       data: { orgId: orgB.id, name: 'Product B', unit: 'stuk' },
@@ -354,6 +382,8 @@ describe('Cross-tenant FK isolation (e2e)', () => {
       await prisma.customerGroup.deleteMany({ where: { orgId: { in: orgIds } } });
       await prisma.contactPerson.deleteMany({ where: { orgId: { in: orgIds } } });
       await prisma.location.deleteMany({ where: { orgId: { in: orgIds } } });
+      // Org-eigen locatietypes (systeem-types met orgId null worden niet geraakt).
+      await prisma.locationTypeDefinition.deleteMany({ where: { orgId: { in: orgIds } } });
       await prisma.quote.deleteMany({ where: { orgId: { in: orgIds } } });
       await prisma.product.deleteMany({ where: { orgId: { in: orgIds } } });
       await prisma.contact.deleteMany({ where: { orgId: { in: orgIds } } });
@@ -532,6 +562,57 @@ describe('Cross-tenant FK isolation (e2e)', () => {
         .set('Authorization', `Bearer ${tokenA}`)
         .send({ groupIds: [groupAId] })
         .expect(200);
+    });
+  });
+
+  // ─── Contact locations: cross-tenant locationTypeId (body FK → 403) ───
+  // assertLocationTypeUsable weigert een locatietype van een andere org (403),
+  // maar staat gezaaide systeem CRM-types (orgId null) toe als positieve controle.
+  describe('contact locations — cross-tenant locationTypeId', () => {
+    it("rejects creating a location with another org's locationTypeId (403)", async () => {
+      await request(app.getHttpServer())
+        .post(`/api/v1/contacts/${contactAId}/locations`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({
+          name: 'Sneaky',
+          street: 'Teststraat',
+          houseNumber: '2',
+          postalCode: '1000AB',
+          city: 'Teststad',
+          locationTypeId: locationTypeBId,
+        })
+        .expect(403);
+    });
+
+    it("rejects patching a location to another org's locationTypeId (403)", async () => {
+      await request(app.getHttpServer())
+        .patch(`/api/v1/contacts/locations/${locationAId}`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({ locationTypeId: locationTypeBId })
+        .expect(403);
+    });
+
+    it('allows a location with a system CRM locationType (positive control)', async () => {
+      const systemType = await prisma.locationTypeDefinition.findFirst({
+        where: { code: 'woning', orgId: null, scope: 'CRM' },
+      });
+      expect(systemType).toBeTruthy();
+
+      const res = await request(app.getHttpServer())
+        .post(`/api/v1/contacts/${contactAId}/locations`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({
+          name: 'Legitieme woning',
+          street: 'Teststraat',
+          houseNumber: '3',
+          postalCode: '1000AC',
+          city: 'Teststad',
+          locationTypeId: systemType!.id,
+        })
+        .expect(201);
+
+      expect(res.body.data.locationTypeId).toBe(systemType!.id);
+      expect(res.body.data.locationType).toMatchObject({ code: 'woning' });
     });
   });
 
@@ -806,16 +887,16 @@ describe('Cross-tenant FK isolation (e2e)', () => {
   });
 
   // ─── B2: cross-tenant read-isolatie (detail-reads) ─────────────────
-  // assets/findings laden met orgScope() → niet gevonden → 404. Een
-  // inspectieplan wordt zonder org-scope geladen en daarna expliciet op
-  // eigenaarschap gecontroleerd (plan.orgId !== user.orgId) → 403. Beide
-  // zijn lek-vrij; de statuscodes volgen de bestaande service-conventies.
+  // assets/findings/inspectieplannen laden allemaal met orgScope() → een id van
+  // een andere org valt buiten het filter → 404 (identiek aan een onbekend id),
+  // zodat we het bestaan van andermans data niet prijsgeven. Statuscodes volgen
+  // de bestaande service-conventies (zie inspection-plans.service.findOne).
   describe('B2 — cross-tenant read isolation', () => {
-    it("inspection-plan detail of another org → 403", async () => {
+    it('inspection-plan detail of another org → 404', async () => {
       await request(app.getHttpServer())
         .get(`/api/v1/inspection-plans/${planBId}`)
         .set('Authorization', `Bearer ${tokenA}`)
-        .expect(403);
+        .expect(404);
     });
 
     it('asset detail of another org → 404', async () => {

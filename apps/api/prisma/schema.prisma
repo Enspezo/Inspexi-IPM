@@ -588,25 +588,26 @@ model ContactPerson {
 }
 
 model Location {
-  id           String   @id @default(uuid()) @db.Uuid
-  contactId    String   @map("contact_id") @db.Uuid
-  orgId        String   @map("org_id") @db.Uuid
-  name         String
-  street       String
-  houseNumber  String   @map("house_number")
-  postalCode   String   @map("postal_code")
-  city         String
-  objectType   String?  @map("object_type")
-  notes        String?
-  pdokData     Json?    @map("pdok_data")
-  lat          Float?
-  lng          Float?
-  customFields Json?    @map("custom_fields")
-  createdAt    DateTime @default(now()) @map("created_at")
-  updatedAt    DateTime @updatedAt @map("updated_at")
+  id             String   @id @default(uuid()) @db.Uuid
+  contactId      String   @map("contact_id") @db.Uuid
+  orgId          String   @map("org_id") @db.Uuid
+  name           String
+  street         String
+  houseNumber    String   @map("house_number")
+  postalCode     String   @map("postal_code")
+  city           String
+  locationTypeId String?  @map("location_type_id") @db.Uuid
+  notes          String?
+  pdokData       Json?    @map("pdok_data")
+  lat            Float?
+  lng            Float?
+  customFields   Json?    @map("custom_fields")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
 
   contact                Contact                 @relation(fields: [contactId], references: [id])
   organization           Organization            @relation(fields: [orgId], references: [id])
+  locationType           LocationTypeDefinition? @relation(fields: [locationTypeId], references: [id], onDelete: SetNull)
   requests               Request[]
   quotes                 Quote[]
   planningItems          PlanningItem[]
@@ -614,6 +615,7 @@ model Location {
   locationContactPersons LocationContactPerson[]
 
   @@index([contactId])
+  @@index([locationTypeId])
   @@map("imp_locations")
 }
 
@@ -2787,6 +2789,13 @@ model AssetTypeMeasurementConfig {
   @@map("imp_asset_type_measurement_configs")
 }
 
+/// Onderscheidt inspectie-locatie-types (boom-hiërarchie) van CRM-locatie-types
+/// (objecttype van een relatie-locatie). Houdt de selectors gescheiden.
+enum LocationTypeScope {
+  INSPECTION
+  CRM
+}
+
 model LocationTypeDefinition {
   id    String  @id @default(uuid()) @db.Uuid
   orgId String? @map("org_id") @db.Uuid
@@ -2796,10 +2805,11 @@ model LocationTypeDefinition {
   description String?
   icon        String?
   color       String?
-  normTypes   Json    @default("[]") @map("norm_types")
-  isActive    Boolean @default(true) @map("is_active")
-  isSystem    Boolean @default(false) @map("is_system")
-  sortOrder   Int     @default(0) @map("sort_order")
+  scope       LocationTypeScope @default(INSPECTION)
+  normTypes   Json              @default("[]") @map("norm_types")
+  isActive    Boolean           @default(true) @map("is_active")
+  isSystem    Boolean           @default(false) @map("is_system")
+  sortOrder   Int               @default(0) @map("sort_order")
 
   createdAt DateTime  @default(now()) @map("created_at")
   updatedAt DateTime  @updatedAt @map("updated_at")
@@ -2809,8 +2819,10 @@ model LocationTypeDefinition {
   fields             LocationTypeField[]
   parentConstraints  LocationTypeConstraint[] @relation("ConstraintLocationType")
   allowedParentTypes LocationTypeConstraint[] @relation("ConstraintLocationAllowedParent")
+  locations          Location[]
 
   @@unique([orgId, code])
+  @@index([scope])
   @@map("imp_location_type_definitions")
 }
 

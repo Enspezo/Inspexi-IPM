@@ -102,7 +102,7 @@ export function getEntityDisplayName(
     case 'Location':
       return (
         [snapshot.street, snapshot.houseNumber, snapshot.city].filter(Boolean).join(' ') ||
-        snapshot.objectType ||
+        snapshot.name ||
         'Locatie'
       );
     case 'CustomerGroup':

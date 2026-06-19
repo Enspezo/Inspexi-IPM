@@ -1,76 +1,27 @@
-import 'leaflet/dist/leaflet.css';
-import L from 'leaflet';
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { MapContainer, TileLayer, CircleMarker, Tooltip, Marker } from 'react-leaflet';
 import { Modal } from '@/components/ui';
-import { apiClient } from '@/lib/api-client';
+import { EntityMap } from '@/components/map/entity-map';
+import type { MapPoint, MapHomeMarker } from '@/components/map/entity-map';
+import {
+  geocodeSequentially,
+  getCachedCoords,
+  persistLocationCoords,
+} from '@/lib/geocode';
+import type { GeocodeAddress } from '@/lib/geocode';
 import type { PlanningItem } from '@/types';
 
-// ─── Geocoding ─────────────────────────────────────────────────────────────
-// Module-level cache survives re-renders and modal re-opens during the session.
-// Items whose coords are stored in the DB are added directly without a cache entry.
-
-type GeoResult = { lat: number; lng: number } | null;
-const geoCache = new Map<string, GeoResult>();
-
-function getCacheKey(loc: NonNullable<PlanningItem['location']>): string {
-  return `${loc.street} ${loc.houseNumber}, ${loc.postalCode} ${loc.city}`;
-}
-
-async function nominatimGeocode(loc: NonNullable<PlanningItem['location']>): Promise<GeoResult> {
-  const key = getCacheKey(loc);
-  if (geoCache.has(key)) return geoCache.get(key)!;
-
-  const q = `${loc.street} ${loc.houseNumber}, ${loc.postalCode} ${loc.city}, Nederland`;
-  try {
-    const res = await fetch(
-      `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&countrycodes=nl&limit=1`,
-      { headers: { 'User-Agent': 'InspeXi-Beheer/1.0' } },
-    );
-    const data = await res.json();
-    const result: GeoResult = data[0]
-      ? { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) }
-      : null;
-    geoCache.set(key, result);
-    return result;
-  } catch {
-    geoCache.set(key, null);
-    return null;
-  }
-}
-
-/** Sla geocodeerde coördinaten terug op in de database (fire-and-forget). */
-function saveCoordsToDB(item: PlanningItem, lat: number, lng: number): void {
-  apiClient
-    .patch(`/contacts/${item.contactId}/locations/${item.locationId}`, { lat, lng })
-    .catch(() => {/* stil mislukken — coördinaten zijn al in geheugen gecached */});
-}
-
-function sleep(ms: number) {
-  return new Promise<void>((r) => setTimeout(r, ms));
-}
-
-// ─── House icon factory ─────────────────────────────────────────────────────
-
-function createHouseIcon(color: string): L.DivIcon {
-  // SVG house path with white halo for visibility on any map background
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="26" height="26" viewBox="0 0 24 24">
-    <path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"
-      fill="white" stroke="white" stroke-width="3" stroke-linejoin="round"/>
-    <path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"
-      fill="${color}"/>
-  </svg>`;
-  return L.divIcon({
-    html: `<div style="display:flex;align-items:center;justify-content:center;filter:drop-shadow(0 1px 3px rgba(0,0,0,0.35))">${svg}</div>`,
-    className: '',
-    iconSize: [26, 26],
-    iconAnchor: [13, 26],
-    tooltipAnchor: [13, -4],
-  });
-}
-
 // ─── Helpers ───────────────────────────────────────────────────────────────
+
+/** Address shape Nominatim needs, extracted from a planning item's location. */
+function toAddress(loc: NonNullable<PlanningItem['location']>): GeocodeAddress {
+  return {
+    street: loc.street,
+    houseNumber: loc.houseNumber,
+    postalCode: loc.postalCode,
+    city: loc.city,
+  };
+}
 
 function getPrimaryColor(item: PlanningItem): string {
   const primary = item.inspectors?.find((i) => i.isPrimary);
@@ -116,6 +67,68 @@ interface Props {
   items: PlanningItem[];
 }
 
+// ─── Tooltip content ─────────────────────────────────────────────────────────
+
+function MarkerTooltip({ item }: { item: PlanningItem }) {
+  return (
+    <div style={{ minWidth: 180, maxWidth: 240, fontFamily: 'inherit' }}>
+      <div style={{ fontWeight: 700, fontSize: '0.9em', marginBottom: 4, color: '#111' }}>
+        {item.productName}
+      </div>
+      {item.contact && (
+        <div style={{ fontSize: '0.82em', color: '#444', marginBottom: 2 }}>
+          {getContactName(item)}
+        </div>
+      )}
+      <div style={{ fontSize: '0.82em', color: '#666', marginBottom: 4 }}>
+        📍 {item.location!.name
+          ? `${item.location!.name} · ${item.location!.city}`
+          : `${item.location!.street} ${item.location!.houseNumber}, ${item.location!.city}`}
+      </div>
+      <div style={{ fontSize: '0.82em', color: '#555', marginBottom: item.inspectors?.length ? 6 : 0 }}>
+        🗓 {formatDate(item.scheduledDate)}
+      </div>
+      {item.inspectors && item.inspectors.length > 0 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+          {item.inspectors.map((insp) => (
+            <span
+              key={insp.id}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 4,
+                fontSize: '0.78em',
+                background: '#f3f4f6',
+                borderRadius: 4,
+                padding: '2px 6px',
+                color: '#374151',
+              }}
+            >
+              <span
+                style={{
+                  width: 8,
+                  height: 8,
+                  borderRadius: '50%',
+                  background: insp.user?.color ?? '#9CA3AF',
+                  display: 'inline-block',
+                  flexShrink: 0,
+                }}
+              />
+              {insp.user?.firstName} {insp.user?.lastName}
+              {insp.isPrimary && (
+                <span style={{ color: '#9CA3AF', fontSize: '0.9em' }}>★</span>
+              )}
+            </span>
+          ))}
+        </div>
+      )}
+      <div style={{ marginTop: 8, paddingTop: 6, borderTop: '1px solid #e5e7eb', fontSize: '0.75em', color: '#9CA3AF' }}>
+        Klik om te openen →
+      </div>
+    </div>
+  );
+}
+
 // ─── Component ─────────────────────────────────────────────────────────────
 
 export function PlanningMapModal({ isOpen, onClose, items }: Props) {
@@ -140,25 +153,21 @@ export function PlanningMapModal({ isOpen, onClose, items }: Props) {
       const withStored = withLocation.filter((i) => i.location!.lat != null);
       const withoutStored = withLocation.filter((i) => i.location!.lat == null);
 
-      // Van de items zonder opgeslagen coords: welke zijn nog niet in de sessiecache?
-      const uncached = withoutStored.filter((i) => !geoCache.has(getCacheKey(i.location!)));
-      setGeocodeTotal(uncached.length);
       setGeocodeDone(0);
 
-      let count = 0;
-      for (const item of withoutStored) {
-        if (abortRef.current) break;
-        const key = getCacheKey(item.location!);
-        if (!geoCache.has(key)) {
-          const coords = await nominatimGeocode(item.location!);
-          count++;
-          setGeocodeDone(count);
+      // Geocode de items zonder DB-coords één voor één (rate-limited).
+      await geocodeSequentially(withoutStored, {
+        getAddress: (item) => toAddress(item.location!),
+        shouldAbort: () => abortRef.current,
+        onProgress: (done, total) => {
+          setGeocodeTotal(total);
+          setGeocodeDone(done);
+        },
+        onResolved: (item, coords) => {
           // Sla gevonden coords direct terug op in de DB zodat het volgende keer raak is
-          if (coords) saveCoordsToDB(item, coords.lat, coords.lng);
-          // Nominatim rate limit: ≤1 req/s
-          if (count < uncached.length && !abortRef.current) await sleep(350);
-        }
-      }
+          persistLocationCoords(item.locationId, coords.lat, coords.lng);
+        },
+      });
 
       if (!abortRef.current) {
         const result: MarkerData[] = [];
@@ -168,7 +177,7 @@ export function PlanningMapModal({ isOpen, onClose, items }: Props) {
         }
         // Items die via Nominatim gecoded zijn
         for (const item of withoutStored) {
-          const coords = geoCache.get(getCacheKey(item.location!));
+          const coords = getCachedCoords(toAddress(item.location!));
           if (coords) result.push({ item, lat: coords.lat, lng: coords.lng });
         }
         setMarkers(result);
@@ -259,6 +268,31 @@ export function PlanningMapModal({ isOpen, onClose, items }: Props) {
 
   const itemsWithLocation = items.filter((i) => i.location).length;
 
+  // Map domain data → generic EntityMap props
+  const mapPoints: MapPoint[] = markers.map(({ item, lat, lng }) => ({
+    id: item.id,
+    lat,
+    lng,
+    color: getPrimaryColor(item),
+    tooltip: <MarkerTooltip item={item} />,
+    onClick: () => {
+      onClose();
+      navigate(`/planning/${item.id}`);
+    },
+  }));
+
+  const mapHomeMarkers: MapHomeMarker[] = homeMarkers.map((home) => ({
+    id: `home-${home.userId}`,
+    lat: home.lat,
+    lng: home.lng,
+    color: home.color,
+    label: (
+      <div style={{ fontFamily: 'inherit', fontSize: '0.85em', fontWeight: 600, color: '#111', whiteSpace: 'nowrap' }}>
+        🏠 {home.name}
+      </div>
+    ),
+  }));
+
   return (
     <Modal
       isOpen={isOpen}
@@ -294,111 +328,7 @@ export function PlanningMapModal({ isOpen, onClose, items }: Props) {
             </div>
           )}
 
-          <MapContainer
-            center={[52.2, 5.3]}
-            zoom={7}
-            style={{ height: '100%', width: '100%' }}
-            zoomControl={true}
-          >
-            <TileLayer
-              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-              attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-            />
-
-            {/* Planning location markers */}
-            {markers.map(({ item, lat, lng }) => (
-              <CircleMarker
-                key={item.id}
-                center={[lat, lng]}
-                radius={11}
-                fillColor={getPrimaryColor(item)}
-                color="white"
-                weight={2}
-                opacity={1}
-                fillOpacity={0.88}
-                eventHandlers={{
-                  click: () => {
-                    onClose();
-                    navigate(`/planning/${item.id}`);
-                  },
-                }}
-              >
-                <Tooltip sticky offset={[12, 0]}>
-                  <div style={{ minWidth: 180, maxWidth: 240, fontFamily: 'inherit' }}>
-                    <div style={{ fontWeight: 700, fontSize: '0.9em', marginBottom: 4, color: '#111' }}>
-                      {item.productName}
-                    </div>
-                    {item.contact && (
-                      <div style={{ fontSize: '0.82em', color: '#444', marginBottom: 2 }}>
-                        {getContactName(item)}
-                      </div>
-                    )}
-                    <div style={{ fontSize: '0.82em', color: '#666', marginBottom: 4 }}>
-                      📍 {item.location!.name
-                        ? `${item.location!.name} · ${item.location!.city}`
-                        : `${item.location!.street} ${item.location!.houseNumber}, ${item.location!.city}`}
-                    </div>
-                    <div style={{ fontSize: '0.82em', color: '#555', marginBottom: item.inspectors?.length ? 6 : 0 }}>
-                      🗓 {formatDate(item.scheduledDate)}
-                    </div>
-                    {item.inspectors && item.inspectors.length > 0 && (
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                        {item.inspectors.map((insp) => (
-                          <span
-                            key={insp.id}
-                            style={{
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: 4,
-                              fontSize: '0.78em',
-                              background: '#f3f4f6',
-                              borderRadius: 4,
-                              padding: '2px 6px',
-                              color: '#374151',
-                            }}
-                          >
-                            <span
-                              style={{
-                                width: 8,
-                                height: 8,
-                                borderRadius: '50%',
-                                background: insp.user?.color ?? '#9CA3AF',
-                                display: 'inline-block',
-                                flexShrink: 0,
-                              }}
-                            />
-                            {insp.user?.firstName} {insp.user?.lastName}
-                            {insp.isPrimary && (
-                              <span style={{ color: '#9CA3AF', fontSize: '0.9em' }}>★</span>
-                            )}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                    <div style={{ marginTop: 8, paddingTop: 6, borderTop: '1px solid #e5e7eb', fontSize: '0.75em', color: '#9CA3AF' }}>
-                      Klik om te openen →
-                    </div>
-                  </div>
-                </Tooltip>
-              </CircleMarker>
-            ))}
-
-            {/* Home address markers — one house icon per inspector with a stored home address */}
-            {homeMarkers.map((home) => (
-              <Marker
-                key={`home-${home.userId}`}
-                position={[home.lat, home.lng]}
-                icon={createHouseIcon(home.color)}
-                zIndexOffset={-100}
-              >
-                <Tooltip direction="top" offset={[0, -20]}>
-                  <div style={{ fontFamily: 'inherit', fontSize: '0.85em', fontWeight: 600, color: '#111', whiteSpace: 'nowrap' }}>
-                    🏠 {home.name}
-                  </div>
-                </Tooltip>
-              </Marker>
-            ))}
-          </MapContainer>
+          <EntityMap points={mapPoints} homeMarkers={mapHomeMarkers} />
 
           {/* No locations message */}
           {!loading && itemsWithLocation === 0 && (

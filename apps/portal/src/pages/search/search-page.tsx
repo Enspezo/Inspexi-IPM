@@ -17,6 +17,7 @@ import type {
 } from '@/types';
 import { Role } from '@/types';
 import { hasRole } from '@/lib/has-role';
+import { LocationTypeBadge } from '@/components/location-type-badge';
 import { formatCurrency } from '@/lib/format';
 import { getStatusConfig, QUOTE_STATUS, REQUEST_STATUS, TASK_STATUS } from '@/lib/status';
 
@@ -170,9 +171,9 @@ function useLocationColumns(): Column<SearchLocationResult>[] {
       render: (l) => l.city,
     },
     {
-      key: 'objectType',
-      header: 'Objecttype',
-      render: (l) => l.objectType ?? '—',
+      key: 'locationType',
+      header: 'Locatietype',
+      render: (l) => <LocationTypeBadge locationType={l.locationType} />,
     },
     {
       key: 'contact',

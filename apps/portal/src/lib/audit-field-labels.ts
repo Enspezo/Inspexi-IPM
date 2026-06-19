@@ -50,7 +50,7 @@ const entityLabels: Record<string, Record<string, string>> = {
   },
   Location: {
     contactId: 'Relatie',
-    objectType: 'Objecttype',
+    locationTypeId: 'Locatietype',
     customFields: 'Eigen velden',
   },
   CustomerGroup: {},

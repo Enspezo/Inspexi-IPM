@@ -232,7 +232,14 @@ export interface Location {
   houseNumber: string;
   postalCode: string;
   city: string;
-  objectType: string | null;
+  locationTypeId: string | null;
+  locationType?: {
+    id: string;
+    code: string;
+    name: string;
+    color: string | null;
+    icon: string | null;
+  } | null;
   notes: string | null;
   pdokData: Record<string, unknown> | null;
   lat: number | null;
@@ -1203,7 +1210,13 @@ export interface SearchLocationResult {
   houseNumber: string;
   postalCode: string;
   city: string;
-  objectType: string | null;
+  locationType?: {
+    id: string;
+    code: string;
+    name: string;
+    color: string | null;
+    icon: string | null;
+  } | null;
   contact: {
     id: string;
     companyName: string | null;

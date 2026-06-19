@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsString, IsOptional, IsObject, IsNumber } from 'class-validator';
+import { IsString, IsOptional, IsObject, IsNumber, IsUUID } from 'class-validator';
 
 export class CreateLocationDto {
   @ApiProperty({ example: 'Hoofdkantoor Amsterdam' })
@@ -22,10 +22,10 @@ export class CreateLocationDto {
   @IsString()
   city: string;
 
-  @ApiPropertyOptional({ example: 'kantoor' })
+  @ApiPropertyOptional({ description: 'ID van het gekoppelde locatietype (LocationTypeDefinition)' })
   @IsOptional()
-  @IsString()
-  objectType?: string;
+  @IsUUID()
+  locationTypeId?: string;
 
   @ApiPropertyOptional({ example: 'Toegang via achterdeur' })
   @IsOptional()

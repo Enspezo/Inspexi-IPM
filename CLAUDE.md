@@ -3,6 +3,36 @@
 Multi-tenant inspectie-managementplatform (CRM, leads, offertes, taken, documenten).
 Monorepo met **NestJS API** + **React Portal**, Turbo + pnpm workspaces.
 
+## Actuele status (laatst bijgewerkt: juni 2026) — lees dit eerst
+
+> De secties verderop beschrijven deels de **pre-integratie kern** (genoemd als "29 modellen / 2 apps / 15 modules"). Sinds de integratie van het oude **Inspexi-App** inspectiedomein geldt de stand hieronder.
+
+**4 apps in de monorepo:**
+- `apps/api` — NestJS, ~60 modules, **126 Prisma-modellen** (API :3000, Swagger `/api/docs`)
+- `apps/portal` — staf-backoffice (:5173, Tailwind v4)
+- `apps/client-portal` — extern klantportaal, 2e auth-realm `ClientUser` (:5174)
+- `apps/convert-api` — losse NestJS-microservice voor DOCX⇄PDF (libreoffice-convert)
+- PostgreSQL :5433 (`docker compose up -d`). De **PWA inspecteur-app blijft een aparte repo** (`../Inspexi-App`) en praat via het `/sync` **v2-contract** met deze backend.
+
+**Integratie-fasen — allemaal afgerond** (zie `docs/INTEGRATIE-INSPEXI-APP.md` + `docs/fase1..6/`): schema-fundament, API kern-inspectiedomein, sync v2 (server + PWA-cutover), document-generatie (Puppeteer-PDF/Word/ondertekenen), portal beheer-GUI's, client-portal + client-realm, voice. PWA v2-sync-cutover zit in de `Inspexi-App`-repo (branch `feat/pwa-v2-sync-contract`, Dexie v9).
+
+**Inspectiedomein — waar te vinden in de portal:**
+- **Organisatie → Inspectie-config** (org-admin): inspectie-templates (block-editor document-builder), checklists (+items/categorieën), constateringen (finding-templates), asset-types, locatie-types, lookups, voice-prompts.
+- **Organisatie → Inspectie-systeem** (SUPERUSER-only, op `mijn.localhost`): classificatiemodellen, normtypes, meetstaat-templates, voice base-prompts.
+- **Inspecties** (uitvoering): detail-tabs Overzicht / Assets (+findings, +meetstaat-records) / Plattegrond (Konva floor-plan) / Documenten (genereren/preview/PDF/Word/ondertekenen). Veel uitvoeringsdata ontstaat normaal in de PWA.
+- **Client-portal** (`:5174`): magic-link login, inspecties inzien, constatering oplossen + foto, document ondertekenen, verzoeken indienen.
+
+**Operationele gotchas (belangrijk voor browser-/dev-werk):**
+- `pnpm db:seed` **wist en herseed't de hele DB incl. users** → daarna opnieuw inloggen. Soms houdt de API daarna een **stale tenant-cache** (5 min) → een org geeft dan "niet gevonden"; **herstart de API** om de cache te legen.
+- Seed-wachtwoorden: `Password123!`. Staf-login op `inspexidemo.localhost:5173` (`admin@inspexi-demo.nl`); SUPERUSER op `mijn.localhost:5173` (`superuser@inspexi.nl`).
+- Demo-klant voor de client-portal (uit de seed): `http://inspexidemo.localhost:5174/magic/demo-klant-magic` → logt **direct in zonder wachtwoord** (vaste magic-link op het demo-inspectieplan).
+- Het demo-inspectieplan heeft 2 assets + findings + 1 plattegrond + markers + een meetstaat-record + een gegenereerd (ondertekenbaar) document.
+- Voice `/voice/parse-measurement` vereist een `ANTHROPIC_API_KEY` in `apps/api/.env`. Document-generatie vereist Chromium voor Puppeteer in de API-image bij deploy.
+
+**Teststatus:** Streams A–E + G + PWA-sync zijn end-to-end gevalideerd (unit/e2e/build groen + browser-smoketests). Enig open punt: voice `/voice/parse-measurement` (wacht op Anthropic-key). Gevonden+opgeloste bugs: refresh/deeplink→dashboard-race, cross-tenant read 403→404, assets niet zichtbaar op staf-inspectie, ontbrekende staf-documenten-UI, meetstaat-records niet zichtbaar op staf.
+
+---
+
 ## Taal & Stijl
 
 - Code, commits, branchnamen en technische docs: **Engels**

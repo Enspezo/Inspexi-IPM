@@ -8,7 +8,7 @@ interface CreateLocationDto {
   houseNumber: string;
   postalCode: string;
   city: string;
-  objectType?: string;
+  locationTypeId?: string | null;
   notes?: string;
 }
 
@@ -101,7 +101,7 @@ export function useDeleteLocationById() {
 interface ListLocationsParams {
   search?: string;
   contactId?: string;
-  objectType?: string;
+  locationTypeId?: string;
   page?: number;
   limit?: number;
 }
@@ -110,7 +110,7 @@ export function useLocations(params: ListLocationsParams = {}) {
   const queryParams = new URLSearchParams();
   if (params.search) queryParams.set('search', params.search);
   if (params.contactId) queryParams.set('contactId', params.contactId);
-  if (params.objectType) queryParams.set('objectType', params.objectType);
+  if (params.locationTypeId) queryParams.set('locationTypeId', params.locationTypeId);
   if (params.page) queryParams.set('page', String(params.page));
   if (params.limit) queryParams.set('limit', String(params.limit));
 

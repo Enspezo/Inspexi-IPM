@@ -6,7 +6,9 @@ import {
   IsInt,
   Min,
   IsArray,
+  IsEnum,
 } from 'class-validator';
+import { LocationTypeScope } from '@prisma/client';
 
 export class CreateLocationTypeDto {
   @ApiProperty({ example: 'gebouw' })
@@ -31,6 +33,15 @@ export class CreateLocationTypeDto {
   @IsOptional()
   @IsString()
   color?: string;
+
+  @ApiPropertyOptional({
+    enum: LocationTypeScope,
+    default: LocationTypeScope.INSPECTION,
+    description: 'Bereik: INSPECTION (inspectiedomein) of CRM (relatie-locaties)',
+  })
+  @IsOptional()
+  @IsEnum(LocationTypeScope)
+  scope?: LocationTypeScope;
 
   @ApiPropertyOptional({ type: [String], description: 'Normcodes waarvoor dit type geldt' })
   @IsOptional()

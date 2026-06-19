@@ -193,7 +193,7 @@ export class ContactPersonsService {
             houseNumber: true,
             postalCode: true,
             city: true,
-            objectType: true,
+            locationType: { select: { id: true, code: true, name: true, color: true } },
             contactId: true,
             contact: {
               select: { id: true, type: true, companyName: true, firstName: true, lastName: true },

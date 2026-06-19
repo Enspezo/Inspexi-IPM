@@ -31,7 +31,9 @@ interface Props {
 export function LocationTypeConstraintsTab({ locationTypeId, canManage }: Props) {
   const { showToast } = useToast();
   const { data: constraints, isLoading } = useLocationTypeConstraints(locationTypeId);
-  const { data: allTypes } = useLocationTypes();
+  // Parent-constraints zijn een inspectie-hiërarchie-concept; toon alleen
+  // inspectie-types (geen CRM-locatietypes) als kandidaat-ouders.
+  const { data: allTypes } = useLocationTypes({ scope: 'INSPECTION' });
   const setConstraints = useSetLocationTypeConstraints(locationTypeId);
 
   const [working, setWorking] = useState<WorkingConstraint[]>([]);

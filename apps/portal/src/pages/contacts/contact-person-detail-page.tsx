@@ -6,6 +6,7 @@ import { z } from 'zod';
 import { ContactType, Role } from '@/types';
 import { Button, Card, ErrorBox, InfoField, Input, Select, Spinner, useConfirm, useToast } from '@/components/ui';
 import { DetailPageLayout } from '@/components/layout/detail-page-layout';
+import { LocationTypeBadge } from '@/components/location-type-badge';
 import { useAuth } from '@/providers/auth-provider';
 import {
   useContactPerson,
@@ -17,14 +18,6 @@ import {
 import { roleColors } from '@/lib/contact-person-role';
 import { AuditHistory } from '@/components/audit-history/audit-history';
 import { getErrorMessage } from '@/lib/api-client';
-
-const objectTypeColors: Record<string, string> = {
-  woning: 'bg-blue-100 text-blue-800',
-  kantoor: 'bg-purple-100 text-purple-800',
-  industrieel: 'bg-orange-100 text-orange-800',
-  winkel: 'bg-green-100 text-green-800',
-  overig: 'bg-gray-100 text-gray-800',
-};
 
 const canWrite = [Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE];
 
@@ -300,10 +293,8 @@ export default function ContactPersonDetailPage() {
                         >
                           {loc.name}
                         </button>
-                        {loc.objectType && (
-                          <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${objectTypeColors[loc.objectType] || 'bg-gray-100 text-gray-800'}`}>
-                            {loc.objectType.charAt(0).toUpperCase() + loc.objectType.slice(1)}
-                          </span>
+                        {loc.locationType && (
+                          <LocationTypeBadge locationType={loc.locationType} />
                         )}
                         {isExternal && (
                           <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">

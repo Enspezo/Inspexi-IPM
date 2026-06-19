@@ -108,6 +108,24 @@ describe('LocationTypesService', () => {
       expect(result).toHaveLength(1);
       expect(result[0].id).toBe('a');
     });
+
+    it('should add scope to the where filter when provided', async () => {
+      mockPrismaService.locationTypeDefinition.findMany.mockResolvedValue([]);
+
+      await service.findAll(mockUser, { scope: 'CRM' });
+
+      const call = mockPrismaService.locationTypeDefinition.findMany.mock.calls[0][0];
+      expect(call.where.scope).toBe('CRM');
+    });
+
+    it('should NOT add a scope filter when none is provided', async () => {
+      mockPrismaService.locationTypeDefinition.findMany.mockResolvedValue([]);
+
+      await service.findAll(mockUser);
+
+      const call = mockPrismaService.locationTypeDefinition.findMany.mock.calls[0][0];
+      expect(call.where.scope).toBeUndefined();
+    });
   });
 
   describe('findById', () => {
@@ -148,6 +166,17 @@ describe('LocationTypesService', () => {
       const data = mockPrismaService.locationTypeDefinition.create.mock.calls[0][0].data;
       expect(data.orgId).toBe('org-1');
       expect(data.isSystem).toBe(false);
+      expect(data.scope).toBe('INSPECTION'); // default scope
+    });
+
+    it('should honour an explicit CRM scope', async () => {
+      mockPrismaService.locationTypeDefinition.findFirst.mockResolvedValue(null);
+      mockPrismaService.locationTypeDefinition.create.mockResolvedValue({ id: 'crm-1' });
+
+      await service.create(mockUser, { code: 'woning', name: 'Woning', scope: 'CRM' } as any);
+
+      const data = mockPrismaService.locationTypeDefinition.create.mock.calls[0][0].data;
+      expect(data.scope).toBe('CRM');
     });
 
     it('should create a system location-type for SUPERUSER', async () => {

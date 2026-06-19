@@ -203,7 +203,7 @@ export class SearchService {
         { street: { contains: q, mode: 'insensitive' as const } },
         { city: { contains: q, mode: 'insensitive' as const } },
         { postalCode: { contains: q, mode: 'insensitive' as const } },
-        { objectType: { contains: q, mode: 'insensitive' as const } },
+        { locationType: { name: { contains: q, mode: 'insensitive' as const } } },
       ],
     };
 
@@ -218,7 +218,7 @@ export class SearchService {
           houseNumber: true,
           postalCode: true,
           city: true,
-          objectType: true,
+          locationType: { select: { id: true, code: true, name: true, color: true, icon: true } },
           contact: {
             select: {
               id: true,

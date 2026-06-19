@@ -1,4 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { Role, ContactType } from '@prisma/client';
 import { LocationsService } from './locations.service';
 import { ContactsService } from './contacts.service';
@@ -6,6 +7,10 @@ import { CustomFieldsValidator } from '@/modules/custom-fields/custom-fields.val
 import { GeocodingService } from '@/modules/geocoding/geocoding.service';
 import { PrismaService } from '@/prisma';
 import { EmailService } from '@/common/services/email.service';
+
+const LOCATION_TYPE_SELECT = {
+  select: { id: true, code: true, name: true, color: true, icon: true },
+};
 
 describe('LocationsService', () => {
   let service: LocationsService;
@@ -58,6 +63,9 @@ describe('LocationsService', () => {
       create: jest.fn(),
       findMany: jest.fn(),
     },
+    locationTypeDefinition: {
+      findUnique: jest.fn(),
+    },
     $transaction: jest.fn(),
   };
 
@@ -103,11 +111,11 @@ describe('LocationsService', () => {
       houseNumber: '100',
       postalCode: '1015 AA',
       city: 'Amsterdam',
-      objectType: 'kantoor',
+      locationTypeId: '11111111-1111-1111-1111-111111111111',
       notes: 'Toegang via achterdeur',
     };
 
-    it('should create location linked to contact and org', async () => {
+    it('should create location linked to contact and org (with locationType include)', async () => {
       const createdLocation = {
         id: 'loc-1',
         contactId: 'contact-1',
@@ -116,13 +124,16 @@ describe('LocationsService', () => {
         createdAt: new Date(),
       };
       mockPrismaService.contact.findUnique.mockResolvedValue(mockContact);
+      // Own-org location type → usable
+      mockPrismaService.locationTypeDefinition.findUnique.mockResolvedValue({
+        orgId: 'org-1',
+        deletedAt: null,
+        scope: 'CRM',
+        isActive: true,
+      });
       mockPrismaService.location.create.mockResolvedValue(createdLocation);
 
-      const result = await service.addLocation(
-        'contact-1',
-        locationDto,
-        mockUser,
-      );
+      const result = await service.addLocation('contact-1', locationDto, mockUser);
 
       expect(result).toEqual(createdLocation);
       expect(mockPrismaService.location.create).toHaveBeenCalledWith({
@@ -134,21 +145,135 @@ describe('LocationsService', () => {
           houseNumber: locationDto.houseNumber,
           postalCode: locationDto.postalCode,
           city: locationDto.city,
-          objectType: locationDto.objectType,
+          locationTypeId: locationDto.locationTypeId,
           notes: locationDto.notes,
           pdokData: null,
           lat: null,
           lng: null,
           customFields: null,
         },
+        include: { locationType: LOCATION_TYPE_SELECT },
       });
+    });
+
+    it('should reject a location type owned by another org with Forbidden', async () => {
+      mockPrismaService.contact.findUnique.mockResolvedValue(mockContact);
+      mockPrismaService.locationTypeDefinition.findUnique.mockResolvedValue({
+        orgId: 'org-2',
+        deletedAt: null,
+      });
+
+      await expect(service.addLocation('contact-1', locationDto, mockUser)).rejects.toThrow(
+        ForbiddenException,
+      );
+      expect(mockPrismaService.location.create).not.toHaveBeenCalled();
+    });
+
+    it('should allow a system location type (orgId null)', async () => {
+      mockPrismaService.contact.findUnique.mockResolvedValue(mockContact);
+      mockPrismaService.locationTypeDefinition.findUnique.mockResolvedValue({
+        orgId: null,
+        deletedAt: null,
+        scope: 'CRM',
+        isActive: true,
+      });
+      mockPrismaService.location.create.mockResolvedValue({ id: 'loc-2' });
+
+      await expect(service.addLocation('contact-1', locationDto, mockUser)).resolves.toEqual({
+        id: 'loc-2',
+      });
+      expect(mockPrismaService.location.create).toHaveBeenCalled();
+    });
+  });
+
+  // ─── assertLocationTypeUsable ────────────────────────────────────────
+
+  describe('assertLocationTypeUsable()', () => {
+    const callAssert = (locationTypeId: string | null | undefined, orgId: string | null) =>
+      (service as any).assertLocationTypeUsable(locationTypeId, orgId);
+
+    it('should be a no-op when no locationTypeId is given', async () => {
+      await expect(callAssert(undefined, 'org-1')).resolves.toBeUndefined();
+      await expect(callAssert(null, 'org-1')).resolves.toBeUndefined();
+      expect(mockPrismaService.locationTypeDefinition.findUnique).not.toHaveBeenCalled();
+    });
+
+    it('should allow a system type (orgId null) for any org', async () => {
+      mockPrismaService.locationTypeDefinition.findUnique.mockResolvedValue({
+        orgId: null,
+        deletedAt: null,
+        scope: 'CRM',
+        isActive: true,
+      });
+      await expect(callAssert('type-1', 'org-1')).resolves.toBeUndefined();
+    });
+
+    it('should allow an own-org type', async () => {
+      mockPrismaService.locationTypeDefinition.findUnique.mockResolvedValue({
+        orgId: 'org-1',
+        deletedAt: null,
+        scope: 'CRM',
+        isActive: true,
+      });
+      await expect(callAssert('type-1', 'org-1')).resolves.toBeUndefined();
+    });
+
+    it('should allow any type for SUPERUSER (orgId null caller)', async () => {
+      mockPrismaService.locationTypeDefinition.findUnique.mockResolvedValue({
+        orgId: 'org-2',
+        deletedAt: null,
+        scope: 'CRM',
+        isActive: true,
+      });
+      await expect(callAssert('type-1', null)).resolves.toBeUndefined();
+    });
+
+    it('should reject another org’s type with Forbidden', async () => {
+      mockPrismaService.locationTypeDefinition.findUnique.mockResolvedValue({
+        orgId: 'org-2',
+        deletedAt: null,
+      });
+      await expect(callAssert('type-1', 'org-1')).rejects.toThrow(ForbiddenException);
+    });
+
+    it('should reject a missing type with NotFound', async () => {
+      mockPrismaService.locationTypeDefinition.findUnique.mockResolvedValue(null);
+      await expect(callAssert('type-1', 'org-1')).rejects.toThrow(NotFoundException);
+    });
+
+    it('should reject a soft-deleted type with NotFound', async () => {
+      mockPrismaService.locationTypeDefinition.findUnique.mockResolvedValue({
+        orgId: 'org-1',
+        deletedAt: new Date(),
+      });
+      await expect(callAssert('type-1', 'org-1')).rejects.toThrow(NotFoundException);
+    });
+
+    it('should reject a non-CRM (inspection) type with BadRequest', async () => {
+      mockPrismaService.locationTypeDefinition.findUnique.mockResolvedValue({
+        orgId: 'org-1',
+        deletedAt: null,
+        scope: 'INSPECTION',
+        isActive: true,
+      });
+      await expect(callAssert('type-1', 'org-1')).rejects.toThrow(BadRequestException);
+    });
+
+    it('should reject an inactive type with BadRequest', async () => {
+      mockPrismaService.locationTypeDefinition.findUnique.mockResolvedValue({
+        orgId: 'org-1',
+        deletedAt: null,
+        scope: 'CRM',
+        isActive: false,
+      });
+      await expect(callAssert('type-1', 'org-1')).rejects.toThrow(BadRequestException);
     });
   });
 
   // ─── findLocations ───────────────────────────────────────────────────
 
   describe('findLocations()', () => {
-    it('should return locations for contact', async () => {
+    it('should return locations for contact (with locationType include)', async () => {
       const locations = [
         {
           id: 'loc-1',
@@ -166,6 +291,7 @@ describe('LocationsService', () => {
       expect(result).toEqual(locations);
       expect(mockPrismaService.location.findMany).toHaveBeenCalledWith({
         where: { contactId: 'contact-1' },
+        include: { locationType: LOCATION_TYPE_SELECT },
         orderBy: { createdAt: 'desc' },
       });
     });

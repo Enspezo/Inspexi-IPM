@@ -1,10 +1,144 @@
-import { PrismaClient, Role, ContactType, LogType, PriceType, RequestSource, RequestStatus, Priority, QuoteStatus, NotificationType, PlanningStatus, AcceptanceStatus, ProjectStatus, AssetFieldType, ChecklistStatus, TemplateStatus, MeasurementSheetTemplateStatus, MeasurementSheetFieldType, FindingInspectionType, DocumentType, TemplateMode, SectionType, ClientUserStatus, ClientAccessRole, GeneratedDocumentStatus, SignatureStatus } from '@prisma/client';
+import { PrismaClient, Role, ContactType, LogType, PriceType, RequestSource, RequestStatus, Priority, QuoteStatus, NotificationType, PlanningStatus, AcceptanceStatus, ProjectStatus, AssetFieldType, ChecklistStatus, TemplateStatus, MeasurementSheetTemplateStatus, MeasurementSheetFieldType, FindingInspectionType, DocumentType, TemplateMode, SectionType, ClientUserStatus, ClientAccessRole, GeneratedDocumentStatus, SignatureStatus, MarkerType, MeasurementSheetRecordStatus, PassFailOperator } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { randomUUID } from 'crypto';
+import * as fs from 'fs';
+import * as path from 'path';
+import * as zlib from 'zlib';
 import { seedLookups } from './seed-lookups';
 import { DEFAULT_VOICE_BASE_PROMPT } from '../src/modules/voice/default-base-prompt';
 
 const prisma = new PrismaClient();
+
+// ─── Demo-helpers (plattegrond-PNG + meetstaat-snapshot) ────────────────────
+
+/** CRC-32 (IEEE) voor PNG-chunks. */
+function crc32(buf: Buffer): number {
+  let crc = 0xffffffff;
+  for (let i = 0; i < buf.length; i++) {
+    crc ^= buf[i];
+    for (let k = 0; k < 8; k++) crc = (crc >>> 1) ^ (0xedb88320 & -(crc & 1));
+  }
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+/** Bouwt één PNG-chunk (length + type + data + crc). */
+function pngChunk(type: string, data: Buffer): Buffer {
+  const length = Buffer.alloc(4);
+  length.writeUInt32BE(data.length, 0);
+  const typeBuf = Buffer.from(type, 'ascii');
+  const crc = Buffer.alloc(4);
+  crc.writeUInt32BE(crc32(Buffer.concat([typeBuf, data])), 0);
+  return Buffer.concat([length, typeBuf, data, crc]);
+}
+
+/** Genereert een geldige 800x600 plattegrond-PNG (blueprint-stijl) als Buffer. */
+function makeFloorPlanPng(width = 800, height = 600): Buffer {
+  const stride = width * 3;
+  const raw = Buffer.alloc(height * (stride + 1)); // filter-byte 0 + RGB per rij
+  const bg: [number, number, number] = [0xe9, 0xee, 0xf4];
+  const wall: [number, number, number] = [0x33, 0x49, 0x66];
+
+  // Achtergrond: één rij vullen en naar alle rijen kopiëren.
+  const row = Buffer.alloc(stride + 1);
+  for (let x = 0; x < width; x++) {
+    row[1 + x * 3] = bg[0];
+    row[1 + x * 3 + 1] = bg[1];
+    row[1 + x * 3 + 2] = bg[2];
+  }
+  for (let y = 0; y < height; y++) row.copy(raw, y * (stride + 1));
+
+  const px = (x: number, y: number, c: [number, number, number]) => {
+    if (x < 0 || x >= width || y < 0 || y >= height) return;
+    const off = y * (stride + 1) + 1 + x * 3;
+    raw[off] = c[0];
+    raw[off + 1] = c[1];
+    raw[off + 2] = c[2];
+  };
+  const hLine = (y: number, x0: number, x1: number, t = 4) => {
+    for (let dy = 0; dy < t; dy++) for (let x = x0; x <= x1; x++) px(x, y + dy, wall);
+  };
+  const vLine = (x: number, y0: number, y1: number, t = 4) => {
+    for (let dx = 0; dx < t; dx++) for (let y = y0; y <= y1; y++) px(x + dx, y, wall);
+  };
+
+  // Buitenmuur + een paar binnenmuren voor een eenvoudige ruimte-indeling.
+  hLine(0, 0, width - 1);
+  hLine(height - 4, 0, width - 1);
+  vLine(0, 0, height - 1);
+  vLine(width - 4, 0, height - 1);
+  vLine(Math.floor(width * 0.5), 0, height - 1);
+  hLine(Math.floor(height * 0.5), Math.floor(width * 0.5), width - 1);
+  hLine(Math.floor(height * 0.5), 0, Math.floor(width * 0.25));
+
+  const idat = zlib.deflateSync(raw, { level: 9 });
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(width, 0);
+  ihdr.writeUInt32BE(height, 4);
+  ihdr[8] = 8; // bit depth
+  ihdr[9] = 2; // color type: truecolor (RGB)
+  return Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    pngChunk('IHDR', ihdr),
+    pngChunk('IDAT', idat),
+    pngChunk('IEND', Buffer.alloc(0)),
+  ]);
+}
+
+/**
+ * Bevriest een meetstaat-template (+secties+velden) tot een snapshot, identiek
+ * aan MeasurementSheetRecordsService.createTemplateSnapshot (Decimals → string).
+ */
+function buildMeasurementSnapshot(t: any) {
+  return {
+    id: t.id,
+    code: t.code,
+    name: t.name,
+    version: t.version,
+    normTypeCode: t.normTypeCode,
+    assetTypes: t.assetTypes,
+    locationTypes: t.locationTypes,
+    finalCheckRules: t.finalCheckRules,
+    sections: t.sections.map((section: any) => ({
+      code: section.code,
+      name: section.name,
+      description: section.description,
+      isRepeating: section.isRepeating,
+      minRows: section.minRows,
+      sortOrder: section.sortOrder,
+      collapsible: section.collapsible,
+      defaultCollapsed: section.defaultCollapsed,
+      rowValidationRules: section.rowValidationRules,
+      fields: section.fields.map((field: any) => ({
+        code: field.code,
+        name: field.name,
+        description: field.description,
+        fieldType: field.fieldType,
+        sortOrder: field.sortOrder,
+        placeholder: field.placeholder,
+        width: field.width,
+        unit: field.unit,
+        decimals: field.decimals,
+        minValue: field.minValue?.toString() ?? null,
+        maxValue: field.maxValue?.toString() ?? null,
+        dropdownOptions: field.dropdownOptions,
+        formula: field.formula,
+        formulaDependencies: field.formulaDependencies,
+        isRequired: field.isRequired,
+        passFailEnabled: field.passFailEnabled,
+        passFailOperator: field.passFailOperator,
+        passFailValue: field.passFailValue?.toString() ?? null,
+        passFailMinValue: field.passFailMinValue?.toString() ?? null,
+        passFailMaxValue: field.passFailMaxValue?.toString() ?? null,
+        passFailValues: field.passFailValues,
+        passFailFailMessage: field.passFailFailMessage,
+        autoFindingEnabled: field.autoFindingEnabled,
+        autoFindingTemplateId: field.autoFindingTemplateId,
+        copyValueOnNewRow: field.copyValueOnNewRow,
+        allowBulkEdit: field.allowBulkEdit,
+      })),
+    })),
+  };
+}
 
 async function main() {
   console.log('🌱 Seeding database...');
@@ -1540,10 +1674,24 @@ async function main() {
             code: 'isolation',
             name: 'Isolatieweerstand',
             sortOrder: 0,
+            isRepeating: true,
+            minRows: 1,
             fields: {
               create: [
-                { code: 'group', name: 'Groep', fieldType: MeasurementSheetFieldType.TEXT, sortOrder: 0 },
-                { code: 'r_iso', name: 'Isolatieweerstand', fieldType: MeasurementSheetFieldType.NUMBER, unit: 'MΩ', decimals: 2, sortOrder: 1, isRequired: true },
+                { code: 'group', name: 'Groep', fieldType: MeasurementSheetFieldType.TEXT, sortOrder: 0, isRequired: true },
+                {
+                  code: 'r_iso',
+                  name: 'Isolatieweerstand',
+                  fieldType: MeasurementSheetFieldType.NUMBER,
+                  unit: 'MΩ',
+                  decimals: 2,
+                  sortOrder: 1,
+                  isRequired: true,
+                  passFailEnabled: true,
+                  passFailOperator: PassFailOperator.GTE,
+                  passFailValue: 1,
+                  passFailFailMessage: 'Isolatieweerstand onder de minimumwaarde van 1 MΩ',
+                },
               ],
             },
           },
@@ -1687,7 +1835,7 @@ async function main() {
     },
   });
 
-  await prisma.finding.create({
+  const finding1 = await prisma.finding.create({
     data: {
       orgId: org1.id,
       assetId: asset1.id,
@@ -1710,6 +1858,179 @@ async function main() {
     },
   });
   console.log('  ✓ Demo inspection plan + 2 assets + 2 findings');
+
+  // ─── Locaties, plattegrond & meetstaten (inspectiedomein) ───────────────
+  // Additief op het bestaande demo-plan. treePath blijft leeg (de
+  // inspection-locations.service bouwt de boom via parentLocationId, niet via treePath).
+  const inspecteurId = createdOrg1Users[Role.INSPECTEUR];
+
+  const rootLocation = await prisma.inspectionLocation.create({
+    data: {
+      orgId: org1.id,
+      inspectionPlanId: demoPlan.id,
+      locationType: 'distribution_room',
+      name: 'Hoofdkantoor',
+      identifier: 'LOC-HK',
+      sortOrder: 0,
+      createdBy: inspecteurId,
+    },
+  });
+  const floorLocation = await prisma.inspectionLocation.create({
+    data: {
+      orgId: org1.id,
+      inspectionPlanId: demoPlan.id,
+      parentLocationId: rootLocation.id,
+      locationType: 'distribution_room',
+      name: 'Verdieping 1',
+      identifier: 'LOC-V1',
+      sortOrder: 0,
+      createdBy: inspecteurId,
+    },
+  });
+
+  // Assets aan de verdieping koppelen (Asset.locationId / relation "AssetLocation").
+  await prisma.asset.updateMany({
+    where: { id: { in: [asset1.id, asset2.id] } },
+    data: { locationId: floorLocation.id },
+  });
+  console.log('  ✓ Locatieboom (2 niveaus: Hoofdkantoor → Verdieping 1) + assets gekoppeld');
+
+  // Plattegrond op de root-locatie: genereer een echte 800x600 PNG en schrijf 'm naar
+  // de lokale storage (UPLOAD_DIR), zodat de afbeelding in het portal daadwerkelijk
+  // rendert. Key-patroon = location-images.service: `${orgId}/${uuid}-${filename}`.
+  // uploads/ is gitignored → niet gecommit; herseed genereert 'm opnieuw.
+  const floorPlanFilename = 'plattegrond-demo.png';
+  const floorPlanKey = `${org1.id}/${randomUUID()}-${floorPlanFilename}`;
+  const floorPlanBytes = makeFloorPlanPng(800, 600);
+  const uploadDir = process.env.UPLOAD_DIR || './uploads';
+  const floorPlanFullPath = path.join(uploadDir, floorPlanKey);
+  fs.mkdirSync(path.dirname(floorPlanFullPath), { recursive: true });
+  fs.writeFileSync(floorPlanFullPath, floorPlanBytes);
+
+  const floorPlanImage = await prisma.locationImage.create({
+    data: {
+      orgId: org1.id,
+      locationId: rootLocation.id,
+      storagePath: floorPlanKey,
+      originalFilename: floorPlanFilename,
+      fileSize: floorPlanBytes.length,
+      mimeType: 'image/png',
+      width: 800,
+      height: 600,
+      createdBy: inspecteurId,
+    },
+  });
+
+  // Markers op de plattegrond (positionX/Y = percentage 0-100). Twee assets + één
+  // constatering, gekoppeld via FK. Kleur/icon laten we leeg → frontend kleurt o.b.v. lookups.
+  await prisma.locationImageMarker.createMany({
+    data: [
+      {
+        orgId: org1.id,
+        locationImageId: floorPlanImage.id,
+        positionX: 27,
+        positionY: 30,
+        markerType: MarkerType.ASSET,
+        assetId: asset1.id,
+        label: 'Hoofdverdeler HVK',
+        createdBy: inspecteurId,
+      },
+      {
+        orgId: org1.id,
+        locationImageId: floorPlanImage.id,
+        positionX: 73,
+        positionY: 64,
+        markerType: MarkerType.ASSET,
+        assetId: asset2.id,
+        label: 'Onderverdeler kantoor',
+        createdBy: inspecteurId,
+      },
+      {
+        orgId: org1.id,
+        locationImageId: floorPlanImage.id,
+        positionX: 34,
+        positionY: 46,
+        markerType: MarkerType.FINDING,
+        findingId: finding1.id,
+        label: 'Ontbrekende afdekking',
+        createdBy: inspecteurId,
+      },
+    ],
+  });
+  console.log('  ✓ Plattegrond (LocationImage 800x600) + 3 markers (2 assets, 1 constatering)');
+
+  // Meetstaat-records (snapshot van de measSheet-template). Eén geslaagde meting op
+  // asset1 en één afgekeurde op asset2 (groep 3 < 1 MΩ → finalCheckPassed false),
+  // passend bij de bestaande constatering "Isolatieweerstand onder norm op groep 3".
+  const measSheetFull = await prisma.measurementSheetTemplate.findUnique({
+    where: { id: measSheet.id },
+    include: {
+      sections: {
+        include: { fields: { orderBy: { sortOrder: 'asc' } } },
+        orderBy: { sortOrder: 'asc' },
+      },
+    },
+  });
+  const measSnapshot = buildMeasurementSnapshot(measSheetFull!);
+
+  await prisma.measurementSheetRecord.create({
+    data: {
+      orgId: org1.id,
+      templateId: measSheet.id,
+      assetId: asset1.id,
+      inspectionPlanId: demoPlan.id,
+      templateVersion: measSheet.version,
+      templateSnapshot: measSnapshot as any,
+      status: MeasurementSheetRecordStatus.COMPLETED,
+      data: {
+        isolation: {
+          '0': { group: { value: 'Hoofdgroep', passFail: null }, r_iso: { value: 250, passFail: 'pass' } },
+          '1': { group: { value: 'Groep 1', passFail: null }, r_iso: { value: 180.5, passFail: 'pass' } },
+        },
+      } as any,
+      finalCheckExecuted: true,
+      finalCheckPassed: true,
+      finalCheckResults: { passed: true, results: [] } as any,
+      completedAt: new Date('2026-06-15T11:00:00Z'),
+      createdBy: inspecteurId,
+    },
+  });
+
+  await prisma.measurementSheetRecord.create({
+    data: {
+      orgId: org1.id,
+      templateId: measSheet.id,
+      assetId: asset2.id,
+      inspectionPlanId: demoPlan.id,
+      templateVersion: measSheet.version,
+      templateSnapshot: measSnapshot as any,
+      status: MeasurementSheetRecordStatus.COMPLETED,
+      data: {
+        isolation: {
+          '0': { group: { value: 'Groep 1', passFail: null }, r_iso: { value: 120, passFail: 'pass' } },
+          '1': { group: { value: 'Groep 2', passFail: null }, r_iso: { value: 95.2, passFail: 'pass' } },
+          '2': { group: { value: 'Groep 3', passFail: null }, r_iso: { value: 0.3, passFail: 'fail' } },
+        },
+      } as any,
+      finalCheckExecuted: true,
+      finalCheckPassed: false,
+      finalCheckResults: {
+        passed: false,
+        results: [
+          {
+            ruleType: 'passFail',
+            passed: false,
+            message: 'Isolatieweerstand 0,30 MΩ ligt onder de norm (≥ 1 MΩ) op groep 3',
+            details: { sectionCode: 'isolation', rowIndex: '2', fieldCode: 'r_iso' },
+          },
+        ],
+      } as any,
+      completedAt: new Date('2026-06-15T11:05:00Z'),
+      createdBy: inspecteurId,
+    },
+  });
+  console.log('  ✓ Meetstaat-records (2: asset1 geslaagd, asset2 afgekeurd op groep 3)');
+  console.log('  → Demo-inspectie compleet: + 2 locaties, 1 plattegrond + 3 markers, 2 meetstaat-records');
 
   // ─── Client-portal demo (Fase 6) ───────────────────────
   // Onboarded demo-klant met een vaste, niet-gebruikte magic-link op het bestaande

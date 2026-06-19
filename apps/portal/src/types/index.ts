@@ -2221,6 +2221,96 @@ export interface MeasurementSheetField {
   allowBulkEdit: boolean;
 }
 
+// ─── Ingevulde meetstaat-records (snapshot van een template) ───
+// Een record bevriest het template (templateSnapshot) bij aanmaken en bewaart de
+// ingevulde waarden in `data` (sectie → rij → veld). De staf bekijkt dit read-only;
+// invullen gebeurt in het veld (PWA).
+
+/** Eén veldwaarde in record.data: ingevulde waarde + pass/fail-uitkomst. */
+export interface MeasurementSheetFieldValue {
+  value: unknown;
+  passFail?: 'pass' | 'fail' | null;
+}
+
+/** Bevroren veld in templateSnapshot.sections[].fields[] (subset van MeasurementSheetField). */
+export interface MeasurementSheetSnapshotField {
+  code: string;
+  name: string;
+  description: string | null;
+  fieldType: MeasurementSheetFieldType;
+  sortOrder: number;
+  placeholder: string | null;
+  width: MeasurementSheetFieldWidth;
+  unit: string | null;
+  decimals: number | null;
+}
+
+/** Bevroren sectie in templateSnapshot.sections[]. */
+export interface MeasurementSheetSnapshotSection {
+  code: string;
+  name: string;
+  description: string | null;
+  isRepeating: boolean;
+  minRows: number;
+  sortOrder: number;
+  fields: MeasurementSheetSnapshotField[];
+}
+
+/** Het ingevroren template binnen een record. */
+export interface MeasurementSheetTemplateSnapshot {
+  id: string;
+  code: string;
+  name: string;
+  version: string;
+  normTypeCode: string;
+  finalCheckRules?: unknown[];
+  sections: MeasurementSheetSnapshotSection[];
+}
+
+/** Resultaat van één final-check-regel (record.finalCheckResults.results[]). */
+export interface MeasurementSheetFinalCheckRuleResult {
+  ruleType: string;
+  passed: boolean;
+  message?: string;
+  details?: Record<string, unknown>;
+}
+
+/** record.finalCheckResults: macro-uitkomst van de afronding. */
+export interface MeasurementSheetFinalCheckResults {
+  passed: boolean;
+  results: MeasurementSheetFinalCheckRuleResult[];
+}
+
+/** record.data: sectiecode → rij-index ("0", "1", …) → veldcode → waarde. */
+export type MeasurementSheetRecordData = Record<
+  string,
+  Record<string, Record<string, MeasurementSheetFieldValue>>
+>;
+
+export interface MeasurementSheetRecord {
+  id: string;
+  orgId: string;
+  templateId: string;
+  assetId: string;
+  inspectionPlanId: string | null;
+  templateVersion: string;
+  templateSnapshot: MeasurementSheetTemplateSnapshot;
+  status: MeasurementSheetRecordStatus;
+  data: MeasurementSheetRecordData;
+  finalCheckExecuted: boolean;
+  finalCheckPassed: boolean | null;
+  finalCheckResults: MeasurementSheetFinalCheckResults | null;
+  syncedAt: string | null;
+  deviceId: string | null;
+  createdAt: string;
+  updatedAt: string;
+  completedAt: string | null;
+  createdBy: string;
+  // Include-projecties uit de endpoints:
+  template?: { id: string; code: string; name: string; version: string };
+  asset?: { id: string; name: string; assetType: string; inspectionPlanId?: string };
+}
+
 // ─── Voice-prompts (3-lagen prompt-model voor spraakinvoer) ───
 
 /** Laag 1: systeem-base-prompt (SUPERUSER, exact één actief). */

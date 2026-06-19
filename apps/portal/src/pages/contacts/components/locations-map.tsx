@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { EntityMap } from '@/components/map/entity-map';
 import type { MapPoint } from '@/components/map/entity-map';
 import {
@@ -45,6 +45,15 @@ export function LocationsMap({ locations }: LocationsMapProps) {
   const [geocodeTotal, setGeocodeTotal] = useState(0);
   const abortRef = useRef(false);
 
+  // Stable identity for the location set (ids + coords). filteredData() returns a
+  // fresh array reference whenever a filter/sort is active, so depending on the raw
+  // `locations` array would blank the map, close any open popup, and re-run the
+  // geocode loop on every parent re-render (e.g. a search keystroke).
+  const locationsKey = useMemo(
+    () => locations.map((l) => `${l.id}:${l.lat ?? ''}:${l.lng ?? ''}`).join('|'),
+    [locations],
+  );
+
   useEffect(() => {
     abortRef.current = false;
 
@@ -89,7 +98,8 @@ export function LocationsMap({ locations }: LocationsMapProps) {
     return () => {
       abortRef.current = true;
     };
-  }, [locations]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on locationsKey (value), not the array ref
+  }, [locationsKey]);
 
   const mapPoints: MapPoint[] = markers.map(({ location, lat, lng }) => ({
     id: location.id,

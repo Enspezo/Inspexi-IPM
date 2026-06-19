@@ -218,7 +218,7 @@ export class SearchService {
           houseNumber: true,
           postalCode: true,
           city: true,
-          locationType: { select: { id: true, code: true, name: true, color: true } },
+          locationType: { select: { id: true, code: true, name: true, color: true, icon: true } },
           contact: {
             select: {
               id: true,

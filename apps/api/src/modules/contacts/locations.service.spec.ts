@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { ForbiddenException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { Role, ContactType } from '@prisma/client';
 import { LocationsService } from './locations.service';
 import { ContactsService } from './contacts.service';
@@ -128,6 +128,8 @@ describe('LocationsService', () => {
       mockPrismaService.locationTypeDefinition.findUnique.mockResolvedValue({
         orgId: 'org-1',
         deletedAt: null,
+        scope: 'CRM',
+        isActive: true,
       });
       mockPrismaService.location.create.mockResolvedValue(createdLocation);
 
@@ -172,6 +174,8 @@ describe('LocationsService', () => {
       mockPrismaService.locationTypeDefinition.findUnique.mockResolvedValue({
         orgId: null,
         deletedAt: null,
+        scope: 'CRM',
+        isActive: true,
       });
       mockPrismaService.location.create.mockResolvedValue({ id: 'loc-2' });
 
@@ -198,6 +202,8 @@ describe('LocationsService', () => {
       mockPrismaService.locationTypeDefinition.findUnique.mockResolvedValue({
         orgId: null,
         deletedAt: null,
+        scope: 'CRM',
+        isActive: true,
       });
       await expect(callAssert('type-1', 'org-1')).resolves.toBeUndefined();
     });
@@ -206,6 +212,8 @@ describe('LocationsService', () => {
       mockPrismaService.locationTypeDefinition.findUnique.mockResolvedValue({
         orgId: 'org-1',
         deletedAt: null,
+        scope: 'CRM',
+        isActive: true,
       });
       await expect(callAssert('type-1', 'org-1')).resolves.toBeUndefined();
     });
@@ -214,6 +222,8 @@ describe('LocationsService', () => {
       mockPrismaService.locationTypeDefinition.findUnique.mockResolvedValue({
         orgId: 'org-2',
         deletedAt: null,
+        scope: 'CRM',
+        isActive: true,
       });
       await expect(callAssert('type-1', null)).resolves.toBeUndefined();
     });
@@ -237,6 +247,26 @@ describe('LocationsService', () => {
         deletedAt: new Date(),
       });
       await expect(callAssert('type-1', 'org-1')).rejects.toThrow(NotFoundException);
+    });
+
+    it('should reject a non-CRM (inspection) type with BadRequest', async () => {
+      mockPrismaService.locationTypeDefinition.findUnique.mockResolvedValue({
+        orgId: 'org-1',
+        deletedAt: null,
+        scope: 'INSPECTION',
+        isActive: true,
+      });
+      await expect(callAssert('type-1', 'org-1')).rejects.toThrow(BadRequestException);
+    });
+
+    it('should reject an inactive type with BadRequest', async () => {
+      mockPrismaService.locationTypeDefinition.findUnique.mockResolvedValue({
+        orgId: 'org-1',
+        deletedAt: null,
+        scope: 'CRM',
+        isActive: false,
+      });
+      await expect(callAssert('type-1', 'org-1')).rejects.toThrow(BadRequestException);
     });
   });
 

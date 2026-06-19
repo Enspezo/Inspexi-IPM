@@ -2,8 +2,9 @@ import {
   Injectable,
   NotFoundException,
   ForbiddenException,
+  BadRequestException,
 } from '@nestjs/common';
-import { User, Role, Prisma } from '@prisma/client';
+import { User, Role, Prisma, LocationTypeScope } from '@prisma/client';
 import { PrismaService } from '@/prisma';
 import { paginate, orgScope, assertFound } from '@/common';
 import { CustomFieldsValidator } from '@/modules/custom-fields/custom-fields.validator';
@@ -44,13 +45,18 @@ export class LocationsService {
     if (!locationTypeId) return;
     const type = await this.prisma.locationTypeDefinition.findUnique({
       where: { id: locationTypeId },
-      select: { orgId: true, deletedAt: true },
+      select: { orgId: true, deletedAt: true, scope: true, isActive: true },
     });
     if (!type || type.deletedAt) throw new NotFoundException('Locatietype niet gevonden');
-    if (type.orgId === null) return; // systeem-type: gedeeld, altijd toegestaan
-    if (orgId === null) return; // SUPERUSER
-    if (type.orgId !== orgId) {
+    // Cross-tenant: een type van een andere org is verboden. Systeem-types
+    // (orgId null) zijn gedeeld; SUPERUSER (orgId null) mag alles.
+    if (type.orgId !== null && orgId !== null && type.orgId !== orgId) {
       throw new ForbiddenException('Locatietype hoort niet bij uw organisatie');
+    }
+    // Een relatie-locatie mag alleen een actief CRM-type koppelen — geen
+    // inspectie-types (scope-scheiding) en geen gearchiveerde types.
+    if (type.scope !== LocationTypeScope.CRM || !type.isActive) {
+      throw new BadRequestException('Ongeldig locatietype voor een relatie-locatie');
     }
   }
 

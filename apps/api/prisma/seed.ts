@@ -1,4 +1,4 @@
-import { PrismaClient, Role, ContactType, LogType, PriceType, RequestSource, RequestStatus, Priority, QuoteStatus, NotificationType, PlanningStatus, AcceptanceStatus, ProjectStatus, AssetFieldType, ChecklistStatus, TemplateStatus, MeasurementSheetTemplateStatus, MeasurementSheetFieldType, FindingInspectionType, DocumentType, TemplateMode, SectionType, ClientUserStatus, ClientAccessRole, GeneratedDocumentStatus, SignatureStatus, MarkerType, MeasurementSheetRecordStatus, PassFailOperator } from '@prisma/client';
+import { PrismaClient, Role, ContactType, LogType, PriceType, RequestSource, RequestStatus, Priority, QuoteStatus, NotificationType, PlanningStatus, AcceptanceStatus, ProjectStatus, AssetFieldType, ChecklistStatus, TemplateStatus, MeasurementSheetTemplateStatus, MeasurementSheetFieldType, FindingInspectionType, DocumentType, TemplateMode, SectionType, ClientUserStatus, ClientAccessRole, GeneratedDocumentStatus, SignatureStatus, MarkerType, MeasurementSheetRecordStatus, PassFailOperator, LocationTypeScope } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { randomUUID } from 'crypto';
 import * as fs from 'fs';
@@ -484,6 +484,30 @@ async function main() {
     ],
   });
 
+  // Systeem CRM-locatie-types (objecttype van relatie-locaties): globaal (orgId null),
+  // gedeeld door alle organisaties. Kleuren = voormalige Tailwind-pills uit de portal.
+  const crmLocationTypeData = [
+    { code: 'woning', name: 'Woning', color: '#3B82F6' },
+    { code: 'kantoor', name: 'Kantoor', color: '#A855F7' },
+    { code: 'industrieel', name: 'Industrieel', color: '#F97316' },
+    { code: 'winkel', name: 'Winkel', color: '#22C55E' },
+    { code: 'overig', name: 'Overig', color: '#6B7280' },
+  ];
+  const crmLocationTypes: Record<string, string> = {};
+  for (const [i, t] of crmLocationTypeData.entries()) {
+    const created = await prisma.locationTypeDefinition.create({
+      data: {
+        code: t.code,
+        name: t.name,
+        color: t.color,
+        scope: LocationTypeScope.CRM,
+        isSystem: true,
+        sortOrder: i,
+      },
+    });
+    crmLocationTypes[t.code] = created.id;
+  }
+
   // Locaties
   const loc1Kantoor = await prisma.location.create({
     data: {
@@ -494,7 +518,7 @@ async function main() {
       houseNumber: '10',
       postalCode: '1082 PP',
       city: 'Amsterdam',
-      objectType: 'kantoor',
+      locationTypeId: crmLocationTypes.kantoor,
       notes: 'Grote kantoorvloer, 3 verdiepingen',
     },
   });
@@ -507,7 +531,7 @@ async function main() {
       houseNumber: '88',
       postalCode: '1185 SE',
       city: 'Amstelveen',
-      objectType: 'woning',
+      locationTypeId: crmLocationTypes.woning,
     },
   });
   const loc1Bedrijfshal = await prisma.location.create({
@@ -519,7 +543,7 @@ async function main() {
       houseNumber: '200',
       postalCode: '1171 PK',
       city: 'Badhoevedorp',
-      objectType: 'industrieel',
+      locationTypeId: crmLocationTypes.industrieel,
       notes: 'Toegang via poort B',
     },
   });
@@ -607,7 +631,7 @@ async function main() {
       houseNumber: '15',
       postalCode: '3512 AB',
       city: 'Utrecht',
-      objectType: 'woning',
+      locationTypeId: crmLocationTypes.woning,
     },
   });
 
@@ -662,7 +686,7 @@ async function main() {
       houseNumber: '50',
       postalCode: '3062 DB',
       city: 'Rotterdam',
-      objectType: 'woning',
+      locationTypeId: crmLocationTypes.woning,
       notes: '24 appartementen',
     },
   });
@@ -675,7 +699,7 @@ async function main() {
       houseNumber: '1',
       postalCode: '3068 NC',
       city: 'Rotterdam',
-      objectType: 'kantoor',
+      locationTypeId: crmLocationTypes.winkel,
     },
   });
 
@@ -716,7 +740,7 @@ async function main() {
       houseNumber: '30',
       postalCode: '3430 AA',
       city: 'Nieuwegein',
-      objectType: 'industrieel',
+      locationTypeId: crmLocationTypes.industrieel,
     },
   });
 

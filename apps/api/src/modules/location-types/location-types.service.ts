@@ -4,7 +4,7 @@ import {
   BadRequestException,
   ForbiddenException,
 } from '@nestjs/common';
-import { User, Prisma } from '@prisma/client';
+import { User, Prisma, LocationTypeScope } from '@prisma/client';
 import { PrismaService } from '@/prisma';
 import {
   CreateLocationTypeDto,
@@ -19,9 +19,12 @@ export class LocationTypesService {
   constructor(private readonly prisma: PrismaService) {}
 
   /** Alle (zichtbare) locatie-types: eigen org + systeem. Superuser (orgId null) ziet alles. */
-  async findAll(user: User, options?: { normType?: string; includeSystem?: boolean }) {
+  async findAll(
+    user: User,
+    options?: { normType?: string; includeSystem?: boolean; scope?: LocationTypeScope },
+  ) {
     const orgId = user.orgId;
-    const { normType, includeSystem = true } = options || {};
+    const { normType, includeSystem = true, scope } = options || {};
 
     const where: Prisma.LocationTypeDefinitionWhereInput = orgId
       ? {
@@ -32,6 +35,10 @@ export class LocationTypesService {
           ],
         }
       : { deletedAt: null };
+
+    if (scope) {
+      where.scope = scope;
+    }
 
     const locationTypes = await this.prisma.locationTypeDefinition.findMany({
       where,
@@ -122,6 +129,7 @@ export class LocationTypesService {
         description: dto.description,
         icon: dto.icon,
         color: dto.color,
+        scope: dto.scope ?? 'INSPECTION',
         normTypes: dto.normTypes ?? [],
         sortOrder: dto.sortOrder ?? 0,
         isActive: dto.isActive ?? true,
@@ -409,8 +417,8 @@ export class LocationTypesService {
   }
 
   /** Gemergede lijst: org-rij overschrijft systeemrij met dezelfde code. */
-  async getMergedLocationTypes(user: User, normType?: string) {
-    const all = await this.findAll(user, { normType, includeSystem: true });
+  async getMergedLocationTypes(user: User, normType?: string, scope?: LocationTypeScope) {
+    const all = await this.findAll(user, { normType, includeSystem: true, scope });
     const byCode = new Map<string, (typeof all)[number]>();
     for (const type of all) {
       const existing = byCode.get(type.code);

@@ -26,6 +26,34 @@ export class LocationsService {
     private contactsService: ContactsService,
   ) {}
 
+  /** Standaard `locationType`-select voor alle locatie-responses. */
+  private static readonly LOCATION_TYPE_SELECT = {
+    select: { id: true, code: true, name: true, color: true, icon: true },
+  } as const;
+
+  /**
+   * Valideer of een locatietype bruikbaar is voor de gegeven org.
+   * Systeem-types (orgId null) zijn gedeeld en altijd toegestaan; een
+   * type van een andere org wordt geweigerd met 403. Gebruik NOOIT de
+   * generieke `assertSameOrg` helper hier — die zou systeem-types weigeren.
+   */
+  private async assertLocationTypeUsable(
+    locationTypeId: string | null | undefined,
+    orgId: string | null,
+  ): Promise<void> {
+    if (!locationTypeId) return;
+    const type = await this.prisma.locationTypeDefinition.findUnique({
+      where: { id: locationTypeId },
+      select: { orgId: true, deletedAt: true },
+    });
+    if (!type || type.deletedAt) throw new NotFoundException('Locatietype niet gevonden');
+    if (type.orgId === null) return; // systeem-type: gedeeld, altijd toegestaan
+    if (orgId === null) return; // SUPERUSER
+    if (type.orgId !== orgId) {
+      throw new ForbiddenException('Locatietype hoort niet bij uw organisatie');
+    }
+  }
+
   /**
    * Bepaal lat/lng voor een locatie.
    * Prioriteit: (1) expliciet meegegeven → (2) pdokData centroide → (3) Nominatim fallback.
@@ -57,6 +85,8 @@ export class LocationsService {
       ? await this.customFieldsValidator.validateAndSanitize(contact.orgId, 'LOCATION', dto.customFields)
       : null;
 
+    await this.assertLocationTypeUsable(dto.locationTypeId, contact.orgId);
+
     const { lat, lng } = await this.resolveCoords(
       dto.street, dto.houseNumber, dto.postalCode, dto.city,
       dto.pdokData, dto.lat, dto.lng,
@@ -71,7 +101,7 @@ export class LocationsService {
         houseNumber: dto.houseNumber,
         postalCode: dto.postalCode,
         city: dto.city,
-        objectType: dto.objectType,
+        locationTypeId: dto.locationTypeId,
         notes: dto.notes,
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         pdokData: (dto.pdokData ?? null) as any,
@@ -79,11 +109,12 @@ export class LocationsService {
         lng,
         customFields: cfData as any,
       },
+      include: { locationType: LocationsService.LOCATION_TYPE_SELECT },
     });
   }
 
   async findAllLocations(user: User, query: ListLocationsQueryDto) {
-    const { search, contactId, objectType, page = 1, limit = 20 } = query;
+    const { search, contactId, locationTypeId, page = 1, limit = 20 } = query;
 
     const where: Prisma.LocationWhereInput = { ...orgScope(user) };
 
@@ -91,8 +122,8 @@ export class LocationsService {
       where.contactId = contactId;
     }
 
-    if (objectType) {
-      where.objectType = objectType;
+    if (locationTypeId) {
+      where.locationTypeId = locationTypeId;
     }
 
     if (search) {
@@ -116,6 +147,7 @@ export class LocationsService {
             lastName: true,
           },
         },
+        locationType: LocationsService.LOCATION_TYPE_SELECT,
       },
       orderBy: { createdAt: 'desc' },
       page,
@@ -137,6 +169,7 @@ export class LocationsService {
               lastName: true,
             },
           },
+          locationType: LocationsService.LOCATION_TYPE_SELECT,
         },
       }),
       'Locatie',
@@ -154,6 +187,7 @@ export class LocationsService {
 
     return this.prisma.location.findMany({
       where: { contactId: contact.id },
+      include: { locationType: LocationsService.LOCATION_TYPE_SELECT },
       orderBy: { createdAt: 'desc' },
     });
   }
@@ -169,6 +203,10 @@ export class LocationsService {
     // Verify org scoping
     if (!user.roles.includes(Role.SUPERUSER) && location.orgId !== user.orgId) {
       throw new ForbiddenException();
+    }
+
+    if (dto.locationTypeId) {
+      await this.assertLocationTypeUsable(dto.locationTypeId, location.orgId);
     }
 
     let cfData: any = undefined;
@@ -210,7 +248,7 @@ export class LocationsService {
         ...(dto.houseNumber !== undefined && { houseNumber: dto.houseNumber }),
         ...(dto.postalCode !== undefined && { postalCode: dto.postalCode }),
         ...(dto.city !== undefined && { city: dto.city }),
-        ...(dto.objectType !== undefined && { objectType: dto.objectType }),
+        ...(dto.locationTypeId !== undefined && { locationTypeId: dto.locationTypeId }),
         ...(dto.notes !== undefined && { notes: dto.notes }),
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         ...(dto.pdokData !== undefined && { pdokData: dto.pdokData as any }),
@@ -218,6 +256,7 @@ export class LocationsService {
         ...(newLng !== undefined && { lng: newLng }),
         ...(cfData !== undefined && { customFields: cfData as any }),
       },
+      include: { locationType: LocationsService.LOCATION_TYPE_SELECT },
     });
   }
 

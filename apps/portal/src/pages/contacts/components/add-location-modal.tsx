@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { Modal, Input, Select, Button, useToast } from '@/components/ui';
 import { AddressSearchInput } from '@/components/ui/address-search-input';
 import { useAddLocation } from '../hooks/use-contacts';
+import { useLocationTypes } from '@/pages/location-types/hooks/use-location-types';
 import type { ParsedAddress } from '@/lib/geocoding';
 
 const locationSchema = z.object({
@@ -13,20 +14,11 @@ const locationSchema = z.object({
   houseNumber: z.string().min(1, 'Huisnummer is verplicht'),
   postalCode: z.string().min(1, 'Postcode is verplicht'),
   city: z.string().min(1, 'Stad is verplicht'),
-  objectType: z.string().optional(),
+  locationTypeId: z.string().optional(),
   notes: z.string().optional(),
 });
 
 type LocationFormData = z.infer<typeof locationSchema>;
-
-const objectTypeOptions = [
-  { value: '', label: 'Selecteer type...' },
-  { value: 'woning', label: 'Woning' },
-  { value: 'kantoor', label: 'Kantoor' },
-  { value: 'industrieel', label: 'Industrieel' },
-  { value: 'winkel', label: 'Winkel' },
-  { value: 'overig', label: 'Overig' },
-];
 
 interface AddLocationModalProps {
   isOpen: boolean;
@@ -41,7 +33,13 @@ export function AddLocationModal({
 }: AddLocationModalProps) {
   const { showToast } = useToast();
   const addMutation = useAddLocation(contactId);
+  const { data: locationTypes = [] } = useLocationTypes({ scope: 'CRM' });
   const [pdokData, setPdokData] = useState<Record<string, unknown> | null>(null);
+
+  const locationTypeOptions = [
+    { value: '', label: 'Geen type' },
+    ...locationTypes.map((t) => ({ value: t.id, label: t.name })),
+  ];
 
   const {
     register,
@@ -65,7 +63,7 @@ export function AddLocationModal({
     try {
       const cleaned = {
         ...data,
-        objectType: data.objectType || undefined,
+        locationTypeId: data.locationTypeId || undefined,
         notes: data.notes || undefined,
         pdokData: pdokData ?? undefined,
       };
@@ -137,9 +135,9 @@ export function AddLocationModal({
         </div>
 
         <Select
-          label="Objecttype"
-          options={objectTypeOptions}
-          {...register('objectType')}
+          label="Locatietype"
+          options={locationTypeOptions}
+          {...register('locationTypeId')}
         />
 
         <div>

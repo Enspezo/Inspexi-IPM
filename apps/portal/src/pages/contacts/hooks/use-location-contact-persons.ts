@@ -8,7 +8,8 @@ export function useContactPersonLocations(personId: string) {
   return useQuery<(import('@/types').LocationContactPerson & {
     location?: {
       id: string; name: string; street: string; houseNumber: string;
-      postalCode: string; city: string; objectType: string | null; contactId: string;
+      postalCode: string; city: string; contactId: string;
+      locationType?: { id: string; code: string; name: string; color: string | null } | null;
       contact?: { id: string; type: string; companyName: string | null; firstName: string | null; lastName: string | null };
     };
   })[]>({

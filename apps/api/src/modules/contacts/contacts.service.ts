@@ -110,7 +110,11 @@ export class ContactsService {
             customerGroup: { select: { id: true, name: true } },
           },
         },
-        locations: true,
+        locations: {
+          include: {
+            locationType: { select: { id: true, code: true, name: true, color: true, icon: true } },
+          },
+        },
         logs: {
           include: { user: { select: { firstName: true, lastName: true } } },
           orderBy: { loggedAt: 'desc' },

@@ -58,7 +58,7 @@ export const AUDITED_ENTITIES: readonly AuditedEntity[] = [
     table: 'imp_locations',
     display: (r) => {
       const parts = [r.street, r.houseNumber, r.city].filter(Boolean);
-      return parts.length > 0 ? parts.join(' ') : r.name || r.objectType || r.id;
+      return parts.length > 0 ? parts.join(' ') : r.name || r.id;
     },
   },
   { model: 'CustomerGroup', table: 'imp_customer_groups', displayFields: ['name'] },

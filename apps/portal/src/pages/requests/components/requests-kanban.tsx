@@ -1,9 +1,9 @@
 import { tenantStorage } from '@/lib/storage';
 import { useState, useRef, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { RequestStatus } from '@/types';
 import type { Priority, Request } from '@/types';
 import { ErrorBox, Spinner } from '@/components/ui';
+import { useWindowTabs } from '@/providers/window-tabs';
 import { getStatusConfig, PRIORITY } from '@/lib/status';
 import { useAllRequests } from '../hooks/use-requests';
 import { useQueryClient, useMutation } from '@tanstack/react-query';
@@ -74,7 +74,7 @@ function getContactName(req: Request): string {
 }
 
 function KanbanCard({ request, onDragStart }: KanbanCardProps) {
-  const navigate = useNavigate();
+  const { openTab } = useWindowTabs();
   const [isDragging, setIsDragging] = useState(false);
 
   return (
@@ -86,7 +86,18 @@ function KanbanCard({ request, onDragStart }: KanbanCardProps) {
         setIsDragging(true);
       }}
       onDragEnd={() => setIsDragging(false)}
-      onClick={() => navigate(`/requests/${request.id}`)}
+      // Opens the aanvraag as an in-window tab; ⌘/Ctrl-click opens it in the background.
+      onClick={(e) =>
+        openTab('request', request.id, request.title, {
+          background: e.metaKey || e.ctrlKey,
+        })
+      }
+      onMouseDown={(e) => {
+        if (e.button === 1) {
+          e.preventDefault();
+          openTab('request', request.id, request.title, { background: true });
+        }
+      }}
       className={`group cursor-pointer rounded-lg border border-gray-200 bg-white p-3 shadow-sm transition-all hover:border-primary-300 hover:shadow-md ${
         isDragging ? 'opacity-40 ring-2 ring-primary-400' : ''
       }`}

@@ -56,6 +56,7 @@ describe('GeocodingService', () => {
       });
       expect(mockFetch).toHaveBeenCalledWith(
         expect.stringContaining('suggest?q=Kerkstraat%20Amsterdam'),
+        expect.objectContaining({ signal: expect.anything() }),
       );
     });
 

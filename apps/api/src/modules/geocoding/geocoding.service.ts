@@ -42,6 +42,10 @@ export interface PdokLogContext {
   locationId?: string | null;
 }
 
+/** Harde timeout op elke externe PDOK/Nominatim-call (ms). Voorkomt dat een
+ *  trage/hangende upstream een create of refresh onbeperkt blokkeert. */
+const PDOK_FETCH_TIMEOUT_MS = 8000;
+
 @Injectable()
 export class GeocodingService {
   private readonly logger = new Logger(GeocodingService.name);
@@ -84,7 +88,10 @@ export class GeocodingService {
     let errorMessage: string | null = null;
     let res: Response | null = null;
     try {
-      res = await fetch(url, init);
+      res = await fetch(url, {
+        ...init,
+        signal: AbortSignal.timeout(PDOK_FETCH_TIMEOUT_MS),
+      });
       httpStatus = res.status;
       success = res.ok;
       if (!res.ok) errorMessage = `HTTP ${res.status}`;
@@ -147,7 +154,7 @@ export class GeocodingService {
     const url = `${this.locatieserverBase}/suggest?q=${encodeURIComponent(q)}&fq=type:adres&rows=5`;
     let res: Response;
     try {
-      res = await fetch(url);
+      res = await fetch(url, { signal: AbortSignal.timeout(PDOK_FETCH_TIMEOUT_MS) });
     } catch {
       throw new BadGatewayException('PDOK API onbereikbaar');
     }
@@ -286,8 +293,9 @@ export class GeocodingService {
       bagId: null,
     };
 
-    // 2) Pand → bagId (identificatie) + bouwjaar
-    if (pandHref) {
+    // 2) Pand → bagId (identificatie) + bouwjaar. Volg de href alleen als die
+    // absoluut is (een malformde/relatieve href zou een nutteloze faal-call zijn).
+    if (pandHref && /^https?:\/\//i.test(pandHref)) {
       const pandUrl = pandHref.includes('?')
         ? `${pandHref}&f=json`
         : `${pandHref}?f=json`;
@@ -350,7 +358,10 @@ export class GeocodingService {
     try {
       const res = await fetch(
         `${this.NOMINATIM_BASE}/search?format=json&q=${encodeURIComponent(q)}&countrycodes=nl&limit=1`,
-        { headers: { 'User-Agent': 'InspeXi-Beheer/1.0' } },
+        {
+          headers: { 'User-Agent': 'InspeXi-Beheer/1.0' },
+          signal: AbortSignal.timeout(PDOK_FETCH_TIMEOUT_MS),
+        },
       );
       if (!res.ok) return null;
       const data = (await res.json()) as any[];

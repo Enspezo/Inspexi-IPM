@@ -1,6 +1,7 @@
 import { useState, useRef } from 'react';
-import { Button, Input, Modal, Select, useToast } from '@/components/ui';
+import { Button, Input, Modal, Select, TagSelect, useToast } from '@/components/ui';
 import { useUploadDocument } from '@/pages/documents/hooks/use-documents';
+import { useDocumentTagsCompact } from '@/pages/organization/hooks/use-document-tags';
 import { DocumentEntityType, ContactType } from '@/types';
 import type { Contact } from '@/types';
 import { useContacts } from '@/pages/contacts/hooks/use-contacts';
@@ -88,6 +89,9 @@ export function UploadDocumentModal({
   const [fileError, setFileError] = useState('');
   const [selectedEntityType, setSelectedEntityType] = useState<DocumentEntityType | ''>('');
   const [selectedEntityId, setSelectedEntityId] = useState('');
+  const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
+
+  const { data: availableTags } = useDocumentTagsCompact();
 
   // Only the chosen link type actually fetches (rules-of-hooks: every hook is
   // called unconditionally at the top level, gated by `enabled`).
@@ -224,6 +228,7 @@ export function UploadDocumentModal({
         entityType,
         entityId,
         description: description || undefined,
+        tagIds: selectedTagIds.length ? selectedTagIds : undefined,
       });
       showToast('Document geüpload', 'success');
       handleClose();
@@ -239,6 +244,7 @@ export function UploadDocumentModal({
     setFile(null);
     setDescription('');
     setFileError('');
+    setSelectedTagIds([]);
     if (isStandalone) {
       setSelectedEntityType('');
       setSelectedEntityId('');
@@ -298,6 +304,13 @@ export function UploadDocumentModal({
           placeholder="Korte omschrijving van het document..."
           value={description}
           onChange={(e) => setDescription(e.target.value)}
+        />
+
+        <TagSelect
+          label="Tags (optioneel)"
+          available={availableTags ?? []}
+          selectedIds={selectedTagIds}
+          onChange={setSelectedTagIds}
         />
 
         <div className="flex justify-end gap-3 pt-2">

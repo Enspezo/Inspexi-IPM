@@ -1,4 +1,4 @@
-import { PrismaClient, Role, ContactType, LogType, PriceType, RequestSource, RequestStatus, Priority, QuoteStatus, NotificationType, PlanningStatus, AcceptanceStatus, ProjectStatus, AssetFieldType, ChecklistStatus, TemplateStatus, MeasurementSheetTemplateStatus, MeasurementSheetFieldType, FindingInspectionType, DocumentType, TemplateMode, SectionType, ClientUserStatus, ClientAccessRole, GeneratedDocumentStatus, SignatureStatus, MarkerType, MeasurementSheetRecordStatus, PassFailOperator, LocationTypeScope } from '@prisma/client';
+import { PrismaClient, Role, ContactType, LogType, PriceType, RequestSource, RequestStatus, Priority, QuoteStatus, NotificationType, PlanningStatus, AcceptanceStatus, ProjectStatus, AssetFieldType, ChecklistStatus, TemplateStatus, MeasurementSheetTemplateStatus, MeasurementSheetFieldType, FindingInspectionType, DocumentType, DocumentEntityType, TemplateMode, SectionType, ClientUserStatus, ClientAccessRole, GeneratedDocumentStatus, SignatureStatus, MarkerType, MeasurementSheetRecordStatus, PassFailOperator, LocationTypeScope } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { randomUUID } from 'crypto';
 import * as fs from 'fs';
@@ -281,8 +281,10 @@ async function main() {
   await prisma.lostReason.deleteMany();
   await prisma.contactPersonRoleOption.deleteMany();
   // Tasks, Documents & Notes (dependent on users)
+  await prisma.documentTagAssignment.deleteMany();
   await prisma.note.deleteMany();
   await prisma.document.deleteMany();
+  await prisma.documentTag.deleteMany();
   await prisma.task.deleteMany();
   // Custom fields & email templates
   await prisma.customFieldDefinition.deleteMany();
@@ -762,6 +764,42 @@ async function main() {
   });
 
   console.log('    → 1 adres, 1 locatie');
+
+  // ─── Document tags (org1) ────────────────────────────
+  console.log('\n🏷️  Seeding document tags...');
+  const docTagContract = await prisma.documentTag.create({
+    data: { orgId: org1.id, name: 'Contract', color: '#3B82F6', sortOrder: 0 },
+  });
+  const docTagKeuring = await prisma.documentTag.create({
+    data: { orgId: org1.id, name: 'Keuringsrapport', color: '#10B981', sortOrder: 1 },
+  });
+  await prisma.documentTag.create({
+    data: { orgId: org1.id, name: 'Archief', color: '#6B7280', sortOrder: 2 },
+  });
+
+  // Demo-document op contact1 met twee tags, zodat de gekleurde pills meteen
+  // zichtbaar zijn in de documentenlijst (het bestand zelf is een placeholder).
+  const demoDocument = await prisma.document.create({
+    data: {
+      orgId: org1.id,
+      entityType: DocumentEntityType.CONTACT,
+      entityId: contact1.id,
+      fileName: 'samenwerkingsovereenkomst.pdf',
+      originalName: 'Samenwerkingsovereenkomst De Vries.pdf',
+      mimeType: 'application/pdf',
+      size: 12_345,
+      storageKey: `${org1.id}/seed-samenwerkingsovereenkomst.pdf`,
+      description: 'Demo-document met tags',
+      uploadedById: createdOrg1Users[Role.ORG_ADMIN],
+    },
+  });
+  await prisma.documentTagAssignment.createMany({
+    data: [
+      { documentId: demoDocument.id, documentTagId: docTagContract.id, orgId: org1.id },
+      { documentId: demoDocument.id, documentTagId: docTagKeuring.id, orgId: org1.id },
+    ],
+  });
+  console.log('  ✓ Document tags (3) + 1 demo-document met 2 tags');
 
   // ─── PRD-04: Products & Price Tables ─────────────────
   console.log('\n📦 Seeding Products & Price Tables...');

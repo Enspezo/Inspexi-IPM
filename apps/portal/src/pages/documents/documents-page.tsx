@@ -10,7 +10,12 @@ import {
   Input,
   Select,
   Button,
+  TagPill,
 } from '@/components/ui';
+import { useDocumentTagsCompact } from '@/pages/organization/hooks/use-document-tags';
+import { useAuth } from '@/providers/auth-provider';
+import { hasRole } from '@/lib/has-role';
+import { Role } from '@/types';
 import {
   DOCUMENT_ENTITY_LABELS,
   DOCUMENT_ENTITY_LINK_TYPES,
@@ -103,9 +108,25 @@ export default function DocumentsPage() {
   const [isUploadOpen, setIsUploadOpen] = useState(false);
   const [search, setSearch] = useState('');
   const [entityTypeFilter, setEntityTypeFilter] = useState('');
+  const [tagFilter, setTagFilter] = useState('');
   const [onlyMine, setOnlyMine] = useState(() => tenantStorage.getItem('filter-mine:documents') === 'true');
   const [page, setPage] = useState(1);
   const [previewDoc, setPreviewDoc] = useState<CrmDocument | null>(null);
+
+  const { user } = useAuth();
+  const canEditTags = hasRole(user, [
+    Role.SUPERUSER,
+    Role.ORG_ADMIN,
+    Role.MANAGER,
+    Role.BACKOFFICE,
+    Role.WERKVOORBEREIDER,
+  ]);
+
+  const { data: availableTags } = useDocumentTagsCompact();
+  const tagFilterOptions = [
+    { value: '', label: 'Alle tags' },
+    ...(availableTags ?? []).map((t) => ({ value: t.id, label: t.name })),
+  ];
 
   const handleDownload = async (doc: CrmDocument) => {
     try {
@@ -125,12 +146,21 @@ export default function DocumentsPage() {
       sortKey: 'originalName',
       getFilterValue: (doc) => doc.originalName,
       render: (doc) => (
-        <button
-          onClick={() => setPreviewDoc(doc)}
-          className="flex items-center gap-2 text-sm font-medium text-gray-900 hover:text-primary-600 hover:underline"
-        >
-          <span className="truncate max-w-xs">{doc.originalName}</span>
-        </button>
+        <div className="min-w-0">
+          <button
+            onClick={() => setPreviewDoc(doc)}
+            className="flex items-center gap-2 text-sm font-medium text-gray-900 hover:text-primary-600 hover:underline"
+          >
+            <span className="truncate max-w-xs">{doc.originalName}</span>
+          </button>
+          {doc.tags && doc.tags.length > 0 && (
+            <div className="mt-1 flex flex-wrap gap-1">
+              {doc.tags.map((tag) => (
+                <TagPill key={tag.id} tag={tag} />
+              ))}
+            </div>
+          )}
+        </div>
       ),
     },
     {
@@ -280,6 +310,7 @@ export default function DocumentsPage() {
   const { data, isLoading, error } = useDocuments({
     search: search || undefined,
     entityType: (entityTypeFilter as DocumentEntityType) || undefined,
+    tagId: tagFilter || undefined,
     onlyMine: onlyMine || undefined,
     page,
     limit: 20,
@@ -367,6 +398,18 @@ export default function DocumentsPage() {
               }}
             />
           </div>
+          {availableTags && availableTags.length > 0 && (
+            <div className="w-44">
+              <Select
+                options={tagFilterOptions}
+                value={tagFilter}
+                onChange={(e) => {
+                  setTagFilter(e.target.value);
+                  setPage(1);
+                }}
+              />
+            </div>
+          )}
           <label className="inline-flex cursor-pointer items-center gap-2 whitespace-nowrap rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm transition-colors hover:border-gray-400">
             <input
               type="checkbox"
@@ -426,6 +469,7 @@ export default function DocumentsPage() {
         isOpen={!!previewDoc}
         onClose={() => setPreviewDoc(null)}
         document={previewDoc}
+        canEditTags={canEditTags}
       />
 
       {isUploadOpen && (

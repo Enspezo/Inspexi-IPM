@@ -23,4 +23,9 @@ export class ListDocumentsQueryDto extends BasePaginationQueryDto {
   @IsOptional()
   @IsBooleanString()
   onlyMine?: string;
+
+  @ApiPropertyOptional({ description: 'Filter op document-tag' })
+  @IsOptional()
+  @IsUUID()
+  tagId?: string;
 }

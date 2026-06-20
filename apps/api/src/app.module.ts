@@ -31,6 +31,7 @@ import { AuditLogModule } from './modules/audit-log/audit-log.module';
 import { TasksModule } from './modules/tasks/tasks.module';
 import { StorageModule } from './common/services/storage/storage.module';
 import { DocumentsModule } from './modules/documents/documents.module';
+import { DocumentTagsModule } from './modules/document-tags/document-tags.module';
 import { WebhooksModule } from './modules/webhooks/webhooks.module';
 import { PlanningModule } from './modules/planning/planning.module';
 import { SearchModule } from './modules/search/search.module';
@@ -105,6 +106,7 @@ import { VoiceModule } from './modules/voice/voice.module';
     TasksModule,
     StorageModule,
     DocumentsModule,
+    DocumentTagsModule,
     WebhooksModule,
     PlanningModule,
     SearchModule,

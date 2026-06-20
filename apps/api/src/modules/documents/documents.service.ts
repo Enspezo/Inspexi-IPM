@@ -13,7 +13,7 @@ import {
   STORAGE_PROVIDER,
   type StorageProvider,
 } from '@/common/services/storage/storage.interface';
-import { paginate, buildOrderBy, orgScope, assertSameOrg } from '@/common';
+import { paginate, buildOrderBy, orgScope, assertSameOrg, assertAllSameOrg } from '@/common';
 import { UploadDocumentDto, ListDocumentsQueryDto, UpdateDocumentDto } from './dto';
 
 const userSelect = {
@@ -22,6 +22,30 @@ const userSelect = {
   lastName: true,
   email: true,
 };
+
+/**
+ * Shared include for document reads: uploader + non-deleted tags (ordered).
+ * A soft-deleted tag is filtered out here so it disappears from documents
+ * without touching the document itself.
+ */
+const documentInclude = {
+  uploadedBy: { select: userSelect },
+  tags: {
+    where: { documentTag: { isDeleted: false } },
+    include: { documentTag: { select: { id: true, name: true, color: true } } },
+    orderBy: { documentTag: { sortOrder: 'asc' } },
+  },
+} satisfies Prisma.DocumentInclude;
+
+type DocumentWithRelations = Prisma.DocumentGetPayload<{
+  include: typeof documentInclude;
+}>;
+
+/** Flatten the tag-assignment join rows into a plain `{ id, name, color }[]`. */
+function flattenTags(doc: DocumentWithRelations) {
+  const { tags, ...rest } = doc;
+  return { ...rest, tags: (tags ?? []).map((t) => t.documentTag) };
+}
 
 @Injectable()
 export class DocumentsService {
@@ -232,11 +256,14 @@ export class DocumentsService {
     const { model, label } = this.entityRef(dto.entityType);
     await assertSameOrg(model, dto.entityId, user.orgId, label);
 
+    // Validate any requested tags belong to the same org before writing.
+    const tagIds = await this.resolveTagIds(dto.tagIds, orgId);
+
     const storageKey = `${orgId}/${randomUUID()}-${file.originalname}`;
 
     await this.storage.upload(storageKey, file.buffer, file.mimetype);
 
-    const document = await this.prisma.document.create({
+    const created = await this.prisma.document.create({
       data: {
         orgId,
         entityType: dto.entityType,
@@ -248,11 +275,21 @@ export class DocumentsService {
         storageKey,
         description: dto.description || null,
         uploadedById: user.id,
+        ...(tagIds.length
+          ? {
+              tags: {
+                create: tagIds.map((documentTagId) => ({
+                  documentTagId,
+                  orgId,
+                })),
+              },
+            }
+          : {}),
       },
-      include: {
-        uploadedBy: { select: userSelect },
-      },
+      include: documentInclude,
     });
+
+    const document = flattenTags(created);
 
     // Dispatch notification
     this.dispatchUploadNotification(document, user);
@@ -266,7 +303,7 @@ export class DocumentsService {
   }
 
   async findAll(user: User, query: ListDocumentsQueryDto) {
-    const { search, entityType, entityId, onlyMine, page = 1, limit = 20, sortBy, sortOrder = 'desc' } = query;
+    const { search, entityType, entityId, onlyMine, tagId, page = 1, limit = 20, sortBy, sortOrder = 'desc' } = query;
     const ALLOWED_SORT_FIELDS = ['originalName', 'mimeType', 'size', 'entityType', 'createdAt'];
     const orderBy = buildOrderBy(sortBy, sortOrder, ALLOWED_SORT_FIELDS, { createdAt: 'desc' });
 
@@ -284,23 +321,29 @@ export class DocumentsService {
       where.entityId = entityId;
     }
 
+    if (tagId) {
+      // Only match documents that carry this (non-deleted) tag.
+      where.tags = { some: { documentTagId: tagId, documentTag: { isDeleted: false } } };
+    }
+
     if (search) {
       where.originalName = { contains: search, mode: 'insensitive' };
     }
 
     const result = await paginate(this.prisma.document, {
       where,
-      include: {
-        uploadedBy: { select: userSelect },
-      },
+      include: documentInclude,
       orderBy,
       page,
       limit,
     });
 
+    // paginate infers the bare delegate type; the include is applied at runtime.
+    const shaped = (result.data as DocumentWithRelations[]).map(flattenTags);
+
     // Enrich with entity names
-    const nameMap = await this.enrichWithEntityNames(result.data);
-    const enrichedData = result.data.map((doc) => ({
+    const nameMap = await this.enrichWithEntityNames(shaped);
+    const enrichedData = shaped.map((doc) => ({
       ...doc,
       entityName: nameMap.get(doc.entityId) || null,
     }));
@@ -309,21 +352,20 @@ export class DocumentsService {
   }
 
   async findOne(id: string, user: User) {
-    const document = await this.prisma.document.findUnique({
+    const found = await this.prisma.document.findUnique({
       where: { id },
-      include: {
-        uploadedBy: { select: userSelect },
-      },
+      include: documentInclude,
     });
 
-    if (!document || document.isDeleted) {
+    if (!found || found.isDeleted) {
       throw new NotFoundException('Document niet gevonden');
     }
 
-    if (!user.roles.includes(Role.SUPERUSER) && document.orgId !== user.orgId) {
+    if (!user.roles.includes(Role.SUPERUSER) && found.orgId !== user.orgId) {
       throw new ForbiddenException('Geen toegang tot dit document');
     }
 
+    const document = flattenTags(found);
     const nameMap = await this.enrichWithEntityNames([document]);
     return {
       ...document,
@@ -361,22 +403,68 @@ export class DocumentsService {
       throw new ForbiddenException('Geen toegang tot dit document');
     }
 
-    const document = await this.prisma.document.update({
+    // Replace the full tag-set when tagIds is provided (validated same-org).
+    if (dto.tagIds !== undefined) {
+      const tagIds = await this.resolveTagIds(dto.tagIds, existing.orgId);
+      await this.prisma.$transaction([
+        this.prisma.documentTagAssignment.deleteMany({ where: { documentId: id } }),
+        ...(tagIds.length
+          ? [
+              this.prisma.documentTagAssignment.createMany({
+                data: tagIds.map((documentTagId) => ({
+                  documentId: id,
+                  documentTagId,
+                  orgId: existing.orgId,
+                })),
+                skipDuplicates: true,
+              }),
+            ]
+          : []),
+      ]);
+    }
+
+    const updated = await this.prisma.document.update({
       where: { id },
       data: {
         description: dto.description ?? existing.description,
         ...(dto.isSharedWithClient !== undefined ? { isSharedWithClient: dto.isSharedWithClient } : {}),
       },
-      include: {
-        uploadedBy: { select: userSelect },
-      },
+      include: documentInclude,
     });
 
+    const document = flattenTags(updated);
     const nameMap = await this.enrichWithEntityNames([document]);
     return {
       ...document,
       entityName: nameMap.get(document.entityId) || null,
     };
+  }
+
+  /**
+   * Validate a set of tag-IDs for assignment to a document: every id must
+   * belong to `orgId` (cross-tenant guard) and must not be soft-deleted.
+   * Returns the de-duplicated list. Empty/undefined → empty list.
+   */
+  private async resolveTagIds(
+    tagIds: string[] | undefined,
+    orgId: string,
+  ): Promise<string[]> {
+    if (!tagIds || tagIds.length === 0) return [];
+    const unique = [...new Set(tagIds)];
+
+    // Cross-tenant isolation: reject ids from other orgs (403).
+    await assertAllSameOrg(this.prisma.documentTag, unique, orgId, 'tags');
+
+    // Reject soft-deleted tags (would otherwise create dangling assignments).
+    const active = await this.prisma.documentTag.findMany({
+      where: { id: { in: unique }, orgId, isDeleted: false },
+      select: { id: true },
+    });
+    if (active.length !== unique.length) {
+      throw new NotFoundException('Een of meer tags zijn niet gevonden');
+    }
+
+    return unique;
   }
 
   async getStorageStats(orgId: string) {

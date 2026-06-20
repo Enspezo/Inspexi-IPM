@@ -11,6 +11,7 @@ interface ListDocumentsParams {
   entityType?: DocumentEntityType;
   entityId?: string;
   onlyMine?: boolean;
+  tagId?: string;
   page?: number;
   limit?: number;
   sortBy?: string;
@@ -23,6 +24,7 @@ export function useDocuments(params: ListDocumentsParams = {}) {
   if (params.entityType) queryParams.set('entityType', params.entityType);
   if (params.entityId) queryParams.set('entityId', params.entityId);
   if (params.onlyMine) queryParams.set('onlyMine', 'true');
+  if (params.tagId) queryParams.set('tagId', params.tagId);
   if (params.page) queryParams.set('page', String(params.page));
   if (params.limit) queryParams.set('limit', String(params.limit));
   if (params.sortBy) queryParams.set('sortBy', params.sortBy);
@@ -49,6 +51,7 @@ interface UploadDocumentData {
   entityType: DocumentEntityType;
   entityId: string;
   description?: string;
+  tagIds?: string[];
 }
 
 export function useUploadDocument() {
@@ -61,6 +64,10 @@ export function useUploadDocument() {
       formData.append('entityType', data.entityType);
       formData.append('entityId', data.entityId);
       if (data.description) formData.append('description', data.description);
+      // Repeated fields → backend normalises to a string[] (see UploadDocumentDto).
+      for (const tagId of data.tagIds ?? []) {
+        formData.append('tagIds', tagId);
+      }
       return apiClient.upload<CrmDocument>('/documents', formData);
     },
     onSuccess: () => {
@@ -72,6 +79,7 @@ export function useUploadDocument() {
 interface UpdateDocumentData {
   description?: string;
   isSharedWithClient?: boolean;
+  tagIds?: string[];
 }
 
 export function useUpdateDocument() {

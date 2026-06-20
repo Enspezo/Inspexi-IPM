@@ -305,6 +305,7 @@ model Organization {
   notificationGroupPrefs   NotificationGroupPref[]
   tasks                    Task[]
   documents                Document[]
+  documentTags             DocumentTag[]
   notes                    Note[]
   planningItems            PlanningItem[]
   customFieldDefinitions   CustomFieldDefinition[]
@@ -1227,10 +1228,45 @@ model Document {
 
   organization Organization @relation(fields: [orgId], references: [id])
   uploadedBy   User         @relation("DocumentUploadedBy", fields: [uploadedById], references: [id])
+  tags         DocumentTagAssignment[]
 
   @@index([orgId, entityType, entityId])
   @@index([uploadedById])
   @@map("imp_documents")
+}
+
+// ─── Document Tags ──────────────────────────────────────
+
+model DocumentTag {
+  id        String   @id @default(uuid()) @db.Uuid
+  orgId     String   @map("org_id") @db.Uuid
+  name      String
+  color     String
+  sortOrder Int      @default(0) @map("sort_order")
+  isActive  Boolean  @default(true) @map("is_active")
+  isDeleted Boolean  @default(false) @map("is_deleted")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  organization Organization            @relation(fields: [orgId], references: [id])
+  documents    DocumentTagAssignment[]
+
+  @@unique([orgId, name])
+  @@map("imp_document_tags")
+}
+
+model DocumentTagAssignment {
+  documentId    String   @map("document_id") @db.Uuid
+  documentTagId String   @map("document_tag_id") @db.Uuid
+  orgId         String   @map("org_id") @db.Uuid
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  document    Document    @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  documentTag DocumentTag @relation(fields: [documentTagId], references: [id], onDelete: Cascade)
+
+  @@id([documentId, documentTagId])
+  @@index([orgId])
+  @@index([documentTagId])
+  @@map("imp_document_tag_assignments")
 }
 
 // ─── PRD-07: Planning & Afspraken ───────────────────────

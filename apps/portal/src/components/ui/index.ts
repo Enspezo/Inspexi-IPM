@@ -1,5 +1,8 @@
 export { ActionMenu, DropdownMenu, type ActionMenuItem, type DropdownMenuProps } from './action-menu';
 export { StatusBadge } from './status-badge';
+export { TagPill, readableTextColor } from './tag-pill';
+export { TagSelect } from './tag-select';
+export { ColorPicker } from './color-picker';
 export { LookupBadge } from './lookup-badge';
 export { ErrorBox } from './error-box';
 export { InfoField } from './info-field';

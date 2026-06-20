@@ -44,13 +44,14 @@ export class QuotesService {
   ) {}
 
   async findAll(user: User, query: ListQuotesQueryDto) {
-    const { search, status, contactId, createdBy, page = 1, limit = 20, sortBy, sortOrder = 'desc' } = query;
+    const { search, status, contactId, createdBy, templateId, page = 1, limit = 20, sortBy, sortOrder = 'desc' } = query;
     const ALLOWED_SORT_FIELDS = ['quoteNumber', 'subject', 'status', 'total', 'validUntil', 'createdAt'];
     const orderBy = buildOrderBy(sortBy, sortOrder, ALLOWED_SORT_FIELDS);
     const where: Prisma.QuoteWhereInput = { ...orgScope(user) };
     if (status) where.status = status;
     if (contactId) where.contactId = contactId;
     if (createdBy) where.createdBy = createdBy;
+    if (templateId) where.templateId = templateId === 'none' ? null : templateId;
     if (search) {
       where.OR = [
         { subject: { contains: search, mode: 'insensitive' } },
@@ -62,6 +63,7 @@ export class QuotesService {
       where,
       include: {
         contact: { select: { id: true, type: true, companyName: true, firstName: true, lastName: true, email: true } },
+        template: { select: { id: true, name: true } },
         createdByUser: { select: { id: true, firstName: true, lastName: true, email: true } },
       },
       orderBy,

@@ -136,6 +136,36 @@ describe('Quotes API (e2e)', () => {
       }
     });
 
+    it("filter by templateId='none' returns only quotes without a template", async () => {
+      const res = await request(app.getHttpServer())
+        .get('/api/v1/quotes')
+        .query({ templateId: 'none' })
+        .set('Authorization', `Bearer ${org1AdminToken}`)
+        .expect(200);
+
+      expect(res.body.success).toBe(true);
+      for (const q of res.body.data.data) {
+        expect(q.templateId).toBeNull();
+      }
+    });
+
+    it('list results include template (id + name)', async () => {
+      const res = await request(app.getHttpServer())
+        .get('/api/v1/quotes')
+        .set('Authorization', `Bearer ${org1AdminToken}`)
+        .expect(200);
+
+      expect(res.body.success).toBe(true);
+      // Every quote exposes the template relation key (null or {id, name})
+      for (const q of res.body.data.data) {
+        expect(q).toHaveProperty('template');
+        if (q.template) {
+          expect(q.template).toHaveProperty('id');
+          expect(q.template).toHaveProperty('name');
+        }
+      }
+    });
+
     it('search by subject works (search=Thermografisch)', async () => {
       const res = await request(app.getHttpServer())
         .get('/api/v1/quotes')

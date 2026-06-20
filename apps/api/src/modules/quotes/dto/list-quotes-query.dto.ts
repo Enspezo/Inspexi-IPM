@@ -23,4 +23,11 @@ export class ListQuotesQueryDto extends BasePaginationQueryDto {
   @IsOptional()
   @IsUUID()
   createdBy?: string;
+
+  @ApiPropertyOptional({
+    description: "Filter op template (templateId), of 'none' voor offertes zonder template",
+  })
+  @IsOptional()
+  @IsString()
+  templateId?: string;
 }

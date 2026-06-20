@@ -625,7 +625,7 @@ export interface Quote {
   request?: { id: string; title: string };
   pdfStorageKey?: string | null;
   signedPdfStorageKey?: string | null;
-  template?: { id: string; name: string; templateType?: string };
+  template?: { id: string; name: string; templateType?: string } | null;
   createdByUser?: UserSummary;
   organization?: { id: string; name: string; logoUrl: string | null; primaryColor: string | null };
   lines?: QuoteLine[];

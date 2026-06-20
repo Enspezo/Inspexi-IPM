@@ -9,6 +9,7 @@ import type {
   UnreadCountResponse,
   Role,
 } from '@/types';
+import type { NotificationModel } from '@/lib/notifications';
 
 // ─── Unread count (polled every 30s for bell badge) ─────
 
@@ -37,6 +38,7 @@ export function useRecentNotifications() {
 // ─── Full paginated list ─────────────────────────────────
 
 interface ListNotificationsParams {
+  model?: NotificationModel;
   type?: NotificationType;
   unread?: boolean;
   page?: number;
@@ -45,6 +47,7 @@ interface ListNotificationsParams {
 
 export function useNotifications(params: ListNotificationsParams = {}) {
   const qs = new URLSearchParams();
+  if (params.model) qs.set('model', params.model);
   if (params.type) qs.set('type', params.type);
   if (params.unread !== undefined) qs.set('unread', String(params.unread));
   if (params.page) qs.set('page', String(params.page));

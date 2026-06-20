@@ -79,6 +79,19 @@ describe('Notifications (e2e)', () => {
     });
     createdNotificationIds.push(notification2.id);
 
+    // Different model (OFFERTES) to verify model-filtering excludes it.
+    const notification3 = await prisma.notification.create({
+      data: {
+        orgId: org.id,
+        userId: user.id,
+        type: 'OFFERTE_GOEDGEKEURD',
+        title: 'Test Notificatie 3',
+        body: 'Test body 3',
+        isRead: false,
+      },
+    });
+    createdNotificationIds.push(notification3.id);
+
     // Login
     const loginRes = await request(app.getHttpServer())
       .post('/api/v1/auth/login')
@@ -117,6 +130,48 @@ describe('Notifications (e2e)', () => {
       await request(app.getHttpServer())
         .get('/api/v1/notifications')
         .expect(401);
+    });
+
+    it('should filter by model (TAKEN) and exclude other models', async () => {
+      const res = await request(app.getHttpServer())
+        .get('/api/v1/notifications?model=TAKEN')
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(200);
+
+      const types = res.body.data.data.map((n: { type: string }) => n.type);
+      expect(types.length).toBeGreaterThanOrEqual(2);
+      expect(
+        types.every((t: string) =>
+          ['TAAK_TOEGEWEZEN', 'TAAK_STATUS_GEWIJZIGD'].includes(t),
+        ),
+      ).toBe(true);
+      expect(types).not.toContain('OFFERTE_GOEDGEKEURD');
+    });
+
+    it('should let type take precedence over model', async () => {
+      const res = await request(app.getHttpServer())
+        .get('/api/v1/notifications?model=TAKEN&type=TAAK_TOEGEWEZEN')
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(200);
+
+      const types = res.body.data.data.map((n: { type: string }) => n.type);
+      expect(types.every((t: string) => t === 'TAAK_TOEGEWEZEN')).toBe(true);
+    });
+
+    it('should return nothing when type lies outside model', async () => {
+      const res = await request(app.getHttpServer())
+        .get('/api/v1/notifications?model=TAKEN&type=OFFERTE_GOEDGEKEURD')
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(200);
+
+      expect(res.body.data.total).toBe(0);
+    });
+
+    it('should reject an unknown model with 400', async () => {
+      await request(app.getHttpServer())
+        .get('/api/v1/notifications?model=ONZIN')
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(400);
     });
   });
 

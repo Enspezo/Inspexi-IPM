@@ -18,6 +18,7 @@ import {
   useSaveGroupNotificationPrefs,
 } from '@/pages/notifications/hooks/use-notifications';
 import { ContactDisplayMode, NotificationType, Role } from '@/types';
+import { getTypeLabel } from '@/lib/notifications';
 import { getErrorMessage } from '@/lib/api-client';
 
 const CONTACT_DISPLAY_OPTIONS = [
@@ -57,32 +58,6 @@ const orgSchema = z.object({
 
 type OrgFormData = z.infer<typeof orgSchema>;
 
-// ─── Notification Type Labels ────────────────────────────
-
-const notifTypeLabels: Record<string, string> = {
-  [NotificationType.OFFERTE_TER_GOEDKEURING]: 'Offerte ter goedkeuring',
-  [NotificationType.OFFERTE_GOEDGEKEURD]: 'Offerte goedgekeurd',
-  [NotificationType.OFFERTE_AFGEWEZEN]: 'Offerte afgewezen',
-  [NotificationType.OFFERTE_VERSTUURD]: 'Offerte verstuurd',
-  [NotificationType.OFFERTE_BEKEKEN]: 'Offerte bekeken',
-  [NotificationType.OFFERTE_ONDERTEKEND]: 'Offerte ondertekend',
-  [NotificationType.OFFERTE_VERLOPEN]: 'Offerte verlopen',
-  [NotificationType.NIEUWE_VRAAG_KLANT]: 'Nieuwe vraag klant',
-  [NotificationType.ANTWOORD_OP_VRAAG]: 'Antwoord op vraag',
-  [NotificationType.AANVRAAG_TOEGEWEZEN]: 'Aanvraag toegewezen',
-  [NotificationType.AANVRAAG_STATUS_GEWIJZIGD]: 'Aanvraag status gewijzigd',
-  [NotificationType.TAAK_TOEGEWEZEN]: 'Taak toegewezen',
-  [NotificationType.TAAK_STATUS_GEWIJZIGD]: 'Taak status gewijzigd',
-  [NotificationType.DOCUMENT_GEUPLOAD]: 'Document geüpload',
-  [NotificationType.AFSPRAAK_ACCEPTATIE_VERZOEK]: 'Afspraak acceptatieverzoek',
-  [NotificationType.AFSPRAAK_GEACCEPTEERD]: 'Afspraak geaccepteerd',
-  [NotificationType.AFSPRAAK_GEWEIGERD]: 'Afspraak geweigerd',
-  [NotificationType.AFSPRAAK_VERPLAATST]: 'Afspraak verplaatst',
-  [NotificationType.AFSPRAAK_VERZETTEN_VERZOEK]: 'Afspraak verzetverzoek',
-  [NotificationType.AFSPRAAK_BEVESTIGING_VERSTUURD]: 'Afspraak bevestiging verstuurd',
-  [NotificationType.PROJECT_AANGEMAAKT]: 'Project aangemaakt',
-  [NotificationType.PROJECT_STATUS_GEWIJZIGD]: 'Project status gewijzigd',
-};
 
 const roleLabels: Record<string, string> = {
   [Role.ORG_ADMIN]: 'Org Admin',
@@ -231,7 +206,7 @@ function GroupNotificationPrefsCard() {
                 className="border-b border-gray-100 last:border-0"
               >
                 <td className="py-2.5 pr-4 text-gray-700">
-                  {notifTypeLabels[row.type] || row.type}
+                  {getTypeLabel(row.type)}
                 </td>
                 <td className="px-4 py-2.5 text-center">
                   <input

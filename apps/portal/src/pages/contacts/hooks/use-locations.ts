@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api-client';
-import type { Location, PaginatedResponse } from '@/types';
+import type { Location, PaginatedResponse, PdokRefreshResult } from '@/types';
 
 interface CreateLocationDto {
   name: string;
@@ -92,6 +92,30 @@ export function useDeleteLocationById() {
       apiClient.delete(`/contacts/locations/${locationId}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['locations'] });
+    },
+  });
+}
+
+/**
+ * Ververs (of vul) de PDOK/BAG-gegevens van een locatie. Zonder `confirm`
+ * worden bij een afwijking de wijzigingen geretourneerd zonder opslaan; met
+ * `confirm: true` wordt opgeslagen. Invalidatie alleen bij daadwerkelijk
+ * opslaan (`applied`).
+ */
+export function useRefreshLocationPdok(locationId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (confirm: boolean) =>
+      apiClient.post<PdokRefreshResult>(
+        `/contacts/locations/${locationId}/pdok-refresh`,
+        { confirm },
+      ),
+    onSuccess: (result) => {
+      if (result.applied) {
+        queryClient.invalidateQueries({ queryKey: ['locations'] });
+        queryClient.invalidateQueries({ queryKey: ['locations', locationId] });
+      }
     },
   });
 }

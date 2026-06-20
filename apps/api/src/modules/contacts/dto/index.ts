@@ -14,3 +14,4 @@ export { ListLocationsQueryDto } from './list-locations-query.dto';
 export { CreateLocationContactPersonDto } from './create-location-contact-person.dto';
 export { UpdateLocationContactPersonDto } from './update-location-contact-person.dto';
 export { CreateContactPersonLocationDto } from './create-contact-person-location.dto';
+export { PdokRefreshDto } from './pdok-refresh.dto';

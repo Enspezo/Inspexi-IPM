@@ -38,6 +38,7 @@ import {
   CreateLocationContactPersonDto,
   UpdateLocationContactPersonDto,
   CreateContactPersonLocationDto,
+  PdokRefreshDto,
 } from './dto';
 import { Roles, CurrentUser } from '@/common/decorators';
 
@@ -381,6 +382,30 @@ export class ContactsController {
   ) {
     const location = await this.locationsService.updateLocation(locationId, dto, user);
     return { success: true, data: location };
+  }
+
+  @Post('locations/:locationId/pdok-refresh')
+  @Roles(...OFFICE_ROLES)
+  @ApiOperation({
+    summary: 'PDOK/BAG-gegevens van een locatie ophalen of verversen',
+    description:
+      'Haalt verse PDOK/BAG-data op. Bij een afwijking t.o.v. de opgeslagen ' +
+      'gegevens en `confirm` niet `true` worden de wijzigingen geretourneerd ' +
+      'zonder op te slaan; met `confirm: true` (of als er nog geen data was) ' +
+      'wordt opgeslagen.',
+  })
+  @ApiResponse({ status: 200, description: 'Diff of bijgewerkte locatie' })
+  async refreshLocationPdok(
+    @Param('locationId', ParseUUIDPipe) locationId: string,
+    @Body() dto: PdokRefreshDto,
+    @CurrentUser() user: User,
+  ) {
+    const result = await this.locationsService.pdokRefresh(
+      locationId,
+      dto.confirm === true,
+      user,
+    );
+    return { success: true, data: result };
   }
 
   @Delete('locations/:locationId')

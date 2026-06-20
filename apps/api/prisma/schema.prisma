@@ -356,6 +356,7 @@ model Organization {
   resolutionStatusTypes    ResolutionStatusType[]
   clientRequestTypeOptions ClientRequestTypeOption[]
   clientRequestStatusTypes ClientRequestStatusType[]
+  pdokApiLogs              PdokApiLog[]
 
   @@map("imp_organizations")
 }
@@ -625,6 +626,11 @@ model Location {
   pdokData       Json?    @map("pdok_data")
   lat            Float?
   lng            Float?
+  // BAG-bouwgegevens (verrijkt via PDOK BAG OGC API)
+  gebruiksfunctie String? @map("gebruiksfunctie")
+  bouwjaar       Int?     @map("bouwjaar")
+  oppervlakte    Float?   @map("oppervlakte")
+  bagId          String?  @map("bag_id")
   customFields   Json?    @map("custom_fields")
   createdAt      DateTime @default(now()) @map("created_at")
   updatedAt      DateTime @updatedAt @map("updated_at")
@@ -657,6 +663,30 @@ model LocationContactPerson {
 
   @@unique([locationId, contactPersonId])
   @@map("imp_location_contact_persons")
+}
+
+/// Operationele log van betekenisvolle PDOK API-calls (lookup / BAG-enrich /
+/// refresh). Geen audit-trail — puur queryable observability. Geen FK-relatie
+/// naar User/Location zodat rijen bewaard blijven na verwijdering daarvan.
+model PdokApiLog {
+  id            String   @id @default(uuid()) @db.Uuid
+  orgId         String   @map("org_id") @db.Uuid
+  userId        String?  @map("user_id") @db.Uuid
+  locationId    String?  @map("location_id") @db.Uuid
+  operation     String
+  endpoint      String
+  requestParams Json?    @map("request_params")
+  httpStatus    Int?     @map("http_status")
+  success       Boolean
+  durationMs    Int?     @map("duration_ms")
+  errorMessage  String?  @map("error_message")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  organization Organization @relation(fields: [orgId], references: [id])
+
+  @@index([orgId, createdAt])
+  @@index([locationId])
+  @@map("imp_pdok_api_logs")
 }
 
 model ContactLog {

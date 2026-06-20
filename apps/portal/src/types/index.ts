@@ -258,9 +258,39 @@ export interface Location {
   pdokData: Record<string, unknown> | null;
   lat: number | null;
   lng: number | null;
+  // BAG-bouwgegevens (verrijkt via PDOK)
+  gebruiksfunctie: string | null;
+  bouwjaar: number | null;
+  oppervlakte: number | null;
+  bagId: string | null;
   customFields: Record<string, any> | null;
   createdAt: string;
   updatedAt: string;
+}
+
+/** Eén veldwijziging uit een PDOK-refresh-diff. */
+export interface PdokDiffChange {
+  field: string;
+  label: string;
+  oldValue: string | number | null;
+  newValue: string | number | null;
+}
+
+/** Resultaat van POST /contacts/locations/:id/pdok-refresh. */
+export interface PdokRefreshResult {
+  applied: boolean;
+  changes: PdokDiffChange[];
+  /** Aanwezig wanneer niet opgeslagen (applied=false): de gevonden waarden. */
+  fetched?: {
+    gebruiksfunctie: string | null;
+    bouwjaar: number | null;
+    oppervlakte: number | null;
+    bagId: string | null;
+    lat: number | null;
+    lng: number | null;
+  };
+  /** Aanwezig wanneer opgeslagen (applied=true): de bijgewerkte locatie. */
+  location?: Location;
 }
 
 export interface LocationContactPerson {

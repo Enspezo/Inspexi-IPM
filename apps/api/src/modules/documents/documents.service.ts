@@ -215,6 +215,12 @@ export class DocumentsService {
         return { model: this.prisma.workOrder, label: 'Werkbon' };
       case DocumentEntityType.USER:
         return { model: this.prisma.user, label: 'Gebruiker' };
+      default: {
+        // Exhaustiveness guard: adding a DocumentEntityType without handling it
+        // here becomes a compile-time error instead of a runtime surprise.
+        const _exhaustive: never = entityType;
+        return _exhaustive;
+      }
     }
   }
 

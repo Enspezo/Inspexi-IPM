@@ -43,8 +43,7 @@ export function getEntityLink(
     case 'ContactPerson':
       return `/contacts/persons/${entityId}`;
     case 'Location':
-      // Location has no dedicated page; link to its parent contact if known
-      return snapshot?.contactId ? `/contacts/${snapshot.contactId}` : null;
+      return `/contacts/locations/${entityId}`;
     case 'CustomerGroup':
       return `/contacts/groups/${entityId}`;
     case 'Product':

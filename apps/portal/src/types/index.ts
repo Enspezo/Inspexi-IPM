@@ -1267,6 +1267,7 @@ export type SearchEntityType =
   | 'product';
 
 export interface SearchContactResult {
+  isFavorited?: boolean;
   id: string;
   type: ContactType;
   companyName: string | null;
@@ -1278,6 +1279,7 @@ export interface SearchContactResult {
 }
 
 export interface SearchContactPersonResult {
+  isFavorited?: boolean;
   id: string;
   contactId: string;
   firstName: string;
@@ -1294,6 +1296,7 @@ export interface SearchContactPersonResult {
 }
 
 export interface SearchLocationResult {
+  isFavorited?: boolean;
   id: string;
   contactId: string;
   name: string;
@@ -1317,6 +1320,7 @@ export interface SearchLocationResult {
 }
 
 export interface SearchRequestResult {
+  isFavorited?: boolean;
   id: string;
   title: string;
   status: RequestStatus;
@@ -1331,6 +1335,7 @@ export interface SearchRequestResult {
 }
 
 export interface SearchQuoteResult {
+  isFavorited?: boolean;
   id: string;
   quoteNumber: string;
   subject: string;
@@ -1346,6 +1351,7 @@ export interface SearchQuoteResult {
 }
 
 export interface SearchTaskResult {
+  isFavorited?: boolean;
   id: string;
   title: string;
   status: TaskStatus;
@@ -1368,6 +1374,7 @@ export interface SearchDocumentResult {
 }
 
 export interface SearchProductResult {
+  isFavorited?: boolean;
   id: string;
   name: string;
   unit: string;
@@ -1393,6 +1400,43 @@ export interface SearchGroup {
 
 export interface SearchResponse {
   groups: SearchGroup[];
+}
+
+// ─── Favorites (REQ36) ──────────────────────────────────
+
+/** Canonical Prisma model names that can be favorited (matches backend allow-list). */
+export type FavoritableEntityType =
+  | 'Contact'
+  | 'ContactPerson'
+  | 'Location'
+  | 'Request'
+  | 'Quote'
+  | 'Task'
+  | 'Project'
+  | 'Product';
+
+/** Lightweight key used to drive the star toggle state. */
+export interface FavoriteKey {
+  entityType: FavoritableEntityType;
+  entityId: string;
+}
+
+/** A favorite enriched with a human-readable name for the favorites overview. */
+export interface FavoriteItem {
+  id: string;
+  entityType: FavoritableEntityType;
+  entityId: string;
+  name: string;
+  createdAt: string;
+}
+
+export interface FavoriteGroup {
+  entityType: FavoritableEntityType;
+  items: FavoriteItem[];
+}
+
+export interface FavoritesResponse {
+  groups: FavoriteGroup[];
 }
 
 // ─── Custom Fields ──────────────────────────────────────

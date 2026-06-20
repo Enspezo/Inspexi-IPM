@@ -8,10 +8,12 @@ import {
   DocumentEntityType,
   CustomFieldEntityType,
   NoteEntityType,
+  ApprovalKind,
+  ApprovalStatus,
 } from '@/types';
 import { ActionMenu, Button, Card, ErrorBox, Spinner, StatusBadge, Input, Table, useConfirm, useToast, type Column } from '@/components/ui';
 import { formatCurrency, formatDate } from '@/lib/format';
-import { APPROVAL_STATUS, getStatusConfig, QUOTE_STATUS } from '@/lib/status';
+import { QUOTE_STATUS } from '@/lib/status';
 import { DetailPageLayout, SidebarSection } from '@/components/layout/detail-page-layout';
 import { NotesSidebarSection, HistorySidebarSection, DocumentsSidebarSection } from '@/components/layout/sidebar-sections';
 import { useAuth } from '@/providers/auth-provider';
@@ -23,7 +25,7 @@ import {
   useUpdateQuoteStatus,
   useDeleteQuote,
 } from './hooks/use-quotes';
-import type { QuoteLine, QuoteApprovalRequest } from '@/types';
+import type { QuoteLine } from '@/types';
 import { useContactLogs } from '@/pages/contacts/hooks/use-contacts';
 import { AddLogModal } from '@/pages/contacts/components/add-log-modal';
 import { useTasks } from '@/pages/tasks/hooks/use-tasks';
@@ -31,6 +33,9 @@ import { CreateTaskModal } from '@/pages/tasks/components/create-task-modal';
 import { CustomFieldsDisplay } from '@/components/custom-fields';
 import { SendQuoteModal } from './components/send-quote-modal';
 import { ApproveQuoteModal } from './components/approve-quote-modal';
+import { QuoteApprovalList } from './components/quote-approval-list';
+import { RequestTeamApprovalModal, RequestPersonApprovalModal } from './components/voluntary-approval-modals';
+import { useOrganization } from '@/pages/organization/hooks/use-organization';
 import { PdfPreviewModal } from './components/pdf-preview-modal';
 import { QuoteInfoCard } from './components/quote-detail-info-card';
 import { QuoteQuestionsCard } from './components/quote-detail-questions-card';
@@ -67,6 +72,11 @@ export default function QuoteDetailPage() {
   const [isSendOpen, setIsSendOpen] = useState(false);
   const [isApproveOpen, setIsApproveOpen] = useState(false);
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+  const [isTeamReqOpen, setIsTeamReqOpen] = useState(false);
+  const [isPersonReqOpen, setIsPersonReqOpen] = useState(false);
+
+  // Org-config voor de verplichte goedkeuringsgate (REQ5).
+  const { data: organization } = useOrganization(user?.orgId);
 
   const { data: tasksData } = useTasks({ entityType: TaskEntityType.QUOTE, entityId: id, limit: 100 });
   const quoteTasks = tasksData?.data || [];
@@ -137,6 +147,26 @@ export default function QuoteDetailPage() {
   // A CONCEPT quote may not move forward without a template linked (backend guard).
   const missingTemplate = quote.status === QuoteStatus.CONCEPT && !quote.templateId;
   const noTemplateHint = 'Koppel eerst een sjabloon';
+
+  // Verplichte goedkeuringsgate (REQ5): boven de org-drempel (of bij template-`requiresApproval`)
+  // mag niet verstuurd worden zonder een GOEDGEKEURD verplicht (THRESHOLD) verzoek.
+  const thresholdActive =
+    organization?.quoteApprovalThreshold != null &&
+    organization?.quoteApprovalRequiredRole != null &&
+    quote.total > organization.quoteApprovalThreshold;
+  const approvalRequired = !!thresholdActive || quote.requiresApproval;
+  const hasApprovedMandatory = (quote.approvalRequests ?? []).some(
+    (a) => a.kind === ApprovalKind.THRESHOLD && a.status === ApprovalStatus.APPROVED,
+  );
+  const sendBlockedByApproval = approvalRequired && !hasApprovedMandatory;
+  const sendDisabled = missingTemplate || sendBlockedByApproval;
+  const sendHint = missingTemplate
+    ? noTemplateHint
+    : sendBlockedByApproval
+    ? 'Goedkeuring vereist (bedrag boven de grens of sjabloon vereist het) voordat u kunt versturen'
+    : undefined;
+  // Vrijwillige acties zijn beschikbaar zolang de offerte nog in concept is.
+  const canRequestVoluntary = !!userCanWrite && quote.status === QuoteStatus.CONCEPT;
 
   const logs = contactLogs || [];
 
@@ -245,8 +275,8 @@ export default function QuoteDetailPage() {
                   label: 'Versturen',
                   icon: <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>,
                   onClick: () => setIsSendOpen(true),
-                  disabled: missingTemplate,
-                  title: missingTemplate ? noTemplateHint : undefined,
+                  disabled: sendDisabled,
+                  title: sendHint,
                 }] : []),
                 ...(quote.status === QuoteStatus.VERSTUURD ? [{
                   label: 'Markeer als bekeken',
@@ -269,6 +299,18 @@ export default function QuoteDetailPage() {
                 ] : []),
               ]}
               secondaryActions={[
+                ...(canRequestVoluntary ? [
+                  {
+                    label: 'Vraag goedkeuring aan team',
+                    icon: <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a4 4 0 00-3-3.87M9 20H4v-2a4 4 0 013-3.87m6-1.13a4 4 0 10-4-4 4 4 0 004 4z" /></svg>,
+                    onClick: () => setIsTeamReqOpen(true),
+                  },
+                  {
+                    label: 'Vraag goedkeuring aan persoon',
+                    icon: <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>,
+                    onClick: () => setIsPersonReqOpen(true),
+                  },
+                ] : []),
                 {
                   label: 'Contactmoment loggen',
                   icon: <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>,
@@ -372,29 +414,12 @@ export default function QuoteDetailPage() {
           )}
         </div>
 
-        {/* Approval history */}
-        {(quote.approvalRequests?.length || 0) > 0 && (
-          <div>
-            <h3 className="text-sm font-semibold text-gray-900 mb-3">Goedkeuringshistorie</h3>
-            <div className="space-y-3">
-              {quote.approvalRequests?.map((approval: QuoteApprovalRequest) => (
-                <Card key={approval.id}>
-                  <div className="flex items-start justify-between">
-                    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${getStatusConfig(APPROVAL_STATUS, approval.status).classes}`}>
-                      {getStatusConfig(APPROVAL_STATUS, approval.status).label}
-                    </span>
-                    <span className="text-xs text-gray-400">{formatDateTimeLong(approval.requestedAt)}</span>
-                  </div>
-                  {approval.note && <p className="mt-2 text-sm text-gray-600">{approval.note}</p>}
-                  <div className="mt-1 text-xs text-gray-400">
-                    {approval.requestedByUser && <span>Aangevraagd door {approval.requestedByUser.firstName} {approval.requestedByUser.lastName}</span>}
-                    {approval.reviewedByUser && <span>{' — '}Beoordeeld door {approval.reviewedByUser.firstName} {approval.reviewedByUser.lastName}{approval.reviewedAt ? ` op ${formatDateTimeLong(approval.reviewedAt)}` : ''}</span>}
-                  </div>
-                </Card>
-              ))}
-            </div>
-          </div>
-        )}
+        {/* Approval requests (targeted: role or person) */}
+        <QuoteApprovalList
+          quoteId={id!}
+          approvals={quote.approvalRequests ?? []}
+          user={user ?? null}
+        />
 
         {/* Bijlagen (quote-specifieke bestanden, los van algemene documenten) */}
         <QuoteAttachmentsCard
@@ -454,6 +479,22 @@ export default function QuoteDetailPage() {
             quoteNumber={quote.quoteNumber}
             isOpen={isApproveOpen}
             onClose={() => setIsApproveOpen(false)}
+          />
+        )}
+        {quote && isTeamReqOpen && (
+          <RequestTeamApprovalModal
+            quoteId={quote.id}
+            quoteNumber={quote.quoteNumber}
+            isOpen={isTeamReqOpen}
+            onClose={() => setIsTeamReqOpen(false)}
+          />
+        )}
+        {quote && isPersonReqOpen && (
+          <RequestPersonApprovalModal
+            quoteId={quote.id}
+            quoteNumber={quote.quoteNumber}
+            isOpen={isPersonReqOpen}
+            onClose={() => setIsPersonReqOpen(false)}
           />
         )}
         {quote && isPreviewOpen && (

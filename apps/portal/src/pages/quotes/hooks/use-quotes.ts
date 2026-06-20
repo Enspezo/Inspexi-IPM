@@ -3,9 +3,11 @@ import { apiClient, getAccessToken } from '@/lib/api-client';
 import type {
   Quote,
   QuoteLine,
+  QuoteApprovalRequest,
   PaginatedResponse,
   QuoteStatus,
   ResolvedPrice,
+  Role,
 } from '@/types';
 
 interface ListQuotesParams {
@@ -170,6 +172,47 @@ export function useRejectQuote(id: string) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['quotes'] });
     },
+  });
+}
+
+// ─── Voluntary approval (advisory; REQ5) ───────────────
+
+export function useRequestTeamApproval(id: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { role?: Role; note?: string }) =>
+      apiClient.post<QuoteApprovalRequest>(`/quotes/${id}/voluntary-approval/team`, data),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['quotes', id] }),
+  });
+}
+
+export function useRequestPersonApproval(id: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { approverUserId: string; note?: string }) =>
+      apiClient.post<QuoteApprovalRequest>(`/quotes/${id}/voluntary-approval/person`, data),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['quotes', id] }),
+  });
+}
+
+export function useReviewVoluntaryApproval(id: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ requestId, approved, note }: { requestId: string; approved: boolean; note?: string }) =>
+      apiClient.post<QuoteApprovalRequest>(
+        `/quotes/${id}/approval-requests/${requestId}/${approved ? 'approve' : 'reject'}`,
+        { note },
+      ),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['quotes', id] }),
+  });
+}
+
+export function useCancelVoluntaryApproval(id: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (requestId: string) =>
+      apiClient.post<QuoteApprovalRequest>(`/quotes/${id}/approval-requests/${requestId}/cancel`),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['quotes', id] }),
   });
 }
 

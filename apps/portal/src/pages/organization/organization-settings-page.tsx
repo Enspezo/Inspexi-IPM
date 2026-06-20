@@ -52,10 +52,17 @@ const orgSchema = z.object({
   inspectorStaticEmail: z
     .union([z.string().email('Voer een geldig e-mailadres in'), z.literal('')])
     .optional(),
+  quoteApprovalThreshold: z
+    .union([z.coerce.number().min(0, 'Bedrag moet minimaal 0 zijn'), z.literal('')])
+    .optional(),
+  quoteApprovalRequiredRole: z.union([z.nativeEnum(Role), z.literal('')]).optional(),
 }).refine((d) => d.workdayEnd > d.workdayStart, {
   message: 'Eindtijd moet na begintijd liggen',
   path: ['workdayEnd'],
-});
+}).refine(
+  (d) => d.quoteApprovalThreshold === '' || d.quoteApprovalThreshold === undefined || !!d.quoteApprovalRequiredRole,
+  { message: 'Kies een vereiste rol wanneer u een goedkeuringsgrens instelt', path: ['quoteApprovalRequiredRole'] },
+);
 
 type OrgFormData = z.infer<typeof orgSchema>;
 
@@ -293,6 +300,8 @@ export default function OrganizationSettingsPage() {
         inspectorEmailDisplay: organization.inspectorEmailDisplay ?? ContactDisplayMode.NONE,
         inspectorStaticPhone: organization.inspectorStaticPhone ?? '',
         inspectorStaticEmail: organization.inspectorStaticEmail ?? '',
+        quoteApprovalThreshold: organization.quoteApprovalThreshold ?? '',
+        quoteApprovalRequiredRole: organization.quoteApprovalRequiredRole ?? '',
       });
     }
   }, [organization, reset]);
@@ -312,6 +321,11 @@ export default function OrganizationSettingsPage() {
         inspectorEmailDisplay: data.inspectorEmailDisplay,
         inspectorStaticPhone: data.inspectorStaticPhone?.trim() || null,
         inspectorStaticEmail: data.inspectorStaticEmail?.trim() || null,
+        quoteApprovalThreshold:
+          data.quoteApprovalThreshold === '' || data.quoteApprovalThreshold === undefined
+            ? null
+            : Number(data.quoteApprovalThreshold),
+        quoteApprovalRequiredRole: data.quoteApprovalRequiredRole || null,
       });
       showToast('Organisatie-instellingen opgeslagen', 'success');
     } catch (err) {
@@ -608,6 +622,35 @@ export default function OrganizationSettingsPage() {
               error={errors.defaultValidityDays?.message}
               {...register('defaultValidityDays')}
             />
+          </div>
+
+          <div className="border-t border-gray-200 pt-6">
+            <h3 className="text-sm font-semibold text-gray-900">Offerte-goedkeuring</h3>
+            <p className="mt-1 text-sm text-gray-500">
+              Offertes met een totaal <strong>boven</strong> deze grens kunnen pas verstuurd worden
+              nadat iemand met de vereiste rol ze heeft goedgekeurd. Laat de grens leeg om geen
+              verplichte goedkeuring af te dwingen.
+            </p>
+            <div className="mt-4 grid grid-cols-1 gap-6 sm:grid-cols-2">
+              <Input
+                label="Goedkeuringsgrens (€)"
+                type="number"
+                step="0.01"
+                min="0"
+                placeholder="Geen grens"
+                error={errors.quoteApprovalThreshold?.message}
+                {...register('quoteApprovalThreshold')}
+              />
+              <Select
+                label="Vereiste goedkeur-rol"
+                error={errors.quoteApprovalRequiredRole?.message}
+                options={[
+                  { value: '', label: 'Geen' },
+                  ...assignableRoles.map((role) => ({ value: role, label: roleLabels[role] })),
+                ]}
+                {...register('quoteApprovalRequiredRole')}
+              />
+            </div>
           </div>
 
           <div className="flex justify-end border-t border-gray-200 pt-4">

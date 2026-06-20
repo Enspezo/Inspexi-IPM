@@ -1,5 +1,5 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsString, IsOptional, IsUUID, IsDateString, IsObject } from 'class-validator';
+import { ValidateIf, IsString, IsOptional, IsUUID, IsDateString, IsObject } from 'class-validator';
 
 export class UpdateQuoteDto {
   @ApiPropertyOptional({ example: 'NEN1010 inspectie kantoorpand' })
@@ -17,10 +17,11 @@ export class UpdateQuoteDto {
   @IsUUID()
   locationId?: string;
 
-  @ApiPropertyOptional({ description: 'Template ID' })
+  @ApiPropertyOptional({ description: 'Template ID (null om het sjabloon te ontkoppelen, alleen in CONCEPT)', nullable: true })
   @IsOptional()
+  @ValidateIf((_, value) => value !== null)
   @IsUUID()
-  templateId?: string;
+  templateId?: string | null;
 
   @ApiPropertyOptional({ description: 'Geldig tot datum' })
   @IsOptional()

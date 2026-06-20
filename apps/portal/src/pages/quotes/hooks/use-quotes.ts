@@ -83,7 +83,7 @@ interface UpdateQuoteDto {
   subject?: string;
   contactId?: string;
   locationId?: string;
-  templateId?: string;
+  templateId?: string | null;
   validUntil?: string;
   internalNotes?: string;
   contentBlocks?: object | null;

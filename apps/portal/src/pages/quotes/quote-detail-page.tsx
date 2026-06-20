@@ -134,6 +134,9 @@ export default function QuoteDetailPage() {
   ];
 
   const canBeSent = quote.status === QuoteStatus.GOEDGEKEURD || quote.status === QuoteStatus.CONCEPT;
+  // A CONCEPT quote may not move forward without a template linked (backend guard).
+  const missingTemplate = quote.status === QuoteStatus.CONCEPT && !quote.templateId;
+  const noTemplateHint = 'Koppel eerst een sjabloon';
 
   const logs = contactLogs || [];
 
@@ -215,11 +218,15 @@ export default function QuoteDetailPage() {
                   icon: <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>,
                   onClick: handleSubmitApproval,
                   isLoading: submitApprovalMutation.isPending,
+                  disabled: missingTemplate,
+                  title: missingTemplate ? noTemplateHint : undefined,
                 }] : []),
                 ...(quote.status === QuoteStatus.CONCEPT && !quote.requiresApproval ? [{
                   label: 'Goedkeuren',
                   icon: <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>,
                   onClick: () => setIsApproveOpen(true),
+                  disabled: missingTemplate,
+                  title: missingTemplate ? noTemplateHint : undefined,
                 }] : []),
                 ...(quote.status === QuoteStatus.TER_GOEDKEURING && userCanApprove ? [
                   {
@@ -238,6 +245,8 @@ export default function QuoteDetailPage() {
                   label: 'Versturen',
                   icon: <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>,
                   onClick: () => setIsSendOpen(true),
+                  disabled: missingTemplate,
+                  title: missingTemplate ? noTemplateHint : undefined,
                 }] : []),
                 ...(quote.status === QuoteStatus.VERSTUURD ? [{
                   label: 'Markeer als bekeken',

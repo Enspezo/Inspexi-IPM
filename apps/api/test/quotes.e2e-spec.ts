@@ -36,6 +36,7 @@ describe('Quotes API (e2e)', () => {
   // IDs of resources created during tests (for cleanup)
   const createdQuoteIds: string[] = [];
   const createdApprovalRequestIds: string[] = [];
+  const createdTemplateIds: string[] = [];
 
   /** Helper: login and return { accessToken, cookies } */
   async function login(email: string, password = 'Password123!') {
@@ -95,6 +96,11 @@ describe('Quotes API (e2e)', () => {
       });
       await prisma.quote.deleteMany({
         where: { id: { in: createdQuoteIds } },
+      });
+    }
+    if (createdTemplateIds.length > 0) {
+      await prisma.quoteTemplate.deleteMany({
+        where: { id: { in: createdTemplateIds } },
       });
     }
 
@@ -362,6 +368,168 @@ describe('Quotes API (e2e)', () => {
         .patch(`/api/v1/quotes/${approvedQuote.id}`)
         .set('Authorization', `Bearer ${org1AdminToken}`)
         .send({ subject: 'Should not update' })
+        .expect(400);
+    });
+  });
+
+  // ─── REQ26: template switch + status guard ────────────
+
+  describe('Template switch & status validation (REQ26)', () => {
+    let org1ContactId: string;
+    let blocksTemplateId: string; // requiresApproval = false (Standaard)
+    let approvalTemplateId: string; // requiresApproval = true (Groot Project)
+
+    beforeAll(async () => {
+      const contactRes = await request(app.getHttpServer())
+        .get('/api/v1/contacts')
+        .set('Authorization', `Bearer ${org1AdminToken}`)
+        .expect(200);
+      org1ContactId = contactRes.body.data.data[0].id;
+
+      const templatesRes = await request(app.getHttpServer())
+        .get('/api/v1/quote-templates')
+        .set('Authorization', `Bearer ${org1AdminToken}`)
+        .expect(200);
+      const templates = templatesRes.body.data.data as any[];
+      approvalTemplateId = templates.find((t) => t.requiresApproval === true).id;
+      blocksTemplateId = templates.find((t) => t.requiresApproval === false).id;
+    });
+
+    /** Create a fresh CONCEPT quote without a template and track it for cleanup. */
+    async function createConceptQuote(subject: string): Promise<any> {
+      const res = await request(app.getHttpServer())
+        .post('/api/v1/quotes')
+        .set('Authorization', `Bearer ${org1AdminToken}`)
+        .send({ contactId: org1ContactId, subject })
+        .expect(201);
+      createdQuoteIds.push(res.body.data.id);
+      return res.body.data;
+    }
+
+    it('switches template on a CONCEPT quote: applies blocks + requiresApproval + templateId', async () => {
+      const quote = await createConceptQuote('REQ26 switch test');
+      expect(quote.templateId).toBeNull();
+
+      const res = await request(app.getHttpServer())
+        .patch(`/api/v1/quotes/${quote.id}`)
+        .set('Authorization', `Bearer ${org1AdminToken}`)
+        .send({ templateId: approvalTemplateId })
+        .expect(200);
+
+      expect(res.body.data.templateId).toBe(approvalTemplateId);
+      expect(res.body.data.requiresApproval).toBe(true);
+      expect(res.body.data.contentBlocks).toBeTruthy();
+    });
+
+    it('records the template switch in the audit log (Sjabloon van→naar)', async () => {
+      const quote = await createConceptQuote('REQ26 audit test');
+
+      await request(app.getHttpServer())
+        .patch(`/api/v1/quotes/${quote.id}`)
+        .set('Authorization', `Bearer ${org1AdminToken}`)
+        .send({ templateId: blocksTemplateId })
+        .expect(200);
+
+      // Audit is fire-and-forget — poll briefly for the UPDATE row.
+      let auditLog: any = null;
+      for (let i = 0; i < 20 && !auditLog; i++) {
+        const logs = await prisma.auditLog.findMany({
+          where: { entityType: 'Quote', entityId: quote.id, action: 'UPDATE' },
+          orderBy: { createdAt: 'desc' },
+        });
+        auditLog = logs.find((l) => {
+          const changes = (l.changes as Record<string, unknown>) ?? {};
+          return 'templateId' in changes;
+        });
+        if (!auditLog) await new Promise((r) => setTimeout(r, 100));
+      }
+
+      expect(auditLog).toBeTruthy();
+      const change = (auditLog.changes as any).templateId;
+      expect(change.from ?? change.old ?? null).toBeNull();
+      expect(change.to ?? change.new).toBe(blocksTemplateId);
+    });
+
+    it('unlinks the template (templateId null) while CONCEPT', async () => {
+      const quote = await createConceptQuote('REQ26 unlink test');
+      await request(app.getHttpServer())
+        .patch(`/api/v1/quotes/${quote.id}`)
+        .set('Authorization', `Bearer ${org1AdminToken}`)
+        .send({ templateId: blocksTemplateId })
+        .expect(200);
+
+      const res = await request(app.getHttpServer())
+        .patch(`/api/v1/quotes/${quote.id}`)
+        .set('Authorization', `Bearer ${org1AdminToken}`)
+        .send({ templateId: null })
+        .expect(200);
+
+      expect(res.body.data.templateId).toBeNull();
+    });
+
+    it('rejects switching to another org\'s template (cross-tenant)', async () => {
+      const quote = await createConceptQuote('REQ26 cross-tenant test');
+
+      // Create a template owned by org2 directly.
+      const org2 = await prisma.organization.findFirst({ where: { slug: 'testbedrijf' } });
+      const org2Template = await prisma.quoteTemplate.create({
+        data: { orgId: org2!.id, name: 'REQ26 org2 template' },
+      });
+      createdTemplateIds.push(org2Template.id);
+
+      await request(app.getHttpServer())
+        .patch(`/api/v1/quotes/${quote.id}`)
+        .set('Authorization', `Bearer ${org1AdminToken}`)
+        .send({ templateId: org2Template.id })
+        .expect(403);
+    });
+
+    it('blocks leaving CONCEPT (status → GOEDGEKEURD) without a linked template', async () => {
+      const quote = await createConceptQuote('REQ26 guard test');
+
+      await request(app.getHttpServer())
+        .patch(`/api/v1/quotes/${quote.id}/status`)
+        .set('Authorization', `Bearer ${org1AdminToken}`)
+        .send({ status: 'GOEDGEKEURD' })
+        .expect(400);
+    });
+
+    it('allows leaving CONCEPT once a (non-approval) template is linked', async () => {
+      const quote = await createConceptQuote('REQ26 guard ok test');
+
+      await request(app.getHttpServer())
+        .patch(`/api/v1/quotes/${quote.id}`)
+        .set('Authorization', `Bearer ${org1AdminToken}`)
+        .send({ templateId: blocksTemplateId })
+        .expect(200);
+
+      const res = await request(app.getHttpServer())
+        .patch(`/api/v1/quotes/${quote.id}/status`)
+        .set('Authorization', `Bearer ${org1AdminToken}`)
+        .send({ status: 'GOEDGEKEURD' })
+        .expect(200);
+
+      expect(res.body.data.status).toBe('GOEDGEKEURD');
+    });
+
+    it('does not allow switching templates outside CONCEPT', async () => {
+      const quote = await createConceptQuote('REQ26 non-concept switch test');
+      await request(app.getHttpServer())
+        .patch(`/api/v1/quotes/${quote.id}`)
+        .set('Authorization', `Bearer ${org1AdminToken}`)
+        .send({ templateId: blocksTemplateId })
+        .expect(200);
+      await request(app.getHttpServer())
+        .patch(`/api/v1/quotes/${quote.id}/status`)
+        .set('Authorization', `Bearer ${org1AdminToken}`)
+        .send({ status: 'GOEDGEKEURD' })
+        .expect(200);
+
+      // Now GOEDGEKEURD → switching template must fail (update only in CONCEPT)
+      await request(app.getHttpServer())
+        .patch(`/api/v1/quotes/${quote.id}`)
+        .set('Authorization', `Bearer ${org1AdminToken}`)
+        .send({ templateId: approvalTemplateId })
         .expect(400);
     });
   });

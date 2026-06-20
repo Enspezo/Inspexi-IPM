@@ -7,6 +7,7 @@ import { AddressSearchInput } from '@/components/ui/address-search-input';
 import { useAddLocation } from '../hooks/use-contacts';
 import { useLocationTypes } from '@/pages/location-types/hooks/use-location-types';
 import type { ParsedAddress } from '@/lib/geocoding';
+import type { Location } from '@/types';
 
 const locationSchema = z.object({
   name: z.string().min(1, 'Naam is verplicht'),
@@ -24,12 +25,15 @@ interface AddLocationModalProps {
   isOpen: boolean;
   onClose: () => void;
   contactId: string;
+  /** Called with the newly created location after successful creation */
+  onCreated?: (location: Location) => void;
 }
 
 export function AddLocationModal({
   isOpen,
   onClose,
   contactId,
+  onCreated,
 }: AddLocationModalProps) {
   const { showToast } = useToast();
   const addMutation = useAddLocation(contactId);
@@ -67,10 +71,11 @@ export function AddLocationModal({
         notes: data.notes || undefined,
         pdokData: pdokData ?? undefined,
       };
-      await addMutation.mutateAsync(cleaned);
+      const created = await addMutation.mutateAsync(cleaned);
       showToast('Locatie toegevoegd!', 'success');
       reset();
       setPdokData(null);
+      onCreated?.(created);
       onClose();
     } catch (err) {
       showToast(

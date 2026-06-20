@@ -768,6 +768,17 @@ describe('Quotes API (e2e)', () => {
         .expect(403);
     });
 
+    it('blocks the manual-status bypass (PATCH /status → GOEDGEKEURD) above threshold without approval', async () => {
+      // bigQuoteId is in TER_GOEDKEURING; TER_GOEDKEURING→GOEDGEKEURD is a valid transition,
+      // but the approval gate must still block it (no APPROVED THRESHOLD request yet).
+      const res = await request(app.getHttpServer())
+        .patch(`/api/v1/quotes/${bigQuoteId}/status`)
+        .set('Authorization', `Bearer ${org1AdminToken}`)
+        .send({ status: 'GOEDGEKEURD' })
+        .expect(400);
+      expect(res.body.message).toContain('goedkeuring');
+    });
+
     it('lets the required role approve, unblocking sending', async () => {
       const res = await request(app.getHttpServer())
         .post(`/api/v1/quotes/${bigQuoteId}/approve`)

@@ -235,12 +235,41 @@ export class QuotesService {
     });
   }
 
+  /**
+   * Verplichte goedkeuringsgate (REQ5). Gooit een BadRequestException wanneer de
+   * offerte goedkeuring vereist (bedrag boven de org-drempel óf template-
+   * `requiresApproval`) en er nog géén GOEDGEKEURD verplicht (THRESHOLD) verzoek is.
+   * Centraal punt voor álle paden die een offerte goedkeuren/versturen.
+   */
+  private async assertApprovalSatisfied(quote: { id: string; orgId: string; total: unknown; requiresApproval: boolean }) {
+    const org = await this.prisma.organization.findUnique({
+      where: { id: quote.orgId },
+      select: { quoteApprovalThreshold: true, quoteApprovalRequiredRole: true },
+    });
+    if (org && isQuoteApprovalRequired(org, quote)) {
+      const approved = await this.prisma.quoteApprovalRequest.findFirst({
+        where: { quoteId: quote.id, kind: ApprovalKind.THRESHOLD, status: ApprovalStatus.APPROVED },
+      });
+      if (!approved) {
+        throw new BadRequestException(
+          'Deze offerte vereist goedkeuring (bedrag boven de goedkeuringsgrens of sjabloon vereist het) en kan pas verstuurd worden nadat een bevoegde collega de offerte heeft goedgekeurd.',
+        );
+      }
+    }
+  }
+
   async updateStatus(id: string, status: QuoteStatus, user: User) {
     const quote = await this.findOne(id, user);
     const validTargets = VALID_TRANSITIONS[quote.status];
     if (!validTargets.includes(status)) throw new BadRequestException(`Statusovergang van ${quote.status} naar ${status} is niet toegestaan`);
     // A CONCEPT quote may not move forward without a template linked.
     if (quote.status === QuoteStatus.CONCEPT && status !== QuoteStatus.CONCEPT) assertTemplateLinked(quote);
+    // Verplichte goedkeuringsgate (REQ5): markeer een offerte niet als goedgekeurd/verstuurd
+    // zonder een GOEDGEKEURD verplicht (THRESHOLD) verzoek. Dit sluit de bypass via
+    // handmatige statuswijziging (de mandatory flow loopt via approve()).
+    if (status === QuoteStatus.GOEDGEKEURD || status === QuoteStatus.VERSTUURD) {
+      await this.assertApprovalSatisfied(quote);
+    }
     const updated = await this.prisma.quote.update({ where: { id: quote.id }, data: { status } });
     if (status === QuoteStatus.VERSTUURD) {
       this.notifications.dispatch({ type: NotificationType.OFFERTE_VERSTUURD, orgId: quote.orgId, recipientUserIds: [quote.createdBy], title: 'Offerte verstuurd', body: `Offerte ${quote.quoteNumber} is naar de klant verstuurd.`, entityType: 'quote', entityId: quote.id });
@@ -255,21 +284,12 @@ export class QuotesService {
     }
     // Sending a CONCEPT quote moves it forward — a template must be linked.
     if (quote.status === QuoteStatus.CONCEPT) assertTemplateLinked(quote);
-    const org = await this.prisma.organization.findUnique({ where: { id: quote.orgId }, select: { name: true, senderName: true, senderEmail: true, quoteApprovalThreshold: true, quoteApprovalRequiredRole: true } });
+    const org = await this.prisma.organization.findUnique({ where: { id: quote.orgId }, select: { name: true, senderName: true, senderEmail: true } });
 
     // Verplichte goedkeuringsgate (REQ5): boven de org-drempel (of bij template-`requiresApproval`)
     // mag niet verstuurd worden zonder een GOEDGEKEURD verplicht (THRESHOLD) verzoek.
     // Vrijwillige (VOLUNTARY_*) verzoeken tellen hier nooit mee.
-    if (org && isQuoteApprovalRequired(org, quote)) {
-      const approved = await this.prisma.quoteApprovalRequest.findFirst({
-        where: { quoteId: quote.id, kind: ApprovalKind.THRESHOLD, status: ApprovalStatus.APPROVED },
-      });
-      if (!approved) {
-        throw new BadRequestException(
-          'Deze offerte vereist goedkeuring (bedrag boven de goedkeuringsgrens of sjabloon vereist het) en kan pas verstuurd worden nadat een bevoegde collega de offerte heeft goedgekeurd.',
-        );
-      }
-    }
+    await this.assertApprovalSatisfied(quote);
     let token = quote.publicToken;
     if (!token) {
       token = randomUUID();

@@ -12,7 +12,7 @@ import * as bcrypt from 'bcrypt';
 import { randomUUID } from 'crypto';
 import { User, Role, TaskStatus } from '@prisma/client';
 import { PrismaService } from '@/prisma';
-import { assertFound } from '@/common';
+import { assertFound, assertSameOrg } from '@/common';
 import { EmailService } from '@/common/services/email.service';
 import {
   STORAGE_PROVIDER,
@@ -55,6 +55,28 @@ export class UsersService {
       where: { orgId, isDeleted: false },
       include: { organization: true },
       orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  /**
+   * Lichte, org-scoped gebruikerslijst voor persoon-/team-pickers. Toegankelijk
+   * voor brede rollen; geeft alleen niet-gevoelige velden terug en kan op rol
+   * gefilterd worden (`roles hasSome [role]`). (REQ5)
+   */
+  async findSelectable(orgId: string | null, role?: Role) {
+    if (!orgId) {
+      // SUPERUSER zonder org-context heeft geen zinvolle org-scoped lijst.
+      return [];
+    }
+    return this.prisma.user.findMany({
+      where: {
+        orgId,
+        isDeleted: false,
+        isActive: true,
+        ...(role ? { roles: { hasSome: [role] } } : {}),
+      },
+      select: { id: true, firstName: true, lastName: true, email: true, roles: true },
+      orderBy: [{ firstName: 'asc' }, { lastName: 'asc' }],
     });
   }
 
@@ -356,6 +378,19 @@ export class UsersService {
     // dwingt dit ook al af).
     if ('contactPhone' in dto && !data.contactPhone) data.sharePhoneWithClients = false;
     if ('contactEmail' in dto && !data.contactEmail) data.shareEmailWithClients = false;
+
+    // Standaard vrijwillige goedkeurder (persoon): org-scoped valideren (REQ5).
+    if ('defaultApprovalPersonId' in dto) {
+      if (!dto.defaultApprovalPersonId) {
+        data.defaultApprovalPersonId = null;
+      } else if (dto.defaultApprovalPersonId === id) {
+        throw new BadRequestException('U kunt uzelf niet als standaard goedkeurder instellen');
+      } else {
+        const me = await this.prisma.user.findUnique({ where: { id }, select: { orgId: true } });
+        await assertSameOrg(this.prisma.user, dto.defaultApprovalPersonId, me?.orgId ?? null, 'Goedkeurder');
+        data.defaultApprovalPersonId = dto.defaultApprovalPersonId;
+      }
+    }
 
     return this.prisma.user.update({
       where: { id },

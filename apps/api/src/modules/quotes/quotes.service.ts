@@ -6,7 +6,7 @@ import {
   BadRequestException,
   Inject,
 } from '@nestjs/common';
-import { User, Role, Prisma, QuoteStatus, QuoteTemplate, RequestStatus, NotificationType, TaskType, TaskEntityType, TaskStatus, FollowUpAssigneeType } from '@prisma/client';
+import { User, Role, Prisma, QuoteStatus, QuoteTemplate, RequestStatus, NotificationType, TaskType, TaskEntityType, TaskStatus, FollowUpAssigneeType, ApprovalKind, ApprovalStatus } from '@prisma/client';
 import { ConfigService } from '@nestjs/config';
 import { randomUUID } from 'crypto';
 import { PrismaService } from '@/prisma';
@@ -25,7 +25,7 @@ import {
   ListQuotesQueryDto,
   SendQuoteDto,
 } from './dto';
-import { VALID_TRANSITIONS, assertTemplateLinked, calculateLineTotal, findQuoteForUser, getPublicUrl, resolveTemplateData, serializeQuote } from './quotes.helpers';
+import { VALID_TRANSITIONS, assertTemplateLinked, calculateLineTotal, findQuoteForUser, getPublicUrl, isQuoteApprovalRequired, resolveTemplateData, serializeQuote } from './quotes.helpers';
 
 @Injectable()
 export class QuotesService {
@@ -255,7 +255,21 @@ export class QuotesService {
     }
     // Sending a CONCEPT quote moves it forward — a template must be linked.
     if (quote.status === QuoteStatus.CONCEPT) assertTemplateLinked(quote);
-    const org = await this.prisma.organization.findUnique({ where: { id: quote.orgId }, select: { name: true, senderName: true, senderEmail: true } });
+    const org = await this.prisma.organization.findUnique({ where: { id: quote.orgId }, select: { name: true, senderName: true, senderEmail: true, quoteApprovalThreshold: true, quoteApprovalRequiredRole: true } });
+
+    // Verplichte goedkeuringsgate (REQ5): boven de org-drempel (of bij template-`requiresApproval`)
+    // mag niet verstuurd worden zonder een GOEDGEKEURD verplicht (THRESHOLD) verzoek.
+    // Vrijwillige (VOLUNTARY_*) verzoeken tellen hier nooit mee.
+    if (org && isQuoteApprovalRequired(org, quote)) {
+      const approved = await this.prisma.quoteApprovalRequest.findFirst({
+        where: { quoteId: quote.id, kind: ApprovalKind.THRESHOLD, status: ApprovalStatus.APPROVED },
+      });
+      if (!approved) {
+        throw new BadRequestException(
+          'Deze offerte vereist goedkeuring (bedrag boven de goedkeuringsgrens of sjabloon vereist het) en kan pas verstuurd worden nadat een bevoegde collega de offerte heeft goedgekeurd.',
+        );
+      }
+    }
     let token = quote.publicToken;
     if (!token) {
       token = randomUUID();

@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { ContactDisplayMode } from '@prisma/client';
+import { ContactDisplayMode, Role } from '@prisma/client';
 import {
   IsString,
   MinLength,
@@ -103,4 +103,27 @@ export class CreateOrganizationDto {
   @ValidateIf((o) => o.inspectorStaticEmail !== null && o.inspectorStaticEmail !== '')
   @IsEmail()
   inspectorStaticEmail?: string | null;
+
+  // ─── Offerte-goedkeuring drempel (REQ5) ───
+
+  @ApiPropertyOptional({
+    example: 10000,
+    nullable: true,
+    description: 'Bedragdrempel; offertes strikt boven dit bedrag vereisen goedkeuring (null = geen drempel)',
+  })
+  @IsOptional()
+  @ValidateIf((o) => o.quoteApprovalThreshold !== null)
+  @IsNumber()
+  @Min(0)
+  quoteApprovalThreshold?: number | null;
+
+  @ApiPropertyOptional({
+    enum: Role,
+    nullable: true,
+    description: 'Vereiste rol/functie die offertes boven de drempel moet goedkeuren',
+  })
+  @IsOptional()
+  @ValidateIf((o) => o.quoteApprovalRequiredRole !== null)
+  @IsEnum(Role)
+  quoteApprovalRequiredRole?: Role | null;
 }

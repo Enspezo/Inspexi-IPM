@@ -29,6 +29,8 @@ export interface Organization {
   inspectorEmailDisplay: ContactDisplayMode;
   inspectorStaticPhone: string | null;
   inspectorStaticEmail: string | null;
+  quoteApprovalThreshold: number | null;
+  quoteApprovalRequiredRole: Role | null;
   isActive: boolean;
   createdAt: string;
   _count?: { users: number };
@@ -72,6 +74,7 @@ export interface User {
   contactEmail: string | null;
   sharePhoneWithClients: boolean;
   shareEmailWithClients: boolean;
+  defaultApprovalPersonId: string | null;
   createdAt: string;
   organization?: Organization;
 }
@@ -515,6 +518,13 @@ export enum ApprovalStatus {
   PENDING = 'PENDING',
   APPROVED = 'APPROVED',
   REJECTED = 'REJECTED',
+  CANCELLED = 'CANCELLED',
+}
+
+export enum ApprovalKind {
+  THRESHOLD = 'THRESHOLD',
+  VOLUNTARY_TEAM = 'VOLUNTARY_TEAM',
+  VOLUNTARY_PERSON = 'VOLUNTARY_PERSON',
 }
 
 // ── Block editor types ─────────────────────────────────────
@@ -686,11 +696,15 @@ export interface QuoteApprovalRequest {
   requestedBy: string;
   reviewedBy: string | null;
   status: ApprovalStatus;
+  kind: ApprovalKind;
+  approverRole: Role | null;
+  approverUserId: string | null;
   note: string | null;
   requestedAt: string;
   reviewedAt: string | null;
   requestedByUser?: UserSummary;
   reviewedByUser?: UserSummary;
+  approverUser?: UserSummary;
 }
 
 export interface ResolvedPrice {
@@ -751,6 +765,9 @@ export enum NotificationType {
   INSPECTIEPLAN_TER_REVIEW = 'INSPECTIEPLAN_TER_REVIEW',
   INSPECTIEPLAN_GOEDGEKEURD = 'INSPECTIEPLAN_GOEDGEKEURD',
   INSPECTIEPLAN_AFGEKEURD = 'INSPECTIEPLAN_AFGEKEURD',
+  OFFERTE_GOEDKEURING_GEVRAAGD_TEAM = 'OFFERTE_GOEDKEURING_GEVRAAGD_TEAM',
+  OFFERTE_GOEDKEURING_GEVRAAGD_PERSOON = 'OFFERTE_GOEDKEURING_GEVRAAGD_PERSOON',
+  OFFERTE_GOEDKEURING_AFGEHANDELD = 'OFFERTE_GOEDKEURING_AFGEHANDELD',
 }
 
 export interface Notification {

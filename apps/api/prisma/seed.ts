@@ -314,6 +314,9 @@ async function main() {
       inspectorEmailDisplay: 'INSPECTOR',
       inspectorStaticPhone: '+31 20 123 4567',
       inspectorStaticEmail: 'klantcontact@inspexi-demo.nl',
+      // Offerte-goedkeuring (REQ5): offertes boven € 10.000 vereisen goedkeuring door een MANAGER.
+      quoteApprovalThreshold: 10000,
+      quoteApprovalRequiredRole: Role.MANAGER,
     },
   });
   console.log(`  ✓ Organization: ${org1.name} (${org1.slug})`);
@@ -431,6 +434,14 @@ async function main() {
     });
     createdOrg1Users[u.roles[0]] = created.id;
     console.log(`  ✓ User: ${u.email} (${u.roles[0]})`);
+  }
+
+  // Demo: backoffice heeft de manager als standaard vrijwillige goedkeurder (REQ5).
+  if (createdOrg1Users[Role.BACKOFFICE] && createdOrg1Users[Role.MANAGER]) {
+    await prisma.user.update({
+      where: { id: createdOrg1Users[Role.BACKOFFICE] },
+      data: { defaultApprovalPersonId: createdOrg1Users[Role.MANAGER] },
+    });
   }
 
   // Org 2 users

@@ -14,6 +14,7 @@ interface ListPlanningParams {
   limit?: number;
   sortBy?: string;
   sortOrder?: 'asc' | 'desc';
+  enabled?: boolean;
 }
 
 interface PlanningListResponse {
@@ -41,6 +42,7 @@ export function usePlanningItems(params: ListPlanningParams = {}) {
   return useQuery<PlanningListResponse>({
     queryKey: ['planning', params],
     queryFn: () => apiClient.get<PlanningListResponse>(`/planning${qs ? `?${qs}` : ''}`),
+    enabled: params.enabled,
   });
 }
 

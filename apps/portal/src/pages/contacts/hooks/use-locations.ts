@@ -104,6 +104,7 @@ interface ListLocationsParams {
   locationTypeId?: string;
   page?: number;
   limit?: number;
+  enabled?: boolean;
 }
 
 export function useLocations(params: ListLocationsParams = {}) {
@@ -120,6 +121,7 @@ export function useLocations(params: ListLocationsParams = {}) {
   return useQuery<PaginatedResponse<Location & { contact?: { id: string; type: string; companyName: string | null; firstName: string | null; lastName: string | null } }>>({
     queryKey: ['locations', params],
     queryFn: () => apiClient.get(endpoint),
+    enabled: params.enabled,
   });
 }
 

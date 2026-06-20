@@ -3,11 +3,12 @@ import { apiClient } from '@/lib/api-client';
 import type { User } from '@/types';
 import { Role } from '@/types';
 
-export function useUsers() {
+export function useUsers(options: { enabled?: boolean } = {}) {
   return useQuery<User[]>({
     queryKey: ['users'],
     queryFn: () => apiClient.get<User[]>('/users'),
     staleTime: 15 * 60 * 1000, // 15 min — user list for dropdowns, rarely changes
+    enabled: options.enabled,
   });
 }
 

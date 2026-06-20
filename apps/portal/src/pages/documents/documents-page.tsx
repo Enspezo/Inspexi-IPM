@@ -11,7 +11,11 @@ import {
   Select,
   Button,
 } from '@/components/ui';
-import { ENTITY_TYPE_LABELS } from '@/lib/status';
+import {
+  DOCUMENT_ENTITY_LABELS,
+  DOCUMENT_ENTITY_LINK_TYPES,
+  DOCUMENT_ENTITY_ROUTES,
+} from '@/lib/document-entities';
 import { DetailPageLayout } from '@/components/layout/detail-page-layout';
 import { PageHeader } from '@/components/layout/page-header';
 import {
@@ -25,22 +29,11 @@ import { DocumentPreviewModal, UploadDocumentModal } from '@/components/document
 
 const entityTypeFilterOptions = [
   { value: '', label: 'Alle types' },
-  { value: DocumentEntityType.CONTACT, label: 'Relatie' },
-  { value: DocumentEntityType.REQUEST, label: 'Aanvraag' },
-  { value: DocumentEntityType.QUOTE, label: 'Offerte' },
-  { value: DocumentEntityType.PRODUCT, label: 'Product' },
-  { value: DocumentEntityType.TASK, label: 'Taak' },
-  { value: DocumentEntityType.USER, label: 'Gebruiker' },
+  ...DOCUMENT_ENTITY_LINK_TYPES.map((type) => ({
+    value: type,
+    label: DOCUMENT_ENTITY_LABELS[type],
+  })),
 ];
-
-const entityTypeRoutes: Record<string, string> = {
-  [DocumentEntityType.CONTACT]: '/contacts',
-  [DocumentEntityType.REQUEST]: '/requests',
-  [DocumentEntityType.QUOTE]: '/quotes',
-  [DocumentEntityType.PRODUCT]: '/products',
-  [DocumentEntityType.TASK]: '/tasks',
-  [DocumentEntityType.USER]: '/users',
-};
 
 function formatBytes(bytes: number): string {
   if (bytes === 0) return '0 B';
@@ -87,6 +80,14 @@ function EntityIcon({ type }: { type: DocumentEntityType }) {
     return (
       <svg className="h-4 w-4 shrink-0 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+      </svg>
+    );
+  }
+  if (type === DocumentEntityType.LOCATION) {
+    return (
+      <svg className="h-4 w-4 shrink-0 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
       </svg>
     );
   }
@@ -172,7 +173,7 @@ export default function DocumentsPage() {
       sortKey: 'entityType',
       getFilterValue: (doc) => doc.entityType,
       render: (doc) => {
-        const route = entityTypeRoutes[doc.entityType];
+        const route = DOCUMENT_ENTITY_ROUTES[doc.entityType];
         return (
           <div className="flex items-center gap-1.5">
             <EntityIcon type={doc.entityType} />
@@ -185,7 +186,7 @@ export default function DocumentsPage() {
               </a>
             ) : (
               <span className="text-xs text-gray-500">
-                {ENTITY_TYPE_LABELS[doc.entityType] || doc.entityType}
+                {DOCUMENT_ENTITY_LABELS[doc.entityType] || doc.entityType}
               </span>
             )}
           </div>

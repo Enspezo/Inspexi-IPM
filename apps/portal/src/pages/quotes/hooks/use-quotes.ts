@@ -18,6 +18,7 @@ interface ListQuotesParams {
   limit?: number;
   sortBy?: string;
   sortOrder?: 'asc' | 'desc';
+  enabled?: boolean;
 }
 
 export function useQuotes(params: ListQuotesParams = {}) {
@@ -38,6 +39,7 @@ export function useQuotes(params: ListQuotesParams = {}) {
   return useQuery<PaginatedResponse<Quote>>({
     queryKey: ['quotes', params],
     queryFn: () => apiClient.get<PaginatedResponse<Quote>>(endpoint),
+    enabled: params.enabled,
   });
 }
 

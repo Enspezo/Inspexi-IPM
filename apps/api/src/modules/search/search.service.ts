@@ -474,8 +474,21 @@ export class SearchService {
     const taskIds = docs
       .filter((d) => d.entityType === DocumentEntityType.TASK)
       .map((d) => d.entityId);
+    const locationIds = docs
+      .filter((d) => d.entityType === DocumentEntityType.LOCATION)
+      .map((d) => d.entityId);
 
     await Promise.all([
+      locationIds.length > 0
+        ? this.prisma.location
+            .findMany({
+              where: { id: { in: locationIds } },
+              select: { id: true, name: true },
+            })
+            .then((locations) => {
+              for (const l of locations) nameMap.set(l.id, l.name);
+            })
+        : Promise.resolve(),
       contactIds.length > 0
         ? this.prisma.contact
             .findMany({

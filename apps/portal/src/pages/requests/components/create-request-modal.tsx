@@ -9,6 +9,7 @@ import { useContactLocations } from '@/pages/contacts/hooks/use-contacts';
 import { ContactSearchInput } from '@/components/contacts/contact-search-input';
 import { CustomFieldsForm } from '@/components/custom-fields';
 import { RequestSource, Priority, CustomFieldEntityType } from '@/types';
+import type { Request } from '@/types';
 import { getErrorMessage } from '@/lib/api-client';
 
 const sourceOptions = [
@@ -42,9 +43,11 @@ interface CreateRequestModalProps {
   onClose: () => void;
   /** Pre-fill and lock the contact field when opened from a contact detail page */
   contactId?: string;
+  /** Called with the newly created request after successful creation */
+  onCreated?: (request: Request) => void;
 }
 
-export function CreateRequestModal({ isOpen, onClose, contactId: prefilledContactId }: CreateRequestModalProps) {
+export function CreateRequestModal({ isOpen, onClose, contactId: prefilledContactId, onCreated }: CreateRequestModalProps) {
   const { showToast } = useToast();
   const queryClient = useQueryClient();
   const createMutation = useCreateRequest();
@@ -109,7 +112,7 @@ export function CreateRequestModal({ isOpen, onClose, contactId: prefilledContac
 
   const onSubmit = async (data: FormData & { customFields?: Record<string, any> }) => {
     try {
-      await createMutation.mutateAsync({
+      const created = await createMutation.mutateAsync({
         contactId: data.contactId,
         locationId: data.locationId || undefined,
         assignedTo: data.assignedTo || undefined,
@@ -126,6 +129,7 @@ export function CreateRequestModal({ isOpen, onClose, contactId: prefilledContac
       }
       reset();
       setSelectedContactId('');
+      onCreated?.(created);
       onClose();
     } catch (err) {
       showToast(getErrorMessage(err, 'Aanmaken mislukt'), 'error');

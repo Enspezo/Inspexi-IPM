@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { useLocation, Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/providers/auth-provider';
 import { Badge } from '@/components/ui';
 import {
@@ -9,33 +9,9 @@ import {
 } from '@/pages/notifications/hooks/use-notifications';
 import { useTasks } from '@/pages/tasks/hooks/use-tasks';
 import { SearchBox } from '@/components/search/search-box';
+import { QuickCreateButton } from '@/components/layout/quick-create-button';
 import { TaskStatus } from '@/types';
 import type { Notification } from '@/types';
-
-const pageTitles: Record<string, string> = {
-  '/dashboard': 'Dashboard',
-  '/users': 'Gebruikers',
-  '/organization/settings': 'Organisatie-instellingen',
-  '/profile': 'Profiel',
-  '/contacts': 'Relaties',
-  '/requests': 'Aanvragen',
-  '/products': 'Producten',
-  '/price-tables': 'Prijstabellen',
-  '/quotes': 'Offertes',
-  '/quotes/new': 'Nieuwe offerte',
-  '/quote-templates': 'Offerte Templates',
-  '/notifications': 'Notificaties',
-};
-
-function getPageTitle(pathname: string): string {
-  if (pageTitles[pathname]) return pageTitles[pathname];
-  if (pathname.match(/^\/contacts\/[^/]+$/)) return 'Relatie detail';
-  if (pathname.match(/^\/requests\/[^/]+$/)) return 'Aanvraag detail';
-  if (pathname.match(/^\/price-tables\/[^/]+$/)) return 'Prijstabel detail';
-  if (pathname.match(/^\/quotes\/[^/]+\/edit$/)) return 'Offerte bewerken';
-  if (pathname.match(/^\/quotes\/[^/]+$/)) return 'Offerte detail';
-  return 'InspeXi Beheer';
-}
 
 function formatRelativeTime(dateStr: string): string {
   const now = new Date();
@@ -61,7 +37,6 @@ function getEntityRoute(notif: Notification): string | null {
 
 export function Header() {
   const { user, logout } = useAuth();
-  const location = useLocation();
   const navigate = useNavigate();
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [isNotifOpen, setIsNotifOpen] = useState(false);
@@ -85,8 +60,6 @@ export function Header() {
       t.deadline &&
       new Date(t.deadline) < todayStart,
   ).length;
-
-  const pageTitle = getPageTitle(location.pathname);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -113,11 +86,9 @@ export function Header() {
 
   return (
     <header className="flex h-16 items-center border-b border-gray-200 bg-white px-6">
-      {/* LEFT: page title — hidden on /search */}
-      <div className="w-48 flex-shrink-0">
-        {location.pathname !== '/search' && (
-          <h1 className="truncate text-lg font-semibold text-gray-900">{pageTitle}</h1>
-        )}
+      {/* LEFT: global quick-create button — present on every view */}
+      <div className="flex w-48 flex-shrink-0 items-center">
+        <QuickCreateButton />
       </div>
 
       {/* CENTER: Search box */}

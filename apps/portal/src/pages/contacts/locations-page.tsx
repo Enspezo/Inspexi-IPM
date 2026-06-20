@@ -1,6 +1,5 @@
 import { useState, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ContactType } from '@/types';
 import {
   ActionMenu,
   ErrorBox,
@@ -8,17 +7,17 @@ import {
   Button,
   Input,
   Table,
-  Modal,
 } from '@/components/ui';
 import { DetailPageLayout } from '@/components/layout/detail-page-layout';
 import { PageHeader } from '@/components/layout/page-header';
 import { LocationTypeBadge } from '@/components/location-type-badge';
+import { SelectContactModal } from '@/components/contacts/select-contact-modal';
 import {
   TableConfigSidebar,
   useTableConfig,
   type ColumnDef,
 } from '@/components/table-config';
-import { useLocations, useContacts } from './hooks/use-contacts';
+import { useLocations } from './hooks/use-contacts';
 import { useLocationTypes } from '@/pages/location-types/hooks/use-location-types';
 import { AddLocationModal } from './components/add-location-modal';
 import { LocationsMap } from './components/locations-map';
@@ -397,63 +396,5 @@ function ListView({
         </div>
       )}
     </>
-  );
-}
-
-// ─── Modal: select a contact before adding a location ──
-
-function SelectContactModal({
-  onSelect,
-  onClose,
-}: {
-  onSelect: (contactId: string) => void;
-  onClose: () => void;
-}) {
-  const [search, setSearch] = useState('');
-  const { data, isLoading } = useContacts({ search: search || undefined, limit: 10 });
-  const contacts = data?.data || [];
-
-  return (
-    <Modal isOpen onClose={onClose} title="Selecteer een relatie">
-      <div className="space-y-4">
-        <Input
-          placeholder="Zoeken op naam..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          autoFocus
-        />
-        {isLoading ? (
-          <div className="flex justify-center py-4">
-            <Spinner size="sm" />
-          </div>
-        ) : contacts.length === 0 ? (
-          <p className="py-4 text-center text-sm text-gray-500">Geen relaties gevonden</p>
-        ) : (
-          <ul className="divide-y divide-gray-100 rounded-lg border border-gray-200">
-            {contacts.map((contact) => {
-              const name =
-                contact.type === ContactType.COMPANY
-                  ? contact.companyName || '—'
-                  : [contact.firstName, contact.lastName].filter(Boolean).join(' ') || '—';
-              return (
-                <li key={contact.id}>
-                  <button
-                    className="w-full px-4 py-2.5 text-left text-sm hover:bg-gray-50"
-                    onClick={() => onSelect(contact.id)}
-                  >
-                    <span className="font-medium text-gray-900">{name}</span>
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
-        )}
-        <div className="flex justify-end">
-          <Button variant="secondary" onClick={onClose}>
-            Annuleren
-          </Button>
-        </div>
-      </div>
-    </Modal>
   );
 }

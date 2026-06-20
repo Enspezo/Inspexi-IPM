@@ -19,9 +19,11 @@ type FormData = z.infer<typeof schema>;
 interface Props {
   isOpen: boolean;
   onClose: () => void;
+  /** Called with the chosen relatie's id after successful creation */
+  onCreated?: (contactId: string) => void;
 }
 
-export function CreateContactPersonModal({ isOpen, onClose }: Props) {
+export function CreateContactPersonModal({ isOpen, onClose, onCreated }: Props) {
   const { showToast } = useToast();
   const [selectedContactId, setSelectedContactId] = useState('');
   const [contactIdError, setContactIdError] = useState('');
@@ -73,9 +75,11 @@ export function CreateContactPersonModal({ isOpen, onClose }: Props) {
         notes: data.notes || undefined,
       });
       showToast('Contactpersoon aangemaakt!', 'success');
+      const createdForContactId = selectedContactId;
       reset();
       setSelectedContactId('');
       setContactIdError('');
+      onCreated?.(createdForContactId);
       onClose();
     } catch (err) {
       showToast(err instanceof Error ? err.message : 'Aanmaken mislukt', 'error');

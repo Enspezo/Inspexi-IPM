@@ -1,4 +1,4 @@
-export { ActionMenu, type ActionMenuItem } from './action-menu';
+export { ActionMenu, DropdownMenu, type ActionMenuItem, type DropdownMenuProps } from './action-menu';
 export { StatusBadge } from './status-badge';
 export { LookupBadge } from './lookup-badge';
 export { ErrorBox } from './error-box';

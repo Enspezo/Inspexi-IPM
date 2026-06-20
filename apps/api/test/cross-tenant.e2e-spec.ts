@@ -29,6 +29,7 @@ describe('Cross-tenant FK isolation (e2e)', () => {
   let contactAId: string;
   let groupAId: string;
   let locationAId: string;
+  let contactPersonAId: string;
   let tokenA: string;
 
   // Org B (victim)
@@ -129,6 +130,16 @@ describe('Cross-tenant FK isolation (e2e)', () => {
       },
     });
     locationAId = locationA.id;
+
+    const contactPersonA = await prisma.contactPerson.create({
+      data: {
+        orgId: orgA.id,
+        contactId: contactA.id,
+        firstName: 'Persoon',
+        lastName: 'A',
+      },
+    });
+    contactPersonAId = contactPersonA.id;
 
     // ─── Org B (victim) ─────────────────────────────────
     const orgB = await prisma.organization.create({
@@ -380,6 +391,7 @@ describe('Cross-tenant FK isolation (e2e)', () => {
         where: { contactId: { in: [contactAId, contactBId] } },
       });
       await prisma.customerGroup.deleteMany({ where: { orgId: { in: orgIds } } });
+      await prisma.locationContactPerson.deleteMany({ where: { orgId: { in: orgIds } } });
       await prisma.contactPerson.deleteMany({ where: { orgId: { in: orgIds } } });
       await prisma.location.deleteMany({ where: { orgId: { in: orgIds } } });
       // Org-eigen locatietypes (systeem-types met orgId null worden niet geraakt).
@@ -613,6 +625,38 @@ describe('Cross-tenant FK isolation (e2e)', () => {
 
       expect(res.body.data.locationTypeId).toBe(systemType!.id);
       expect(res.body.data.locationType).toMatchObject({ code: 'woning' });
+    });
+  });
+
+  // ─── Contactpersoon → locatie koppeling (body FK → 403) ───
+  // addContactPersonLocation weigert een locatie van een andere org (403) en
+  // weigert een contactpersoon van een andere org (404/403 via findContactPerson).
+  describe('POST /api/v1/contacts/contact-persons/:personId/locations — cross-tenant', () => {
+    it("rejects linking another org's location to an own contact person (403)", async () => {
+      await request(app.getHttpServer())
+        .post(`/api/v1/contacts/contact-persons/${contactPersonAId}/locations`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({ locationId: locationBId })
+        .expect(403);
+    });
+
+    it("rejects linking a location to another org's contact person (403)", async () => {
+      await request(app.getHttpServer())
+        .post(`/api/v1/contacts/contact-persons/${contactPersonBId}/locations`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({ locationId: locationAId })
+        .expect(403);
+    });
+
+    it('allows linking an own location to an own contact person (positive control)', async () => {
+      const res = await request(app.getHttpServer())
+        .post(`/api/v1/contacts/contact-persons/${contactPersonAId}/locations`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({ locationId: locationAId, notes: 'Koppeling A' })
+        .expect(201);
+
+      expect(res.body.data.location).toMatchObject({ id: locationAId });
+      expect(res.body.data.notes).toBe('Koppeling A');
     });
   });
 

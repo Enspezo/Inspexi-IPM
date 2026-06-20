@@ -23,6 +23,18 @@ export interface FavoriteGroup {
   items: FavoriteListItem[];
 }
 
+/**
+ * Favoritable models that carry an `isDeleted` soft-delete flag. Their enrichment
+ * lookups filter on it so a soft-deleted record falls back to "(verwijderd)" —
+ * consistent with global search, which also filters `isDeleted: false`.
+ */
+const SOFT_DELETABLE_FAVORITE_TYPES: ReadonlySet<string> = new Set([
+  'Contact',
+  'ContactPerson',
+  'Request',
+  'Project',
+]);
+
 @Injectable()
 export class FavoritesService {
   constructor(private prisma: PrismaService) {}
@@ -149,9 +161,13 @@ export class FavoritesService {
     const recordsByType = new Map<string, Map<string, Record<string, any>>>();
     await Promise.all(
       [...idsByType.entries()].map(async ([type, ids]) => {
+        const where: Record<string, unknown> = { id: { in: ids } };
+        if (SOFT_DELETABLE_FAVORITE_TYPES.has(type)) {
+          where.isDeleted = false;
+        }
         const records: Array<Record<string, any>> = await this.getDelegate(
           type,
-        ).findMany({ where: { id: { in: ids } } });
+        ).findMany({ where });
         recordsByType.set(type, new Map(records.map((r) => [r.id, r])));
       }),
     );

@@ -1363,6 +1363,7 @@ export interface SearchTaskResult {
 }
 
 export interface SearchDocumentResult {
+  isFavorited?: boolean;
   id: string;
   originalName: string;
   mimeType: string;

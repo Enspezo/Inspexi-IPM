@@ -10,6 +10,7 @@ import {
 import { ActionMenu, Button, Spinner, StatusBadge, Modal, Tabs } from '@/components/ui';
 import { PROJECT_STATUS } from '@/lib/status';
 import { DetailPageLayout, SidebarSection } from '@/components/layout/detail-page-layout';
+import { FavoriteStar } from '@/components/favorites/favorite-star';
 import { NotesSidebarSection, HistorySidebarSection, DocumentsSidebarSection } from '@/components/layout/sidebar-sections';
 import { useAuth } from '@/providers/auth-provider';
 import { useToast } from '@/components/ui';
@@ -301,6 +302,7 @@ export default function ProjectDetailPage() {
                 <span className="text-sm text-gray-400">/</span>
               </div>
               <div className="flex items-center gap-3">
+                <FavoriteStar entityType="Project" entityId={project.id} />
                 <h1 className="text-2xl font-bold text-gray-900">
                   {project.projectNumber}
                 </h1>

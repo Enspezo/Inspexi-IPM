@@ -43,12 +43,14 @@ describe('getEntityLink', () => {
     expect(getEntityLink('ContactPerson', 'cp-1')).toBe('/contacts/persons/cp-1');
   });
 
-  it('should return parent contact URL for Location with snapshot', () => {
-    expect(getEntityLink('Location', 'loc-1', { contactId: 'c-1' })).toBe('/contacts/c-1');
+  it('should return the dedicated location detail URL for Location', () => {
+    expect(getEntityLink('Location', 'loc-1')).toBe('/contacts/locations/loc-1');
   });
 
-  it('should return null for Location without snapshot', () => {
-    expect(getEntityLink('Location', 'loc-1')).toBeNull();
+  it('should link Location to its detail page regardless of snapshot', () => {
+    expect(getEntityLink('Location', 'loc-1', { contactId: 'c-1' })).toBe(
+      '/contacts/locations/loc-1',
+    );
   });
 
   it('should return correct URL for Request', () => {

@@ -1,6 +1,7 @@
 import { Link, useNavigate } from 'react-router-dom';
 import { Spinner } from '@/components/ui';
 import { useSearch } from '@/pages/search/hooks/use-search';
+import { FavoriteMark } from '@/components/favorites/favorite-icon';
 import type {
   SearchEntityType,
   SearchGroup,
@@ -38,7 +39,7 @@ function getItemRoute(type: SearchEntityType, item: SearchResultItem): string {
     case 'contactPerson':
       return `/contacts/${(item as SearchContactPersonResult).contactId}`;
     case 'location':
-      return `/contacts/${(item as SearchLocationResult).contactId}`;
+      return `/contacts/locations/${(item as SearchLocationResult).id}`;
     case 'request':
       return `/requests/${(item as SearchRequestResult).id}`;
     case 'quote':
@@ -176,7 +177,10 @@ function ResultGroup({
             className="flex w-full items-start gap-3 px-4 py-2.5 text-left transition-colors hover:bg-gray-50"
           >
             <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-medium text-gray-900">{label}</p>
+              <p className="truncate text-sm font-medium text-gray-900">
+                {item.isFavorited && <FavoriteMark />}
+                {label}
+              </p>
               {subtitle && (
                 <p className="truncate text-xs text-gray-500">{subtitle}</p>
               )}

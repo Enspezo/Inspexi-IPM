@@ -327,6 +327,7 @@ model Organization {
   documents                Document[]
   documentTags             DocumentTag[]
   notes                    Note[]
+  favorites                Favorite[]
   planningItems            PlanningItem[]
   customFieldDefinitions   CustomFieldDefinition[]
   emailTemplates           EmailTemplate[]
@@ -412,10 +413,10 @@ model User {
 
   // Klantportaal-contactgegevens (los van login-`email`; nooit automatisch met klanten gedeeld).
   // Worden alleen getoond bij org-modus INSPECTOR én expliciete toestemming per kanaal.
-  contactPhone          String?  @map("contact_phone")
-  contactEmail          String?  @map("contact_email")
-  sharePhoneWithClients Boolean  @default(false) @map("share_phone_with_clients")
-  shareEmailWithClients Boolean  @default(false) @map("share_email_with_clients")
+  contactPhone          String? @map("contact_phone")
+  contactEmail          String? @map("contact_email")
+  sharePhoneWithClients Boolean @default(false) @map("share_phone_with_clients")
+  shareEmailWithClients Boolean @default(false) @map("share_email_with_clients")
 
   organization  Organization?  @relation(fields: [orgId], references: [id])
   refreshTokens RefreshToken[]
@@ -440,6 +441,7 @@ model User {
   notifications     Notification[]
   notificationPrefs NotificationPref[]
   auditLogs         AuditLog[]
+  favorites         Favorite[]
 
   assignedTasks       Task[]                  @relation("TaskAssignee")
   createdTasks        Task[]                  @relation("TaskCreatedBy")
@@ -641,27 +643,27 @@ model ContactPerson {
 }
 
 model Location {
-  id             String   @id @default(uuid()) @db.Uuid
-  contactId      String   @map("contact_id") @db.Uuid
-  orgId          String   @map("org_id") @db.Uuid
-  name           String
-  street         String
-  houseNumber    String   @map("house_number")
-  postalCode     String   @map("postal_code")
-  city           String
-  locationTypeId String?  @map("location_type_id") @db.Uuid
-  notes          String?
-  pdokData       Json?    @map("pdok_data")
-  lat            Float?
-  lng            Float?
+  id              String   @id @default(uuid()) @db.Uuid
+  contactId       String   @map("contact_id") @db.Uuid
+  orgId           String   @map("org_id") @db.Uuid
+  name            String
+  street          String
+  houseNumber     String   @map("house_number")
+  postalCode      String   @map("postal_code")
+  city            String
+  locationTypeId  String?  @map("location_type_id") @db.Uuid
+  notes           String?
+  pdokData        Json?    @map("pdok_data")
+  lat             Float?
+  lng             Float?
   // BAG-bouwgegevens (verrijkt via PDOK BAG OGC API)
-  gebruiksfunctie String? @map("gebruiksfunctie")
-  bouwjaar       Int?     @map("bouwjaar")
-  oppervlakte    Float?   @map("oppervlakte")
-  bagId          String?  @map("bag_id")
-  customFields   Json?    @map("custom_fields")
-  createdAt      DateTime @default(now()) @map("created_at")
-  updatedAt      DateTime @updatedAt @map("updated_at")
+  gebruiksfunctie String?  @map("gebruiksfunctie")
+  bouwjaar        Int?     @map("bouwjaar")
+  oppervlakte     Float?   @map("oppervlakte")
+  bagId           String?  @map("bag_id")
+  customFields    Json?    @map("custom_fields")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
 
   contact                Contact                 @relation(fields: [contactId], references: [id])
   organization           Organization            @relation(fields: [orgId], references: [id])
@@ -1158,11 +1160,11 @@ model QuoteApprovalRequest {
   reviewedAt  DateTime?      @map("reviewed_at")
 
   // Gericht goedkeuringsverzoek (REQ5).
-  kind          ApprovalKind @default(THRESHOLD)
+  kind           ApprovalKind @default(THRESHOLD)
   // Doelrol: voor THRESHOLD de org-vereiste rol; voor VOLUNTARY_TEAM de rol/team van de aanvrager.
-  approverRole  Role?        @map("approver_role")
+  approverRole   Role?        @map("approver_role")
   // Doelpersoon: alleen voor VOLUNTARY_PERSON.
-  approverUserId String?     @map("approver_user_id") @db.Uuid
+  approverUserId String?      @map("approver_user_id") @db.Uuid
 
   quote           Quote @relation(fields: [quoteId], references: [id], onDelete: Cascade)
   requestedByUser User  @relation("ApprovalRequestedByUser", fields: [requestedBy], references: [id])
@@ -1292,8 +1294,8 @@ model Document {
   isSharedWithClient Boolean            @default(false) @map("is_shared_with_client")
   createdAt          DateTime           @default(now()) @map("created_at")
 
-  organization Organization @relation(fields: [orgId], references: [id])
-  uploadedBy   User         @relation("DocumentUploadedBy", fields: [uploadedById], references: [id])
+  organization Organization            @relation(fields: [orgId], references: [id])
+  uploadedBy   User                    @relation("DocumentUploadedBy", fields: [uploadedById], references: [id])
   tags         DocumentTagAssignment[]
 
   @@index([orgId, entityType, entityId])
@@ -1682,6 +1684,29 @@ model Note {
   @@index([parentId])
   @@index([createdById])
   @@map("imp_notes")
+}
+
+/// Per-user favorites ("sterretjes") for records across a fixed allow-list of
+/// favoritable models (REQ36). `entityType` holds the canonical Prisma model name
+/// (e.g. "Contact", "Quote") so it lines up with the audit entity registry and the
+/// frontend ENTITY_TYPE_LABELS / getEntityLink helpers. `entityId` is NOT a real
+/// FK (it points at one of several tables), so cross-tenant ownership is validated
+/// in the service via assertSameOrg before a favorite is written.
+model Favorite {
+  id         String   @id @default(uuid()) @db.Uuid
+  userId     String   @map("user_id") @db.Uuid
+  orgId      String   @map("org_id") @db.Uuid
+  entityType String   @map("entity_type")
+  entityId   String   @map("entity_id") @db.Uuid
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [orgId], references: [id])
+
+  @@unique([userId, entityType, entityId])
+  @@index([userId])
+  @@index([orgId])
+  @@map("imp_favorites")
 }
 
 // ─── Work Orders (Werkbonnen) ─────────────────────────────

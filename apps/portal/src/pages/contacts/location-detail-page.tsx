@@ -8,6 +8,7 @@ import { roleColors as contactPersonRoleColors } from '@/lib/contact-person-role
 import { Button, Card, ErrorBox, InfoField, Input, Select, Spinner, useConfirm, useToast } from '@/components/ui';
 import { AddressSearchInput } from '@/components/ui/address-search-input';
 import { DetailPageLayout } from '@/components/layout/detail-page-layout';
+import { FavoriteStar } from '@/components/favorites/favorite-star';
 import { LocationTypeBadge } from '@/components/location-type-badge';
 import { useAuth } from '@/providers/auth-provider';
 import {
@@ -187,6 +188,7 @@ export default function LocationDetailPage() {
           </button>
           <div>
             <div className="flex items-center gap-3">
+              <FavoriteStar entityType="Location" entityId={location.id} />
               <h2 className="text-2xl font-bold text-gray-900">{location.name}</h2>
               {location.locationType && (
                 <LocationTypeBadge locationType={location.locationType} />

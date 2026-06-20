@@ -15,6 +15,7 @@ import { ActionMenu, Button, Card, ErrorBox, Spinner, StatusBadge, Input, Table,
 import { formatCurrency, formatDate } from '@/lib/format';
 import { QUOTE_STATUS } from '@/lib/status';
 import { DetailPageLayout, SidebarSection } from '@/components/layout/detail-page-layout';
+import { FavoriteStar } from '@/components/favorites/favorite-star';
 import { NotesSidebarSection, HistorySidebarSection, DocumentsSidebarSection } from '@/components/layout/sidebar-sections';
 import { useAuth } from '@/providers/auth-provider';
 import {
@@ -227,6 +228,7 @@ export default function QuoteDetailPage() {
             </button>
             <div>
               <div className="flex items-center gap-3">
+                <FavoriteStar entityType="Quote" entityId={quote.id} />
                 <h2 className="text-2xl font-bold text-gray-900">{quote.quoteNumber} &mdash; {quote.subject}</h2>
                 <StatusBadge status={quote.status} map={QUOTE_STATUS} />
                 {quote.project && (

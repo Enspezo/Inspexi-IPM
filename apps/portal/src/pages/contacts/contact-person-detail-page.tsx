@@ -6,6 +6,7 @@ import { z } from 'zod';
 import { ContactType, Role } from '@/types';
 import { Button, Card, ErrorBox, InfoField, Input, Select, Spinner, useConfirm, useToast } from '@/components/ui';
 import { DetailPageLayout } from '@/components/layout/detail-page-layout';
+import { FavoriteStar } from '@/components/favorites/favorite-star';
 import { LocationTypeBadge } from '@/components/location-type-badge';
 import { useAuth } from '@/providers/auth-provider';
 import {
@@ -183,6 +184,7 @@ export default function ContactPersonDetailPage() {
           </button>
           <div>
             <div className="flex items-center gap-3">
+              <FavoriteStar entityType="ContactPerson" entityId={person.id} />
               <h2 className="text-2xl font-bold text-gray-900">
                 {person.firstName} {person.lastName}
               </h2>

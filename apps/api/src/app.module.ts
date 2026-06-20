@@ -43,6 +43,7 @@ import { KvkModule } from './modules/kvk/kvk.module';
 import { VatModule } from './modules/vat/vat.module';
 import { ErrorReportsModule } from './modules/error-reports/error-reports.module';
 import { NotesModule } from './modules/notes/notes.module';
+import { FavoritesModule } from './modules/favorites/favorites.module';
 import { WorkOrdersModule } from './modules/work-orders/work-orders.module';
 import { LookupModule } from './modules/lookups/lookup.module';
 import { InspectionPlansModule } from './modules/inspection-plans/inspection-plans.module';
@@ -118,6 +119,7 @@ import { VoiceModule } from './modules/voice/voice.module';
     VatModule,
     ErrorReportsModule,
     NotesModule,
+    FavoritesModule,
     WorkOrdersModule,
     LookupModule,
     // Inspectiedomein Fase 2 — uitvoering + config

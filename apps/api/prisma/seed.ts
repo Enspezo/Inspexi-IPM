@@ -281,6 +281,8 @@ async function main() {
   // Lookup tables (requests & contact persons that referenced them are already deleted above)
   await prisma.lostReason.deleteMany();
   await prisma.contactPersonRoleOption.deleteMany();
+  // Favorites (leaf — FK to users/organizations only)
+  await prisma.favorite.deleteMany();
   // Tasks, Documents & Notes (dependent on users)
   await prisma.documentTagAssignment.deleteMany();
   await prisma.note.deleteMany();
@@ -1595,6 +1597,29 @@ async function main() {
   });
   console.log(`  ✓ Project: ${project2.projectNumber}`);
   void project2;
+
+  // ─── REQ36: Favorieten (sterretjes) ────────────────────
+  // Een paar demo-favorieten voor de ORG_ADMIN, verspreid over de modellen
+  // zodat de favorieten-pagina meteen meerdere groepen toont.
+  const demoFavoriteUserId = createdOrg1Users[Role.ORG_ADMIN];
+  const demoFavorites: Array<{ entityType: string; entityId: string }> = [
+    { entityType: 'Contact', entityId: contact1.id },
+    { entityType: 'Request', entityId: req1.id },
+    { entityType: 'Quote', entityId: quote1.id },
+    { entityType: 'Project', entityId: project1.id },
+    { entityType: 'Product', entityId: meerwerkProduct1.id },
+  ];
+  for (const fav of demoFavorites) {
+    await prisma.favorite.create({
+      data: {
+        userId: demoFavoriteUserId,
+        orgId: org1.id,
+        entityType: fav.entityType,
+        entityId: fav.entityId,
+      },
+    });
+  }
+  console.log(`  ✓ Favorites: ${demoFavorites.length} (admin@inspexi-demo.nl)`);
 
   // ─── Inspectiedomein (Fase 1) ──────────────────────────
   console.log('\n🔍 Seeding inspection domain...');

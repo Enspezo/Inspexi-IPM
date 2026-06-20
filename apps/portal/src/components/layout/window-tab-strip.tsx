@@ -29,6 +29,7 @@ export function WindowTabStrip() {
   const { closeTab, closeOthers, closeAll, setActive } = useWindowTabs();
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  const menuTriggerRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -127,8 +128,18 @@ export function WindowTabStrip() {
       </div>
 
       {/* "…" overflow menu */}
-      <div ref={menuRef} className="relative flex shrink-0 items-center border-l border-gray-200 px-1">
+      <div
+        ref={menuRef}
+        className="relative flex shrink-0 items-center border-l border-gray-200 px-1"
+        onKeyDown={(e) => {
+          if (e.key === 'Escape' && menuOpen) {
+            setMenuOpen(false);
+            menuTriggerRef.current?.focus();
+          }
+        }}
+      >
         <button
+          ref={menuTriggerRef}
           type="button"
           aria-label="Tabblad-acties"
           aria-haspopup="menu"

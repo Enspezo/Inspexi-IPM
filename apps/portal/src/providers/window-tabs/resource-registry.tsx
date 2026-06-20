@@ -44,8 +44,10 @@ interface MakeResourceOptions {
  * Builds a {@link ResourceTabConfig} from a base path. Detail matching treats any
  * single trailing segment as a record id (so nested routes like `/x/:id/edit` are
  * ignored), excluding any declared `staticDetailSegments`.
+ *
+ * Exported for unit testing the generic matcher (not re-exported from the barrel).
  */
-function makeResource(opts: MakeResourceOptions): ResourceTabConfig {
+export function makeResource(opts: MakeResourceOptions): ResourceTabConfig {
   const base = opts.basePath.replace(/\/+$/, '');
   const prefix = `${base}/`;
   const staticSegments = new Set(opts.staticDetailSegments ?? []);
@@ -55,7 +57,8 @@ function makeResource(opts: MakeResourceOptions): ResourceTabConfig {
     label: opts.label,
     pendingTitle: opts.pendingTitle,
     listRoute: base,
-    detailRoute: (id) => `${base}/${id}`,
+    // Encode so detailRoute/matchDetailId are a genuine inverse pair for any id.
+    detailRoute: (id) => `${base}/${encodeURIComponent(id)}`,
     isListRoute: (pathname) => pathname === base,
     matchDetailId: (pathname) => {
       if (!pathname.startsWith(prefix)) return null;

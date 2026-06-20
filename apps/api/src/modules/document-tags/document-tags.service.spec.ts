@@ -67,12 +67,32 @@ describe('DocumentTagsService', () => {
       });
     });
 
-    it('rejects a duplicate name within the org', async () => {
+    it('rejects a duplicate active name within the org', async () => {
       mockPrisma.documentTag.findFirst.mockResolvedValue({ id: 'existing' });
 
       await expect(
         service.create({ name: 'Contract', color: '#3B82F6' }, orgUser),
       ).rejects.toBeInstanceOf(ConflictException);
+      expect(mockPrisma.documentTag.create).not.toHaveBeenCalled();
+    });
+
+    it('resurrects a soft-deleted tag with the same name instead of inserting', async () => {
+      // assertNameAvailable (active check) → none; archived lookup → found
+      mockPrisma.documentTag.findFirst
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce({ id: 'archived-1' });
+      mockPrisma.documentTag.update.mockResolvedValue({ id: 'archived-1' });
+
+      const result = await service.create(
+        { name: 'Contract', color: '#10B981' },
+        orgUser,
+      );
+
+      expect(result).toEqual({ id: 'archived-1' });
+      expect(mockPrisma.documentTag.update).toHaveBeenCalledWith({
+        where: { id: 'archived-1' },
+        data: { isDeleted: false, color: '#10B981', sortOrder: 0 },
+      });
       expect(mockPrisma.documentTag.create).not.toHaveBeenCalled();
     });
   });

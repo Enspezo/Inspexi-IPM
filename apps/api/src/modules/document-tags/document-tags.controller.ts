@@ -16,7 +16,7 @@ import {
   ApiBearerAuth,
 } from '@nestjs/swagger';
 import { User } from '@prisma/client';
-import { CRM_ROLES, ORG_ADMINS } from '@/common/auth/roles';
+import { ALL_STAFF, ORG_ADMINS } from '@/common/auth/roles';
 import { DocumentTagsService } from './document-tags.service';
 import {
   CreateDocumentTagDto,
@@ -32,7 +32,7 @@ export class DocumentTagsController {
   constructor(private documentTagsService: DocumentTagsService) {}
 
   @Get()
-  @Roles(...CRM_ROLES)
+  @Roles(...ALL_STAFF)
   @ApiOperation({ summary: 'Lijst document-tags ophalen' })
   @ApiResponse({ status: 200, description: 'Gepagineerde lijst van document-tags' })
   async findAll(
@@ -44,7 +44,7 @@ export class DocumentTagsController {
   }
 
   @Get('compact')
-  @Roles(...CRM_ROLES)
+  @Roles(...ALL_STAFF)
   @ApiOperation({ summary: 'Compacte lijst document-tags (voor pickers)' })
   async findAllCompact(@CurrentUser() user: User) {
     const data = await this.documentTagsService.findAllCompact(user);
@@ -52,7 +52,7 @@ export class DocumentTagsController {
   }
 
   @Get(':id')
-  @Roles(...CRM_ROLES)
+  @Roles(...ALL_STAFF)
   @ApiOperation({ summary: 'Document-tag detail ophalen' })
   async findOne(
     @Param('id', ParseUUIDPipe) id: string,

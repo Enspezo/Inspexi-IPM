@@ -279,5 +279,30 @@ describe('Document Tags (e2e)', () => {
         .expect(200);
       expect(docRes.body.data.tags).toHaveLength(0);
     });
+
+    it('allows recreating a tag with a soft-deleted name (resurrection)', async () => {
+      const createRes = await request(app.getHttpServer())
+        .post('/api/v1/document-tags')
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ name: 'Hergebruik', color: '#3B82F6' })
+        .expect(201);
+      const tagId = createRes.body.data.id;
+
+      await request(app.getHttpServer())
+        .delete(`/api/v1/document-tags/${tagId}`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(200);
+
+      // Same name should be available again (revives the archived row)
+      const recreateRes = await request(app.getHttpServer())
+        .post('/api/v1/document-tags')
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ name: 'Hergebruik', color: '#EF4444' })
+        .expect(201);
+
+      expect(recreateRes.body.data.name).toBe('Hergebruik');
+      expect(recreateRes.body.data.color).toBe('#EF4444');
+      expect(recreateRes.body.data.isDeleted).toBe(false);
+    });
   });
 });

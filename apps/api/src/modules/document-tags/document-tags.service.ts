@@ -76,13 +76,32 @@ export class DocumentTagsService {
 
   async create(dto: CreateDocumentTagDto, user: User) {
     const orgId = user.orgId!;
-    await this.assertNameAvailable(orgId, dto.name);
+    const name = dto.name.trim();
+    await this.assertNameAvailable(orgId, name);
+
+    // The `@@unique([orgId, name])` index also covers soft-deleted rows, so a
+    // previously deleted name would otherwise be permanently unusable. Revive
+    // that row instead of inserting a colliding one.
+    const archived = await this.prisma.documentTag.findFirst({
+      where: { orgId, name, isDeleted: true },
+      select: { id: true },
+    });
+    if (archived) {
+      return this.prisma.documentTag.update({
+        where: { id: archived.id },
+        data: {
+          isDeleted: false,
+          color: dto.color,
+          sortOrder: dto.sortOrder ?? 0,
+        },
+      });
+    }
 
     try {
       return await this.prisma.documentTag.create({
         data: {
           orgId,
-          name: dto.name.trim(),
+          name,
           color: dto.color,
           sortOrder: dto.sortOrder ?? 0,
         },

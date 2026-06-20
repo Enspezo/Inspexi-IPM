@@ -52,6 +52,10 @@ const entityLabels: Record<string, Record<string, string>> = {
     contactId: 'Relatie',
     locationTypeId: 'Locatietype',
     customFields: 'Eigen velden',
+    gebruiksfunctie: 'Gebruiksfunctie',
+    bouwjaar: 'Bouwjaar',
+    oppervlakte: 'Oppervlakte',
+    bagId: 'BAG-ID',
   },
   CustomerGroup: {},
   ProductGroup: {

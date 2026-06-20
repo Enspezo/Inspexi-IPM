@@ -274,6 +274,7 @@ async function main() {
   await prisma.contactPerson.deleteMany();
   await prisma.contactEmail.deleteMany();
   await prisma.contactLog.deleteMany();
+  await prisma.pdokApiLog.deleteMany();
   await prisma.location.deleteMany();
   await prisma.contactAddress.deleteMany();
   await prisma.contact.deleteMany();
@@ -539,6 +540,13 @@ async function main() {
       city: 'Amsterdam',
       locationTypeId: crmLocationTypes.kantoor,
       notes: 'Grote kantoorvloer, 3 verdiepingen',
+      // Voorbeeld van PDOK/BAG-verrijking (zoals de refresh-knop oplevert)
+      lat: 52.3376,
+      lng: 4.8728,
+      gebruiksfunctie: 'kantoorfunctie',
+      bouwjaar: 2004,
+      oppervlakte: 12500,
+      bagId: '0363100012168433',
     },
   });
   await prisma.location.create({

@@ -393,6 +393,7 @@ describe('Cross-tenant FK isolation (e2e)', () => {
       await prisma.customerGroup.deleteMany({ where: { orgId: { in: orgIds } } });
       await prisma.locationContactPerson.deleteMany({ where: { orgId: { in: orgIds } } });
       await prisma.contactPerson.deleteMany({ where: { orgId: { in: orgIds } } });
+      await prisma.pdokApiLog.deleteMany({ where: { orgId: { in: orgIds } } });
       await prisma.location.deleteMany({ where: { orgId: { in: orgIds } } });
       // Org-eigen locatietypes (systeem-types met orgId null worden niet geraakt).
       await prisma.locationTypeDefinition.deleteMany({ where: { orgId: { in: orgIds } } });
@@ -602,6 +603,19 @@ describe('Cross-tenant FK isolation (e2e)', () => {
         .set('Authorization', `Bearer ${tokenA}`)
         .send({ locationTypeId: locationTypeBId })
         .expect(403);
+    });
+
+    it("rejects PDOK-refreshing another org's location (403)", async () => {
+      // Org-ownership wordt vóór elke PDOK-call gecontroleerd, dus dit raakt
+      // nooit het externe PDOK en schrijft geen PdokApiLog-rij.
+      await request(app.getHttpServer())
+        .post(`/api/v1/contacts/locations/${locationBId}/pdok-refresh`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({ confirm: false })
+        .expect(403);
+
+      const logs = await prisma.pdokApiLog.count({ where: { locationId: locationBId } });
+      expect(logs).toBe(0);
     });
 
     it('allows a location with a system CRM locationType (positive control)', async () => {

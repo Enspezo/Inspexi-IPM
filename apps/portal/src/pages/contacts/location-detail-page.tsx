@@ -20,6 +20,7 @@ import {
 } from './hooks/use-contacts';
 import { useLocationTypes } from '@/pages/location-types/hooks/use-location-types';
 import { LinkContactPersonModal } from './components/link-contact-person-modal';
+import { LocationPdokSection } from './components/location-pdok-section';
 import { DocumentsSection } from '@/components/documents/documents-section';
 import { AuditHistory } from '@/components/audit-history/audit-history';
 import type { ParsedAddress } from '@/lib/geocoding';
@@ -314,6 +315,9 @@ export default function LocationDetailPage() {
             </div>
           </Card>
         )}
+
+        {/* PDOK-gegevens */}
+        <LocationPdokSection location={location} userCanWrite={!!userCanWrite} />
 
         {/* Contactpersonen */}
         <ContactPersonsSection

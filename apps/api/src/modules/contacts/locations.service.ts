@@ -3,12 +3,16 @@ import {
   NotFoundException,
   ForbiddenException,
   BadRequestException,
+  Logger,
 } from '@nestjs/common';
 import { User, Role, Prisma, LocationTypeScope } from '@prisma/client';
 import { PrismaService } from '@/prisma';
 import { paginate, orgScope, assertFound } from '@/common';
 import { CustomFieldsValidator } from '@/modules/custom-fields/custom-fields.validator';
-import { GeocodingService } from '@/modules/geocoding/geocoding.service';
+import {
+  GeocodingService,
+  BagBuildingData,
+} from '@/modules/geocoding/geocoding.service';
 import { ContactsService } from './contacts.service';
 import {
   CreateLocationDto,
@@ -20,6 +24,8 @@ import {
 
 @Injectable()
 export class LocationsService {
+  private readonly logger = new Logger(LocationsService.name);
+
   constructor(
     private prisma: PrismaService,
     private customFieldsValidator: CustomFieldsValidator,
@@ -98,6 +104,14 @@ export class LocationsService {
       dto.pdokData, dto.lat, dto.lng,
     );
 
+    // Server-side BAG-verrijking uit de meegegeven PDOK-data (vertrouw niet op
+    // de client voor de bouwgegevens). Een PDOK-fout mag het aanmaken NIET
+    // blokkeren — `enrichFromPdok` degradeert netjes naar lege velden.
+    const bag = await this.enrichFromPdok(
+      dto.pdokData ?? null,
+      { orgId: contact.orgId, userId: user.id, operation: 'BAG_ENRICH' },
+    );
+
     return this.prisma.location.create({
       data: {
         contactId: contact.id,
@@ -113,10 +127,42 @@ export class LocationsService {
         pdokData: (dto.pdokData ?? null) as any,
         lat,
         lng,
+        gebruiksfunctie: bag.gebruiksfunctie,
+        bouwjaar: bag.bouwjaar,
+        oppervlakte: bag.oppervlakte,
+        bagId: bag.bagId,
         customFields: cfData as any,
       },
       include: { locationType: LocationsService.LOCATION_TYPE_SELECT },
     });
+  }
+
+  /**
+   * Haal BAG-bouwgegevens op uit opgeslagen/meegegeven PDOK-data. Fail-soft:
+   * bij ontbrekend adresseerbaar-object-id of een PDOK-fout retourneert dit
+   * lege velden zonder te gooien (zodat create/refresh niet blokkeert).
+   */
+  private async enrichFromPdok(
+    pdokData: Record<string, unknown> | null,
+    ctx: { orgId: string | null; userId?: string | null; locationId?: string | null; operation: 'BAG_ENRICH' | 'REFRESH' },
+  ): Promise<BagBuildingData> {
+    const empty: BagBuildingData = {
+      gebruiksfunctie: null,
+      bouwjaar: null,
+      oppervlakte: null,
+      bagId: null,
+    };
+    const vboId = this.geocodingService.extractAdresseerbaarObjectId(pdokData);
+    if (!vboId) return empty;
+    try {
+      return await this.geocodingService.bagEnrich(vboId, ctx);
+    } catch (err) {
+      this.logger.warn(
+        `BAG-verrijking mislukt voor adresseerbaar object ${vboId}`,
+        err instanceof Error ? err.stack : String(err),
+      );
+      return empty;
+    }
   }
 
   async findAllLocations(user: User, query: ListLocationsQueryDto) {
@@ -264,6 +310,135 @@ export class LocationsService {
       },
       include: { locationType: LocationsService.LOCATION_TYPE_SELECT },
     });
+  }
+
+  /** De BAG-velden die in de refresh-diff vergeleken worden, met NL-label. */
+  private static readonly PDOK_DIFF_FIELDS: ReadonlyArray<{
+    field: 'gebruiksfunctie' | 'bouwjaar' | 'oppervlakte' | 'bagId' | 'lat' | 'lng';
+    label: string;
+  }> = [
+    { field: 'gebruiksfunctie', label: 'Gebruiksfunctie' },
+    { field: 'bouwjaar', label: 'Bouwjaar' },
+    { field: 'oppervlakte', label: 'Oppervlakte' },
+    { field: 'bagId', label: 'BAG-ID' },
+    { field: 'lat', label: 'Breedtegraad' },
+    { field: 'lng', label: 'Lengtegraad' },
+  ];
+
+  /** Normaliseer een waarde voor diff-vergelijking (coördinaten afgerond). */
+  private normalizeForDiff(field: string, value: unknown): string | null {
+    if (value == null) return null;
+    if (field === 'lat' || field === 'lng') {
+      const n = typeof value === 'number' ? value : parseFloat(String(value));
+      return Number.isFinite(n) ? n.toFixed(6) : null;
+    }
+    return String(value);
+  }
+
+  /**
+   * Ververs (of vul) de PDOK/BAG-gegevens van een locatie.
+   *
+   * - Haalt verse adres- + BAG-data op (via opgeslagen pdok-id of het adres);
+   * - berekent de diff t.o.v. de huidige velden;
+   * - bij een diff én `confirm !== true` én reeds bestaande data → retourneert
+   *   `{ applied: false, changes, fetched }` ZONDER op te slaan (UI vraagt om
+   *   overschrijven);
+   * - anders → slaat op en retourneert `{ applied: true, changes, location }`
+   *   (de audit-middleware legt de wijziging vast).
+   */
+  async pdokRefresh(locationId: string, confirm: boolean, user: User) {
+    const location = assertFound(
+      await this.prisma.location.findUnique({ where: { id: locationId } }),
+      'Locatie',
+    );
+
+    // Org-scope / ownership (zelfde patroon als de overige locatie-methodes).
+    if (!user.roles.includes(Role.SUPERUSER) && location.orgId !== user.orgId) {
+      throw new ForbiddenException();
+    }
+
+    const logCtx = {
+      operation: 'REFRESH' as const,
+      orgId: location.orgId,
+      userId: user.id,
+      locationId: location.id,
+    };
+
+    // 1) Verse adresdata: eerst via opgeslagen PDOK-id, anders via het adres.
+    const storedPdok = (location.pdokData as Record<string, unknown> | null) ?? null;
+    const storedPdokId = storedPdok?.id ? String(storedPdok.id) : null;
+
+    let parsed = null as Awaited<ReturnType<GeocodingService['lookup']>> | null;
+    if (storedPdokId) {
+      try {
+        parsed = await this.geocodingService.lookup(storedPdokId, logCtx);
+      } catch {
+        parsed = null;
+      }
+    }
+    if (!parsed) {
+      parsed = await this.geocodingService.lookupByAddress(
+        location.street, location.houseNumber, location.postalCode, location.city,
+        logCtx,
+      );
+    }
+    if (!parsed) {
+      throw new NotFoundException('Geen PDOK-resultaat gevonden voor dit adres');
+    }
+
+    // 2) BAG-bouwgegevens (fail-soft).
+    const bag = await this.enrichFromPdok(parsed.pdokData, logCtx);
+
+    const fetched = {
+      gebruiksfunctie: bag.gebruiksfunctie,
+      bouwjaar: bag.bouwjaar,
+      oppervlakte: bag.oppervlakte,
+      bagId: bag.bagId,
+      lat: parsed.lat,
+      lng: parsed.lng,
+    };
+
+    // 3) Diff t.o.v. de huidige velden.
+    const changes = LocationsService.PDOK_DIFF_FIELDS.flatMap(({ field, label }) => {
+      const oldNorm = this.normalizeForDiff(field, (location as any)[field]);
+      const newNorm = this.normalizeForDiff(field, (fetched as any)[field]);
+      if (oldNorm === newNorm) return [];
+      return [{
+        field,
+        label,
+        oldValue: (location as any)[field] ?? null,
+        newValue: (fetched as any)[field] ?? null,
+      }];
+    });
+
+    const hadData =
+      location.gebruiksfunctie != null ||
+      location.bouwjaar != null ||
+      location.oppervlakte != null ||
+      location.bagId != null;
+
+    // Bij bestaande data + afwijking + geen bevestiging → niet opslaan.
+    if (changes.length > 0 && confirm !== true && hadData) {
+      return { applied: false, changes, fetched };
+    }
+
+    // 4) Opslaan (ook bij geen diff: ververst pdokData/coördinaten).
+    const updated = await this.prisma.location.update({
+      where: { id: locationId },
+      data: {
+        gebruiksfunctie: fetched.gebruiksfunctie,
+        bouwjaar: fetched.bouwjaar,
+        oppervlakte: fetched.oppervlakte,
+        bagId: fetched.bagId,
+        lat: fetched.lat ?? location.lat,
+        lng: fetched.lng ?? location.lng,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        pdokData: parsed.pdokData as any,
+      },
+      include: { locationType: LocationsService.LOCATION_TYPE_SELECT },
+    });
+
+    return { applied: true, changes, location: updated };
   }
 
   async addLocationContactPerson(locationId: string, dto: CreateLocationContactPersonDto, user: User) {

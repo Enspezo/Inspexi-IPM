@@ -48,6 +48,9 @@ export const NOTIFICATION_MODEL_TYPES: Record<
     NotificationType.OFFERTE_BEKEKEN,
     NotificationType.OFFERTE_ONDERTEKEND,
     NotificationType.OFFERTE_VERLOPEN,
+    NotificationType.OFFERTE_GOEDKEURING_GEVRAAGD_TEAM,
+    NotificationType.OFFERTE_GOEDKEURING_GEVRAAGD_PERSOON,
+    NotificationType.OFFERTE_GOEDKEURING_AFGEHANDELD,
   ],
   AANVRAGEN: [
     NotificationType.AANVRAAG_TOEGEWEZEN,

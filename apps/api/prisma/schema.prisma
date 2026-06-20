@@ -80,6 +80,17 @@ enum ApprovalStatus {
   PENDING
   APPROVED
   REJECTED
+  CANCELLED
+}
+
+// Soort goedkeuringsverzoek (REQ5):
+// - THRESHOLD       = verplicht (org-bedragdrempel of template-`requiresApproval`); blokkeert versturen.
+// - VOLUNTARY_TEAM  = vrijwillig, gericht aan een rol/team; adviserend, blokkeert niet.
+// - VOLUNTARY_PERSON = vrijwillig, gericht aan één persoon; adviserend, blokkeert niet.
+enum ApprovalKind {
+  THRESHOLD
+  VOLUNTARY_TEAM
+  VOLUNTARY_PERSON
 }
 
 enum NotificationType {
@@ -110,6 +121,9 @@ enum NotificationType {
   INSPECTIEPLAN_TER_REVIEW
   INSPECTIEPLAN_GOEDGEKEURD
   INSPECTIEPLAN_AFGEKEURD
+  OFFERTE_GOEDKEURING_GEVRAAGD_TEAM
+  OFFERTE_GOEDKEURING_GEVRAAGD_PERSOON
+  OFFERTE_GOEDKEURING_AFGEHANDELD
 }
 
 enum AuditAction {
@@ -289,6 +303,12 @@ model Organization {
   inspectorStaticPhone  String?            @map("inspector_static_phone")
   inspectorStaticEmail  String?            @map("inspector_static_email")
 
+  // Offerte-goedkeuring drempel (REQ5): offertes met `total` strikt boven dit bedrag
+  // mogen niet verstuurd worden zonder goedkeuring door iemand met `quoteApprovalRequiredRole`.
+  // Beide null → geen verplichte drempel (val terug op template-`requiresApproval`).
+  quoteApprovalThreshold    Decimal? @map("quote_approval_threshold") @db.Decimal(12, 2)
+  quoteApprovalRequiredRole Role?    @map("quote_approval_required_role")
+
   users                    User[]
   invitations              Invitation[]
   contacts                 Contact[]
@@ -387,6 +407,9 @@ model User {
   icalToken       String         @unique @default(uuid()) @map("ical_token")
   createdAt       DateTime       @default(now()) @map("created_at")
 
+  // Standaard vrijwillige goedkeurder (persoon) — voorvult het persoon-verzoek (REQ5).
+  defaultApprovalPersonId String? @map("default_approval_person_id") @db.Uuid
+
   // Klantportaal-contactgegevens (los van login-`email`; nooit automatisch met klanten gedeeld).
   // Worden alleen getoond bij org-modus INSPECTOR én expliciete toestemming per kanaal.
   contactPhone          String?  @map("contact_phone")
@@ -407,7 +430,12 @@ model User {
   createdQuotes      Quote[]                @relation("QuoteCreatedByUser")
   requestedApprovals QuoteApprovalRequest[] @relation("ApprovalRequestedByUser")
   reviewedApprovals  QuoteApprovalRequest[] @relation("ApprovalReviewedByUser")
+  targetedApprovals  QuoteApprovalRequest[] @relation("ApprovalApproverUser")
   quoteQuestions     QuoteQuestion[]        @relation("QuoteQuestionUser")
+
+  // Self-relatie: standaard vrijwillige goedkeurder.
+  defaultApprovalPerson User?  @relation("UserDefaultApprover", fields: [defaultApprovalPersonId], references: [id], onDelete: SetNull)
+  defaultApproverFor    User[] @relation("UserDefaultApprover")
 
   notifications     Notification[]
   notificationPrefs NotificationPref[]
@@ -1129,9 +1157,17 @@ model QuoteApprovalRequest {
   requestedAt DateTime       @default(now()) @map("requested_at")
   reviewedAt  DateTime?      @map("reviewed_at")
 
+  // Gericht goedkeuringsverzoek (REQ5).
+  kind          ApprovalKind @default(THRESHOLD)
+  // Doelrol: voor THRESHOLD de org-vereiste rol; voor VOLUNTARY_TEAM de rol/team van de aanvrager.
+  approverRole  Role?        @map("approver_role")
+  // Doelpersoon: alleen voor VOLUNTARY_PERSON.
+  approverUserId String?     @map("approver_user_id") @db.Uuid
+
   quote           Quote @relation(fields: [quoteId], references: [id], onDelete: Cascade)
   requestedByUser User  @relation("ApprovalRequestedByUser", fields: [requestedBy], references: [id])
   reviewedByUser  User? @relation("ApprovalReviewedByUser", fields: [reviewedBy], references: [id])
+  approverUser    User? @relation("ApprovalApproverUser", fields: [approverUserId], references: [id])
 
   @@index([quoteId])
   @@map("imp_quote_approval_requests")

@@ -20,6 +20,30 @@ export function useUser(id: string) {
   });
 }
 
+/** Lichte gebruiker-shape voor persoon-/team-pickers (REQ5). */
+export interface SelectableUser {
+  id: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  roles: Role[];
+}
+
+/**
+ * Lichte, org-scoped gebruikerslijst voor pickers. Toegankelijk voor brede
+ * rollen (anders dan `useUsers`, dat ORG_ADMIN-only is). Optioneel op rol
+ * gefilterd via de backend (`roles hasSome [role]`).
+ */
+export function useSelectableUsers(role?: Role, options: { enabled?: boolean } = {}) {
+  const qs = role ? `?role=${role}` : '';
+  return useQuery<SelectableUser[]>({
+    queryKey: ['users', 'selectable', role ?? 'all'],
+    queryFn: () => apiClient.get<SelectableUser[]>(`/users/selectable${qs}`),
+    staleTime: 15 * 60 * 1000,
+    enabled: options.enabled,
+  });
+}
+
 interface InviteUserDto {
   email: string;
   role: Role;

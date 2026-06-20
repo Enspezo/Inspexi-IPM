@@ -17,6 +17,7 @@ import { SessionsCard } from './components/sessions-card';
 import { AvatarCard } from './components/avatar-card';
 import { SignatureCard } from './components/signature-card';
 import { HomeAddressCard } from './components/home-address-card';
+import { ApprovalDefaultsCard } from './components/approval-defaults-card';
 import { ActivityTab } from './components/activity-tab';
 
 const profileSchema = z.object({
@@ -127,6 +128,9 @@ export default function ProfilePage() {
 
           {/* Signature */}
           <SignatureCard />
+
+          {/* Standaard goedkeurder (vrijwillige persoon-goedkeuring) */}
+          <ApprovalDefaultsCard />
 
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
             {/* Edit form */}

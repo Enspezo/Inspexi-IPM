@@ -56,6 +56,29 @@ export function assertTemplateLinked(quote: { templateId: string | null }): void
   }
 }
 
+/**
+ * Whether a quote may not be sent without an approved *mandatory* approval (REQ5).
+ *
+ * Two independent triggers, OR-combined:
+ *  - **Org threshold** — both `quoteApprovalThreshold` and `quoteApprovalRequiredRole`
+ *    are configured AND the quote total is *strictly* above the threshold.
+ *  - **Template** — the quote's linked template set `requiresApproval`.
+ *
+ * Voluntary (advisory) approval requests never affect this — they neither set it
+ * nor clear it.
+ */
+export function isQuoteApprovalRequired(
+  org: { quoteApprovalThreshold: unknown | null; quoteApprovalRequiredRole: Role | null },
+  quote: { total: unknown; requiresApproval: boolean },
+): boolean {
+  const thresholdActive =
+    org.quoteApprovalThreshold !== null &&
+    org.quoteApprovalThreshold !== undefined &&
+    org.quoteApprovalRequiredRole !== null &&
+    Number(quote.total) > Number(org.quoteApprovalThreshold);
+  return thresholdActive || quote.requiresApproval;
+}
+
 export const VALID_TRANSITIONS: Record<QuoteStatus, QuoteStatus[]> = {
   [QuoteStatus.CONCEPT]: [QuoteStatus.TER_GOEDKEURING, QuoteStatus.GOEDGEKEURD, QuoteStatus.VERLOPEN],
   [QuoteStatus.TER_GOEDKEURING]: [QuoteStatus.GOEDGEKEURD, QuoteStatus.CONCEPT, QuoteStatus.VERLOPEN],

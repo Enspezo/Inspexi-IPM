@@ -8,6 +8,7 @@ import {
   MaxLength,
   IsNumber,
   IsBoolean,
+  IsUUID,
   ValidateIf,
 } from 'class-validator';
 
@@ -90,4 +91,15 @@ export class UpdateProfileDto {
   @IsOptional()
   @IsBoolean()
   shareEmailWithClients?: boolean;
+
+  // ─── Standaard vrijwillige goedkeurder (persoon) (REQ5) ───
+
+  @ApiPropertyOptional({
+    description: 'Standaard goedkeurder (gebruiker-ID) voor vrijwillige persoon-goedkeuringsverzoeken; null = geen',
+    nullable: true,
+  })
+  @IsOptional()
+  @ValidateIf((o) => o.defaultApprovalPersonId !== null)
+  @IsUUID()
+  defaultApprovalPersonId?: string | null;
 }

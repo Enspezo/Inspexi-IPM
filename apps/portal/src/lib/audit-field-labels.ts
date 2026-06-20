@@ -135,6 +135,7 @@ const entityLabels: Record<string, Record<string, string>> = {
     contactEmail: 'E-mailadres klantportaal',
     sharePhoneWithClients: 'Telefoon tonen in klantportaal',
     shareEmailWithClients: 'E-mail tonen in klantportaal',
+    defaultApprovalPersonId: 'Standaard goedkeurder',
   },
   Organization: {
     slug: 'Slug',
@@ -146,6 +147,8 @@ const entityLabels: Record<string, Record<string, string>> = {
     inspectorEmailDisplay: 'E-mail-weergave klantportaal',
     inspectorStaticPhone: 'Statisch telefoonnummer klantportaal',
     inspectorStaticEmail: 'Statisch e-mailadres klantportaal',
+    quoteApprovalThreshold: 'Goedkeuringsgrens offertes',
+    quoteApprovalRequiredRole: 'Vereiste goedkeur-rol offertes',
   },
   CustomFieldDefinition: {
     entityType: 'Entiteitstype',

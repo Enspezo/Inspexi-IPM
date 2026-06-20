@@ -83,6 +83,7 @@ export const APPROVAL_STATUS: StatusMap = {
   [ApprovalStatus.PENDING]: { label: 'In afwachting', classes: 'bg-yellow-100 text-yellow-800' },
   [ApprovalStatus.APPROVED]: { label: 'Goedgekeurd', classes: 'bg-green-100 text-green-800' },
   [ApprovalStatus.REJECTED]: { label: 'Afgewezen', classes: 'bg-red-100 text-red-800' },
+  [ApprovalStatus.CANCELLED]: { label: 'Ingetrokken', classes: 'bg-gray-100 text-gray-600' },
 };
 
 export const PLANNING_STATUS: StatusMap = {

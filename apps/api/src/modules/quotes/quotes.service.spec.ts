@@ -381,6 +381,59 @@ describe('QuotesService', () => {
       const call = mockPrismaService.quote.findMany.mock.calls[0][0];
       expect(call.where.orgId).toBeUndefined();
     });
+
+    it('should filter by templateId', async () => {
+      mockPrismaService.quote.findMany.mockResolvedValue([]);
+      mockPrismaService.quote.count.mockResolvedValue(0);
+
+      await service.findAll(mockUser, {
+        templateId: 'template-1',
+        page: 1,
+        limit: 20,
+      });
+
+      expect(mockPrismaService.quote.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            templateId: 'template-1',
+          }),
+        }),
+      );
+    });
+
+    it("should filter quotes without a template when templateId is 'none'", async () => {
+      mockPrismaService.quote.findMany.mockResolvedValue([]);
+      mockPrismaService.quote.count.mockResolvedValue(0);
+
+      await service.findAll(mockUser, {
+        templateId: 'none',
+        page: 1,
+        limit: 20,
+      });
+
+      expect(mockPrismaService.quote.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            templateId: null,
+          }),
+        }),
+      );
+    });
+
+    it('should include the template (id + name) in list results', async () => {
+      mockPrismaService.quote.findMany.mockResolvedValue([]);
+      mockPrismaService.quote.count.mockResolvedValue(0);
+
+      await service.findAll(mockUser, { page: 1, limit: 20 });
+
+      expect(mockPrismaService.quote.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          include: expect.objectContaining({
+            template: { select: { id: true, name: true } },
+          }),
+        }),
+      );
+    });
   });
 
   // ─── findOne ─────────────────────────────────────────────────────────

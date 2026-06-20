@@ -13,6 +13,7 @@ interface ListQuotesParams {
   status?: QuoteStatus;
   contactId?: string;
   createdBy?: string;
+  templateId?: string;
   page?: number;
   limit?: number;
   sortBy?: string;
@@ -25,6 +26,7 @@ export function useQuotes(params: ListQuotesParams = {}) {
   if (params.status) queryParams.set('status', params.status);
   if (params.contactId) queryParams.set('contactId', params.contactId);
   if (params.createdBy) queryParams.set('createdBy', params.createdBy);
+  if (params.templateId) queryParams.set('templateId', params.templateId);
   if (params.page) queryParams.set('page', String(params.page));
   if (params.limit) queryParams.set('limit', String(params.limit));
   if (params.sortBy) queryParams.set('sortBy', params.sortBy);

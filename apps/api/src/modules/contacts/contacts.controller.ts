@@ -37,6 +37,7 @@ import {
   ListLocationsQueryDto,
   CreateLocationContactPersonDto,
   UpdateLocationContactPersonDto,
+  CreateContactPersonLocationDto,
 } from './dto';
 import { Roles, CurrentUser } from '@/common/decorators';
 
@@ -238,6 +239,19 @@ export class ContactsController {
   ) {
     const links = await this.contactPersonsService.findContactPersonLocations(personId, user);
     return { success: true, data: links };
+  }
+
+  @Post('contact-persons/:personId/locations')
+  @Roles(...OFFICE_ROLES)
+  @ApiOperation({ summary: 'Locatie koppelen aan contactpersoon' })
+  @ApiResponse({ status: 201, description: 'Locatie gekoppeld' })
+  async addContactPersonLocation(
+    @Param('personId', ParseUUIDPipe) personId: string,
+    @Body() dto: CreateContactPersonLocationDto,
+    @CurrentUser() user: User,
+  ) {
+    const link = await this.contactPersonsService.addContactPersonLocation(personId, dto, user);
+    return { success: true, data: link };
   }
 
   @Get('contact-persons/:personId')

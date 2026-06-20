@@ -10,6 +10,7 @@ import {
 import { ActionMenu, Button, ErrorBox, Spinner, StatusBadge, Tabs, useConfirm, useToast } from '@/components/ui';
 import { PRIORITY, REQUEST_STATUS } from '@/lib/status';
 import { DetailPageLayout, SidebarSection } from '@/components/layout/detail-page-layout';
+import { FavoriteStar } from '@/components/favorites/favorite-star';
 import { NotesSidebarSection, HistorySidebarSection, DocumentsSidebarSection } from '@/components/layout/sidebar-sections';
 import { useAuth } from '@/providers/auth-provider';
 import { useWindowTabSync } from '@/providers/window-tabs';
@@ -182,6 +183,7 @@ export default function RequestDetailPage() {
           </button>
           <div>
             <div className="flex items-center gap-3">
+              <FavoriteStar entityType="Request" entityId={request.id} />
               <h2 className="text-2xl font-bold text-gray-900">{request.title}</h2>
               <StatusBadge status={request.status} map={REQUEST_STATUS} />
               <StatusBadge status={request.priority} map={PRIORITY} />

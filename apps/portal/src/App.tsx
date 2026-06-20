@@ -110,6 +110,7 @@ const EmailTemplatesPage = lazy(() => import('@/pages/email-templates/email-temp
 const EmailTemplateDetailPage = lazy(() => import('@/pages/email-templates/email-template-detail-page'));
 const ErrorReportsPage = lazy(() => import('@/pages/error-reports/error-reports-page'));
 const NotesPage = lazy(() => import('@/pages/notes/notes-page'));
+const FavoritesPage = lazy(() => import('@/pages/favorites/favorites-page'));
 const WorkOrdersPage = lazy(() => import('@/pages/work-orders/work-orders-page'));
 const WorkOrderDetailPage = lazy(() => import('@/pages/work-orders/work-order-detail-page'));
 // Inspectiedomein (Fase 5)
@@ -215,6 +216,7 @@ export default function App() {
             <Route path="/search" element={<SearchPage />} />
             <Route path="/error-reports" element={<ErrorReportsPage />} />
             <Route path="/notities" element={<NotesPage />} />
+            <Route path="/favorites" element={<FavoritesPage />} />
             {/* Inspectiedomein (Fase 5) */}
             <Route path="/inspections" element={<InspectionsPage />} />
             <Route path="/inspections/:id" element={<InspectionDetailPage />} />

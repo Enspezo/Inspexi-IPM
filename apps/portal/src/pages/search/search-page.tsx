@@ -39,6 +39,20 @@ function formatDate(dateStr: string): string {
   return new Date(dateStr).toLocaleDateString('nl-NL');
 }
 
+// Small amber filled star shown before favorited results (backend orders them first).
+function FavoriteMark() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      className="mr-1 inline-block h-4 w-4 align-text-bottom text-amber-400"
+      aria-label="Favoriet"
+    >
+      <path d="M11.48 3.499a.562.562 0 011.04 0l2.125 5.111a.563.563 0 00.475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 00-.182.557l1.285 5.385a.562.562 0 01-.84.61l-4.725-2.885a.562.562 0 00-.586 0L6.982 20.54a.562.562 0 01-.84-.61l1.285-5.386a.562.562 0 00-.182-.557l-4.204-3.602a.562.562 0 01.321-.988l5.518-.442a.563.563 0 00.475-.345L11.48 3.5z" />
+    </svg>
+  );
+}
+
 // ─── Tab config ──────────────────────────────────────────
 
 const TAB_ORDER: SearchEntityType[] = [
@@ -71,12 +85,15 @@ function useContactColumns(): Column<SearchContactResult>[] {
       key: 'name',
       header: 'Naam',
       render: (c) => (
-        <Link
-          to={`/contacts/${c.id}`}
-          className="font-medium text-primary-600 hover:text-primary-800 hover:underline"
-        >
-          {contactDisplayName(c)}
-        </Link>
+        <>
+          {c.isFavorited && <FavoriteMark />}
+          <Link
+            to={`/contacts/${c.id}`}
+            className="font-medium text-primary-600 hover:text-primary-800 hover:underline"
+          >
+            {contactDisplayName(c)}
+          </Link>
+        </>
       ),
     },
     {
@@ -108,12 +125,15 @@ function useContactPersonColumns(): Column<SearchContactPersonResult>[] {
       key: 'name',
       header: 'Naam',
       render: (p) => (
-        <Link
-          to={`/contacts/${p.contactId}`}
-          className="font-medium text-primary-600 hover:text-primary-800 hover:underline"
-        >
-          {p.firstName} {p.lastName}
-        </Link>
+        <>
+          {p.isFavorited && <FavoriteMark />}
+          <Link
+            to={`/contacts/${p.contactId}`}
+            className="font-medium text-primary-600 hover:text-primary-800 hover:underline"
+          >
+            {p.firstName} {p.lastName}
+          </Link>
+        </>
       ),
     },
     {
@@ -147,12 +167,15 @@ function useLocationColumns(): Column<SearchLocationResult>[] {
       key: 'name',
       header: 'Naam',
       render: (l) => (
-        <Link
-          to={`/contacts/${l.contactId}`}
-          className="font-medium text-primary-600 hover:text-primary-800 hover:underline"
-        >
-          {l.name}
-        </Link>
+        <>
+          {l.isFavorited && <FavoriteMark />}
+          <Link
+            to={`/contacts/${l.contactId}`}
+            className="font-medium text-primary-600 hover:text-primary-800 hover:underline"
+          >
+            {l.name}
+          </Link>
+        </>
       ),
     },
     {
@@ -196,12 +219,15 @@ function useRequestColumns(): Column<SearchRequestResult>[] {
       key: 'title',
       header: 'Titel',
       render: (r) => (
-        <Link
-          to={`/requests/${r.id}`}
-          className="font-medium text-primary-600 hover:text-primary-800 hover:underline"
-        >
-          {r.title}
-        </Link>
+        <>
+          {r.isFavorited && <FavoriteMark />}
+          <Link
+            to={`/requests/${r.id}`}
+            className="font-medium text-primary-600 hover:text-primary-800 hover:underline"
+          >
+            {r.title}
+          </Link>
+        </>
       ),
     },
     {
@@ -228,12 +254,15 @@ function useQuoteColumns(): Column<SearchQuoteResult>[] {
       key: 'number',
       header: 'Nummer',
       render: (q) => (
-        <Link
-          to={`/quotes/${q.id}`}
-          className="font-medium text-primary-600 hover:text-primary-800 hover:underline"
-        >
-          {q.quoteNumber}
-        </Link>
+        <>
+          {q.isFavorited && <FavoriteMark />}
+          <Link
+            to={`/quotes/${q.id}`}
+            className="font-medium text-primary-600 hover:text-primary-800 hover:underline"
+          >
+            {q.quoteNumber}
+          </Link>
+        </>
       ),
     },
     {
@@ -270,12 +299,15 @@ function useTaskColumns(): Column<SearchTaskResult>[] {
       key: 'title',
       header: 'Titel',
       render: (t) => (
-        <Link
-          to={`/tasks/${t.id}`}
-          className="font-medium text-primary-600 hover:text-primary-800 hover:underline"
-        >
-          {t.title}
-        </Link>
+        <>
+          {t.isFavorited && <FavoriteMark />}
+          <Link
+            to={`/tasks/${t.id}`}
+            className="font-medium text-primary-600 hover:text-primary-800 hover:underline"
+          >
+            {t.title}
+          </Link>
+        </>
       ),
     },
     {
@@ -350,12 +382,15 @@ function useProductColumns(): Column<SearchProductResult>[] {
       key: 'name',
       header: 'Naam',
       render: (p) => (
-        <Link
-          to={`/products/${p.id}`}
-          className="font-medium text-primary-600 hover:text-primary-800 hover:underline"
-        >
-          {p.name}
-        </Link>
+        <>
+          {p.isFavorited && <FavoriteMark />}
+          <Link
+            to={`/products/${p.id}`}
+            className="font-medium text-primary-600 hover:text-primary-800 hover:underline"
+          >
+            {p.name}
+          </Link>
+        </>
       ),
     },
     {

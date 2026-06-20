@@ -6,6 +6,7 @@ import { z } from 'zod';
 import { Role, DocumentEntityType, CustomFieldEntityType } from '@/types';
 import { ActionMenu, Button, Card, ErrorBox, InfoField, Spinner, Input, Select, useToast } from '@/components/ui';
 import { DetailPageLayout } from '@/components/layout/detail-page-layout';
+import { FavoriteStar } from '@/components/favorites/favorite-star';
 import { AuditHistory } from '@/components/audit-history/audit-history';
 import { DocumentsSection, UploadDocumentModal } from '@/components/documents';
 import { CustomFieldsDisplay, CustomFieldsForm } from '@/components/custom-fields';
@@ -145,6 +146,7 @@ export default function ProductDetailPage() {
             </button>
             <div>
               <div className="flex items-center gap-3">
+                <FavoriteStar entityType="Product" entityId={product.id} />
                 <h2 className="text-2xl font-bold text-gray-900">{product.name}</h2>
                 <span
                   className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${

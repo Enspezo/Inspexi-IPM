@@ -8,6 +8,7 @@ import { ActionMenu, Button, ErrorBox, Spinner, Tabs, useConfirm, useToast } fro
 import { getKvkProfile } from '@/lib/kvk';
 import { type VatValidationResult } from '@/lib/vat';
 import { DetailPageLayout, SidebarSection } from '@/components/layout/detail-page-layout';
+import { FavoriteStar } from '@/components/favorites/favorite-star';
 import { useAuth } from '@/providers/auth-provider';
 import { useContact, useUpdateContact, useDeleteContact, useDeleteAddress, useDeleteLocation } from './hooks/use-contacts';
 import { useUsers } from '@/pages/users/hooks/use-users';
@@ -329,6 +330,7 @@ export default function ContactDetailPage() {
           </button>
           <div>
             <div className="flex items-center gap-3">
+              <FavoriteStar entityType="Contact" entityId={contact.id} />
               <h2 className="text-2xl font-bold text-gray-900">
                 {getContactDisplayName(contact)}
               </h2>

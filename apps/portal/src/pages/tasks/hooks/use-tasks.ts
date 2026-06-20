@@ -19,6 +19,7 @@ interface ListTasksParams {
   limit?: number;
   sortBy?: string;
   sortOrder?: 'asc' | 'desc';
+  enabled?: boolean;
 }
 
 export function useTasks(params: ListTasksParams = {}) {
@@ -40,6 +41,7 @@ export function useTasks(params: ListTasksParams = {}) {
   return useQuery<PaginatedResponse<Task>>({
     queryKey: ['tasks', params],
     queryFn: () => apiClient.get<PaginatedResponse<Task>>(endpoint),
+    enabled: params.enabled,
   });
 }
 

@@ -11,6 +11,7 @@ export interface ListProjectsParams {
   limit?: number;
   sortBy?: string;
   sortOrder?: 'asc' | 'desc';
+  enabled?: boolean;
 }
 
 function buildQuery(params: Record<string, any>): string {
@@ -25,10 +26,12 @@ function buildQuery(params: Record<string, any>): string {
 }
 
 export function useProjects(params: ListProjectsParams = {}) {
+  const { enabled, ...queryParams } = params;
   return useQuery({
     queryKey: ['projects', params],
     queryFn: () =>
-      apiClient.get<PaginatedResponse<Project>>(`/projects${buildQuery(params)}`),
+      apiClient.get<PaginatedResponse<Project>>(`/projects${buildQuery(queryParams)}`),
+    enabled,
   });
 }
 

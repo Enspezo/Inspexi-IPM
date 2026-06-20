@@ -22,6 +22,7 @@ interface ListContactsParams {
   limit?: number;
   sortBy?: string;
   sortOrder?: 'asc' | 'desc';
+  enabled?: boolean;
 }
 
 export function useContacts(params: ListContactsParams = {}) {
@@ -40,6 +41,7 @@ export function useContacts(params: ListContactsParams = {}) {
   return useQuery<PaginatedResponse<Contact>>({
     queryKey: ['contacts', params],
     queryFn: () => apiClient.get<PaginatedResponse<Contact>>(endpoint),
+    enabled: params.enabled,
   });
 }
 

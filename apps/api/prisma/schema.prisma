@@ -160,6 +160,7 @@ enum FollowUpAssigneeType {
 
 enum DocumentEntityType {
   CONTACT
+  LOCATION
   REQUEST
   QUOTE
   PRODUCT

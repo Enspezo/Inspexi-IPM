@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { ContactType, Role } from '@/types';
+import { ContactType, Role, DocumentEntityType } from '@/types';
 import { roleColors as contactPersonRoleColors } from '@/lib/contact-person-role';
 import { Button, Card, ErrorBox, InfoField, Input, Select, Spinner, useConfirm, useToast } from '@/components/ui';
 import { AddressSearchInput } from '@/components/ui/address-search-input';
@@ -20,6 +20,7 @@ import {
 } from './hooks/use-contacts';
 import { useLocationTypes } from '@/pages/location-types/hooks/use-location-types';
 import { LinkContactPersonModal } from './components/link-contact-person-modal';
+import { DocumentsSection } from '@/components/documents/documents-section';
 import { AuditHistory } from '@/components/audit-history/audit-history';
 import type { ParsedAddress } from '@/lib/geocoding';
 import { getErrorMessage } from '@/lib/api-client';
@@ -325,6 +326,18 @@ export default function LocationDetailPage() {
           setEditingNotes={setEditingNotes}
           onOpenLinkModal={() => setIsLinkModalOpen(true)}
         />
+
+        {/* Documenten */}
+        <Card>
+          <div className="mb-4">
+            <h3 className="text-sm font-medium text-gray-900">Documenten</h3>
+          </div>
+          <DocumentsSection
+            entityType={DocumentEntityType.LOCATION}
+            entityId={locationId!}
+            canUpload={!!userCanWrite}
+          />
+        </Card>
 
         {/* Verwijderen */}
         {userCanWrite && (

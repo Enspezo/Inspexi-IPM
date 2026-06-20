@@ -13,7 +13,7 @@ import {
   STORAGE_PROVIDER,
   type StorageProvider,
 } from '@/common/services/storage/storage.interface';
-import { paginate, buildOrderBy, orgScope } from '@/common';
+import { paginate, buildOrderBy, orgScope, assertSameOrg } from '@/common';
 import { UploadDocumentDto, ListDocumentsQueryDto, UpdateDocumentDto } from './dto';
 
 const userSelect = {
@@ -69,6 +69,20 @@ export class DocumentsService {
           [c.firstName, c.lastName].filter(Boolean).join(' ') ||
           '—';
         nameMap.set(c.id, name);
+      }
+    }
+
+    const locationIds = docs
+      .filter((d) => d.entityType === DocumentEntityType.LOCATION)
+      .map((d) => d.entityId);
+
+    if (locationIds.length > 0) {
+      const locations = await this.prisma.location.findMany({
+        where: { id: { in: locationIds } },
+        select: { id: true, name: true },
+      });
+      for (const l of locations) {
+        nameMap.set(l.id, l.name);
       }
     }
 
@@ -171,8 +185,53 @@ export class DocumentsService {
     return nameMap;
   }
 
+  /**
+   * Map a document entity type to its org-scoped Prisma delegate + NL label.
+   * Every linkable entity owns an `orgId`, so a single helper keeps the
+   * cross-tenant upload check uniform across all types.
+   */
+  private entityRef(entityType: DocumentEntityType): {
+    model: Parameters<typeof assertSameOrg>[0];
+    label: string;
+  } {
+    switch (entityType) {
+      case DocumentEntityType.CONTACT:
+        return { model: this.prisma.contact, label: 'Relatie' };
+      case DocumentEntityType.LOCATION:
+        return { model: this.prisma.location, label: 'Locatie' };
+      case DocumentEntityType.REQUEST:
+        return { model: this.prisma.request, label: 'Aanvraag' };
+      case DocumentEntityType.QUOTE:
+        return { model: this.prisma.quote, label: 'Offerte' };
+      case DocumentEntityType.PRODUCT:
+        return { model: this.prisma.product, label: 'Product' };
+      case DocumentEntityType.TASK:
+        return { model: this.prisma.task, label: 'Taak' };
+      case DocumentEntityType.PLANNING:
+        return { model: this.prisma.planningItem, label: 'Afspraak' };
+      case DocumentEntityType.PROJECT:
+        return { model: this.prisma.project, label: 'Project' };
+      case DocumentEntityType.WORK_ORDER:
+        return { model: this.prisma.workOrder, label: 'Werkbon' };
+      case DocumentEntityType.USER:
+        return { model: this.prisma.user, label: 'Gebruiker' };
+      default: {
+        // Exhaustiveness guard: adding a DocumentEntityType without handling it
+        // here becomes a compile-time error instead of a runtime surprise.
+        const _exhaustive: never = entityType;
+        return _exhaustive;
+      }
+    }
+  }
+
   async upload(file: Express.Multer.File, dto: UploadDocumentDto, user: User) {
     const orgId = user.orgId!;
+
+    // Validate the linked entity exists and belongs to the caller's org
+    // (prevents linking a document to another tenant's record by UUID).
+    const { model, label } = this.entityRef(dto.entityType);
+    await assertSameOrg(model, dto.entityId, user.orgId, label);
+
     const storageKey = `${orgId}/${randomUUID()}-${file.originalname}`;
 
     await this.storage.upload(storageKey, file.buffer, file.mimetype);
@@ -465,6 +524,15 @@ export class DocumentsService {
       case DocumentEntityType.PRODUCT:
         // No specific owner for products
         break;
+      case DocumentEntityType.LOCATION: {
+        // Notify the owner of the contact the location belongs to.
+        const location = await this.prisma.location.findUnique({
+          where: { id: document.entityId },
+          select: { contact: { select: { ownerId: true } } },
+        });
+        if (location?.contact?.ownerId) recipientIds.add(location.contact.ownerId);
+        break;
+      }
       case DocumentEntityType.PLANNING: {
         const planningItem = await this.prisma.planningItem.findUnique({
           where: { id: document.entityId },
@@ -473,6 +541,27 @@ export class DocumentsService {
         if (planningItem?.createdBy) recipientIds.add(planningItem.createdBy);
         break;
       }
+      case DocumentEntityType.PROJECT: {
+        const project = await this.prisma.project.findUnique({
+          where: { id: document.entityId },
+          select: { projectManagerId: true, createdBy: true },
+        });
+        if (project?.projectManagerId) recipientIds.add(project.projectManagerId);
+        if (project?.createdBy) recipientIds.add(project.createdBy);
+        break;
+      }
+      case DocumentEntityType.WORK_ORDER: {
+        const workOrder = await this.prisma.workOrder.findUnique({
+          where: { id: document.entityId },
+          select: { createdBy: true },
+        });
+        if (workOrder?.createdBy) recipientIds.add(workOrder.createdBy);
+        break;
+      }
+      case DocumentEntityType.USER:
+        // Notify the user whose profile the document is attached to.
+        recipientIds.add(document.entityId);
+        break;
     }
 
     // Remove the uploader from recipients

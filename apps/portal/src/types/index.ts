@@ -855,6 +855,7 @@ export interface Note {
 
 export enum DocumentEntityType {
   CONTACT = 'CONTACT',
+  LOCATION = 'LOCATION',
   REQUEST = 'REQUEST',
   QUOTE = 'QUOTE',
   PRODUCT = 'PRODUCT',

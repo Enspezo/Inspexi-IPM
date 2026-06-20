@@ -12,6 +12,7 @@ import { PRIORITY, REQUEST_STATUS } from '@/lib/status';
 import { DetailPageLayout, SidebarSection } from '@/components/layout/detail-page-layout';
 import { NotesSidebarSection, HistorySidebarSection, DocumentsSidebarSection } from '@/components/layout/sidebar-sections';
 import { useAuth } from '@/providers/auth-provider';
+import { useWindowTabSync } from '@/providers/window-tabs';
 import {
   useRequest,
   useUpdateRequest,
@@ -64,6 +65,12 @@ export default function RequestDetailPage() {
   const [isEditing, setIsEditing] = useState(false);
   const [isTaskOpen, setIsTaskOpen] = useState(false);
   const [isLogOpen, setIsLogOpen] = useState(false);
+
+  // Keep this record's in-window tab title fresh, and flag it if the record 404s.
+  useWindowTabSync('request', id, {
+    title: request?.title,
+    notFound: !isLoading && (!!error || !request),
+  });
 
   const userCanWrite = user && user.roles.some(r => canWrite.includes(r));
 

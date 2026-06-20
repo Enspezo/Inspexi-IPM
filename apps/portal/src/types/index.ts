@@ -866,6 +866,26 @@ export enum DocumentEntityType {
   WORK_ORDER = 'WORK_ORDER',
 }
 
+/** Volledige document-tag (beheer onder organisatie-instellingen). */
+export interface DocumentTag {
+  id: string;
+  orgId: string;
+  name: string;
+  color: string;
+  sortOrder: number;
+  isActive: boolean;
+  isDeleted: boolean;
+  createdAt: string;
+  _count?: { documents: number };
+}
+
+/** Compacte tag-weergave zoals meegestuurd op documenten / pickers. */
+export interface DocumentTagRef {
+  id: string;
+  name: string;
+  color: string;
+}
+
 export interface CrmDocument {
   id: string;
   orgId: string;
@@ -882,6 +902,7 @@ export interface CrmDocument {
   isDeleted: boolean;
   createdAt: string;
   uploadedBy?: UserSummary;
+  tags?: DocumentTagRef[];
 }
 
 // ─── PRD-07: Planning & Afspraken ───────────────────────

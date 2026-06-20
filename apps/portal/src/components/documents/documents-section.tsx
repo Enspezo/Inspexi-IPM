@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { Button, Spinner, useToast } from '@/components/ui';
-import { useEntityDocuments, useDeleteDocument, useUpdateDocument } from '@/pages/documents/hooks/use-documents';
+import { Button, Select, Spinner, TagPill, useToast } from '@/components/ui';
+import { useDocuments, useDeleteDocument, useUpdateDocument } from '@/pages/documents/hooks/use-documents';
+import { useDocumentTagsCompact } from '@/pages/organization/hooks/use-document-tags';
 import { downloadFile } from '@/lib/download-file';
 import { UploadDocumentModal } from './upload-document-modal';
 import { DocumentPreviewModal } from './document-preview-modal';
@@ -136,6 +137,13 @@ function DocumentRow({
             {doc.description}
           </p>
         )}
+        {doc.tags && doc.tags.length > 0 && (
+          <div className="mt-1 flex flex-wrap gap-1">
+            {doc.tags.map((tag) => (
+              <TagPill key={tag.id} tag={tag} />
+            ))}
+          </div>
+        )}
       </div>
       <div className="flex shrink-0 items-center gap-1">
         {showSharedWithClient && canDelete && (
@@ -196,22 +204,47 @@ export function DocumentsSection({
   canUpload = false,
   showSharedWithClient = false,
 }: DocumentsSectionProps) {
-  const { data, isLoading } = useEntityDocuments(entityType, entityId);
+  const [tagFilter, setTagFilter] = useState('');
+  const { data, isLoading } = useDocuments({
+    entityType,
+    entityId,
+    tagId: tagFilter || undefined,
+    limit: 100,
+  });
+  const { data: availableTags } = useDocumentTagsCompact();
   const [isUploadOpen, setIsUploadOpen] = useState(false);
   const [previewDoc, setPreviewDoc] = useState<CrmDocument | null>(null);
 
   const documents = data?.data || [];
 
+  const tagFilterOptions = [
+    { value: '', label: 'Alle tags' },
+    ...(availableTags ?? []).map((t) => ({ value: t.id, label: t.name })),
+  ];
+
   return (
     <div>
-      {canUpload && (
-        <div className="mb-3 flex justify-end">
-          <Button size="sm" variant="secondary" onClick={() => setIsUploadOpen(true)}>
-            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
-            </svg>
-            Uploaden
-          </Button>
+      {(canUpload || (availableTags && availableTags.length > 0)) && (
+        <div className="mb-3 flex items-center justify-between gap-3">
+          {availableTags && availableTags.length > 0 ? (
+            <div className="w-44">
+              <Select
+                options={tagFilterOptions}
+                value={tagFilter}
+                onChange={(e) => setTagFilter(e.target.value)}
+              />
+            </div>
+          ) : (
+            <span />
+          )}
+          {canUpload && (
+            <Button size="sm" variant="secondary" onClick={() => setIsUploadOpen(true)}>
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+              </svg>
+              Uploaden
+            </Button>
+          )}
         </div>
       )}
 
@@ -248,6 +281,7 @@ export function DocumentsSection({
         isOpen={!!previewDoc}
         onClose={() => setPreviewDoc(null)}
         document={previewDoc}
+        canEditTags={canUpload}
       />
     </div>
   );

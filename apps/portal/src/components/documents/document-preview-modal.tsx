@@ -1,8 +1,10 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Button, Spinner, useToast } from '@/components/ui';
+import { Button, Spinner, TagPill, TagSelect, useToast } from '@/components/ui';
 import { downloadFile } from '@/lib/download-file';
 import { getAccessToken, getErrorMessage } from '@/lib/api-client';
 import type { CrmDocument } from '@/types';
+import { useUpdateDocument } from '@/pages/documents/hooks/use-documents';
+import { useDocumentTagsCompact } from '@/pages/organization/hooks/use-document-tags';
 import { renderAsync as renderDocx } from 'docx-preview';
 import * as XLSX from 'xlsx';
 
@@ -10,6 +12,8 @@ interface DocumentPreviewModalProps {
   isOpen: boolean;
   onClose: () => void;
   document: CrmDocument | null;
+  /** Sta toe om de tags van dit document te bewerken. */
+  canEditTags?: boolean;
 }
 
 const BASE_URL = '/api/v1';
@@ -402,10 +406,41 @@ export function DocumentPreviewModal({
   isOpen,
   onClose,
   document: doc,
+  canEditTags = false,
 }: DocumentPreviewModalProps) {
   const { showToast } = useToast();
   const [blobUrl, setBlobUrl] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+
+  // ─── Tag-bewerking ───────────────────────────────────
+  const { data: availableTags } = useDocumentTagsCompact();
+  const updateMutation = useUpdateDocument();
+  const [isEditingTags, setIsEditingTags] = useState(false);
+  const [draftTagIds, setDraftTagIds] = useState<string[]>([]);
+  // Local copy of the document's tags so the read-view reflects a save
+  // immediately (the `doc` prop is not refreshed while the modal stays open).
+  const [currentTags, setCurrentTags] = useState<CrmDocument['tags']>([]);
+
+  useEffect(() => {
+    setIsEditingTags(false);
+    setCurrentTags(doc?.tags ?? []);
+    setDraftTagIds((doc?.tags ?? []).map((t) => t.id));
+  }, [doc?.id, doc?.tags]);
+
+  const handleSaveTags = async () => {
+    if (!doc) return;
+    try {
+      const updated = await updateMutation.mutateAsync({
+        id: doc.id,
+        data: { tagIds: draftTagIds },
+      });
+      setCurrentTags(updated.tags ?? []);
+      showToast('Tags bijgewerkt', 'success');
+      setIsEditingTags(false);
+    } catch (err) {
+      showToast(getErrorMessage(err, 'Bijwerken mislukt'), 'error');
+    }
+  };
 
   // Fetch the file as authenticated blob
   const fetchBlob = useCallback(async (documentId: string) => {
@@ -593,6 +628,60 @@ export function DocumentPreviewModal({
                 />
                 {doc.entityName && (
                   <MetaField label="Entiteit" value={doc.entityName} />
+                )}
+              </div>
+
+              {/* Tags */}
+              <div className="border-t border-gray-200 pt-4">
+                <div className="mb-3 flex items-center justify-between">
+                  <h3 className="text-sm font-semibold uppercase tracking-wider text-gray-500">
+                    Tags
+                  </h3>
+                  {canEditTags && !isEditingTags && (
+                    <button
+                      onClick={() => setIsEditingTags(true)}
+                      className="text-xs font-medium text-primary-600 hover:underline"
+                    >
+                      Bewerken
+                    </button>
+                  )}
+                </div>
+
+                {isEditingTags ? (
+                  <div className="space-y-3">
+                    <TagSelect
+                      available={availableTags ?? []}
+                      selectedIds={draftTagIds}
+                      onChange={setDraftTagIds}
+                    />
+                    <div className="flex gap-2">
+                      <Button
+                        size="sm"
+                        onClick={handleSaveTags}
+                        isLoading={updateMutation.isPending}
+                      >
+                        Opslaan
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => {
+                          setDraftTagIds((currentTags ?? []).map((t) => t.id));
+                          setIsEditingTags(false);
+                        }}
+                      >
+                        Annuleren
+                      </Button>
+                    </div>
+                  </div>
+                ) : currentTags && currentTags.length > 0 ? (
+                  <div className="flex flex-wrap gap-1.5">
+                    {currentTags.map((tag) => (
+                      <TagPill key={tag.id} tag={tag} />
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-xs text-gray-400">Geen tags</p>
                 )}
               </div>
             </div>

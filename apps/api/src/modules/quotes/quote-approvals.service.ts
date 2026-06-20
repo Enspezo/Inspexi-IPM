@@ -3,7 +3,7 @@ import { User, Role, QuoteStatus, NotificationType } from '@prisma/client';
 import { PrismaService } from '@/prisma';
 import { NotificationsService } from '../notifications/notifications.service';
 import { SubmitApprovalDto, ApproveQuoteDto, RejectQuoteDto } from './dto';
-import { findQuoteForUser } from './quotes.helpers';
+import { assertTemplateLinked, findQuoteForUser } from './quotes.helpers';
 
 @Injectable()
 export class QuoteApprovalsService {
@@ -15,6 +15,8 @@ export class QuoteApprovalsService {
   async submitForApproval(id: string, dto: SubmitApprovalDto, user: User) {
     const quote = await findQuoteForUser(this.prisma, id, user);
     if (quote.status !== QuoteStatus.CONCEPT) throw new BadRequestException('Alleen offertes met status CONCEPT kunnen ter goedkeuring worden ingediend');
+    // CONCEPT → TER_GOEDKEURING leaves CONCEPT — a template must be linked.
+    assertTemplateLinked(quote);
     if (!quote.requiresApproval) throw new BadRequestException('Deze offerte vereist geen goedkeuring');
     const updated = await this.prisma.$transaction(async (tx) => {
       await tx.quoteApprovalRequest.create({ data: { quoteId: quote.id, requestedBy: user.id, note: dto.note || undefined } });

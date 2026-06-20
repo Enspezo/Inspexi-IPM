@@ -135,6 +135,7 @@ describe('QuoteApprovalsService', () => {
     it('should set TER_GOEDKEURING status and create QuoteApprovalRequest', async () => {
       const conceptQuoteRequiringApproval = {
         ...mockQuoteWithIncludes,
+        templateId: 'template-1',
         requiresApproval: true,
       };
       mockPrismaService.quote.findUnique.mockResolvedValue(
@@ -168,10 +169,11 @@ describe('QuoteApprovalsService', () => {
     });
 
     it('should throw BadRequestException when quote does not require approval', async () => {
-      // mockQuoteWithIncludes has requiresApproval: false
-      mockPrismaService.quote.findUnique.mockResolvedValue(
-        mockQuoteWithIncludes,
-      );
+      // requiresApproval: false, but template is linked so the guard passes
+      mockPrismaService.quote.findUnique.mockResolvedValue({
+        ...mockQuoteWithIncludes,
+        templateId: 'template-1',
+      });
 
       await expect(
         service.submitForApproval('quote-1', {}, mockUser),
@@ -179,6 +181,19 @@ describe('QuoteApprovalsService', () => {
       await expect(
         service.submitForApproval('quote-1', {}, mockUser),
       ).rejects.toThrow('Deze offerte vereist geen goedkeuring');
+    });
+
+    it('should block submit-for-approval without a linked template (REQ26 guard)', async () => {
+      // mockQuoteWithIncludes has templateId: null
+      mockPrismaService.quote.findUnique.mockResolvedValue({
+        ...mockQuoteWithIncludes,
+        requiresApproval: true,
+      });
+
+      await expect(
+        service.submitForApproval('quote-1', {}, mockUser),
+      ).rejects.toThrow('Koppel eerst een offertesjabloon');
+      expect(mockTx.quote.update).not.toHaveBeenCalled();
     });
   });
 

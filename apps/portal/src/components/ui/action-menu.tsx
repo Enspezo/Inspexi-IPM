@@ -6,6 +6,8 @@ export interface ActionMenuItem {
   onClick: () => void;
   isLoading?: boolean;
   disabled?: boolean;
+  /** Native tooltip, e.g. to explain why an action is disabled */
+  title?: string;
   variant?: 'danger';
 }
 
@@ -162,7 +164,8 @@ function ActionButton({
       type="button"
       onClick={handleClick}
       disabled={action.disabled || action.isLoading}
-      className={`flex w-full items-center gap-2.5 px-3.5 py-2 text-left text-sm font-medium transition-colors disabled:opacity-50 ${colorClasses}`}
+      title={action.title}
+      className={`flex w-full items-center gap-2.5 px-3.5 py-2 text-left text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${colorClasses}`}
     >
       {action.isLoading ? (
         <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">

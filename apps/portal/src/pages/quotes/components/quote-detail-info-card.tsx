@@ -8,6 +8,7 @@ import { Button, Card, InfoField, Input } from '@/components/ui';
 import { formatDate } from '@/lib/format';
 import type { useUpdateQuote } from '../hooks/use-quotes';
 import { getContactName } from './quote-detail-helpers';
+import { QuoteTemplateSwitcher } from './quote-template-switcher';
 import { getErrorMessage } from '@/lib/api-client';
 
 const quoteSchema = z.object({
@@ -142,8 +143,18 @@ export function QuoteInfoCard({
           </dd>
         </div>
         <div>
-          <dt className="text-sm font-medium text-gray-500">Template</dt>
-          <dd className="mt-1 text-sm text-gray-900">{quote.template ? quote.template.name : '—'}</dd>
+          <dt className="text-sm font-medium text-gray-500">Sjabloon</dt>
+          <dd className="mt-1 text-sm text-gray-900">
+            {canEditQuote ? (
+              <QuoteTemplateSwitcher
+                quote={quote}
+                updateQuoteMutation={updateQuoteMutation}
+                showToast={showToast}
+              />
+            ) : (
+              quote.template ? quote.template.name : '—'
+            )}
+          </dd>
         </div>
         <div>
           <dt className="text-sm font-medium text-gray-500">Geldig tot</dt>

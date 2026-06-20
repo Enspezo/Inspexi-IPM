@@ -6,7 +6,7 @@ import {
   BadRequestException,
   Inject,
 } from '@nestjs/common';
-import { User, Role, Prisma, QuoteStatus, RequestStatus, NotificationType, TaskType, TaskEntityType, TaskStatus, FollowUpAssigneeType } from '@prisma/client';
+import { User, Role, Prisma, QuoteStatus, QuoteTemplate, RequestStatus, NotificationType, TaskType, TaskEntityType, TaskStatus, FollowUpAssigneeType } from '@prisma/client';
 import { ConfigService } from '@nestjs/config';
 import { randomUUID } from 'crypto';
 import { PrismaService } from '@/prisma';
@@ -25,7 +25,7 @@ import {
   ListQuotesQueryDto,
   SendQuoteDto,
 } from './dto';
-import { VALID_TRANSITIONS, calculateLineTotal, findQuoteForUser, getPublicUrl, serializeQuote } from './quotes.helpers';
+import { VALID_TRANSITIONS, assertTemplateLinked, calculateLineTotal, findQuoteForUser, getPublicUrl, resolveTemplateData, serializeQuote } from './quotes.helpers';
 
 @Injectable()
 export class QuotesService {
@@ -88,17 +88,10 @@ export class QuotesService {
       const location = assertFound(await this.prisma.location.findUnique({ where: { id: dto.locationId } }), 'Locatie');
       if (location.contactId !== dto.contactId) throw new ForbiddenException('Locatie behoort niet tot deze relatie');
     }
-    let templateData: { coverBlocks?: any; contentBlocks?: any; closingBlocks?: any; defaultValidityDays?: number; requiresApproval?: boolean } = {};
+    let templateData: ReturnType<typeof resolveTemplateData> = {};
     if (dto.templateId) {
-      const template = await this.prisma.quoteTemplate.findUnique({ where: { id: dto.templateId } });
-      if (!template || !template.isActive) throw new NotFoundException('Template niet gevonden');
-      if (!user.roles.includes(Role.SUPERUSER) && template.orgId !== orgId) throw new ForbiddenException('Template behoort niet tot uw organisatie');
-      if (template.templateType === 'DOCX') {
-        // DOCX templates only contribute metadata — block content is not applicable
-        templateData = { defaultValidityDays: template.defaultValidityDays, requiresApproval: template.requiresApproval };
-      } else {
-        templateData = { coverBlocks: template.coverBlocks, contentBlocks: template.contentBlocks, closingBlocks: template.closingBlocks, defaultValidityDays: template.defaultValidityDays, requiresApproval: template.requiresApproval };
-      }
+      const template = await this.loadActiveTemplate(dto.templateId, orgId, user);
+      templateData = resolveTemplateData(template);
     }
     let validUntil: Date | undefined;
     if (dto.validUntil) {
@@ -153,6 +146,10 @@ export class QuotesService {
       );
     }
 
+    // Template switch — only reachable while CONCEPT (guarded above). Re-applies
+    // the new template's blocks just like create(); offerteregels are never touched.
+    const templateSwitchData = await this.resolveTemplateSwitch(quote, dto, user);
+
     return serializeQuote(await this.prisma.quote.update({
       where: { id: quote.id },
       data: {
@@ -165,8 +162,54 @@ export class QuotesService {
         ...(dto.contentBlocks !== undefined && { contentBlocks: dto.contentBlocks }),
         ...(dto.closingBlocks !== undefined && { closingBlocks: dto.closingBlocks }),
         ...(customFieldsData !== undefined && { customFields: customFieldsData as any }),
+        // Applied last so a template switch wins over any blocks in the same payload.
+        ...templateSwitchData,
       },
     }));
+  }
+
+  /**
+   * Load an active quote template scoped to the user's org. Shared by create()
+   * and the update() template switch so the existence/active/org checks live in
+   * one place. Returns the validated template.
+   */
+  private async loadActiveTemplate(templateId: string, orgId: string | null, user: User): Promise<QuoteTemplate> {
+    const template = await this.prisma.quoteTemplate.findUnique({ where: { id: templateId } });
+    if (!template || !template.isActive) throw new NotFoundException('Template niet gevonden');
+    if (!user.roles.includes(Role.SUPERUSER) && template.orgId !== orgId) throw new ForbiddenException('Template behoort niet tot uw organisatie');
+    return template;
+  }
+
+  /**
+   * Compute the Prisma update fields for a template switch on a CONCEPT quote.
+   * - `templateId` absent or unchanged → `{}` (no-op).
+   * - `templateId` null/empty → unlink template, leave blocks untouched.
+   * - new template → validate, then re-apply blocks (BLOCKS) or clear them (DOCX)
+   *   plus `requiresApproval`, exactly like create().
+   * `validUntil` is intentionally left untouched (may have been set manually).
+   */
+  private async resolveTemplateSwitch(
+    quote: { templateId: string | null; orgId: string },
+    dto: UpdateQuoteDto,
+    user: User,
+  ): Promise<Prisma.QuoteUncheckedUpdateInput> {
+    if (dto.templateId === undefined || dto.templateId === quote.templateId) return {};
+
+    // Unlink: clear the template, keep existing blocks as-is.
+    if (!dto.templateId) return { templateId: null };
+
+    const template = await this.loadActiveTemplate(dto.templateId, quote.orgId, user);
+    const templateData = resolveTemplateData(template);
+    // BLOCKS → re-apply template blocks; DOCX → clear blocks (rendered from .docx).
+    const toBlockField = (value: QuoteTemplate['coverBlocks'] | undefined) =>
+      value == null ? Prisma.DbNull : (value as Prisma.InputJsonValue);
+    return {
+      templateId: template.id,
+      coverBlocks: toBlockField(templateData.coverBlocks),
+      contentBlocks: toBlockField(templateData.contentBlocks),
+      closingBlocks: toBlockField(templateData.closingBlocks),
+      requiresApproval: templateData.requiresApproval ?? false,
+    };
   }
 
   async setLines(id: string, dto: SetQuoteLinesDto, user: User) {
@@ -195,6 +238,8 @@ export class QuotesService {
     const quote = await this.findOne(id, user);
     const validTargets = VALID_TRANSITIONS[quote.status];
     if (!validTargets.includes(status)) throw new BadRequestException(`Statusovergang van ${quote.status} naar ${status} is niet toegestaan`);
+    // A CONCEPT quote may not move forward without a template linked.
+    if (quote.status === QuoteStatus.CONCEPT && status !== QuoteStatus.CONCEPT) assertTemplateLinked(quote);
     const updated = await this.prisma.quote.update({ where: { id: quote.id }, data: { status } });
     if (status === QuoteStatus.VERSTUURD) {
       this.notifications.dispatch({ type: NotificationType.OFFERTE_VERSTUURD, orgId: quote.orgId, recipientUserIds: [quote.createdBy], title: 'Offerte verstuurd', body: `Offerte ${quote.quoteNumber} is naar de klant verstuurd.`, entityType: 'quote', entityId: quote.id });
@@ -207,6 +252,8 @@ export class QuotesService {
     if (quote.status !== QuoteStatus.GOEDGEKEURD && quote.status !== QuoteStatus.CONCEPT) {
       throw new BadRequestException('Alleen offertes met status CONCEPT of GOEDGEKEURD kunnen verstuurd worden');
     }
+    // Sending a CONCEPT quote moves it forward — a template must be linked.
+    if (quote.status === QuoteStatus.CONCEPT) assertTemplateLinked(quote);
     const org = await this.prisma.organization.findUnique({ where: { id: quote.orgId }, select: { name: true, senderName: true, senderEmail: true } });
     let token = quote.publicToken;
     if (!token) {

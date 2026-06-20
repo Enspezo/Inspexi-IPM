@@ -690,7 +690,7 @@ describe('QuotesService', () => {
 
       expect(mockPrismaService.quote.update).toHaveBeenCalledWith({
         where: { id: 'quote-1' },
-        data: { templateId: null },
+        data: { templateId: null, requiresApproval: false },
       });
       // No template lookup needed when unlinking
       expect(mockPrismaService.quoteTemplate.findUnique).not.toHaveBeenCalled();

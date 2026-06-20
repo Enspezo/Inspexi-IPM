@@ -195,8 +195,9 @@ export class QuotesService {
   ): Promise<Prisma.QuoteUncheckedUpdateInput> {
     if (dto.templateId === undefined || dto.templateId === quote.templateId) return {};
 
-    // Unlink: clear the template, keep existing blocks as-is.
-    if (!dto.templateId) return { templateId: null };
+    // Unlink: clear the template (blocks stay as-is). Reset requiresApproval —
+    // without a template there is no approval policy to enforce.
+    if (!dto.templateId) return { templateId: null, requiresApproval: false };
 
     const template = await this.loadActiveTemplate(dto.templateId, quote.orgId, user);
     const templateData = resolveTemplateData(template);

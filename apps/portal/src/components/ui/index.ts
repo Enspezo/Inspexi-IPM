@@ -4,6 +4,12 @@ export { LookupBadge } from './lookup-badge';
 export { ErrorBox } from './error-box';
 export { InfoField } from './info-field';
 export { Tabs, type TabDef } from './tabs';
+export {
+  Accordion,
+  AccordionSection,
+  type AccordionProps,
+  type AccordionSectionProps,
+} from './accordion';
 export { ConfirmProvider, useConfirm, type ConfirmOptions } from './confirm-dialog';
 export { Button } from './button';
 export { Input } from './input';

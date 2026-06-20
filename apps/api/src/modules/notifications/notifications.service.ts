@@ -15,6 +15,7 @@ import {
   SavePrefsDto,
   SaveGroupPrefsDto,
 } from './dto';
+import { getTypesForModel } from './notifications.constants';
 
 interface DispatchParams {
   type: NotificationType;
@@ -140,14 +141,21 @@ export class NotificationsService {
   // ─── CRUD for controllers ─────────────────────────────
 
   async findAll(user: User, query: ListNotificationsQueryDto) {
-    const { type, unread, page = 1, limit = 20 } = query;
+    const { model, type, unread, page = 1, limit = 20 } = query;
 
     const where: Prisma.NotificationWhereInput = {
       userId: user.id,
     };
 
+    // `type` heeft voorrang op `model`; valt `type` buiten het gekozen model,
+    // dan levert de combinatie bewust geen resultaten op.
     if (type) {
-      where.type = type;
+      where.type =
+        model && !getTypesForModel(model).includes(type)
+          ? { in: [] }
+          : type;
+    } else if (model) {
+      where.type = { in: getTypesForModel(model) };
     }
 
     if (unread !== undefined) {

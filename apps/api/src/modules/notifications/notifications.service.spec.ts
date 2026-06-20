@@ -171,6 +171,67 @@ describe('NotificationsService', () => {
         }),
       );
     });
+
+    it('should filter by model (expands to a set of types)', async () => {
+      mockPrismaService.notification.findMany.mockResolvedValue([]);
+      mockPrismaService.notification.count.mockResolvedValue(0);
+
+      await service.findAll(mockUser, { model: 'TAKEN', page: 1, limit: 20 });
+
+      expect(mockPrismaService.notification.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            userId: 'user-1',
+            type: {
+              in: [
+                NotificationType.TAAK_TOEGEWEZEN,
+                NotificationType.TAAK_STATUS_GEWIJZIGD,
+              ],
+            },
+          }),
+        }),
+      );
+    });
+
+    it('should let type take precedence over model when both are given', async () => {
+      mockPrismaService.notification.findMany.mockResolvedValue([]);
+      mockPrismaService.notification.count.mockResolvedValue(0);
+
+      await service.findAll(mockUser, {
+        model: 'TAKEN',
+        type: NotificationType.TAAK_TOEGEWEZEN,
+        page: 1,
+        limit: 20,
+      });
+
+      expect(mockPrismaService.notification.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            type: NotificationType.TAAK_TOEGEWEZEN,
+          }),
+        }),
+      );
+    });
+
+    it('should yield no results when type lies outside the chosen model', async () => {
+      mockPrismaService.notification.findMany.mockResolvedValue([]);
+      mockPrismaService.notification.count.mockResolvedValue(0);
+
+      await service.findAll(mockUser, {
+        model: 'TAKEN',
+        type: NotificationType.OFFERTE_GOEDGEKEURD,
+        page: 1,
+        limit: 20,
+      });
+
+      expect(mockPrismaService.notification.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            type: { in: [] },
+          }),
+        }),
+      );
+    });
   });
 
   // ─── getUnreadCount ──────────────────────────────────────

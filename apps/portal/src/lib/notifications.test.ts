@@ -7,6 +7,9 @@ import {
   getTypesForModel,
 } from './notifications';
 
+// Deze test bewaakt de FE-mapping tegen de FE-enum (@/types). De volledigheid
+// t.o.v. de Prisma-enum (de bron) wordt aan BE-zijde bewaakt door
+// notifications.constants.spec.ts — samen vangen ze drift aan beide kanten.
 describe('notifications model mapping', () => {
   it('koppelt elk NotificationType aan precies één model', () => {
     const allTypes = Object.values(NotificationType);

@@ -485,6 +485,7 @@ model User {
   voiceUserPrompts           VoiceUserPrompt[]              @relation("VoiceUserPromptUser")
   uploadedInspectionDocx     DocumentTemplateDocxRevision[] @relation("InspectionDocxRevisionUploadedBy")
 
+  @@index([orgId, isDeleted])
   @@map("imp_users")
 }
 
@@ -502,6 +503,7 @@ model RefreshToken {
 
   @@index([userId])
   @@index([expiresAt])
+  @@index([tokenHash])
   @@map("imp_refresh_tokens")
 }
 
@@ -1094,6 +1096,7 @@ model Quote {
   @@index([contactId])
   @@index([requestId])
   @@index([projectId])
+  @@index([orgId, createdBy])
   @@map("imp_quotes")
 }
 
@@ -1241,7 +1244,7 @@ model AuditLog {
 
   user User @relation(fields: [userId], references: [id])
 
-  @@index([entityType, entityId])
+  @@index([entityType, entityId, createdAt])
   @@index([orgId, createdAt])
   @@index([userId])
   @@map("imp_audit_logs")
@@ -2324,6 +2327,7 @@ model InspectionPlan {
   @@index([contactId])
   @@index([projectId])
   @@index([assignedTo])
+  @@index([orgId, updatedAt])
   @@map("imp_inspection_plans")
 }
 
@@ -2367,6 +2371,7 @@ model Asset {
 
   @@index([orgId])
   @@index([inspectionPlanId])
+  @@index([orgId, updatedAt])
   @@map("imp_assets")
 }
 
@@ -2475,6 +2480,7 @@ model Finding {
   @@index([orgId])
   @@index([assetId])
   @@index([findingTemplateId])
+  @@index([orgId, statusCode])
   @@map("imp_findings")
 }
 
@@ -2512,6 +2518,7 @@ model Photo {
 
   @@index([orgId])
   @@index([entityType, entityId])
+  @@index([orgId, createdAt])
   @@map("imp_photos")
 }
 
@@ -3598,7 +3605,6 @@ model ClientUser {
   findingResolutions FindingResolution[]
   clientRequests     ClientRequest[]
 
-  @@index([email])
   @@map("imp_client_users")
 }
 
@@ -3633,7 +3639,6 @@ model ClientMagicLink {
   clientUser     ClientUser?     @relation(fields: [clientUserId], references: [id], onDelete: Cascade)
   inspectionPlan InspectionPlan? @relation(fields: [inspectionPlanId], references: [id])
 
-  @@index([token])
   @@index([email])
   @@map("imp_client_magic_links")
 }
@@ -3654,6 +3659,7 @@ model InspectionClientAccess {
 
   @@unique([inspectionPlanId, clientUserId])
   @@unique([inspectionPlanId, invitedEmail])
+  @@index([clientUserId])
   @@map("imp_inspection_client_access")
 }
 

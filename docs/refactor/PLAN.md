@@ -33,10 +33,10 @@
   - Touches: `schema.prisma`, `prisma/migrations/`.
 
 ## Wave 3 — Backend perf quick wins
-- ⧖ **PR-4 `perf/dashboard-and-validation`** — PERF-2/3/4 (portal-stats → `Promise.all`) + PERF-5 (inspection-plans create/update validations → `Promise.all`). Pure parallelization, no logic change.
+- ☑ **PR-4 `perf/dashboard-and-validation`** — PERF-2/3/4 (portal-stats → `Promise.all`) + PERF-5 (inspection-plans create/update validations → `Promise.all`). [#55](https://github.com/Enspezo/Inspexi-IPM/pull/55) (merged).
   - Before/after: dashboard 6+8+2 serial queries → 3 `Promise.all` batches; plan create 8 serial validations → 1 batch.
   - Touches: `portal-stats/`, `inspection-plans/`.
-- ☐ **PR-5 `perf/notifications-dispatch`** — PERF-1. Batch prefs/users/group-prefs + `createMany`.
+- ⧖ **PR-5 `perf/notifications-dispatch`** — PERF-1. Batch prefs/users/group-prefs + `createMany`.
   - Before/after: 2–4 queries × R recipients → 3 batched + 1 `createMany`. Keep dispatch fire-and-forget. Unit-test recipient/pref resolution unchanged.
   - Touches: `notifications/notifications.service.ts`.
 - ☐ **PR-6 `perf/list-endpoints`** — PERF-10 (`users.findAll`: `organization:{select:{id,name}}`, optional pagination keeping flat-array) + PERF-11 (contacts list addresses `where isPrimary, take 1, select`).

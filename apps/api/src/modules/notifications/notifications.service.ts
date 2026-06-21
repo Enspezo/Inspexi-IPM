@@ -50,62 +50,82 @@ export class NotificationsService {
     const { type, orgId, recipientUserIds, title, body, entityType, entityId } =
       params;
 
-    // Fetch org sender config once for all recipients
-    const org = await this.prisma.organization.findUnique({
-      where: { id: orgId },
-      select: { name: true, senderName: true, senderEmail: true },
+    const uniqueIds = [...new Set(recipientUserIds)];
+    if (uniqueIds.length === 0) return;
+
+    // Batch every lookup up-front (org + users + user-prefs + group-prefs) so
+    // dispatch to N recipients costs a constant number of queries instead of
+    // 2–4 per recipient.
+    const [org, users, userPrefs, groupPrefs] = await Promise.all([
+      this.prisma.organization.findUnique({
+        where: { id: orgId },
+        select: { name: true, senderName: true, senderEmail: true },
+      }),
+      this.prisma.user.findMany({
+        where: { id: { in: uniqueIds } },
+        select: { id: true, email: true, roles: true },
+      }),
+      this.prisma.notificationPref.findMany({
+        where: { userId: { in: uniqueIds }, notificationType: type },
+      }),
+      this.prisma.notificationGroupPref.findMany({
+        where: { orgId, notificationType: type },
+      }),
+    ]);
+
+    const usersById = new Map(users.map((u) => [u.id, u]));
+    const userPrefByUserId = new Map(userPrefs.map((p) => [p.userId, p]));
+
+    const resolved = uniqueIds.map((userId) => {
+      const user = usersById.get(userId);
+      return {
+        userId,
+        email: user?.email ?? null,
+        pref: this.resolvePreference(
+          userPrefByUserId.get(userId),
+          user?.roles ?? [],
+          groupPrefs,
+        ),
+      };
     });
 
-    for (const userId of recipientUserIds) {
-      try {
-        const pref = await this.resolvePreference(userId, orgId, type);
+    // 1. Bulk-create all in-app notifications in a single insert.
+    const inAppData = resolved
+      .filter((r) => r.pref.channelInApp)
+      .map((r) => ({ orgId, userId: r.userId, type, title, body, entityType, entityId }));
+    if (inAppData.length > 0) {
+      await this.prisma.notification.createMany({ data: inAppData });
+    }
 
-        if (pref.channelInApp) {
-          await this.prisma.notification.create({
-            data: { orgId, userId, type, title, body, entityType, entityId },
-          });
-        }
-
-        if (pref.channelEmail) {
-          const user = await this.prisma.user.findUnique({
-            where: { id: userId },
-            select: { email: true },
-          });
-          if (user?.email) {
-            const unsubscribeToken = this.generateUnsubscribeToken(userId);
-            const apiPort = this.config.get<string>('API_PORT', '3000');
-            const apiBaseUrl = this.config.get<string>('API_BASE_URL', `http://localhost:${apiPort}`);
-            const unsubscribeUrl = `${apiBaseUrl}/api/v1/notifications/unsubscribe?token=${unsubscribeToken}`;
-            this.emailService
-              .sendNotificationEmail(user.email, title, body, {
-                senderName: org?.senderName,
-                senderEmail: org?.senderEmail,
-                unsubscribeUrl,
-                orgId,
-                orgName: org?.name ?? undefined,
-              })
-              .catch((err) =>
-                this.logger.error('Notification email failed', err),
-              );
-          }
-        }
-      } catch (err) {
-        this.logger.error(`Notification failed for user ${userId}`, err);
-      }
+    // 2. Send emails — each send is independent and fire-and-forget.
+    const apiPort = this.config.get<string>('API_PORT', '3000');
+    const apiBaseUrl = this.config.get<string>('API_BASE_URL', `http://localhost:${apiPort}`);
+    for (const r of resolved) {
+      if (!r.pref.channelEmail || !r.email) continue;
+      const unsubscribeToken = this.generateUnsubscribeToken(r.userId);
+      const unsubscribeUrl = `${apiBaseUrl}/api/v1/notifications/unsubscribe?token=${unsubscribeToken}`;
+      this.emailService
+        .sendNotificationEmail(r.email, title, body, {
+          senderName: org?.senderName,
+          senderEmail: org?.senderEmail,
+          unsubscribeUrl,
+          orgId,
+          orgName: org?.name ?? undefined,
+        })
+        .catch((err) => this.logger.error('Notification email failed', err));
     }
   }
 
-  private async resolvePreference(
-    userId: string,
-    orgId: string,
-    type: NotificationType,
-  ): Promise<{ channelInApp: boolean; channelEmail: boolean }> {
+  /**
+   * Resolve a recipient's channel preference from already-fetched data (no I/O):
+   * user-level pref → any matching group pref (by role) → default both on.
+   */
+  private resolvePreference(
+    userPref: { channelInApp: boolean; channelEmail: boolean } | undefined,
+    roles: Role[],
+    groupPrefs: { role: Role; channelInApp: boolean; channelEmail: boolean }[],
+  ): { channelInApp: boolean; channelEmail: boolean } {
     // 1. User-level pref
-    const userPref = await this.prisma.notificationPref.findUnique({
-      where: {
-        userId_notificationType: { userId, notificationType: type },
-      },
-    });
     if (userPref) {
       return {
         channelInApp: userPref.channelInApp,
@@ -113,23 +133,13 @@ export class NotificationsService {
       };
     }
 
-    // 2. Group-level pref — check all roles of the user
-    const user = await this.prisma.user.findUnique({
-      where: { id: userId },
-      select: { roles: true },
-    });
-    if (user && user.roles.length > 0) {
-      const groupPrefs = await this.prisma.notificationGroupPref.findMany({
-        where: {
-          orgId,
-          role: { in: user.roles },
-          notificationType: type,
-        },
-      });
-      if (groupPrefs.length > 0) {
+    // 2. Group-level pref — any of the user's roles
+    if (roles.length > 0) {
+      const relevant = groupPrefs.filter((p) => roles.includes(p.role));
+      if (relevant.length > 0) {
         return {
-          channelInApp: groupPrefs.some((p) => p.channelInApp),
-          channelEmail: groupPrefs.some((p) => p.channelEmail),
+          channelInApp: relevant.some((p) => p.channelInApp),
+          channelEmail: relevant.some((p) => p.channelEmail),
         };
       }
     }

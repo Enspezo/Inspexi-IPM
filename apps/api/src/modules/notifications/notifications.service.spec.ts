@@ -56,6 +56,7 @@ describe('NotificationsService', () => {
   const mockPrismaService = {
     notification: {
       create: jest.fn(),
+      createMany: jest.fn(),
       findUnique: jest.fn(),
       findMany: jest.fn(),
       count: jest.fn(),
@@ -304,12 +305,12 @@ describe('NotificationsService', () => {
   describe('dispatch()', () => {
     it('should create in-app notification when channelInApp is true (default)', async () => {
       // No user pref → no group pref → defaults to both true
-      mockPrismaService.notificationPref.findUnique.mockResolvedValue(null);
-      mockPrismaService.user.findUnique
-        .mockResolvedValueOnce({ roles: [Role.MANAGER] }) // for resolvePreference
-        .mockResolvedValueOnce({ email: 'manager@test.com' }); // for email
+      mockPrismaService.notificationPref.findMany.mockResolvedValue([]);
+      mockPrismaService.user.findMany.mockResolvedValue([
+        { id: 'user-1', email: 'manager@test.com', roles: [Role.MANAGER] },
+      ]);
       mockPrismaService.notificationGroupPref.findMany.mockResolvedValue([]);
-      mockPrismaService.notification.create.mockResolvedValue(mockNotification);
+      mockPrismaService.notification.createMany.mockResolvedValue({ count: 1 });
 
       service.dispatch({
         type: NotificationType.OFFERTE_TER_GOEDKEURING,
@@ -324,26 +325,28 @@ describe('NotificationsService', () => {
       // Wait for async doDispatch to settle
       await new Promise((r) => setTimeout(r, 50));
 
-      expect(mockPrismaService.notification.create).toHaveBeenCalledWith({
-        data: expect.objectContaining({
-          orgId: 'org-1',
-          userId: 'user-1',
-          type: NotificationType.OFFERTE_TER_GOEDKEURING,
-          title: 'Test',
-          body: 'Test body',
-          entityType: 'quote',
-          entityId: 'quote-1',
-        }),
+      expect(mockPrismaService.notification.createMany).toHaveBeenCalledWith({
+        data: [
+          expect.objectContaining({
+            orgId: 'org-1',
+            userId: 'user-1',
+            type: NotificationType.OFFERTE_TER_GOEDKEURING,
+            title: 'Test',
+            body: 'Test body',
+            entityType: 'quote',
+            entityId: 'quote-1',
+          }),
+        ],
       });
     });
 
     it('should send email notification when channelEmail is true (default)', async () => {
-      mockPrismaService.notificationPref.findUnique.mockResolvedValue(null);
-      mockPrismaService.user.findUnique
-        .mockResolvedValueOnce({ roles: [Role.MANAGER] })
-        .mockResolvedValueOnce({ email: 'manager@test.com' });
+      mockPrismaService.notificationPref.findMany.mockResolvedValue([]);
+      mockPrismaService.user.findMany.mockResolvedValue([
+        { id: 'user-1', email: 'manager@test.com', roles: [Role.MANAGER] },
+      ]);
       mockPrismaService.notificationGroupPref.findMany.mockResolvedValue([]);
-      mockPrismaService.notification.create.mockResolvedValue(mockNotification);
+      mockPrismaService.notification.createMany.mockResolvedValue({ count: 1 });
 
       service.dispatch({
         type: NotificationType.OFFERTE_TER_GOEDKEURING,
@@ -368,10 +371,13 @@ describe('NotificationsService', () => {
     });
 
     it('should skip in-app notification when user pref channelInApp is false', async () => {
-      mockPrismaService.notificationPref.findUnique.mockResolvedValue({
-        channelInApp: false,
-        channelEmail: false,
-      });
+      mockPrismaService.notificationPref.findMany.mockResolvedValue([
+        { userId: 'user-1', channelInApp: false, channelEmail: false },
+      ]);
+      mockPrismaService.user.findMany.mockResolvedValue([
+        { id: 'user-1', email: 'manager@test.com', roles: [Role.MANAGER] },
+      ]);
+      mockPrismaService.notificationGroupPref.findMany.mockResolvedValue([]);
 
       service.dispatch({
         type: NotificationType.OFFERTE_GOEDGEKEURD,
@@ -383,17 +389,19 @@ describe('NotificationsService', () => {
 
       await new Promise((r) => setTimeout(r, 50));
 
-      expect(mockPrismaService.notification.create).not.toHaveBeenCalled();
+      expect(mockPrismaService.notification.createMany).not.toHaveBeenCalled();
       expect(mockEmailService.sendNotificationEmail).not.toHaveBeenCalled();
     });
 
     it('should fallback to group pref when no user pref exists', async () => {
-      mockPrismaService.notificationPref.findUnique.mockResolvedValue(null);
-      mockPrismaService.user.findUnique.mockResolvedValue({ roles: [Role.MANAGER] });
-      mockPrismaService.notificationGroupPref.findMany.mockResolvedValue([
-        { channelInApp: true, channelEmail: false },
+      mockPrismaService.notificationPref.findMany.mockResolvedValue([]);
+      mockPrismaService.user.findMany.mockResolvedValue([
+        { id: 'user-1', email: 'manager@test.com', roles: [Role.MANAGER] },
       ]);
-      mockPrismaService.notification.create.mockResolvedValue(mockNotification);
+      mockPrismaService.notificationGroupPref.findMany.mockResolvedValue([
+        { role: Role.MANAGER, channelInApp: true, channelEmail: false },
+      ]);
+      mockPrismaService.notification.createMany.mockResolvedValue({ count: 1 });
 
       service.dispatch({
         type: NotificationType.AANVRAAG_TOEGEWEZEN,
@@ -405,32 +413,60 @@ describe('NotificationsService', () => {
 
       await new Promise((r) => setTimeout(r, 50));
 
-      expect(mockPrismaService.notification.create).toHaveBeenCalled();
+      expect(mockPrismaService.notification.createMany).toHaveBeenCalled();
       expect(mockEmailService.sendNotificationEmail).not.toHaveBeenCalled();
     });
 
-    it('should continue with next recipient if one fails', async () => {
-      mockPrismaService.notificationPref.findUnique
-        .mockRejectedValueOnce(new Error('DB error'))
-        .mockResolvedValueOnce(null);
-      mockPrismaService.user.findUnique
-        .mockResolvedValueOnce({ roles: [Role.MANAGER] })
-        .mockResolvedValueOnce({ email: 'user2@test.com' });
+    it('should create in-app rows for all recipients in a single batch', async () => {
+      mockPrismaService.notificationPref.findMany.mockResolvedValue([]);
+      mockPrismaService.user.findMany.mockResolvedValue([
+        { id: 'user-a', email: 'a@test.com', roles: [Role.MANAGER] },
+        { id: 'user-b', email: 'b@test.com', roles: [Role.MANAGER] },
+      ]);
       mockPrismaService.notificationGroupPref.findMany.mockResolvedValue([]);
-      mockPrismaService.notification.create.mockResolvedValue(mockNotification);
+      mockPrismaService.notification.createMany.mockResolvedValue({ count: 2 });
 
       service.dispatch({
         type: NotificationType.OFFERTE_TER_GOEDKEURING,
         orgId: 'org-1',
-        recipientUserIds: ['user-fail', 'user-success'],
-        title: 'Continue test',
-        body: 'Should still create for second user',
+        recipientUserIds: ['user-a', 'user-b'],
+        title: 'Batch test',
+        body: 'One insert for both',
       });
 
       await new Promise((r) => setTimeout(r, 100));
 
-      // First user fails, second succeeds
-      expect(mockPrismaService.notification.create).toHaveBeenCalledTimes(1);
+      // Single insert covering both recipients
+      expect(mockPrismaService.notification.createMany).toHaveBeenCalledTimes(1);
+      expect(mockPrismaService.notification.createMany).toHaveBeenCalledWith({
+        data: [
+          expect.objectContaining({ userId: 'user-a' }),
+          expect.objectContaining({ userId: 'user-b' }),
+        ],
+      });
+    });
+
+    it('de-duplicates repeated recipient ids into a single row', async () => {
+      mockPrismaService.notificationPref.findMany.mockResolvedValue([]);
+      mockPrismaService.user.findMany.mockResolvedValue([
+        { id: 'user-1', email: 'manager@test.com', roles: [Role.MANAGER] },
+      ]);
+      mockPrismaService.notificationGroupPref.findMany.mockResolvedValue([]);
+      mockPrismaService.notification.createMany.mockResolvedValue({ count: 1 });
+
+      service.dispatch({
+        type: NotificationType.OFFERTE_TER_GOEDKEURING,
+        orgId: 'org-1',
+        recipientUserIds: ['user-1', 'user-1'],
+        title: 'Dedup',
+        body: 'Only one row',
+      });
+
+      await new Promise((r) => setTimeout(r, 50));
+
+      expect(mockPrismaService.notification.createMany).toHaveBeenCalledWith({
+        data: [expect.objectContaining({ userId: 'user-1' })],
+      });
     });
   });
 

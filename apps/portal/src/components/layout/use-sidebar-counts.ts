@@ -4,16 +4,8 @@ import { useTasks } from '@/pages/tasks/hooks/use-tasks';
 import { useNotes } from '@/pages/notes/hooks/use-notes';
 import { useAuth } from '@/providers/auth-provider';
 import { hasRole } from '@/lib/has-role';
-import { Role, TaskStatus } from '@/types';
-
-/** Roles that may access tasks (`/tasks`) and notes (`/notes`) — both are CRM-only. */
-export const CRM_ROLES: Role[] = [
-  Role.SUPERUSER,
-  Role.ORG_ADMIN,
-  Role.MANAGER,
-  Role.BACKOFFICE,
-  Role.WERKVOORBEREIDER,
-];
+import { CRM_ROLES } from '@/lib/roles';
+import { TaskStatus } from '@/types';
 
 export interface SidebarCounts {
   favorites: number;

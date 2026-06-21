@@ -6,16 +6,8 @@ import { useAuth } from '@/providers/auth-provider';
 import { useTenant } from '@/providers/tenant-provider';
 import { OrgSwitcher } from './org-switcher';
 import { SidebarBottomBar } from './sidebar-bottom-bar';
+import { ADMIN_ROLES as adminRoles, CRM_ROLES as crmRoles } from '@/lib/roles';
 import { Role } from '@/types';
-
-const adminRoles: Role[] = [Role.SUPERUSER, Role.ORG_ADMIN];
-const crmRoles: Role[] = [
-  Role.SUPERUSER,
-  Role.ORG_ADMIN,
-  Role.MANAGER,
-  Role.BACKOFFICE,
-  Role.WERKVOORBEREIDER,
-];
 
 interface NavChild {
   to: string;

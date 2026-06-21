@@ -2,8 +2,9 @@ import { NavLink } from 'react-router-dom';
 import { clsx } from 'clsx';
 import { useAuth } from '@/providers/auth-provider';
 import { hasRole } from '@/lib/has-role';
+import { CRM_ROLES } from '@/lib/roles';
 import { Role } from '@/types';
-import { useSidebarCounts, CRM_ROLES } from './use-sidebar-counts';
+import { useSidebarCounts } from './use-sidebar-counts';
 
 interface PersonalModel {
   key: 'favorites' | 'notifications' | 'tasks' | 'notes';

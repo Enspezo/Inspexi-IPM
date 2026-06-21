@@ -1,8 +1,9 @@
 import { useState } from 'react';
-import { Button, Select, Spinner, TagPill, useToast } from '@/components/ui';
+import { Button, Select, Spinner, TagPill, useConfirm, useToast } from '@/components/ui';
 import { useDocuments, useDeleteDocument, useUpdateDocument } from '@/pages/documents/hooks/use-documents';
 import { useDocumentTagsCompact } from '@/pages/organization/hooks/use-document-tags';
 import { downloadFile } from '@/lib/download-file';
+import { formatFileSize } from '@/lib/format';
 import { UploadDocumentModal } from './upload-document-modal';
 import { DocumentPreviewModal } from './document-preview-modal';
 import type { DocumentEntityType, CrmDocument } from '@/types';
@@ -14,14 +15,6 @@ interface DocumentsSectionProps {
   canUpload?: boolean;
   /** Toon toggle om document met opdrachtgever te delen (alleen voor PLANNING documenten) */
   showSharedWithClient?: boolean;
-}
-
-function formatBytes(bytes: number): string {
-  if (bytes === 0) return '0 B';
-  const k = 1024;
-  const sizes = ['B', 'KB', 'MB', 'GB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
 }
 
 function FileTypeIcon({ mimeType }: { mimeType: string }) {
@@ -66,6 +59,7 @@ function DocumentRow({
   showSharedWithClient?: boolean;
 }) {
   const { showToast } = useToast();
+  const confirm = useConfirm();
   const deleteMutation = useDeleteDocument();
   const updateMutation = useUpdateDocument();
 
@@ -78,7 +72,12 @@ function DocumentRow({
   };
 
   const handleDelete = async () => {
-    if (!confirm('Weet je zeker dat je dit document wilt verwijderen?')) return;
+    const ok = await confirm({
+      title: 'Document verwijderen',
+      message: 'Weet je zeker dat je dit document wilt verwijderen?',
+      confirmLabel: 'Verwijderen',
+    });
+    if (!ok) return;
     try {
       await deleteMutation.mutateAsync(doc.id);
       showToast('Document verwijderd', 'success');
@@ -110,7 +109,7 @@ function DocumentRow({
           {doc.originalName}
         </button>
         <div className="flex items-center gap-2 text-xs text-gray-500">
-          <span>{formatBytes(doc.size)}</span>
+          <span>{formatFileSize(doc.size)}</span>
           <span>&middot;</span>
           <span>
             {doc.uploadedBy

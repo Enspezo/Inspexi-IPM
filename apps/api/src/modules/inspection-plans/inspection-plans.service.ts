@@ -197,20 +197,18 @@ export class InspectionPlansService {
   async create(dto: CreateInspectionPlanDto, user: User) {
     const orgId = this.requireOrg(user);
 
-    // Cross-tenant FK-validatie vóór de schrijfactie
-    await assertSameOrg(this.prisma.contact, dto.contactId, orgId, 'Relatie');
-    await assertSameOrg(this.prisma.project, dto.projectId, orgId, 'Project');
-    await assertSameOrg(this.prisma.user, dto.assignedTo, orgId, 'Inspecteur');
-    await assertSameOrg(this.prisma.user, dto.reviewerId, orgId, 'Reviewer');
-    await assertSameOrg(
-      this.prisma.contactPerson,
-      dto.installationResponsibleId,
-      orgId,
-      'Installatieverantwoordelijke',
-    );
-    await this.assertTemplateUsable(dto.inspectionTemplateId, orgId);
-    await this.assertNormExists(dto.normTypeCode);
-    await this.assertLookup(LOOKUP_KIND.INSPECTION_TYPES, dto.inspectionTypeCode, orgId);
+    // Cross-tenant FK-validatie vóór de schrijfactie — alle checks zijn
+    // onafhankelijke reads die throwen bij falen, dus parallel uitvoeren.
+    await Promise.all([
+      assertSameOrg(this.prisma.contact, dto.contactId, orgId, 'Relatie'),
+      assertSameOrg(this.prisma.project, dto.projectId, orgId, 'Project'),
+      assertSameOrg(this.prisma.user, dto.assignedTo, orgId, 'Inspecteur'),
+      assertSameOrg(this.prisma.user, dto.reviewerId, orgId, 'Reviewer'),
+      assertSameOrg(this.prisma.contactPerson, dto.installationResponsibleId, orgId, 'Installatieverantwoordelijke'),
+      this.assertTemplateUsable(dto.inspectionTemplateId, orgId),
+      this.assertNormExists(dto.normTypeCode),
+      this.assertLookup(LOOKUP_KIND.INSPECTION_TYPES, dto.inspectionTypeCode, orgId),
+    ]);
 
     const plan = await this.prisma.inspectionPlan.create({
       data: {
@@ -255,19 +253,17 @@ export class InspectionPlansService {
     const orgId = existing.orgId;
     const oldAssignedTo = existing.assignedTo;
 
-    await assertSameOrg(this.prisma.contact, dto.contactId, orgId, 'Relatie');
-    await assertSameOrg(this.prisma.project, dto.projectId, orgId, 'Project');
-    await assertSameOrg(this.prisma.user, dto.assignedTo, orgId, 'Inspecteur');
-    await assertSameOrg(this.prisma.user, dto.reviewerId, orgId, 'Reviewer');
-    await assertSameOrg(
-      this.prisma.contactPerson,
-      dto.installationResponsibleId,
-      orgId,
-      'Installatieverantwoordelijke',
-    );
-    await this.assertTemplateUsable(dto.inspectionTemplateId, orgId);
-    if (dto.normTypeCode) await this.assertNormExists(dto.normTypeCode);
-    await this.assertLookup(LOOKUP_KIND.INSPECTION_TYPES, dto.inspectionTypeCode, orgId);
+    // Onafhankelijke validaties parallel (zie create()).
+    await Promise.all([
+      assertSameOrg(this.prisma.contact, dto.contactId, orgId, 'Relatie'),
+      assertSameOrg(this.prisma.project, dto.projectId, orgId, 'Project'),
+      assertSameOrg(this.prisma.user, dto.assignedTo, orgId, 'Inspecteur'),
+      assertSameOrg(this.prisma.user, dto.reviewerId, orgId, 'Reviewer'),
+      assertSameOrg(this.prisma.contactPerson, dto.installationResponsibleId, orgId, 'Installatieverantwoordelijke'),
+      this.assertTemplateUsable(dto.inspectionTemplateId, orgId),
+      dto.normTypeCode ? this.assertNormExists(dto.normTypeCode) : Promise.resolve(),
+      this.assertLookup(LOOKUP_KIND.INSPECTION_TYPES, dto.inspectionTypeCode, orgId),
+    ]);
 
     const data: Prisma.InspectionPlanUpdateInput = {};
     // Map alleen aanwezige velden (PATCH-semantiek).

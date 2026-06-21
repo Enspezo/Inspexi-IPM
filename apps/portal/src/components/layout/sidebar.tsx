@@ -5,6 +5,7 @@ import { clsx } from 'clsx';
 import { useAuth } from '@/providers/auth-provider';
 import { useTenant } from '@/providers/tenant-provider';
 import { OrgSwitcher } from './org-switcher';
+import { SidebarBottomBar } from './sidebar-bottom-bar';
 import { Role } from '@/types';
 
 const adminRoles: Role[] = [Role.SUPERUSER, Role.ORG_ADMIN];
@@ -30,6 +31,7 @@ interface NavItem {
 }
 
 interface NavSection {
+  id?: string; // stable key + anchor (e.g. the header-less 'personal' section)
   label: string | null; // null = no section header (e.g. Dashboard)
   items: NavItem[];
 }
@@ -147,46 +149,12 @@ const mainSections: NavSection[] = [
     ],
   },
   {
-    label: 'Persoonlijk',
+    // Header-less section pinned below the icon bar's models. The four personal
+    // models (Favorieten/Notificaties/Taken/Notities) live in <SidebarBottomBar>;
+    // only Profiel stays a regular menu item here.
+    id: 'personal',
+    label: null,
     items: [
-      {
-        to: '/favorites',
-        label: 'Favorieten',
-        icon: (
-          <svg className="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M11.48 3.499a.562.562 0 011.04 0l2.125 5.111a.563.563 0 00.475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 00-.182.557l1.285 5.385a.562.562 0 01-.84.61l-4.725-2.885a.562.562 0 00-.586 0L6.982 20.54a.562.562 0 01-.84-.61l1.285-5.386a.562.562 0 00-.182-.557l-4.204-3.602a.562.562 0 01.321-.988l5.518-.442a.563.563 0 00.475-.345L11.48 3.5z" />
-          </svg>
-        ),
-      },
-      {
-        to: '/tasks',
-        label: 'Taken',
-        roles: crmRoles,
-        icon: (
-          <svg className="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
-          </svg>
-        ),
-      },
-      {
-        to: '/notities',
-        label: 'Notities',
-        roles: crmRoles,
-        icon: (
-          <svg className="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z" />
-          </svg>
-        ),
-      },
-      {
-        to: '/notifications',
-        label: 'Notificaties',
-        icon: (
-          <svg className="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
-          </svg>
-        ),
-      },
       {
         to: '/profile',
         label: 'Profiel',
@@ -479,9 +447,9 @@ export function Sidebar() {
           const sectionIsCollapsed = !!(section.label && collapsedSections[section.label]);
 
           return (
-            <div key={section.label ?? 'top'} className={sectionIdx > 0 ? 'mt-3' : ''}>
+            <div key={section.id ?? section.label ?? 'top'} className={sectionIdx > 0 ? 'mt-3' : ''}>
               {/* Organisatie-trigger: opent het submenu dat het hoofdmenu vervangt */}
-              {menuView === 'main' && section.label === 'Persoonlijk' && hasOrgAccess && (
+              {menuView === 'main' && section.id === 'personal' && hasOrgAccess && (
                 <div className="mb-3">
                   {collapsed ? (
                     <div className="mx-2 my-2 border-t border-gray-700" />
@@ -607,6 +575,8 @@ export function Sidebar() {
         })}
       </nav>
 
+      {/* Persoonlijke modellen — vastgezette icon-balk onderaan */}
+      <SidebarBottomBar collapsed={collapsed} />
     </aside>
   );
 }

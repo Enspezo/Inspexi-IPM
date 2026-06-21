@@ -19,7 +19,7 @@ import {
   PassFailOperator,
 } from '@prisma/client';
 import { PrismaService } from '@/prisma';
-import { orgScope, assertFound, assertSameOrg } from '@/common';
+import { orgScope, assertFound, assertSameOrg, requireOrg } from '@/common';
 import {
   CreateMeasurementSheetRecordDto,
   UpdateMeasurementSheetRecordDto,
@@ -58,11 +58,6 @@ interface FinalCheckResult {
 @Injectable()
 export class MeasurementSheetRecordsService {
   constructor(private readonly prisma: PrismaService) {}
-
-  private requireOrg(user: User): string {
-    if (!user.orgId) throw new BadRequestException('Selecteer eerst een organisatie');
-    return user.orgId;
-  }
 
   /** Org-scoped record of NotFound (NL). */
   private async getRecordInOrg(id: string, user: User) {
@@ -108,7 +103,7 @@ export class MeasurementSheetRecordsService {
 
   /** Snapshot-create: template (+secties+velden) wordt bevroren in de record. */
   async create(user: User, dto: CreateMeasurementSheetRecordDto, deviceId?: string) {
-    const orgId = this.requireOrg(user);
+    const orgId = requireOrg(user);
 
     // FK-validatie binnen dezelfde org (asset + optioneel plan)
     await assertSameOrg(this.prisma.asset, dto.assetId, orgId, 'Asset');
@@ -182,7 +177,7 @@ export class MeasurementSheetRecordsService {
 
   /** Data bijwerken — alleen IN_PROGRESS. */
   async update(id: string, user: User, dto: UpdateMeasurementSheetRecordDto, deviceId?: string) {
-    this.requireOrg(user);
+    requireOrg(user);
     const record = await this.getRecordInOrg(id, user);
 
     if (record.status !== MeasurementSheetRecordStatus.IN_PROGRESS) {
@@ -210,14 +205,14 @@ export class MeasurementSheetRecordsService {
 
   /** Validatie tegen de snapshot (zonder status te wijzigen). */
   async validate(id: string, user: User): Promise<ValidationResult> {
-    this.requireOrg(user);
+    requireOrg(user);
     const record = await this.getRecordInOrg(id, user);
     return this.runValidation(record);
   }
 
   /** Harde delete — alleen IN_PROGRESS. */
   async delete(id: string, user: User) {
-    this.requireOrg(user);
+    requireOrg(user);
     const record = await this.getRecordInOrg(id, user);
 
     if (record.status !== MeasurementSheetRecordStatus.IN_PROGRESS) {
@@ -230,7 +225,7 @@ export class MeasurementSheetRecordsService {
 
   /** Afronden: final-check draaien en status naar COMPLETED (mits geldig). */
   async complete(id: string, user: User) {
-    this.requireOrg(user);
+    requireOrg(user);
     const record = await this.getRecordInOrg(id, user);
 
     if (record.status !== MeasurementSheetRecordStatus.IN_PROGRESS) {

@@ -18,7 +18,7 @@ import {
 import { User, Prisma, MarkerType } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import { PrismaService } from '@/prisma';
-import { orgScope, assertFound, assertSameOrg } from '@/common';
+import { orgScope, assertFound, assertSameOrg, requireOrg } from '@/common';
 import {
   STORAGE_PROVIDER,
   type StorageProvider,
@@ -53,11 +53,6 @@ export class LocationImagesService {
     private readonly findings: FindingsService,
     private readonly measurements: StandaloneMeasurementsService,
   ) {}
-
-  private requireOrg(user: User): string {
-    if (!user.orgId) throw new BadRequestException('Selecteer eerst een organisatie');
-    return user.orgId;
-  }
 
   /** Locatie binnen de organisatie (soft-delete-scoped). Bron van orgId + planId. */
   private async getLocationInOrg(locationId: string, user: User) {
@@ -180,7 +175,7 @@ export class LocationImagesService {
   }
 
   async createMarker(imageId: string, user: User, dto: CreateMarkerDto, deviceId?: string) {
-    const orgId = this.requireOrg(user);
+    const orgId = requireOrg(user);
     const image = await this.getImageInOrg(imageId, user);
 
     // FK-vorm valideren tegen markerType + cross-tenant-isolatie.
@@ -240,7 +235,7 @@ export class LocationImagesService {
   // ── Snelacties ──
 
   async quickCreateAsset(imageId: string, user: User, dto: QuickCreateAssetDto, deviceId?: string) {
-    this.requireOrg(user);
+    requireOrg(user);
     const image = await this.getImageInOrg(imageId, user);
 
     // Asset via AssetsService (valideert type-constraints e.d.).
@@ -287,7 +282,7 @@ export class LocationImagesService {
     dto: QuickCreateMeasurementDto,
     deviceId?: string,
   ) {
-    this.requireOrg(user);
+    requireOrg(user);
     const image = await this.getImageInOrg(imageId, user);
 
     // Meting via StandaloneMeasurementsService (valideert locatie binnen org).
@@ -325,7 +320,7 @@ export class LocationImagesService {
     dto: QuickCreateFindingDto,
     deviceId?: string,
   ) {
-    const orgId = this.requireOrg(user);
+    const orgId = requireOrg(user);
     const image = await this.getImageInOrg(imageId, user);
 
     // Asset moet binnen dezelfde org vallen (cross-tenant-isolatie); FindingsService

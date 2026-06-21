@@ -36,7 +36,7 @@
 - ☑ **PR-4 `perf/dashboard-and-validation`** — PERF-2/3/4 (portal-stats → `Promise.all`) + PERF-5 (inspection-plans create/update validations → `Promise.all`). [#55](https://github.com/Enspezo/Inspexi-IPM/pull/55) (merged).
   - Before/after: dashboard 6+8+2 serial queries → 3 `Promise.all` batches; plan create 8 serial validations → 1 batch.
   - Touches: `portal-stats/`, `inspection-plans/`.
-- ⧖ **PR-5 `perf/notifications-dispatch`** — PERF-1. Batch prefs/users/group-prefs + `createMany`.
+- ☑ **PR-5 `perf/notifications-dispatch`** — PERF-1. Batch prefs/users/group-prefs + `createMany`. [#56](https://github.com/Enspezo/Inspexi-IPM/pull/56) (merged).
   - Before/after: 2–4 queries × R recipients → 3 batched + 1 `createMany`. Keep dispatch fire-and-forget. Unit-test recipient/pref resolution unchanged.
   - Touches: `notifications/notifications.service.ts`.
 - ☐ **PR-6 `perf/list-endpoints`** — PERF-10 (`users.findAll`: `organization:{select:{id,name}}`, optional pagination keeping flat-array) + PERF-11 (contacts list addresses `where isPrimary, take 1, select`).
@@ -44,8 +44,8 @@
   - Touches: `users/`, `contacts/` services (+ FE check).
 
 ## Wave 4 — Dedup & common helpers (backend)
-- ☐ **PR-7 `chore/common-org-guards`** — DUP-1 (`requireOrg`, 12 copies) + DUP-3 (`checkOrgAccess`, 2 copies) → `@/common`. Behavior identical (same exceptions/messages).
-  - Touches: `common/` + ~14 services. Broad but mechanical.
+- ⧖ **PR-7 `chore/common-org-guards`** — DUP-1 (`requireOrg`, 11 user-variant copies) + DUP-3 (`checkOrgAccess`, 2 copies) → `@/common`. Behavior identical. (client-auth/client-inspections `requireOrg(orgId)` orgId-variant left — note in SUMMARY.)
+  - Touches: `common/` + 13 services. Broad but mechanical.
 - ☐ **PR-8 `chore/common-config-guards`** — DUP-2 (`assertManageable`/`assertConcept`/`assertVisible`) → DI-free `@/common` helpers; replace ~16 copies.
   - Touches: `common/` + lookups/checklists/templates/types/categories.
 - ☐ **PR-9 `chore/dedup-entity-enrichment`** — DEDUP-1 + DEDUP-2 + PERF-7/8 (shared `enrichEntityNames` over `ENTITY_DISPLAYS` with per-model `select`; shared `ENTITY_REF` map).

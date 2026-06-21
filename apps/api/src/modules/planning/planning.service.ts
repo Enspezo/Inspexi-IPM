@@ -6,7 +6,6 @@ import {
 } from '@nestjs/common';
 import {
   User,
-  Role,
   PlanningStatus,
   AcceptanceStatus,
   NotificationType,
@@ -14,7 +13,7 @@ import {
 } from '@prisma/client';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '@/prisma';
-import { paginate, orgScope, assertFound, assertSameOrg, assertAllSameOrg } from '@/common';
+import { paginate, orgScope, assertFound, assertSameOrg, assertAllSameOrg, assertOrgAccess } from '@/common';
 import { NotificationsService } from '../notifications/notifications.service';
 import { WorkOrdersService } from '../work-orders/work-orders.service';
 import { PlanningEmailService } from './planning-email.service';
@@ -135,12 +134,6 @@ export class PlanningService {
     return `${this.config.get<string>('PUBLIC_URL', 'http://localhost:5173')}${path}`;
   }
 
-  private checkOrgAccess(user: User, orgId: string): void {
-    if (!user.roles.includes(Role.SUPERUSER) && user.orgId !== orgId) {
-      throw new ForbiddenException();
-    }
-  }
-
   // ─── List & Detail ─────────────────────────────────────────
 
   async findAll(user: User, query: ListPlanningQueryDto) {
@@ -208,7 +201,7 @@ export class PlanningService {
       }),
       'Planregel',
     );
-    this.checkOrgAccess(user, item.orgId);
+    assertOrgAccess(user, item.orgId);
     return item;
   }
 
@@ -747,7 +740,7 @@ export class PlanningService {
       }),
       'Planregel',
     );
-    this.checkOrgAccess(user, item.orgId);
+    assertOrgAccess(user, item.orgId);
     await this.doSendConfirmationEmails(item);
     await this.addHistoryEntry(id, user.id, 'BEVESTIGING_VERSTUURD', 'Bevestigings-e-mail handmatig verstuurd');
   }

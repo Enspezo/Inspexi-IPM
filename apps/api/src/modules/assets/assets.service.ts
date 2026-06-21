@@ -1,7 +1,7 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
 import { User, Prisma } from '@prisma/client';
 import { PrismaService } from '@/prisma';
-import { paginate, orgScope, assertFound } from '@/common';
+import { paginate, orgScope, assertFound, requireOrg } from '@/common';
 import { AssetTypesService } from '../asset-types/asset-types.service';
 import { LookupService, LOOKUP_KIND } from '../lookups/lookup.service';
 import {
@@ -19,11 +19,6 @@ export class AssetsService {
     private readonly assetTypes: AssetTypesService,
     private readonly lookups: LookupService,
   ) {}
-
-  private requireOrg(user: User): string {
-    if (!user.orgId) throw new BadRequestException('Selecteer eerst een organisatie');
-    return user.orgId;
-  }
 
   private async getPlanInOrg(planId: string, user: User) {
     return assertFound(
@@ -160,7 +155,7 @@ export class AssetsService {
   }
 
   async create(planId: string, user: User, dto: CreateAssetDto, deviceId?: string) {
-    this.requireOrg(user);
+    requireOrg(user);
     const plan = await this.getPlanInOrg(planId, user);
 
     // Parent moet binnen hetzelfde plan vallen; type-constraint valideren
@@ -206,7 +201,7 @@ export class AssetsService {
   }
 
   async update(id: string, user: User, dto: UpdateAssetDto) {
-    const orgId = this.requireOrg(user);
+    const orgId = requireOrg(user);
     const asset = await this.findScoped(id, user);
     await this.assertStatus(dto.statusCode, orgId);
 
@@ -226,7 +221,7 @@ export class AssetsService {
   }
 
   async move(id: string, user: User, dto: MoveAssetDto) {
-    this.requireOrg(user);
+    requireOrg(user);
     const asset = await this.findScoped(id, user);
 
     let newParentTypeCode: string | null = null;
@@ -263,7 +258,7 @@ export class AssetsService {
   }
 
   async reorder(planId: string, user: User, dto: ReorderAssetsDto) {
-    this.requireOrg(user);
+    requireOrg(user);
     await this.getPlanInOrg(planId, user);
     await this.prisma.$transaction(
       dto.assetIds.map((assetId, index) =>
@@ -274,7 +269,7 @@ export class AssetsService {
   }
 
   async delete(id: string, user: User) {
-    this.requireOrg(user);
+    requireOrg(user);
     const asset = await this.findScoped(id, user);
     // Soft-delete asset + directe kinderen (tombstone voor sync)
     await this.prisma.asset.updateMany({

@@ -1,7 +1,7 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
 import { User } from '@prisma/client';
 import { PrismaService } from '@/prisma';
-import { orgScope, assertFound, assertSameOrg } from '@/common';
+import { orgScope, assertFound, assertSameOrg, requireOrg } from '@/common';
 import { LookupService, LOOKUP_KIND } from '../lookups/lookup.service';
 import {
   CreateStandaloneMeasurementDto,
@@ -16,11 +16,6 @@ export class StandaloneMeasurementsService {
     private readonly prisma: PrismaService,
     private readonly lookups: LookupService,
   ) {}
-
-  private requireOrg(user: User): string {
-    if (!user.orgId) throw new BadRequestException('Selecteer eerst een organisatie');
-    return user.orgId;
-  }
 
   /** Valideert een optionele passFailCode tegen de pass-fail-status lookup. */
   private async assertPassFail(code: string | undefined, orgId: string): Promise<void> {
@@ -78,7 +73,7 @@ export class StandaloneMeasurementsService {
     dto: CreateStandaloneMeasurementDto,
     deviceId?: string,
   ) {
-    const orgId = this.requireOrg(user);
+    const orgId = requireOrg(user);
     const plan = await this.getPlanInOrg(planId, user);
 
     // Locatie moet binnen dezelfde organisatie vallen
@@ -117,7 +112,7 @@ export class StandaloneMeasurementsService {
   }
 
   async update(id: string, user: User, dto: UpdateStandaloneMeasurementDto) {
-    this.requireOrg(user);
+    requireOrg(user);
     const measurement = await this.findScoped(id, user);
 
     return this.prisma.standaloneMeasurement.update({
@@ -130,7 +125,7 @@ export class StandaloneMeasurementsService {
   }
 
   async delete(id: string, user: User) {
-    this.requireOrg(user);
+    requireOrg(user);
     const measurement = await this.findScoped(id, user);
 
     await this.prisma.standaloneMeasurement.update({
@@ -142,7 +137,7 @@ export class StandaloneMeasurementsService {
   }
 
   async addValue(id: string, user: User, dto: AddValueDto) {
-    const orgId = this.requireOrg(user);
+    const orgId = requireOrg(user);
     const measurement = await this.findScoped(id, user);
     await this.assertPassFail(dto.passFailCode, orgId);
 
@@ -159,7 +154,7 @@ export class StandaloneMeasurementsService {
   }
 
   async linkAsset(id: string, user: User, dto: LinkAssetDto) {
-    const orgId = this.requireOrg(user);
+    const orgId = requireOrg(user);
     const measurement = await this.findScoped(id, user);
 
     // Asset moet binnen dezelfde organisatie vallen

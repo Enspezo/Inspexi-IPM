@@ -11,6 +11,7 @@ import {
   orgScope,
   assertFound,
   assertSameOrg,
+  requireOrg,
   STATUS_DRAFT,
   STATUS_IN_PROGRESS,
   STATUS_PENDING_REVIEW,
@@ -42,14 +43,6 @@ export class InspectionPlansService {
     private lookups: LookupService,
     private notifications: NotificationsService,
   ) {}
-
-  /** Inspectieplannen horen altijd bij een org; superuser moet binnen een org-context werken. */
-  private requireOrg(user: User): string {
-    if (!user.orgId) {
-      throw new BadRequestException('Selecteer eerst een organisatie');
-    }
-    return user.orgId;
-  }
 
   /** Template mag een systeemtemplate (orgId null) of een eigen-org template zijn. */
   private async assertTemplateUsable(
@@ -195,7 +188,7 @@ export class InspectionPlansService {
   }
 
   async create(dto: CreateInspectionPlanDto, user: User) {
-    const orgId = this.requireOrg(user);
+    const orgId = requireOrg(user);
 
     // Cross-tenant FK-validatie vóór de schrijfactie — alle checks zijn
     // onafhankelijke reads die throwen bij falen, dus parallel uitvoeren.

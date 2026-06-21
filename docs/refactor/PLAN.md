@@ -21,13 +21,13 @@
 - ☑ **PR-1 `docs/refactor-audit-plan`** — `AUDIT.md` + `PLAN.md` (+ baseline). No code. _This PR._
 
 ## Wave 1 — Security (ship first — real cross-tenant vulnerabilities)
-- ☐ **PR-2 `fix/cross-tenant-fk-validation`** — CONV-1/2/3/4. **security-review required.**
+- ☑ **PR-2 `fix/cross-tenant-fk-validation`** — CONV-1/2/3/4. [#53](https://github.com/Enspezo/Inspexi-IPM/pull/53) (merged). **security-review required.**
   - projects (contactId/locationId/projectManagerId + scope request/quote link updates), notes (polymorphic entityId), requests (assignedTo create+update), quotes (requestId create; contactId/locationId update).
   - **Behavior change (documented):** cross-tenant FK writes now → 403/404 instead of succeeding. Add cross-tenant e2e cases per gap.
   - Touches: `projects/`, `notes/`, `requests/`, `quotes/` services + `cross-tenant.e2e-spec.ts`.
 
 ## Wave 2 — Indexes (isolated to schema; clear DB win)
-- ☐ **PR-3 `perf/db-indexes`** — IDX-1..7 (IDX-8/9 if cheap) + remove redundant `ClientUser.email`, `ClientMagicLink.token`, `Favorite.orgId` indexes.
+- ⧖ **PR-3 `perf/db-indexes`** — IDX-1..9 + remove redundant `ClientUser.email`, `ClientMagicLink.token` indexes. (`Favorite.orgId` left in place — note in SUMMARY.)
   - One `prisma migrate dev --name perf_indexes` (run from `apps/api/`). Additive `CREATE INDEX` + `DROP INDEX`. Update seed only if needed (no data shape change → not needed).
   - **Before/after:** each index cites the unindexed query it serves (e.g. User has **zero** indexes; RefreshToken `tokenHash` lookup every refresh).
   - Touches: `schema.prisma`, `prisma/migrations/`.

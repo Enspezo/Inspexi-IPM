@@ -30,6 +30,7 @@ import {
 } from '@/components/table-config';
 import { useDocuments } from './hooks/use-documents';
 import { downloadFile } from '@/lib/download-file';
+import { formatFileSize } from '@/lib/format';
 import { DocumentPreviewModal, UploadDocumentModal } from '@/components/documents';
 
 const entityTypeFilterOptions = [
@@ -39,14 +40,6 @@ const entityTypeFilterOptions = [
     label: DOCUMENT_ENTITY_LABELS[type],
   })),
 ];
-
-function formatBytes(bytes: number): string {
-  if (bytes === 0) return '0 B';
-  const k = 1024;
-  const sizes = ['B', 'KB', 'MB', 'GB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
-}
 
 function getMimeLabel(mimeType: string): string {
   if (mimeType === 'application/pdf') return 'PDF';
@@ -188,7 +181,7 @@ export default function DocumentsPage() {
       sortKey: 'size',
       render: (doc) => (
         <span className="whitespace-nowrap text-xs text-gray-500">
-          {formatBytes(doc.size)}
+          {formatFileSize(doc.size)}
         </span>
       ),
     },

@@ -1,6 +1,5 @@
 import { useRef, useEffect } from 'react';
 import type { PlanningItem, PlanningSession } from '@/types';
-import { PlanningStatus } from '@/types';
 
 // ─── Calendar Event ───────────────────────────────────────────────────────────
 
@@ -122,24 +121,6 @@ function getISOWeekNumber(date: Date): number {
 export function getEventColor(event: CalendarEvent): string {
   const primary = event.inspectors.find((i) => i.isPrimary) ?? event.inspectors[0];
   return primary?.user?.color ?? '#6B7280';
-}
-
-/** Legacy overload for PlanningItem (used by external code). */
-export function getItemColor(item: PlanningItem): string {
-  const primary = item.inspectors?.find((i) => i.isPrimary) ?? item.inspectors?.[0];
-  return primary?.user?.color ?? '#6B7280';
-}
-
-/** Short status badge label */
-function _statusLabel(status: PlanningStatus): string {
-  const map: Record<string, string> = {
-    [PlanningStatus.NOG_TE_PLANNEN]: 'N/B',
-    [PlanningStatus.CONCEPT]: 'Concept',
-    [PlanningStatus.GEPLAND]: 'Gepland',
-    [PlanningStatus.AFGEROND]: '✓',
-    [PlanningStatus.VERVALLEN]: '✕',
-  };
-  return map[status] ?? status;
 }
 
 // ─── EventChip (month view) ──────────────────────────────────────────────────

@@ -1,4 +1,5 @@
 import { Card, Spinner } from '@/components/ui';
+import { formatFileSize } from '@/lib/format';
 import { useStorageStats } from '../hooks/use-storage-stats';
 
 const ENTITY_TYPE_LABELS: Record<string, string> = {
@@ -20,14 +21,6 @@ const COLORS = [
   '#06B6D4', // cyan
   '#F97316', // orange
 ];
-
-function formatBytes(bytes: number): string {
-  if (bytes === 0) return '0 B';
-  const units = ['B', 'KB', 'MB', 'GB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(1024));
-  const value = bytes / Math.pow(1024, i);
-  return `${value.toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
-}
 
 function PieChart({
   segments,
@@ -153,7 +146,7 @@ export default function QuotaTab() {
           <div>
             <h3 className="text-base font-semibold text-gray-900">Opslagquotum</h3>
             <p className="mt-1 text-sm text-gray-500">
-              {formatBytes(stats.totalBytes)} van {formatBytes(stats.quotaBytes)} gebruikt
+              {formatFileSize(stats.totalBytes)} van {formatFileSize(stats.quotaBytes)} gebruikt
               ({stats.totalFiles} {stats.totalFiles === 1 ? 'bestand' : 'bestanden'})
             </p>
           </div>
@@ -169,8 +162,8 @@ export default function QuotaTab() {
               />
             </div>
             <div className="flex justify-between text-xs text-gray-500">
-              <span>{formatBytes(stats.totalBytes)} gebruikt</span>
-              <span>{formatBytes(freeBytes)} beschikbaar</span>
+              <span>{formatFileSize(stats.totalBytes)} gebruikt</span>
+              <span>{formatFileSize(freeBytes)} beschikbaar</span>
             </div>
           </div>
 
@@ -192,7 +185,7 @@ export default function QuotaTab() {
                         style={{ backgroundColor: seg.color }}
                       />
                       <span className="text-gray-700">{seg.label}</span>
-                      <span className="ml-auto text-gray-500">{formatBytes(seg.value)}</span>
+                      <span className="ml-auto text-gray-500">{formatFileSize(seg.value)}</span>
                     </div>
                   ))}
                 </div>
@@ -237,7 +230,7 @@ export default function QuotaTab() {
                           <div className="text-xs text-gray-500">{u.userEmail}</div>
                         </td>
                         <td className="py-2.5 pr-4 text-right text-gray-700">{u.fileCount}</td>
-                        <td className="py-2.5 pr-4 text-right text-gray-700">{formatBytes(u.totalBytes)}</td>
+                        <td className="py-2.5 pr-4 text-right text-gray-700">{formatFileSize(u.totalBytes)}</td>
                         <td className="py-2.5 text-right">
                           <div className="flex items-center justify-end gap-2">
                             <div className="h-1.5 w-16 overflow-hidden rounded-full bg-gray-200">

@@ -44,7 +44,7 @@
   - Touches: `users/`, `contacts/` services (+ FE check).
 
 ## Wave 4 — Dedup & common helpers (backend)
-- ⧖ **PR-7 `chore/common-org-guards`** — DUP-1 (`requireOrg`, 11 user-variant copies) + DUP-3 (`checkOrgAccess`, 2 copies) → `@/common`. Behavior identical. (client-auth/client-inspections `requireOrg(orgId)` orgId-variant left — note in SUMMARY.)
+- ☑ **PR-7 `chore/common-org-guards`** — DUP-1 (`requireOrg`, 11 user-variant copies) + DUP-3 (`checkOrgAccess`, 2 copies) → `@/common`. [#57](https://github.com/Enspezo/Inspexi-IPM/pull/57) (merged). Behavior identical. (client-auth/client-inspections `requireOrg(orgId)` orgId-variant left — note in SUMMARY.)
   - Touches: `common/` + 13 services. Broad but mechanical.
 - ☐ **PR-8 `chore/common-config-guards`** — DUP-2 (`assertManageable`/`assertConcept`/`assertVisible`) → DI-free `@/common` helpers; replace ~16 copies.
   - Touches: `common/` + lookups/checklists/templates/types/categories.
@@ -62,10 +62,10 @@
 - _(SPLIT-4 quote-template-assets, SPLIT-5 generated-document-context — defer to SUMMARY unless time permits.)_
 
 ## Wave 6 — Frontend
-- ☐ **PR-15 `fix/fe-attachment-download`** — FE-1 broken download (in-memory token via `getAccessToken()`/`download-file.ts`). User-facing bug.
-- ☐ **PR-16 `refactor/fe-query-hooks`** — FE-2/3/4/5 (useEffect-fetch → query hooks; kills duplicate `/users` fetch) + FE-17 `any` cleanup that rides along.
-- ☐ **PR-17 `refactor/fe-shared-lib`** — FE-6 (`formatFileSize` ×5) + FE-7 (`formatDate` sweep) + FE-8 (`getContactName`) + FE-9 (status maps) + FE-10 (`useConfirm`) + FE-18 (dead code).
-- ☐ **PR-18 `refactor/fe-splits`** — FE-12 (`document-preview-modal` per-MIME renderers) + FE-14 (`search-page` columns/TabContent). _(FE-13 org-settings, FE-16 types-monolith — defer to SUMMARY.)_
+- ☑ **PR-15 `fix/fe-attachment-download-and-cleanup`** — FE-1 broken download (in-memory `getAccessToken()` + `ok` check) **plus** FE-6 (`formatFileSize` ×5), FE-10 (`useConfirm`), FE-18 (dead code). [#58](https://github.com/Enspezo/Inspexi-IPM/pull/58).
+- ☐ **PR-16 `refactor/fe-query-hooks`** — FE-2/3/4/5 (useEffect-fetch → query hooks) + FE-17 `any`. _Deferred → SUMMARY._
+- ☐ **PR-17 `refactor/fe-shared-lib`** — FE-7 (`formatDate` sweep) + FE-8 (`getContactName`) + FE-9 (status maps). _Remaining items deferred → SUMMARY (FE-6/10/18 shipped in PR-15)._
+- ☐ **PR-18 `refactor/fe-splits`** — FE-12 / FE-14 / FE-13 / FE-16. _Deferred → SUMMARY._
 
 ---
 

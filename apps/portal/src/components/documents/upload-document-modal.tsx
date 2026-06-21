@@ -14,6 +14,7 @@ import { useProducts } from '@/pages/products/hooks/use-products';
 import { usePlanningItems } from '@/pages/planning/hooks/use-planning';
 import { useWorkOrders } from '@/pages/work-orders/hooks/use-work-orders';
 import { useUsers } from '@/pages/users/hooks/use-users';
+import { formatFileSize } from '@/lib/format';
 import {
   DOCUMENT_ENTITY_LABELS,
   DOCUMENT_ENTITY_LINK_TYPES,
@@ -62,14 +63,6 @@ function getContactDisplayName(contact: Contact): string {
     return contact.companyName || '—';
   }
   return [contact.firstName, contact.lastName].filter(Boolean).join(' ') || '—';
-}
-
-function formatBytes(bytes: number): string {
-  if (bytes === 0) return '0 B';
-  const k = 1024;
-  const sizes = ['B', 'KB', 'MB', 'GB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
 }
 
 export function UploadDocumentModal({
@@ -203,7 +196,7 @@ export function UploadDocumentModal({
 
     if (selected) {
       if (selected.size > MAX_SIZE) {
-        setFileError(`Bestand is te groot (max ${formatBytes(MAX_SIZE)})`);
+        setFileError(`Bestand is te groot (max ${formatFileSize(MAX_SIZE)})`);
         setFile(null);
         return;
       }
@@ -291,7 +284,7 @@ export function UploadDocumentModal({
           />
           {file && (
             <p className="mt-1 text-xs text-gray-500">
-              {file.name} ({formatBytes(file.size)})
+              {file.name} ({formatFileSize(file.size)})
             </p>
           )}
           {fileError && (

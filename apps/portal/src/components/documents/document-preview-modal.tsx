@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Button, Spinner, TagPill, TagSelect, useToast } from '@/components/ui';
 import { downloadFile } from '@/lib/download-file';
+import { formatFileSize } from '@/lib/format';
 import { getAccessToken, getErrorMessage } from '@/lib/api-client';
 import type { CrmDocument } from '@/types';
 import { useUpdateDocument } from '@/pages/documents/hooks/use-documents';
@@ -17,14 +18,6 @@ interface DocumentPreviewModalProps {
 }
 
 const BASE_URL = '/api/v1';
-
-function formatBytes(bytes: number): string {
-  if (bytes === 0) return '0 B';
-  const k = 1024;
-  const sizes = ['B', 'KB', 'MB', 'GB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
-}
 
 function formatDate(dateStr: string): string {
   return new Date(dateStr).toLocaleDateString('nl-NL', {
@@ -603,7 +596,7 @@ export function DocumentPreviewModal({
             <div className="space-y-4">
               <MetaField label="Bestandsnaam" value={doc.originalName} />
               <MetaField label="Type" value={getMimeLabel(doc.mimeType)} />
-              <MetaField label="Grootte" value={formatBytes(doc.size)} />
+              <MetaField label="Grootte" value={formatFileSize(doc.size)} />
               <MetaField
                 label="Eigenaar"
                 value={

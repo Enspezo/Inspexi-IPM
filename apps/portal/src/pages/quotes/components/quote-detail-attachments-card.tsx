@@ -3,7 +3,7 @@ import type { QuoteAttachment } from '@/types';
 import { Button, Card, useConfirm, useToast } from '@/components/ui';
 import { formatFileSize } from '@/lib/format';
 import { useUploadQuoteAttachment, useDeleteQuoteAttachment } from '../hooks/use-quotes';
-import { getErrorMessage } from '@/lib/api-client';
+import { getErrorMessage, getAccessToken } from '@/lib/api-client';
 
 export function QuoteAttachmentsCard({
   quoteId,
@@ -45,11 +45,13 @@ export function QuoteAttachmentsCard({
 
   const handleDownloadAttachment = async (attachment: QuoteAttachment) => {
     try {
+      // Access token lives in memory (not localStorage); use getAccessToken().
+      const token = getAccessToken();
       const response = await fetch(`/api/v1/quotes/${quoteId}/attachments/${attachment.id}/download`, {
-        headers: { Authorization: `Bearer ${localStorage.getItem('accessToken') ?? ''}` },
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
         credentials: 'include',
       });
-      // Use apiClient approach: fetch with auth
+      if (!response.ok) throw new Error('Downloaden mislukt');
       const blob = await response.blob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');

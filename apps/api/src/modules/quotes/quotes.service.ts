@@ -10,7 +10,7 @@ import { User, Role, Prisma, QuoteStatus, QuoteTemplate, RequestStatus, Notifica
 import { ConfigService } from '@nestjs/config';
 import { randomUUID } from 'crypto';
 import { PrismaService } from '@/prisma';
-import { paginate, buildOrderBy, orgScope, assertFound } from '@/common';
+import { paginate, buildOrderBy, orgScope, assertFound, assertSameOrg } from '@/common';
 import { NotificationsService } from '../notifications/notifications.service';
 import { EmailService } from '@/common/services/email.service';
 import { StorageProvider, STORAGE_PROVIDER } from '@/common/services/storage/storage.interface';
@@ -88,6 +88,8 @@ export class QuotesService {
       const location = assertFound(await this.prisma.location.findUnique({ where: { id: dto.locationId } }), 'Locatie');
       if (location.contactId !== dto.contactId) throw new ForbiddenException('Locatie behoort niet tot deze relatie');
     }
+    // Linked request must belong to the same org (cross-tenant guard)
+    await assertSameOrg(this.prisma.request, dto.requestId, orgId, 'Aanvraag');
     let templateData: ReturnType<typeof resolveTemplateData> = {};
     if (dto.templateId) {
       const template = await this.loadActiveTemplate(dto.templateId, orgId, user);
@@ -134,6 +136,12 @@ export class QuotesService {
   async update(id: string, dto: UpdateQuoteDto, user: User) {
     const quote = await this.findOne(id, user);
     if (quote.status !== QuoteStatus.CONCEPT) throw new BadRequestException('Alleen offertes met status CONCEPT kunnen bewerkt worden');
+
+    // Cross-tenant guard on re-pointed FKs.
+    await Promise.all([
+      assertSameOrg(this.prisma.contact, dto.contactId, user.orgId, 'Relatie'),
+      assertSameOrg(this.prisma.location, dto.locationId, user.orgId, 'Locatie'),
+    ]);
 
     let customFieldsData: any = undefined;
     if (dto.customFields !== undefined) {

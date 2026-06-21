@@ -7,7 +7,7 @@ import {
 } from '@nestjs/common';
 import { User, Role, Prisma, NoteEntityType } from '@prisma/client';
 import { PrismaService } from '@/prisma';
-import { paginate, buildOrderBy, orgScope } from '@/common';
+import { paginate, buildOrderBy, orgScope, assertSameOrg } from '@/common';
 import { CreateNoteDto, UpdateNoteDto, ListNotesQueryDto } from './dto';
 
 const createdBySelect = {
@@ -225,7 +225,37 @@ export class NotesService {
     return note;
   }
 
+  /**
+   * Verify a note's linked entity belongs to the user's organization, so a tenant
+   * cannot attach a note to (and reference) another org's record.
+   */
+  private async assertEntityInOrg(
+    entityType: NoteEntityType,
+    entityId: string,
+    orgId: string | null,
+  ): Promise<void> {
+    switch (entityType) {
+      case NoteEntityType.CONTACT:
+        return assertSameOrg(this.prisma.contact, entityId, orgId, 'Relatie');
+      case NoteEntityType.REQUEST:
+        return assertSameOrg(this.prisma.request, entityId, orgId, 'Aanvraag');
+      case NoteEntityType.QUOTE:
+        return assertSameOrg(this.prisma.quote, entityId, orgId, 'Offerte');
+      case NoteEntityType.PLANNING:
+        return assertSameOrg(this.prisma.planningItem, entityId, orgId, 'Planning');
+      case NoteEntityType.PROJECT:
+        return assertSameOrg(this.prisma.project, entityId, orgId, 'Project');
+      case NoteEntityType.USER:
+        return assertSameOrg(this.prisma.user, entityId, orgId, 'Gebruiker');
+      case NoteEntityType.WORK_ORDER:
+        return assertSameOrg(this.prisma.workOrder, entityId, orgId, 'Werkbon');
+    }
+  }
+
   async create(dto: CreateNoteDto, user: User) {
+    // Linked entity must belong to the user's organization
+    await this.assertEntityInOrg(dto.entityType, dto.entityId, user.orgId);
+
     // Validate depth: replies to replies are not allowed
     if (dto.parentId) {
       const parent = await this.prisma.note.findUnique({

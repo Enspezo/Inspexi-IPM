@@ -12,7 +12,10 @@ interface ListNotesParams {
   sortOrder?: 'asc' | 'desc';
 }
 
-export function useNotes(params: ListNotesParams = {}) {
+export function useNotes(
+  params: ListNotesParams = {},
+  options?: { enabled?: boolean },
+) {
   const searchParams = new URLSearchParams();
   if (params.search) searchParams.set('search', params.search);
   if (params.entityType) searchParams.set('entityType', params.entityType);
@@ -27,6 +30,7 @@ export function useNotes(params: ListNotesParams = {}) {
   return useQuery<PaginatedResponse<Note>>({
     queryKey: ['notes', params],
     queryFn: () => apiClient.get<PaginatedResponse<Note>>(`/notes${qs ? `?${qs}` : ''}`),
+    enabled: options?.enabled,
   });
 }
 

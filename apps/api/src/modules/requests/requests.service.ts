@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import { User, Role, Prisma, RequestStatus, NotificationType } from '@prisma/client';
 import { PrismaService } from '@/prisma';
-import { paginate, buildOrderBy, orgScope, assertFound } from '@/common';
+import { paginate, buildOrderBy, orgScope, assertFound, assertSameOrg } from '@/common';
 import { NotificationsService } from '../notifications/notifications.service';
 import { CustomFieldsValidator } from '@/modules/custom-fields/custom-fields.validator';
 import {
@@ -207,6 +207,9 @@ export class RequestsService {
       }
     }
 
+    // Assignee must belong to the same org (cross-tenant guard)
+    await assertSameOrg(this.prisma.user, dto.assignedTo, orgId, 'Toegewezen gebruiker');
+
     const customFields = dto.customFields
       ? await this.customFieldsValidator.validateAndSanitize(orgId!, 'REQUEST', dto.customFields)
       : null;
@@ -273,6 +276,9 @@ export class RequestsService {
         throw new ForbiddenException('Locatie behoort niet tot deze relatie');
       }
     }
+
+    // Assignee must belong to the same org (cross-tenant guard)
+    await assertSameOrg(this.prisma.user, dto.assignedTo, user.orgId, 'Toegewezen gebruiker');
 
     // If contact changes and no new location is provided, clear the location
     const shouldClearLocation =

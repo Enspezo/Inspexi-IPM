@@ -7,7 +7,7 @@ import {
 } from '@nestjs/common';
 import { Role, ProjectStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
-import { paginate, buildOrderBy, orgScope, assertFound } from '@/common';
+import { paginate, buildOrderBy, orgScope, assertFound, assertSameOrg } from '@/common';
 import { NotificationsService } from '@/modules/notifications/notifications.service';
 import {
   CreateProjectDto,
@@ -117,6 +117,16 @@ export class ProjectsService {
   async create(dto: CreateProjectDto, user: User) {
     const orgId = user.orgId!;
 
+    // Cross-tenant guard: every supplied FK must belong to the caller's org so a
+    // tenant cannot link a project to (or hijack) another tenant's records.
+    await Promise.all([
+      assertSameOrg(this.prisma.contact, dto.contactId, orgId, 'Relatie'),
+      assertSameOrg(this.prisma.location, dto.locationId, orgId, 'Locatie'),
+      assertSameOrg(this.prisma.user, dto.projectManagerId, orgId, 'Projectmanager'),
+      assertSameOrg(this.prisma.request, dto.requestId, orgId, 'Aanvraag'),
+      assertSameOrg(this.prisma.quote, dto.quoteId, orgId, 'Offerte'),
+    ]);
+
     return this.prisma.$transaction(async (tx) => {
       const projectNumber = await this.generateProjectNumber(orgId, tx);
 
@@ -136,16 +146,17 @@ export class ProjectsService {
         include: PROJECT_INCLUDE,
       });
 
-      // Optionally link request/quote at creation
+      // Optionally link request/quote at creation. Scoped by orgId (validated
+      // above) so the write can never reach another tenant's row.
       if (dto.requestId) {
-        await tx.request.update({
-          where: { id: dto.requestId },
+        await tx.request.updateMany({
+          where: { id: dto.requestId, orgId },
           data: { projectId: project.id },
         });
       }
       if (dto.quoteId) {
-        await tx.quote.update({
-          where: { id: dto.quoteId },
+        await tx.quote.updateMany({
+          where: { id: dto.quoteId, orgId },
           data: { projectId: project.id },
         });
       }
@@ -171,6 +182,13 @@ export class ProjectsService {
   async update(id: string, dto: UpdateProjectDto, user: User) {
     const existing = await this.findOne(id, user);
     const oldStatus = existing.status;
+
+    // Cross-tenant guard on re-pointed FKs.
+    await Promise.all([
+      assertSameOrg(this.prisma.contact, dto.contactId, user.orgId, 'Relatie'),
+      assertSameOrg(this.prisma.location, dto.locationId, user.orgId, 'Locatie'),
+      assertSameOrg(this.prisma.user, dto.projectManagerId, user.orgId, 'Projectmanager'),
+    ]);
 
     const data: any = {};
     if (dto.title !== undefined) data.title = dto.title;

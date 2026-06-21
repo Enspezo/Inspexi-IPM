@@ -240,6 +240,8 @@ describe('ProjectsService', () => {
 
   describe('create', () => {
     beforeEach(() => {
+      // FK cross-tenant guards resolve to same-org entities for the happy path
+      mockPrismaService.contact.findUnique.mockResolvedValue({ orgId: 'org-1' });
       // $transaction calls the callback with a mock tx client
       mockPrismaService.$transaction.mockImplementation(async (cb: any) => {
         const mockTx = {

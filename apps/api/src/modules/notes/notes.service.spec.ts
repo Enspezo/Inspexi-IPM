@@ -15,13 +15,13 @@ describe('NotesService', () => {
       update: jest.fn(),
       count: jest.fn(),
     },
-    contact: { findMany: jest.fn() },
-    request: { findMany: jest.fn() },
-    quote: { findMany: jest.fn() },
-    planningItem: { findMany: jest.fn() },
-    project: { findMany: jest.fn() },
-    user: { findMany: jest.fn() },
-    workOrder: { findMany: jest.fn() },
+    contact: { findMany: jest.fn(), findUnique: jest.fn() },
+    request: { findMany: jest.fn(), findUnique: jest.fn() },
+    quote: { findMany: jest.fn(), findUnique: jest.fn() },
+    planningItem: { findMany: jest.fn(), findUnique: jest.fn() },
+    project: { findMany: jest.fn(), findUnique: jest.fn() },
+    user: { findMany: jest.fn(), findUnique: jest.fn() },
+    workOrder: { findMany: jest.fn(), findUnique: jest.fn() },
   };
 
   const mockUser = {
@@ -65,6 +65,15 @@ describe('NotesService', () => {
     mockPrismaService.project.findMany.mockResolvedValue([]);
     mockPrismaService.user.findMany.mockResolvedValue([]);
     mockPrismaService.workOrder.findMany.mockResolvedValue([]);
+
+    // FK entity guards (create) resolve to same-org entities for the happy path
+    mockPrismaService.contact.findUnique.mockResolvedValue({ orgId: 'org-1' });
+    mockPrismaService.request.findUnique.mockResolvedValue({ orgId: 'org-1' });
+    mockPrismaService.quote.findUnique.mockResolvedValue({ orgId: 'org-1' });
+    mockPrismaService.planningItem.findUnique.mockResolvedValue({ orgId: 'org-1' });
+    mockPrismaService.project.findUnique.mockResolvedValue({ orgId: 'org-1' });
+    mockPrismaService.user.findUnique.mockResolvedValue({ orgId: 'org-1' });
+    mockPrismaService.workOrder.findUnique.mockResolvedValue({ orgId: 'org-1' });
   });
 
   // ─── findByEntity ──────────────────────────────────────────

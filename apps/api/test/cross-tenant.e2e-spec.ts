@@ -58,8 +58,16 @@ describe('Cross-tenant FK isolation (e2e)', () => {
   let findingAId: string;
   let findingTemplateAId: string;
 
+  // PR-2 (cross-tenant FK) extra fixtures
+  let requestBId: string; // org B request (victim) — projects/quotes requestId attack
+  let requestAId: string; // org A request (own) — requests update attack target
+  let quoteAId: string; // org A CONCEPT quote (own) — quotes update attack target
+  let projectAId: string; // org A project (own) — projects update attack target
+
   const createdPlanningIds: string[] = [];
   const createdTaskIds: string[] = [];
+  // NB: rows created by PR-2 positive controls are swept by the orgId-bulk
+  // deletes in afterAll, so no per-id tracking arrays are needed.
 
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
@@ -352,6 +360,24 @@ describe('Cross-tenant FK isolation (e2e)', () => {
     });
     findingAId = findingA.id;
 
+    // ─── PR-2: cross-tenant FK fixtures ─────────────────
+    const requestB = await prisma.request.create({
+      data: { orgId: orgB.id, contactId: contactB.id, source: 'MANUAL', title: 'Aanvraag B', createdBy: userB.id },
+    });
+    requestBId = requestB.id;
+    const requestA = await prisma.request.create({
+      data: { orgId: orgA.id, contactId: contactA.id, source: 'MANUAL', title: 'Aanvraag A', createdBy: userA.id },
+    });
+    requestAId = requestA.id;
+    const quoteA = await prisma.quote.create({
+      data: { orgId: orgA.id, quoteNumber: 'E2E-XTENANT-A-001', contactId: contactA.id, subject: 'Offerte A', status: 'CONCEPT', createdBy: userA.id },
+    });
+    quoteAId = quoteA.id;
+    const projectA = await prisma.project.create({
+      data: { orgId: orgA.id, projectNumber: 'E2E-XT-A-P001', title: 'Project A', contactId: contactA.id, projectManagerId: userA.id, createdBy: userA.id },
+    });
+    projectAId = projectA.id;
+
     // Login as org A's admin
     const loginRes = await request(app.getHttpServer())
       .post('/api/v1/auth/login')
@@ -398,6 +424,13 @@ describe('Cross-tenant FK isolation (e2e)', () => {
       // Org-eigen locatietypes (systeem-types met orgId null worden niet geraakt).
       await prisma.locationTypeDefinition.deleteMany({ where: { orgId: { in: orgIds } } });
       await prisma.quote.deleteMany({ where: { orgId: { in: orgIds } } });
+      // PR-2 fixtures: requestStatusHistory → request → project (children first);
+      // quote is already gone above (quote.requestId → request).
+      await prisma.requestStatusHistory.deleteMany({ where: { request: { orgId: { in: orgIds } } } });
+      await prisma.request.deleteMany({ where: { orgId: { in: orgIds } } });
+      await prisma.project.deleteMany({ where: { orgId: { in: orgIds } } });
+      await prisma.note.deleteMany({ where: { orgId: { in: orgIds }, parentId: { not: null } } });
+      await prisma.note.deleteMany({ where: { orgId: { in: orgIds } } });
       await prisma.product.deleteMany({ where: { orgId: { in: orgIds } } });
       await prisma.contact.deleteMany({ where: { orgId: { in: orgIds } } });
       await prisma.notification.deleteMany({ where: { orgId: { in: orgIds } } });
@@ -1083,6 +1116,177 @@ describe('Cross-tenant FK isolation (e2e)', () => {
 
       const written = await prisma.finding.findUnique({ where: { id: clientFindingId } });
       expect(written).toBeNull();
+    });
+  });
+
+  // ─── Projects create (PR-2) ───────────────────────────
+  describe('POST /api/v1/projects — cross-tenant FK in create', () => {
+    const base = { title: 'Project X' };
+
+    it('rejects a cross-tenant contactId', async () => {
+      await request(app.getHttpServer())
+        .post('/api/v1/projects')
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({ ...base, contactId: contactBId })
+        .expect(403);
+    });
+
+    it('rejects a cross-tenant locationId', async () => {
+      await request(app.getHttpServer())
+        .post('/api/v1/projects')
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({ ...base, contactId: contactAId, locationId: locationBId })
+        .expect(403);
+    });
+
+    it('rejects a cross-tenant projectManagerId', async () => {
+      await request(app.getHttpServer())
+        .post('/api/v1/projects')
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({ ...base, contactId: contactAId, projectManagerId: userBId })
+        .expect(403);
+    });
+
+    it("rejects hijacking another org's request via requestId", async () => {
+      await request(app.getHttpServer())
+        .post('/api/v1/projects')
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({ ...base, contactId: contactAId, requestId: requestBId })
+        .expect(403);
+      // The victim's request must stay unlinked (no cross-tenant write).
+      const req = await prisma.request.findUnique({ where: { id: requestBId } });
+      expect(req?.projectId).toBeNull();
+    });
+
+    it("rejects hijacking another org's quote via quoteId", async () => {
+      await request(app.getHttpServer())
+        .post('/api/v1/projects')
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({ ...base, contactId: contactAId, quoteId: quoteBId })
+        .expect(403);
+      const q = await prisma.quote.findUnique({ where: { id: quoteBId } });
+      expect(q?.projectId).toBeNull();
+    });
+
+    it('allows an all-same-org project (positive control)', async () => {
+      const res = await request(app.getHttpServer())
+        .post('/api/v1/projects')
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({ ...base, contactId: contactAId })
+        .expect(201);
+      // NB: the projects controller returns the entity unwrapped (no {success,data}
+      // envelope), unlike notes/requests/quotes — pre-existing inconsistency.
+      expect(res.body.id).toBeTruthy();
+    });
+  });
+
+  // ─── Projects update (PR-2) ───────────────────────────
+  describe('PATCH /api/v1/projects/:id — cross-tenant FK in update', () => {
+    it('rejects reassigning to a cross-tenant projectManagerId', async () => {
+      await request(app.getHttpServer())
+        .patch(`/api/v1/projects/${projectAId}`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({ projectManagerId: userBId })
+        .expect(403);
+    });
+
+    it('allows reassigning to a same-org user (positive control)', async () => {
+      await request(app.getHttpServer())
+        .patch(`/api/v1/projects/${projectAId}`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({ projectManagerId: userAId })
+        .expect(200);
+    });
+  });
+
+  // ─── Notes create (PR-2) ──────────────────────────────
+  describe('POST /api/v1/notes — cross-tenant entity', () => {
+    it("rejects a note on another org's contact", async () => {
+      await request(app.getHttpServer())
+        .post('/api/v1/notes')
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({ entityType: 'CONTACT', entityId: contactBId, content: 'x' })
+        .expect(403);
+    });
+
+    it("rejects a note on another org's quote", async () => {
+      await request(app.getHttpServer())
+        .post('/api/v1/notes')
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({ entityType: 'QUOTE', entityId: quoteBId, content: 'x' })
+        .expect(403);
+    });
+
+    it("rejects a note referencing another org's user", async () => {
+      await request(app.getHttpServer())
+        .post('/api/v1/notes')
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({ entityType: 'USER', entityId: userBId, content: 'x' })
+        .expect(403);
+    });
+
+    it('allows a note on an own contact (positive control)', async () => {
+      const res = await request(app.getHttpServer())
+        .post('/api/v1/notes')
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({ entityType: 'CONTACT', entityId: contactAId, content: 'x' })
+        .expect(201);
+      expect(res.body.success).toBe(true);
+    });
+  });
+
+  // ─── Requests create/update (PR-2) ────────────────────
+  describe('POST/PATCH /api/v1/requests — cross-tenant assignee', () => {
+    it('rejects a request assigned to a cross-tenant user', async () => {
+      await request(app.getHttpServer())
+        .post('/api/v1/requests')
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({ contactId: contactAId, source: 'MANUAL', title: 'Aanvraag X', assignedTo: userBId })
+        .expect(403);
+    });
+
+    it('rejects reassigning a request to a cross-tenant user', async () => {
+      await request(app.getHttpServer())
+        .patch(`/api/v1/requests/${requestAId}`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({ assignedTo: userBId })
+        .expect(403);
+    });
+
+    it('allows a same-org request with own assignee (positive control)', async () => {
+      const res = await request(app.getHttpServer())
+        .post('/api/v1/requests')
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({ contactId: contactAId, source: 'MANUAL', title: 'Aanvraag OK', assignedTo: userAId })
+        .expect(201);
+      expect(res.body.success).toBe(true);
+    });
+  });
+
+  // ─── Quotes create/update (PR-2) ──────────────────────
+  describe('POST/PATCH /api/v1/quotes — cross-tenant FK', () => {
+    it("rejects a quote citing another org's request", async () => {
+      await request(app.getHttpServer())
+        .post('/api/v1/quotes')
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({ contactId: contactAId, subject: 'Offerte X', requestId: requestBId })
+        .expect(403);
+    });
+
+    it('rejects repointing a CONCEPT quote to a cross-tenant contact', async () => {
+      await request(app.getHttpServer())
+        .patch(`/api/v1/quotes/${quoteAId}`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({ contactId: contactBId })
+        .expect(403);
+    });
+
+    it('rejects repointing a CONCEPT quote to a cross-tenant location', async () => {
+      await request(app.getHttpServer())
+        .patch(`/api/v1/quotes/${quoteAId}`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({ locationId: locationBId })
+        .expect(403);
     });
   });
 });

@@ -27,13 +27,13 @@
   - Touches: `projects/`, `notes/`, `requests/`, `quotes/` services + `cross-tenant.e2e-spec.ts`.
 
 ## Wave 2 — Indexes (isolated to schema; clear DB win)
-- ⧖ **PR-3 `perf/db-indexes`** — IDX-1..9 + remove redundant `ClientUser.email`, `ClientMagicLink.token` indexes. (`Favorite.orgId` left in place — note in SUMMARY.)
+- ☑ **PR-3 `perf/db-indexes`** — IDX-1..9 + remove redundant `ClientUser.email`, `ClientMagicLink.token` indexes. [#54](https://github.com/Enspezo/Inspexi-IPM/pull/54) (merged). (`Favorite.orgId` + Asset/Photo standalone `orgId` left in place — note in SUMMARY.)
   - One `prisma migrate dev --name perf_indexes` (run from `apps/api/`). Additive `CREATE INDEX` + `DROP INDEX`. Update seed only if needed (no data shape change → not needed).
   - **Before/after:** each index cites the unindexed query it serves (e.g. User has **zero** indexes; RefreshToken `tokenHash` lookup every refresh).
   - Touches: `schema.prisma`, `prisma/migrations/`.
 
 ## Wave 3 — Backend perf quick wins
-- ☐ **PR-4 `perf/dashboard-and-validation`** — PERF-2/3/4 (portal-stats → `Promise.all`) + PERF-5 (inspection-plans create/update validations → `Promise.all`). Pure parallelization, no logic change.
+- ⧖ **PR-4 `perf/dashboard-and-validation`** — PERF-2/3/4 (portal-stats → `Promise.all`) + PERF-5 (inspection-plans create/update validations → `Promise.all`). Pure parallelization, no logic change.
   - Before/after: dashboard 6+8+2 serial queries → 3 `Promise.all` batches; plan create 8 serial validations → 1 batch.
   - Touches: `portal-stats/`, `inspection-plans/`.
 - ☐ **PR-5 `perf/notifications-dispatch`** — PERF-1. Batch prefs/users/group-prefs + `createMany`.

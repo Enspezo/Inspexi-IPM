@@ -23,7 +23,7 @@ import {
   Prisma,
 } from '@prisma/client';
 import { PrismaService } from '@/prisma';
-import { orgScope, assertFound, assertSameOrg } from '@/common';
+import { orgScope, assertFound, assertSameOrg, requireOrg } from '@/common';
 import { STORAGE_PROVIDER } from '@/common/services/storage/storage.interface';
 import type { StorageProvider } from '@/common/services/storage/storage.interface';
 import { EmailService } from '@/common/services/email.service';
@@ -101,14 +101,9 @@ export class GeneratedDocumentsService {
     private readonly lookups: LookupService,
   ) {}
 
-  private requireOrg(user: User): string {
-    if (!user.orgId) throw new BadRequestException('Selecteer eerst een organisatie');
-    return user.orgId;
-  }
-
   // ── Lifecycle ──────────────────────────────────────────
   async generateDocument(planId: string, type: DocumentType, user: User) {
-    const orgId = this.requireOrg(user);
+    const orgId = requireOrg(user);
     await assertSameOrg(this.prisma.inspectionPlan, planId, orgId, 'Inspectieplan');
 
     const plan = assertFound(

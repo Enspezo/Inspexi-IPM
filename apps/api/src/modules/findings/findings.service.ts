@@ -14,7 +14,7 @@ import {
 } from '@nestjs/common';
 import { User, Prisma } from '@prisma/client';
 import { PrismaService } from '@/prisma';
-import { orgScope, assertFound, STATUS_OPEN, STATUS_RESOLVED } from '@/common';
+import { orgScope, assertFound, requireOrg, STATUS_OPEN, STATUS_RESOLVED } from '@/common';
 import { LookupService, LOOKUP_KIND } from '../lookups/lookup.service';
 import { CreateFindingDto, UpdateFindingDto } from './dto';
 
@@ -24,11 +24,6 @@ export class FindingsService {
     private readonly prisma: PrismaService,
     private readonly lookups: LookupService,
   ) {}
-
-  private requireOrg(user: User): string {
-    if (!user.orgId) throw new BadRequestException('Selecteer eerst een organisatie');
-    return user.orgId;
-  }
 
   private async assertStatus(code: string | undefined, orgId: string): Promise<void> {
     if (!code) return;
@@ -132,7 +127,7 @@ export class FindingsService {
   }
 
   async create(assetId: string, user: User, dto: CreateFindingDto, deviceId?: string) {
-    this.requireOrg(user);
+    requireOrg(user);
     const asset = await this.getAssetInOrg(assetId, user);
 
     // FK's binnen dezelfde asset / org
@@ -182,7 +177,7 @@ export class FindingsService {
   }
 
   async update(id: string, user: User, dto: UpdateFindingDto) {
-    const orgId = this.requireOrg(user);
+    const orgId = requireOrg(user);
     const finding = assertFound(
       await this.prisma.finding.findFirst({ where: { id, ...orgScope(user), deletedAt: null } }),
       'Constatering',
@@ -214,7 +209,7 @@ export class FindingsService {
   }
 
   async delete(id: string, user: User) {
-    this.requireOrg(user);
+    requireOrg(user);
     const finding = assertFound(
       await this.prisma.finding.findFirst({ where: { id, ...orgScope(user), deletedAt: null } }),
       'Constatering',

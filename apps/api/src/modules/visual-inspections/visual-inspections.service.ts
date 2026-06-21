@@ -7,20 +7,15 @@
 //  - HARD delete (model heeft geen deletedAt)
 //  - X-Device-ID → deviceId bij create
 
-import { Injectable, BadRequestException } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { User, Prisma, InspectionExecStatus } from '@prisma/client';
 import { PrismaService } from '@/prisma';
-import { orgScope, assertFound, assertSameOrg } from '@/common';
+import { orgScope, assertFound, assertSameOrg, requireOrg } from '@/common';
 import { CreateVisualInspectionDto, UpdateVisualInspectionDto } from './dto';
 
 @Injectable()
 export class VisualInspectionsService {
   constructor(private readonly prisma: PrismaService) {}
-
-  private requireOrg(user: User): string {
-    if (!user.orgId) throw new BadRequestException('Selecteer eerst een organisatie');
-    return user.orgId;
-  }
 
   /** Org-scope de parent-asset; cross-tenant of onbekend → 404. */
   private async getAssetInOrg(assetId: string, user: User) {
@@ -84,7 +79,7 @@ export class VisualInspectionsService {
   }
 
   async create(assetId: string, user: User, dto: CreateVisualInspectionDto, deviceId?: string) {
-    const orgId = this.requireOrg(user);
+    const orgId = requireOrg(user);
     const asset = await this.getAssetInOrg(assetId, user);
 
     // FK binnen dezelfde org
@@ -112,7 +107,7 @@ export class VisualInspectionsService {
   }
 
   async update(id: string, user: User, dto: UpdateVisualInspectionDto) {
-    this.requireOrg(user);
+    requireOrg(user);
     const inspection = await this.getInOrg(id, user);
 
     const data: Prisma.VisualInspectionUpdateInput = {};
@@ -137,7 +132,7 @@ export class VisualInspectionsService {
 
   /** Start de uitvoering: status → in_progress, startedAt = nu, inspecteur = huidige gebruiker indien nog leeg. */
   async start(id: string, user: User) {
-    this.requireOrg(user);
+    requireOrg(user);
     const inspection = await this.getInOrg(id, user);
 
     return this.prisma.visualInspection.update({
@@ -159,7 +154,7 @@ export class VisualInspectionsService {
 
   /** Rond af: status → completed, completedAt = nu. */
   async complete(id: string, user: User) {
-    this.requireOrg(user);
+    requireOrg(user);
     const inspection = await this.getInOrg(id, user);
 
     return this.prisma.visualInspection.update({
@@ -179,7 +174,7 @@ export class VisualInspectionsService {
 
   /** Hard delete (model heeft geen deletedAt). */
   async delete(id: string, user: User) {
-    this.requireOrg(user);
+    requireOrg(user);
     const inspection = await this.getInOrg(id, user);
     await this.prisma.visualInspection.delete({ where: { id: inspection.id } });
     return { deleted: true };

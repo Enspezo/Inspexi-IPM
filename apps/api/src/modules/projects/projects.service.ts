@@ -2,12 +2,11 @@ import {
   Injectable,
   Logger,
   NotFoundException,
-  ForbiddenException,
   BadRequestException,
 } from '@nestjs/common';
-import { Role, ProjectStatus } from '@prisma/client';
+import { ProjectStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
-import { paginate, buildOrderBy, orgScope, assertFound, assertSameOrg } from '@/common';
+import { paginate, buildOrderBy, orgScope, assertFound, assertSameOrg, assertOrgAccess } from '@/common';
 import { NotificationsService } from '@/modules/notifications/notifications.service';
 import {
   CreateProjectDto,
@@ -47,12 +46,6 @@ export class ProjectsService {
   ) {}
 
   // ─── Helpers ──────────────────────────────────────────────
-
-  private checkOrgAccess(user: User, orgId: string): void {
-    if (!user.roles.includes(Role.SUPERUSER) && user.orgId !== orgId) {
-      throw new ForbiddenException();
-    }
-  }
 
   private async generateProjectNumber(orgId: string, tx?: any): Promise<string> {
     const client = tx || this.prisma;
@@ -110,7 +103,7 @@ export class ProjectsService {
       include: PROJECT_INCLUDE,
     });
     if (!project || project.isDeleted) throw new NotFoundException('Project niet gevonden');
-    this.checkOrgAccess(user, project.orgId);
+    assertOrgAccess(user, project.orgId);
     return project;
   }
 
@@ -529,7 +522,7 @@ export class ProjectsService {
       }),
       'Aanvraag',
     );
-    this.checkOrgAccess(user, request.orgId);
+    assertOrgAccess(user, request.orgId);
     if (request.projectId) throw new BadRequestException('Aanvraag is al gekoppeld aan een project');
 
     const contactName = request.contact?.companyName ||

@@ -10,7 +10,7 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
 import { User, Prisma, SyncStatus } from '@prisma/client';
 import { PrismaService } from '@/prisma';
-import { orgScope, assertSameOrg } from '@/common';
+import { orgScope, assertSameOrg, requireOrg } from '@/common';
 import { PushDto, ResolveDto } from './dto';
 import { SYNC_ENTITIES, SyncEntityKey, SyncRecordData, toDbData, toWire } from './sync-mapper';
 
@@ -52,11 +52,6 @@ function asRecord(value: unknown): Record<string, unknown> {
 @Injectable()
 export class SyncService {
   constructor(private readonly prisma: PrismaService) {}
-
-  private requireOrg(user: User): string {
-    if (!user.orgId) throw new BadRequestException('Selecteer eerst een organisatie');
-    return user.orgId;
-  }
 
   /** Expliciete map model-naam → Prisma-delegate, i.p.v. een dynamische `this.prisma[name]`. */
   private delegateFor(model: SyncModelName): SyncDelegate {
@@ -132,7 +127,7 @@ export class SyncService {
 
   // ── PUSH ───────────────────────────────────────────────
   async push(user: User, dto: PushDto) {
-    const orgId = this.requireOrg(user);
+    const orgId = requireOrg(user);
     const results: OpResult[] = [];
     const processed: Record<string, number> = { inspectionPlans: 0, assets: 0, findings: 0 };
 
@@ -241,7 +236,7 @@ export class SyncService {
 
   // ── RESOLVE ────────────────────────────────────────────
   async resolve(user: User, dto: ResolveDto) {
-    this.requireOrg(user);
+    requireOrg(user);
     let resolved = 0;
     const errors: Array<{ entityType: string; entityId: string; error: string }> = [];
 

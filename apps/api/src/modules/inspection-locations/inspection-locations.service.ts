@@ -1,7 +1,7 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
 import { User, Prisma } from '@prisma/client';
 import { PrismaService } from '@/prisma';
-import { orgScope, assertFound } from '@/common';
+import { orgScope, assertFound, requireOrg } from '@/common';
 import { LocationTypesService } from '../location-types/location-types.service';
 import { CreateLocationDto, UpdateLocationDto, MoveLocationDto, ReorderLocationsDto } from './dto';
 
@@ -11,11 +11,6 @@ export class InspectionLocationsService {
     private readonly prisma: PrismaService,
     private readonly locationTypes: LocationTypesService,
   ) {}
-
-  private requireOrg(user: User): string {
-    if (!user.orgId) throw new BadRequestException('Selecteer eerst een organisatie');
-    return user.orgId;
-  }
 
   private async getPlanInOrg(planId: string, user: User) {
     return assertFound(
@@ -97,7 +92,7 @@ export class InspectionLocationsService {
   }
 
   async create(planId: string, user: User, dto: CreateLocationDto, deviceId?: string) {
-    this.requireOrg(user);
+    requireOrg(user);
     const plan = await this.getPlanInOrg(planId, user);
 
     // Parent moet binnen hetzelfde plan vallen; type-constraint valideren
@@ -147,7 +142,7 @@ export class InspectionLocationsService {
   }
 
   async update(id: string, user: User, dto: UpdateLocationDto) {
-    this.requireOrg(user);
+    requireOrg(user);
     const location = await this.findScoped(id, user);
 
     return this.prisma.inspectionLocation.update({
@@ -165,7 +160,7 @@ export class InspectionLocationsService {
   }
 
   async move(id: string, user: User, dto: MoveLocationDto) {
-    this.requireOrg(user);
+    requireOrg(user);
     const location = await this.findScoped(id, user);
 
     let newParentTypeCode: string | null = null;
@@ -206,7 +201,7 @@ export class InspectionLocationsService {
   }
 
   async reorder(planId: string, user: User, dto: ReorderLocationsDto) {
-    this.requireOrg(user);
+    requireOrg(user);
     await this.getPlanInOrg(planId, user);
     await this.prisma.$transaction(
       dto.locationIds.map((locationId, index) =>
@@ -220,7 +215,7 @@ export class InspectionLocationsService {
   }
 
   async delete(id: string, user: User) {
-    this.requireOrg(user);
+    requireOrg(user);
     const location = await this.findScoped(id, user);
     const now = new Date();
     // Soft-delete locatie + directe kind-locaties (tombstone voor sync)

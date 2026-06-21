@@ -7,10 +7,10 @@
 //
 // NB: foto-URL's / signed URLs vallen buiten dit model; metingen worden als JSON bewaard.
 
-import { Injectable, BadRequestException } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { User, Prisma, InspectionExecStatus } from '@prisma/client';
 import { PrismaService } from '@/prisma';
-import { orgScope, assertFound, assertSameOrg } from '@/common';
+import { orgScope, assertFound, assertSameOrg, requireOrg } from '@/common';
 import {
   CreateMeasurementRecordDto,
   UpdateMeasurementRecordDto,
@@ -19,11 +19,6 @@ import {
 @Injectable()
 export class MeasurementRecordsService {
   constructor(private readonly prisma: PrismaService) {}
-
-  private requireOrg(user: User): string {
-    if (!user.orgId) throw new BadRequestException('Selecteer eerst een organisatie');
-    return user.orgId;
-  }
 
   private async getAssetInOrg(assetId: string, user: User) {
     return assertFound(
@@ -85,7 +80,7 @@ export class MeasurementRecordsService {
     dto: CreateMeasurementRecordDto,
     deviceId?: string,
   ) {
-    const orgId = this.requireOrg(user);
+    const orgId = requireOrg(user);
     const asset = await this.getAssetInOrg(assetId, user);
 
     if (dto.inspectorId) {
@@ -109,7 +104,7 @@ export class MeasurementRecordsService {
   }
 
   async update(id: string, user: User, dto: UpdateMeasurementRecordDto) {
-    this.requireOrg(user);
+    requireOrg(user);
     const record = assertFound(
       await this.prisma.measurementRecord.findFirst({ where: { id, ...orgScope(user) } }),
       'Meting',
@@ -140,7 +135,7 @@ export class MeasurementRecordsService {
   }
 
   async start(id: string, user: User) {
-    this.requireOrg(user);
+    requireOrg(user);
     const record = assertFound(
       await this.prisma.measurementRecord.findFirst({ where: { id, ...orgScope(user) } }),
       'Meting',
@@ -159,7 +154,7 @@ export class MeasurementRecordsService {
   }
 
   async complete(id: string, user: User) {
-    this.requireOrg(user);
+    requireOrg(user);
     const record = assertFound(
       await this.prisma.measurementRecord.findFirst({ where: { id, ...orgScope(user) } }),
       'Meting',
@@ -176,7 +171,7 @@ export class MeasurementRecordsService {
   }
 
   async delete(id: string, user: User) {
-    this.requireOrg(user);
+    requireOrg(user);
     const record = assertFound(
       await this.prisma.measurementRecord.findFirst({ where: { id, ...orgScope(user) } }),
       'Meting',

@@ -13,6 +13,7 @@ import { PrismaService } from '@/prisma';
 import { orgScope, assertSameOrg, requireOrg } from '@/common';
 import { PushDto, ResolveDto } from './dto';
 import { SYNC_ENTITIES, SyncEntityKey, SyncRecordData, toDbData, toWire } from './sync-mapper';
+import { ChatService } from '../chat/chat.service';
 
 type OpResult =
   | { entityType: string; entityId: string; status: 'success' }
@@ -51,7 +52,10 @@ function asRecord(value: unknown): Record<string, unknown> {
 
 @Injectable()
 export class SyncService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly chat: ChatService,
+  ) {}
 
   /** Expliciete map model-naam → Prisma-delegate, i.p.v. een dynamische `this.prisma[name]`. */
   private delegateFor(model: SyncModelName): SyncDelegate {
@@ -100,6 +104,10 @@ export class SyncService {
       select: { id: true, type: true, companyName: true, firstName: true, lastName: true, orgId: true },
     });
 
+    // Additieve chat-uitbreiding (REQ1 PR2): membership-scoped threads/messages +
+    // presence. Bestaande keys blijven ongewijzigd; een oude PWA negeert deze.
+    const chat = await this.chat.getSyncSnapshot(user, since);
+
     return {
       inspectionPlans: plans.map(toWire),
       assets: assets.map(toWire),
@@ -116,10 +124,17 @@ export class SyncService {
         orgId: c.orgId,
         name: c.companyName || [c.firstName, c.lastName].filter(Boolean).join(' ') || '—',
       })),
+      // Additief — chat:
+      chatThreads: chat.chatThreads,
+      chatMessages: chat.chatMessages,
+      users: chat.users,
       deletedIds: {
         inspectionPlans: delPlans.map((x) => x.id),
         assets: delAssets.map((x) => x.id),
         findings: delFindings.map((x) => x.id),
+        // Additief — chat tombstones:
+        chatThreads: chat.deletedThreadIds,
+        chatMessages: chat.deletedMessageIds,
       },
       serverTime: serverTime.toISOString(),
     };
@@ -129,7 +144,7 @@ export class SyncService {
   async push(user: User, dto: PushDto) {
     const orgId = requireOrg(user);
     const results: OpResult[] = [];
-    const processed: Record<string, number> = { inspectionPlans: 0, assets: 0, findings: 0 };
+    const processed: Record<string, number> = { inspectionPlans: 0, assets: 0, findings: 0, chatMessages: 0 };
 
     for (const key of Object.keys(SYNC_ENTITIES) as SyncEntityKey[]) {
       const group = dto.changes[key] ?? [];
@@ -148,6 +163,26 @@ export class SyncService {
         }
       }
     }
+
+    // Additief (REQ1 PR2): chat-berichten. Bewust NIET via de generieke mutator —
+    // ze vereisen membership-autorisatie + notificatie-dispatch — dus delegeren we
+    // naar ChatService (idempotent op client-id).
+    let chatMessagesProcessed = 0;
+    for (const change of dto.changes.chatMessages ?? []) {
+      try {
+        const r = await this.chat.applySyncMessage(user, change.operation, change.data);
+        results.push({ entityType: 'chatMessage', entityId: r.id, status: 'success' });
+        chatMessagesProcessed++;
+      } catch (e: any) {
+        results.push({
+          entityType: 'chatMessage',
+          entityId: String(change.data.id ?? ''),
+          status: 'failed',
+          error: e?.message ?? 'Onbekende fout',
+        });
+      }
+    }
+    processed.chatMessages = chatMessagesProcessed;
 
     return {
       processed,

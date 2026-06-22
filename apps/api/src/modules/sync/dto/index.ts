@@ -37,6 +37,12 @@ export class PushChangesGroupDto {
   @ApiPropertyOptional({ type: [EntityChangeDto] })
   @IsOptional() @IsArray() @ValidateNested({ each: true }) @Type(() => EntityChangeDto)
   findings?: EntityChangeDto[];
+
+  // Additief (REQ1 PR2): chat-berichten van de PWA-inspecteur. Verwerkt via
+  // ChatService (membership-auth + notificaties), niet via de generieke mutator.
+  @ApiPropertyOptional({ type: [EntityChangeDto] })
+  @IsOptional() @IsArray() @ValidateNested({ each: true }) @Type(() => EntityChangeDto)
+  chatMessages?: EntityChangeDto[];
 }
 
 export class PushDto {

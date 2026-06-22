@@ -3,6 +3,7 @@ import { BadRequestException } from '@nestjs/common';
 import { Role, SyncStatus } from '@prisma/client';
 import { SyncService } from './sync.service';
 import { PrismaService } from '@/prisma';
+import { ChatService } from '../chat/chat.service';
 
 describe('SyncService', () => {
   let service: SyncService;
@@ -24,6 +25,18 @@ describe('SyncService', () => {
     syncQueue: delegate(),
   };
 
+  // ChatService is delegated to for the additive chat sync; mock its snapshot/apply.
+  const mockChat = {
+    getSyncSnapshot: jest.fn().mockResolvedValue({
+      chatThreads: [{ id: 't1', type: 'DIRECT' }],
+      chatMessages: [{ id: 'm1', threadId: 't1', content: 'hi' }],
+      deletedThreadIds: ['t-del'],
+      deletedMessageIds: ['m-del'],
+      users: [{ id: 'u1', availability: 'BESCHIKBAAR' }],
+    }),
+    applySyncMessage: jest.fn().mockResolvedValue({ id: 'm-new', status: 'success' }),
+  };
+
   const user = { id: 'user-1', orgId: 'org-1', roles: [Role.INSPECTEUR] } as any;
   const superuser = { id: 'su', orgId: null, roles: [Role.SUPERUSER] } as any;
 
@@ -34,6 +47,7 @@ describe('SyncService', () => {
       providers: [
         SyncService,
         { provide: PrismaService, useValue: mockPrisma },
+        { provide: ChatService, useValue: mockChat },
       ],
     }).compile();
 
@@ -358,6 +372,56 @@ describe('SyncService', () => {
       // serverTime is an ISO string
       expect(typeof result.serverTime).toBe('string');
       expect(new Date(result.serverTime).toISOString()).toBe(result.serverTime);
+    });
+
+    it('adds chat additively without changing existing keys/shape', async () => {
+      mockPrisma.inspectionPlan.findMany.mockResolvedValue([]);
+      mockPrisma.asset.findMany.mockResolvedValue([]);
+      mockPrisma.finding.findMany.mockResolvedValue([]);
+      mockPrisma.photo.findMany.mockResolvedValue([]);
+      mockPrisma.contact.findMany.mockResolvedValue([]);
+
+      const result = await service.pull(user);
+
+      // Existing contract keys remain present and unchanged in name.
+      for (const key of ['inspectionPlans', 'assets', 'findings', 'photos', 'contacts', 'serverTime']) {
+        expect(result).toHaveProperty(key);
+      }
+      expect(result.deletedIds).toHaveProperty('inspectionPlans');
+      expect(result.deletedIds).toHaveProperty('assets');
+      expect(result.deletedIds).toHaveProperty('findings');
+
+      // Additive chat keys.
+      expect(result.chatThreads).toEqual([{ id: 't1', type: 'DIRECT' }]);
+      expect(result.chatMessages).toEqual([{ id: 'm1', threadId: 't1', content: 'hi' }]);
+      expect(result.users).toEqual([{ id: 'u1', availability: 'BESCHIKBAAR' }]);
+      expect(result.deletedIds.chatThreads).toEqual(['t-del']);
+      expect(result.deletedIds.chatMessages).toEqual(['m-del']);
+    });
+  });
+
+  // ── PUSH: chat (additive, delegated) ───────────────────
+  describe('push — chat messages', () => {
+    it('delegates chat messages to ChatService, not the generic mutator', async () => {
+      const dto = {
+        deviceId: 'dev-1',
+        changes: {
+          chatMessages: [
+            { operation: 'create', data: { id: 'm1', threadId: 't1', content: 'hoi' } },
+          ],
+        },
+      } as any;
+
+      const result = await service.push(user, dto);
+
+      expect(mockChat.applySyncMessage).toHaveBeenCalledWith(
+        user,
+        'create',
+        expect.objectContaining({ threadId: 't1', content: 'hoi' }),
+      );
+      expect(result.processed.chatMessages).toBe(1);
+      // The generic mutator must be untouched by chat pushes.
+      expect(mockPrisma.inspectionPlan.create).not.toHaveBeenCalled();
     });
   });
 });

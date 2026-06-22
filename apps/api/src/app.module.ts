@@ -37,6 +37,7 @@ import { PlanningModule } from './modules/planning/planning.module';
 import { SearchModule } from './modules/search/search.module';
 import { GeocodingModule } from './modules/geocoding/geocoding.module';
 import { CustomFieldsModule } from './modules/custom-fields/custom-fields.module';
+import { NumberingModule } from './modules/numbering/numbering.module';
 import { EmailTemplatesModule } from './modules/email-templates/email-templates.module';
 import { ProjectsModule } from './modules/projects/projects.module';
 import { KvkModule } from './modules/kvk/kvk.module';
@@ -113,6 +114,7 @@ import { VoiceModule } from './modules/voice/voice.module';
     SearchModule,
     GeocodingModule,
     CustomFieldsModule,
+    NumberingModule,
     EmailTemplatesModule,
     ProjectsModule,
     KvkModule,

@@ -13,6 +13,7 @@ import { DetailPageLayout, SidebarSection } from '@/components/layout/detail-pag
 import { FavoriteStar } from '@/components/favorites/favorite-star';
 import { NotesSidebarSection, HistorySidebarSection, DocumentsSidebarSection } from '@/components/layout/sidebar-sections';
 import { useAuth } from '@/providers/auth-provider';
+import { useWindowTabSync } from '@/providers/window-tabs';
 import { useToast } from '@/components/ui';
 import {
   useProject,
@@ -84,6 +85,12 @@ export default function ProjectDetailPage() {
   const { data: project, isLoading, error } = useProject(id!);
   const updateMutation = useUpdateProject(id!);
   const deleteMutation = useDeleteProject(id!);
+
+  // Keep this record's in-window tab title fresh, and flag it if the record 404s.
+  useWindowTabSync('project', id, {
+    title: project?.projectNumber,
+    notFound: !isLoading && (!!error || !project),
+  });
 
   const { data: requests } = useProjectRequests(id!);
   const { data: quotes } = useProjectQuotes(id!);

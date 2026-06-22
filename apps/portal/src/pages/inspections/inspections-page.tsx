@@ -4,7 +4,6 @@
 // dynamisch uit useLookups. Dit patroon herhaalt voor alle inspectie-overzichten.
 
 import { useState, useCallback, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
 import type { InspectionPlan } from '@/types';
 import { ErrorBox, Spinner, Table, Input, Select, Button } from '@/components/ui';
 import { LookupBadge } from '@/components/ui/lookup-badge';
@@ -12,6 +11,7 @@ import { DetailPageLayout } from '@/components/layout/detail-page-layout';
 import { PageHeader } from '@/components/layout/page-header';
 import { TableConfigSidebar, useTableConfig, type ColumnDef } from '@/components/table-config';
 import { useLookups } from '@/lib/lookups';
+import { useWindowTabs } from '@/providers/window-tabs';
 import { useInspectionPlans } from './hooks/use-inspections';
 
 function contactName(plan: InspectionPlan): string {
@@ -21,7 +21,7 @@ function contactName(plan: InspectionPlan): string {
 }
 
 export default function InspectionsPage() {
-  const navigate = useNavigate();
+  const { openTab } = useWindowTabs();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [page, setPage] = useState(1);
@@ -43,7 +43,19 @@ export default function InspectionsPage() {
       key: 'projectName', header: 'Project', pinned: true, sortable: true, sortKey: 'projectName',
       render: (p) => (
         <button
-          onClick={() => navigate(`/inspections/${p.id}`)}
+          // Opens the inspectie as an in-window tab. ⌘/Ctrl- or middle-click
+          // opens it in the background without switching away from the list.
+          onClick={(e) =>
+            openTab('inspection', p.id, p.projectName, {
+              background: e.metaKey || e.ctrlKey,
+            })
+          }
+          onMouseDown={(e) => {
+            if (e.button === 1) {
+              e.preventDefault();
+              openTab('inspection', p.id, p.projectName, { background: true });
+            }
+          }}
           className="font-medium text-primary-600 hover:text-primary-800 hover:underline"
         >
           {p.projectName}

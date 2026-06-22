@@ -12,6 +12,7 @@ import {
   type ColumnDef,
 } from '@/components/table-config';
 import { useAuth } from '@/providers/auth-provider';
+import { useWindowTabs } from '@/providers/window-tabs';
 import { usePlanningItems } from './hooks/use-planning';
 import { useOrganization } from '../organization/hooks/use-organization';
 import {
@@ -108,6 +109,7 @@ function getCalendarRange(view: ViewMode, date: Date): { dateFrom: string; dateT
 
 export default function PlanningPage() {
   const navigate = useNavigate();
+  const { openTab } = useWindowTabs();
   const { user } = useAuth();
   const { data: orgData } = useOrganization(user?.orgId);
   const dayStart = orgData?.workdayStart ?? 8;
@@ -226,7 +228,19 @@ export default function PlanningPage() {
         <div>
           <div className="flex items-center gap-1.5 flex-wrap">
             <button
-              onClick={() => navigate(`/planning/${item.id}`)}
+              // Opens the planregel as an in-window tab. ⌘/Ctrl- or middle-click
+              // opens it in the background without switching away from the list.
+              onClick={(e) =>
+                openTab('planning', item.id, item.productName, {
+                  background: e.metaKey || e.ctrlKey,
+                })
+              }
+              onMouseDown={(e) => {
+                if (e.button === 1) {
+                  e.preventDefault();
+                  openTab('planning', item.id, item.productName, { background: true });
+                }
+              }}
               className="font-medium text-primary-600 hover:text-primary-800 hover:underline text-left"
             >
               {item.productName}
@@ -618,7 +632,10 @@ export default function PlanningPage() {
             currentDate={calendarDate}
             onDayClick={handleDayClick}
             onWeekClick={handleWeekClick}
-            onItemClick={(id) => navigate(`/planning/${id}`)}
+            onItemClick={(itemId, opts) => {
+              const found = allItems.find((i) => i.id === itemId);
+              openTab('planning', itemId, found?.productName ?? 'Planregel', opts);
+            }}
             dayStart={dayStart}
             dayEnd={dayEnd}
           />

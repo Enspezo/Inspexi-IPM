@@ -63,7 +63,7 @@
 
 ## Wave 6 — Frontend
 - ☑ **PR-15 `fix/fe-attachment-download-and-cleanup`** — FE-1 broken download (in-memory `getAccessToken()` + `ok` check) **plus** FE-6 (`formatFileSize` ×5), FE-10 (`useConfirm`), FE-18 (dead code). [#58](https://github.com/Enspezo/Inspexi-IPM/pull/58).
-- ☐ **PR-16 `refactor/fe-query-hooks`** — FE-2/3/4/5 (useEffect-fetch → query hooks) + FE-17 `any`. _Deferred → SUMMARY._
+- ◑ **PR-16 `refactor/fe-users-query-hooks`** — FE-2/3 done ([#61](https://github.com/Enspezo/Inspexi-IPM/pull/61)): projects-detail + add-follower-modal `/users` fetch → `useUsers()` (shared cache, kills the duplicate fetch + `any`s). FE-4/5 (link-entities-modal, debounced search inputs) still deferred → SUMMARY.
 - ☐ **PR-17 `refactor/fe-shared-lib`** — FE-7 (`formatDate` sweep) + FE-8 (`getContactName`) + FE-9 (status maps). _Remaining items deferred → SUMMARY (FE-6/10/18 shipped in PR-15)._
 - ☐ **PR-18 `refactor/fe-splits`** — FE-12 / FE-14 / FE-13 / FE-16. _Deferred → SUMMARY._
 

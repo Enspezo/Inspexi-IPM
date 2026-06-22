@@ -53,7 +53,7 @@
   - Touches: `common/`, `tasks/`, `notes/`, `documents/`, `search/`, `favorites/`, `audit-log/`.
 - ☐ **PR-10 `chore/conventions-sweep`** — CONV-5 (search → `paginate`) + CONV-6 (search `orgScope`) + CONV-8 (`assertFound` where a clean swap). Low risk.
   - Touches: `search/`, requests/quotes/notes/projects (small).
-- ☐ **PR-11 `chore/common-misc`** — DUP-4 (`generateOrgSequentialNumber`, projects+quotes; unit-test) + DUP-5 (`@/common/constants/mime-types.ts`) + DUP-6 (`formatDateNL`). Optional/low priority.
+- ◑ **PR-11 `chore/org-number-generator`** — DUP-4 done ([#62](https://github.com/Enspezo/Inspexi-IPM/pull/62)): `generateOrgSequentialNumber` (projects+quotes delegate to it; +5 unit tests). DUP-5 (mime-types const) + DUP-6 (`formatDateNL`) still deferred → SUMMARY.
 
 ## Wave 5 — Backend splits (only real seams)
 - ☐ **PR-12 `refactor/extract-measurement-validation`** — SPLIT-2 (DI-free validation engine). Lowest risk; pure functions become unit-testable.

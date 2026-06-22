@@ -669,6 +669,13 @@ export class ChatService {
       update: { lastReadAt: new Date() },
       create: { threadId, userId: user.id, lastReadAt: new Date() },
     });
+    // Markeer ook de bijbehorende chat-notificaties gelezen — anders houdt de
+    // dedup (dropAlreadyNotified) verdere meldingen tegen nadat je een thread al
+    // eens hebt geopend, en blijft de notificatie-bel onnodig tellen.
+    await this.prisma.notification.updateMany({
+      where: { userId: user.id, entityType: 'chatThread', entityId: threadId, isRead: false },
+      data: { isRead: true, readAt: new Date() },
+    });
     this.touchLastSeen(user.id);
     return { success: true };
   }

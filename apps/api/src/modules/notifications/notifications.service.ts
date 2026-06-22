@@ -85,6 +85,7 @@ export class NotificationsService {
           userPrefByUserId.get(userId),
           user?.roles ?? [],
           groupPrefs,
+          type,
         ),
       };
     });
@@ -124,6 +125,7 @@ export class NotificationsService {
     userPref: { channelInApp: boolean; channelEmail: boolean } | undefined,
     roles: Role[],
     groupPrefs: { role: Role; channelInApp: boolean; channelEmail: boolean }[],
+    type?: NotificationType,
   ): { channelInApp: boolean; channelEmail: boolean } {
     // 1. User-level pref
     if (userPref) {
@@ -144,8 +146,13 @@ export class NotificationsService {
       }
     }
 
-    // 3. Default: both enabled
-    return { channelInApp: true, channelEmail: true };
+    // 3. Default: in-app on. Chat is realtime/high-frequency → e-mail uit tenzij
+    //    iemand het expliciet aanzet (via user-/group-pref hierboven).
+    const isChat =
+      type === NotificationType.CHAT_BERICHT ||
+      type === NotificationType.CHAT_TEAM_BERICHT ||
+      type === NotificationType.CHAT_MENTION;
+    return { channelInApp: true, channelEmail: !isChat };
   }
 
   // ─── CRUD for controllers ─────────────────────────────

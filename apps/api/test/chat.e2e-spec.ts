@@ -39,6 +39,7 @@ describe('Chat (e2e)', () => {
 
   let backofficeToken: string;
   let inspectorToken: string;
+  let partnerToken: string;
   let orgBToken: string;
 
   const auth = (t: string) => ({ Authorization: `Bearer ${t}` });
@@ -158,6 +159,7 @@ describe('Chat (e2e)', () => {
     };
     backofficeToken = await login('e2e-chat-backoffice@test.nl');
     inspectorToken = await login('e2e-chat-inspector@test.nl');
+    partnerToken = await login('e2e-chat-partner@test.nl');
     orgBToken = await login('e2e-chat-orgb@test.nl');
   });
 
@@ -287,6 +289,21 @@ describe('Chat (e2e)', () => {
       .expect(201);
     await new Promise((r) => setTimeout(r, 400));
     expect(await countBerichten()).toBe(1);
+
+    // Reading the thread clears its chat notification → a new message re-notifies.
+    await request(app.getHttpServer())
+      .post(`/api/v1/chat/threads/${tid}/read`)
+      .set(auth(partnerToken))
+      .expect(201);
+    expect(await countBerichten()).toBe(0);
+
+    await request(app.getHttpServer())
+      .post(`/api/v1/chat/threads/${tid}/messages`)
+      .set(auth(backofficeToken))
+      .send({ content: 'Bericht C' })
+      .expect(201);
+    const reArmed = await waitFor(countBerichten, (c) => c >= 1);
+    expect(reArmed).toBe(1);
   });
 
   it('dispatches a CHAT_MENTION when a user is @-mentioned', async () => {

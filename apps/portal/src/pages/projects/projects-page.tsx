@@ -1,3 +1,4 @@
+import { tenantStorage } from '@/lib/storage';
 import { useState, useCallback, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ProjectStatus, Role } from '@/types';
@@ -13,9 +14,12 @@ import {
 } from '@/components/table-config';
 import { useAuth } from '@/providers/auth-provider';
 import { useWindowTabs } from '@/providers/window-tabs';
-import { useProjects } from './hooks/use-projects';
+import { useProjects, useAllProjects } from './hooks/use-projects';
 import { CreateProjectModal } from './components/create-project-modal';
 import { ProjectManagerFilter, type ProjectManagerOption } from './components/project-manager-filter';
+import { ProjectsKanban } from './components/projects-kanban';
+
+type ViewMode = 'table' | 'kanban';
 
 const statusFilterOptions = [
   { value: '', label: 'Alle statussen' },
@@ -35,6 +39,34 @@ const canWrite = [
 
 const PAGE_KEY = 'projects-list';
 
+// ─── Iconen voor de toggle knoppen ────────────────────────────────────────
+
+function TableIcon() {
+  return (
+    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2}
+        d="M3 10h18M3 6h18M3 14h18M3 18h18"
+      />
+    </svg>
+  );
+}
+
+function KanbanIcon() {
+  return (
+    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2}
+        d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2"
+      />
+    </svg>
+  );
+}
+
 export default function ProjectsPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -44,6 +76,14 @@ export default function ProjectsPage() {
   const [page, setPage] = useState(1);
   const [showCreate, setShowCreate] = useState(false);
   const [selectedManagerIds, setSelectedManagerIds] = useState<string[]>([]);
+  const [viewMode, setViewMode] = useState<ViewMode>(
+    () => (tenantStorage.getItem('projects-view-mode') as ViewMode | null) ?? 'table',
+  );
+
+  const handleSetViewMode = (mode: ViewMode) => {
+    tenantStorage.setItem('projects-view-mode', mode);
+    setViewMode(mode);
+  };
 
   const handleSearchChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -217,12 +257,23 @@ export default function ProjectsPage() {
     sortOrder: apiSort?.sortOrder,
   });
 
-  // Derive unique project managers from loaded data
+  // In kanban-modus toont het bord álle projecten (niet-gepagineerd); de
+  // projectmanager-filteropties moeten dan ook uit die volledige set komen,
+  // niet uit de 20 rijen van de tabel-paginatie. Deelt de query-key met de
+  // kanban, dus geen extra request.
+  const kanbanProjects = useAllProjects({
+    search: search || undefined,
+    enabled: viewMode === 'kanban',
+  });
+
+  // Derive unique project managers from the active dataset
   const allProjects: Project[] = data?.data ?? [];
+  const managerSource: Project[] =
+    viewMode === 'kanban' ? kanbanProjects.data?.data ?? [] : allProjects;
 
   const projectManagers = useMemo((): ProjectManagerOption[] => {
     const map = new Map<string, ProjectManagerOption>();
-    allProjects.forEach((p) => {
+    managerSource.forEach((p) => {
       if (p.projectManager && !map.has(p.projectManager.id)) {
         const firstName = p.projectManager.firstName ?? '';
         const lastName = p.projectManager.lastName ?? '';
@@ -237,7 +288,7 @@ export default function ProjectsPage() {
       }
     });
     return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
-  }, [allProjects]);
+  }, [managerSource]);
 
   // Client-side project manager filter
   const filteredByManager = useMemo((): Project[] => {
@@ -249,7 +300,7 @@ export default function ProjectsPage() {
 
   const tableData = filteredData(filteredByManager);
 
-  if (error) {
+  if (error && viewMode === 'table') {
     return (
       <div className="flex h-64 items-center justify-center text-red-600">
         Fout bij laden van projecten
@@ -282,17 +333,47 @@ export default function ProjectsPage() {
           <PageHeader
             title="Projecten"
             actions={
-              hasWrite && (
-                <ActionMenu
-                  secondaryActions={[
-                    {
-                      label: 'Nieuw project',
-                      icon: <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>,
-                      onClick: () => setShowCreate(true),
-                    },
-                  ]}
-                />
-              )
+              <>
+                {/* Weergave toggle */}
+                <div className="flex rounded-lg border border-gray-200 bg-white p-0.5 shadow-sm">
+                  <button
+                    onClick={() => handleSetViewMode('table')}
+                    className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                      viewMode === 'table'
+                        ? 'bg-primary-600 text-white shadow-sm'
+                        : 'text-gray-500 hover:text-gray-700'
+                    }`}
+                    title="Tabelweergave"
+                  >
+                    <TableIcon />
+                    Lijst
+                  </button>
+                  <button
+                    onClick={() => handleSetViewMode('kanban')}
+                    className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                      viewMode === 'kanban'
+                        ? 'bg-primary-600 text-white shadow-sm'
+                        : 'text-gray-500 hover:text-gray-700'
+                    }`}
+                    title="Kanban-weergave"
+                  >
+                    <KanbanIcon />
+                    Kanban
+                  </button>
+                </div>
+
+                {hasWrite && (
+                  <ActionMenu
+                    secondaryActions={[
+                      {
+                        label: 'Nieuw project',
+                        icon: <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>,
+                        onClick: () => setShowCreate(true),
+                      },
+                    ]}
+                  />
+                )}
+              </>
             }
           />
 
@@ -305,16 +386,19 @@ export default function ProjectsPage() {
                 onChange={handleSearchChange}
               />
             </div>
-            <div className="w-48">
-              <Select
-                options={statusFilterOptions}
-                value={statusFilter}
-                onChange={(e) => {
-                  setStatusFilter(e.target.value);
-                  setPage(1);
-                }}
-              />
-            </div>
+            {/* Statusfilter — alleen in tabelweergave (kanban-kolommen zijn de statussen) */}
+            {viewMode === 'table' && (
+              <div className="w-48">
+                <Select
+                  options={statusFilterOptions}
+                  value={statusFilter}
+                  onChange={(e) => {
+                    setStatusFilter(e.target.value);
+                    setPage(1);
+                  }}
+                />
+              </div>
+            )}
             <div className="ml-auto">
               <ProjectManagerFilter
                 managers={projectManagers}
@@ -324,48 +408,58 @@ export default function ProjectsPage() {
             </div>
           </div>
 
-          {/* Table */}
-          {isLoading ? (
-            <div className="flex h-64 items-center justify-center">
-              <Spinner size="lg" />
-            </div>
-          ) : (
-            <Table
-              columns={activeColumns}
-              data={tableData}
-              keyExtractor={(row) => row.id}
-              emptyMessage="Geen projecten gevonden"
-              sort={sort}
-              onSort={toggleSort}
+          {/* Inhoud — kanban of tabel */}
+          {viewMode === 'kanban' ? (
+            <ProjectsKanban
+              search={search || undefined}
+              managerIds={selectedManagerIds}
             />
-          )}
+          ) : (
+            <>
+              {/* Table */}
+              {isLoading ? (
+                <div className="flex h-64 items-center justify-center">
+                  <Spinner size="lg" />
+                </div>
+              ) : (
+                <Table
+                  columns={activeColumns}
+                  data={tableData}
+                  keyExtractor={(row) => row.id}
+                  emptyMessage="Geen projecten gevonden"
+                  sort={sort}
+                  onSort={toggleSort}
+                />
+              )}
 
-          {/* Pagination */}
-          {data && data.total > data.limit && (
-            <div className="flex items-center justify-between border-t border-gray-200 pt-4">
-              <p className="text-sm text-gray-500">
-                {data.total} projecten totaal
-              </p>
-              <div className="flex gap-2">
-                <Button
-                  variant="ghost"
-                  onClick={() => setPage((p) => Math.max(1, p - 1))}
-                  disabled={page <= 1}
-                >
-                  Vorige
-                </Button>
-                <span className="flex items-center px-3 text-sm text-gray-700">
-                  Pagina {data.page} van {Math.ceil(data.total / data.limit)}
-                </span>
-                <Button
-                  variant="ghost"
-                  onClick={() => setPage((p) => p + 1)}
-                  disabled={page >= Math.ceil(data.total / data.limit)}
-                >
-                  Volgende
-                </Button>
-              </div>
-            </div>
+              {/* Pagination */}
+              {data && data.total > data.limit && (
+                <div className="flex items-center justify-between border-t border-gray-200 pt-4">
+                  <p className="text-sm text-gray-500">
+                    {data.total} projecten totaal
+                  </p>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="ghost"
+                      onClick={() => setPage((p) => Math.max(1, p - 1))}
+                      disabled={page <= 1}
+                    >
+                      Vorige
+                    </Button>
+                    <span className="flex items-center px-3 text-sm text-gray-700">
+                      Pagina {data.page} van {Math.ceil(data.total / data.limit)}
+                    </span>
+                    <Button
+                      variant="ghost"
+                      onClick={() => setPage((p) => p + 1)}
+                      disabled={page >= Math.ceil(data.total / data.limit)}
+                    >
+                      Volgende
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </>
           )}
         </div>
       </DetailPageLayout>

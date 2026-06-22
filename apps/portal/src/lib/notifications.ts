@@ -25,7 +25,8 @@ export type NotificationModel =
   | 'PLANNING'
   | 'PROJECTEN'
   | 'FOUTMELDINGEN'
-  | 'INSPECTIEPLANNEN';
+  | 'INSPECTIEPLANNEN'
+  | 'CHAT';
 
 interface NotificationModelDef {
   key: NotificationModel;
@@ -118,6 +119,15 @@ export const NOTIFICATION_MODELS: NotificationModelDef[] = [
       NotificationType.INSPECTIEPLAN_AFGEKEURD,
     ],
   },
+  {
+    key: 'CHAT',
+    label: 'Chat',
+    types: [
+      NotificationType.CHAT_BERICHT,
+      NotificationType.CHAT_TEAM_BERICHT,
+      NotificationType.CHAT_MENTION,
+    ],
+  },
 ];
 
 /** NL-labels per NotificationType (enige bron). */
@@ -152,6 +162,9 @@ export const NOTIFICATION_TYPE_LABELS: Record<NotificationType, string> = {
   [NotificationType.INSPECTIEPLAN_TER_REVIEW]: 'Inspectieplan ter review',
   [NotificationType.INSPECTIEPLAN_GOEDGEKEURD]: 'Inspectieplan goedgekeurd',
   [NotificationType.INSPECTIEPLAN_AFGEKEURD]: 'Inspectieplan afgekeurd',
+  [NotificationType.CHAT_BERICHT]: 'Nieuw chatbericht',
+  [NotificationType.CHAT_TEAM_BERICHT]: 'Nieuw team-chatbericht',
+  [NotificationType.CHAT_MENTION]: 'Genoemd in een chat',
 };
 
 /** Afgeleide lookup: type → model-key. */

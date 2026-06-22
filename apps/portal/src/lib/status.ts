@@ -9,6 +9,8 @@ import {
   AcceptanceStatus,
   ApprovalStatus,
   AuditAction,
+  Availability,
+  ChatThreadStatus,
   ContactType,
   LogType,
   PlanningStatus,
@@ -207,4 +209,26 @@ export const SIGNATURE_STATUS: StatusMap = {
   SIGNED: { label: 'Ondertekend', classes: 'bg-green-100 text-green-800' },
   DECLINED: { label: 'Geweigerd', classes: 'bg-red-100 text-red-800' },
   EXPIRED: { label: 'Verlopen', classes: 'bg-red-100 text-red-800' },
+};
+
+// ─── Interne chat (REQ1) ──────────────────────────────────
+
+export const CHAT_PRESENCE: StatusMap = {
+  [Availability.BESCHIKBAAR]: { label: 'Beschikbaar', classes: 'bg-green-100 text-green-800' },
+  [Availability.BEZIG]: { label: 'Bezig', classes: 'bg-yellow-100 text-yellow-800' },
+  [Availability.AFWEZIG]: { label: 'Afwezig', classes: 'bg-orange-100 text-orange-800' },
+  [Availability.OFFLINE]: { label: 'Offline', classes: 'bg-gray-100 text-gray-600' },
+};
+
+/** Kleine kleurstip per presence-status (voor avatar-indicatoren). */
+export const CHAT_PRESENCE_DOT: Record<string, string> = {
+  [Availability.BESCHIKBAAR]: 'bg-green-500',
+  [Availability.BEZIG]: 'bg-yellow-500',
+  [Availability.AFWEZIG]: 'bg-orange-400',
+  [Availability.OFFLINE]: 'bg-gray-300',
+};
+
+export const CHAT_THREAD_STATUS: StatusMap = {
+  [ChatThreadStatus.OPEN]: { label: 'Open', classes: 'bg-blue-100 text-blue-800' },
+  [ChatThreadStatus.AFGEROND]: { label: 'Afgerond', classes: 'bg-gray-100 text-gray-600' },
 };

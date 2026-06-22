@@ -2,6 +2,7 @@ import { Outlet } from 'react-router-dom';
 import { Sidebar } from './sidebar';
 import { Header } from './header';
 import { WindowTabStrip } from './window-tab-strip';
+import { ChatDrawer } from '@/components/chat';
 
 export function AppLayout() {
   return (
@@ -14,6 +15,7 @@ export function AppLayout() {
           <Outlet />
         </main>
       </div>
+      <ChatDrawer />
     </div>
   );
 }

@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
+  Availability,
+  ChatThreadStatus,
   PlanningStatus,
   ProjectStatus,
   QuoteStatus,
@@ -10,6 +12,8 @@ import {
   WorkOrderStatus,
 } from '@/types';
 import {
+  CHAT_PRESENCE,
+  CHAT_THREAD_STATUS,
   getStatusConfig,
   PLANNING_STATUS,
   PROJECT_STATUS,
@@ -31,6 +35,8 @@ describe('status maps', () => {
     ['SESSION_STATUS', SESSION_STATUS, Object.values(SessionStatus)],
     ['WORK_ORDER_STATUS', WORK_ORDER_STATUS, Object.values(WorkOrderStatus)],
     ['PROJECT_STATUS', PROJECT_STATUS, Object.values(ProjectStatus)],
+    ['CHAT_PRESENCE', CHAT_PRESENCE, Object.values(Availability)],
+    ['CHAT_THREAD_STATUS', CHAT_THREAD_STATUS, Object.values(ChatThreadStatus)],
   ] as const)('%s covers every enum value', (_name, map, values) => {
     for (const value of values) {
       expect(map[value], `missing mapping for ${value}`).toBeDefined();

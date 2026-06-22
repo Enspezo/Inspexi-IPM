@@ -9,6 +9,7 @@ import { getKvkProfile } from '@/lib/kvk';
 import { type VatValidationResult } from '@/lib/vat';
 import { DetailPageLayout, SidebarSection } from '@/components/layout/detail-page-layout';
 import { FavoriteStar } from '@/components/favorites/favorite-star';
+import { StartChatButton } from '@/components/chat';
 import { useAuth } from '@/providers/auth-provider';
 import { useContact, useUpdateContact, useDeleteContact, useDeleteAddress, useDeleteLocation } from './hooks/use-contacts';
 import { useUsers } from '@/pages/users/hooks/use-users';
@@ -349,7 +350,13 @@ export default function ContactDetailPage() {
             )}
           </div>
         </div>
-        {userCanWrite && (
+        <div className="flex items-center gap-2">
+          <StartChatButton
+            entityType="Contact"
+            entityId={contact.id}
+            label={getContactDisplayName(contact)}
+          />
+          {userCanWrite && (
           <ActionMenu
             primaryActions={[
               {
@@ -371,7 +378,8 @@ export default function ContactDetailPage() {
               },
             ]}
           />
-        )}
+          )}
+        </div>
       </div>
 
       {/* Tabs */}

@@ -7,6 +7,14 @@ export enum Role {
   INSPECTEUR = 'INSPECTEUR',
 }
 
+/** Beschikbaarheidsstatus voor de interne chat (REQ1). */
+export enum Availability {
+  BESCHIKBAAR = 'BESCHIKBAAR',
+  BEZIG = 'BEZIG',
+  AFWEZIG = 'AFWEZIG',
+  OFFLINE = 'OFFLINE',
+}
+
 export enum ContactDisplayMode {
   NONE = 'NONE',
   STATIC = 'STATIC',
@@ -75,6 +83,9 @@ export interface User {
   sharePhoneWithClients: boolean;
   shareEmailWithClients: boolean;
   defaultApprovalPersonId: string | null;
+  availability?: Availability;
+  availabilityNote?: string | null;
+  lastSeenAt?: string | null;
   createdAt: string;
   organization?: Organization;
 }
@@ -770,6 +781,9 @@ export enum NotificationType {
   OFFERTE_GOEDKEURING_GEVRAAGD_TEAM = 'OFFERTE_GOEDKEURING_GEVRAAGD_TEAM',
   OFFERTE_GOEDKEURING_GEVRAAGD_PERSOON = 'OFFERTE_GOEDKEURING_GEVRAAGD_PERSOON',
   OFFERTE_GOEDKEURING_AFGEHANDELD = 'OFFERTE_GOEDKEURING_AFGEHANDELD',
+  CHAT_BERICHT = 'CHAT_BERICHT',
+  CHAT_TEAM_BERICHT = 'CHAT_TEAM_BERICHT',
+  CHAT_MENTION = 'CHAT_MENTION',
 }
 
 export interface Notification {
@@ -2508,4 +2522,84 @@ export interface VoiceTemplatePrompt {
   updatedAt: string;
   /** Meegestuurd door de API (include) — handig voor weergave. */
   template?: { id: string; name: string };
+}
+
+// ─── Interne chat (REQ1) ──────────────────────────────────
+
+export enum ChatThreadType {
+  DIRECT = 'DIRECT',
+  TEAM = 'TEAM',
+}
+
+export enum ChatThreadStatus {
+  OPEN = 'OPEN',
+  AFGEROND = 'AFGEROND',
+}
+
+/** Lichte gebruikersweergave incl. presence (van /chat/users en thread-counterpart). */
+export interface ChatUser {
+  id: string;
+  firstName: string;
+  lastName: string;
+  initials: string | null;
+  avatarUrl: string | null;
+  availability: Availability;
+  availabilityNote: string | null;
+  lastSeenAt: string | null;
+  roles?: Role[];
+}
+
+export interface ChatMessage {
+  id: string;
+  threadId: string;
+  senderId: string;
+  sender: {
+    id: string;
+    firstName: string;
+    lastName: string;
+    initials: string | null;
+    avatarUrl: string | null;
+  };
+  content: string;
+  mentionedUserIds: string[];
+  referenceEntityType: string | null;
+  referenceEntityId: string | null;
+  referenceName: string | null;
+  createdAt: string;
+}
+
+export interface ChatThread {
+  id: string;
+  type: ChatThreadType;
+  teamRole: Role | null;
+  subject: string | null;
+  status: ChatThreadStatus;
+  referenceEntityType: string | null;
+  referenceEntityId: string | null;
+  referenceName: string | null;
+  noteId: string | null;
+  closedAt: string | null;
+  unreadCount: number;
+  counterpart: ChatUser | null;
+  lastMessage: {
+    id: string;
+    content: string;
+    senderId: string;
+    senderName: string;
+    createdAt: string;
+  } | null;
+  lastActivityAt: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface UserPresence {
+  id: string;
+  availability: Availability;
+  availabilityNote: string | null;
+  lastSeenAt: string | null;
+}
+
+export interface ChatUnreadResponse {
+  count: number;
 }

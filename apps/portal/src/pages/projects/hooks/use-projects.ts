@@ -35,6 +35,17 @@ export function useProjects(params: ListProjectsParams = {}) {
   });
 }
 
+/** Haalt alle projecten op zonder paginering, voor de kanban-weergave. */
+export function useAllProjects(params: { search?: string } = {}) {
+  return useQuery({
+    queryKey: ['projects-all', params],
+    queryFn: () =>
+      apiClient.get<PaginatedResponse<Project>>(
+        `/projects${buildQuery({ ...params, limit: 500 })}`,
+      ),
+  });
+}
+
 export function useProject(id: string) {
   return useQuery({
     queryKey: ['projects', id],

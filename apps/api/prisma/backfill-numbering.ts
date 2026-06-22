@@ -5,7 +5,7 @@
  *
  *   npx ts-node prisma/backfill-numbering.ts
  *
- * It (1) provisions the four default schemes per org, (2) assigns numbers to
+ * It (1) provisions a default scheme per model per org, (2) assigns numbers to
  * existing Request/Product rows that have none (in createdAt order), keeping
  * existing Quote/Project numbers untouched, and (3) seeds each NumberingCounter
  * at the current maximum per period so freshly generated numbers continue without

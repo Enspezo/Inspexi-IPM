@@ -79,4 +79,62 @@ describe('resource-registry — makeResource (generic factory)', () => {
       makeResource({ resourceType: 'b', label: 'B', pendingTitle: 'B', basePath: '/b', enabled: false }).enabled,
     ).toBe(false);
   });
+
+  it('resolves declared idSubRoutes back to the record id', () => {
+    const r = makeResource({
+      resourceType: 'q',
+      label: 'Q',
+      pendingTitle: 'Q',
+      basePath: '/q',
+      staticDetailSegments: ['new'],
+      idSubRoutes: ['edit'],
+    });
+    expect(r.matchDetailId('/q/123/edit')).toBe('123'); // nested edit → record id
+    expect(r.matchDetailId('/q/123')).toBe('123'); // plain detail still works
+    expect(r.matchDetailId('/q/new')).toBeNull(); // static segment
+    expect(r.matchDetailId('/q/new/edit')).toBeNull(); // static id never a record
+    expect(r.matchDetailId('/q/123/foo')).toBeNull(); // undeclared sub-route
+    expect(r.detailRoute('123')).toBe('/q/123'); // detailRoute points at the record, not /edit
+  });
+});
+
+describe('resource-registry — REQ2A registered resources', () => {
+  it('registers quote, project, planning and inspection (all enabled)', () => {
+    for (const rt of ['quote', 'project', 'planning', 'inspection']) {
+      expect(RESOURCE_TABS_BY_TYPE[rt]).toBeTruthy();
+      expect(RESOURCE_TABS_BY_TYPE[rt].enabled).toBe(true);
+    }
+  });
+
+  it('quote: /quotes/:id is a tab, /quotes/new is not', () => {
+    expect(findResourceByPath('/quotes/abc-1')).toEqual({
+      kind: 'detail',
+      resource: RESOURCE_TABS_BY_TYPE.quote,
+      id: 'abc-1',
+    });
+    expect(findResourceByPath('/quotes/new')).toBeNull();
+    expect(findResourceByPath('/quotes')).toEqual({
+      kind: 'list',
+      resource: RESOURCE_TABS_BY_TYPE.quote,
+    });
+  });
+
+  it('quote: /quotes/:id/edit keeps the record tab active', () => {
+    const match = findResourceByPath('/quotes/abc-1/edit');
+    expect(match?.kind).toBe('detail');
+    expect(match && match.kind === 'detail' && match.id).toBe('abc-1');
+    expect(findResourceByPath('/quotes/new/edit')).toBeNull(); // never a record
+  });
+
+  it('planning: /planning/new is not a tab but /planning/:id is', () => {
+    expect(findResourceByPath('/planning/new')).toBeNull();
+    expect(findResourceByPath('/planning/p1')?.kind).toBe('detail');
+  });
+
+  it('project/inspection: nested routes do not resolve (no idSubRoutes)', () => {
+    expect(findResourceByPath('/projects/p1')?.kind).toBe('detail');
+    expect(findResourceByPath('/projects/p1/edit')).toBeNull();
+    expect(findResourceByPath('/inspections/i1')?.kind).toBe('detail');
+    expect(findResourceByPath('/inspections/i1/foo')).toBeNull();
+  });
 });

@@ -21,6 +21,7 @@ import { DetailPageLayout } from '@/components/layout/detail-page-layout';
 import { HistorySidebarSection } from '@/components/layout/sidebar-sections';
 import { PageHeader } from '@/components/layout/page-header';
 import { useAuth } from '@/providers/auth-provider';
+import { useWindowTabSync } from '@/providers/window-tabs';
 import { useLookups } from '@/lib/lookups';
 import { getErrorMessage } from '@/lib/api-client';
 import type { InspectionPlan } from '@/types';
@@ -84,6 +85,12 @@ export default function InspectionDetailPage() {
 
   const { data: planStatuses } = useLookups('plan-status-types');
   const { data: inspectionTypes } = useLookups('inspection-types');
+
+  // Keep this record's in-window tab title fresh, and flag it if the record 404s.
+  useWindowTabSync('inspection', id, {
+    title: plan?.projectName,
+    notFound: !isLoading && (!!error || !plan),
+  });
 
   const [activeTab, setActiveTab] = useState<Tab>('overzicht');
   const [isEditing, setIsEditing] = useState(false);

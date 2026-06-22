@@ -12,6 +12,7 @@ import {
   type ColumnDef,
 } from '@/components/table-config';
 import { useAuth } from '@/providers/auth-provider';
+import { useWindowTabs } from '@/providers/window-tabs';
 import { useProjects } from './hooks/use-projects';
 import { CreateProjectModal } from './components/create-project-modal';
 import { ProjectManagerFilter, type ProjectManagerOption } from './components/project-manager-filter';
@@ -37,6 +38,7 @@ const PAGE_KEY = 'projects-list';
 export default function ProjectsPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const { openTab } = useWindowTabs();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [page, setPage] = useState(1);
@@ -67,7 +69,19 @@ export default function ProjectsPage() {
       render: (row) => (
         <button
           className="font-medium text-primary-600 hover:text-primary-700 hover:underline"
-          onClick={() => navigate(`/projects/${row.id}`)}
+          // Opens the project as an in-window tab. ⌘/Ctrl- or middle-click
+          // opens it in the background without switching away from the list.
+          onClick={(e) =>
+            openTab('project', row.id, row.projectNumber, {
+              background: e.metaKey || e.ctrlKey,
+            })
+          }
+          onMouseDown={(e) => {
+            if (e.button === 1) {
+              e.preventDefault();
+              openTab('project', row.id, row.projectNumber, { background: true });
+            }
+          }}
         >
           {row.projectNumber}
         </button>

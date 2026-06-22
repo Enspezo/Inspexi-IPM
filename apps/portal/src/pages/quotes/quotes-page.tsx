@@ -23,6 +23,7 @@ import {
   type ColumnDef,
 } from '@/components/table-config';
 import { useAuth } from '@/providers/auth-provider';
+import { useWindowTabs } from '@/providers/window-tabs';
 import { useQuotes } from './hooks/use-quotes';
 import { useQuoteTemplates } from './hooks/use-quote-templates';
 
@@ -51,6 +52,7 @@ function getContactName(quote: Quote): string {
 export default function QuotesPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const { openTab } = useWindowTabs();
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
@@ -98,7 +100,19 @@ export default function QuotesPage() {
       sortKey: 'quoteNumber',
       render: (quote) => (
         <button
-          onClick={() => navigate(`/quotes/${quote.id}`)}
+          // Opens the offerte as an in-window tab. ⌘/Ctrl- or middle-click
+          // opens it in the background without switching away from the list.
+          onClick={(e) =>
+            openTab('quote', quote.id, quote.quoteNumber, {
+              background: e.metaKey || e.ctrlKey,
+            })
+          }
+          onMouseDown={(e) => {
+            if (e.button === 1) {
+              e.preventDefault();
+              openTab('quote', quote.id, quote.quoteNumber, { background: true });
+            }
+          }}
           className="font-medium text-primary-600 hover:text-primary-800 hover:underline"
         >
           {quote.quoteNumber}

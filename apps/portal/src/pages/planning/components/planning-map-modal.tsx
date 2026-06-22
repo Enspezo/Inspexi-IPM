@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { Modal } from '@/components/ui';
+import { useWindowTabs } from '@/providers/window-tabs';
 import { EntityMap } from '@/components/map/entity-map';
 import type { MapPoint, MapHomeMarker } from '@/components/map/entity-map';
 import {
@@ -132,7 +132,7 @@ function MarkerTooltip({ item }: { item: PlanningItem }) {
 // ─── Component ─────────────────────────────────────────────────────────────
 
 export function PlanningMapModal({ isOpen, onClose, items }: Props) {
-  const navigate = useNavigate();
+  const { openTab } = useWindowTabs();
   const [markers, setMarkers] = useState<MarkerData[]>([]);
   const [loading, setLoading] = useState(false);
   const [geocodeDone, setGeocodeDone] = useState(0);
@@ -276,8 +276,9 @@ export function PlanningMapModal({ isOpen, onClose, items }: Props) {
     color: getPrimaryColor(item),
     tooltip: <MarkerTooltip item={item} />,
     onClick: () => {
+      // Close the kaart-modal and open the planregel as an in-window tab.
       onClose();
-      navigate(`/planning/${item.id}`);
+      openTab('planning', item.id, item.productName);
     },
   }));
 

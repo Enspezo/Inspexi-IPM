@@ -18,6 +18,7 @@ import { DetailPageLayout, SidebarSection } from '@/components/layout/detail-pag
 import { FavoriteStar } from '@/components/favorites/favorite-star';
 import { NotesSidebarSection, HistorySidebarSection, DocumentsSidebarSection } from '@/components/layout/sidebar-sections';
 import { useAuth } from '@/providers/auth-provider';
+import { useWindowTabSync } from '@/providers/window-tabs';
 import {
   useQuote,
   useUpdateQuote,
@@ -62,6 +63,12 @@ export default function QuoteDetailPage() {
   const rejectMutation = useRejectQuote(id!);
   const updateStatusMutation = useUpdateQuoteStatus(id!);
   const deleteMutation = useDeleteQuote();
+
+  // Keep this record's in-window tab title fresh, and flag it if the record 404s.
+  useWindowTabSync('quote', id, {
+    title: quote?.quoteNumber,
+    notFound: !isLoading && (!!error || !quote),
+  });
 
   // Fetch contact logs for this quote's contact
   const { data: contactLogs } = useContactLogs(quote?.contactId || '');

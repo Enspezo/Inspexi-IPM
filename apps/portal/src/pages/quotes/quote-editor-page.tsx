@@ -18,6 +18,7 @@ import {
 } from './hooks/use-quotes';
 import { apiClient, getErrorMessage } from '@/lib/api-client';
 import { formatCurrency } from '@/lib/format';
+import { useWindowTabSync } from '@/providers/window-tabs';
 import type { ResolvedPrice } from '@/types';
 
 const schema = z.object({
@@ -61,6 +62,14 @@ export default function QuoteEditorPage() {
   const isEditing = !!id;
 
   const { data: existingQuote, isLoading: quoteLoading } = useQuote(id || '');
+
+  // Keep the offerte's in-window tab active + titled while editing on /quotes/:id/edit.
+  // (`/quotes/new` has no id, so this is a no-op there.)
+  useWindowTabSync('quote', id, {
+    title: existingQuote?.quoteNumber,
+    notFound: isEditing && !quoteLoading && !existingQuote,
+  });
+
   const createMutation = useCreateQuote();
   const updateMutation = useUpdateQuote(id || '');
 

@@ -10,7 +10,8 @@ import { User, Role, Prisma, QuoteStatus, QuoteTemplate, RequestStatus, Notifica
 import { ConfigService } from '@nestjs/config';
 import { randomUUID } from 'crypto';
 import { PrismaService } from '@/prisma';
-import { paginate, buildOrderBy, orgScope, assertFound, assertSameOrg, generateOrgSequentialNumber } from '@/common';
+import { paginate, buildOrderBy, orgScope, assertFound, assertSameOrg } from '@/common';
+import { NumberingService } from '@/modules/numbering/numbering.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { EmailService } from '@/common/services/email.service';
 import { StorageProvider, STORAGE_PROVIDER } from '@/common/services/storage/storage.interface';
@@ -41,6 +42,7 @@ export class QuotesService {
     private pdfService: PdfService,
     private quotePdfService: QuotePdfService,
     private emailTemplatesService: EmailTemplatesService,
+    private numbering: NumberingService,
   ) {}
 
   async findAll(user: User, query: ListQuotesQueryDto) {
@@ -108,29 +110,58 @@ export class QuotesService {
       ? await this.customFieldsValidator.validateAndSanitize(orgId!, 'QUOTE', dto.customFields)
       : null;
 
-    return this.prisma.$transaction(async (tx) => {
-      const quoteNumber = await this.generateQuoteNumber(orgId!, tx);
-      return serializeQuote(await tx.quote.create({
-        data: {
-          orgId: orgId!,
-          quoteNumber,
-          templateId: dto.templateId || undefined,
-          requestId: dto.requestId || undefined,
-          contactId: dto.contactId,
-          locationId: dto.locationId || undefined,
-          subject: dto.subject,
-          coverBlocks: templateData.coverBlocks ?? undefined,
-          contentBlocks: dto.contentBlocks ?? templateData.contentBlocks ?? undefined,
-          closingBlocks: templateData.closingBlocks ?? undefined,
-          validUntil,
-          requiresApproval: templateData.requiresApproval ?? false,
-          internalNotes: dto.internalNotes || undefined,
-          createdBy: user.id,
-          publicToken: randomUUID(),
-          customFields: customFields as any,
-        },
-      }));
-    });
+    return this.numbering.runWithGeneratedNumber(
+      'QUOTE',
+      orgId!,
+      {
+        manual: dto.quoteNumber,
+        loadContext: () => this.numberingContext(contact, dto.locationId),
+      },
+      async (tx, quoteNumber) =>
+        serializeQuote(
+          await tx.quote.create({
+            data: {
+              orgId: orgId!,
+              quoteNumber,
+              templateId: dto.templateId || undefined,
+              requestId: dto.requestId || undefined,
+              contactId: dto.contactId,
+              locationId: dto.locationId || undefined,
+              subject: dto.subject,
+              coverBlocks: templateData.coverBlocks ?? undefined,
+              contentBlocks: dto.contentBlocks ?? templateData.contentBlocks ?? undefined,
+              closingBlocks: templateData.closingBlocks ?? undefined,
+              validUntil,
+              requiresApproval: templateData.requiresApproval ?? false,
+              internalNotes: dto.internalNotes || undefined,
+              createdBy: user.id,
+              publicToken: randomUUID(),
+              customFields: customFields as any,
+            },
+          }),
+        ),
+    );
+  }
+
+  /** Build numbering placeholder context (contact name + location postcode) for a quote. */
+  private async numberingContext(
+    contact: { companyName: string | null; firstName: string | null; lastName: string | null },
+    locationId?: string | null,
+  ) {
+    const postcode = locationId
+      ? (
+          await this.prisma.location.findUnique({
+            where: { id: locationId },
+            select: { postalCode: true },
+          })
+        )?.postalCode
+      : undefined;
+    return {
+      contact:
+        contact.companyName ||
+        [contact.firstName, contact.lastName].filter(Boolean).join(' '),
+      postcode,
+    };
   }
 
   async update(id: string, dto: UpdateQuoteDto, user: User) {
@@ -158,9 +189,18 @@ export class QuotesService {
     // the new template's blocks just like create(); offerteregels are never touched.
     const templateSwitchData = await this.resolveTemplateSwitch(quote, dto, user);
 
+    // Manual renumber — gated on the scheme's allowManualEntry + uniqueness check.
+    let manualNumber: string | undefined;
+    if (dto.quoteNumber !== undefined && dto.quoteNumber.trim() !== quote.quoteNumber) {
+      manualNumber = await this.numbering.validateManualNumber(
+        quote.orgId, 'QUOTE', dto.quoteNumber, quote.id,
+      );
+    }
+
     return serializeQuote(await this.prisma.quote.update({
       where: { id: quote.id },
       data: {
+        ...(manualNumber !== undefined && { quoteNumber: manualNumber }),
         ...(dto.subject !== undefined && { subject: dto.subject }),
         ...(dto.contactId !== undefined && { contactId: dto.contactId }),
         ...(dto.locationId !== undefined && { locationId: dto.locationId }),
@@ -477,18 +517,33 @@ export class QuotesService {
     const request = await this.prisma.request.findUnique({ where: { id: requestId } });
     if (!request || request.isDeleted) throw new NotFoundException('Aanvraag niet gevonden');
     if (!user.roles.includes(Role.SUPERUSER) && request.orgId !== user.orgId) throw new ForbiddenException();
-    return this.prisma.$transaction(async (tx) => {
-      const quoteNumber = await this.generateQuoteNumber(request.orgId, tx);
-      const org = await tx.organization.findUnique({ where: { id: request.orgId } });
-      const validUntil = new Date();
-      validUntil.setDate(validUntil.getDate() + (org?.defaultValidityDays ?? 30));
-      const quote = await tx.quote.create({
-        data: { orgId: request.orgId, quoteNumber, requestId: request.id, contactId: request.contactId, locationId: request.locationId || undefined, subject: request.title, validUntil, createdBy: user.id, publicToken: randomUUID() },
-      });
-      await tx.request.update({ where: { id: request.id }, data: { status: RequestStatus.OFFERTE_GEMAAKT } });
-      await tx.requestStatusHistory.create({ data: { requestId: request.id, fromStatus: request.status, toStatus: RequestStatus.OFFERTE_GEMAAKT, changedBy: user.id, note: `Offerte ${quoteNumber} aangemaakt` } });
-      return serializeQuote(quote);
-    });
+    const org = await this.prisma.organization.findUnique({ where: { id: request.orgId } });
+    const validUntil = new Date();
+    validUntil.setDate(validUntil.getDate() + (org?.defaultValidityDays ?? 30));
+    return this.numbering.runWithGeneratedNumber(
+      'QUOTE',
+      request.orgId,
+      {
+        loadContext: async () => {
+          const contact = await this.prisma.contact.findUnique({
+            where: { id: request.contactId },
+            select: { companyName: true, firstName: true, lastName: true },
+          });
+          return this.numberingContext(
+            contact ?? { companyName: null, firstName: null, lastName: null },
+            request.locationId,
+          );
+        },
+      },
+      async (tx, quoteNumber) => {
+        const quote = await tx.quote.create({
+          data: { orgId: request.orgId, quoteNumber, requestId: request.id, contactId: request.contactId, locationId: request.locationId || undefined, subject: request.title, validUntil, createdBy: user.id, publicToken: randomUUID() },
+        });
+        await tx.request.update({ where: { id: request.id }, data: { status: RequestStatus.OFFERTE_GEMAAKT } });
+        await tx.requestStatusHistory.create({ data: { requestId: request.id, fromStatus: request.status, toStatus: RequestStatus.OFFERTE_GEMAAKT, changedBy: user.id, note: `Offerte ${quoteNumber} aangemaakt` } });
+        return serializeQuote(quote);
+      },
+    );
   }
 
   // ─── Template attachment helpers ────────────────────
@@ -553,13 +608,5 @@ export class QuotesService {
     }
 
     return attachments;
-  }
-
-  private generateQuoteNumber(orgId: string, tx: Prisma.TransactionClient): Promise<string> {
-    return generateOrgSequentialNumber(tx.quote, {
-      orgId,
-      field: 'quoteNumber',
-      prefix: `OFF-${new Date().getFullYear()}-`,
-    });
   }
 }

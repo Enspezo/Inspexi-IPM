@@ -1,7 +1,13 @@
-import { IsString, IsOptional, IsUUID, IsDateString, MinLength } from 'class-validator';
+import { IsString, IsOptional, IsUUID, IsDateString, MinLength, MaxLength } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class CreateProjectDto {
+  @ApiPropertyOptional({ description: 'Handmatig projectnummer (alleen als handmatige nummering aanstaat)' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(60)
+  projectNumber?: string;
+
   @ApiProperty()
   @IsString()
   @MinLength(1)

@@ -1,7 +1,13 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { ValidateIf, IsString, IsOptional, IsUUID, IsDateString, IsObject } from 'class-validator';
+import { ValidateIf, IsString, IsOptional, IsUUID, IsDateString, IsObject, MaxLength } from 'class-validator';
 
 export class UpdateQuoteDto {
+  @ApiPropertyOptional({ description: 'Handmatig offertenummer (alleen als handmatige nummering aanstaat)' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(60)
+  quoteNumber?: string;
+
   @ApiPropertyOptional({ example: 'NEN1010 inspectie kantoorpand' })
   @IsOptional()
   @IsString()

@@ -5,10 +5,17 @@ import {
   IsUUID,
   IsEnum,
   IsObject,
+  MaxLength,
 } from 'class-validator';
 import { RequestSource, Priority } from '@prisma/client';
 
 export class CreateRequestDto {
+  @ApiPropertyOptional({ description: 'Handmatig aanvraagnummer (alleen als handmatige nummering aanstaat)' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(60)
+  requestNumber?: string;
+
   @ApiProperty({ example: 'uuid', description: 'Relatie ID' })
   @IsUUID()
   contactId: string;

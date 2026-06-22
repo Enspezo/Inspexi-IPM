@@ -1,10 +1,16 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsString, IsOptional, IsNumber, IsBoolean, IsUUID, IsObject, Min, Max } from 'class-validator';
+import { IsString, IsOptional, IsNumber, IsBoolean, IsUUID, IsObject, Min, Max, MaxLength } from 'class-validator';
 
 export class CreateProductDto {
   @ApiProperty({ example: 'NEN1010 Inspectie' })
   @IsString()
   name: string;
+
+  @ApiPropertyOptional({ description: 'Handmatige productcode (alleen als handmatige nummering aanstaat)' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(60)
+  productCode?: string;
 
   @ApiProperty({ example: 'uur', description: 'stuks | uur | m2 | m | dag | traject | km' })
   @IsString()

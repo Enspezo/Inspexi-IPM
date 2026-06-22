@@ -185,6 +185,19 @@ interface SchemeShape {
   digits: number;
 }
 
+/** Resolve a scheme's prefix + suffix for a given context/date (placeholders → values). */
+export function resolveAffixes(
+  scheme: SchemeShape,
+  ctx: NumberingContext,
+  date: Date,
+): { prefix: string; suffix: string } {
+  const values = placeholderValues(scheme.model, ctx, date);
+  return {
+    prefix: resolvePlaceholders(scheme.prefix, values),
+    suffix: resolvePlaceholders(scheme.suffix, values),
+  };
+}
+
 /** Compose the final number: resolve(prefix) + zeroPad(value) + resolve(suffix). */
 export function composeNumber(
   scheme: SchemeShape,
@@ -192,9 +205,7 @@ export function composeNumber(
   ctx: NumberingContext,
   date: Date,
 ): string {
-  const values = placeholderValues(scheme.model, ctx, date);
-  const prefix = resolvePlaceholders(scheme.prefix, values);
-  const suffix = resolvePlaceholders(scheme.suffix, values);
+  const { prefix, suffix } = resolveAffixes(scheme, ctx, date);
   return `${prefix}${zeroPad(numericValue, scheme.digits)}${suffix}`;
 }
 
@@ -237,6 +248,15 @@ export function validateAffix(
     };
   }
   return { valid: true };
+}
+
+/**
+ * True when the prefix/suffix use a data-driven (non-date) placeholder, so the
+ * caller's context loader must run. The default schemes use only `[jaar]`, so the
+ * common path skips the extra lookups entirely.
+ */
+export function schemeNeedsContext(prefix: string, suffix: string): boolean {
+  return /\[(postcode|contact|groep)\]/i.test(`${prefix}${suffix}`);
 }
 
 /** A representative context so the settings UI / preview always renders every token. */

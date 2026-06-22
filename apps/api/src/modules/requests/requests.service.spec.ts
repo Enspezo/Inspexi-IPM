@@ -15,6 +15,7 @@ import { PrismaService } from '@/prisma';
 import { QuotesService } from '../quotes/quotes.service';
 import { NotificationsService } from '@/modules/notifications/notifications.service';
 import { CustomFieldsValidator } from '@/modules/custom-fields/custom-fields.validator';
+import { NumberingService } from '@/modules/numbering/numbering.service';
 
 describe('RequestsService', () => {
   let service: RequestsService;
@@ -169,6 +170,16 @@ describe('RequestsService', () => {
     ),
   };
 
+  // Invokes the create callback with the transaction mock + a deterministic
+  // generated number so the service's create path runs exactly as in production
+  // (minus the real numbering engine and its own $transaction wrapper).
+  const mockNumberingService = {
+    runWithGeneratedNumber: jest.fn(async (_model, _orgId, _opts, create) =>
+      create(mockTx, 'AANV-2026-0001'),
+    ),
+    validateManualNumber: jest.fn(async (_o, _m, value: string) => value.trim()),
+  };
+
   beforeEach(async () => {
     jest.clearAllMocks();
 
@@ -188,6 +199,7 @@ describe('RequestsService', () => {
           provide: CustomFieldsValidator,
           useValue: { validateAndSanitize: jest.fn().mockResolvedValue(null) },
         },
+        { provide: NumberingService, useValue: mockNumberingService },
       ],
     }).compile();
 
@@ -432,10 +444,13 @@ describe('RequestsService', () => {
       const result = await service.create(createDto, mockUser);
 
       expect(result).toEqual(createdRequest);
-      expect(mockPrismaService.$transaction).toHaveBeenCalledTimes(1);
+      // The transaction boundary now lives inside NumberingService, which runs
+      // the create callback (request + initial status history) atomically.
+      expect(mockNumberingService.runWithGeneratedNumber).toHaveBeenCalledTimes(1);
       expect(mockTx.request.create).toHaveBeenCalledWith({
         data: {
           orgId: 'org-1',
+          requestNumber: 'AANV-2026-0001',
           contactId: 'contact-1',
           locationId: undefined,
           assignedTo: undefined,

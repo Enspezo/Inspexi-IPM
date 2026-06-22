@@ -5,6 +5,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as zlib from 'zlib';
 import { seedLookups } from './seed-lookups';
+import { backfillNumbering } from './backfill-numbering';
 import { DEFAULT_VOICE_BASE_PROMPT } from '../src/modules/voice/default-base-prompt';
 
 const prisma = new PrismaClient();
@@ -290,6 +291,8 @@ async function main() {
   await prisma.documentTag.deleteMany();
   await prisma.task.deleteMany();
   // Custom fields & email templates
+  await prisma.numberingCounter.deleteMany();
+  await prisma.numberingScheme.deleteMany();
   await prisma.customFieldDefinition.deleteMany();
   await prisma.emailTemplateAttachment.deleteMany();
   await prisma.emailTemplate.deleteMany();
@@ -2285,6 +2288,10 @@ async function main() {
     },
   });
   console.log('  ✓ ClientMagicLink: token "demo-klant-magic" (verloopt 2099-12-31, ongebruikt)');
+
+  // ─── Nummering: default schemes + numbers + counters-after-max ──────────
+  await backfillNumbering(prisma);
+  console.log('  ✓ Nummering: standaard-schemas, nummers en tellers geseed (per org, per model)');
 
   console.log('\n✅ Seed completed successfully!');
   console.log('\n📋 Login credentials (all use Password123!):');

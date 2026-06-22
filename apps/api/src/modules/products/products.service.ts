@@ -6,6 +6,7 @@ import {
 import { User, Role, Prisma } from '@prisma/client';
 import { PrismaService } from '@/prisma';
 import { paginate, buildOrderBy, orgScope, assertFound } from '@/common';
+import { NumberingService } from '@/modules/numbering/numbering.service';
 import { CustomFieldsValidator } from '@/modules/custom-fields/custom-fields.validator';
 import {
   CreateProductDto,
@@ -20,6 +21,7 @@ export class ProductsService {
   constructor(
     private prisma: PrismaService,
     private customFieldsValidator: CustomFieldsValidator,
+    private numbering: NumberingService,
   ) {}
 
   async findAll(user: User, query: ListProductsQueryDto) {
@@ -84,21 +86,40 @@ export class ProductsService {
       ? await this.customFieldsValidator.validateAndSanitize(orgId!, 'PRODUCT', dto.customFields)
       : null;
 
-    return this.prisma.product.create({
-      data: {
-        orgId: orgId!,
-        name: dto.name,
-        unit: dto.unit,
-        description: dto.description,
-        defaultVat: dto.defaultVat ?? 21,
-        productGroupId: dto.productGroupId ?? null,
-        isActive: dto.isActive ?? true,
-        customFields: customFields as any,
+    return this.numbering.runWithGeneratedNumber(
+      'PRODUCT',
+      orgId!,
+      {
+        manual: dto.productCode,
+        loadContext: async () => ({
+          groep: dto.productGroupId
+            ? (
+                await this.prisma.productGroup.findUnique({
+                  where: { id: dto.productGroupId },
+                  select: { name: true },
+                })
+              )?.name
+            : undefined,
+        }),
       },
-      include: {
-        productGroup: { select: { id: true, name: true } },
-      },
-    });
+      (tx, productCode) =>
+        tx.product.create({
+          data: {
+            orgId: orgId!,
+            productCode,
+            name: dto.name,
+            unit: dto.unit,
+            description: dto.description,
+            defaultVat: dto.defaultVat ?? 21,
+            productGroupId: dto.productGroupId ?? null,
+            isActive: dto.isActive ?? true,
+            customFields: customFields as any,
+          },
+          include: {
+            productGroup: { select: { id: true, name: true } },
+          },
+        }),
+    );
   }
 
   async update(id: string, dto: UpdateProductDto, user: User) {
@@ -115,9 +136,18 @@ export class ProductsService {
       );
     }
 
+    // Manual renumber — gated on the scheme's allowManualEntry + uniqueness check.
+    let manualCode: string | undefined;
+    if (dto.productCode !== undefined && dto.productCode.trim() !== (product.productCode ?? '')) {
+      manualCode = await this.numbering.validateManualNumber(
+        product.orgId, 'PRODUCT', dto.productCode, product.id,
+      );
+    }
+
     return this.prisma.product.update({
       where: { id: product.id },
       data: {
+        ...(manualCode !== undefined && { productCode: manualCode }),
         ...(dto.name !== undefined && { name: dto.name }),
         ...(dto.unit !== undefined && { unit: dto.unit }),
         ...(dto.description !== undefined && { description: dto.description }),

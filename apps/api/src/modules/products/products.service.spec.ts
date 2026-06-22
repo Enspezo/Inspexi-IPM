@@ -6,6 +6,7 @@ import {
 import { Role, User } from '@prisma/client';
 import { ProductsService } from './products.service';
 import { CustomFieldsValidator } from '@/modules/custom-fields/custom-fields.validator';
+import { NumberingService } from '@/modules/numbering/numbering.service';
 import { PrismaService } from '@/prisma';
 
 describe('ProductsService', () => {
@@ -78,6 +79,15 @@ describe('ProductsService', () => {
     validateAndSanitize: jest.fn().mockResolvedValue(null),
   };
 
+  // Invokes the create callback with a deterministic generated code so the
+  // service's create path runs exactly as in production (minus the real engine).
+  const mockNumberingService = {
+    runWithGeneratedNumber: jest.fn(async (_model, _orgId, _opts, create) =>
+      create(mockPrismaService, 'PRD-0001'),
+    ),
+    validateManualNumber: jest.fn(async (_o, _m, value: string) => value.trim()),
+  };
+
   beforeEach(async () => {
     jest.clearAllMocks();
 
@@ -86,6 +96,7 @@ describe('ProductsService', () => {
         ProductsService,
         { provide: PrismaService, useValue: mockPrismaService },
         { provide: CustomFieldsValidator, useValue: mockCustomFieldsValidator },
+        { provide: NumberingService, useValue: mockNumberingService },
       ],
     }).compile();
 
@@ -274,6 +285,7 @@ describe('ProductsService', () => {
       expect(mockPrismaService.product.create).toHaveBeenCalledWith({
         data: {
           orgId: 'org-1',
+          productCode: 'PRD-0001',
           name: createDto.name,
           unit: createDto.unit,
           description: createDto.description,

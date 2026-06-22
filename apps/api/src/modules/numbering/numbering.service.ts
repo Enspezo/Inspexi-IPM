@@ -14,6 +14,7 @@ import {
   periodKeyFor,
   randomCandidate,
   sampleContext,
+  schemeNeedsContext,
   validateAffix,
 } from './numbering.helpers';
 
@@ -85,6 +86,43 @@ export class NumberingService {
     return this.prisma.numberingScheme.update({ where: { id: scheme.id }, data });
   }
 
+  /**
+   * Validate a user-supplied number on update (renumbering): the scheme must allow
+   * manual entry and the value must be unique within the org (excluding the record
+   * itself). Returns the trimmed value to store. The DB constraint remains the final
+   * backstop. Used by the four consumer update flows.
+   */
+  async validateManualNumber(
+    orgId: string,
+    model: NumberingModel,
+    value: string,
+    excludeId?: string,
+  ): Promise<string> {
+    const scheme = await this.ensureScheme(orgId, model);
+    if (!scheme.allowManualEntry) {
+      throw new BadRequestException(
+        'Handmatige nummering is niet toegestaan voor dit type',
+      );
+    }
+    const trimmed = value.trim();
+    if (!trimmed) {
+      throw new BadRequestException('Nummer mag niet leeg zijn');
+    }
+    const { delegate, field } = this.numberFieldFor(model);
+    const existing = await delegate.findFirst({
+      where: {
+        orgId,
+        [field]: trimmed,
+        ...(excludeId ? { id: { not: excludeId } } : {}),
+      },
+      select: { id: true },
+    });
+    if (existing) {
+      throw new ConflictException(`Nummer "${trimmed}" bestaat al`);
+    }
+    return trimmed;
+  }
+
   /** A sample number for the settings UI (no counter mutation). */
   async preview(orgId: string, model: NumberingModel): Promise<{ example: string }> {
     const scheme = await this.ensureScheme(orgId, model);
@@ -116,11 +154,15 @@ export class NumberingService {
   async runWithGeneratedNumber<T>(
     model: NumberingModel,
     orgId: string,
-    opts: { context?: NumberingContext; manual?: string | null },
+    opts: {
+      context?: NumberingContext;
+      /** Lazy loader for data-driven placeholders; only invoked when the scheme needs it. */
+      loadContext?: () => Promise<NumberingContext>;
+      manual?: string | null;
+    },
     create: (tx: Prisma.TransactionClient, value: string) => Promise<T>,
   ): Promise<T> {
     const scheme = await this.ensureScheme(orgId, model);
-    const ctx = opts.context ?? {};
     const manual = opts.manual?.trim() || null;
 
     if (manual) {
@@ -137,6 +179,11 @@ export class NumberingService {
         }
         throw err;
       }
+    }
+
+    let ctx = opts.context ?? {};
+    if (opts.loadContext && schemeNeedsContext(scheme.prefix, scheme.suffix)) {
+      ctx = { ...ctx, ...(await opts.loadContext()) };
     }
 
     for (let attempt = 0; attempt < NumberingService.MAX_ATTEMPTS; attempt++) {
@@ -218,5 +265,22 @@ export class NumberingService {
     return (
       err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002'
     );
+  }
+
+  /** Map a model to its Prisma delegate + human-number column (for uniqueness checks). */
+  private numberFieldFor(model: NumberingModel): {
+    delegate: { findFirst: (args: unknown) => Promise<{ id: string } | null> };
+    field: string;
+  } {
+    switch (model) {
+      case 'REQUEST':
+        return { delegate: this.prisma.request as never, field: 'requestNumber' };
+      case 'QUOTE':
+        return { delegate: this.prisma.quote as never, field: 'quoteNumber' };
+      case 'PROJECT':
+        return { delegate: this.prisma.project as never, field: 'projectNumber' };
+      case 'PRODUCT':
+        return { delegate: this.prisma.product as never, field: 'productCode' };
+    }
   }
 }

@@ -2,7 +2,6 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
-  ForbiddenException,
   Logger,
   Inject,
 } from '@nestjs/common';
@@ -16,7 +15,7 @@ import {
   TemplateStatus,
 } from '@prisma/client';
 import { PrismaService } from '@/prisma';
-import { assertFound } from '@/common';
+import { assertFound, assertSystemRowManageable } from '@/common';
 import {
   STORAGE_PROVIDER,
   type StorageProvider,
@@ -530,13 +529,10 @@ export class DocumentTemplatesService {
 
   /** Beheerbaarheid: systeemrijen alleen door superuser, org-rijen door de eigen org. */
   private assertManageable(template: { isSystem: boolean; orgId: string | null }, user: User): void {
-    if (template.isSystem) {
-      if (user.orgId !== null) {
-        throw new ForbiddenException('Systeem-templates zijn alleen-lezen. Fork eerst.');
-      }
-    } else if (template.orgId !== user.orgId) {
-      throw new ForbiddenException('Deze template hoort niet bij uw organisatie');
-    }
+    assertSystemRowManageable(template, user, {
+      system: 'Systeem-templates zijn alleen-lezen. Fork eerst.',
+      org: 'Deze template hoort niet bij uw organisatie',
+    });
   }
 
   private assertConcept(status: TemplateStatus): void {

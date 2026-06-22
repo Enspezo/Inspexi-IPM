@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { User, ChecklistStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '@/prisma';
+import { assertSystemRowManageable } from '@/common';
 import {
   CreateChecklistDto,
   UpdateChecklistDto,
@@ -692,12 +693,9 @@ export class ChecklistsService {
     checklist: { isSystem: boolean; orgId: string | null },
     user: User,
   ): void {
-    if (checklist.isSystem) {
-      if (user.orgId !== null) {
-        throw new ForbiddenException('Systeem-checklists zijn alleen-lezen');
-      }
-    } else if (checklist.orgId !== user.orgId) {
-      throw new ForbiddenException('Deze checklist hoort niet bij uw organisatie');
-    }
+    assertSystemRowManageable(checklist, user, {
+      system: 'Systeem-checklists zijn alleen-lezen',
+      org: 'Deze checklist hoort niet bij uw organisatie',
+    });
   }
 }

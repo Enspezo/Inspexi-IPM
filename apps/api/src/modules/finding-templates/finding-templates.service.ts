@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import { User, Prisma } from '@prisma/client';
 import { PrismaService } from '@/prisma';
-import { assertFound, paginate } from '@/common';
+import { assertFound, assertSystemRowManageable, paginate } from '@/common';
 import {
   CreateFindingTemplateDto,
   UpdateFindingTemplateDto,
@@ -411,14 +411,9 @@ export class FindingTemplatesService {
     template: { isSystem: boolean; orgId: string | null },
     user: User,
   ): void {
-    if (template.isSystem) {
-      if (user.orgId !== null) {
-        throw new ForbiddenException(
-          'Systeem-constateringssjablonen zijn alleen-lezen. Dupliceer eerst.',
-        );
-      }
-    } else if (template.orgId !== user.orgId) {
-      throw new ForbiddenException('Dit sjabloon hoort niet bij uw organisatie');
-    }
+    assertSystemRowManageable(template, user, {
+      system: 'Systeem-constateringssjablonen zijn alleen-lezen. Dupliceer eerst.',
+      org: 'Dit sjabloon hoort niet bij uw organisatie',
+    });
   }
 }

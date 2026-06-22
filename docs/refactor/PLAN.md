@@ -46,8 +46,8 @@
 ## Wave 4 — Dedup & common helpers (backend)
 - ☑ **PR-7 `chore/common-org-guards`** — DUP-1 (`requireOrg`, 11 user-variant copies) + DUP-3 (`checkOrgAccess`, 2 copies) → `@/common`. [#57](https://github.com/Enspezo/Inspexi-IPM/pull/57) (merged). Behavior identical. (client-auth/client-inspections `requireOrg(orgId)` orgId-variant left — note in SUMMARY.)
   - Touches: `common/` + 13 services. Broad but mechanical.
-- ☐ **PR-8 `chore/common-config-guards`** — DUP-2 (`assertManageable`/`assertConcept`/`assertVisible`) → DI-free `@/common` helpers; replace ~16 copies.
-  - Touches: `common/` + lookups/checklists/templates/types/categories.
+- ☑ **PR-8 `chore/common-config-guards`** — DUP-2: `assertSystemRowManageable` single-sources the system/org manageability rule across 8 config services (`assertManageable` bodies → thin delegates, exact NL messages preserved). [#60](https://github.com/Enspezo/Inspexi-IPM/pull/60). _Scope: the dominant `assertManageable` pattern only; `assertConcept`/`assertVisible` and the lookups/measurement-sheet variants (different semantics) left — see SUMMARY._
+  - Touches: `common/` + 8 config services.
 - ☐ **PR-9 `chore/dedup-entity-enrichment`** — DEDUP-1 + DEDUP-2 + PERF-7/8 (shared `enrichEntityNames` over `ENTITY_DISPLAYS` with per-model `select`; shared `ENTITY_REF` map).
   - **Behavior change (documented):** display strings in tasks/notes/documents/search normalize to the canonical (favorites/audit) rendering (Contact email-fallback, Project `number` only, Location address, search gains PROJECT/USER). Snapshot/adjust affected tests.
   - Touches: `common/`, `tasks/`, `notes/`, `documents/`, `search/`, `favorites/`, `audit-log/`.

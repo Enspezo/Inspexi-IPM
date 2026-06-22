@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import { User, Prisma, TemplateStatus } from '@prisma/client';
 import { PrismaService } from '@/prisma';
-import { assertFound } from '@/common';
+import { assertFound, assertSystemRowManageable } from '@/common';
 import {
   CreateInspectionTemplateDto,
   UpdateInspectionTemplateDto,
@@ -547,14 +547,9 @@ export class InspectionTemplatesService {
     template: { isSystem: boolean; orgId: string | null },
     user: User,
   ): void {
-    if (template.isSystem) {
-      if (user.orgId !== null) {
-        throw new ForbiddenException(
-          'Systeem-templates zijn alleen-lezen. Fork eerst.',
-        );
-      }
-    } else if (template.orgId !== user.orgId) {
-      throw new ForbiddenException('Deze template hoort niet bij uw organisatie');
-    }
+    assertSystemRowManageable(template, user, {
+      system: 'Systeem-templates zijn alleen-lezen. Fork eerst.',
+      org: 'Deze template hoort niet bij uw organisatie',
+    });
   }
 }

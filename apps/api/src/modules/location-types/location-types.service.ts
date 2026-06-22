@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { User, Prisma, LocationTypeScope } from '@prisma/client';
 import { PrismaService } from '@/prisma';
+import { assertSystemRowManageable } from '@/common';
 import {
   CreateLocationTypeDto,
   UpdateLocationTypeDto,
@@ -434,12 +435,9 @@ export class LocationTypesService {
     lt: { isSystem: boolean; orgId: string | null },
     user: User,
   ): void {
-    if (lt.isSystem) {
-      if (user.orgId !== null) {
-        throw new ForbiddenException('Systeem-locatie-types zijn alleen-lezen. Dupliceer eerst.');
-      }
-    } else if (lt.orgId !== user.orgId) {
-      throw new ForbiddenException('Dit locatie-type hoort niet bij uw organisatie');
-    }
+    assertSystemRowManageable(lt, user, {
+      system: 'Systeem-locatie-types zijn alleen-lezen. Dupliceer eerst.',
+      org: 'Dit locatie-type hoort niet bij uw organisatie',
+    });
   }
 }

@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { User, Prisma } from '@prisma/client';
 import { PrismaService } from '@/prisma';
+import { assertSystemRowManageable } from '@/common';
 import {
   CreateAssetTypeDto,
   UpdateAssetTypeDto,
@@ -430,12 +431,9 @@ export class AssetTypesService {
     at: { isSystem: boolean; orgId: string | null },
     user: User,
   ): void {
-    if (at.isSystem) {
-      if (user.orgId !== null) {
-        throw new ForbiddenException('Systeem-asset-types zijn alleen-lezen. Dupliceer eerst.');
-      }
-    } else if (at.orgId !== user.orgId) {
-      throw new ForbiddenException('Dit asset-type hoort niet bij uw organisatie');
-    }
+    assertSystemRowManageable(at, user, {
+      system: 'Systeem-asset-types zijn alleen-lezen. Dupliceer eerst.',
+      org: 'Dit asset-type hoort niet bij uw organisatie',
+    });
   }
 }

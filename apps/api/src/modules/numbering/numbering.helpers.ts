@@ -13,6 +13,7 @@ export const NUMBERING_MODELS: readonly NumberingModel[] = [
   'QUOTE',
   'PROJECT',
   'PRODUCT',
+  'WORK_ORDER',
 ];
 
 /** Per-model catalogue of allowed placeholder tokens (used in prefix/suffix). */
@@ -21,6 +22,7 @@ export const MODEL_PLACEHOLDERS: Record<NumberingModel, readonly string[]> = {
   QUOTE: ['jaar', 'maand', 'dag', 'postcode', 'contact'],
   PROJECT: ['jaar', 'maand', 'dag', 'postcode', 'contact'],
   PRODUCT: ['jaar', 'maand', 'dag', 'groep'],
+  WORK_ORDER: ['jaar', 'maand', 'dag', 'postcode', 'huisnummer', 'contact'],
 };
 
 /** Human-readable description per placeholder token (for the settings UI / docs). */
@@ -29,6 +31,7 @@ export const PLACEHOLDER_LABELS: Record<string, string> = {
   maand: 'Maand (MM)',
   dag: 'Dag (DD)',
   postcode: 'Postcode van de locatie',
+  huisnummer: 'Huisnummer van de locatie',
   contact: 'Naam van de relatie',
   groep: 'Productgroep',
 };
@@ -90,6 +93,16 @@ export const DEFAULT_SCHEMES: Record<NumberingModel, DefaultScheme> = {
     resetPolicy: 'CONTINUOUS',
     allowManualEntry: false,
   },
+  WORK_ORDER: {
+    prefix: 'WB-[jaar]-',
+    suffix: '',
+    mode: 'SEQUENTIAL',
+    start: 1,
+    interval: 1,
+    digits: 4,
+    resetPolicy: 'PER_YEAR',
+    allowManualEntry: false,
+  },
 };
 
 /** Bounds for the configurable numeric fields (mirrored by the DTO validators). */
@@ -109,6 +122,8 @@ export interface NumberingContext {
   date?: Date;
   /** Postal code of the linked location (`[postcode]`). */
   postcode?: string | null;
+  /** House number of the linked location (`[huisnummer]`). */
+  huisnummer?: string | null;
   /** Display name of the linked contact (`[contact]`). */
   contact?: string | null;
   /** Product group name (`[groep]`). */
@@ -162,6 +177,7 @@ function placeholderValues(
     maand: String(date.getMonth() + 1).padStart(2, '0'),
     dag: String(date.getDate()).padStart(2, '0'),
     postcode: sanitizePlaceholderValue(ctx.postcode),
+    huisnummer: sanitizePlaceholderValue(ctx.huisnummer),
     contact: sanitizePlaceholderValue(ctx.contact),
     groep: sanitizePlaceholderValue(ctx.groep),
   };
@@ -256,11 +272,11 @@ export function validateAffix(
  * common path skips the extra lookups entirely.
  */
 export function schemeNeedsContext(prefix: string, suffix: string): boolean {
-  return /\[(postcode|contact|groep)\]/i.test(`${prefix}${suffix}`);
+  return /\[(postcode|huisnummer|contact|groep)\]/i.test(`${prefix}${suffix}`);
 }
 
 /** A representative context so the settings UI / preview always renders every token. */
 export function sampleContext(model: NumberingModel): NumberingContext {
   if (model === 'PRODUCT') return { groep: 'Algemeen' };
-  return { postcode: '1234AB', contact: 'Voorbeeld BV' };
+  return { postcode: '1234AB', huisnummer: '12', contact: 'Voorbeeld BV' };
 }

@@ -291,6 +291,8 @@ export class NumberingService {
         return { delegate: this.prisma.project as never, field: 'projectNumber' };
       case 'PRODUCT':
         return { delegate: this.prisma.product as never, field: 'productCode' };
+      case 'WORK_ORDER':
+        return { delegate: this.prisma.workOrder as never, field: 'workOrderNumber' };
     }
   }
 }

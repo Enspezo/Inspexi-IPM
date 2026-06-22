@@ -221,10 +221,15 @@ describe('numbering.helpers', () => {
   });
 
   describe('DEFAULT_SCHEMES', () => {
-    it('has all four models', () => {
+    it('has all numbering models', () => {
       expect(Object.keys(DEFAULT_SCHEMES).sort()).toEqual(
-        ['PRODUCT', 'PROJECT', 'QUOTE', 'REQUEST'].sort(),
+        ['PRODUCT', 'PROJECT', 'QUOTE', 'REQUEST', 'WORK_ORDER'].sort(),
       );
+    });
+
+    it('WORK_ORDER uses WB-[jaar]- prefix with PER_YEAR reset', () => {
+      expect(DEFAULT_SCHEMES.WORK_ORDER.prefix).toBe('WB-[jaar]-');
+      expect(DEFAULT_SCHEMES.WORK_ORDER.resetPolicy).toBe('PER_YEAR');
     });
 
     it('QUOTE uses OFF-[jaar]- prefix with PER_YEAR reset', () => {

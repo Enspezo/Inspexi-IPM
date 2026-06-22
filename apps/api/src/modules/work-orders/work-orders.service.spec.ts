@@ -4,9 +4,10 @@ import {
   ForbiddenException,
   BadRequestException,
 } from '@nestjs/common';
-import { Role, WorkOrderStatus, Prisma } from '@prisma/client';
+import { Role, WorkOrderStatus } from '@prisma/client';
 import { WorkOrdersService } from './work-orders.service';
 import { PrismaService } from '@/prisma';
+import { NumberingService } from '@/modules/numbering/numbering.service';
 
 describe('WorkOrdersService', () => {
   let service: WorkOrdersService;
@@ -41,6 +42,15 @@ describe('WorkOrdersService', () => {
     $transaction: jest.fn((cb: (tx: typeof mockTx) => Promise<unknown>) =>
       cb(mockTx),
     ),
+  };
+
+  // Engine mock: invokes the create callback with a deterministic number, passing
+  // the prisma mock as the tx (the service now creates via `tx.workOrder.create`).
+  const mockNumberingService = {
+    runWithGeneratedNumber: jest.fn(async (_model, _orgId, _opts, create) =>
+      create(mockPrismaService, 'WB-2026-0001'),
+    ),
+    validateManualNumber: jest.fn(async (_o, _m, value: string) => value.trim()),
   };
 
   const mockUser = {
@@ -79,6 +89,7 @@ describe('WorkOrdersService', () => {
       providers: [
         WorkOrdersService,
         { provide: PrismaService, useValue: mockPrismaService },
+        { provide: NumberingService, useValue: mockNumberingService },
       ],
     }).compile();
 
@@ -298,27 +309,17 @@ describe('WorkOrdersService', () => {
       ).rejects.toThrow(ForbiddenException);
     });
 
-    it('should throw BadRequestException after 5 duplicate work order number attempts', async () => {
-      const prismaError = new Prisma.PrismaClientKnownRequestError(
-        'Unique constraint failed',
-        { code: 'P2002', clientVersion: '5.0.0', meta: {} },
-      );
-      mockPrismaService.workOrder.create.mockRejectedValue(prismaError);
+    it('delegates number generation to the numbering engine', async () => {
+      mockPrismaService.workOrder.create.mockResolvedValue({ ...mockWorkOrder });
 
-      await expect(service.create({} as any, mockUser)).rejects.toThrow(
-        BadRequestException,
-      );
-      expect(mockPrismaService.workOrder.create).toHaveBeenCalledTimes(5);
-    });
+      await service.create({} as any, mockUser);
 
-    it('should rethrow non-unique-constraint errors', async () => {
-      const otherError = new Error('Connection failed');
-      mockPrismaService.workOrder.create.mockRejectedValue(otherError);
-
-      await expect(service.create({} as any, mockUser)).rejects.toThrow(
-        'Connection failed',
+      expect(mockNumberingService.runWithGeneratedNumber).toHaveBeenCalledWith(
+        'WORK_ORDER',
+        'org-1',
+        expect.any(Object),
+        expect.any(Function),
       );
-      expect(mockPrismaService.workOrder.create).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -565,14 +566,16 @@ describe('WorkOrdersService', () => {
       );
     });
 
-    it('should use location data for work order number generation', async () => {
+    it('provides a numbering context that resolves location postcode + huisnummer', async () => {
       mockPrismaService.workOrder.findFirst.mockResolvedValue(null);
       mockPrismaService.location.findUnique.mockResolvedValue({
         postalCode: '1234AB',
         houseNumber: '42',
       });
-      const created = { ...mockWorkOrder, planningItemId: 'plan-1' };
-      mockPrismaService.workOrder.create.mockResolvedValue(created);
+      mockPrismaService.workOrder.create.mockResolvedValue({
+        ...mockWorkOrder,
+        planningItemId: 'plan-1',
+      });
 
       await service.createFromPlanningItem({
         id: 'plan-1',
@@ -581,32 +584,15 @@ describe('WorkOrdersService', () => {
         createdBy: 'user-1',
       });
 
+      // The engine only fetches location data lazily (when the scheme needs it):
+      // invoke the supplied loadContext to confirm it resolves the location fields.
+      const opts = mockNumberingService.runWithGeneratedNumber.mock.calls[0][2];
+      const ctx = await opts.loadContext();
+      expect(ctx).toEqual({ postcode: '1234AB', huisnummer: '42' });
       expect(mockPrismaService.location.findUnique).toHaveBeenCalledWith({
         where: { id: 'loc-1' },
         select: { postalCode: true, houseNumber: true },
       });
-      expect(mockPrismaService.workOrder.create).toHaveBeenCalled();
-    });
-
-    it('should throw BadRequestException after 5 duplicate number attempts', async () => {
-      mockPrismaService.workOrder.findFirst.mockResolvedValue(null);
-
-      const prismaError = new Prisma.PrismaClientKnownRequestError(
-        'Unique constraint failed',
-        { code: 'P2002', clientVersion: '5.0.0', meta: {} },
-      );
-      mockPrismaService.workOrder.create.mockRejectedValue(prismaError);
-
-      await expect(
-        service.createFromPlanningItem({
-          id: 'plan-1',
-          orgId: 'org-1',
-          locationId: null,
-          createdBy: 'user-1',
-        }),
-      ).rejects.toThrow(BadRequestException);
-
-      expect(mockPrismaService.workOrder.create).toHaveBeenCalledTimes(5);
     });
   });
 });

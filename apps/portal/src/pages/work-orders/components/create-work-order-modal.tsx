@@ -4,9 +4,11 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Modal, Input, Button, useToast } from '@/components/ui';
 import { PlanningSearchInput } from '@/components/planning/planning-search-input';
+import { ManualNumberField } from '@/components/numbering/manual-number-field';
 import { useCreateWorkOrder } from '../hooks/use-work-orders';
 
 const workOrderSchema = z.object({
+  workOrderNumber: z.string().optional(),
   internalNotes: z.string().optional(),
   startTime: z.string().optional(),
   endTime: z.string().optional(),
@@ -42,6 +44,7 @@ export function CreateWorkOrderModal({
     try {
       const result = await createMutation.mutateAsync({
         planningItemId: selectedPlanningItemId || undefined,
+        workOrderNumber: data.workOrderNumber?.trim() || undefined,
         internalNotes: data.internalNotes || undefined,
         startTime: data.startTime || undefined,
         endTime: data.endTime || undefined,
@@ -81,6 +84,13 @@ export function CreateWorkOrderModal({
             Optioneel — een werkbon kan ook later aan een planregel gekoppeld worden
           </p>
         </div>
+
+        <ManualNumberField
+          model="WORK_ORDER"
+          label="Werkbonnummer"
+          registration={register('workOrderNumber')}
+          error={errors.workOrderNumber?.message}
+        />
 
         <div>
           <label className="mb-1.5 block text-sm font-medium text-gray-700">

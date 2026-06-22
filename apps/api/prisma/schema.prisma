@@ -283,6 +283,7 @@ enum NumberingModel {
   QUOTE
   PROJECT
   PRODUCT
+  WORK_ORDER
 }
 
 enum NumberingMode {

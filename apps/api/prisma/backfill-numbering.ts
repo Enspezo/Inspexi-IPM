@@ -28,6 +28,7 @@ const MODEL_NUMBER_FIELD: Record<NumberingModel, string> = {
   QUOTE: 'quoteNumber',
   PROJECT: 'projectNumber',
   PRODUCT: 'productCode',
+  WORK_ORDER: 'workOrderNumber',
 };
 
 function delegateFor(prisma: PrismaClient, model: NumberingModel): any {
@@ -40,6 +41,8 @@ function delegateFor(prisma: PrismaClient, model: NumberingModel): any {
       return prisma.project;
     case 'PRODUCT':
       return prisma.product;
+    case 'WORK_ORDER':
+      return prisma.workOrder;
   }
 }
 

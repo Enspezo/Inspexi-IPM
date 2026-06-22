@@ -136,6 +136,10 @@ describe('Numbering (e2e)', () => {
       });
       await prisma.request.deleteMany({ where: { orgId: { in: [orgId, foreignOrgId] } } });
       await prisma.product.deleteMany({ where: { orgId: { in: [orgId, foreignOrgId] } } });
+      await prisma.workOrderLine.deleteMany({
+        where: { workOrder: { orgId: { in: [orgId, foreignOrgId] } } },
+      });
+      await prisma.workOrder.deleteMany({ where: { orgId: { in: [orgId, foreignOrgId] } } });
       await prisma.numberingCounter.deleteMany({
         where: { scheme: { orgId: { in: [orgId, foreignOrgId] } } },
       });
@@ -157,14 +161,14 @@ describe('Numbering (e2e)', () => {
   });
 
   describe('Scheme configuration', () => {
-    it('auto-provisions the four schemes on first list', async () => {
+    it('auto-provisions a scheme per model on first list', async () => {
       const res = await request(app.getHttpServer())
         .get('/api/v1/numbering-schemes')
         .set('Authorization', `Bearer ${adminToken}`)
         .expect(200);
 
       const models = res.body.data.map((s: { model: string }) => s.model).sort();
-      expect(models).toEqual(['PRODUCT', 'PROJECT', 'QUOTE', 'REQUEST']);
+      expect(models).toEqual(['PRODUCT', 'PROJECT', 'QUOTE', 'REQUEST', 'WORK_ORDER']);
     });
 
     it('returns a preview example without mutating the counter', async () => {
@@ -260,6 +264,16 @@ describe('Numbering (e2e)', () => {
       createdProductIds.push(res.body.data.id);
       // PRODUCT scheme was patched to prefix ART- with 5 digits above.
       expect(res.body.data.productCode).toMatch(/^ART-\d{5}$/);
+    });
+
+    it('assigns a workOrderNumber via the engine (migrated off the legacy generator)', async () => {
+      const res = await request(app.getHttpServer())
+        .post('/api/v1/work-orders')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({})
+        .expect(201);
+
+      expect(res.body.data.workOrderNumber).toMatch(new RegExp(`^WB-${year}-\\d{4}$`));
     });
   });
 

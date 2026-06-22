@@ -1,7 +1,13 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsOptional, IsString, IsDateString, IsUUID } from 'class-validator';
+import { IsOptional, IsString, IsDateString, IsUUID, MaxLength } from 'class-validator';
 
 export class UpdateWorkOrderDto {
+  @ApiPropertyOptional({ description: 'Handmatig werkbonnummer (alleen als handmatige nummering aanstaat)' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(60)
+  workOrderNumber?: string;
+
   @ApiPropertyOptional({ description: 'Koppel aan planregel (of null om te ontkoppelen)' })
   @IsOptional()
   @IsUUID()

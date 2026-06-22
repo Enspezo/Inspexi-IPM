@@ -144,7 +144,7 @@ export class SyncService {
   async push(user: User, dto: PushDto) {
     const orgId = requireOrg(user);
     const results: OpResult[] = [];
-    const processed: Record<string, number> = { inspectionPlans: 0, assets: 0, findings: 0 };
+    const processed: Record<string, number> = { inspectionPlans: 0, assets: 0, findings: 0, chatMessages: 0 };
 
     for (const key of Object.keys(SYNC_ENTITIES) as SyncEntityKey[]) {
       const group = dto.changes[key] ?? [];

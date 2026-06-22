@@ -178,6 +178,31 @@ describe('Chat sync (e2e)', () => {
     expect(res.body.data.errors[0].entityType).toBe('chatMessage');
   });
 
+  it('refuses to delete a message authored by someone else', async () => {
+    // Find the backoffice-authored seed message (inspector is a member of the thread).
+    const msgs = await request(app.getHttpServer())
+      .get(`/api/v1/chat/threads/${directThreadId}/messages`)
+      .set(auth(inspectorToken))
+      .expect(200);
+    const foreign = (msgs.body.data as any[]).find((m) => m.senderId === backofficeId);
+    expect(foreign).toBeTruthy();
+
+    const res = await request(app.getHttpServer())
+      .post('/api/v1/sync/push')
+      .set(auth(inspectorToken))
+      .send({ deviceId: 'pwa-1', changes: { chatMessages: [{ operation: 'delete', data: { id: foreign.id } }] } })
+      .expect(201);
+    expect(res.body.data.processed.chatMessages).toBe(0);
+    expect(res.body.data.errors.length).toBe(1);
+
+    // The foreign message is still there (not soft-deleted).
+    const after = await request(app.getHttpServer())
+      .get(`/api/v1/chat/threads/${directThreadId}/messages`)
+      .set(auth(inspectorToken))
+      .expect(200);
+    expect((after.body.data as any[]).some((m) => m.id === foreign.id)).toBe(true);
+  });
+
   it('surfaces chat-message tombstones on pull', async () => {
     const msgId = randomUUID();
     await request(app.getHttpServer())

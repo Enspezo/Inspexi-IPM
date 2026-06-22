@@ -798,7 +798,7 @@ export class ChatService {
       ...new Set([...directParts.map((p) => p.threadId), ...teamThreads.map((t) => t.id)]),
     ];
 
-    const users = await this.presenceUsers(orgId);
+    const users = await this.presenceUsers(orgId, user.id, since);
     if (visibleIds.length === 0) return { ...empty, users };
 
     const [threads, delThreads, messages, delMessages] = await Promise.all([
@@ -856,9 +856,19 @@ export class ChatService {
     };
   }
 
-  private async presenceUsers(orgId: string) {
+  /**
+   * Presence-delta: alleen gebruikers wier presence sinds `since` veranderde
+   * (presence-wijzigingen zetten altijd `lastSeenAt`, ook bij een statuswissel —
+   * zie updatePresence/touchLastSeen), plus altijd de aanvrager zelf zodat de PWA
+   * de eigen status kent. Houdt de payload klein op frequente polls.
+   */
+  private async presenceUsers(orgId: string, selfId: string, since: Date) {
     return this.prisma.user.findMany({
-      where: { orgId, isDeleted: false },
+      where: {
+        orgId,
+        isDeleted: false,
+        OR: [{ id: selfId }, { lastSeenAt: { gt: since } }],
+      },
       select: {
         id: true,
         firstName: true,
@@ -895,10 +905,17 @@ export class ChatService {
       return { id, status: 'success' };
     }
 
-    // create/update → send. Idempotent: een al bestaand client-id is al gesynct.
+    // Berichten zijn immutable: alleen create (verzenden) en delete via sync.
+    if (operation === 'update') {
+      throw new BadRequestException('Bewerken van chatberichten wordt niet ondersteund');
+    }
+
+    // create → send. Idempotent (replay-veilig): een al bestaand eigen client-id
+    // is al gesynct. Org/sender-scoped zodat een (astronomisch onwaarschijnlijke)
+    // id-botsing met een ander bericht niet stilletjes wordt geslikt.
     if (id) {
-      const existing = await this.prisma.chatMessage.findUnique({
-        where: { id },
+      const existing = await this.prisma.chatMessage.findFirst({
+        where: { id, senderId: user.id, ...orgScope(user) },
         select: { id: true },
       });
       if (existing) return { id, status: 'success' };

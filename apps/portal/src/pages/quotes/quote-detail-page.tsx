@@ -16,6 +16,7 @@ import { formatCurrency, formatDate } from '@/lib/format';
 import { QUOTE_STATUS } from '@/lib/status';
 import { DetailPageLayout, SidebarSection } from '@/components/layout/detail-page-layout';
 import { FavoriteStar } from '@/components/favorites/favorite-star';
+import { StartChatButton } from '@/components/chat';
 import { NotesSidebarSection, HistorySidebarSection, DocumentsSidebarSection } from '@/components/layout/sidebar-sections';
 import { useAuth } from '@/providers/auth-provider';
 import { useWindowTabSync } from '@/providers/window-tabs';
@@ -249,7 +250,9 @@ export default function QuoteDetailPage() {
               </div>
             </div>
           </div>
-          {userCanWrite && (
+          <div className="flex items-center gap-2">
+            <StartChatButton entityType="Quote" entityId={quote.id} label={quote.quoteNumber} />
+            {userCanWrite && (
             <ActionMenu
               primaryActions={[
                 ...(quote.status === QuoteStatus.CONCEPT && quote.requiresApproval ? [{
@@ -350,7 +353,8 @@ export default function QuoteDetailPage() {
                 }] : []),
               ]}
             />
-          )}
+            )}
+          </div>
         </div>
 
         {/* Reject note input */}

@@ -11,6 +11,7 @@ import { ActionMenu, Button, Spinner, StatusBadge, Modal, Tabs } from '@/compone
 import { PROJECT_STATUS } from '@/lib/status';
 import { DetailPageLayout, SidebarSection } from '@/components/layout/detail-page-layout';
 import { FavoriteStar } from '@/components/favorites/favorite-star';
+import { StartChatButton } from '@/components/chat';
 import { NotesSidebarSection, HistorySidebarSection, DocumentsSidebarSection } from '@/components/layout/sidebar-sections';
 import { useAuth } from '@/providers/auth-provider';
 import { useWindowTabSync } from '@/providers/window-tabs';
@@ -311,7 +312,9 @@ export default function ProjectDetailPage() {
               </div>
               <p className="mt-1 text-gray-600">{project.title}</p>
             </div>
-            {userCanWrite && (
+            <div className="flex items-center gap-2">
+              <StartChatButton entityType="Project" entityId={project.id} label={project.title} />
+              {userCanWrite && (
               <ActionMenu
                 primaryActions={[
                   {
@@ -328,7 +331,8 @@ export default function ProjectDetailPage() {
                   },
                 ]}
               />
-            )}
+              )}
+            </div>
           </div>
 
           {/* Tabs */}

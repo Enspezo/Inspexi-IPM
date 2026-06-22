@@ -1,4 +1,4 @@
-import { PrismaClient, Role, ContactType, LogType, PriceType, RequestSource, RequestStatus, Priority, QuoteStatus, NotificationType, PlanningStatus, AcceptanceStatus, ProjectStatus, AssetFieldType, ChecklistStatus, TemplateStatus, MeasurementSheetTemplateStatus, MeasurementSheetFieldType, FindingInspectionType, DocumentType, DocumentEntityType, TemplateMode, SectionType, ClientUserStatus, ClientAccessRole, GeneratedDocumentStatus, SignatureStatus, MarkerType, MeasurementSheetRecordStatus, PassFailOperator, LocationTypeScope } from '@prisma/client';
+import { PrismaClient, Role, ContactType, LogType, PriceType, RequestSource, RequestStatus, Priority, QuoteStatus, NotificationType, PlanningStatus, AcceptanceStatus, ProjectStatus, AssetFieldType, ChecklistStatus, TemplateStatus, MeasurementSheetTemplateStatus, MeasurementSheetFieldType, FindingInspectionType, DocumentType, DocumentEntityType, TemplateMode, SectionType, ClientUserStatus, ClientAccessRole, GeneratedDocumentStatus, SignatureStatus, MarkerType, MeasurementSheetRecordStatus, PassFailOperator, LocationTypeScope, Availability, ChatThreadType, ChatThreadStatus } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { randomUUID } from 'crypto';
 import * as fs from 'fs';
@@ -282,6 +282,10 @@ async function main() {
   // Lookup tables (requests & contact persons that referenced them are already deleted above)
   await prisma.lostReason.deleteMany();
   await prisma.contactPersonRoleOption.deleteMany();
+  // Interne chat (children first: message → participant → thread)
+  await prisma.chatMessage.deleteMany();
+  await prisma.chatParticipant.deleteMany();
+  await prisma.chatThread.deleteMany();
   // Favorites (leaf — FK to users/organizations only)
   await prisma.favorite.deleteMany();
   // Tasks, Documents & Notes (dependent on users)
@@ -414,15 +418,16 @@ async function main() {
 
   // Org 1 users
   const org1Users = [
-    { email: 'admin@inspexi-demo.nl', firstName: 'Jan', lastName: 'de Vries', roles: [Role.ORG_ADMIN] },
-    { email: 'manager@inspexi-demo.nl', firstName: 'Pieter', lastName: 'Bakker', roles: [Role.MANAGER] },
-    { email: 'backoffice@inspexi-demo.nl', firstName: 'Maria', lastName: 'Jansen', roles: [Role.BACKOFFICE] },
-    { email: 'werkvoorbereider@inspexi-demo.nl', firstName: 'Kees', lastName: 'Smit', roles: [Role.WERKVOORBEREIDER] },
+    { email: 'admin@inspexi-demo.nl', firstName: 'Jan', lastName: 'de Vries', roles: [Role.ORG_ADMIN], availability: Availability.BESCHIKBAAR },
+    { email: 'manager@inspexi-demo.nl', firstName: 'Pieter', lastName: 'Bakker', roles: [Role.MANAGER], availability: Availability.BEZIG, availabilityNote: 'In bespreking tot 15:00' },
+    { email: 'backoffice@inspexi-demo.nl', firstName: 'Maria', lastName: 'Jansen', roles: [Role.BACKOFFICE], availability: Availability.BESCHIKBAAR },
+    { email: 'werkvoorbereider@inspexi-demo.nl', firstName: 'Kees', lastName: 'Smit', roles: [Role.WERKVOORBEREIDER], availability: Availability.AFWEZIG },
     {
       email: 'inspecteur@inspexi-demo.nl',
       firstName: 'Tom',
       lastName: 'Visser',
       roles: [Role.INSPECTEUR],
+      availability: Availability.BESCHIKBAAR,
       // Eigen contactgegevens + per-kanaal toestemming voor het klantportaal.
       // Telefoon gedeeld (→ getoond), e-mail niet gedeeld (→ statische terugval).
       contactPhone: '+31 6 12 34 56 78',
@@ -1481,6 +1486,75 @@ async function main() {
     ],
   });
   console.log('  ✓ 3 sample notificaties');
+
+  // ─── REQ1: Interne chat ────────────────────────────────
+  console.log('\n💬 Seeding interne chat...');
+
+  const chatBackofficeId = createdOrg1Users[Role.BACKOFFICE];
+  const chatInspecteurId = createdOrg1Users[Role.INSPECTEUR];
+
+  // 1-op-1 chat (backoffice ↔ inspecteur) gekoppeld aan een aanvraag, met @-mention.
+  const directKey = [chatBackofficeId, chatInspecteurId].sort().join(':');
+  await prisma.chatThread.create({
+    data: {
+      orgId: org1.id,
+      type: ChatThreadType.DIRECT,
+      directKey,
+      status: ChatThreadStatus.OPEN,
+      referenceEntityType: 'Request',
+      referenceEntityId: req1.id,
+      createdById: chatBackofficeId,
+      participants: {
+        create: [
+          { userId: chatBackofficeId, lastReadAt: new Date('2026-06-22T09:10:00Z') },
+          { userId: chatInspecteurId },
+        ],
+      },
+      messages: {
+        create: [
+          {
+            orgId: org1.id,
+            senderId: chatBackofficeId,
+            content: `Hoi Tom, kun je deze aanvraag "${req1.title}" oppakken?`,
+            mentionedUserIds: [chatInspecteurId],
+            createdAt: new Date('2026-06-22T09:00:00Z'),
+          },
+          {
+            orgId: org1.id,
+            senderId: chatInspecteurId,
+            content: 'Ja, ik kijk er vanmiddag naar.',
+            createdAt: new Date('2026-06-22T09:05:00Z'),
+          },
+        ],
+      },
+    },
+  });
+
+  // Team-chat voor backoffice.
+  await prisma.chatThread.create({
+    data: {
+      orgId: org1.id,
+      type: ChatThreadType.TEAM,
+      teamRole: Role.BACKOFFICE,
+      status: ChatThreadStatus.OPEN,
+      createdById: chatBackofficeId,
+      participants: {
+        create: [{ userId: chatBackofficeId, lastReadAt: new Date('2026-06-22T08:35:00Z') }],
+      },
+      messages: {
+        create: [
+          {
+            orgId: org1.id,
+            senderId: chatBackofficeId,
+            content: 'Team, let op de deadline van vrijdag.',
+            createdAt: new Date('2026-06-22T08:30:00Z'),
+          },
+        ],
+      },
+    },
+  });
+
+  console.log('  ✓ 1 directe chat (met referentie + mention) + 1 team-chat');
 
   // ─── PRD-07: Planning ──────────────────────────────────
   console.log('\n📅 Seeding Planning items...');

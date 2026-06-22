@@ -10,7 +10,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcrypt';
 import { randomUUID } from 'crypto';
-import { User, Role, TaskStatus } from '@prisma/client';
+import { User, Role, TaskStatus, Availability } from '@prisma/client';
 import { PrismaService } from '@/prisma';
 import { assertFound, assertSameOrg } from '@/common';
 import { EmailService } from '@/common/services/email.service';
@@ -158,6 +158,36 @@ export class UsersService {
     }
 
     return invitation;
+  }
+
+  /**
+   * Beschikbaarheidsstatus van de gebruiker bijwerken (interne chat — REQ1).
+   * Bewust via raw SQL zodat de audit-middleware (User is geaudit) niet bij elke
+   * statuswissel ruis logt; presence + lastSeenAt veranderen frequent.
+   */
+  async updatePresence(
+    userId: string,
+    availability: Availability,
+    availabilityNote?: string | null,
+  ) {
+    await this.prisma.$executeRaw`
+      UPDATE imp_users
+      SET availability = ${availability}::"Availability",
+          availability_note = ${availabilityNote ?? null},
+          last_seen_at = now()
+      WHERE id = ${userId}::uuid
+    `;
+    return this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, availability: true, availabilityNote: true, lastSeenAt: true },
+    });
+  }
+
+  async getPresence(userId: string) {
+    return this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, availability: true, availabilityNote: true, lastSeenAt: true },
+    });
   }
 
   async rotateIcalToken(userId: string) {

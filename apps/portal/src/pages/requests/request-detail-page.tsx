@@ -11,6 +11,7 @@ import { ActionMenu, Button, ErrorBox, Spinner, StatusBadge, Tabs, useConfirm, u
 import { PRIORITY, REQUEST_STATUS } from '@/lib/status';
 import { DetailPageLayout, SidebarSection } from '@/components/layout/detail-page-layout';
 import { FavoriteStar } from '@/components/favorites/favorite-star';
+import { StartChatButton } from '@/components/chat';
 import { NotesSidebarSection, HistorySidebarSection, DocumentsSidebarSection } from '@/components/layout/sidebar-sections';
 import { useAuth } from '@/providers/auth-provider';
 import { useWindowTabSync } from '@/providers/window-tabs';
@@ -204,7 +205,9 @@ export default function RequestDetailPage() {
             )}
           </div>
         </div>
-        {userCanWrite && (
+        <div className="flex items-center gap-2">
+          <StartChatButton entityType="Request" entityId={request.id} label={request.title} />
+          {userCanWrite && (
           <ActionMenu
             primaryActions={[
               {
@@ -241,7 +244,8 @@ export default function RequestDetailPage() {
               },
             ]}
           />
-        )}
+          )}
+        </div>
       </div>
 
       {/* Tabs */}

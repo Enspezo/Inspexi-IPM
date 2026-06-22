@@ -22,7 +22,8 @@ export type NotificationModel =
   | 'PLANNING'
   | 'PROJECTEN'
   | 'FOUTMELDINGEN'
-  | 'INSPECTIEPLANNEN';
+  | 'INSPECTIEPLANNEN'
+  | 'CHAT';
 
 export const NOTIFICATION_MODEL_KEYS: NotificationModel[] = [
   'OFFERTES',
@@ -34,6 +35,7 @@ export const NOTIFICATION_MODEL_KEYS: NotificationModel[] = [
   'PROJECTEN',
   'FOUTMELDINGEN',
   'INSPECTIEPLANNEN',
+  'CHAT',
 ];
 
 export const NOTIFICATION_MODEL_TYPES: Record<
@@ -83,6 +85,11 @@ export const NOTIFICATION_MODEL_TYPES: Record<
     NotificationType.INSPECTIEPLAN_TER_REVIEW,
     NotificationType.INSPECTIEPLAN_GOEDGEKEURD,
     NotificationType.INSPECTIEPLAN_AFGEKEURD,
+  ],
+  CHAT: [
+    NotificationType.CHAT_BERICHT,
+    NotificationType.CHAT_TEAM_BERICHT,
+    NotificationType.CHAT_MENTION,
   ],
 };
 

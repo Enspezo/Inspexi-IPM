@@ -38,6 +38,7 @@ import {
   UpdateColorDto,
   DeleteUserDto,
   ListSelectableUsersQueryDto,
+  UpdatePresenceDto,
 } from './dto';
 import { Throttle } from '@nestjs/throttler';
 import { Roles, CurrentUser, Public } from '@/common/decorators';
@@ -182,6 +183,26 @@ export class UsersController {
   @ApiResponse({ status: 201, description: 'Nieuw token gegenereerd' })
   async rotateIcalToken(@CurrentUser() user: User) {
     const data = await this.usersService.rotateIcalToken(user.id);
+    return { success: true, data };
+  }
+
+  @Get('me/presence')
+  @ApiOperation({ summary: 'Eigen beschikbaarheidsstatus ophalen (interne chat)' })
+  @ApiResponse({ status: 200, description: 'Presence' })
+  async getPresence(@CurrentUser() user: User) {
+    const data = await this.usersService.getPresence(user.id);
+    return { success: true, data };
+  }
+
+  @Patch('me/presence')
+  @ApiOperation({ summary: 'Eigen beschikbaarheidsstatus instellen (interne chat)' })
+  @ApiResponse({ status: 200, description: 'Presence bijgewerkt' })
+  async updatePresence(@Body() dto: UpdatePresenceDto, @CurrentUser() user: User) {
+    const data = await this.usersService.updatePresence(
+      user.id,
+      dto.availability,
+      dto.availabilityNote ?? null,
+    );
     return { success: true, data };
   }
 

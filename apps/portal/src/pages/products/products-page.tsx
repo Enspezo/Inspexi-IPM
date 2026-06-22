@@ -49,6 +49,19 @@ export default function ProductsPage() {
 
   const columns: ColumnDef<Product>[] = [
     {
+      key: 'productCode',
+      header: 'Productcode',
+      pinned: true,
+      sortable: true,
+      sortKey: 'productCode',
+      filterable: true,
+      filterType: 'text',
+      getFilterValue: (product) => product.productCode ?? '',
+      render: (product) => (
+        <span className="font-mono text-sm text-gray-700">{product.productCode ?? '—'}</span>
+      ),
+    },
+    {
       key: 'name',
       header: 'Naam',
       pinned: true,

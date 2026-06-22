@@ -2,6 +2,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Modal, Input, Select, Button, useToast } from '@/components/ui';
+import { ManualNumberField } from '@/components/numbering/manual-number-field';
 import { useCreateProduct } from '../hooks/use-products';
 import { useProductGroupsCompact } from '@/pages/product-groups/hooks/use-product-groups';
 import { getErrorMessage } from '@/lib/api-client';
@@ -18,6 +19,7 @@ const unitOptions = [
 
 const schema = z.object({
   name: z.string().min(1, 'Naam is verplicht'),
+  productCode: z.string().optional(),
   unit: z.string().min(1, 'Eenheid is verplicht'),
   description: z.string().optional(),
   defaultVat: z.coerce.number().min(0).max(100).optional(),
@@ -55,6 +57,7 @@ export function CreateProductModal({ isOpen, onClose }: CreateProductModalProps)
     try {
       await createMutation.mutateAsync({
         name: data.name,
+        productCode: data.productCode?.trim() || undefined,
         unit: data.unit,
         description: data.description || undefined,
         defaultVat: data.defaultVat,
@@ -81,6 +84,13 @@ export function CreateProductModal({ isOpen, onClose }: CreateProductModalProps)
           placeholder="NEN1010 Inspectie"
           error={errors.name?.message}
           {...register('name')}
+        />
+
+        <ManualNumberField
+          model="PRODUCT"
+          label="Productcode"
+          registration={register('productCode')}
+          error={errors.productCode?.message}
         />
 
         <Select

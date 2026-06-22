@@ -184,6 +184,9 @@ export default function RequestDetailPage() {
           <div>
             <div className="flex items-center gap-3">
               <FavoriteStar entityType="Request" entityId={request.id} />
+              {request.requestNumber && (
+                <span className="font-mono text-sm text-gray-500">{request.requestNumber}</span>
+              )}
               <h2 className="text-2xl font-bold text-gray-900">{request.title}</h2>
               <StatusBadge status={request.status} map={REQUEST_STATUS} />
               <StatusBadge status={request.priority} map={PRIORITY} />

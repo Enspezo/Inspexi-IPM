@@ -123,6 +123,19 @@ export default function RequestsPage() {
 
   const columns: ColumnDef<Request>[] = [
     {
+      key: 'requestNumber',
+      header: 'Nummer',
+      pinned: true,
+      sortable: true,
+      sortKey: 'requestNumber',
+      filterable: true,
+      filterType: 'text',
+      getFilterValue: (req) => req.requestNumber ?? '',
+      render: (req) => (
+        <span className="font-mono text-sm text-gray-700">{req.requestNumber ?? '—'}</span>
+      ),
+    },
+    {
       key: 'title',
       header: 'Titel',
       pinned: true,

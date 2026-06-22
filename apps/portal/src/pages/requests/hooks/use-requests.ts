@@ -61,6 +61,7 @@ export function useRequest(id: string) {
 
 interface CreateRequestDto {
   contactId: string;
+  requestNumber?: string;
   locationId?: string;
   assignedTo?: string;
   source: string;

@@ -369,6 +369,7 @@ export interface Product {
   orgId: string;
   productGroupId: string | null;
   name: string;
+  productCode: string | null;
   description: string | null;
   unit: string;
   defaultVat: number;
@@ -465,6 +466,7 @@ export interface LocationSummary {
 export interface Request {
   id: string;
   orgId: string;
+  requestNumber: string | null;
   contactId: string;
   locationId: string | null;
   assignedTo: string | null;
@@ -924,6 +926,28 @@ export interface DocumentTag {
   isDeleted: boolean;
   createdAt: string;
   _count?: { documents: number };
+}
+
+// ─── Configureerbare nummering (per org, per model) ──────────────────────
+export type NumberingModel = 'REQUEST' | 'QUOTE' | 'PROJECT' | 'PRODUCT';
+export type NumberingMode = 'SEQUENTIAL' | 'RANDOM';
+export type NumberingReset = 'CONTINUOUS' | 'PER_YEAR' | 'PER_MONTH';
+
+export interface NumberingScheme {
+  id: string;
+  orgId: string;
+  model: NumberingModel;
+  prefix: string;
+  suffix: string;
+  mode: NumberingMode;
+  start: number;
+  interval: number;
+  digits: number;
+  resetPolicy: NumberingReset;
+  allowManualEntry: boolean;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
 }
 
 /** Compacte tag-weergave zoals meegestuurd op documenten / pickers. */

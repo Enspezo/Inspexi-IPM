@@ -30,29 +30,39 @@ Alle responses in Beheer-envelope `{ success, data }`. Auth = **interne user-JWT
   "findings":        [ /* ... statusCode, classificationValues, shortDescription ... */ ],
   "photos":   [ { "id","entityType":"asset|finding|inspectionPlan","entityId","url","thumbnailUrl" } ],
   "contacts": [ { "id","orgId","name" } ],            // read-only referentie (naamweergave)
-  "deletedIds": { "inspectionPlans":[], "assets":[], "findings":[] },  // tombstones (deletedAt > since)
+  // ── Additief (REQ1 interne chat) — membership-scoped (DIRECT: deelnemer, TEAM: rol) ──
+  "chatThreads":  [ { "id","type":"DIRECT|TEAM","teamRole","subject","status","referenceEntityType","referenceEntityId","createdById","createdAt","updatedAt" } ],
+  "chatMessages": [ { "id","threadId","senderId","content","mentionedUserIds","referenceEntityType","referenceEntityId","createdAt","updatedAt" } ],
+  "users":        [ { "id","firstName","lastName","initials","availability","availabilityNote","lastSeenAt" } ],  // presence
+  "deletedIds": { "inspectionPlans":[], "assets":[], "findings":[], "chatThreads":[], "chatMessages":[] },  // tombstones (deletedAt > since); chat-keys additief
   "serverTime": "ISO"
 } }
 ```
 `since` leeg → alles (eerste sync). Alleen records van de eigen org (superuser ziet alles).
+
+> **REQ1 — interne chat (additief, contract niet gebroken).** Bestaande keys/typen zijn ongewijzigd; `chatThreads`/`chatMessages`/`users` en de twee chat-keys in `deletedIds` zijn nieuw — een oude PWA negeert onbekende keys. Chat in pull is **read-only** en strikt **membership-scoped** (een inspecteur ziet alleen eigen DIRECT-threads + zijn rol-teamkanalen; nooit DIRECT-threads van anderen). Presence (`users`) is de hele org-staf.
 
 ### POST /api/v1/sync/push
 ```jsonc
 { "deviceId":"...", "clientTime":"ISO", "changes": {
   "inspectionPlans": [ { "operation":"create|update|delete", "data": { /* volledig record, incl. id (client-UUID) */ } } ],
   "assets":   [ ... ],
-  "findings": [ ... ]
+  "findings": [ ... ],
+  // ── Additief (REQ1) — chat-berichten van de PWA-inspecteur ──
+  "chatMessages": [ { "operation":"create|delete", "data": { "id":"client-UUID","threadId","content","mentionedUserIds?","referenceEntityType?","referenceEntityId?","deviceId?" } } ]
 } }
 ```
 Response:
 ```jsonc
 { "success": true, "data": {
-  "processed": { "inspectionPlans": N, "assets": N, "findings": N },
+  "processed": { "inspectionPlans": N, "assets": N, "findings": N, "chatMessages": N },  // chatMessages additief
   "conflicts": [ { "entityType":"inspectionPlan|asset|finding", "entityId","clientData","serverData" } ],
   "errors":    [ { "entityType","entityId","error" } ],
   "serverTime": "ISO"
 } }
 ```
+
+> **Chat-push (REQ1).** `chatMessages` lopen **niet** via de generieke mutator maar via `ChatService.sendMessage`, zodat membership-autorisatie (alleen posten in eigen threads), notificatie-dispatch (@mentions + nieuw-bericht, gededupliceerd) en read-state identiek aan de REST-flow blijven. **Idempotent** op het client-`id` (replay-veilig). `delete` doet een soft-delete van een **eigen** bericht (verschijnt als tombstone in de volgende pull). Threads worden **niet** via push aangemaakt — die worden server-side (portal) geprovisioneerd; de PWA antwoordt in bestaande threads.
 
 ### POST /api/v1/sync/resolve
 ```jsonc

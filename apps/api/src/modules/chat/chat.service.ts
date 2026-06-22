@@ -15,7 +15,7 @@ import {
   User,
 } from '@prisma/client';
 import { PrismaService } from '@/prisma';
-import { assertAllSameOrg, assertSameOrg, requireOrg } from '@/common';
+import { assertAllSameOrg, assertSameOrg, orgScope, requireOrg } from '@/common';
 import { NotificationsService } from '../notifications/notifications.service';
 import { NotesService } from '../notes/notes.service';
 import {
@@ -622,7 +622,14 @@ export class ChatService {
     return messages.map((m) => this.toMessage(m, refNames));
   }
 
-  async sendMessage(threadId: string, user: User, dto: SendMessageDto) {
+  async sendMessage(
+    threadId: string,
+    user: User,
+    dto: SendMessageDto,
+    // Sync-only: laat de offline-PWA het client-id + device behouden. De REST-flow
+    // geeft niets mee. Authorisatie/notificaties/read-state lopen identiek.
+    opts?: { id?: string; deviceId?: string },
+  ) {
     const orgId = requireOrg(user);
     const thread = await this.loadAccessibleThread(threadId, user);
     if (thread.status === ChatThreadStatus.AFGEROND) {
@@ -637,6 +644,7 @@ export class ChatService {
 
     const message = await this.prisma.chatMessage.create({
       data: {
+        ...(opts?.id ? { id: opts.id } : {}),
         threadId,
         orgId,
         senderId: user.id,
@@ -644,6 +652,8 @@ export class ChatService {
         mentionedUserIds: mentioned,
         referenceEntityType: dto.referenceEntityType ?? null,
         referenceEntityId: dto.referenceEntityId ?? null,
+        deviceId: opts?.deviceId ?? null,
+        syncedAt: opts ? new Date() : null,
       },
       include: { sender: { select: MESSAGE_SENDER } },
     });
@@ -746,6 +756,172 @@ export class ChatService {
       orderBy: [{ firstName: 'asc' }, { lastName: 'asc' }],
       take: 20,
     });
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Sync (PWA-brug) — additieve /sync v2-uitbreiding (REQ1 PR2)
+  // ─────────────────────────────────────────────────────────────────────────
+
+  /**
+   * Snapshot van zichtbare chat voor de offline-PWA: alleen threads waar de
+   * gebruiker deelnemer (DIRECT) of rollid (TEAM) van is — dezelfde autorisatie
+   * als de REST-endpoints. Inclusief tombstones (deletedAt) en presence.
+   */
+  async getSyncSnapshot(user: User, since: Date) {
+    const empty = {
+      chatThreads: [] as unknown[],
+      chatMessages: [] as unknown[],
+      deletedThreadIds: [] as string[],
+      deletedMessageIds: [] as string[],
+      users: [] as unknown[],
+    };
+    if (!user.orgId) return empty;
+    const orgId = user.orgId;
+    // Pull is read-only: DIRECT-zichtbaarheid via bestaande participant-rijen,
+    // TEAM via rol-membership. Team-threads worden in de portal geprovisioneerd
+    // (ensureMyThreads), niet hier — een /sync/pull mag geen rijen schrijven.
+    const roles = this.teamRolesOf(user);
+
+    const [directParts, teamThreads] = await Promise.all([
+      this.prisma.chatParticipant.findMany({
+        where: { userId: user.id, thread: { type: ChatThreadType.DIRECT, orgId } },
+        select: { threadId: true },
+      }),
+      roles.length
+        ? this.prisma.chatThread.findMany({
+            where: { orgId, type: ChatThreadType.TEAM, teamRole: { in: roles } },
+            select: { id: true },
+          })
+        : Promise.resolve([] as { id: string }[]),
+    ]);
+    const visibleIds = [
+      ...new Set([...directParts.map((p) => p.threadId), ...teamThreads.map((t) => t.id)]),
+    ];
+
+    const users = await this.presenceUsers(orgId);
+    if (visibleIds.length === 0) return { ...empty, users };
+
+    const [threads, delThreads, messages, delMessages] = await Promise.all([
+      this.prisma.chatThread.findMany({
+        where: {
+          id: { in: visibleIds },
+          deletedAt: null,
+          OR: [{ createdAt: { gt: since } }, { updatedAt: { gt: since } }],
+        },
+      }),
+      this.prisma.chatThread.findMany({
+        where: { id: { in: visibleIds }, deletedAt: { gt: since } },
+        select: { id: true },
+      }),
+      this.prisma.chatMessage.findMany({
+        where: {
+          threadId: { in: visibleIds },
+          deletedAt: null,
+          OR: [{ createdAt: { gt: since } }, { updatedAt: { gt: since } }],
+        },
+      }),
+      this.prisma.chatMessage.findMany({
+        where: { threadId: { in: visibleIds }, deletedAt: { gt: since } },
+        select: { id: true },
+      }),
+    ]);
+
+    return {
+      chatThreads: threads.map((t) => ({
+        id: t.id,
+        type: t.type,
+        teamRole: t.teamRole,
+        subject: t.subject,
+        status: t.status,
+        referenceEntityType: t.referenceEntityType,
+        referenceEntityId: t.referenceEntityId,
+        createdById: t.createdById,
+        createdAt: t.createdAt,
+        updatedAt: t.updatedAt,
+      })),
+      chatMessages: messages.map((m) => ({
+        id: m.id,
+        threadId: m.threadId,
+        senderId: m.senderId,
+        content: m.content,
+        mentionedUserIds: m.mentionedUserIds,
+        referenceEntityType: m.referenceEntityType,
+        referenceEntityId: m.referenceEntityId,
+        createdAt: m.createdAt,
+        updatedAt: m.updatedAt,
+      })),
+      deletedThreadIds: delThreads.map((t) => t.id),
+      deletedMessageIds: delMessages.map((m) => m.id),
+      users,
+    };
+  }
+
+  private async presenceUsers(orgId: string) {
+    return this.prisma.user.findMany({
+      where: { orgId, isDeleted: false },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        initials: true,
+        availability: true,
+        availabilityNote: true,
+        lastSeenAt: true,
+      },
+    });
+  }
+
+  /**
+   * Past een via /sync gepushte chat-bericht-wijziging toe. Berichten lopen
+   * bewust NIET via de generieke sync-mutator: ze vereisen membership-autorisatie
+   * + notificatie-dispatch, dus delegeren we naar `sendMessage` (idempotent op
+   * client-id, zodat replay veilig is).
+   */
+  async applySyncMessage(
+    user: User,
+    operation: 'create' | 'update' | 'delete',
+    data: Record<string, unknown>,
+  ): Promise<{ id: string; status: 'success' }> {
+    const id = data.id ? String(data.id) : undefined;
+
+    if (operation === 'delete') {
+      if (!id) throw new BadRequestException('Bericht-id ontbreekt');
+      const existing = await this.prisma.chatMessage.findFirst({
+        where: { id, senderId: user.id, ...orgScope(user) },
+        select: { id: true },
+      });
+      if (!existing) throw new NotFoundException('Bericht niet gevonden');
+      await this.prisma.chatMessage.update({ where: { id }, data: { deletedAt: new Date() } });
+      return { id, status: 'success' };
+    }
+
+    // create/update → send. Idempotent: een al bestaand client-id is al gesynct.
+    if (id) {
+      const existing = await this.prisma.chatMessage.findUnique({
+        where: { id },
+        select: { id: true },
+      });
+      if (existing) return { id, status: 'success' };
+    }
+
+    const threadId = data.threadId ? String(data.threadId) : '';
+    if (!threadId) throw new BadRequestException('threadId ontbreekt');
+    const mentioned = Array.isArray(data.mentionedUserIds)
+      ? (data.mentionedUserIds as unknown[]).map(String)
+      : undefined;
+
+    const msg = await this.sendMessage(
+      threadId,
+      user,
+      {
+        content: String(data.content ?? ''),
+        mentionedUserIds: mentioned,
+        referenceEntityType: data.referenceEntityType ? String(data.referenceEntityType) : undefined,
+        referenceEntityId: data.referenceEntityId ? String(data.referenceEntityId) : undefined,
+      },
+      { id, deviceId: data.deviceId ? String(data.deviceId) : undefined },
+    );
+    return { id: msg.id, status: 'success' };
   }
 
   // ─────────────────────────────────────────────────────────────────────────

@@ -8,3 +8,4 @@ export { UpdateSignatureDto } from './update-signature.dto';
 export { UpdateColorDto } from './update-color.dto';
 export { DeleteUserDto } from './delete-user.dto';
 export { ListSelectableUsersQueryDto } from './list-selectable-users-query.dto';
+export { UpdatePresenceDto } from './update-presence.dto';

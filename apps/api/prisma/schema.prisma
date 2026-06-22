@@ -124,6 +124,9 @@ enum NotificationType {
   OFFERTE_GOEDKEURING_GEVRAAGD_TEAM
   OFFERTE_GOEDKEURING_GEVRAAGD_PERSOON
   OFFERTE_GOEDKEURING_AFGEHANDELD
+  CHAT_BERICHT
+  CHAT_TEAM_BERICHT
+  CHAT_MENTION
 }
 
 enum AuditAction {
@@ -399,6 +402,10 @@ model Organization {
   clientRequestStatusTypes ClientRequestStatusType[]
   pdokApiLogs              PdokApiLog[]
 
+  // Interne chat (REQ1)
+  chatThreads  ChatThread[]
+  chatMessages ChatMessage[]
+
   @@map("imp_organizations")
 }
 
@@ -437,6 +444,12 @@ model User {
   contactEmail          String? @map("contact_email")
   sharePhoneWithClients Boolean @default(false) @map("share_phone_with_clients")
   shareEmailWithClients Boolean @default(false) @map("share_email_with_clients")
+
+  // Interne chat — beschikbaarheidsstatus (REQ1). `lastSeenAt` wordt bijgewerkt op
+  // chat-activiteit via raw SQL (bewust buiten de audit-middleware om ruis te voorkomen).
+  availability     Availability @default(BESCHIKBAAR)
+  availabilityNote String?      @map("availability_note")
+  lastSeenAt       DateTime?    @map("last_seen_at")
 
   organization  Organization?  @relation(fields: [orgId], references: [id])
   refreshTokens RefreshToken[]
@@ -504,6 +517,11 @@ model User {
   inspectionMessages         InspectionMessage[]            @relation("MessageUser")
   voiceUserPrompts           VoiceUserPrompt[]              @relation("VoiceUserPromptUser")
   uploadedInspectionDocx     DocumentTemplateDocxRevision[] @relation("InspectionDocxRevisionUploadedBy")
+
+  // Interne chat (REQ1)
+  createdChatThreads ChatThread[]      @relation("ChatThreadCreatedBy")
+  chatParticipations ChatParticipant[] @relation("ChatParticipantUser")
+  sentChatMessages   ChatMessage[]     @relation("ChatMessageSender")
 
   @@index([orgId, isDeleted])
   @@map("imp_users")
@@ -3867,4 +3885,116 @@ model VoiceUserPrompt {
   @@index([userId])
   @@index([templateId])
   @@map("imp_voice_user_prompts")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Interne chat (REQ1) — 1-op-1 (DIRECT) en team-chats (TEAM), polling-MVP.
+// `deletedAt` + `syncedAt` + `deviceId` staan alvast klaar voor de additieve
+// /sync-uitbreiding (PR2), zodat de PWA-inspecteur poll-based kan meedoen zonder
+// een tweede migratie op dezelfde tabellen.
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum Availability {
+  BESCHIKBAAR
+  BEZIG
+  AFWEZIG
+  OFFLINE
+}
+
+enum ChatThreadType {
+  DIRECT
+  TEAM
+}
+
+enum ChatThreadStatus {
+  OPEN
+  AFGEROND
+}
+
+model ChatThread {
+  id    String         @id @default(uuid()) @db.Uuid
+  orgId String         @map("org_id") @db.Uuid
+  type  ChatThreadType
+
+  // TEAM: precies één thread per (org, rol) — afgedwongen via @@unique([orgId, teamRole]).
+  // DIRECT: teamRole = null.
+  teamRole Role? @map("team_role")
+  // DIRECT: deterministische sleutel "userIdA:userIdB" (gesorteerd) voor race-vrije dedup
+  // via @@unique([orgId, directKey]). TEAM: null.
+  directKey String? @map("direct_key")
+
+  subject String?
+
+  // Optionele koppeling naar het huidige record (PascalCase modelnaam, bv. "Request").
+  referenceEntityType String? @map("reference_entity_type")
+  referenceEntityId   String? @map("reference_entity_id") @db.Uuid
+
+  status   ChatThreadStatus @default(OPEN)
+  closedAt DateTime?        @map("closed_at")
+  // Notitie die bij afronden op het gerefereerde record is aangemaakt (transcript).
+  noteId   String?          @map("note_id") @db.Uuid
+
+  createdById String  @map("created_by_id") @db.Uuid
+  deviceId    String? @map("device_id")
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  syncedAt  DateTime? @map("synced_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  organization Organization      @relation(fields: [orgId], references: [id])
+  createdBy    User              @relation("ChatThreadCreatedBy", fields: [createdById], references: [id])
+  participants ChatParticipant[]
+  messages     ChatMessage[]
+
+  @@unique([orgId, teamRole])
+  @@unique([orgId, directKey])
+  @@index([orgId, type])
+  @@index([orgId, deletedAt])
+  @@index([referenceEntityType, referenceEntityId])
+  @@map("imp_chat_threads")
+}
+
+model ChatParticipant {
+  id         String    @id @default(uuid()) @db.Uuid
+  threadId   String    @map("thread_id") @db.Uuid
+  userId     String    @map("user_id") @db.Uuid
+  lastReadAt DateTime? @map("last_read_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+
+  thread ChatThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  user   User       @relation("ChatParticipantUser", fields: [userId], references: [id])
+
+  @@unique([threadId, userId])
+  @@index([userId])
+  @@map("imp_chat_participants")
+}
+
+model ChatMessage {
+  id       String @id @default(uuid()) @db.Uuid
+  threadId String @map("thread_id") @db.Uuid
+  orgId    String @map("org_id") @db.Uuid
+  senderId String @map("sender_id") @db.Uuid
+  content  String @db.Text
+
+  mentionedUserIds String[] @default([]) @map("mentioned_user_ids") @db.Uuid
+
+  // Optionele record-referentie via "/" in de composer (PascalCase modelnaam).
+  referenceEntityType String? @map("reference_entity_type")
+  referenceEntityId   String? @map("reference_entity_id") @db.Uuid
+
+  deviceId String? @map("device_id")
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  syncedAt  DateTime? @map("synced_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  thread       ChatThread   @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [orgId], references: [id])
+  sender       User         @relation("ChatMessageSender", fields: [senderId], references: [id])
+
+  @@index([threadId, createdAt])
+  @@index([orgId, deletedAt])
+  @@map("imp_chat_messages")
 }

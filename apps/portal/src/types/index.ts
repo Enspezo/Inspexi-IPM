@@ -929,7 +929,7 @@ export interface DocumentTag {
 }
 
 // ─── Configureerbare nummering (per org, per model) ──────────────────────
-export type NumberingModel = 'REQUEST' | 'QUOTE' | 'PROJECT' | 'PRODUCT';
+export type NumberingModel = 'REQUEST' | 'QUOTE' | 'PROJECT' | 'PRODUCT' | 'WORK_ORDER';
 export type NumberingMode = 'SEQUENTIAL' | 'RANDOM';
 export type NumberingReset = 'CONTINUOUS' | 'PER_YEAR' | 'PER_MONTH';
 

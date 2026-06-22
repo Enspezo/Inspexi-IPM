@@ -60,6 +60,7 @@ export function useCreateWorkOrder() {
   return useMutation({
     mutationFn: (data: {
       planningItemId?: string;
+      workOrderNumber?: string;
       internalNotes?: string;
       startTime?: string;
       endTime?: string;

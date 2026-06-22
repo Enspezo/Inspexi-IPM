@@ -7,6 +7,7 @@ import {
 import { User, Role, Prisma, WorkOrderStatus } from '@prisma/client';
 import { PrismaService } from '@/prisma';
 import { paginate, orgScope, assertFound } from '@/common';
+import { NumberingService } from '@/modules/numbering/numbering.service';
 import {
   CreateWorkOrderDto,
   UpdateWorkOrderDto,
@@ -120,18 +121,19 @@ function serializeWorkOrder<T extends Record<string, any> | null>(workOrder: T):
 export class WorkOrdersService {
   private readonly logger = new Logger(WorkOrdersService.name);
 
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private numbering: NumberingService,
+  ) {}
 
-  private generateWorkOrderNumber(
-    postalCode?: string | null,
-    houseNumber?: string | null,
-  ): string {
-    const numericPostal = (postalCode ?? '').replace(/\D/g, '');
-    const numericHouse = (houseNumber ?? '').replace(/\D/g, '');
-    const base = numericPostal + numericHouse;
-    const padded = base.length > 0 ? base : '000000';
-    const random = String(Math.floor(Math.random() * 1000)).padStart(3, '0');
-    return `WB-${padded}${random}`;
+  /** Lazy numbering context (postcode + huisnummer) for a work order's location. */
+  private async numberingContext(locationId?: string | null) {
+    if (!locationId) return {};
+    const location = await this.prisma.location.findUnique({
+      where: { id: locationId },
+      select: { postalCode: true, houseNumber: true },
+    });
+    return { postcode: location?.postalCode, huisnummer: location?.houseNumber };
   }
 
   async createFromPlanningItem(data: {
@@ -152,27 +154,12 @@ export class WorkOrdersService {
       return serializeWorkOrder(existing);
     }
 
-    // Fetch location for number generation
-    let postalCode: string | null = null;
-    let houseNumber: string | null = null;
-    if (data.locationId) {
-      const location = await this.prisma.location.findUnique({
-        where: { id: data.locationId },
-        select: { postalCode: true, houseNumber: true },
-      });
-      if (location) {
-        postalCode = location.postalCode;
-        houseNumber = location.houseNumber;
-      }
-    }
-
-    // Generate unique work order number with retry
-    let workOrderNumber: string;
-    let attempts = 0;
-    while (true) {
-      workOrderNumber = this.generateWorkOrderNumber(postalCode, houseNumber);
-      try {
-        const workOrder = await this.prisma.workOrder.create({
+    return this.numbering.runWithGeneratedNumber(
+      'WORK_ORDER',
+      data.orgId,
+      { loadContext: () => this.numberingContext(data.locationId) },
+      async (tx, workOrderNumber) => {
+        const workOrder = await tx.workOrder.create({
           data: {
             orgId: data.orgId,
             planningItemId: data.id,
@@ -185,22 +172,8 @@ export class WorkOrdersService {
           `Created work order ${workOrderNumber} for planning item ${data.id}`,
         );
         return serializeWorkOrder(workOrder);
-      } catch (error) {
-        if (
-          error instanceof Prisma.PrismaClientKnownRequestError &&
-          error.code === 'P2002'
-        ) {
-          attempts++;
-          if (attempts >= 5) {
-            throw new BadRequestException(
-              'Kon geen uniek werkbonnummer genereren',
-            );
-          }
-          continue;
-        }
-        throw error;
-      }
-    }
+      },
+    );
   }
 
   async findAll(user: User, query: ListWorkOrdersQueryDto) {
@@ -300,40 +273,29 @@ export class WorkOrdersService {
       }
     }
 
-    let workOrderNumber: string;
-    let attempts = 0;
-    while (true) {
-      workOrderNumber = this.generateWorkOrderNumber(postalCode, houseNumber);
-      try {
-        const workOrder = await this.prisma.workOrder.create({
-          data: {
-            orgId: user.orgId!,
-            planningItemId: dto.planningItemId || undefined,
-            workOrderNumber,
-            internalNotes: dto.internalNotes,
-            startTime: dto.startTime ? new Date(dto.startTime) : undefined,
-            endTime: dto.endTime ? new Date(dto.endTime) : undefined,
-            createdBy: user.id,
-          },
-          include: WORK_ORDER_INCLUDE,
-        });
-        return serializeWorkOrder(workOrder);
-      } catch (error) {
-        if (
-          error instanceof Prisma.PrismaClientKnownRequestError &&
-          error.code === 'P2002'
-        ) {
-          attempts++;
-          if (attempts >= 5) {
-            throw new BadRequestException(
-              'Kon geen uniek werkbonnummer genereren',
-            );
-          }
-          continue;
-        }
-        throw error;
-      }
-    }
+    return this.numbering.runWithGeneratedNumber(
+      'WORK_ORDER',
+      user.orgId!,
+      {
+        manual: dto.workOrderNumber,
+        loadContext: () => Promise.resolve({ postcode: postalCode, huisnummer: houseNumber }),
+      },
+      async (tx, workOrderNumber) =>
+        serializeWorkOrder(
+          await tx.workOrder.create({
+            data: {
+              orgId: user.orgId!,
+              planningItemId: dto.planningItemId || undefined,
+              workOrderNumber,
+              internalNotes: dto.internalNotes,
+              startTime: dto.startTime ? new Date(dto.startTime) : undefined,
+              endTime: dto.endTime ? new Date(dto.endTime) : undefined,
+              createdBy: user.id,
+            },
+            include: WORK_ORDER_INCLUDE,
+          }),
+        ),
+    );
   }
 
   async update(id: string, dto: UpdateWorkOrderDto, user: User) {
@@ -352,9 +314,18 @@ export class WorkOrdersService {
       }
     }
 
+    // Manual renumber — gated on the scheme's allowManualEntry + uniqueness check.
+    let manualNumber: string | undefined;
+    if (dto.workOrderNumber !== undefined && dto.workOrderNumber.trim() !== workOrder.workOrderNumber) {
+      manualNumber = await this.numbering.validateManualNumber(
+        workOrder.orgId, 'WORK_ORDER', dto.workOrderNumber, workOrder.id,
+      );
+    }
+
     return serializeWorkOrder(await this.prisma.workOrder.update({
       where: { id: workOrder.id },
       data: {
+        ...(manualNumber !== undefined && { workOrderNumber: manualNumber }),
         planningItemId: dto.planningItemId !== undefined ? (dto.planningItemId || null) : undefined,
         internalNotes: dto.internalNotes,
         startTime:

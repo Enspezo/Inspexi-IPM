@@ -13,6 +13,7 @@ const MODEL_LABELS: Record<NumberingModel, string> = {
   QUOTE: 'Offerte',
   PROJECT: 'Project',
   PRODUCT: 'Product',
+  WORK_ORDER: 'Werkbon',
 };
 
 /** Allowed placeholders per model — mirrors the backend catalogue. */
@@ -21,6 +22,7 @@ const MODEL_PLACEHOLDERS: Record<NumberingModel, string[]> = {
   QUOTE: ['jaar', 'maand', 'dag', 'postcode', 'contact'],
   PROJECT: ['jaar', 'maand', 'dag', 'postcode', 'contact'],
   PRODUCT: ['jaar', 'maand', 'dag', 'groep'],
+  WORK_ORDER: ['jaar', 'maand', 'dag', 'postcode', 'huisnummer', 'contact'],
 };
 
 const PLACEHOLDER_LABELS: Record<string, string> = {
@@ -28,9 +30,13 @@ const PLACEHOLDER_LABELS: Record<string, string> = {
   maand: 'Maand',
   dag: 'Dag',
   postcode: 'Postcode',
+  huisnummer: 'Huisnummer',
   contact: 'Relatie',
   groep: 'Productgroep',
 };
+
+/** Display order of the model cards. */
+const MODEL_ORDER: NumberingModel[] = ['REQUEST', 'QUOTE', 'PROJECT', 'WORK_ORDER', 'PRODUCT'];
 
 const MODE_OPTIONS = [
   { value: 'SEQUENTIAL', label: 'Oplopend (teller)' },
@@ -254,9 +260,7 @@ export function NumberingSchemesManagement() {
   }
 
   const ordered = [...(schemes ?? [])].sort(
-    (a, b) =>
-      ['REQUEST', 'QUOTE', 'PROJECT', 'PRODUCT'].indexOf(a.model) -
-      ['REQUEST', 'QUOTE', 'PROJECT', 'PRODUCT'].indexOf(b.model),
+    (a, b) => MODEL_ORDER.indexOf(a.model) - MODEL_ORDER.indexOf(b.model),
   );
 
   return (

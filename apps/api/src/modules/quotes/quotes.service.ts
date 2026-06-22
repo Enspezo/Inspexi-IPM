@@ -10,7 +10,7 @@ import { User, Role, Prisma, QuoteStatus, QuoteTemplate, RequestStatus, Notifica
 import { ConfigService } from '@nestjs/config';
 import { randomUUID } from 'crypto';
 import { PrismaService } from '@/prisma';
-import { paginate, buildOrderBy, orgScope, assertFound, assertSameOrg } from '@/common';
+import { paginate, buildOrderBy, orgScope, assertFound, assertSameOrg, generateOrgSequentialNumber } from '@/common';
 import { NotificationsService } from '../notifications/notifications.service';
 import { EmailService } from '@/common/services/email.service';
 import { StorageProvider, STORAGE_PROVIDER } from '@/common/services/storage/storage.interface';
@@ -555,16 +555,11 @@ export class QuotesService {
     return attachments;
   }
 
-  private async generateQuoteNumber(orgId: string, tx: Prisma.TransactionClient): Promise<string> {
-    const year = new Date().getFullYear();
-    const prefix = `OFF-${year}-`;
-    const latestQuote = await tx.quote.findFirst({ where: { orgId, quoteNumber: { startsWith: prefix } }, orderBy: { quoteNumber: 'desc' }, select: { quoteNumber: true } });
-    let sequence = 1;
-    if (latestQuote) {
-      const parts = latestQuote.quoteNumber.split('-');
-      const lastSeq = parseInt(parts[2], 10);
-      if (!isNaN(lastSeq)) sequence = lastSeq + 1;
-    }
-    return `${prefix}${String(sequence).padStart(4, '0')}`;
+  private generateQuoteNumber(orgId: string, tx: Prisma.TransactionClient): Promise<string> {
+    return generateOrgSequentialNumber(tx.quote, {
+      orgId,
+      field: 'quoteNumber',
+      prefix: `OFF-${new Date().getFullYear()}-`,
+    });
   }
 }

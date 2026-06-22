@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import { ProjectStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
-import { paginate, buildOrderBy, orgScope, assertFound, assertSameOrg, assertOrgAccess } from '@/common';
+import { paginate, buildOrderBy, orgScope, assertFound, assertSameOrg, assertOrgAccess, generateOrgSequentialNumber } from '@/common';
 import { NotificationsService } from '@/modules/notifications/notifications.service';
 import {
   CreateProjectDto,
@@ -47,22 +47,13 @@ export class ProjectsService {
 
   // ─── Helpers ──────────────────────────────────────────────
 
-  private async generateProjectNumber(orgId: string, tx?: any): Promise<string> {
+  private generateProjectNumber(orgId: string, tx?: any): Promise<string> {
     const client = tx || this.prisma;
-    const year = new Date().getFullYear();
-    const prefix = `P-${year}-`;
-    const latest = await client.project.findFirst({
-      where: { orgId, projectNumber: { startsWith: prefix } },
-      orderBy: { projectNumber: 'desc' },
-      select: { projectNumber: true },
+    return generateOrgSequentialNumber(client.project, {
+      orgId,
+      field: 'projectNumber',
+      prefix: `P-${new Date().getFullYear()}-`,
     });
-    let seq = 1;
-    if (latest) {
-      const parts = latest.projectNumber.split('-');
-      const lastSeq = parseInt(parts[2], 10);
-      if (!isNaN(lastSeq)) seq = lastSeq + 1;
-    }
-    return `${prefix}${String(seq).padStart(4, '0')}`;
   }
 
   // ─── CRUD ─────────────────────────────────────────────────

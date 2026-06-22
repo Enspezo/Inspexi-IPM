@@ -14,7 +14,7 @@ import {
 } from '@/components/table-config';
 import { useAuth } from '@/providers/auth-provider';
 import { useWindowTabs } from '@/providers/window-tabs';
-import { useProjects } from './hooks/use-projects';
+import { useProjects, useAllProjects } from './hooks/use-projects';
 import { CreateProjectModal } from './components/create-project-modal';
 import { ProjectManagerFilter, type ProjectManagerOption } from './components/project-manager-filter';
 import { ProjectsKanban } from './components/projects-kanban';
@@ -257,12 +257,23 @@ export default function ProjectsPage() {
     sortOrder: apiSort?.sortOrder,
   });
 
-  // Derive unique project managers from loaded data
+  // In kanban-modus toont het bord álle projecten (niet-gepagineerd); de
+  // projectmanager-filteropties moeten dan ook uit die volledige set komen,
+  // niet uit de 20 rijen van de tabel-paginatie. Deelt de query-key met de
+  // kanban, dus geen extra request.
+  const kanbanProjects = useAllProjects({
+    search: search || undefined,
+    enabled: viewMode === 'kanban',
+  });
+
+  // Derive unique project managers from the active dataset
   const allProjects: Project[] = data?.data ?? [];
+  const managerSource: Project[] =
+    viewMode === 'kanban' ? kanbanProjects.data?.data ?? [] : allProjects;
 
   const projectManagers = useMemo((): ProjectManagerOption[] => {
     const map = new Map<string, ProjectManagerOption>();
-    allProjects.forEach((p) => {
+    managerSource.forEach((p) => {
       if (p.projectManager && !map.has(p.projectManager.id)) {
         const firstName = p.projectManager.firstName ?? '';
         const lastName = p.projectManager.lastName ?? '';
@@ -277,7 +288,7 @@ export default function ProjectsPage() {
       }
     });
     return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
-  }, [allProjects]);
+  }, [managerSource]);
 
   // Client-side project manager filter
   const filteredByManager = useMemo((): Project[] => {

@@ -124,7 +124,9 @@ function KanbanCard({ project, onDragStart }: KanbanCardProps) {
       {/* Footer: startdatum + projectmanager */}
       <div className="flex items-center justify-between gap-2">
         <span className="text-xs text-gray-500">
-          {new Date(project.startDate).toLocaleDateString('nl-NL')}
+          {project.startDate
+            ? new Date(project.startDate).toLocaleDateString('nl-NL')
+            : '—'}
         </span>
 
         {project.projectManager ? (

@@ -26,6 +26,7 @@ interface UpdateOrganizationDto {
   inspectorStaticEmail?: string | null;
   quoteApprovalThreshold?: number | null;
   quoteApprovalRequiredRole?: Role | null;
+  chatEnabled?: boolean;
 }
 
 export function useUpdateOrganization(orgId: string | null | undefined) {

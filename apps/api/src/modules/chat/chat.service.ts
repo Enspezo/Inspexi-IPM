@@ -94,6 +94,21 @@ export class ChatService {
     return [a, b].sort().join(':');
   }
 
+  /** Interne chat aan/uit per organisatie (REQ1 — schakelbaar door SUPERUSER/ORG_ADMIN). */
+  private async isChatEnabled(orgId: string): Promise<boolean> {
+    const org = await this.prisma.organization.findUnique({
+      where: { id: orgId },
+      select: { chatEnabled: true },
+    });
+    return org?.chatEnabled ?? false;
+  }
+
+  private async assertChatEnabled(orgId: string): Promise<void> {
+    if (!(await this.isChatEnabled(orgId))) {
+      throw new ForbiddenException('Chat is uitgeschakeld voor deze organisatie');
+    }
+  }
+
   /** Werkt `lastSeenAt` bij zonder de audit-middleware te triggeren (User is geaudit). */
   private touchLastSeen(userId: string): void {
     this.prisma
@@ -406,6 +421,7 @@ export class ChatService {
   async listThreads(user: User) {
     if (!user.orgId) return [];
     const orgId = user.orgId;
+    if (!(await this.isChatEnabled(orgId))) return [];
     await this.ensureMyThreads(user, orgId);
     const roles = this.teamRolesOf(user);
 
@@ -456,6 +472,7 @@ export class ChatService {
   }
 
   async getThread(threadId: string, user: User) {
+    await this.assertChatEnabled(requireOrg(user));
     await this.loadAccessibleThread(threadId, user);
     const thread = await this.prisma.chatThread.findFirst({
       where: { id: threadId, orgId: user.orgId!, deletedAt: null },
@@ -477,6 +494,7 @@ export class ChatService {
 
   async createThread(user: User, dto: CreateThreadDto) {
     const orgId = requireOrg(user);
+    await this.assertChatEnabled(orgId);
     await this.assertReferenceInOrg(dto.referenceEntityType, dto.referenceEntityId, orgId);
 
     if (dto.type === ChatThreadType.DIRECT) {
@@ -607,6 +625,7 @@ export class ChatService {
   }
 
   async listMessages(threadId: string, user: User, query: ListMessagesQueryDto) {
+    await this.assertChatEnabled(requireOrg(user));
     await this.loadAccessibleThread(threadId, user);
     const where: Prisma.ChatMessageWhereInput = { threadId, deletedAt: null };
     if (query.since) where.createdAt = { gt: new Date(query.since) };
@@ -631,6 +650,7 @@ export class ChatService {
     opts?: { id?: string; deviceId?: string },
   ) {
     const orgId = requireOrg(user);
+    await this.assertChatEnabled(orgId);
     const thread = await this.loadAccessibleThread(threadId, user);
     if (thread.status === ChatThreadStatus.AFGEROND) {
       throw new BadRequestException('Dit gesprek is afgerond en kan geen nieuwe berichten ontvangen');
@@ -673,6 +693,7 @@ export class ChatService {
   }
 
   async markRead(threadId: string, user: User) {
+    await this.assertChatEnabled(requireOrg(user));
     await this.loadAccessibleThread(threadId, user);
     await this.prisma.chatParticipant.upsert({
       where: { threadId_userId: { threadId, userId: user.id } },
@@ -692,6 +713,7 @@ export class ChatService {
 
   async getUnread(user: User) {
     if (!user.orgId) return { count: 0 };
+    if (!(await this.isChatEnabled(user.orgId))) return { count: 0 };
     await this.ensureMyThreads(user, user.orgId);
     this.touchLastSeen(user.id);
     const ids = await this.myThreadIds(user, user.orgId);
@@ -702,6 +724,7 @@ export class ChatService {
   }
 
   async closeThread(threadId: string, user: User) {
+    await this.assertChatEnabled(requireOrg(user));
     const thread = await this.loadAccessibleThread(threadId, user);
     if (thread.status === ChatThreadStatus.AFGEROND) {
       return this.getThread(threadId, user);
@@ -736,6 +759,7 @@ export class ChatService {
 
   async searchUsers(user: User, query: SearchChatUsersQueryDto) {
     if (!user.orgId) return [];
+    if (!(await this.isChatEnabled(user.orgId))) return [];
     const q = (query.q ?? '').trim();
     const where: Prisma.UserWhereInput = {
       orgId: user.orgId,
@@ -777,6 +801,7 @@ export class ChatService {
     };
     if (!user.orgId) return empty;
     const orgId = user.orgId;
+    if (!(await this.isChatEnabled(orgId))) return empty;
     // Pull is read-only: DIRECT-zichtbaarheid via bestaande participant-rijen,
     // TEAM via rol-membership. Team-threads worden in de portal geprovisioneerd
     // (ensureMyThreads), niet hier — een /sync/pull mag geen rijen schrijven.
@@ -892,6 +917,7 @@ export class ChatService {
     operation: 'create' | 'update' | 'delete',
     data: Record<string, unknown>,
   ): Promise<{ id: string; status: 'success' }> {
+    await this.assertChatEnabled(requireOrg(user));
     const id = data.id ? String(data.id) : undefined;
 
     if (operation === 'delete') {

@@ -14,6 +14,8 @@ export interface OrgBranding {
   slug: string;
   logoUrl: string | null;
   primaryColor: string | null;
+  /** Interne chat aan/uit voor deze organisatie (REQ1). */
+  chatEnabled?: boolean;
 }
 
 interface TenantContextType {

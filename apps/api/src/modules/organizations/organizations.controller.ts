@@ -73,6 +73,7 @@ export class OrganizationsController {
         slug: true,
         logoUrl: true,
         primaryColor: true,
+        chatEnabled: true,
       },
     });
     if (!org) {

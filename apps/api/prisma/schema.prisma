@@ -316,6 +316,8 @@ model Organization {
   workdayStart        Int      @default(8) @map("workday_start")
   workdayEnd          Int      @default(17) @map("workday_end")
   isActive            Boolean  @default(true) @map("is_active")
+  // Interne chat per organisatie aan/uit (REQ1) — te schakelen door SUPERUSER/ORG_ADMIN.
+  chatEnabled         Boolean  @default(true) @map("chat_enabled")
   createdAt           DateTime @default(now()) @map("created_at")
 
   // Zichtbaarheid inspecteur-contactgegevens in klantportaal (per kanaal onafhankelijk).

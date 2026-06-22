@@ -1,12 +1,15 @@
 import { useAuth } from '@/providers/auth-provider';
 import { useChat } from '@/providers/chat-provider';
+import { useTenant } from '@/providers/tenant-provider';
 import { useChatUnread } from '@/pages/chat/hooks/use-chat';
 
 /** Chat-icoon met ongelezen-badge voor de header (poll zoals de notificatie-bel). */
 export function ChatButton() {
   const { user } = useAuth();
   const { toggle, isOpen } = useChat();
-  const hasChat = !!user?.orgId;
+  const { orgBranding } = useTenant();
+  // Chat per organisatie schakelbaar (REQ1); standaard aan tenzij expliciet uit.
+  const hasChat = !!user?.orgId && orgBranding?.chatEnabled !== false;
   const { data } = useChatUnread(hasChat);
 
   if (!hasChat) return null;

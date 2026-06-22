@@ -1,6 +1,7 @@
 import { Button } from '@/components/ui';
 import { useAuth } from '@/providers/auth-provider';
 import { useChat } from '@/providers/chat-provider';
+import { useTenant } from '@/providers/tenant-provider';
 
 interface StartChatButtonProps {
   /** PascalCase modelnaam, bv. "Request". */
@@ -27,7 +28,8 @@ export function StartChatButton({
 }: StartChatButtonProps) {
   const { user } = useAuth();
   const { startChatForRecord } = useChat();
-  if (!user?.orgId) return null;
+  const { orgBranding } = useTenant();
+  if (!user?.orgId || orgBranding?.chatEnabled === false) return null;
 
   return (
     <Button

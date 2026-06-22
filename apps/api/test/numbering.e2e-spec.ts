@@ -204,6 +204,14 @@ describe('Numbering (e2e)', () => {
         .expect(400);
     });
 
+    it('rejects RANDOM mode with too few digits (400)', async () => {
+      await request(app.getHttpServer())
+        .patch('/api/v1/numbering-schemes/PRODUCT')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ mode: 'RANDOM', digits: 2 })
+        .expect(400);
+    });
+
     it('forbids a non-admin from updating a scheme (403)', async () => {
       await request(app.getHttpServer())
         .patch('/api/v1/numbering-schemes/PRODUCT')

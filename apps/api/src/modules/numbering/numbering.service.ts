@@ -69,6 +69,16 @@ export class NumberingService {
     if (dto.prefix !== undefined) this.assertAffix(dto.prefix, model, 'Prefix');
     if (dto.suffix !== undefined) this.assertAffix(dto.suffix, model, 'Suffix');
 
+    // RANDOM has a finite space (10^digits); too few digits makes collisions —
+    // and therefore generation failures — likely. Require a roomy space.
+    const effectiveMode = dto.mode ?? scheme.mode;
+    const effectiveDigits = dto.digits ?? scheme.digits;
+    if (effectiveMode === 'RANDOM' && effectiveDigits < 4) {
+      throw new BadRequestException(
+        'Willekeurige nummering vereist minimaal 4 cijfers om botsingen te voorkomen',
+      );
+    }
+
     const data: Prisma.NumberingSchemeUpdateInput = {
       ...(dto.prefix !== undefined && { prefix: dto.prefix }),
       ...(dto.suffix !== undefined && { suffix: dto.suffix }),

@@ -249,6 +249,7 @@ describe('RequestsService', () => {
             orgId: 'org-1',
             isDeleted: false,
             OR: [
+              { requestNumber: { contains: 'keuring', mode: 'insensitive' } },
               { title: { contains: 'keuring', mode: 'insensitive' } },
               {
                 contact: {

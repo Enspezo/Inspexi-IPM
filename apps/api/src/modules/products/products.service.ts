@@ -26,7 +26,7 @@ export class ProductsService {
 
   async findAll(user: User, query: ListProductsQueryDto) {
     const { search, productGroupId, isActive, page = 1, limit = 20, sortBy, sortOrder = 'desc' } = query;
-    const ALLOWED_SORT_FIELDS = ['name', 'unit', 'defaultVat', 'isActive', 'createdAt'];
+    const ALLOWED_SORT_FIELDS = ['productCode', 'name', 'unit', 'defaultVat', 'isActive', 'createdAt'];
     const orderBy = buildOrderBy(sortBy, sortOrder, ALLOWED_SORT_FIELDS, { name: 'asc' });
 
     // Org scoping — SUPERUSER sees all
@@ -35,6 +35,7 @@ export class ProductsService {
     if (search) {
       where.OR = [
         { name: { contains: search, mode: 'insensitive' } },
+        { productCode: { contains: search, mode: 'insensitive' } },
         { productGroup: { name: { contains: search, mode: 'insensitive' } } },
       ];
     }

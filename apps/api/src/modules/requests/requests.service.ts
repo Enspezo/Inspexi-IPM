@@ -32,7 +32,7 @@ export class RequestsService {
 
   async findAll(user: User, query: ListRequestsQueryDto) {
     const { search, status, priority, assignedTo, page = 1, limit = 20, sortBy, sortOrder = 'desc' } = query;
-    const ALLOWED_SORT_FIELDS = ['title', 'status', 'priority', 'source', 'createdAt'];
+    const ALLOWED_SORT_FIELDS = ['requestNumber', 'title', 'status', 'priority', 'source', 'createdAt'];
     const orderBy = buildOrderBy(sortBy, sortOrder, ALLOWED_SORT_FIELDS);
 
     const where: Prisma.RequestWhereInput = {
@@ -54,6 +54,7 @@ export class RequestsService {
 
     if (search) {
       where.OR = [
+        { requestNumber: { contains: search, mode: 'insensitive' } },
         { title: { contains: search, mode: 'insensitive' } },
         {
           contact: {

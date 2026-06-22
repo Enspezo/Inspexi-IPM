@@ -141,6 +141,7 @@ describe('ProductsService', () => {
             orgId: 'org-1',
             OR: [
               { name: { contains: 'test', mode: 'insensitive' } },
+              { productCode: { contains: 'test', mode: 'insensitive' } },
               { productGroup: { name: { contains: 'test', mode: 'insensitive' } } },
             ],
           },

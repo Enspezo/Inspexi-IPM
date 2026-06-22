@@ -4,6 +4,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Modal, Input, Select, Button, useToast } from '@/components/ui';
+import { ManualNumberField } from '@/components/numbering/manual-number-field';
 import { useCreateRequest, useOrgUsers } from '../hooks/use-requests';
 import { useContactLocations } from '@/pages/contacts/hooks/use-contacts';
 import { ContactSearchInput } from '@/components/contacts/contact-search-input';
@@ -27,6 +28,7 @@ const priorityOptions = [
 
 const schema = z.object({
   contactId: z.string().min(1, 'Relatie is verplicht'),
+  requestNumber: z.string().optional(),
   locationId: z.string().optional(),
   assignedTo: z.string().optional(),
   source: z.nativeEnum(RequestSource),
@@ -114,6 +116,7 @@ export function CreateRequestModal({ isOpen, onClose, contactId: prefilledContac
     try {
       const created = await createMutation.mutateAsync({
         contactId: data.contactId,
+        requestNumber: data.requestNumber?.trim() || undefined,
         locationId: data.locationId || undefined,
         assignedTo: data.assignedTo || undefined,
         source: data.source,
@@ -160,6 +163,13 @@ export function CreateRequestModal({ isOpen, onClose, contactId: prefilledContac
             {...register('locationId')}
           />
         )}
+
+        <ManualNumberField
+          model="REQUEST"
+          label="Aanvraagnummer"
+          registration={register('requestNumber')}
+          error={errors.requestNumber?.message}
+        />
 
         <Input
           label="Titel"

@@ -1,8 +1,14 @@
-import { IsString, IsOptional, IsUUID, IsDateString, IsEnum } from 'class-validator';
+import { IsString, IsOptional, IsUUID, IsDateString, IsEnum, MaxLength } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { ProjectStatus } from '@prisma/client';
 
 export class UpdateProjectDto {
+  @ApiPropertyOptional({ description: 'Handmatig projectnummer (alleen als handmatige nummering aanstaat)' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(60)
+  projectNumber?: string;
+
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()

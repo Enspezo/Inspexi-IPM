@@ -278,6 +278,24 @@ enum CustomFieldEntityType {
   PRODUCT
 }
 
+enum NumberingModel {
+  REQUEST
+  QUOTE
+  PROJECT
+  PRODUCT
+}
+
+enum NumberingMode {
+  SEQUENTIAL
+  RANDOM
+}
+
+enum NumberingReset {
+  CONTINUOUS
+  PER_YEAR
+  PER_MONTH
+}
+
 // ─── PRD-01: Foundation Models ───────────────────────────
 
 model Organization {
@@ -330,6 +348,7 @@ model Organization {
   favorites                Favorite[]
   planningItems            PlanningItem[]
   customFieldDefinitions   CustomFieldDefinition[]
+  numberingSchemes         NumberingScheme[]
   emailTemplates           EmailTemplate[]
   emailTemplateAttachments EmailTemplateAttachment[]
   projects                 Project[]
@@ -818,6 +837,7 @@ model Product {
   orgId          String   @map("org_id") @db.Uuid
   productGroupId String?  @map("product_group_id") @db.Uuid
   name           String
+  productCode    String?  @map("product_code")
   description    String?
   unit           String
   defaultVat     Float    @default(21) @map("default_vat")
@@ -831,6 +851,7 @@ model Product {
   quoteLines      QuoteLine[]
   workOrderLines  WorkOrderLine[]
 
+  @@unique([orgId, productCode])
   @@map("imp_products")
 }
 
@@ -893,23 +914,24 @@ model ContactPriceTable {
 // ─── PRD-03: Requests (Leads & Aanvragen) ────────────────
 
 model Request {
-  id           String        @id @default(uuid()) @db.Uuid
-  orgId        String        @map("org_id") @db.Uuid
-  contactId    String        @map("contact_id") @db.Uuid
-  locationId   String?       @map("location_id") @db.Uuid
-  assignedTo   String?       @map("assigned_to") @db.Uuid
-  source       RequestSource
-  status       RequestStatus @default(NIEUW)
-  lostReasonId String?       @map("lost_reason_id") @db.Uuid
-  lostNote     String?       @map("lost_note")
-  title        String
-  description  String?
-  priority     Priority      @default(NORMAL)
-  customFields Json?         @map("custom_fields")
-  createdBy    String        @map("created_by") @db.Uuid
-  isDeleted    Boolean       @default(false) @map("is_deleted")
-  createdAt    DateTime      @default(now()) @map("created_at")
-  updatedAt    DateTime      @updatedAt @map("updated_at")
+  id            String        @id @default(uuid()) @db.Uuid
+  orgId         String        @map("org_id") @db.Uuid
+  requestNumber String?       @map("request_number")
+  contactId     String        @map("contact_id") @db.Uuid
+  locationId    String?       @map("location_id") @db.Uuid
+  assignedTo    String?       @map("assigned_to") @db.Uuid
+  source        RequestSource
+  status        RequestStatus @default(NIEUW)
+  lostReasonId  String?       @map("lost_reason_id") @db.Uuid
+  lostNote      String?       @map("lost_note")
+  title         String
+  description   String?
+  priority      Priority      @default(NORMAL)
+  customFields  Json?         @map("custom_fields")
+  createdBy     String        @map("created_by") @db.Uuid
+  isDeleted     Boolean       @default(false) @map("is_deleted")
+  createdAt     DateTime      @default(now()) @map("created_at")
+  updatedAt     DateTime      @updatedAt @map("updated_at")
 
   projectId String? @map("project_id") @db.Uuid
 
@@ -923,6 +945,7 @@ model Request {
   statusHistory RequestStatusHistory[]
   quotes        Quote[]
 
+  @@unique([orgId, requestNumber])
   @@index([orgId, status])
   @@index([contactId])
   @@index([assignedTo])
@@ -1594,6 +1617,46 @@ model CustomFieldDefinition {
   @@unique([orgId, entityType, fieldName])
   @@index([orgId, entityType])
   @@map("imp_custom_field_definitions")
+}
+
+// ─── Configurable record numbering (per org, per model) ──
+
+model NumberingScheme {
+  id               String         @id @default(uuid()) @db.Uuid
+  orgId            String         @map("org_id") @db.Uuid
+  model            NumberingModel
+  prefix           String         @default("")
+  suffix           String         @default("")
+  mode             NumberingMode  @default(SEQUENTIAL)
+  start            Int            @default(1)
+  interval         Int            @default(1)
+  digits           Int            @default(4)
+  resetPolicy      NumberingReset @default(CONTINUOUS) @map("reset_policy")
+  allowManualEntry Boolean        @default(false) @map("allow_manual_entry")
+  isActive         Boolean        @default(true) @map("is_active")
+  createdAt        DateTime       @default(now()) @map("created_at")
+  updatedAt        DateTime       @updatedAt @map("updated_at")
+
+  organization Organization       @relation(fields: [orgId], references: [id])
+  counters     NumberingCounter[]
+
+  @@unique([orgId, model])
+  @@map("imp_numbering_schemes")
+}
+
+// Atomic per-period counter — incremented in a single ON CONFLICT statement so
+// number generation never relies on a racy max+1 scan. `value` = last issued value.
+model NumberingCounter {
+  id        String   @id @default(uuid()) @db.Uuid
+  schemeId  String   @map("scheme_id") @db.Uuid
+  periodKey String   @map("period_key")
+  value     Int      @default(0)
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  scheme NumberingScheme @relation(fields: [schemeId], references: [id], onDelete: Cascade)
+
+  @@unique([schemeId, periodKey])
+  @@map("imp_numbering_counters")
 }
 
 // ─── Email Templates ────────────────────────────────────

@@ -435,6 +435,10 @@ describe('Cross-tenant FK isolation (e2e)', () => {
       await prisma.contact.deleteMany({ where: { orgId: { in: orgIds } } });
       await prisma.notification.deleteMany({ where: { orgId: { in: orgIds } } });
       await prisma.syncQueue.deleteMany({ where: { userId: { in: userIds } } });
+      // Numbering schemes are auto-provisioned when requests/quotes/projects/products
+      // are created, so drop counters + schemes before the orgs they reference.
+      await prisma.numberingCounter.deleteMany({ where: { scheme: { orgId: { in: orgIds } } } });
+      await prisma.numberingScheme.deleteMany({ where: { orgId: { in: orgIds } } });
       await prisma.auditLog.deleteMany({ where: { orgId: { in: orgIds } } });
       await prisma.refreshToken.deleteMany({ where: { userId: { in: userIds } } });
       await prisma.user.deleteMany({ where: { id: { in: userIds } } });

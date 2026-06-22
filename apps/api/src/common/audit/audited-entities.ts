@@ -84,6 +84,7 @@ export const AUDITED_ENTITIES: readonly AuditedEntity[] = [
     table: 'imp_custom_field_definitions',
     displayFields: ['label', 'fieldName'],
   },
+  { model: 'NumberingScheme', table: 'imp_numbering_schemes', displayFields: ['model'] },
   { model: 'EmailTemplate', table: 'imp_email_templates', displayFields: ['name', 'subject'] },
   { model: 'Project', table: 'imp_projects', displayFields: ['projectNumber', 'title'] },
   { model: 'WorkOrder', table: 'imp_work_orders', displayFields: ['workOrderNumber'] },

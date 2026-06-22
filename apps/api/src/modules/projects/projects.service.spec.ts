@@ -4,6 +4,7 @@ import { Role, ProjectStatus } from '@prisma/client';
 import { ProjectsService } from './projects.service';
 import { PrismaService } from '@/prisma';
 import { NotificationsService } from '../notifications/notifications.service';
+import { NumberingService } from '@/modules/numbering/numbering.service';
 
 describe('ProjectsService', () => {
   let service: ProjectsService;
@@ -55,6 +56,19 @@ describe('ProjectsService', () => {
     dispatch: jest.fn(),
   };
 
+  // Mirrors the real engine: generate a number then run the create callback inside
+  // a transaction. Routing through mockPrismaService.$transaction keeps each test's
+  // per-test tx wiring (mockImplementation/mockImplementationOnce) in effect.
+  const mockNumberingService = {
+    runWithGeneratedNumber: jest.fn(
+      async (_model: any, _orgId: any, _opts: any, create: any) =>
+        mockPrismaService.$transaction((tx: any) => create(tx, 'P-2026-0001')),
+    ),
+    validateManualNumber: jest.fn(async (_o: any, _m: any, value: string) =>
+      value.trim(),
+    ),
+  };
+
   const mockUser = {
     id: 'user-1',
     orgId: 'org-1',
@@ -94,6 +108,7 @@ describe('ProjectsService', () => {
         ProjectsService,
         { provide: PrismaService, useValue: mockPrismaService },
         { provide: NotificationsService, useValue: mockNotificationsService },
+        { provide: NumberingService, useValue: mockNumberingService },
       ],
     }).compile();
 

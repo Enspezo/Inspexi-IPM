@@ -13,6 +13,7 @@ import { EmailService } from '@/common/services/email.service';
 import { STORAGE_PROVIDER } from '@/common/services/storage/storage.interface';
 import { CustomFieldsValidator } from '@/modules/custom-fields/custom-fields.validator';
 import { EmailTemplatesService } from '@/modules/email-templates/email-templates.service';
+import { NumberingService } from '@/modules/numbering/numbering.service';
 import { PdfService } from './pdf.service';
 import { QuotePdfService } from './quote-pdf.service';
 
@@ -236,6 +237,16 @@ describe('QuotesService', () => {
     ),
   };
 
+  // Invokes the create callback with the transaction mock + a deterministic
+  // generated number so the service's create path runs exactly as in production
+  // (minus the real numbering engine and its own $transaction wrapper).
+  const mockNumberingService = {
+    runWithGeneratedNumber: jest.fn(async (_model, _orgId, _opts, create) =>
+      create(mockTx, 'OFF-2026-0001'),
+    ),
+    validateManualNumber: jest.fn(async (_o, _m, value: string) => value.trim()),
+  };
+
   beforeEach(async () => {
     jest.clearAllMocks();
 
@@ -271,6 +282,7 @@ describe('QuotesService', () => {
         { provide: PdfService, useValue: {} },
         { provide: QuotePdfService, useValue: {} },
         { provide: EmailTemplatesService, useValue: {} },
+        { provide: NumberingService, useValue: mockNumberingService },
       ],
     }).compile();
 
@@ -501,17 +513,17 @@ describe('QuotesService', () => {
       });
       const createdQuote = {
         ...mockQuote,
-        quoteNumber: `OFF-${year}-0006`,
+        quoteNumber: `OFF-${year}-0001`,
       };
       mockTx.quote.create.mockResolvedValue(createdQuote);
 
       const result = await service.create(createDto, mockUser);
 
-      expect(result.quoteNumber).toBe(`OFF-${year}-0006`);
+      expect(result.quoteNumber).toBe(`OFF-${year}-0001`);
       expect(mockTx.quote.create).toHaveBeenCalledWith({
         data: expect.objectContaining({
           orgId: 'org-1',
-          quoteNumber: `OFF-${year}-0006`,
+          quoteNumber: `OFF-${year}-0001`,
           contactId: 'contact-1',
           subject: 'NEN1010 inspectie kantoorpand',
           createdBy: 'user-1',

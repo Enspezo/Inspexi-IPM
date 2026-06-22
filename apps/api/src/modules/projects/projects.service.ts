@@ -6,7 +6,8 @@ import {
 } from '@nestjs/common';
 import { ProjectStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
-import { paginate, buildOrderBy, orgScope, assertFound, assertSameOrg, assertOrgAccess, generateOrgSequentialNumber } from '@/common';
+import { paginate, buildOrderBy, orgScope, assertFound, assertSameOrg, assertOrgAccess } from '@/common';
+import { NumberingService } from '@/modules/numbering/numbering.service';
 import { NotificationsService } from '@/modules/notifications/notifications.service';
 import {
   CreateProjectDto,
@@ -43,17 +44,32 @@ export class ProjectsService {
   constructor(
     private prisma: PrismaService,
     private notifications: NotificationsService,
+    private numbering: NumberingService,
   ) {}
 
   // ─── Helpers ──────────────────────────────────────────────
 
-  private generateProjectNumber(orgId: string, tx?: any): Promise<string> {
-    const client = tx || this.prisma;
-    return generateOrgSequentialNumber(client.project, {
-      orgId,
-      field: 'projectNumber',
-      prefix: `P-${new Date().getFullYear()}-`,
-    });
+  /** Build numbering placeholder context (contact name + location postcode) for a project. */
+  private async numberingContext(contactId: string, locationId?: string | null) {
+    const [contact, location] = await Promise.all([
+      this.prisma.contact.findUnique({
+        where: { id: contactId },
+        select: { companyName: true, firstName: true, lastName: true },
+      }),
+      locationId
+        ? this.prisma.location.findUnique({
+            where: { id: locationId },
+            select: { postalCode: true },
+          })
+        : Promise.resolve(null),
+    ]);
+    return {
+      contact: contact
+        ? contact.companyName ||
+          [contact.firstName, contact.lastName].filter(Boolean).join(' ')
+        : undefined,
+      postcode: location?.postalCode,
+    };
   }
 
   // ─── CRUD ─────────────────────────────────────────────────
@@ -111,9 +127,14 @@ export class ProjectsService {
       assertSameOrg(this.prisma.quote, dto.quoteId, orgId, 'Offerte'),
     ]);
 
-    return this.prisma.$transaction(async (tx) => {
-      const projectNumber = await this.generateProjectNumber(orgId, tx);
-
+    return this.numbering.runWithGeneratedNumber(
+      'PROJECT',
+      orgId,
+      {
+        manual: dto.projectNumber,
+        loadContext: () => this.numberingContext(dto.contactId, dto.locationId),
+      },
+      async (tx, projectNumber) => {
       const project = await tx.project.create({
         data: {
           orgId,
@@ -160,7 +181,8 @@ export class ProjectsService {
       });
 
       return project;
-    });
+      },
+    );
   }
 
   async update(id: string, dto: UpdateProjectDto, user: User) {
@@ -175,6 +197,11 @@ export class ProjectsService {
     ]);
 
     const data: any = {};
+    if (dto.projectNumber !== undefined && dto.projectNumber.trim() !== existing.projectNumber) {
+      data.projectNumber = await this.numbering.validateManualNumber(
+        existing.orgId, 'PROJECT', dto.projectNumber, existing.id,
+      );
+    }
     if (dto.title !== undefined) data.title = dto.title;
     if (dto.description !== undefined) data.description = dto.description;
     if (dto.status !== undefined) data.status = dto.status;
@@ -467,9 +494,11 @@ export class ProjectsService {
       `${contact?.firstName ?? ''} ${contact?.lastName ?? ''}`.trim() ||
       'Klant';
 
-    return this.prisma.$transaction(async (tx) => {
-      const projectNumber = await this.generateProjectNumber(quote.orgId, tx);
-
+    return this.numbering.runWithGeneratedNumber(
+      'PROJECT',
+      quote.orgId,
+      { loadContext: () => this.numberingContext(quote.contactId, quote.locationId) },
+      async (tx, projectNumber) => {
       const project = await tx.project.create({
         data: {
           orgId: quote.orgId,
@@ -498,7 +527,8 @@ export class ProjectsService {
 
       this.logger.log(`Project ${projectNumber} auto-created for quote ${quote.quoteNumber}`);
       return project.id;
-    });
+      },
+    );
   }
 
   // ─── Auto-creation from request ───────────────────────────
@@ -520,9 +550,11 @@ export class ProjectsService {
       `${request.contact?.firstName ?? ''} ${request.contact?.lastName ?? ''}`.trim() ||
       'Klant';
 
-    return this.prisma.$transaction(async (tx) => {
-      const projectNumber = await this.generateProjectNumber(request.orgId, tx);
-
+    return this.numbering.runWithGeneratedNumber(
+      'PROJECT',
+      request.orgId,
+      { loadContext: () => this.numberingContext(request.contactId, request.locationId) },
+      async (tx, projectNumber) => {
       const project = await tx.project.create({
         data: {
           orgId: request.orgId,
@@ -546,7 +578,8 @@ export class ProjectsService {
       await this.cascadeProjectIdDown(project.id, tx);
 
       return project;
-    });
+      },
+    );
   }
 
   // ─── Follower cascade to planning ─────────────────────────

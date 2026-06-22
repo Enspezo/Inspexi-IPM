@@ -43,6 +43,7 @@ export function useProducts(params: ListProductsParams = {}) {
 
 interface CreateProductDto {
   name: string;
+  productCode?: string;
   unit: string;
   description?: string;
   defaultVat?: number;

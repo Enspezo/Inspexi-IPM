@@ -2,7 +2,7 @@ import { Injectable, Logger, OnModuleInit, OnModuleDestroy } from '@nestjs/commo
 import { Prisma, PrismaClient } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import { requestContext } from '../common/services/request-context';
-import { AUDITED_MODELS, MODEL_TABLE_MAP } from '../common/audit';
+import { AUDITED_MODELS } from '../common/audit';
 
 /** Fields excluded from change tracking */
 const EXCLUDED_FIELDS = new Set([
@@ -80,9 +80,30 @@ export class PrismaService
 
       const action = params.action;
 
+      // Capture before-state for update/delete (best-effort; never blocks the op).
+      let before: Record<string, any> | null = null;
+      if (action === 'update' || action === 'delete') {
+        try {
+          const whereId = params.args?.where?.id;
+          if (whereId) {
+            before = await (this as any)[this.toCamelCase(model)].findUnique({
+              where: { id: whereId },
+            });
+          }
+        } catch {
+          // proceed without before-state
+        }
+      }
+
+      // Run the actual operation exactly once. Its errors must propagate untouched
+      // so callers can act on them — e.g. the numbering engine catches P2002 to
+      // regenerate. (Previously a thrown op was swallowed and `next` re-run, which
+      // re-executed against an aborted transaction and masked the real error.)
+      const result = await next(params);
+
+      // Audit write is best-effort and must never turn a successful op into a failure.
       try {
         if (action === 'create') {
-          const result = await next(params);
           await this.writeAuditLog({
             entityType: model,
             entityId: result.id,
@@ -93,28 +114,7 @@ export class PrismaService
             orgId: result.orgId ?? ctx.orgId,
             ipAddress: ctx.ipAddress,
           });
-          return result;
-        }
-
-        if (action === 'update') {
-          // Fetch before-state
-          const tableName = MODEL_TABLE_MAP[model];
-          let before: Record<string, any> | null = null;
-          if (tableName && params.args.where) {
-            try {
-              const whereId = params.args.where.id;
-              if (whereId) {
-                before = await (this as any)[this.toCamelCase(model)].findUnique({
-                  where: { id: whereId },
-                });
-              }
-            } catch {
-              // If we can't fetch before-state, proceed without diff
-            }
-          }
-
-          const result = await next(params);
-
+        } else if (action === 'update') {
           if (before) {
             const changes = computeChanges(before, result);
             if (changes) {
@@ -142,26 +142,7 @@ export class PrismaService
               ipAddress: ctx.ipAddress,
             });
           }
-
-          return result;
-        }
-
-        if (action === 'delete') {
-          // Fetch before-state
-          let before: Record<string, any> | null = null;
-          try {
-            const whereId = params.args.where?.id;
-            if (whereId) {
-              before = await (this as any)[this.toCamelCase(model)].findUnique({
-                where: { id: whereId },
-              });
-            }
-          } catch {
-            // proceed without snapshot
-          }
-
-          const result = await next(params);
-
+        } else if (action === 'delete') {
           await this.writeAuditLog({
             entityType: model,
             entityId: before?.id ?? result?.id ?? params.args.where?.id,
@@ -172,8 +153,6 @@ export class PrismaService
             orgId: before?.orgId ?? ctx.orgId,
             ipAddress: ctx.ipAddress,
           });
-
-          return result;
         }
       } catch (auditError) {
         this.logger.error(
@@ -181,7 +160,7 @@ export class PrismaService
         );
       }
 
-      return next(params);
+      return result;
     });
   }
 

@@ -26,6 +26,7 @@ interface UpdateOrganizationDto {
   inspectorStaticEmail?: string | null;
   quoteApprovalThreshold?: number | null;
   quoteApprovalRequiredRole?: Role | null;
+  chatEnabled?: boolean;
 }
 
 export function useUpdateOrganization(orgId: string | null | undefined) {
@@ -36,6 +37,9 @@ export function useUpdateOrganization(orgId: string | null | undefined) {
       apiClient.patch<Organization>(`/organizations/${orgId}`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['organization', orgId] });
+      // Branding (incl. chatEnabled) is cached app-wide by TenantProvider — refresh
+      // it so toggling e.g. the chat on/off reflects immediately for the admin.
+      queryClient.invalidateQueries({ queryKey: ['org-branding'] });
     },
   });
 }

@@ -10,4 +10,12 @@ export class UpdateOrganizationDto extends PartialType(CreateOrganizationDto) {
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
+
+  @ApiPropertyOptional({
+    example: true,
+    description: 'Interne chat aan/uit voor deze organisatie (REQ1)',
+  })
+  @IsOptional()
+  @IsBoolean()
+  chatEnabled?: boolean;
 }

@@ -54,6 +54,7 @@ interface UpdateOrganizationDto {
   logoUrl?: string;
   defaultVat?: number;
   defaultValidityDays?: number;
+  chatEnabled?: boolean;
 }
 
 export function useUpdateOrganization(id: string) {

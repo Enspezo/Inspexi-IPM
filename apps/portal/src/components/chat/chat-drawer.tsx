@@ -1,5 +1,6 @@
 import { useAuth } from '@/providers/auth-provider';
 import { useChat } from '@/providers/chat-provider';
+import { useTenant } from '@/providers/tenant-provider';
 import { ChatThreadList } from './chat-thread-list';
 import { ChatThreadView } from './chat-thread-view';
 import { NewChatView } from './new-chat-view';
@@ -8,9 +9,11 @@ import { PresencePicker } from './presence-picker';
 export function ChatDrawer() {
   const { user } = useAuth();
   const { isOpen, close, view, activeThreadId } = useChat();
+  const { orgBranding } = useTenant();
 
-  // Chat is org-gebonden: gebruikers zonder organisatie (bv. SUPERUSER) zien geen chat.
+  // Chat is org-gebonden + per org schakelbaar (REQ1).
   if (!user || !user.orgId) return null;
+  if (orgBranding?.chatEnabled === false) return null;
   if (!isOpen) return null;
 
   return (

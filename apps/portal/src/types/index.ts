@@ -40,6 +40,7 @@ export interface Organization {
   quoteApprovalThreshold: number | null;
   quoteApprovalRequiredRole: Role | null;
   isActive: boolean;
+  chatEnabled: boolean;
   createdAt: string;
   _count?: { users: number };
 }

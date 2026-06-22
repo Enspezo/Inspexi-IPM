@@ -3,7 +3,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useAuth } from '@/providers/auth-provider';
-import { Card, Input, Button, Select, Spinner, Tabs, useToast } from '@/components/ui';
+import { Card, Input, Button, Select, Spinner, Tabs, Checkbox, useToast } from '@/components/ui';
 import {
   useOrganization,
   useUpdateOrganization,
@@ -57,6 +57,7 @@ const orgSchema = z.object({
     .union([z.coerce.number().min(0, 'Bedrag moet minimaal 0 zijn'), z.literal('')])
     .optional(),
   quoteApprovalRequiredRole: z.union([z.nativeEnum(Role), z.literal('')]).optional(),
+  chatEnabled: z.boolean(),
 }).refine((d) => d.workdayEnd > d.workdayStart, {
   message: 'Eindtijd moet na begintijd liggen',
   path: ['workdayEnd'],
@@ -303,6 +304,7 @@ export default function OrganizationSettingsPage() {
         inspectorStaticEmail: organization.inspectorStaticEmail ?? '',
         quoteApprovalThreshold: organization.quoteApprovalThreshold ?? '',
         quoteApprovalRequiredRole: organization.quoteApprovalRequiredRole ?? '',
+        chatEnabled: organization.chatEnabled ?? true,
       });
     }
   }, [organization, reset]);
@@ -327,6 +329,7 @@ export default function OrganizationSettingsPage() {
             ? null
             : Number(data.quoteApprovalThreshold),
         quoteApprovalRequiredRole: data.quoteApprovalRequiredRole || null,
+        chatEnabled: data.chatEnabled,
       });
       showToast('Organisatie-instellingen opgeslagen', 'success');
     } catch (err) {
@@ -747,6 +750,16 @@ export default function OrganizationSettingsPage() {
               {errors.workdayEnd && (
                 <p className="text-xs text-red-600">{errors.workdayEnd.message}</p>
               )}
+            </div>
+          </div>
+
+          <div>
+            <h3 className="text-base font-semibold text-gray-900">Interne chat</h3>
+            <p className="mt-1 text-sm text-gray-500">
+              De interne chat tussen medewerkers (en richting de inspecteur-app) voor deze organisatie. Uitschakelen verbergt de chat overal; bestaande gesprekken blijven bewaard en komen terug bij heractiveren.
+            </p>
+            <div className="mt-3">
+              <Checkbox label="Interne chat inschakelen" {...register('chatEnabled')} />
             </div>
           </div>
 

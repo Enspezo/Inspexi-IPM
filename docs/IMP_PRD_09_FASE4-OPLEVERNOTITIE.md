@@ -36,7 +36,7 @@ De inspectie-config (template, checklist, classificatiemodel, asset-/locatietype
 | Unit | `pnpm test` | ✅ API 1273/1273 (83 suites) + portal Vitest |
 | E2E | `pnpm test:e2e` | ✅ 707/707 (47 suites), incl. `feature-entitlements.e2e-spec.ts` |
 
-De error-regels in de test-output (VIES onbereikbaar, "DB error/DB down", `/custom-fields` 500 bij SUPERUSER zonder orgId) zijn **bewuste negatieve-pad-tests** binnen suites die slagen.
+De error-regels in de test-output (VIES onbereikbaar, "DB error/DB down") zijn **bewuste negatieve-pad-tests** binnen suites die slagen. _(Nazorg: de eerdere `/custom-fields` 500 bij een SUPERUSER zonder orgId is opgelost — lezen geeft nu een lege lijst, schrijven een 400; zie de entitlements-nazorg-PR.)_
 
 ## 2. Testmatrix (PRD §7.3) — resultaat per variant
 

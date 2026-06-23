@@ -220,4 +220,26 @@ describe('Feature entitlements (e2e)', () => {
       expect(res.body.data.sort()).toEqual([...FEATURE_KEYS].sort());
     });
   });
+
+  // Een SUPERUSER heeft geen org-context (orgId = null). Vroeger gaf dat een
+  // onhandelbare 500 op de null-orgId-query van /custom-fields; nu is dat een
+  // nette status (lege lijst bij lezen, 400 bij schrijven).
+  describe('/custom-fields zonder org-context (SUPERUSER)', () => {
+    it('GET → 200 met lege lijst i.p.v. 500', async () => {
+      const res = await get('/api/v1/custom-fields', COMPLEET_HOST, superToken);
+      expect(res.status).toBe(200);
+      // /custom-fields levert de lijst rauw terug (niet in {success,data}).
+      expect(res.body).toEqual([]);
+    });
+
+    it('POST → 400 met NL-melding i.p.v. 500', async () => {
+      const res = await request(app.getHttpServer())
+        .post('/api/v1/custom-fields')
+        .set('Host', COMPLEET_HOST)
+        .set('Authorization', `Bearer ${superToken}`)
+        .send({ entityType: 'CONTACT', label: 'Test', fieldType: 'TEXT' });
+      expect(res.status).toBe(400);
+      expect(res.body.message).toContain('organisatie');
+    });
+  });
 });

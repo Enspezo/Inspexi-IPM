@@ -1,4 +1,4 @@
-import { PrismaClient, Role, ContactType, LogType, PriceType, RequestSource, RequestStatus, Priority, QuoteStatus, NotificationType, PlanningStatus, AcceptanceStatus, ProjectStatus, AssetFieldType, ChecklistStatus, TemplateStatus, MeasurementSheetTemplateStatus, MeasurementSheetFieldType, FindingInspectionType, DocumentType, DocumentEntityType, TemplateMode, SectionType, ClientUserStatus, ClientAccessRole, GeneratedDocumentStatus, SignatureStatus, MarkerType, MeasurementSheetRecordStatus, PassFailOperator, LocationTypeScope, Availability, ChatThreadType, ChatThreadStatus } from '@prisma/client';
+import { PrismaClient, Role, ContactType, LogType, PriceType, RequestSource, RequestStatus, Priority, QuoteStatus, NotificationType, PlanningStatus, AcceptanceStatus, ProjectStatus, AssetFieldType, ChecklistStatus, TemplateStatus, MeasurementSheetTemplateStatus, MeasurementSheetFieldType, FindingInspectionType, DocumentType, DocumentEntityType, TemplateMode, SectionType, ClientUserStatus, ClientAccessRole, GeneratedDocumentStatus, SignatureStatus, MarkerType, MeasurementSheetRecordStatus, PassFailOperator, LocationTypeScope, Availability, ChatThreadType, ChatThreadStatus, ContactDisplayMode } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { randomUUID } from 'crypto';
 import * as fs from 'fs';
@@ -140,6 +140,297 @@ function buildMeasurementSnapshot(t: any) {
       })),
     })),
   };
+}
+
+// ─── SaaS-varianten (PRD-09 §7.1) — herbruikbare org-keten ──────────────────
+
+/** Gedeelde (globale) referenties die elke variant-org hergebruikt. */
+interface VariantOrgRefs {
+  passwordHash: string;
+  /** Globale inspectie-template (NEN 1010) — orgId-loos, gedeeld. */
+  inspTemplateId: string;
+  /** Globale document-template (PLAN) — gekoppeld aan de inspectie-template. */
+  planDocTemplateId: string;
+  /** Globaal CRM-locatietype (orgId null) voor de relatie-locatie. */
+  crmLocationTypeId: string;
+}
+
+/** Per-variant configuratie. */
+interface VariantOrgConfig {
+  name: string;
+  slug: string;
+  planId: string;
+  /** E-maildomein voor de users + klant (zonder @). */
+  emailDomain: string;
+  /** Vaste, voorspelbare magic-link-token voor de klantportaal-smoketest. */
+  magicToken: string;
+}
+
+/**
+ * Seedt één SaaS-variant-org met een volledige, afrondbare basis-keten
+ * (PRD-09 §7.1): ORG_ADMIN + INSPECTEUR, één relatie + locatie, één project,
+ * één inspectieplan met asset + findings, plus de klantportaal-keten
+ * (ClientUser → toegang → magic-link → ondertekenbaar PLAN-document).
+ *
+ * Alle inspectie-config (template, checklist, classificatie, asset-/locatietypes)
+ * is globaal en wordt hergebruikt; per-org afwijkingen lopen via OrganizationFeature.
+ * De FeatureGuard zit op de HTTP-laag, dus seeden via Prisma negeert het plan —
+ * de gating wordt pas via de API/portal afgedwongen.
+ */
+async function seedVariantOrg(
+  prisma: PrismaClient,
+  cfg: VariantOrgConfig,
+  refs: VariantOrgRefs,
+) {
+  const org = await prisma.organization.create({
+    data: {
+      name: cfg.name,
+      slug: cfg.slug,
+      planId: cfg.planId,
+      primaryColor: '#1E40AF',
+      defaultVat: 21,
+      defaultValidityDays: 30,
+      // Klantportaal inspecteur-contact: telefoon = inspecteur zelf, e-mail = statische terugval.
+      inspectorPhoneDisplay: ContactDisplayMode.INSPECTOR,
+      inspectorEmailDisplay: ContactDisplayMode.STATIC,
+      inspectorStaticEmail: `klantcontact@${cfg.emailDomain}`,
+    },
+  });
+
+  // Twee gebruikers: ORG_ADMIN + INSPECTEUR (wachtwoord Password123!).
+  const admin = await prisma.user.create({
+    data: {
+      email: `admin@${cfg.emailDomain}`,
+      passwordHash: refs.passwordHash,
+      firstName: 'Admin',
+      lastName: cfg.name,
+      roles: [Role.ORG_ADMIN],
+      orgId: org.id,
+      emailVerifiedAt: new Date(),
+    },
+  });
+  const inspecteur = await prisma.user.create({
+    data: {
+      email: `inspecteur@${cfg.emailDomain}`,
+      passwordHash: refs.passwordHash,
+      firstName: 'Inspecteur',
+      lastName: cfg.name,
+      roles: [Role.INSPECTEUR],
+      orgId: org.id,
+      emailVerifiedAt: new Date(),
+      contactPhone: '+31 6 00 11 22 33',
+      sharePhoneWithClients: true,
+      shareEmailWithClients: false,
+    },
+  });
+
+  // Relatie + adres + locatie (Basis CRM).
+  const contact = await prisma.contact.create({
+    data: {
+      orgId: org.id,
+      type: ContactType.COMPANY,
+      companyName: `Klant ${cfg.name} BV`,
+      email: `info@${cfg.emailDomain}`,
+      phone: '+31 20 111 2222',
+      notes: 'Demo-relatie voor de SaaS-variant-keten.',
+    },
+  });
+  await prisma.contactAddress.create({
+    data: {
+      contactId: contact.id,
+      label: 'Hoofdkantoor',
+      street: 'Voorbeeldstraat',
+      houseNumber: '1',
+      postalCode: '1000 AA',
+      city: 'Amsterdam',
+      country: 'NL',
+      isPrimary: true,
+    },
+  });
+  const location = await prisma.location.create({
+    data: {
+      contactId: contact.id,
+      orgId: org.id,
+      name: 'Hoofdvestiging',
+      street: 'Voorbeeldstraat',
+      houseNumber: '1',
+      postalCode: '1000 AA',
+      city: 'Amsterdam',
+      locationTypeId: refs.crmLocationTypeId,
+    },
+  });
+
+  // Project (Basis Uitvoering).
+  const project = await prisma.project.create({
+    data: {
+      orgId: org.id,
+      projectNumber: 'P-2026-0001', // per-org uniek → mag herhalen tussen orgs
+      title: `Inspectieproject ${cfg.name}`,
+      description: 'Demo-project voor de afrondbare basis-keten.',
+      status: ProjectStatus.ACTIEF,
+      contactId: contact.id,
+      locationId: location.id,
+      projectManagerId: admin.id,
+      startDate: new Date('2026-06-01'),
+      createdBy: admin.id,
+    },
+  });
+
+  // Inspectieplan + asset + findings (Basis Inspecties).
+  const plan = await prisma.inspectionPlan.create({
+    data: {
+      orgId: org.id,
+      contactId: contact.id,
+      projectId: project.id,
+      projectName: `NEN 1010 inspectie ${cfg.name}`,
+      description: 'Periodieke veiligheidsinspectie van de elektrische installatie.',
+      referenceNumber: 'INSP-2026-0001',
+      normTypeCode: 'NEN1010',
+      inspectionTypeCode: 'initial',
+      statusCode: 'draft',
+      inspectionTemplateId: refs.inspTemplateId,
+      assignedTo: inspecteur.id,
+      addressStreet: 'Voorbeeldstraat',
+      addressHouseNumber: '1',
+      addressPostalCode: '1000 AA',
+      addressCity: 'Amsterdam',
+      plannedDate: new Date('2026-07-01'),
+      createdBy: admin.id,
+    },
+  });
+  const asset = await prisma.asset.create({
+    data: {
+      orgId: org.id,
+      inspectionPlanId: plan.id,
+      assetType: 'electrical_installation',
+      name: 'Hoofdverdeler HVK',
+      identifier: 'HVK-01',
+      statusCode: 'new',
+      sortOrder: 0,
+    },
+  });
+  // Eén open bevinding (om op te lossen via klantportaal) + één geclassificeerde (C2)
+  // bevinding zodat het ondertekenbare document een classificatie toont.
+  await prisma.finding.create({
+    data: {
+      orgId: org.id,
+      assetId: asset.id,
+      inspectionType: FindingInspectionType.visual,
+      shortDescription: 'Ontbrekende afdekking op verdeelinrichting',
+      longDescription: 'De afdekking ontbreekt; aanraakgevaar voor spanningvoerende delen.',
+      normReference: 'NEN 1010 art. 412',
+      statusCode: 'open',
+      createdBy: inspecteur.id,
+    },
+  });
+  await prisma.finding.create({
+    data: {
+      orgId: org.id,
+      assetId: asset.id,
+      inspectionType: FindingInspectionType.visual,
+      shortDescription: 'Beschadigde mantel op hoofdvoedingskabel',
+      longDescription: 'De mantel is plaatselijk beschadigd; de isolatie is zichtbaar aangetast.',
+      classificationValues: { SEVERITY: 'C2' },
+      normReference: 'NEN 1010 art. 526',
+      statusCode: 'open',
+      createdBy: inspecteur.id,
+    },
+  });
+
+  // Klantportaal-keten: klant + relatie-toegang + plan-toegang (inzien + ondertekenen)
+  // + vaste magic-link (directe login). Het klantportaal draait volledig op
+  // BASIS_INSPECTIES — ook een Basis-org doorloopt deze keten dus volledig.
+  const client = await prisma.clientUser.create({
+    data: {
+      email: `klant@${cfg.emailDomain}`,
+      firstName: 'Demo',
+      lastName: 'Klant',
+      function: 'Facilitair manager',
+      emailVerified: true,
+      status: ClientUserStatus.ACTIVE,
+      passwordHash: refs.passwordHash,
+    },
+  });
+  await prisma.clientAccess.create({
+    data: {
+      clientUserId: client.id,
+      contactId: contact.id,
+      role: ClientAccessRole.VIEWER,
+      grantedBy: admin.id,
+    },
+  });
+  await prisma.inspectionClientAccess.create({
+    data: {
+      inspectionPlanId: plan.id,
+      clientUserId: client.id,
+      canView: true,
+      canSign: true,
+      invitedBy: admin.id,
+    },
+  });
+  await prisma.clientMagicLink.create({
+    data: {
+      clientUserId: client.id,
+      email: client.email,
+      token: cfg.magicToken,
+      inspectionPlanId: plan.id,
+      expiresAt: new Date('2099-12-31T00:00:00Z'),
+      usedAt: null,
+      createdBy: admin.id,
+    },
+  });
+
+  // Ondertekenbaar PLAN-document: inspecteur al getekend, klant PENDING.
+  const docHtml = [
+    `<h1>Inspectieplan — NEN 1010 (${cfg.name})</h1>`,
+    '<table>',
+    `<tr><th>Referentie</th><td>${plan.referenceNumber}</td></tr>`,
+    `<tr><th>Project</th><td>${plan.projectName}</td></tr>`,
+    `<tr><th>Opdrachtgever</th><td>${contact.companyName}</td></tr>`,
+    '</table>',
+    '<h2>Bevindingen</h2>',
+    '<ul>',
+    '<li>Ontbrekende afdekking op verdeelinrichting — <em>open</em></li>',
+    '<li>Beschadigde mantel op hoofdvoedingskabel — <strong>C2</strong></li>',
+    '</ul>',
+    '<h2>Ondertekening</h2>',
+    '<p>Inspecteur: getekend</p>',
+    '<p>Opdrachtgever: in afwachting</p>',
+  ].join('\n');
+  await prisma.generatedDocument.create({
+    data: {
+      orgId: org.id,
+      documentTemplateId: refs.planDocTemplateId,
+      inspectionPlanId: plan.id,
+      documentType: DocumentType.PLAN,
+      htmlContent: docHtml,
+      status: GeneratedDocumentStatus.PENDING_SIGNATURES,
+      generatedBy: admin.id,
+      signatures: {
+        create: [
+          {
+            signerRoleCode: 'INSPECTOR',
+            signerName: 'Inspecteur',
+            signerFunction: 'Inspecteur',
+            status: SignatureStatus.SIGNED,
+            signedAt: new Date('2026-06-15T10:00:00Z'),
+            signatureImage: 'data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=',
+          },
+          {
+            signerRoleCode: 'CLIENT',
+            signerName: 'Demo Klant',
+            signerFunction: 'Facilitair manager',
+            status: SignatureStatus.PENDING,
+          },
+        ],
+      },
+    },
+  });
+
+  console.log(
+    `  ✓ Variant-org: ${cfg.name} (${cfg.slug}) → plan + keten (relatie/project/inspectieplan/asset/2 findings + klantportaal)`,
+  );
+  return { org, admin, inspecteur, contact, project, plan, client };
 }
 
 async function main() {
@@ -2407,6 +2698,63 @@ async function main() {
   });
   console.log('  ✓ ClientMagicLink: token "demo-klant-magic" (verloopt 2099-12-31, ongebruikt)');
 
+  // ─── SaaS-varianten (PRD-09 §7.1) — testmatrix-orgs ─────────────────────
+  // Drie extra orgs, los van de rijke demo-org, om de §7.3-testmatrix per
+  // variant af te lopen: Basis blokkeert Compleet-functies, Compleet is overal
+  // toegankelijk, en een per-org override schakelt één Compleet-functie bij.
+  // Slugs zonder hyphens (regex ^[a-z0-9]+$).
+  console.log('\n🧪 Seeding SaaS-variant-orgs (PRD-09 §7.1)...');
+  const variantRefs = {
+    passwordHash,
+    inspTemplateId: inspTemplate.id,
+    planDocTemplateId: planDocTemplate.id,
+    crmLocationTypeId: crmLocationTypes.kantoor,
+  };
+
+  await seedVariantOrg(
+    prisma,
+    { name: 'InspeXi Basis', slug: 'inspexibasis', planId: basisPlan.id, emailDomain: 'inspexibasis.nl', magicToken: 'basis-klant-magic' },
+    variantRefs,
+  );
+  await seedVariantOrg(
+    prisma,
+    { name: 'InspeXi Compleet', slug: 'inspexicompleet', planId: compleetPlan.id, emailDomain: 'inspexicompleet.nl', magicToken: 'compleet-klant-magic' },
+    variantRefs,
+  );
+
+  // Mix-org: Basis-plan + per-org override WORKFLOW_COMPLEET=true → /documents
+  // toegankelijk terwijl de overige Compleet-functies (offertes etc.) geblokkeerd
+  // blijven. Test van "bijschakelen bovenop het plan".
+  const mix = await seedVariantOrg(
+    prisma,
+    { name: 'InspeXi Mix', slug: 'inspeximix', planId: basisPlan.id, emailDomain: 'inspeximix.nl', magicToken: 'mix-klant-magic' },
+    variantRefs,
+  );
+  await prisma.organizationFeature.create({
+    data: {
+      orgId: mix.org.id,
+      featureKey: 'WORKFLOW_COMPLEET',
+      enabled: true,
+      updatedById: mix.admin.id,
+    },
+  });
+  // Eén DMS-document zodat /documents bij de mix-org daadwerkelijk content toont.
+  await prisma.document.create({
+    data: {
+      orgId: mix.org.id,
+      entityType: DocumentEntityType.CONTACT,
+      entityId: mix.contact.id,
+      fileName: 'welkomstbrief.pdf',
+      originalName: 'Welkomstbrief InspeXi Mix.pdf',
+      mimeType: 'application/pdf',
+      size: 8_192,
+      storageKey: `${mix.org.id}/seed-welkomstbrief.pdf`,
+      description: 'Demo-document (DMS) — zichtbaar dankzij de WORKFLOW_COMPLEET-override',
+      uploadedById: mix.admin.id,
+    },
+  });
+  console.log('  ✓ Mix-org override: WORKFLOW_COMPLEET=true (bijgeschakeld) + 1 DMS-document');
+
   // ─── Nummering: default schemes + numbers + counters-after-max ──────────
   await backfillNumbering(prisma);
   console.log('  ✓ Nummering: standaard-schemas, nummers en tellers geseed (per org, per model)');
@@ -2418,8 +2766,15 @@ async function main() {
   console.log('   manager@inspexi-demo.nl   → MANAGER (InspeXi Demo)');
   console.log('   backoffice@inspexi-demo.nl → BACKOFFICE (InspeXi Demo)');
   console.log('   admin@testbedrijf.nl      → ORG_ADMIN (Test Bedrijf)');
-  console.log('\n🔗 Demo-klant (client-portal) — directe login via magic-link:');
+  console.log('\n🧪 SaaS-variant-orgs (PRD-09 §7.1, wachtwoord Password123!):');
+  console.log('   admin@inspexibasis.nl     → ORG_ADMIN (InspeXi Basis — plan Basis)');
+  console.log('   admin@inspexicompleet.nl  → ORG_ADMIN (InspeXi Compleet — plan Compleet)');
+  console.log('   admin@inspeximix.nl       → ORG_ADMIN (InspeXi Mix — Basis + WORKFLOW_COMPLEET)');
+  console.log('\n🔗 Klant-portaal (client-portal) — directe login via magic-link:');
   console.log('   http://inspexidemo.localhost:5174/magic/demo-klant-magic');
+  console.log('   http://inspexibasis.localhost:5174/magic/basis-klant-magic');
+  console.log('   http://inspexicompleet.localhost:5174/magic/compleet-klant-magic');
+  console.log('   http://inspeximix.localhost:5174/magic/mix-klant-magic');
 }
 
 main()

@@ -80,23 +80,29 @@ export class PlansService {
       throw new ConflictException('Slug is al in gebruik');
     }
 
-    // Plan eerst, daarna de features als losse creates zodat elke PlanFeature
-    // ook in de audit trail terechtkomt.
-    const plan = await this.prisma.plan.create({
-      data: {
-        name: dto.name,
-        slug: dto.slug,
-        description: dto.description ?? null,
-        isActive: dto.isActive ?? true,
-        sortOrder: dto.sortOrder ?? 0,
-      },
-    });
-    for (const featureKey of featureKeys) {
-      await this.prisma.planFeature.create({
-        data: { planId: plan.id, featureKey },
+    // Plan + features atomair: een half-gefaalde write mag geen plan zonder
+    // (alle) features achterlaten. De features blijven losse creates zodat elke
+    // PlanFeature in de audit trail terechtkomt — de `$use`-audit-middleware
+    // vuurt ook voor schrijfacties binnen een interactieve transactie.
+    const plan = await this.prisma.$transaction(async (tx) => {
+      const created = await tx.plan.create({
+        data: {
+          name: dto.name,
+          slug: dto.slug,
+          description: dto.description ?? null,
+          isActive: dto.isActive ?? true,
+          sortOrder: dto.sortOrder ?? 0,
+        },
       });
-    }
+      for (const featureKey of featureKeys) {
+        await tx.planFeature.create({
+          data: { planId: created.id, featureKey },
+        });
+      }
+      return created;
+    });
 
+    // Cache-invalidatie ná de commit: pas dan is de nieuwe staat zichtbaar.
     this.entitlements.clear();
     return this.findOne(plan.id);
   }
@@ -104,38 +110,49 @@ export class PlansService {
   async update(id: string, dto: UpdatePlanDto) {
     await this.findOne(id); // 404 als het plan niet bestaat
 
-    // 1. Meta-velden (alleen de meegegeven).
+    // Pure voorbereiding vóór de transactie (gooit bij onbekende keys, zonder
+    // een lege transactie te openen).
     const data: Record<string, unknown> = {};
     if (dto.name !== undefined) data.name = dto.name;
     if (dto.description !== undefined) data.description = dto.description;
     if (dto.isActive !== undefined) data.isActive = dto.isActive;
     if (dto.sortOrder !== undefined) data.sortOrder = dto.sortOrder;
-    if (Object.keys(data).length > 0) {
-      await this.prisma.plan.update({ where: { id }, data });
-    }
+    const desired =
+      dto.featureKeys !== undefined
+        ? this.validateFeatureKeys(dto.featureKeys)
+        : undefined;
 
-    // 2. Feature-set diffen (alleen als featureKeys is meegegeven).
-    if (dto.featureKeys !== undefined) {
-      const desired = this.validateFeatureKeys(dto.featureKeys);
-      const current = await this.prisma.planFeature.findMany({
-        where: { planId: id },
-        select: { id: true, featureKey: true },
-      });
-      const currentKeys = current.map((f) => f.featureKey);
+    // Meta-update + feature-diff atomair: een half-gefaalde diff mag geen
+    // partiële feature-set achterlaten. De adds/removes blijven losse writes
+    // zodat de `$use`-audit-middleware per PlanFeature een regel schrijft (die
+    // vuurt ook binnen een interactieve transactie).
+    await this.prisma.$transaction(async (tx) => {
+      if (Object.keys(data).length > 0) {
+        await tx.plan.update({ where: { id }, data });
+      }
 
-      const toAdd = desired.filter((k) => !currentKeys.includes(k));
-      const toRemove = current.filter((f) => !desired.includes(f.featureKey as FeatureKey));
-
-      for (const featureKey of toAdd) {
-        await this.prisma.planFeature.create({
-          data: { planId: id, featureKey },
+      if (desired !== undefined) {
+        const current = await tx.planFeature.findMany({
+          where: { planId: id },
+          select: { id: true, featureKey: true },
         });
-      }
-      for (const row of toRemove) {
-        await this.prisma.planFeature.delete({ where: { id: row.id } });
-      }
-    }
+        const currentKeys = current.map((f) => f.featureKey);
 
+        const toAdd = desired.filter((k) => !currentKeys.includes(k));
+        const toRemove = current.filter(
+          (f) => !desired.includes(f.featureKey as FeatureKey),
+        );
+
+        for (const featureKey of toAdd) {
+          await tx.planFeature.create({ data: { planId: id, featureKey } });
+        }
+        for (const row of toRemove) {
+          await tx.planFeature.delete({ where: { id: row.id } });
+        }
+      }
+    });
+
+    // Cache-invalidatie ná de commit: pas dan is de nieuwe staat zichtbaar.
     this.entitlements.clear();
     return this.findOne(id);
   }

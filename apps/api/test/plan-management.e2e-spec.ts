@@ -169,6 +169,26 @@ describe('Plan management (e2e)', () => {
       planIds.push(createdId);
     });
 
+    it('audit-trail: PlanFeature-creates binnen de transactie worden gelogd', async () => {
+      // Borgt dat de `$use`-audit-middleware ook vuurt voor losse writes binnen
+      // de interactieve transactie van PlansService.create (regressiebewaking
+      // bij de overstap naar $transaction).
+      const features = await prisma.planFeature.findMany({
+        where: { planId: createdId },
+        select: { id: true },
+      });
+      expect(features).toHaveLength(4);
+
+      const auditRows = await prisma.auditLog.findMany({
+        where: {
+          entityType: 'PlanFeature',
+          action: 'CREATE',
+          entityId: { in: features.map((f) => f.id) },
+        },
+      });
+      expect(auditRows).toHaveLength(4);
+    });
+
     it('POST /plans weigert onbekende feature-keys (409)', async () => {
       const res = await request(app.getHttpServer())
         .post('/api/v1/plans')

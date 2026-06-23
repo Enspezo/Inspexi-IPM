@@ -13,6 +13,7 @@ import {
   BadRequestException,
   ParseUUIDPipe,
 } from '@nestjs/common';
+import { RequiresFeature } from '@/common/decorators/requires-feature.decorator';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiConsumes } from '@nestjs/swagger';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
@@ -48,6 +49,7 @@ const docxFileFilter = (
 
 @ApiTags('document-templates')
 @ApiBearerAuth()
+@RequiresFeature('BASIS_INSPECTIES')
 @Controller()
 export class DocumentTemplatesController {
   constructor(private readonly service: DocumentTemplatesService) {}

@@ -9,6 +9,7 @@ import {
   ParseUUIDPipe,
   ParseEnumPipe,
 } from '@nestjs/common';
+import { RequiresFeature } from '@/common/decorators/requires-feature.decorator';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { User, CustomFieldEntityType } from '@prisma/client';
 import { ORG_ADMINS } from '@/common/auth/roles';
@@ -22,6 +23,7 @@ import { Roles, CurrentUser } from '@/common/decorators';
 
 @ApiTags('Custom Fields')
 @ApiBearerAuth()
+@RequiresFeature('CUSTOM_FIELDS')
 @Controller('custom-fields')
 export class CustomFieldsController {
   constructor(private readonly customFieldsService: CustomFieldsService) {}

@@ -16,6 +16,7 @@ import {
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
+import { RequiresFeature } from '@/common/decorators/requires-feature.decorator';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiTags, ApiOperation, ApiConsumes } from '@nestjs/swagger';
 import { Response, Request } from 'express';
@@ -47,6 +48,7 @@ import {
 } from './dto';
 
 @ApiTags('quotes')
+@RequiresFeature('CRM_COMPLEET')
 @Controller('quotes')
 export class QuotesController {
   constructor(
@@ -323,6 +325,7 @@ export class QuotesController {
 // ─── Public controller (geen auth vereist) ─────────────
 
 @ApiTags('public-quotes')
+@RequiresFeature('CRM_COMPLEET')
 @Controller('public/quotes')
 export class PublicQuotesController {
   constructor(

@@ -8,6 +8,7 @@ import {
   Query,
   ParseUUIDPipe,
 } from '@nestjs/common';
+import { RequiresFeature } from '@/common/decorators/requires-feature.decorator';
 import {
   ApiTags,
   ApiOperation,
@@ -22,6 +23,7 @@ import { Roles, CurrentUser } from '@/common/decorators';
 
 @ApiTags('Products')
 @ApiBearerAuth()
+@RequiresFeature('CRM_COMPLEET')
 @Controller('products')
 export class ProductsController {
   constructor(private productsService: ProductsService) {}

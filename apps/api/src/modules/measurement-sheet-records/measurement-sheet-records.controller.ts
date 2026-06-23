@@ -10,6 +10,7 @@ import {
   Headers,
   ParseUUIDPipe,
 } from '@nestjs/common';
+import { RequiresFeature } from '@/common/decorators/requires-feature.decorator';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { User } from '@prisma/client';
 import { Roles, CurrentUser } from '@/common/decorators';
@@ -25,6 +26,7 @@ const ALL = ALL_STAFF;
 
 @ApiTags('measurement-sheet-records')
 @ApiBearerAuth()
+@RequiresFeature('BASIS_INSPECTIES')
 @Controller('measurement-sheet-records')
 export class MeasurementSheetRecordsController {
   constructor(private readonly service: MeasurementSheetRecordsService) {}

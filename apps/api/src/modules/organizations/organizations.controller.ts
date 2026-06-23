@@ -29,6 +29,8 @@ import { OrganizationsService } from './organizations.service';
 import { CreateOrganizationDto, UpdateOrganizationDto } from './dto';
 import { Roles, CurrentUser, Public } from '@/common/decorators';
 import { PrismaService } from '@/prisma';
+import { EntitlementsService } from '@/modules/entitlements/entitlements.service';
+import { FEATURE_KEYS } from '@/modules/entitlements/feature-catalog';
 
 @ApiTags('Organizations')
 @ApiBearerAuth()
@@ -37,6 +39,7 @@ export class OrganizationsController {
   constructor(
     private organizationsService: OrganizationsService,
     private prisma: PrismaService,
+    private entitlements: EntitlementsService,
   ) {}
 
   @Post()
@@ -80,6 +83,21 @@ export class OrganizationsController {
       throw new NotFoundException('Organisatie niet gevonden');
     }
     return { success: true, data: org };
+  }
+
+  @Get('me/features')
+  @ApiOperation({
+    summary: 'Effectieve feature-keys van de eigen organisatie (frontend-bootstrap)',
+  })
+  @ApiResponse({ status: 200, description: 'Lijst van actieve feature-keys' })
+  async myFeatures(@CurrentUser() user: User) {
+    // SUPERUSER heeft geen org en impliciet alle features (guard-bypass) →
+    // lever de volledige catalogus zodat de SU-UI niets verbergt.
+    if (!user.orgId || user.roles.includes(Role.SUPERUSER)) {
+      return { success: true, data: [...FEATURE_KEYS] };
+    }
+    const features = await this.entitlements.getEnabledFeatures(user.orgId);
+    return { success: true, data: features };
   }
 
   @Get(':id/users')

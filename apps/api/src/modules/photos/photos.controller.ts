@@ -4,6 +4,7 @@ import {
   Controller, Post, Get, Param, Body, Query, UploadedFile,
   ParseFilePipe, MaxFileSizeValidator, ParseUUIDPipe, Headers, Res, StreamableFile,
 } from '@nestjs/common';
+import { RequiresFeature } from '@/common/decorators/requires-feature.decorator';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { UseInterceptors } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiConsumes } from '@nestjs/swagger';
@@ -18,6 +19,7 @@ const ALL = ALL_STAFF;
 
 @ApiTags('Photos')
 @ApiBearerAuth()
+@RequiresFeature('BASIS_INSPECTIES')
 @Controller('photos')
 export class PhotosController {
   constructor(private readonly photos: PhotosService) {}

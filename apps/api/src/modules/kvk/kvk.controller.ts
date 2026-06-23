@@ -1,8 +1,10 @@
 import { Controller, Get, Param, Query } from '@nestjs/common';
+import { RequiresFeature } from '@/common/decorators/requires-feature.decorator';
 import { ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { KvkService } from './kvk.service';
 
 @ApiTags('kvk')
+@RequiresFeature('BASIS_CRM')
 @Controller('kvk')
 export class KvkController {
   constructor(private readonly kvkService: KvkService) {}

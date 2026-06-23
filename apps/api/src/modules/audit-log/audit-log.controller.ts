@@ -5,6 +5,7 @@ import {
   Query,
   ParseUUIDPipe,
 } from '@nestjs/common';
+import { RequiresFeature } from '@/common/decorators/requires-feature.decorator';
 import {
   ApiTags,
   ApiOperation,
@@ -18,6 +19,7 @@ import { Roles, CurrentUser } from '@/common/decorators';
 
 @ApiTags('Audit Logs')
 @ApiBearerAuth()
+@RequiresFeature('WORKFLOW_COMPLEET')
 @Controller('audit-logs')
 export class AuditLogController {
   constructor(private readonly auditLogService: AuditLogService) {}

@@ -1,10 +1,12 @@
 import { Controller, Get, Query } from '@nestjs/common';
+import { RequiresFeature } from '@/common/decorators/requires-feature.decorator';
 import { ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { User } from '@prisma/client';
 import { CurrentUser } from '@/common';
 import { GeocodingService } from './geocoding.service';
 
 @ApiTags('geocoding')
+@RequiresFeature('BASIS_CRM')
 @Controller('geocoding')
 export class GeocodingController {
   constructor(private readonly geocodingService: GeocodingService) {}

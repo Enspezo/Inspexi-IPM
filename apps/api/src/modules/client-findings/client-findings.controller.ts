@@ -16,6 +16,7 @@ import {
   Res,
   StreamableFile,
 } from '@nestjs/common';
+import { RequiresFeature } from '@/common/decorators/requires-feature.decorator';
 import { FilesInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import type { Response } from 'express';
@@ -44,6 +45,7 @@ const photoFileFilter = (
 @ApiTags('Client Findings')
 @Public()
 @UseGuards(ClientJwtAuthGuard)
+@RequiresFeature('BASIS_INSPECTIES')
 @Controller('client/findings')
 export class ClientFindingsController {
   constructor(private readonly service: ClientFindingsService) {}

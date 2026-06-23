@@ -10,6 +10,7 @@ import {
   Query,
   ParseUUIDPipe,
 } from '@nestjs/common';
+import { RequiresFeature } from '@/common/decorators/requires-feature.decorator';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { User, LocationTypeScope } from '@prisma/client';
 import { Roles, CurrentUser } from '@/common/decorators';
@@ -37,6 +38,7 @@ function parseScope(scope?: string): LocationTypeScope | undefined {
 
 @ApiTags('location-types')
 @ApiBearerAuth()
+@RequiresFeature('BASIS_INSPECTIES')
 @Controller('location-types')
 export class LocationTypesController {
   constructor(private readonly service: LocationTypesService) {}

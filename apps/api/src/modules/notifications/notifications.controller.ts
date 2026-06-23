@@ -8,6 +8,7 @@ import {
   ParseUUIDPipe,
   Res,
 } from '@nestjs/common';
+import { RequiresFeature } from '@/common/decorators/requires-feature.decorator';
 import {
   ApiTags,
   ApiOperation,
@@ -23,6 +24,7 @@ import { Roles, CurrentUser, Public } from '@/common/decorators';
 
 @ApiTags('Notifications')
 @ApiBearerAuth()
+@RequiresFeature('BASIS_WORKFLOW')
 @Controller('notifications')
 export class NotificationsController {
   constructor(private notificationsService: NotificationsService) {}

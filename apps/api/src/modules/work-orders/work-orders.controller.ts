@@ -10,6 +10,7 @@ import {
   Query,
   ParseUUIDPipe,
 } from '@nestjs/common';
+import { RequiresFeature } from '@/common/decorators/requires-feature.decorator';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { User } from '@prisma/client';
 import { ALL_STAFF, CRM_ROLES, MANAGEMENT_ROLES } from '@/common/auth/roles';
@@ -25,6 +26,7 @@ import {
 } from './dto';
 
 @ApiTags('work-orders')
+@RequiresFeature('UITVOERING_COMPLEET')
 @Controller('work-orders')
 export class WorkOrdersController {
   constructor(private readonly service: WorkOrdersService) {}

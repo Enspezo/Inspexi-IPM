@@ -2,6 +2,7 @@
 // Patroon voor alle client-* endpoints. Specifieke routes (dashboard) vóór param-routes (:id).
 
 import { Controller, Get, Param, UseGuards, ParseUUIDPipe } from '@nestjs/common';
+import { RequiresFeature } from '@/common/decorators/requires-feature.decorator';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { Public, CurrentTenant } from '@/common/decorators';
 import { ClientJwtAuthGuard } from '@/common/guards/client-jwt-auth.guard';
@@ -14,6 +15,7 @@ import { ClientInspectionsService } from './client-inspections.service';
 @ApiTags('Client Inspections')
 @Public()
 @UseGuards(ClientJwtAuthGuard)
+@RequiresFeature('BASIS_INSPECTIES')
 @Controller('client/inspections')
 export class ClientInspectionsController {
   constructor(private readonly service: ClientInspectionsService) {}

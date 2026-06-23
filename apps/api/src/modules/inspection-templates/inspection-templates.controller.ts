@@ -9,6 +9,7 @@ import {
   Query,
   ParseUUIDPipe,
 } from '@nestjs/common';
+import { RequiresFeature } from '@/common/decorators/requires-feature.decorator';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { User } from '@prisma/client';
 import { Roles, CurrentUser } from '@/common/decorators';
@@ -31,6 +32,7 @@ const WRITE_ROLES = ORG_ADMINS;
 
 @ApiTags('inspection-templates')
 @ApiBearerAuth()
+@RequiresFeature('BASIS_INSPECTIES')
 @Controller('inspection-templates')
 export class InspectionTemplatesController {
   constructor(private readonly service: InspectionTemplatesService) {}

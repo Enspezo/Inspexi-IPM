@@ -1,4 +1,5 @@
 import { Body, Controller, Delete, Get, Post, Query } from '@nestjs/common';
+import { RequiresFeature } from '@/common/decorators/requires-feature.decorator';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { User } from '@prisma/client';
 import { Roles, CurrentUser } from '@/common/decorators';
@@ -8,6 +9,7 @@ import { FavoriteKeyDto, ListFavoritesQueryDto } from './dto';
 
 @ApiTags('Favorites')
 @ApiBearerAuth()
+@RequiresFeature('BASIS_WORKFLOW')
 @Controller('favorites')
 export class FavoritesController {
   constructor(private favoritesService: FavoritesService) {}

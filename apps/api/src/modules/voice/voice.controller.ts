@@ -1,6 +1,7 @@
 // Parse-endpoint (PWA-contract — stabiel houden) + publieke status.
 
 import { Controller, Post, Get, Body } from '@nestjs/common';
+import { RequiresFeature } from '@/common/decorators/requires-feature.decorator';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { User } from '@prisma/client';
 import { Public, Roles, CurrentUser, CurrentTenant } from '@/common/decorators';
@@ -12,6 +13,7 @@ const VOICE_USERS = ALL_STAFF;
 
 @ApiTags('Voice')
 @ApiBearerAuth()
+@RequiresFeature('BASIS_INSPECTIES')
 @Controller('voice')
 export class VoiceController {
   constructor(private readonly parse: VoiceParseService) {}

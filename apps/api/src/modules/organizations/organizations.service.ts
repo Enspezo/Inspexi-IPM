@@ -10,11 +10,18 @@ import { randomUUID } from 'crypto';
 import { PrismaService } from '@/prisma';
 import { assertFound } from '@/common';
 import { TenantCacheService } from '@/common/services/tenant-cache.service';
-import { CreateOrganizationDto, UpdateOrganizationDto } from './dto';
+import {
+  CreateOrganizationDto,
+  UpdateOrganizationDto,
+  OrganizationFeatureState,
+} from './dto';
 import {
   STORAGE_PROVIDER,
   StorageProvider,
 } from '@/common/services/storage/storage.interface';
+import { EntitlementsService } from '@/modules/entitlements/entitlements.service';
+import { analyzeEntitlements } from '@/modules/entitlements/entitlements.analysis';
+import { isFeatureKey } from '@/modules/entitlements/feature-catalog';
 
 @Injectable()
 export class OrganizationsService {
@@ -24,6 +31,7 @@ export class OrganizationsService {
     private prisma: PrismaService,
     @Inject(STORAGE_PROVIDER) private storage: StorageProvider,
     private tenantCache: TenantCacheService,
+    private entitlements: EntitlementsService,
   ) {}
 
   async create(dto: CreateOrganizationDto) {
@@ -104,6 +112,127 @@ export class OrganizationsService {
     }
 
     return updated;
+  }
+
+  // ─── SaaS-abonnementen (entitlements, PRD-09 §5.3) ──────────────────────────
+
+  /**
+   * Volledige entitlement-staat van een org voor de SUPERUSER-beheer-UI: het
+   * toegewezen plan, de plan-defaults, de per-org-overrides, de effectieve set en
+   * de dependency-waarschuwingen (afschakel-overrides die de closure terugdraait).
+   */
+  async getEntitlements(orgId: string) {
+    const org = assertFound(
+      await this.prisma.organization.findUnique({
+        where: { id: orgId },
+        select: {
+          id: true,
+          planId: true,
+          plan: {
+            select: {
+              id: true,
+              name: true,
+              slug: true,
+              features: { select: { featureKey: true } },
+            },
+          },
+          features: {
+            select: { featureKey: true, enabled: true, updatedAt: true },
+            orderBy: { featureKey: 'asc' },
+          },
+        },
+      }),
+      'Organisatie',
+    );
+
+    const planFeatureKeys = org.plan?.features.map((f) => f.featureKey) ?? [];
+    const overrides = org.features.map((f) => ({
+      featureKey: f.featureKey,
+      enabled: f.enabled,
+    }));
+    const { effective, warnings } = analyzeEntitlements(planFeatureKeys, overrides);
+
+    return {
+      planId: org.planId,
+      plan: org.plan
+        ? { id: org.plan.id, name: org.plan.name, slug: org.plan.slug }
+        : null,
+      planFeatureKeys,
+      overrides: org.features,
+      effective,
+      warnings,
+    };
+  }
+
+  /**
+   * Wijst een plan toe aan een org (of ontkoppelt het met `planId: null`).
+   * Invalideert de entitlements-cache van de org zodat de FeatureGuard direct de
+   * nieuwe set hanteert. De `planId`-wijziging wordt automatisch ge-audit-logd
+   * (Organization staat in de audit-registry).
+   */
+  async assignPlan(orgId: string, planId: string | null) {
+    await this.findOne(orgId);
+
+    if (planId) {
+      const plan = await this.prisma.plan.findUnique({ where: { id: planId } });
+      if (!plan) {
+        throw new NotFoundException('Abonnement niet gevonden');
+      }
+    }
+
+    await this.prisma.organization.update({
+      where: { id: orgId },
+      data: { planId },
+    });
+    this.entitlements.invalidate(orgId);
+
+    return this.getEntitlements(orgId);
+  }
+
+  /**
+   * Zet, wijzigt of verwijdert een per-org feature-override (tri-state). `PLAN`
+   * verwijdert de override (volg de plan-default); `ENABLED`/`DISABLED` schakelen
+   * bij/af. Invalideert de entitlements-cache van de org. We schrijven op `id`
+   * (niet op de samengestelde unique) zodat de audit-middleware een nette
+   * before/after-diff kan vastleggen.
+   */
+  async setFeatureOverride(
+    orgId: string,
+    featureKey: string,
+    state: OrganizationFeatureState,
+    userId: string,
+  ) {
+    if (!isFeatureKey(featureKey)) {
+      throw new BadRequestException(`Onbekende feature-key: ${featureKey}`);
+    }
+    await this.findOne(orgId);
+
+    const existing = await this.prisma.organizationFeature.findUnique({
+      where: { orgId_featureKey: { orgId, featureKey } },
+    });
+
+    if (state === OrganizationFeatureState.PLAN) {
+      if (existing) {
+        await this.prisma.organizationFeature.delete({
+          where: { id: existing.id },
+        });
+      }
+    } else {
+      const enabled = state === OrganizationFeatureState.ENABLED;
+      if (existing) {
+        await this.prisma.organizationFeature.update({
+          where: { id: existing.id },
+          data: { enabled, updatedById: userId },
+        });
+      } else {
+        await this.prisma.organizationFeature.create({
+          data: { orgId, featureKey, enabled, updatedById: userId },
+        });
+      }
+    }
+
+    this.entitlements.invalidate(orgId);
+    return this.getEntitlements(orgId);
   }
 
   async uploadLogo(id: string, file: Express.Multer.File): Promise<string> {

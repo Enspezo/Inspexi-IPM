@@ -41,6 +41,8 @@ export interface Organization {
   quoteApprovalRequiredRole: Role | null;
   isActive: boolean;
   chatEnabled: boolean;
+  /** Toegewezen SaaS-abonnement (entitlements, PRD-09); null = geen plan. */
+  planId: string | null;
   createdAt: string;
   _count?: { users: number };
 }

@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   Post,
+  Put,
   Delete,
   Patch,
   Param,
@@ -26,7 +27,12 @@ import { Response } from 'express';
 import { User, Role } from '@prisma/client';
 import { ORG_ADMINS } from '@/common/auth/roles';
 import { OrganizationsService } from './organizations.service';
-import { CreateOrganizationDto, UpdateOrganizationDto } from './dto';
+import {
+  CreateOrganizationDto,
+  UpdateOrganizationDto,
+  AssignPlanDto,
+  SetOrganizationFeatureDto,
+} from './dto';
 import { Roles, CurrentUser, Public } from '@/common/decorators';
 import { PrismaService } from '@/prisma';
 import { EntitlementsService } from '@/modules/entitlements/entitlements.service';
@@ -113,6 +119,20 @@ export class OrganizationsController {
     return { success: true, data: users };
   }
 
+  @Get(':id/entitlements')
+  @Roles(Role.SUPERUSER)
+  @ApiOperation({
+    summary: 'Entitlement-staat van een organisatie ophalen (Superuser)',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Plan, plan-features, overrides, effectieve set + waarschuwingen',
+  })
+  async getEntitlements(@Param('id', ParseUUIDPipe) id: string) {
+    const data = await this.organizationsService.getEntitlements(id);
+    return { success: true, data };
+  }
+
   @Get(':id')
   @Roles(...ORG_ADMINS)
   @ApiOperation({ summary: 'Organisatie ophalen op ID' })
@@ -144,6 +164,41 @@ export class OrganizationsController {
     }
     const org = await this.organizationsService.update(id, dto);
     return { success: true, data: org };
+  }
+
+  @Patch(':id/plan')
+  @Roles(Role.SUPERUSER)
+  @ApiOperation({ summary: 'Abonnement toewijzen/ontkoppelen aan organisatie (Superuser)' })
+  @ApiResponse({ status: 200, description: 'Entitlement-staat na wijziging' })
+  @ApiResponse({ status: 404, description: 'Organisatie of abonnement niet gevonden' })
+  async assignPlan(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: AssignPlanDto,
+  ) {
+    const data = await this.organizationsService.assignPlan(id, dto.planId);
+    return { success: true, data };
+  }
+
+  @Put(':id/features/:featureKey')
+  @Roles(Role.SUPERUSER)
+  @ApiOperation({
+    summary: 'Per-org feature-override zetten/wissen (Superuser)',
+  })
+  @ApiResponse({ status: 200, description: 'Entitlement-staat na wijziging' })
+  @ApiResponse({ status: 400, description: 'Onbekende feature-key' })
+  async setFeatureOverride(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('featureKey') featureKey: string,
+    @Body() dto: SetOrganizationFeatureDto,
+    @CurrentUser() user: User,
+  ) {
+    const data = await this.organizationsService.setFeatureOverride(
+      id,
+      featureKey,
+      dto.state,
+      user.id,
+    );
+    return { success: true, data };
   }
 
   @Post(':id/logo')

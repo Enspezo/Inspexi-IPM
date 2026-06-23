@@ -9,13 +9,16 @@ import { Button, Card, Checkbox, ErrorBox, Input, Spinner, Badge, Tabs, useToast
 import { formatDate, formatDateTime } from '@/lib/format';
 import { DetailPageLayout } from '@/components/layout/detail-page-layout';
 import { AuditHistory } from '@/components/audit-history/audit-history';
+import { useAuth } from '@/providers/auth-provider';
+import { hasRole } from '@/lib/has-role';
 import {
   useOrganization,
   useOrganizationUsers,
   useUpdateOrganization,
 } from './hooks/use-organizations';
+import { OrganizationEntitlementsTab } from './components/organization-entitlements-tab';
 
-type Tab = 'algemeen' | 'gebruikers' | 'instellingen';
+type Tab = 'algemeen' | 'gebruikers' | 'abonnement' | 'instellingen';
 
 const settingsSchema = z.object({
   name: z.string().min(1, 'Organisatienaam is verplicht'),
@@ -46,6 +49,8 @@ export default function OrganizationDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { showToast } = useToast();
+  const { user } = useAuth();
+  const isSuperuser = hasRole(user, Role.SUPERUSER);
   const { data: org, isLoading, error } = useOrganization(id!);
   const { data: users, isLoading: usersLoading } = useOrganizationUsers(id!);
   const updateMutation = useUpdateOrganization(id!);
@@ -109,6 +114,10 @@ export default function OrganizationDetailPage() {
   const tabs: { key: Tab; label: string }[] = [
     { key: 'algemeen', label: 'Algemeen' },
     { key: 'gebruikers', label: `Gebruikers (${org._count?.users ?? 0})` },
+    // Abonnement-beheer is SUPERUSER-only (platform); de endpoints weigeren anders.
+    ...(isSuperuser
+      ? [{ key: 'abonnement' as Tab, label: 'Abonnement' }]
+      : []),
     { key: 'instellingen', label: 'Instellingen' },
   ];
 
@@ -323,6 +332,11 @@ export default function OrganizationDetailPage() {
               </div>
             )}
           </Card>
+        )}
+
+        {/* Tab: Abonnement (SUPERUSER) */}
+        {activeTab === 'abonnement' && isSuperuser && (
+          <OrganizationEntitlementsTab orgId={id!} />
         )}
 
         {/* Tab: Instellingen */}

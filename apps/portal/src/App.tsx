@@ -101,6 +101,8 @@ const OrganizationsPage = lazy(
 const OrganizationDetailPage = lazy(
   () => import('@/pages/organizations/organization-detail-page'),
 );
+const PlansPage = lazy(() => import('@/pages/plans/plans-page'));
+const PlanDetailPage = lazy(() => import('@/pages/plans/plan-detail-page'));
 const PlanningPage = lazy(() => import('@/pages/planning/planning-page'));
 const PlanningDetailPage = lazy(() => import('@/pages/planning/planning-detail-page'));
 const PlanningPublicPage = lazy(() => import('@/pages/planning/planning-public-page'));
@@ -188,6 +190,8 @@ export default function App() {
             <Route path="/search" element={<SearchPage />} />
             <Route path="/organizations" element={<OrganizationsPage />} />
             <Route path="/organizations/:id" element={<OrganizationDetailPage />} />
+            <Route path="/plans" element={<PlansPage />} />
+            <Route path="/plans/:id" element={<PlanDetailPage />} />
             <Route path="/error-reports" element={<ErrorReportsPage />} />
             <Route path="/classification-models" element={<ClassificationModelsPage />} />
             <Route path="/classification-models/:id" element={<ClassificationModelDetailPage />} />

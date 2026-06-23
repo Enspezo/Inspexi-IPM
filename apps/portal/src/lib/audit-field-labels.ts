@@ -149,6 +149,20 @@ const entityLabels: Record<string, Record<string, string>> = {
     inspectorStaticEmail: 'Statisch e-mailadres klantportaal',
     quoteApprovalThreshold: 'Goedkeuringsgrens offertes',
     quoteApprovalRequiredRole: 'Vereiste goedkeur-rol offertes',
+    planId: 'Abonnement',
+  },
+  Plan: {
+    slug: 'Slug',
+    sortOrder: 'Sorteervolgorde',
+  },
+  PlanFeature: {
+    planId: 'Abonnement',
+    featureKey: 'Functie',
+  },
+  OrganizationFeature: {
+    featureKey: 'Functie',
+    enabled: 'Ingeschakeld',
+    updatedById: 'Gewijzigd door',
   },
   CustomFieldDefinition: {
     entityType: 'Entiteitstype',

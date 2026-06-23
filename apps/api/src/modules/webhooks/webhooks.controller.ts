@@ -16,6 +16,11 @@ import { Webhook } from 'svix';
 import { PrismaService } from '@/prisma';
 import { Public } from '@/common/decorators';
 
+// NB: dit is de INKOMENDE Resend e-mail-event-ontvanger (open-tracking), géén
+// uitgaande-webhooks-feature. Het endpoint is @Public(), wordt door Resend
+// (externe server) aangeroepen zónder org-subdomein en werkt org-overstijgend op
+// ContactEmail. Daarom NIET met @RequiresFeature('WEBHOOKS') gaten — dat hoort
+// bij toekomstige uitgaande integraties en zou hier de e-mail-infra breken.
 @ApiTags('Webhooks')
 @Controller('webhooks')
 export class WebhooksController {

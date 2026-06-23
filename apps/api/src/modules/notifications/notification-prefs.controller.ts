@@ -4,6 +4,7 @@ import {
   Put,
   Body,
 } from '@nestjs/common';
+import { RequiresFeature } from '@/common/decorators/requires-feature.decorator';
 import {
   ApiTags,
   ApiOperation,
@@ -18,6 +19,7 @@ import { Roles, CurrentUser } from '@/common/decorators';
 
 @ApiTags('Notification Preferences')
 @ApiBearerAuth()
+@RequiresFeature('BASIS_WORKFLOW')
 @Controller('notification-prefs')
 export class NotificationPrefsController {
   constructor(private notificationsService: NotificationsService) {}

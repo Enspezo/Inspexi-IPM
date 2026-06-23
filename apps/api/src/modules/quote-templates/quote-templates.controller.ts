@@ -13,6 +13,7 @@ import {
   UploadedFile,
   BadRequestException,
 } from '@nestjs/common';
+import { RequiresFeature } from '@/common/decorators/requires-feature.decorator';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { ApiTags, ApiOperation, ApiConsumes } from '@nestjs/swagger';
@@ -31,6 +32,7 @@ import {
 } from './dto';
 
 @ApiTags('quote-templates')
+@RequiresFeature('CRM_COMPLEET')
 @Controller('quote-templates')
 export class QuoteTemplatesController {
   constructor(private readonly service: QuoteTemplatesService) {}

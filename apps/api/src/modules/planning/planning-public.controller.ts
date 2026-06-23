@@ -11,6 +11,7 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
+import { RequiresFeature } from '@/common/decorators/requires-feature.decorator';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { Request, Response } from 'express';
 import { Public } from '@/common/decorators';
@@ -26,6 +27,7 @@ import { PrismaService } from '@/prisma';
 
 @ApiTags('Planning (public)')
 @Public()
+@RequiresFeature('UITVOERING_COMPLEET')
 @Controller('public/planning')
 export class PlanningPublicController {
   constructor(
@@ -145,6 +147,7 @@ export class PlanningPublicController {
 
 @ApiTags('iCal')
 @Public()
+@RequiresFeature('UITVOERING_COMPLEET')
 @Controller('ical')
 export class PlanningIcalController {
   private readonly logger = new Logger(PlanningIcalController.name);

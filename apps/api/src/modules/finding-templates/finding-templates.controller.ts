@@ -9,6 +9,7 @@ import {
   Query,
   ParseUUIDPipe,
 } from '@nestjs/common';
+import { RequiresFeature } from '@/common/decorators/requires-feature.decorator';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { User } from '@prisma/client';
 import { Roles, CurrentUser } from '@/common/decorators';
@@ -26,6 +27,7 @@ const WRITE_ROLES = ORG_ADMINS;
 
 @ApiTags('finding-templates')
 @ApiBearerAuth()
+@RequiresFeature('BASIS_INSPECTIES')
 @Controller('finding-templates')
 export class FindingTemplatesController {
   constructor(private readonly service: FindingTemplatesService) {}

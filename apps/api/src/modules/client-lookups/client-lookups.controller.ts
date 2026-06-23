@@ -4,6 +4,7 @@
 // lijst (systeemdefaults + org-overrides), org-gescoped via het subdomein i.p.v. een staf-User.
 
 import { Controller, Get, Param, UseGuards, BadRequestException } from '@nestjs/common';
+import { RequiresFeature } from '@/common/decorators/requires-feature.decorator';
 import { ApiTags, ApiOperation, ApiParam } from '@nestjs/swagger';
 import { Public, CurrentTenant } from '@/common/decorators';
 import { ClientJwtAuthGuard } from '@/common/guards/client-jwt-auth.guard';
@@ -12,6 +13,7 @@ import { LookupService, LOOKUP_KINDS, type LookupKind } from '../lookups/lookup.
 @ApiTags('Client Lookups')
 @Public()
 @UseGuards(ClientJwtAuthGuard)
+@RequiresFeature('BASIS_INSPECTIES')
 @Controller('client/lookups')
 export class ClientLookupsController {
   constructor(private readonly lookups: LookupService) {}

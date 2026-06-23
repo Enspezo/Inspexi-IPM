@@ -10,6 +10,7 @@ import {
   Query,
   ParseUUIDPipe,
 } from '@nestjs/common';
+import { RequiresFeature } from '@/common/decorators/requires-feature.decorator';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { User, Role, MeasurementSheetTemplateStatus } from '@prisma/client';
 import { Roles, CurrentUser } from '@/common/decorators';
@@ -37,6 +38,7 @@ const READ_ROLES = ALL_STAFF;
 
 @ApiTags('measurement-sheet-templates')
 @ApiBearerAuth()
+@RequiresFeature('BASIS_INSPECTIES')
 @Controller('measurement-sheet-templates')
 export class MeasurementSheetTemplatesController {
   constructor(

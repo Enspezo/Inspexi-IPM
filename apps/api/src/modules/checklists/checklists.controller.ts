@@ -10,6 +10,7 @@ import {
   ParseUUIDPipe,
   BadRequestException,
 } from '@nestjs/common';
+import { RequiresFeature } from '@/common/decorators/requires-feature.decorator';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { User, ChecklistStatus } from '@prisma/client';
 import { Roles, CurrentUser } from '@/common/decorators';
@@ -32,6 +33,7 @@ const WRITE_ROLES = ORG_ADMINS;
 
 @ApiTags('checklists')
 @ApiBearerAuth()
+@RequiresFeature('BASIS_INSPECTIES')
 @Controller('checklists')
 export class ChecklistsController {
   constructor(private readonly service: ChecklistsService) {}

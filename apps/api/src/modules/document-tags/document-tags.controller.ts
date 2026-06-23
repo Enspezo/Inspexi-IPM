@@ -9,6 +9,7 @@ import {
   Query,
   ParseUUIDPipe,
 } from '@nestjs/common';
+import { RequiresFeature } from '@/common/decorators/requires-feature.decorator';
 import {
   ApiTags,
   ApiOperation,
@@ -27,6 +28,7 @@ import { Roles, CurrentUser } from '@/common/decorators';
 
 @ApiTags('Document Tags')
 @ApiBearerAuth()
+@RequiresFeature('WORKFLOW_COMPLEET')
 @Controller('document-tags')
 export class DocumentTagsController {
   constructor(private documentTagsService: DocumentTagsService) {}

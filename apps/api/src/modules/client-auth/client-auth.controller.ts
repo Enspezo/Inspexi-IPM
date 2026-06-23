@@ -3,6 +3,7 @@
 // /me gebruikt ClientJwtAuthGuard. Auth-routes strenger gerate-limit.
 
 import { Controller, Post, Get, Body, UseGuards } from '@nestjs/common';
+import { RequiresFeature } from '@/common/decorators/requires-feature.decorator';
 import { Throttle } from '@nestjs/throttler';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { Public, CurrentTenant } from '@/common/decorators';
@@ -23,6 +24,7 @@ import {
 
 @ApiTags('Client Auth')
 @Public()
+@RequiresFeature('BASIS_INSPECTIES')
 @Controller('client/auth')
 export class ClientAuthController {
   constructor(private readonly service: ClientAuthService) {}

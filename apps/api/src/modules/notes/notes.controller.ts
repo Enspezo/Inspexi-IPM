@@ -9,6 +9,7 @@ import {
   Query,
   ParseUUIDPipe,
 } from '@nestjs/common';
+import { RequiresFeature } from '@/common/decorators/requires-feature.decorator';
 import {
   ApiTags,
   ApiOperation,
@@ -25,6 +26,7 @@ const crmRoles = CRM_ROLES;
 
 @ApiTags('Notes')
 @ApiBearerAuth()
+@RequiresFeature('BASIS_WORKFLOW')
 @Controller('notes')
 export class NotesController {
   constructor(private notesService: NotesService) {}

@@ -10,6 +10,7 @@ import { PrismaModule } from './prisma';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { RolesGuard } from './common/guards/roles.guard';
 import { TenantGuard } from './common/guards/tenant.guard';
+import { FeatureGuard } from './common/guards/feature.guard';
 import { AppThrottlerGuard } from './common/guards/app-throttler.guard';
 import { AllExceptionsFilter } from './common/filters';
 import { AuditContextInterceptor } from './common/interceptors/audit-context.interceptor';
@@ -192,6 +193,12 @@ import { VoiceModule } from './modules/voice/voice.module';
     {
       provide: APP_GUARD,
       useClass: TenantGuard,
+    },
+    // Feature-entitlements (PRD-09 §5.1) — ná TenantGuard. Werkt alleen op routes
+    // met @RequiresFeature(...); core/platform-routes blijven ongemoeid.
+    {
+      provide: APP_GUARD,
+      useClass: FeatureGuard,
     },
   ],
 })

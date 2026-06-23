@@ -13,6 +13,7 @@ import {
   Ip,
   StreamableFile,
 } from '@nestjs/common';
+import { RequiresFeature } from '@/common/decorators/requires-feature.decorator';
 import type { Response } from 'express';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { Public, CurrentTenant } from '@/common/decorators';
@@ -27,6 +28,7 @@ import { ClientSignDocumentDto } from './dto';
 @ApiTags('Client Documents')
 @Public()
 @UseGuards(ClientJwtAuthGuard)
+@RequiresFeature('BASIS_INSPECTIES')
 @Controller('client/documents')
 export class ClientDocumentsController {
   constructor(private readonly service: ClientDocumentsService) {}

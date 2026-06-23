@@ -14,6 +14,7 @@ import {
   ParseUUIDPipe,
   StreamableFile,
 } from '@nestjs/common';
+import { RequiresFeature } from '@/common/decorators/requires-feature.decorator';
 import { Throttle } from '@nestjs/throttler';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import type { Response } from 'express';
@@ -34,6 +35,7 @@ const APPROVERS = [Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.WERKVOORBE
 
 @ApiTags('Generated Documents')
 @ApiBearerAuth()
+@RequiresFeature('BASIS_INSPECTIES')
 @Controller()
 export class GeneratedDocumentsController {
   constructor(private readonly service: GeneratedDocumentsService) {}
@@ -173,6 +175,7 @@ export class GeneratedDocumentsController {
 
 // ── Publieke ondertekening (geen auth) ─────────────────────
 @ApiTags('Signature Requests (public)')
+@RequiresFeature('BASIS_INSPECTIES')
 @Controller('signature-requests')
 export class SignatureRequestsController {
   constructor(private readonly service: GeneratedDocumentsService) {}

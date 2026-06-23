@@ -3,6 +3,7 @@
 import {
   Controller, Get, Post, Patch, Delete, Param, Body, Headers, ParseUUIDPipe,
 } from '@nestjs/common';
+import { RequiresFeature } from '@/common/decorators/requires-feature.decorator';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { User } from '@prisma/client';
 import { Roles, CurrentUser } from '@/common/decorators';
@@ -14,6 +15,7 @@ const ALL = ALL_STAFF;
 
 @ApiTags('Findings')
 @ApiBearerAuth()
+@RequiresFeature('BASIS_INSPECTIES')
 @Controller()
 export class FindingsController {
   constructor(private readonly service: FindingsService) {}

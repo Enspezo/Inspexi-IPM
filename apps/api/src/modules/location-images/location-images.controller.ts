@@ -16,6 +16,7 @@ import {
   HttpStatus,
   FileValidator,
 } from '@nestjs/common';
+import { RequiresFeature } from '@/common/decorators/requires-feature.decorator';
 import {
   ApiTags,
   ApiOperation,
@@ -63,6 +64,7 @@ const ALL = ALL_STAFF;
 
 @ApiTags('location-images')
 @ApiBearerAuth()
+@RequiresFeature('BASIS_INSPECTIES')
 @Controller()
 export class LocationImagesController {
   constructor(private readonly service: LocationImagesService) {}

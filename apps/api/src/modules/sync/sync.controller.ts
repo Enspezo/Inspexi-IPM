@@ -2,6 +2,7 @@
 // X-Device-ID wordt in de body (deviceId) meegestuurd; header mag ook (zie @Headers).
 
 import { Controller, Get, Post, Body, Query } from '@nestjs/common';
+import { RequiresFeature } from '@/common/decorators/requires-feature.decorator';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { User } from '@prisma/client';
 import { Roles, CurrentUser } from '@/common/decorators';
@@ -13,6 +14,7 @@ const SYNC_ROLES = ALL_STAFF;
 
 @ApiTags('Sync')
 @ApiBearerAuth()
+@RequiresFeature('BASIS_INSPECTIES')
 @Controller('sync')
 export class SyncController {
   constructor(private readonly sync: SyncService) {}

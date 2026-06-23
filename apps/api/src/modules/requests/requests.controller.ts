@@ -9,6 +9,7 @@ import {
   Query,
   ParseUUIDPipe,
 } from '@nestjs/common';
+import { RequiresFeature } from '@/common/decorators/requires-feature.decorator';
 import {
   ApiTags,
   ApiOperation,
@@ -28,6 +29,7 @@ import { Roles, CurrentUser } from '@/common/decorators';
 
 @ApiTags('Requests')
 @ApiBearerAuth()
+@RequiresFeature('CRM_COMPLEET')
 @Controller('requests')
 export class RequestsController {
   constructor(private requestsService: RequestsService) {}

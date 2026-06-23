@@ -9,6 +9,7 @@ import {
   ParseUUIDPipe,
   BadRequestException,
 } from '@nestjs/common';
+import { RequiresFeature } from '@/common/decorators/requires-feature.decorator';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiParam } from '@nestjs/swagger';
 import { User } from '@prisma/client';
 import { ALL_STAFF, ORG_ADMINS } from '@/common/auth/roles';
@@ -18,6 +19,7 @@ import { CreateLookupDto, UpdateLookupDto } from './dto';
 
 @ApiTags('Lookups')
 @ApiBearerAuth()
+@RequiresFeature('BASIS_INSPECTIES')
 @Controller('lookups')
 export class LookupController {
   constructor(private readonly lookups: LookupService) {}

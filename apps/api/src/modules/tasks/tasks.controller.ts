@@ -9,6 +9,7 @@ import {
   Query,
   ParseUUIDPipe,
 } from '@nestjs/common';
+import { RequiresFeature } from '@/common/decorators/requires-feature.decorator';
 import {
   ApiTags,
   ApiOperation,
@@ -23,6 +24,7 @@ import { Roles, CurrentUser } from '@/common/decorators';
 
 @ApiTags('Tasks')
 @ApiBearerAuth()
+@RequiresFeature('BASIS_WORKFLOW')
 @Controller('tasks')
 export class TasksController {
   constructor(private tasksService: TasksService) {}

@@ -11,6 +11,7 @@ import {
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
+import { RequiresFeature } from '@/common/decorators/requires-feature.decorator';
 import {
   ApiTags,
   ApiOperation,
@@ -42,6 +43,7 @@ const REVIEW_ROLES = [
 
 @ApiTags('inspection-plans')
 @ApiBearerAuth()
+@RequiresFeature('BASIS_INSPECTIES')
 @Controller('inspection-plans')
 export class InspectionPlansController {
   constructor(private readonly service: InspectionPlansService) {}

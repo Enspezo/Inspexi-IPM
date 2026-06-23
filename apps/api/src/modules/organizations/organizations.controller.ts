@@ -82,7 +82,11 @@ export class OrganizationsController {
     if (!org) {
       throw new NotFoundException('Organisatie niet gevonden');
     }
-    return { success: true, data: org };
+    // Effectieve feature-keys meeleveren (PRD §5.1) zodat het klantportaal — dat
+    // een eigen auth-realm heeft en `me/features` niet kan aanroepen — de gating
+    // al vóór login (realm-onafhankelijk) kan toepassen.
+    const features = await this.entitlements.getEnabledFeatures(org.id);
+    return { success: true, data: { ...org, features } };
   }
 
   @Get('me/features')

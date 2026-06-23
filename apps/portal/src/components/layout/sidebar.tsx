@@ -7,11 +7,15 @@ import { useTenant } from '@/providers/tenant-provider';
 import { OrgSwitcher } from './org-switcher';
 import { SidebarBottomBar } from './sidebar-bottom-bar';
 import { ADMIN_ROLES as adminRoles, CRM_ROLES as crmRoles } from '@/lib/roles';
+import { useFeatures } from '@/providers/feature-provider';
+import type { FeatureKey } from '@/lib/features';
 import { Role } from '@/types';
 
 interface NavChild {
   to: string;
   label: string;
+  /** SaaS-feature die dit item vereist; ontbreekt = core (altijd zichtbaar). */
+  feature?: FeatureKey;
 }
 
 interface NavItem {
@@ -19,6 +23,8 @@ interface NavItem {
   label: string;
   icon: React.ReactNode;
   roles?: Role[];
+  /** SaaS-feature die dit item vereist; ontbreekt = core (altijd zichtbaar). */
+  feature?: FeatureKey;
   children?: NavChild[];
 }
 
@@ -33,7 +39,7 @@ const SECTIONS_STORAGE_KEY = 'sidebar-sections';
 
 type CollapsedSections = Record<string, boolean>;
 
-const mainSections: NavSection[] = [
+export const mainSections: NavSection[] = [
   {
     label: 'Backoffice',
     items: [
@@ -41,6 +47,7 @@ const mainSections: NavSection[] = [
         to: '/contacts',
         label: 'Relaties',
         roles: crmRoles,
+        feature: 'BASIS_CRM',
         icon: (
           <svg className="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
@@ -50,13 +57,14 @@ const mainSections: NavSection[] = [
           { to: '/contacts', label: 'Overzicht' },
           { to: '/contacts/persons', label: 'Contactpersonen' },
           { to: '/contacts/locations', label: 'Locaties' },
-          { to: '/contacts/groups', label: 'Klantgroepen' },
+          { to: '/contacts/groups', label: 'Klantgroepen', feature: 'CRM_COMPLEET' },
         ],
       },
       {
         to: '/requests',
         label: 'Aanvragen',
         roles: crmRoles,
+        feature: 'CRM_COMPLEET',
         icon: (
           <svg className="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
@@ -67,6 +75,7 @@ const mainSections: NavSection[] = [
         to: '/quotes',
         label: 'Offertes',
         roles: crmRoles,
+        feature: 'CRM_COMPLEET',
         icon: (
           <svg className="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
@@ -78,6 +87,7 @@ const mainSections: NavSection[] = [
         to: '/documents',
         label: 'Documenten',
         roles: crmRoles,
+        feature: 'WORKFLOW_COMPLEET',
         icon: (
           <svg className="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
@@ -93,6 +103,7 @@ const mainSections: NavSection[] = [
         to: '/projects',
         label: 'Projecten',
         roles: crmRoles,
+        feature: 'BASIS_UITVOERING',
         icon: (
           <svg className="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
@@ -103,6 +114,7 @@ const mainSections: NavSection[] = [
         to: '/planning',
         label: 'Planning',
         roles: crmRoles,
+        feature: 'UITVOERING_COMPLEET',
         icon: (
           <svg className="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
@@ -122,6 +134,7 @@ const mainSections: NavSection[] = [
         to: '/inspections',
         label: 'Inspecties',
         roles: [...crmRoles, Role.INSPECTEUR],
+        feature: 'BASIS_INSPECTIES',
         icon: (
           <svg className="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
@@ -132,6 +145,7 @@ const mainSections: NavSection[] = [
         to: '/assets',
         label: 'Assets',
         roles: [...crmRoles, Role.INSPECTEUR],
+        feature: 'BASIS_INSPECTIES',
         icon: (
           <svg className="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
@@ -161,7 +175,7 @@ const mainSections: NavSection[] = [
 ];
 
 // Items in het Organisatie-submenu — vervangt het hoofdmenu (Atera-stijl)
-const organisatieSections: NavSection[] = [
+export const organisatieSections: NavSection[] = [
   {
     label: 'Beheer',
     items: [
@@ -183,6 +197,7 @@ const organisatieSections: NavSection[] = [
         to: '/products',
         label: 'Producten',
         roles: adminRoles,
+        feature: 'CRM_COMPLEET',
         icon: (
           <svg className="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
@@ -204,7 +219,7 @@ const organisatieSections: NavSection[] = [
           </svg>
         ),
         children: [
-          { to: '/quote-templates', label: 'Offertesjablonen' },
+          { to: '/quote-templates', label: 'Offertesjablonen', feature: 'CRM_COMPLEET' },
           { to: '/email-templates', label: 'E-mailsjablonen' },
         ],
       },
@@ -212,6 +227,7 @@ const organisatieSections: NavSection[] = [
         to: '/inspection-templates',
         label: 'Inspectie-config',
         roles: adminRoles,
+        feature: 'BASIS_INSPECTIES',
         icon: (
           <svg className="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
@@ -281,14 +297,35 @@ const organisatieIcon = (
   </svg>
 );
 
-function filterSections(sections: NavSection[], user: { roles: Role[] } | null) {
+/**
+ * Filtert nav-secties op rol én SaaS-feature (PRD-09 §5.2). Een item/child zonder
+ * `feature` is core en altijd zichtbaar; met `feature` alleen als `hasFeature` true
+ * geeft. Een parent met children verdwijnt zodra al zijn children wegvallen, en een
+ * sectie zonder zichtbare items verdwijnt (behalve de header-loze 'personal'-sectie).
+ * Geëxporteerd voor de unit-test.
+ */
+export function filterSections(
+  sections: NavSection[],
+  user: { roles: Role[] } | null,
+  hasFeature: (key: FeatureKey) => boolean,
+) {
+  const roleOk = (roles?: Role[]) =>
+    !roles || (!!user && user.roles.some((r) => roles.includes(r)));
+
   return sections
     .map((section) => ({
       ...section,
-      items: section.items.filter((item) => {
-        if (!item.roles) return true;
-        return user && user.roles.some((r) => item.roles!.includes(r));
-      }),
+      items: section.items
+        .filter((item) => roleOk(item.roles))
+        .filter((item) => !item.feature || hasFeature(item.feature))
+        .map((item) => ({
+          ...item,
+          children: item.children?.filter(
+            (child) => !child.feature || hasFeature(child.feature),
+          ),
+        }))
+        // verberg een parent met children zodra al zijn children wegvallen
+        .filter((item) => !item.children || item.children.length > 0),
     }))
     .filter((section) => section.label !== null || section.items.length > 0);
 }
@@ -296,6 +333,7 @@ function filterSections(sections: NavSection[], user: { roles: Role[] } | null) 
 export function Sidebar() {
   const { user } = useAuth();
   const { orgBranding } = useTenant();
+  const { hasFeature } = useFeatures();
   const location = useLocation();
 
   // 'main' = hoofdmenu, 'organisatie' = submenu dat het hoofdmenu vervangt (Atera-stijl)
@@ -353,10 +391,12 @@ export function Sidebar() {
 
   const brandName = orgBranding?.name ?? 'InspeXi';
 
-  // Filter sections: remove items the user can't see, then remove empty sections
+  // Filter sections: remove items the user can't see (rol + SaaS-feature), then
+  // remove empty sections
   const visibleSections = filterSections(
     menuView === 'organisatie' ? organisatieSections : mainSections,
     user,
+    hasFeature,
   );
   const hasOrgAccess = !!user && user.roles.some((r) => adminRoles.includes(r));
   const orgMenuActive = organisatieRoutePrefixes.some((prefix) =>
@@ -567,8 +607,8 @@ export function Sidebar() {
         })}
       </nav>
 
-      {/* Persoonlijke modellen — vastgezette icon-balk onderaan */}
-      <SidebarBottomBar collapsed={collapsed} />
+      {/* Persoonlijke modellen — vastgezette icon-balk onderaan (Basis Workflow) */}
+      {hasFeature('BASIS_WORKFLOW') && <SidebarBottomBar collapsed={collapsed} />}
     </aside>
   );
 }

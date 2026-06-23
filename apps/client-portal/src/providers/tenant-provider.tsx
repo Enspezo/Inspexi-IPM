@@ -14,6 +14,8 @@ export interface OrgBranding {
   slug: string;
   logoUrl: string | null;
   primaryColor: string | null;
+  /** Effectieve SaaS-feature-keys van de org (PRD §5.1, voor de FeatureProvider). */
+  features?: string[];
 }
 
 interface TenantContextType {

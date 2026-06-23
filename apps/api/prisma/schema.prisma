@@ -318,6 +318,9 @@ model Organization {
   isActive            Boolean  @default(true) @map("is_active")
   // Interne chat per organisatie aan/uit (REQ1) — te schakelen door SUPERUSER/ORG_ADMIN.
   chatEnabled         Boolean  @default(true) @map("chat_enabled")
+  // SaaS-abonnement (entitlements, PRD-09): template-plan voor deze org. Nullable —
+  // een org zonder plan heeft (buiten core) geen gegate functies.
+  planId              String?  @map("plan_id") @db.Uuid
   createdAt           DateTime @default(now()) @map("created_at")
 
   // Zichtbaarheid inspecteur-contactgegevens in klantportaal (per kanaal onafhankelijk).
@@ -408,7 +411,58 @@ model Organization {
   chatThreads  ChatThread[]
   chatMessages ChatMessage[]
 
+  // SaaS-abonnement (entitlements, PRD-09)
+  plan     Plan?                 @relation(fields: [planId], references: [id])
+  features OrganizationFeature[]
+
   @@map("imp_organizations")
+}
+
+// ─── SaaS-abonnementen & feature-entitlements (PRD-09) ───
+// De feature-catalogus (keys/labels/afhankelijkheden) leeft in code
+// (src/modules/entitlements/feature-catalog.ts). Deze tabellen slaan alleen
+// plannen (templates) en per-org-afwijkingen op die naar feature-keys verwijzen.
+
+model Plan {
+  id          String   @id @default(uuid()) @db.Uuid
+  name        String // "Basis", "Compleet"
+  slug        String   @unique // regex ^[a-z0-9]+$ (geen hyphens!)
+  description String?
+  isActive    Boolean  @default(true) @map("is_active")
+  sortOrder   Int      @default(0) @map("sort_order")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  features      PlanFeature[]
+  organizations Organization[]
+
+  @@map("imp_plans")
+}
+
+model PlanFeature {
+  id         String @id @default(uuid()) @db.Uuid
+  planId     String @map("plan_id") @db.Uuid
+  featureKey String @map("feature_key") // verwijst naar FEATURE_CATALOG
+
+  plan Plan @relation(fields: [planId], references: [id], onDelete: Cascade)
+
+  @@unique([planId, featureKey])
+  @@map("imp_plan_features")
+}
+
+// Per-org delta t.o.v. het plan (alleen afwijkingen worden opgeslagen).
+model OrganizationFeature {
+  id          String   @id @default(uuid()) @db.Uuid
+  orgId       String   @map("org_id") @db.Uuid
+  featureKey  String   @map("feature_key")
+  enabled     Boolean // true = bijschakelen, false = afschakelen
+  updatedById String?  @map("updated_by_id") @db.Uuid
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@unique([orgId, featureKey])
+  @@map("imp_organization_features")
 }
 
 model User {
@@ -3920,7 +3974,7 @@ model ChatThread {
 
   // TEAM: precies één thread per (org, rol) — afgedwongen via @@unique([orgId, teamRole]).
   // DIRECT: teamRole = null.
-  teamRole Role? @map("team_role")
+  teamRole  Role?   @map("team_role")
   // DIRECT: deterministische sleutel "userIdA:userIdB" (gesorteerd) voor race-vrije dedup
   // via @@unique([orgId, directKey]). TEAM: null.
   directKey String? @map("direct_key")

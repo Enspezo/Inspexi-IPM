@@ -7,6 +7,7 @@ import * as zlib from 'zlib';
 import { seedLookups } from './seed-lookups';
 import { backfillNumbering } from './backfill-numbering';
 import { DEFAULT_VOICE_BASE_PROMPT } from '../src/modules/voice/default-base-prompt';
+import { FEATURE_KEYS } from '../src/modules/entitlements/feature-catalog';
 
 const prisma = new PrismaClient();
 
@@ -302,18 +303,60 @@ async function main() {
   await prisma.emailTemplate.deleteMany();
   // Error reports (dependent on users/organizations)
   await prisma.errorReport.deleteMany();
+  // SaaS-abonnementen (entitlements, PRD-09): org-overrides + plan-features vóór
+  // de org/plan zelf; het plan ná de organization (Organization.planId → Plan).
+  await prisma.organizationFeature.deleteMany();
+  await prisma.planFeature.deleteMany();
   // Auth/org tables
   await prisma.auditLog.deleteMany();
   await prisma.invitation.deleteMany();
   await prisma.refreshToken.deleteMany();
   await prisma.user.deleteMany();
   await prisma.organization.deleteMany();
+  await prisma.plan.deleteMany();
+
+  // ─── SaaS-abonnementen: plannen (templates, PRD-09 §7.2) ──
+  // "Basis" = 4 basisfeatures; "Compleet" = alle 9 keys incl. add-ons
+  // (WEBHOOKS + CUSTOM_FIELDS). De catalogus (FEATURE_KEYS) is bron-van-waarheid;
+  // de DB verwijst alleen naar de keys. Per-org afwijkingen gaan via
+  // OrganizationFeature (hier nog niet geseed — beide demo-orgs draaien puur op
+  // hun plan).
+  const basisPlan = await prisma.plan.create({
+    data: {
+      name: 'Basis',
+      slug: 'basis',
+      description: 'Basis-pakket: CRM, uitvoering, inspecties en workflow.',
+      sortOrder: 1,
+      features: {
+        create: [
+          { featureKey: 'BASIS_CRM' },
+          { featureKey: 'BASIS_UITVOERING' },
+          { featureKey: 'BASIS_INSPECTIES' },
+          { featureKey: 'BASIS_WORKFLOW' },
+        ],
+      },
+    },
+  });
+  const compleetPlan = await prisma.plan.create({
+    data: {
+      name: 'Compleet',
+      slug: 'compleet',
+      description:
+        'Compleet-pakket: alle functies incl. add-ons (webhooks, aangepaste velden).',
+      sortOrder: 2,
+      features: { create: FEATURE_KEYS.map((featureKey) => ({ featureKey })) },
+    },
+  });
+  console.log(
+    `  ✓ Plannen: ${basisPlan.name} (4 features) + ${compleetPlan.name} (${FEATURE_KEYS.length} features)`,
+  );
 
   // ─── Organizations ─────────────────────────────────────
   const org1 = await prisma.organization.create({
     data: {
       name: 'InspeXi Demo',
       slug: 'inspexidemo',
+      planId: compleetPlan.id, // SaaS-abonnement: Compleet (alle features)
       primaryColor: '#1E40AF',
       defaultVat: 21,
       defaultValidityDays: 30,
@@ -334,6 +377,7 @@ async function main() {
     data: {
       name: 'Test Bedrijf',
       slug: 'testbedrijf',
+      planId: basisPlan.id, // SaaS-abonnement: Basis (4 basisfeatures + core)
       primaryColor: '#059669',
       defaultVat: 21,
       defaultValidityDays: 14,

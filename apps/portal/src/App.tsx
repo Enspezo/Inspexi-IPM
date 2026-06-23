@@ -2,6 +2,7 @@ import { lazy, Suspense } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import ErrorBoundary from '@/components/error-boundary/error-boundary';
 import { ProtectedRoute } from '@/components/auth/protected-route';
+import { FeatureRoute } from '@/components/auth/feature-route';
 import { AppLayout } from '@/components/layout/app-layout';
 import { Spinner } from '@/components/ui';
 
@@ -166,9 +167,14 @@ export default function App() {
         {/* Root redirect */}
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
 
-        {/* Protected routes with layout */}
+        {/* Protected routes with layout. Gegate routes zijn per feature gegroepeerd
+            onder een <FeatureRoute>; core/platform-routes blijven ongated (de
+            FeatureGuard op de API blijft de echte grens — dit is UX). */}
         <Route element={<ProtectedRoute />}>
           <Route element={<AppLayout />}>
+            {/* Core / platform — nooit gated (auth, dashboard, profiel, gebruikers,
+                organisatie-instellingen, zoeken, e-mailsjablonen, en de SUPERUSER-only
+                Inspectie-systeem- + platformroutes op hun bestaande roles-filter). */}
             <Route path="/dashboard" element={<DashboardPage />} />
             <Route path="/users" element={<UsersPage />} />
             <Route path="/users/:id" element={<UserDetailPage />} />
@@ -177,72 +183,99 @@ export default function App() {
               element={<OrganizationSettingsPage />}
             />
             <Route path="/profile" element={<ProfilePage />} />
-            <Route path="/contacts" element={<ContactsPage />} />
-            <Route path="/contacts/persons" element={<ContactPersonsPage />} />
-            <Route path="/contacts/persons/:personId" element={<ContactPersonDetailPage />} />
-            <Route path="/contacts/locations" element={<LocationsPage />} />
-            <Route path="/contacts/locations/:locationId" element={<LocationDetailPage />} />
-            <Route path="/contacts/groups" element={<CustomerGroupsPage />} />
-            <Route path="/contacts/groups/:id" element={<CustomerGroupDetailPage />} />
-            <Route path="/contacts/:id" element={<ContactDetailPage />} />
-            <Route path="/requests" element={<RequestsPage />} />
-            <Route path="/requests/:id" element={<RequestDetailPage />} />
-            <Route path="/tasks" element={<TasksPage />} />
-            <Route path="/tasks/:id" element={<TaskDetailPage />} />
-            <Route path="/documents" element={<DocumentsPage />} />
-            <Route path="/quotes" element={<QuotesPage />} />
-            <Route path="/quotes/new" element={<QuoteEditorPage />} />
-            <Route path="/quotes/:id/edit" element={<QuoteEditorPage />} />
-            <Route path="/quotes/:id" element={<QuoteDetailPage />} />
-            <Route path="/quote-templates" element={<QuoteTemplatesPage />} />
-            <Route path="/quote-templates/:id" element={<QuoteTemplateDetailPage />} />
             <Route path="/email-templates" element={<EmailTemplatesPage />} />
             <Route path="/email-templates/:id" element={<EmailTemplateDetailPage />} />
-            <Route path="/notifications" element={<NotificationsPage />} />
+            <Route path="/search" element={<SearchPage />} />
             <Route path="/organizations" element={<OrganizationsPage />} />
             <Route path="/organizations/:id" element={<OrganizationDetailPage />} />
-            <Route path="/products" element={<ProductsPage />} />
-            <Route path="/products/groups" element={<ProductGroupsPage />} />
-            <Route path="/products/groups/:id" element={<ProductGroupDetailPage />} />
-            <Route path="/products/:id" element={<ProductDetailPage />} />
-            <Route path="/price-tables" element={<PriceTablesPage />} />
-            <Route path="/price-tables/:id" element={<PriceTableDetailPage />} />
-            <Route path="/planning" element={<PlanningPage />} />
-            <Route path="/planning/:id" element={<PlanningDetailPage />} />
-            <Route path="/work-orders" element={<WorkOrdersPage />} />
-            <Route path="/work-orders/:id" element={<WorkOrderDetailPage />} />
-            <Route path="/projects" element={<ProjectsPage />} />
-            <Route path="/projects/:id" element={<ProjectDetailPage />} />
-            <Route path="/search" element={<SearchPage />} />
             <Route path="/error-reports" element={<ErrorReportsPage />} />
-            <Route path="/notities" element={<NotesPage />} />
-            <Route path="/favorites" element={<FavoritesPage />} />
-            {/* Inspectiedomein (Fase 5) */}
-            <Route path="/inspections" element={<InspectionsPage />} />
-            <Route path="/inspections/:id" element={<InspectionDetailPage />} />
-            <Route path="/assets" element={<AssetsPage />} />
-            <Route path="/assets/:id" element={<AssetDetailPage />} />
-            <Route path="/checklists" element={<ChecklistsPage />} />
-            <Route path="/checklists/:id" element={<ChecklistDetailPage />} />
-            <Route path="/checklist-items" element={<ChecklistItemsPage />} />
-            <Route path="/finding-templates" element={<FindingTemplatesPage />} />
-            <Route path="/finding-templates/:id" element={<FindingTemplateDetailPage />} />
             <Route path="/classification-models" element={<ClassificationModelsPage />} />
             <Route path="/classification-models/:id" element={<ClassificationModelDetailPage />} />
             <Route path="/norm-types" element={<NormTypesPage />} />
             <Route path="/norm-types/:id" element={<NormTypeDetailPage />} />
-            <Route path="/asset-types" element={<AssetTypesPage />} />
-            <Route path="/asset-types/:id" element={<AssetTypeDetailPage />} />
-            <Route path="/location-types" element={<LocationTypesPage />} />
-            <Route path="/location-types/:id" element={<LocationTypeDetailPage />} />
-            <Route path="/measurement-sheet-templates" element={<MeasurementSheetTemplatesPage />} />
-            <Route path="/measurement-sheet-templates/:id" element={<MeasurementSheetTemplateDetailPage />} />
             <Route path="/admin/voice-prompts" element={<VoiceBasePromptsPage />} />
-            <Route path="/voice-prompts/template" element={<VoiceTemplatePromptsPage />} />
-            <Route path="/inspection-templates" element={<InspectionTemplatesPage />} />
-            <Route path="/inspection-templates/:id" element={<InspectionTemplateDetailPage />} />
-            <Route path="/lookups" element={<LookupsIndexPage />} />
-            <Route path="/lookups/:kind" element={<LookupManagePage />} />
+
+            {/* BASIS_CRM — relaties, contactpersonen, locaties */}
+            <Route element={<FeatureRoute feature="BASIS_CRM" />}>
+              <Route path="/contacts" element={<ContactsPage />} />
+              <Route path="/contacts/persons" element={<ContactPersonsPage />} />
+              <Route path="/contacts/persons/:personId" element={<ContactPersonDetailPage />} />
+              <Route path="/contacts/locations" element={<LocationsPage />} />
+              <Route path="/contacts/locations/:locationId" element={<LocationDetailPage />} />
+              <Route path="/contacts/:id" element={<ContactDetailPage />} />
+            </Route>
+
+            {/* CRM_COMPLEET — klantgroepen, aanvragen, offertes, producten, prijstabellen */}
+            <Route element={<FeatureRoute feature="CRM_COMPLEET" />}>
+              <Route path="/contacts/groups" element={<CustomerGroupsPage />} />
+              <Route path="/contacts/groups/:id" element={<CustomerGroupDetailPage />} />
+              <Route path="/requests" element={<RequestsPage />} />
+              <Route path="/requests/:id" element={<RequestDetailPage />} />
+              <Route path="/quotes" element={<QuotesPage />} />
+              <Route path="/quotes/new" element={<QuoteEditorPage />} />
+              <Route path="/quotes/:id/edit" element={<QuoteEditorPage />} />
+              <Route path="/quotes/:id" element={<QuoteDetailPage />} />
+              <Route path="/quote-templates" element={<QuoteTemplatesPage />} />
+              <Route path="/quote-templates/:id" element={<QuoteTemplateDetailPage />} />
+              <Route path="/products" element={<ProductsPage />} />
+              <Route path="/products/groups" element={<ProductGroupsPage />} />
+              <Route path="/products/groups/:id" element={<ProductGroupDetailPage />} />
+              <Route path="/products/:id" element={<ProductDetailPage />} />
+              <Route path="/price-tables" element={<PriceTablesPage />} />
+              <Route path="/price-tables/:id" element={<PriceTableDetailPage />} />
+            </Route>
+
+            {/* BASIS_UITVOERING — projecten */}
+            <Route element={<FeatureRoute feature="BASIS_UITVOERING" />}>
+              <Route path="/projects" element={<ProjectsPage />} />
+              <Route path="/projects/:id" element={<ProjectDetailPage />} />
+            </Route>
+
+            {/* UITVOERING_COMPLEET — planning, werkbonnen */}
+            <Route element={<FeatureRoute feature="UITVOERING_COMPLEET" />}>
+              <Route path="/planning" element={<PlanningPage />} />
+              <Route path="/planning/:id" element={<PlanningDetailPage />} />
+              <Route path="/work-orders" element={<WorkOrdersPage />} />
+              <Route path="/work-orders/:id" element={<WorkOrderDetailPage />} />
+            </Route>
+
+            {/* BASIS_INSPECTIES — inspectie-uitvoering, assets + de inspectie-config */}
+            <Route element={<FeatureRoute feature="BASIS_INSPECTIES" />}>
+              <Route path="/inspections" element={<InspectionsPage />} />
+              <Route path="/inspections/:id" element={<InspectionDetailPage />} />
+              <Route path="/assets" element={<AssetsPage />} />
+              <Route path="/assets/:id" element={<AssetDetailPage />} />
+              <Route path="/checklists" element={<ChecklistsPage />} />
+              <Route path="/checklists/:id" element={<ChecklistDetailPage />} />
+              <Route path="/checklist-items" element={<ChecklistItemsPage />} />
+              <Route path="/finding-templates" element={<FindingTemplatesPage />} />
+              <Route path="/finding-templates/:id" element={<FindingTemplateDetailPage />} />
+              <Route path="/asset-types" element={<AssetTypesPage />} />
+              <Route path="/asset-types/:id" element={<AssetTypeDetailPage />} />
+              <Route path="/location-types" element={<LocationTypesPage />} />
+              <Route path="/location-types/:id" element={<LocationTypeDetailPage />} />
+              <Route path="/measurement-sheet-templates" element={<MeasurementSheetTemplatesPage />} />
+              <Route path="/measurement-sheet-templates/:id" element={<MeasurementSheetTemplateDetailPage />} />
+              <Route path="/voice-prompts/template" element={<VoiceTemplatePromptsPage />} />
+              <Route path="/inspection-templates" element={<InspectionTemplatesPage />} />
+              <Route path="/inspection-templates/:id" element={<InspectionTemplateDetailPage />} />
+              <Route path="/lookups" element={<LookupsIndexPage />} />
+              <Route path="/lookups/:kind" element={<LookupManagePage />} />
+            </Route>
+
+            {/* BASIS_WORKFLOW — taken, notificaties, notities, favorieten */}
+            <Route element={<FeatureRoute feature="BASIS_WORKFLOW" />}>
+              <Route path="/tasks" element={<TasksPage />} />
+              <Route path="/tasks/:id" element={<TaskDetailPage />} />
+              <Route path="/notifications" element={<NotificationsPage />} />
+              <Route path="/notities" element={<NotesPage />} />
+              <Route path="/favorites" element={<FavoritesPage />} />
+            </Route>
+
+            {/* WORKFLOW_COMPLEET — documenten (DMS) */}
+            <Route element={<FeatureRoute feature="WORKFLOW_COMPLEET" />}>
+              <Route path="/documents" element={<DocumentsPage />} />
+            </Route>
           </Route>
         </Route>
 

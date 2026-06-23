@@ -1,6 +1,7 @@
 import { lazy, Suspense } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { ProtectedRoute } from '@/components/auth/protected-route';
+import { ClientFeatureGate } from '@/components/auth/feature-gate';
 import { ClientLayout } from '@/components/layout/client-layout';
 import { Spinner } from '@/components/ui';
 
@@ -28,34 +29,36 @@ function PageLoader() {
 export default function App() {
   return (
     <Suspense fallback={<PageLoader />}>
-      <Routes>
-        {/* Publiek */}
-        <Route path="/login" element={<LoginPage />} />
-        <Route path="/register" element={<RegisterPage />} />
-        <Route path="/magic/:token" element={<MagicLinkPage />} />
-        <Route path="/magic-link" element={<MagicLinkPage />} />
-        <Route path="/forgot-password" element={<ForgotPasswordPage />} />
-        <Route path="/reset-password" element={<ResetPasswordPage />} />
-        <Route path="/reset-password/:token" element={<ResetPasswordPage />} />
+      <ClientFeatureGate>
+        <Routes>
+          {/* Publiek */}
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/register" element={<RegisterPage />} />
+          <Route path="/magic/:token" element={<MagicLinkPage />} />
+          <Route path="/magic-link" element={<MagicLinkPage />} />
+          <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+          <Route path="/reset-password" element={<ResetPasswordPage />} />
+          <Route path="/reset-password/:token" element={<ResetPasswordPage />} />
 
-        {/* Root → dashboard */}
-        <Route path="/" element={<Navigate to="/dashboard" replace />} />
+          {/* Root → dashboard */}
+          <Route path="/" element={<Navigate to="/dashboard" replace />} />
 
-        {/* Beveiligd (binnen de layout) */}
-        <Route element={<ProtectedRoute />}>
-          <Route element={<ClientLayout />}>
-            <Route path="/dashboard" element={<DashboardPage />} />
-            <Route path="/inspections" element={<InspectionsPage />} />
-            <Route path="/inspections/:id" element={<InspectionDetailPage />} />
-            <Route path="/documents/:id" element={<DocumentViewerPage />} />
-            <Route path="/requests" element={<RequestsPage />} />
-            <Route path="/requests/new" element={<NewRequestPage />} />
+          {/* Beveiligd (binnen de layout) */}
+          <Route element={<ProtectedRoute />}>
+            <Route element={<ClientLayout />}>
+              <Route path="/dashboard" element={<DashboardPage />} />
+              <Route path="/inspections" element={<InspectionsPage />} />
+              <Route path="/inspections/:id" element={<InspectionDetailPage />} />
+              <Route path="/documents/:id" element={<DocumentViewerPage />} />
+              <Route path="/requests" element={<RequestsPage />} />
+              <Route path="/requests/new" element={<NewRequestPage />} />
+            </Route>
           </Route>
-        </Route>
 
-        {/* Catch-all */}
-        <Route path="*" element={<Navigate to="/dashboard" replace />} />
-      </Routes>
+          {/* Catch-all */}
+          <Route path="*" element={<Navigate to="/dashboard" replace />} />
+        </Routes>
+      </ClientFeatureGate>
     </Suspense>
   );
 }

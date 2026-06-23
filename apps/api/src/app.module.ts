@@ -15,6 +15,7 @@ import { AllExceptionsFilter } from './common/filters';
 import { AuditContextInterceptor } from './common/interceptors/audit-context.interceptor';
 import { EmailModule } from './common/services/email.module';
 import { TenantCacheModule } from './common/services/tenant-cache.module';
+import { EntitlementsModule } from './modules/entitlements/entitlements.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { OrganizationsModule } from './modules/organizations/organizations.module';
 import { UsersModule } from './modules/users/users.module';
@@ -92,6 +93,9 @@ import { VoiceModule } from './modules/voice/voice.module';
     ThrottlerModule.forRoot([{ name: 'default', ttl: 60000, limit: 120 }]),
     PrismaModule,
     TenantCacheModule,
+    // SaaS-abonnementen & feature-entitlements (PRD-09, Fase 0 — resolver only,
+    // nog geen enforcement). @Global: levert EntitlementsService app-breed.
+    EntitlementsModule,
     EmailModule,
     NotificationsModule,
     AuthModule,

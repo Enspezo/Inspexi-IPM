@@ -167,6 +167,15 @@ export const AUDITED_ENTITIES: readonly AuditedEntity[] = [
   },
   { model: 'DocumentSignature', table: 'imp_document_signatures', displayFields: ['signerName'] },
   { model: 'ClientRequest', table: 'imp_client_requests', displayFields: ['subject'] },
+
+  // SaaS-abonnementen & feature-entitlements (PRD-09)
+  { model: 'Plan', table: 'imp_plans', displayFields: ['name', 'slug'] },
+  { model: 'PlanFeature', table: 'imp_plan_features', displayFields: ['featureKey'] },
+  {
+    model: 'OrganizationFeature',
+    table: 'imp_organization_features',
+    displayFields: ['featureKey'],
+  },
 ];
 
 /** Builds a display function from an entry's `display` / `displayFields`, falling back to id. */

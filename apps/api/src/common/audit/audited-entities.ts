@@ -176,6 +176,16 @@ export const AUDITED_ENTITIES: readonly AuditedEntity[] = [
     table: 'imp_organization_features',
     displayFields: ['featureKey'],
   },
+
+  // Helpsysteem (PRD-10) — SupportTicketMessage/SupportAccessLog niet geaudit
+  // (de access-log is zélf het audit-spoor).
+  { model: 'HelpCategory', table: 'imp_help_categories', displayFields: ['name', 'slug'] },
+  { model: 'HelpArticle', table: 'imp_help_articles', displayFields: ['title'] },
+  {
+    model: 'SupportTicket',
+    table: 'imp_support_tickets',
+    display: (r) => `#${r.ticketNumber ?? ''} ${r.subject ?? ''}`.trim() || r.id,
+  },
 ];
 
 /** Builds a display function from an entry's `display` / `displayFields`, falling back to id. */

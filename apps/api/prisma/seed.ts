@@ -580,6 +580,12 @@ async function main() {
   await prisma.chatThread.deleteMany();
   // Favorites (leaf — FK to users/organizations only)
   await prisma.favorite.deleteMany();
+  // Helpsysteem (PRD-10) — kinderen eerst; help* hebben FK's naar user én organization
+  await prisma.supportTicketMessage.deleteMany();
+  await prisma.supportTicket.deleteMany();
+  await prisma.supportAccessLog.deleteMany();
+  await prisma.helpArticle.deleteMany();
+  await prisma.helpCategory.deleteMany();
   // Tasks, Documents & Notes (dependent on users)
   await prisma.documentTagAssignment.deleteMany();
   await prisma.note.deleteMany();
@@ -2032,6 +2038,137 @@ async function main() {
     });
   }
   console.log(`  ✓ Favorites: ${demoFavorites.length} (admin@inspexi-demo.nl)`);
+
+  // ─── PRD-10 Fase 1: Helpsysteem ────────────────────────
+  console.log('\n📚 Seeding help system...');
+
+  const demoOrg = await prisma.organization.findUnique({ where: { slug: 'inspexidemo' } });
+  const superUser = await prisma.user.findFirst({ where: { email: 'superuser@inspexi.nl' } });
+  const demoAdmin = await prisma.user.findFirst({ where: { email: 'admin@inspexi-demo.nl' } });
+  const demoUser = await prisma.user.findFirst({ where: { email: 'backoffice@inspexi-demo.nl' } });
+
+  // Globale KB-categorieën (org_id = null) + artikelen
+  const helpCategories = [
+    { slug: 'aan-de-slag', name: 'Aan de slag', icon: 'rocket', order: 1, moduleKeys: ['dashboard', 'general'] },
+    { slug: 'relaties', name: 'Relaties', icon: 'users', order: 2, moduleKeys: ['contacts'] },
+    { slug: 'offertes', name: 'Offertes', icon: 'file-text', order: 3, moduleKeys: ['quotes'] },
+    { slug: 'aanvragen', name: 'Aanvragen', icon: 'inbox', order: 4, moduleKeys: ['requests'] },
+    { slug: 'planning', name: 'Planning', icon: 'calendar', order: 5, moduleKeys: ['planning'] },
+    { slug: 'inspecties', name: 'Inspecties', icon: 'clipboard', order: 6, moduleKeys: ['inspections'] },
+  ];
+
+  for (const cat of helpCategories) {
+    const category = await prisma.helpCategory.create({
+      data: { orgId: null, slug: cat.slug, name: cat.name, icon: cat.icon, order: cat.order, isPublished: true },
+    });
+
+    // 2 voorbeeldartikelen per categorie
+    for (let i = 1; i <= 2; i++) {
+      await prisma.helpArticle.create({
+        data: {
+          orgId: null,
+          categoryId: category.id,
+          slug: `${cat.slug}-artikel-${i}`,
+          title: `${cat.name}: voorbeeldartikel ${i}`,
+          excerpt: `Korte uitleg over ${cat.name.toLowerCase()} (${i}).`,
+          body: `# ${cat.name} ${i}\n\nDit is een voorbeeldartikel voor de knowledge base.\n\n1. Stap één\n2. Stap twee\n3. Stap drie`,
+          status: 'PUBLISHED',
+          publishedAt: new Date(),
+          moduleKeys: cat.moduleKeys,
+          tags: [cat.slug],
+          order: i,
+          authorId: superUser?.id ?? null,
+        },
+      });
+    }
+  }
+
+  // Eén org-specifiek artikel (alleen zichtbaar voor de demo-org)
+  if (demoOrg) {
+    const offertesCat = await prisma.helpCategory.findFirst({ where: { orgId: null, slug: 'offertes' } });
+    if (offertesCat) {
+      await prisma.helpArticle.create({
+        data: {
+          orgId: demoOrg.id,
+          categoryId: offertesCat.id,
+          slug: 'interne-offerte-werkwijze',
+          title: 'Interne werkwijze offertes (alleen InspeXi Demo)',
+          excerpt: 'Org-specifieke afspraken rond offertes.',
+          body: '# Interne werkwijze\n\nDit artikel is alleen zichtbaar binnen InspeXi Demo.',
+          status: 'PUBLISHED',
+          publishedAt: new Date(),
+          moduleKeys: ['quotes'],
+          tags: ['intern'],
+          authorId: demoAdmin?.id ?? null,
+        },
+      });
+    }
+  }
+
+  // Demo-tickets op de demo-org (verschillende statussen)
+  if (demoOrg && demoUser) {
+    const demoTickets = [
+      { n: 1, subject: 'Hoe maak ik een offerte op?', status: 'NIEUW', priority: 'NORMAAL', category: 'VRAAG' },
+      { n: 2, subject: 'PDF-export lukt niet', status: 'IN_BEHANDELING', priority: 'HOOG', category: 'PROBLEEM' },
+      { n: 3, subject: 'Verzoek: extra rapportveld', status: 'OPGELOST', priority: 'LAAG', category: 'FEATURE_REQUEST' },
+    ] as const;
+
+    for (const t of demoTickets) {
+      await prisma.supportTicket.create({
+        data: {
+          orgId: demoOrg.id,
+          ticketNumber: t.n,
+          subject: t.subject,
+          description: `Demo-ticket: ${t.subject}`,
+          status: t.status,
+          priority: t.priority,
+          category: t.category,
+          contextModule: 'quotes',
+          createdById: demoUser.id,
+          assignedToId: t.status === 'NIEUW' ? null : (superUser?.id ?? null),
+          lastMessageAt: new Date(),
+          resolvedAt: t.status === 'OPGELOST' ? new Date() : null,
+          messages: {
+            create: [
+              { orgId: demoOrg.id, authorId: demoUser.id, authorType: 'USER', body: `Vraag: ${t.subject}` },
+              ...(t.status !== 'NIEUW'
+                ? [
+                    {
+                      orgId: demoOrg.id,
+                      authorId: superUser?.id ?? null,
+                      authorType: 'SUPPORT' as const,
+                      body: 'Bedankt voor je melding, we kijken ernaar.',
+                    },
+                  ]
+                : []),
+            ],
+          },
+        },
+      });
+    }
+  }
+
+  // Support-toegang: demo-org staat AAN met een log-spoor
+  if (demoOrg && demoAdmin) {
+    await prisma.organization.update({
+      where: { id: demoOrg.id },
+      data: {
+        supportAccessEnabled: true,
+        supportAccessExpiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000), // 24u
+      },
+    });
+    await prisma.supportAccessLog.create({
+      data: {
+        orgId: demoOrg.id,
+        action: 'ENABLED',
+        performedById: demoAdmin.id,
+        performedByRole: 'ORG_ADMIN',
+        ip: '127.0.0.1',
+        note: 'Support-toegang geactiveerd (seed).',
+      },
+    });
+  }
+  console.log('  ✓ Help: 6 globale categorieën (12 artikelen) + 1 org-artikel, 3 tickets, support-toegang aan');
 
   // ─── Inspectiedomein (Fase 1) ──────────────────────────
   console.log('\n🔍 Seeding inspection domain...');

@@ -75,6 +75,8 @@ describe('FK target resolution (per entityType, field)', () => {
     // bare String columns without a Prisma relation fall back by convention
     expect(resolveFkTargetModel('NormTypeDefinition', 'createdBy')).toBe('User');
     expect(resolveFkTargetModel('GeneratedDocument', 'generatedBy')).toBe('User');
+    // OrganizationFeature.updatedById now has a real FK relation → resolved via DMMF.
+    expect(resolveFkTargetModel('OrganizationFeature', 'updatedById')).toBe('User');
   });
 
   it('resolves inspection-domain FKs the old global map missed', () => {

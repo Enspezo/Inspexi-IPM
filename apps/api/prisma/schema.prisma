@@ -186,6 +186,7 @@ enum DocumentEntityType {
   PROJECT
   USER
   WORK_ORDER
+  SUPPORT_TICKET
 }
 
 enum NoteEntityType {
@@ -300,6 +301,51 @@ enum NumberingReset {
   PER_MONTH
 }
 
+// ─── PRD-10: Helpsysteem ─────────────────────────────────
+
+enum HelpArticleStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+enum SupportTicketStatus {
+  NIEUW
+  IN_BEHANDELING
+  WACHT_OP_KLANT
+  OPGELOST
+  GESLOTEN
+}
+
+enum SupportTicketPriority {
+  LAAG
+  NORMAAL
+  HOOG
+  URGENT
+}
+
+enum SupportTicketCategory {
+  VRAAG
+  PROBLEEM
+  BUG
+  FEATURE_REQUEST
+  FACTUUR
+  OVERIG
+}
+
+enum SupportMessageAuthorType {
+  USER
+  SUPPORT
+  SYSTEM
+}
+
+enum SupportAccessAction {
+  ENABLED
+  DISABLED
+  EXPIRED
+  ACCESSED
+}
+
 // ─── PRD-01: Foundation Models ───────────────────────────
 
 model Organization {
@@ -335,6 +381,10 @@ model Organization {
   // Beide null → geen verplichte drempel (val terug op template-`requiresApproval`).
   quoteApprovalThreshold    Decimal? @map("quote_approval_threshold") @db.Decimal(12, 2)
   quoteApprovalRequiredRole Role?    @map("quote_approval_required_role")
+
+  // Support-toegang (PRD-10): expliciete, geauditeerde consent voor InspeXi-support.
+  supportAccessEnabled   Boolean   @default(false) @map("support_access_enabled")
+  supportAccessExpiresAt DateTime? @map("support_access_expires_at")
 
   users                    User[]
   invitations              Invitation[]
@@ -414,6 +464,12 @@ model Organization {
   // SaaS-abonnement (entitlements, PRD-09)
   plan     Plan?                 @relation(fields: [planId], references: [id])
   features OrganizationFeature[]
+
+  // Helpsysteem (PRD-10)
+  helpCategories    HelpCategory[]
+  helpArticles      HelpArticle[]
+  supportTickets    SupportTicket[]
+  supportAccessLogs SupportAccessLog[]
 
   @@map("imp_organizations")
 }
@@ -578,6 +634,13 @@ model User {
   createdChatThreads ChatThread[]      @relation("ChatThreadCreatedBy")
   chatParticipations ChatParticipant[] @relation("ChatParticipantUser")
   sentChatMessages   ChatMessage[]     @relation("ChatMessageSender")
+
+  // Helpsysteem (PRD-10)
+  helpArticles           HelpArticle[]          @relation("HelpArticleAuthor")
+  createdSupportTickets  SupportTicket[]        @relation("SupportTicketCreatedBy")
+  assignedSupportTickets SupportTicket[]        @relation("SupportTicketAssignedTo")
+  supportTicketMessages  SupportTicketMessage[] @relation("SupportTicketMessageAuthor")
+  supportAccessLogs      SupportAccessLog[]     @relation("SupportAccessLogPerformedBy")
 
   @@index([orgId, isDeleted])
   @@map("imp_users")
@@ -4053,4 +4116,133 @@ model ChatMessage {
   @@index([threadId, createdAt])
   @@index([orgId, deletedAt])
   @@map("imp_chat_messages")
+}
+
+// ─── PRD-10: Helpsysteem ─────────────────────────────────
+
+// Knowledge base (hybride: org_id null = globaal, gezet = org-specifiek)
+
+model HelpCategory {
+  id          String   @id @default(uuid()) @db.Uuid
+  orgId       String?  @map("org_id") @db.Uuid // null = globaal; gezet = org-specifiek
+  slug        String
+  name        String
+  description String?
+  icon        String?
+  order       Int      @default(0)
+  parentId    String?  @map("parent_id") @db.Uuid
+  isPublished Boolean  @default(true) @map("is_published")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  organization Organization?  @relation(fields: [orgId], references: [id])
+  parent       HelpCategory?  @relation("HelpCategoryTree", fields: [parentId], references: [id])
+  children     HelpCategory[] @relation("HelpCategoryTree")
+  articles     HelpArticle[]
+
+  @@unique([orgId, slug])
+  @@index([parentId, order])
+  @@map("imp_help_categories")
+}
+
+model HelpArticle {
+  id          String            @id @default(uuid()) @db.Uuid
+  orgId       String?           @map("org_id") @db.Uuid // null = globaal; gezet = org-specifiek
+  categoryId  String            @map("category_id") @db.Uuid
+  slug        String
+  title       String
+  excerpt     String?
+  body        String            @db.Text
+  status      HelpArticleStatus @default(DRAFT)
+  tags        String[]          @default([])
+  moduleKeys  String[]          @default([]) @map("module_keys")
+  order       Int               @default(0)
+  viewCount   Int               @default(0) @map("view_count")
+  helpfulYes  Int               @default(0) @map("helpful_yes")
+  helpfulNo   Int               @default(0) @map("helpful_no")
+  authorId    String?           @map("author_id") @db.Uuid
+  publishedAt DateTime?         @map("published_at")
+  createdAt   DateTime          @default(now()) @map("created_at")
+  updatedAt   DateTime          @updatedAt @map("updated_at")
+
+  organization Organization? @relation(fields: [orgId], references: [id])
+  category     HelpCategory  @relation(fields: [categoryId], references: [id])
+  author       User?         @relation("HelpArticleAuthor", fields: [authorId], references: [id])
+
+  @@unique([orgId, slug])
+  @@index([orgId, status])
+  @@index([categoryId, order])
+  @@map("imp_help_articles")
+}
+
+// Support tickets (org-scoped)
+
+model SupportTicket {
+  id              String                @id @default(uuid()) @db.Uuid
+  orgId           String                @map("org_id") @db.Uuid
+  ticketNumber    Int                   @map("ticket_number")
+  subject         String
+  description     String                @db.Text
+  status          SupportTicketStatus   @default(NIEUW)
+  priority        SupportTicketPriority @default(NORMAAL)
+  category        SupportTicketCategory @default(VRAAG)
+  contextModule   String?               @map("context_module")
+  contextUrl      String?               @map("context_url")
+  createdById     String                @map("created_by_id") @db.Uuid
+  assignedToId    String?               @map("assigned_to_id") @db.Uuid
+  firstResponseAt DateTime?             @map("first_response_at")
+  resolvedAt      DateTime?             @map("resolved_at")
+  closedAt        DateTime?             @map("closed_at")
+  lastMessageAt   DateTime?             @map("last_message_at")
+  isDeleted       Boolean               @default(false) @map("is_deleted")
+  createdAt       DateTime              @default(now()) @map("created_at")
+  updatedAt       DateTime              @updatedAt @map("updated_at")
+
+  organization Organization           @relation(fields: [orgId], references: [id])
+  createdBy    User                   @relation("SupportTicketCreatedBy", fields: [createdById], references: [id])
+  assignedTo   User?                  @relation("SupportTicketAssignedTo", fields: [assignedToId], references: [id])
+  messages     SupportTicketMessage[]
+
+  @@unique([orgId, ticketNumber])
+  @@index([orgId, status])
+  @@index([createdById])
+  @@index([assignedToId])
+  @@map("imp_support_tickets")
+}
+
+model SupportTicketMessage {
+  id         String                   @id @default(uuid()) @db.Uuid
+  ticketId   String                   @map("ticket_id") @db.Uuid
+  orgId      String                   @map("org_id") @db.Uuid
+  authorId   String?                  @map("author_id") @db.Uuid
+  authorType SupportMessageAuthorType @default(USER) @map("author_type")
+  body       String                   @db.Text
+  isInternal Boolean                  @default(false) @map("is_internal")
+  createdAt  DateTime                 @default(now()) @map("created_at")
+
+  ticket SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  author User?         @relation("SupportTicketMessageAuthor", fields: [authorId], references: [id])
+
+  @@index([ticketId, createdAt])
+  @@map("imp_support_ticket_messages")
+}
+
+// Support-toegang log (org-scoped)
+
+model SupportAccessLog {
+  id              String              @id @default(uuid()) @db.Uuid
+  orgId           String              @map("org_id") @db.Uuid
+  action          SupportAccessAction
+  performedById   String?             @map("performed_by_id") @db.Uuid
+  performedByRole Role?               @map("performed_by_role")
+  ip              String?
+  userAgent       String?             @map("user_agent")
+  note            String?
+  createdAt       DateTime            @default(now()) @map("created_at")
+
+  organization Organization @relation(fields: [orgId], references: [id])
+  performedBy  User?        @relation("SupportAccessLogPerformedBy", fields: [performedById], references: [id])
+
+  @@index([orgId, createdAt])
+  @@map("imp_support_access_logs")
 }

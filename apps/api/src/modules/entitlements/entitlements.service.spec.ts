@@ -169,6 +169,24 @@ describe('EntitlementsService', () => {
       expect(mockPrisma.organization.findUnique).toHaveBeenCalledTimes(4);
     });
 
+    it('(f) retourneert een kopie — muteren van het resultaat raakt de cache niet', async () => {
+      mockPrisma.organization.findUnique.mockResolvedValue(
+        orgRow(['BASIS_CRM', 'BASIS_WORKFLOW']),
+      );
+
+      // Eerste call vult de cache. Muteer het resultaat agressief.
+      const first = await service.getEnabledFeatures('org-copy');
+      first.push('GEHACKTE_KEY' as never);
+      first.length = 0;
+
+      // Tweede call komt uit de cache (DB niet opnieuw geraakt) en moet ongeschonden zijn.
+      const second = await service.getEnabledFeatures('org-copy');
+      expect(mockPrisma.organization.findUnique).toHaveBeenCalledTimes(1);
+      expect(second).toEqual(['BASIS_CRM', 'BASIS_WORKFLOW']);
+      // Elke call levert bovendien een eigen kopie, geen gedeelde referentie.
+      expect(second).not.toBe(first);
+    });
+
     it('vervalt na de TTL (5 min) en queryt opnieuw', async () => {
       mockPrisma.organization.findUnique.mockResolvedValue(orgRow(['BASIS_CRM']));
 

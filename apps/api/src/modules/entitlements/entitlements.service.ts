@@ -46,7 +46,8 @@ export class EntitlementsService {
   async getEnabledFeatures(orgId: string): Promise<FeatureKey[]> {
     const cached = this.cache.get(orgId);
     if (cached && Date.now() - cached.cachedAt < this.TTL) {
-      return cached.features;
+      // Kopie teruggeven: een caller mag de gecachte array nooit kunnen muteren.
+      return [...cached.features];
     }
 
     const org = await this.prisma.organization.findUnique({
@@ -64,7 +65,8 @@ export class EntitlementsService {
     // entitlements.analysis.ts en wordt gedeeld met de SUPERUSER-beheer-laag.
     const features = resolveEffectiveFeatures(planKeys, overrides);
     this.cache.set(orgId, { features, cachedAt: Date.now() });
-    return features;
+    // Idem voor de verse berekening: de cache houdt het origineel, de caller een kopie.
+    return [...features];
   }
 
   /** Invalideert de gecachte set voor één org (na een schrijf die de org raakt). */

@@ -20,6 +20,13 @@ describe('PlansService', () => {
       create: jest.fn(),
       delete: jest.fn(),
     },
+    // Interactieve transactie: voer de callback uit met dezelfde mock als `tx`,
+    // zodat de bestaande tx.plan.* / tx.planFeature.*-asserts blijven gelden.
+    // Expliciete return-type breekt de circulaire inferentie (mockPrisma → cb → mockPrisma).
+    $transaction: jest.fn(
+      (cb: (tx: any) => unknown): Promise<unknown> =>
+        Promise.resolve(cb(mockPrisma)),
+    ),
   };
 
   const mockEntitlements = {
@@ -71,6 +78,8 @@ describe('PlansService', () => {
         featureKeys: ['BASIS_WORKFLOW', 'BASIS_CRM'],
       });
 
+      // Plan + features in één interactieve transactie (atomair).
+      expect(mockPrisma.$transaction).toHaveBeenCalledTimes(1);
       expect(mockPrisma.plan.create).toHaveBeenCalledTimes(1);
       // Eén create per feature-key.
       expect(mockPrisma.planFeature.create).toHaveBeenCalledTimes(2);
@@ -94,6 +103,8 @@ describe('PlansService', () => {
       // Gewenst: BASIS_CRM + BASIS_WORKFLOW → voeg BASIS_WORKFLOW toe, haal WORKFLOW_COMPLEET weg.
       await service.update('p1', { featureKeys: ['BASIS_CRM', 'BASIS_WORKFLOW'] });
 
+      // Meta-update + feature-diff in één interactieve transactie (atomair).
+      expect(mockPrisma.$transaction).toHaveBeenCalledTimes(1);
       expect(mockPrisma.planFeature.create).toHaveBeenCalledWith({
         data: { planId: 'p1', featureKey: 'BASIS_WORKFLOW' },
       });

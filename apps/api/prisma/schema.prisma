@@ -460,6 +460,7 @@ model OrganizationFeature {
   updatedAt   DateTime @updatedAt @map("updated_at")
 
   organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  updatedBy    User?        @relation("OrgFeatureUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
 
   @@unique([orgId, featureKey])
   @@map("imp_organization_features")
@@ -531,6 +532,9 @@ model User {
   notificationPrefs NotificationPref[]
   auditLogs         AuditLog[]
   favorites         Favorite[]
+
+  // Per-org feature-overrides die deze gebruiker heeft gezet (PRD-09 entitlements).
+  orgFeatureUpdates OrganizationFeature[] @relation("OrgFeatureUpdatedBy")
 
   assignedTasks       Task[]                  @relation("TaskAssignee")
   createdTasks        Task[]                  @relation("TaskCreatedBy")

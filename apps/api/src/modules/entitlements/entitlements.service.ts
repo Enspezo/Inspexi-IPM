@@ -1,11 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '@/prisma';
-import {
-  FEATURE_CATALOG,
-  FEATURE_KEYS,
-  FeatureKey,
-  isFeatureKey,
-} from './feature-catalog';
+import { FeatureKey } from './feature-catalog';
+import { resolveEffectiveFeatures } from './entitlements.analysis';
 
 interface CacheEntry {
   features: FeatureKey[];
@@ -64,52 +60,11 @@ export class EntitlementsService {
     const planKeys = org?.plan?.features.map((f) => f.featureKey) ?? [];
     const overrides = org?.features ?? [];
 
-    const features = this.resolve(planKeys, overrides);
+    // De pure resolver (plan ⊕ overrides ⊕ transitieve closure) leeft in
+    // entitlements.analysis.ts en wordt gedeeld met de SUPERUSER-beheer-laag.
+    const features = resolveEffectiveFeatures(planKeys, overrides);
     this.cache.set(orgId, { features, cachedAt: Date.now() });
     return features;
-  }
-
-  /**
-   * Berekent de effectieve set uit plan-keys + overrides (pure functie, geen
-   * I/O). Onbekende keys (niet in de catalogus) worden defensief genegeerd.
-   */
-  private resolve(
-    planKeys: string[],
-    overrides: { featureKey: string; enabled: boolean }[],
-  ): FeatureKey[] {
-    const set = new Set<FeatureKey>();
-
-    // 1. base = plan-defaults
-    for (const key of planKeys) {
-      if (isFeatureKey(key)) set.add(key);
-    }
-
-    // 2 + 3. overrides toepassen: bijschakelen (true) / afschakelen (false)
-    for (const { featureKey, enabled } of overrides) {
-      if (!isFeatureKey(featureKey)) continue;
-      if (enabled) set.add(featureKey);
-      else set.delete(featureKey);
-    }
-
-    // 4. transitieve dependency-closure (wint van afschakel-overrides)
-    this.expandDependencies(set);
-
-    // Deterministische volgorde voor stabiele output/tests.
-    return FEATURE_KEYS.filter((key) => set.has(key));
-  }
-
-  /** Voegt voor elke feature in de set zijn (transitieve) dependsOn toe. */
-  private expandDependencies(set: Set<FeatureKey>): void {
-    const queue: FeatureKey[] = [...set];
-    while (queue.length > 0) {
-      const key = queue.pop()!;
-      for (const dep of FEATURE_CATALOG[key].dependsOn) {
-        if (!set.has(dep)) {
-          set.add(dep);
-          queue.push(dep);
-        }
-      }
-    }
   }
 
   /** Invalideert de gecachte set voor één org (na een schrijf die de org raakt). */

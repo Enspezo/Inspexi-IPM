@@ -3,6 +3,7 @@ import { ConflictException, NotFoundException } from '@nestjs/common';
 import { OrganizationsService } from './organizations.service';
 import { STORAGE_PROVIDER } from '@/common/services/storage/storage.interface';
 import { TenantCacheService } from '@/common/services/tenant-cache.service';
+import { EntitlementsService } from '@/modules/entitlements/entitlements.service';
 import { PrismaService } from '@/prisma';
 
 describe('OrganizationsService', () => {
@@ -48,6 +49,10 @@ describe('OrganizationsService', () => {
           },
         },
         TenantCacheService,
+        {
+          provide: EntitlementsService,
+          useValue: { invalidate: jest.fn(), clear: jest.fn() },
+        },
       ],
     }).compile();
 

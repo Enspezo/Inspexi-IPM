@@ -62,6 +62,7 @@ const FALLBACK_FIELD_MODEL: Readonly<Record<string, string>> = {
   editedBy: 'User',
   generatedBy: 'User',
   handledBy: 'User',
+  updatedById: 'User', // OrganizationFeature.updatedById (geen Prisma-relatie)
 };
 
 /**

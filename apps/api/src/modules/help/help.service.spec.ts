@@ -226,6 +226,106 @@ describe('HelpService', () => {
     });
   });
 
+  describe('getContextual (Fase 3)', () => {
+    it('moduleKey-match: primaire query filtert op moduleKeys + zichtbaarheid + PUBLISHED', async () => {
+      mockPrisma.helpArticle.findMany.mockResolvedValueOnce([
+        { id: 'a1', orgId: null, viewCount: 0, order: 0 },
+      ]);
+      const res = await service.getContextual(orgAdmin, 'quotes');
+
+      // geen fallback nodig → exact één query
+      expect(mockPrisma.helpArticle.findMany).toHaveBeenCalledTimes(1);
+      const args = mockPrisma.helpArticle.findMany.mock.calls[0][0];
+      expect(args.where.status).toBe('PUBLISHED');
+      expect(args.where.OR).toEqual([{ orgId: null }, { orgId: 'orgA' }]);
+      expect(args.where.moduleKeys).toEqual({ hasSome: ['quotes'] });
+      // deterministische afkapping
+      expect(args.orderBy).toEqual([{ viewCount: 'desc' }, { order: 'asc' }]);
+      expect(res.items).toHaveLength(1);
+    });
+
+    it('superuser: geen org-OR-filter in de contextuele query', async () => {
+      mockPrisma.helpArticle.findMany.mockResolvedValueOnce([
+        { id: 'a1', orgId: null, viewCount: 0, order: 0 },
+      ]);
+      await service.getContextual(superuser, 'quotes');
+      const args = mockPrisma.helpArticle.findMany.mock.calls[0][0];
+      expect(args.where.OR).toBeUndefined();
+      expect(args.where.status).toBe('PUBLISHED');
+    });
+
+    it('vrije zoekterm behoudt de zichtbaarheids-OR (geen cross-tenant lek)', async () => {
+      mockPrisma.helpArticle.findMany.mockResolvedValueOnce([
+        { id: 'a1', orgId: 'orgA', viewCount: 0, order: 0 },
+      ]);
+      await service.getContextual(orgAdmin, 'quotes', 'pdf');
+      const where = mockPrisma.helpArticle.findMany.mock.calls[0][0].where;
+
+      // Zichtbaarheidsfilter mag NIET overschreven worden door de tekst-OR.
+      expect(where.OR).toEqual([{ orgId: null }, { orgId: 'orgA' }]);
+      // Tekstmatch wordt ge-AND naast de visibility-OR.
+      expect(Array.isArray(where.AND)).toBe(true);
+      expect(where.AND[0].OR).toEqual([
+        { title: { contains: 'pdf', mode: 'insensitive' } },
+        { excerpt: { contains: 'pdf', mode: 'insensitive' } },
+        { tags: { hasSome: ['pdf'] } },
+      ]);
+    });
+
+    it('fallback bij geen treffers: tweede query op meest-bekeken binnen scope', async () => {
+      mockPrisma.helpArticle.findMany
+        .mockResolvedValueOnce([]) // primair: niets
+        .mockResolvedValueOnce([{ id: 'f1', orgId: null, viewCount: 10, order: 0 }]);
+
+      const res = await service.getContextual(orgAdmin, 'quotes');
+
+      expect(mockPrisma.helpArticle.findMany).toHaveBeenCalledTimes(2);
+      const fb = mockPrisma.helpArticle.findMany.mock.calls[1][0];
+      expect(fb.where.status).toBe('PUBLISHED');
+      expect(fb.where.OR).toEqual([{ orgId: null }, { orgId: 'orgA' }]);
+      expect(fb.where.moduleKeys).toBeUndefined(); // fallback negeert de module
+      expect(fb.orderBy).toEqual([{ viewCount: 'desc' }, { order: 'asc' }]);
+      expect(res.items).toHaveLength(1);
+      expect((res.items[0] as { id: string }).id).toBe('f1');
+    });
+
+    it('geen fallback bij actief zoeken zonder treffers (lege lijst)', async () => {
+      mockPrisma.helpArticle.findMany.mockResolvedValueOnce([]); // primair: niets
+      const res = await service.getContextual(
+        orgAdmin,
+        'quotes',
+        'zoektermzondertreffer',
+      );
+      // bij een actieve zoekterm volgt GEEN fallback → exact één query, lege lijst
+      expect(mockPrisma.helpArticle.findMany).toHaveBeenCalledTimes(1);
+      expect(res.items).toHaveLength(0);
+    });
+
+    it('org-voorrang: eigen-org artikel vóór globaal, daarna viewCount', async () => {
+      mockPrisma.helpArticle.findMany.mockResolvedValueOnce([
+        { id: 'global-pop', orgId: null, viewCount: 99, order: 0 },
+        { id: 'org-art', orgId: 'orgA', viewCount: 1, order: 5 },
+      ]);
+      const res = await service.getContextual(orgAdmin, 'quotes');
+      expect((res.items as { id: string }[]).map((i) => i.id)).toEqual([
+        'org-art',
+        'global-pop',
+      ]);
+    });
+
+    it('respecteert de limit (slice)', async () => {
+      const many = Array.from({ length: 8 }, (_, i) => ({
+        id: `a${i}`,
+        orgId: null,
+        viewCount: 8 - i,
+        order: i,
+      }));
+      mockPrisma.helpArticle.findMany.mockResolvedValueOnce(many);
+      const res = await service.getContextual(orgAdmin, 'quotes', undefined, 3);
+      expect(res.items).toHaveLength(3);
+    });
+  });
+
   describe('createCategory', () => {
     beforeEach(() => {
       mockPrisma.helpCategory.findFirst.mockResolvedValue(null); // slug vrij

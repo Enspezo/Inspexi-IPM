@@ -138,6 +138,82 @@ export class HelpService {
     });
   }
 
+  // ── Contextuele suggesties (Fase 3) ──────────────────────────────────────
+  /**
+   * Suggesties voor de huidige view. moduleKey-match (GIN-index op module_keys)
+   * is primair; optionele vrije zoekterm matcht titel/excerpt/tags. Org-specifiek
+   * krijgt voorrang boven globaal. Zónder zoekterm valt een module zonder eigen
+   * artikelen terug op de meest-bekeken artikelen (paneel nooit leeg); mét een
+   * zoekterm geeft "geen treffers" een lege lijst (de UI toont "geen resultaten").
+   */
+  async getContextual(
+    user: User,
+    moduleKey?: string,
+    q?: string,
+    limit = 20,
+  ): Promise<{ items: unknown[] }> {
+    const include = { category: { select: { id: true, name: true, slug: true } } };
+    const orderBy: Prisma.HelpArticleOrderByWithRelationInput[] = [
+      { viewCount: 'desc' },
+      { order: 'asc' },
+    ];
+    const base: Prisma.HelpArticleWhereInput = {
+      status: 'PUBLISHED',
+      ...this.visibilityWhere(user),
+    };
+
+    const primaryWhere: Prisma.HelpArticleWhereInput = {
+      ...base,
+      ...(moduleKey ? { moduleKeys: { hasSome: [moduleKey] } } : {}),
+      // Tekstmatch via AND-genest, zodat de zichtbaarheids-OR uit `base`
+      // (globaal OF eigen org) niet wordt overschreven door deze OR.
+      ...(q
+        ? {
+            AND: [
+              {
+                OR: [
+                  { title: { contains: q, mode: 'insensitive' } },
+                  { excerpt: { contains: q, mode: 'insensitive' } },
+                  { tags: { hasSome: [q.toLowerCase()] } },
+                ],
+              },
+            ],
+          }
+        : {}),
+    };
+
+    // orderBy maakt de afkapping bij >take treffers deterministisch; de
+    // org-voorrang volgt daarna in JS.
+    let items = await this.prisma.helpArticle.findMany({
+      where: primaryWhere,
+      include,
+      orderBy,
+      take: 50,
+    });
+
+    // Fallback alleen zónder actieve zoekterm: een module zonder eigen artikelen
+    // mag niet leeg blijven, maar een zoekopdracht zonder treffers hoort "geen
+    // resultaten" te tonen i.p.v. ongerelateerde populaire artikelen.
+    if (items.length === 0 && !q) {
+      items = await this.prisma.helpArticle.findMany({
+        where: base,
+        include,
+        orderBy,
+        take: limit,
+      });
+    }
+
+    // Rangschikking: org-specifiek vóór globaal, daarna meest bekeken / volgorde.
+    items.sort((a, b) => {
+      const orgRank = Number(b.orgId !== null) - Number(a.orgId !== null);
+      if (orgRank !== 0) return orgRank;
+      if (b.viewCount !== a.viewCount) return b.viewCount - a.viewCount;
+      return a.order - b.order;
+    });
+
+    return { items: items.slice(0, limit) };
+  }
+
   // ── Beheer: scope-resolutie ──────────────────────────────────────────────
   /** Bepaalt de orgId waaronder geschreven wordt + bewaakt schrijfrechten. */
   private resolveWriteOrgId(user: User, requestedOrgId?: string | null): string | null {

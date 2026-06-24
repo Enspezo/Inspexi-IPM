@@ -60,6 +60,27 @@ export function useHelpArticle(slug: string) {
   });
 }
 
+interface ContextualResult {
+  items: HelpArticle[];
+}
+
+/** Contextuele suggesties (Fase 3) voor de huidige view. */
+export function useContextualArticles(moduleKey: string, q?: string, enabled = true) {
+  const params = new URLSearchParams();
+  if (moduleKey) params.set('module', moduleKey);
+  if (q) params.set('q', q);
+  const qs = params.toString();
+  return useQuery<ContextualResult>({
+    queryKey: ['help', 'contextual', moduleKey, q ?? ''],
+    queryFn: () =>
+      apiClient.get<ContextualResult>(
+        `/help/articles/contextual${qs ? `?${qs}` : ''}`,
+      ),
+    enabled,
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
 export function useHelpArticleFeedback() {
   return useMutation({
     mutationFn: ({ id, helpful }: { id: string; helpful: boolean }) =>

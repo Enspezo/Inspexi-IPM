@@ -9,6 +9,7 @@ import { ConfirmProvider, ToastProvider } from '@/components/ui';
 import { QuickCreateProvider } from '@/providers/quick-create-provider';
 import { WindowTabsProvider } from '@/providers/window-tabs';
 import { ChatProvider } from '@/providers/chat-provider';
+import { HelpProvider } from '@/providers/help-provider';
 import { registerGlobalErrorReporter } from '@/lib/global-error-reporter';
 import App from './App';
 import './styles/index.css';
@@ -35,11 +36,13 @@ createRoot(document.getElementById('root')!).render(
               <ToastProvider>
                 <ConfirmProvider>
                   <ChatProvider>
-                    <QuickCreateProvider>
-                      <WindowTabsProvider>
-                        <App />
-                      </WindowTabsProvider>
-                    </QuickCreateProvider>
+                    <HelpProvider>
+                      <QuickCreateProvider>
+                        <WindowTabsProvider>
+                          <App />
+                        </WindowTabsProvider>
+                      </QuickCreateProvider>
+                    </HelpProvider>
                   </ChatProvider>
                 </ConfirmProvider>
               </ToastProvider>

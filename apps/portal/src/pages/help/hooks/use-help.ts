@@ -62,7 +62,6 @@ export function useHelpArticle(slug: string) {
 
 interface ContextualResult {
   items: HelpArticle[];
-  total: number;
 }
 
 /** Contextuele suggesties (Fase 3) voor de huidige view. */

@@ -239,7 +239,8 @@ describe('HelpService', () => {
       expect(args.where.status).toBe('PUBLISHED');
       expect(args.where.OR).toEqual([{ orgId: null }, { orgId: 'orgA' }]);
       expect(args.where.moduleKeys).toEqual({ hasSome: ['quotes'] });
-      expect(res.total).toBe(1);
+      // deterministische afkapping
+      expect(args.orderBy).toEqual([{ viewCount: 'desc' }, { order: 'asc' }]);
       expect(res.items).toHaveLength(1);
     });
 
@@ -288,6 +289,18 @@ describe('HelpService', () => {
       expect((res.items[0] as { id: string }).id).toBe('f1');
     });
 
+    it('geen fallback bij actief zoeken zonder treffers (lege lijst)', async () => {
+      mockPrisma.helpArticle.findMany.mockResolvedValueOnce([]); // primair: niets
+      const res = await service.getContextual(
+        orgAdmin,
+        'quotes',
+        'zoektermzondertreffer',
+      );
+      // bij een actieve zoekterm volgt GEEN fallback → exact één query, lege lijst
+      expect(mockPrisma.helpArticle.findMany).toHaveBeenCalledTimes(1);
+      expect(res.items).toHaveLength(0);
+    });
+
     it('org-voorrang: eigen-org artikel vóór globaal, daarna viewCount', async () => {
       mockPrisma.helpArticle.findMany.mockResolvedValueOnce([
         { id: 'global-pop', orgId: null, viewCount: 99, order: 0 },
@@ -300,7 +313,7 @@ describe('HelpService', () => {
       ]);
     });
 
-    it('respecteert limit (slice) maar total telt alle treffers', async () => {
+    it('respecteert de limit (slice)', async () => {
       const many = Array.from({ length: 8 }, (_, i) => ({
         id: `a${i}`,
         orgId: null,
@@ -310,7 +323,6 @@ describe('HelpService', () => {
       mockPrisma.helpArticle.findMany.mockResolvedValueOnce(many);
       const res = await service.getContextual(orgAdmin, 'quotes', undefined, 3);
       expect(res.items).toHaveLength(3);
-      expect(res.total).toBe(8);
     });
   });
 

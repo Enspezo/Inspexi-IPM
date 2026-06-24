@@ -142,16 +142,21 @@ export class HelpService {
   /**
    * Suggesties voor de huidige view. moduleKey-match (GIN-index op module_keys)
    * is primair; optionele vrije zoekterm matcht titel/excerpt/tags. Org-specifiek
-   * krijgt voorrang boven globaal. Bij geen treffers een fallback (meest bekeken)
-   * zodat het paneel nooit leeg is. `total` laat de UI "Meer" tonen.
+   * krijgt voorrang boven globaal. Zónder zoekterm valt een module zonder eigen
+   * artikelen terug op de meest-bekeken artikelen (paneel nooit leeg); mét een
+   * zoekterm geeft "geen treffers" een lege lijst (de UI toont "geen resultaten").
    */
   async getContextual(
     user: User,
     moduleKey?: string,
     q?: string,
     limit = 20,
-  ): Promise<{ items: unknown[]; total: number }> {
+  ): Promise<{ items: unknown[] }> {
     const include = { category: { select: { id: true, name: true, slug: true } } };
+    const orderBy: Prisma.HelpArticleOrderByWithRelationInput[] = [
+      { viewCount: 'desc' },
+      { order: 'asc' },
+    ];
     const base: Prisma.HelpArticleWhereInput = {
       status: 'PUBLISHED',
       ...this.visibilityWhere(user),
@@ -177,18 +182,23 @@ export class HelpService {
         : {}),
     };
 
+    // orderBy maakt de afkapping bij >take treffers deterministisch; de
+    // org-voorrang volgt daarna in JS.
     let items = await this.prisma.helpArticle.findMany({
       where: primaryWhere,
       include,
+      orderBy,
       take: 50,
     });
 
-    // Fallback: nooit een leeg paneel.
-    if (items.length === 0) {
+    // Fallback alleen zónder actieve zoekterm: een module zonder eigen artikelen
+    // mag niet leeg blijven, maar een zoekopdracht zonder treffers hoort "geen
+    // resultaten" te tonen i.p.v. ongerelateerde populaire artikelen.
+    if (items.length === 0 && !q) {
       items = await this.prisma.helpArticle.findMany({
         where: base,
         include,
-        orderBy: [{ viewCount: 'desc' }, { order: 'asc' }],
+        orderBy,
         take: limit,
       });
     }
@@ -201,7 +211,7 @@ export class HelpService {
       return a.order - b.order;
     });
 
-    return { items: items.slice(0, limit), total: items.length };
+    return { items: items.slice(0, limit) };
   }
 
   // ── Beheer: scope-resolutie ──────────────────────────────────────────────

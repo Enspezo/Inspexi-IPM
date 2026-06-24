@@ -24,7 +24,13 @@ export function HelpSuggestions({ moduleKey, q, onNavigate }: Props) {
   }
 
   const items = data?.items ?? [];
-  if (items.length === 0) return null;
+  if (items.length === 0) {
+    // Actief zoeken zonder treffers → duidelijke melding; anders (module-
+    // suggesties) toont de service een fallback, dus dit is dan zeldzaam.
+    return q ? (
+      <p className="py-2 text-sm text-gray-500">Geen resultaten voor “{q}”.</p>
+    ) : null;
+  }
 
   const visible = expanded ? items : items.slice(0, MAX_VISIBLE);
   const hiddenCount = items.length - MAX_VISIBLE;

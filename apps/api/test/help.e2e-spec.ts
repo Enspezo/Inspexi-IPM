@@ -341,18 +341,29 @@ describe('Help / Knowledge base (e2e)', () => {
     expect(ids).not.toContain(ctxOrg2Id); // cross-tenant isolatie
     // org-specifiek vóór globaal
     expect(ids.indexOf(ctxOrg1Id)).toBeLessThan(ids.indexOf(ctxGlobalId));
-    expect(typeof res.body.data.total).toBe('number');
   });
 
-  it('contextual: vrije zoekterm lekt geen artikel van een andere org', async () => {
+  it('contextual: vrije zoekterm vindt een eigen-org artikel (positief)', async () => {
+    const res = await request(app.getHttpServer())
+      .get(`/api/v1/help/articles/contextual?module=${CTX_MODULE}&q=Org1`)
+      .set(auth(org1Token))
+      .expect(200);
+    const ids = (res.body.data.items as { id: string }[]).map((a) => a.id);
+    expect(ids).toContain(ctxOrg1Id);
+    expect(ids).not.toContain(ctxOrg2Id);
+  });
+
+  it('contextual: vrije zoekterm lekt geen artikel van een andere org (geen fallback)', async () => {
     const res = await request(app.getHttpServer())
       .get(
         `/api/v1/help/articles/contextual?module=${CTX_MODULE}&q=${CTX_SECRET_TOKEN}`,
       )
       .set(auth(org1Token))
       .expect(200);
-    const ids = (res.body.data.items as { id: string }[]).map((a) => a.id);
-    expect(ids).not.toContain(ctxOrg2Id); // de zoekterm matcht alleen org2's titel
+    const items = res.body.data.items as { id: string }[];
+    // De zoekterm matcht alleen org2's titel → org1 krijgt geen treffers en
+    // GEEN fallback (geen ongerelateerde populaire artikelen, geen lek).
+    expect(items).toHaveLength(0);
   });
 
   it('contextual: fallback vult het paneel als de module geen treffers heeft', async () => {

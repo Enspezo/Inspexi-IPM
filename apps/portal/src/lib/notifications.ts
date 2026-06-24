@@ -26,7 +26,8 @@ export type NotificationModel =
   | 'PROJECTEN'
   | 'FOUTMELDINGEN'
   | 'INSPECTIEPLANNEN'
-  | 'CHAT';
+  | 'CHAT'
+  | 'SUPPORT';
 
 interface NotificationModelDef {
   key: NotificationModel;
@@ -128,6 +129,15 @@ export const NOTIFICATION_MODELS: NotificationModelDef[] = [
       NotificationType.CHAT_MENTION,
     ],
   },
+  {
+    key: 'SUPPORT',
+    label: 'Support',
+    types: [
+      NotificationType.SUPPORT_TICKET_AANGEMAAKT,
+      NotificationType.SUPPORT_TICKET_REACTIE,
+      NotificationType.SUPPORT_TICKET_STATUS,
+    ],
+  },
 ];
 
 /** NL-labels per NotificationType (enige bron). */
@@ -165,6 +175,9 @@ export const NOTIFICATION_TYPE_LABELS: Record<NotificationType, string> = {
   [NotificationType.CHAT_BERICHT]: 'Nieuw chatbericht',
   [NotificationType.CHAT_TEAM_BERICHT]: 'Nieuw team-chatbericht',
   [NotificationType.CHAT_MENTION]: 'Genoemd in een chat',
+  [NotificationType.SUPPORT_TICKET_AANGEMAAKT]: 'Nieuw supportticket',
+  [NotificationType.SUPPORT_TICKET_REACTIE]: 'Reactie op supportticket',
+  [NotificationType.SUPPORT_TICKET_STATUS]: 'Supportticket status gewijzigd',
 };
 
 /** Afgeleide lookup: type → model-key. */

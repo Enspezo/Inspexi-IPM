@@ -115,6 +115,9 @@ const ErrorReportsPage = lazy(() => import('@/pages/error-reports/error-reports-
 const HelpCenterPage = lazy(() => import('@/pages/help/help-center-page'));
 const HelpArticlePage = lazy(() => import('@/pages/help/help-article-page'));
 const HelpAdminPage = lazy(() => import('@/pages/help/help-admin-page'));
+const TicketsPage = lazy(() => import('@/pages/help/tickets/tickets-page'));
+const NewTicketPage = lazy(() => import('@/pages/help/tickets/new-ticket-page'));
+const TicketDetailPage = lazy(() => import('@/pages/help/tickets/ticket-detail-page'));
 const NotesPage = lazy(() => import('@/pages/notes/notes-page'));
 const FavoritesPage = lazy(() => import('@/pages/favorites/favorites-page'));
 const WorkOrdersPage = lazy(() => import('@/pages/work-orders/work-orders-page'));
@@ -200,6 +203,10 @@ export default function App() {
             <Route path="/help/category/:slug" element={<HelpCenterPage />} />
             <Route path="/help/article/:slug" element={<HelpArticlePage />} />
             <Route path="/help/admin" element={<HelpAdminPage />} />
+            {/* /new vóór /:id zodat "new" niet als ticket-id matcht */}
+            <Route path="/help/tickets" element={<TicketsPage />} />
+            <Route path="/help/tickets/new" element={<NewTicketPage />} />
+            <Route path="/help/tickets/:id" element={<TicketDetailPage />} />
             <Route path="/classification-models" element={<ClassificationModelsPage />} />
             <Route path="/classification-models/:id" element={<ClassificationModelDetailPage />} />
             <Route path="/norm-types" element={<NormTypesPage />} />

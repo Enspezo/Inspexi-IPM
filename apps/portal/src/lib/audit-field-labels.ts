@@ -241,6 +241,21 @@ const entityLabels: Record<string, Record<string, string>> = {
     lineTotal: 'Regeltotaal',
     sortOrder: 'Sortering',
   },
+  SupportTicket: {
+    ticketNumber: 'Ticketnummer',
+    subject: 'Onderwerp',
+    status: 'Status',
+    priority: 'Prioriteit',
+    category: 'Categorie',
+    contextModule: 'Module',
+    contextUrl: 'Context-URL',
+    createdById: 'Aangemaakt door',
+    assignedToId: 'Toegewezen aan',
+    firstResponseAt: 'Eerste reactie',
+    resolvedAt: 'Opgelost op',
+    closedAt: 'Gesloten op',
+    lastMessageAt: 'Laatste bericht',
+  },
 };
 
 export function getFieldLabel(entityType: string, field: string): string {

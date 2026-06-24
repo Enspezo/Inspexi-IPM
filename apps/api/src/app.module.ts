@@ -46,6 +46,7 @@ import { KvkModule } from './modules/kvk/kvk.module';
 import { VatModule } from './modules/vat/vat.module';
 import { ErrorReportsModule } from './modules/error-reports/error-reports.module';
 import { HelpModule } from './modules/help/help.module';
+import { SupportTicketsModule } from './modules/support-tickets/support-tickets.module';
 import { NotesModule } from './modules/notes/notes.module';
 import { ChatModule } from './modules/chat/chat.module';
 import { FavoritesModule } from './modules/favorites/favorites.module';
@@ -128,6 +129,7 @@ import { VoiceModule } from './modules/voice/voice.module';
     VatModule,
     ErrorReportsModule,
     HelpModule,
+    SupportTicketsModule,
     NotesModule,
     ChatModule,
     FavoritesModule,

@@ -127,6 +127,22 @@ const enumLabels: Record<string, string> = {
   WORKFLOW_COMPLEET: 'Workflow Compleet',
   WEBHOOKS: 'Webhooks (add-on)',
   CUSTOM_FIELDS: 'Aangepaste velden (add-on)',
+
+  // SupportTicket (PRD-10) — NIEUW/IN_BEHANDELING/WACHT_OP_KLANT al hierboven
+  OPGELOST: 'Opgelost',
+  GESLOTEN: 'Gesloten',
+  // SupportTicketPriority
+  LAAG: 'Laag',
+  NORMAAL: 'Normaal',
+  HOOG: 'Hoog',
+  URGENT: 'Urgent',
+  // SupportTicketCategory
+  VRAAG: 'Vraag',
+  PROBLEEM: 'Probleem',
+  BUG: 'Bug',
+  FEATURE_REQUEST: 'Wens',
+  FACTUUR: 'Factuur',
+  OVERIG: 'Overig',
 };
 
 /** Currency fields that should be formatted as EUR */

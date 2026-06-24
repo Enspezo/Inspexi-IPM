@@ -13,6 +13,8 @@ import {
   ChatThreadStatus,
   ContactType,
   HelpArticleStatus,
+  SupportTicketStatus,
+  SupportTicketPriority,
   LogType,
   PlanningStatus,
   Priority,
@@ -238,4 +240,19 @@ export const HELP_ARTICLE_STATUS: StatusMap = {
   [HelpArticleStatus.DRAFT]: { label: 'Concept', classes: 'bg-gray-100 text-gray-700' },
   [HelpArticleStatus.PUBLISHED]: { label: 'Gepubliceerd', classes: 'bg-green-100 text-green-800' },
   [HelpArticleStatus.ARCHIVED]: { label: 'Gearchiveerd', classes: 'bg-amber-100 text-amber-800' },
+};
+
+export const SUPPORT_TICKET_STATUS: StatusMap = {
+  [SupportTicketStatus.NIEUW]: { label: 'Nieuw', classes: 'bg-blue-100 text-blue-800' },
+  [SupportTicketStatus.IN_BEHANDELING]: { label: 'In behandeling', classes: 'bg-amber-100 text-amber-800' },
+  [SupportTicketStatus.WACHT_OP_KLANT]: { label: 'Wacht op klant', classes: 'bg-purple-100 text-purple-800' },
+  [SupportTicketStatus.OPGELOST]: { label: 'Opgelost', classes: 'bg-green-100 text-green-800' },
+  [SupportTicketStatus.GESLOTEN]: { label: 'Gesloten', classes: 'bg-gray-100 text-gray-700' },
+};
+
+export const SUPPORT_TICKET_PRIORITY: StatusMap = {
+  [SupportTicketPriority.LAAG]: { label: 'Laag', classes: 'bg-gray-100 text-gray-700' },
+  [SupportTicketPriority.NORMAAL]: { label: 'Normaal', classes: 'bg-blue-100 text-blue-800' },
+  [SupportTicketPriority.HOOG]: { label: 'Hoog', classes: 'bg-orange-100 text-orange-800' },
+  [SupportTicketPriority.URGENT]: { label: 'Urgent', classes: 'bg-red-100 text-red-800' },
 };

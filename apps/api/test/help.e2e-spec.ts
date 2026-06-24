@@ -292,6 +292,54 @@ describe('Help / Knowledge base (e2e)', () => {
     expect(res.body.data.orgId).toBeNull();
   });
 
+  // ── Categorieën (beheer) ──────────────────────────────────────────────────
+  it('ORG_ADMIN kan een globale categorie niet wijzigen (403)', async () => {
+    await request(app.getHttpServer())
+      .patch(`/api/v1/help/admin/categories/${globalCategoryId}`)
+      .set(auth(org1Token))
+      .send({ name: 'hack' })
+      .expect(403);
+  });
+
+  it('ORG_ADMIN kan een globale categorie niet verwijderen (403)', async () => {
+    await request(app.getHttpServer())
+      .delete(`/api/v1/help/admin/categories/${globalCategoryId}`)
+      .set(auth(org1Token))
+      .expect(403);
+  });
+
+  it('SUPERUSER kan een categorie met artikelen niet verwijderen (400)', async () => {
+    await request(app.getHttpServer())
+      .delete(`/api/v1/help/admin/categories/${globalCategoryId}`)
+      .set(auth(superToken))
+      .expect(400);
+  });
+
+  it('ORG_ADMIN maakt een eigen-org categorie (geforceerd op eigen org) en verwijdert die', async () => {
+    const created = await request(app.getHttpServer())
+      .post('/api/v1/help/admin/categories')
+      .set(auth(org1Token))
+      .send({ name: 'E2E Org1 categorie' })
+      .expect(201);
+    const catId = created.body.data.id as string;
+    createdCategoryIds.push(catId);
+    expect(created.body.data.orgId).not.toBeNull(); // ORG_ADMIN geforceerd op eigen org
+
+    // leeg → mag verwijderd worden
+    await request(app.getHttpServer())
+      .delete(`/api/v1/help/admin/categories/${catId}`)
+      .set(auth(org1Token))
+      .expect(200);
+  });
+
+  it('INSPECTEUR mag geen categorie aanmaken (403)', async () => {
+    await request(app.getHttpServer())
+      .post('/api/v1/help/admin/categories')
+      .set(auth(inspecteurToken))
+      .send({ name: 'mag niet' })
+      .expect(403);
+  });
+
   it('feedback met ongeldige uuid geeft 400 (ParseUUIDPipe, geen Prisma-500)', async () => {
     await request(app.getHttpServer())
       .post('/api/v1/help/articles/not-a-uuid/feedback')

@@ -226,6 +226,64 @@ describe('HelpService', () => {
     });
   });
 
+  describe('createCategory', () => {
+    beforeEach(() => {
+      mockPrisma.helpCategory.findFirst.mockResolvedValue(null); // slug vrij
+      mockPrisma.helpCategory.create.mockImplementation(({ data }) =>
+        Promise.resolve({ id: 'newcat', ...data }),
+      );
+    });
+
+    it('ORG_ADMIN zonder orgId schrijft onder eigen org', async () => {
+      const res = await service.createCategory(orgAdmin, {
+        name: 'Org Handleiding',
+      } as never);
+      expect(res.orgId).toBe('orgA');
+      expect(res.slug).toBe('org-handleiding');
+    });
+
+    it('SUPERUSER zonder orgId schrijft globaal (null)', async () => {
+      const res = await service.createCategory(superuser, {
+        name: 'Globale categorie',
+      } as never);
+      expect(res.orgId).toBeNull();
+    });
+
+    it('ORG_ADMIN mag geen categorie voor een andere org maken (403)', async () => {
+      await expect(
+        service.createCategory(orgAdmin, { name: 'X', orgId: 'orgB' } as never),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+    });
+  });
+
+  describe('updateCategory', () => {
+    it('ORG_ADMIN kan een globale categorie niet wijzigen (403)', async () => {
+      mockPrisma.helpCategory.findUnique.mockResolvedValue({
+        id: 'c1',
+        orgId: null,
+        slug: 's',
+      });
+      await expect(
+        service.updateCategory(orgAdmin, 'c1', { name: 'x' } as never),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+    });
+
+    it('SUPERUSER kan een globale categorie wel wijzigen', async () => {
+      mockPrisma.helpCategory.findUnique.mockResolvedValue({
+        id: 'c1',
+        orgId: null,
+        slug: 's',
+      });
+      mockPrisma.helpCategory.update.mockImplementation(({ data }) =>
+        Promise.resolve({ id: 'c1', ...data }),
+      );
+      const res = await service.updateCategory(superuser, 'c1', {
+        name: 'Nieuwe naam',
+      } as never);
+      expect(res.name).toBe('Nieuwe naam');
+    });
+  });
+
   describe('deleteCategory', () => {
     it('weigert een niet-lege categorie te verwijderen', async () => {
       mockPrisma.helpCategory.findUnique.mockResolvedValue({
@@ -236,6 +294,31 @@ describe('HelpService', () => {
       mockPrisma.helpCategory.count.mockResolvedValue(0);
       await expect(service.deleteCategory(superuser, 'c1')).rejects.toBeInstanceOf(
         BadRequestException,
+      );
+    });
+
+    it('verwijdert een lege categorie', async () => {
+      mockPrisma.helpCategory.findUnique.mockResolvedValue({
+        id: 'c1',
+        orgId: null,
+      });
+      mockPrisma.helpArticle.count.mockResolvedValue(0);
+      mockPrisma.helpCategory.count.mockResolvedValue(0);
+      mockPrisma.helpCategory.delete.mockResolvedValue({ id: 'c1' });
+      const res = await service.deleteCategory(superuser, 'c1');
+      expect(res).toEqual({ id: 'c1' });
+      expect(mockPrisma.helpCategory.delete).toHaveBeenCalledWith({
+        where: { id: 'c1' },
+      });
+    });
+
+    it('ORG_ADMIN kan een globale categorie niet verwijderen (403)', async () => {
+      mockPrisma.helpCategory.findUnique.mockResolvedValue({
+        id: 'c1',
+        orgId: null,
+      });
+      await expect(service.deleteCategory(orgAdmin, 'c1')).rejects.toBeInstanceOf(
+        ForbiddenException,
       );
     });
   });

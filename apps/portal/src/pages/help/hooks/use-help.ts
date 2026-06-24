@@ -128,3 +128,20 @@ export function useCreateHelpCategory() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['help'] }),
   });
 }
+
+export function useUpdateHelpCategory() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, data }: { id: string; data: Partial<HelpCategory> }) =>
+      apiClient.patch<HelpCategory>(`/help/admin/categories/${id}`, data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['help'] }),
+  });
+}
+
+export function useDeleteHelpCategory() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => apiClient.delete(`/help/admin/categories/${id}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['help'] }),
+  });
+}

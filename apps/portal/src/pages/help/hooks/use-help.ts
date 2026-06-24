@@ -71,13 +71,17 @@ export function useHelpArticleFeedback() {
 }
 
 // ── Beheer ─────────────────────────────────────────────────────────────────
-export function useAdminHelpArticles(params: ArticleListParams = {}) {
+export function useAdminHelpArticles(
+  params: ArticleListParams = {},
+  options: { enabled?: boolean } = {},
+) {
   return useQuery<PaginatedResponse<HelpArticle>>({
     queryKey: ['help', 'admin', 'articles', params],
     queryFn: () =>
       apiClient.get<PaginatedResponse<HelpArticle>>(
         `/help/admin/articles${toQuery(params)}`,
       ),
+    enabled: options.enabled ?? true,
   });
 }
 

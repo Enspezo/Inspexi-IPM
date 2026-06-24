@@ -87,6 +87,22 @@ describe('HelpService', () => {
       expect(mockPrisma.$executeRaw).toHaveBeenCalled();
       expect(mockPrisma.helpArticle.update).not.toHaveBeenCalled();
     });
+
+    it('leest met org-voorrang (org wint van globaal; superuser → globaal eerst)', async () => {
+      mockPrisma.helpArticle.findFirst.mockResolvedValue({ id: 'a1' });
+      mockPrisma.$executeRaw.mockResolvedValue(1);
+
+      await service.getArticleBySlug(orgAdmin, 'x');
+      expect(mockPrisma.helpArticle.findFirst.mock.calls[0][0].orderBy).toEqual({
+        orgId: { sort: 'desc', nulls: 'last' },
+      });
+
+      mockPrisma.helpArticle.findFirst.mockClear();
+      await service.getArticleBySlug(superuser, 'x');
+      expect(mockPrisma.helpArticle.findFirst.mock.calls[0][0].orderBy).toEqual({
+        orgId: { sort: 'asc', nulls: 'first' },
+      });
+    });
   });
 
   describe('scope-enforcement', () => {

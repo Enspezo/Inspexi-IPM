@@ -37,6 +37,25 @@ export class HelpService {
     return { OR: [{ orgId: null }, { orgId: user.orgId }] };
   }
 
+  /**
+   * Deterministische volgorde voor lezen-op-slug. Door @@unique([orgId, slug])
+   * kunnen een globaal én een org-artikel dezelfde slug hebben.
+   * - Gewone gebruiker (scope = {eigen org, globaal}) → org-specifiek wint (nulls-last),
+   *   zodat een org-override consistent voorrang heeft op de globale versie.
+   * - SUPERUSER (scope = alles) → globaal eerst (nulls-first) voor determinisme.
+   */
+  private articleSlugOrderBy(user: User): Prisma.HelpArticleOrderByWithRelationInput {
+    return this.isSuperuser(user)
+      ? { orgId: { sort: 'asc', nulls: 'first' } }
+      : { orgId: { sort: 'desc', nulls: 'last' } };
+  }
+
+  private categorySlugOrderBy(user: User): Prisma.HelpCategoryOrderByWithRelationInput {
+    return this.isSuperuser(user)
+      ? { orgId: { sort: 'asc', nulls: 'first' } }
+      : { orgId: { sort: 'desc', nulls: 'last' } };
+  }
+
   // ── Categorieën (lezen) ──────────────────────────────────────────────────
   async listCategories(user: User) {
     return this.prisma.helpCategory.findMany({
@@ -49,6 +68,7 @@ export class HelpService {
     const category = assertFound(
       await this.prisma.helpCategory.findFirst({
         where: { slug, ...this.categoryVisibilityWhere(user) },
+        orderBy: this.categorySlugOrderBy(user),
       }),
       'Categorie',
     );
@@ -86,6 +106,7 @@ export class HelpService {
       await this.prisma.helpArticle.findFirst({
         where: { slug, status: 'PUBLISHED', ...this.visibilityWhere(user) },
         include: { category: { select: { id: true, name: true, slug: true } } },
+        orderBy: this.articleSlugOrderBy(user),
       }),
       'Artikel',
     );

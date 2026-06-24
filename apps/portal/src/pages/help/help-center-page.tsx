@@ -1,8 +1,17 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { PageHeader } from '@/components/layout/page-header';
 import { Card, Input, Spinner, ErrorBox } from '@/components/ui';
 import { useHelpCategories, useHelpCategory, useHelpArticles } from './hooks/use-help';
+
+function useDebounce<T>(value: T, delay: number): T {
+  const [debounced, setDebounced] = useState<T>(value);
+  useEffect(() => {
+    const timer = setTimeout(() => setDebounced(value), delay);
+    return () => clearTimeout(timer);
+  }, [value, delay]);
+  return debounced;
+}
 
 export default function HelpCenterPage() {
   const { slug } = useParams<{ slug?: string }>();
@@ -11,8 +20,12 @@ export default function HelpCenterPage() {
 
 function CenterView() {
   const [search, setSearch] = useState('');
+  const debouncedSearch = useDebounce(search.trim(), 300);
   const { data: categories, isLoading, error } = useHelpCategories();
-  const { data: results } = useHelpArticles({ search: search || undefined, limit: 10 });
+  const { data: results } = useHelpArticles({
+    search: debouncedSearch || undefined,
+    limit: 10,
+  });
 
   if (isLoading) {
     return (
@@ -36,7 +49,7 @@ function CenterView() {
         onChange={(e) => setSearch(e.target.value)}
       />
 
-      {search && (
+      {debouncedSearch && (
         <Card title="Zoekresultaten">
           <ul className="divide-y divide-gray-100">
             {results?.data.map((a) => (
@@ -59,7 +72,7 @@ function CenterView() {
         </Card>
       )}
 
-      {!search && (
+      {!debouncedSearch && (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {categories?.map((c) => (
             <Link key={c.id} to={`/help/category/${c.slug}`} className="block">

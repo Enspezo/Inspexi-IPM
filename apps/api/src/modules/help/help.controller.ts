@@ -1,4 +1,12 @@
-import { Controller, Get, Post, Param, Query, Body } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Param,
+  Query,
+  Body,
+  ParseUUIDPipe,
+} from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { User } from '@prisma/client';
 import { ALL_STAFF } from '@/common/auth/roles';
@@ -42,7 +50,7 @@ export class HelpController {
   @Roles(...ALL_STAFF)
   async feedback(
     @CurrentUser() user: User,
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: HelpFeedbackDto,
   ) {
     return {

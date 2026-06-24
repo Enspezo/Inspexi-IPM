@@ -25,9 +25,12 @@ export default function HelpAdminPage() {
   const { user } = useAuth();
   const confirm = useConfirm();
   const { showToast } = useToast();
-  const canManage = user?.roles?.some((r) => ADMIN_ROLES.includes(r));
+  const canManage = !!user?.roles?.some((r) => ADMIN_ROLES.includes(r));
 
-  const { data, isLoading, error } = useAdminHelpArticles({ limit: 50 });
+  const { data, isLoading, error } = useAdminHelpArticles(
+    { limit: 50 },
+    { enabled: canManage },
+  );
   const { data: categories } = useHelpCategories();
   const publish = usePublishHelpArticle();
   const remove = useDeleteHelpArticle();

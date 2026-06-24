@@ -39,6 +39,9 @@ describe('Help / Knowledge base (e2e)', () => {
   let draftArticleId: string;
   let org1ArticleId: string;
   let org2ArticleId: string;
+  let globalCollisionId: string;
+  let org1CollisionId: string;
+  const COLLISION_SLUG = 'e2e-collision-slug';
 
   async function login(email: string, password = 'Password123!') {
     const res = await request(app.getHttpServer())
@@ -140,6 +143,26 @@ describe('Help / Knowledge base (e2e)', () => {
     });
     org2ArticleId = o2.id;
     await publish(org2Token, org2ArticleId);
+
+    // Slug-botsing tussen scopes: zelfde slug globaal én in org1 (toegestaan door
+    // @@unique([orgId, slug])). Org-override moet consistent winnen voor org1.
+    const gc = await createArticle(superToken, {
+      categoryId: globalCategoryId,
+      title: 'E2E Collision Global',
+      slug: COLLISION_SLUG,
+      body: 'global',
+    });
+    globalCollisionId = gc.id;
+    await publish(superToken, globalCollisionId);
+
+    const o1c = await createArticle(org1Token, {
+      categoryId: globalCategoryId,
+      title: 'E2E Collision Org1',
+      slug: COLLISION_SLUG,
+      body: 'org1',
+    });
+    org1CollisionId = o1c.id;
+    await publish(org1Token, org1CollisionId);
   });
 
   afterAll(async () => {
@@ -249,6 +272,32 @@ describe('Help / Knowledge base (e2e)', () => {
       .set(auth(inspecteurToken))
       .send({ categoryId: globalCategoryId, title: 'x', body: 'y' })
       .expect(403);
+  });
+
+  it('org-override wint bij slug-botsing tussen scopes', async () => {
+    const res = await request(app.getHttpServer())
+      .get(`/api/v1/help/articles/${COLLISION_SLUG}`)
+      .set(auth(org1Token))
+      .expect(200);
+    expect(res.body.data.id).toBe(org1CollisionId);
+    expect(res.body.data.orgId).not.toBeNull();
+  });
+
+  it('andere org zonder override krijgt de globale versie', async () => {
+    const res = await request(app.getHttpServer())
+      .get(`/api/v1/help/articles/${COLLISION_SLUG}`)
+      .set(auth(org2Token))
+      .expect(200);
+    expect(res.body.data.id).toBe(globalCollisionId);
+    expect(res.body.data.orgId).toBeNull();
+  });
+
+  it('feedback met ongeldige uuid geeft 400 (ParseUUIDPipe, geen Prisma-500)', async () => {
+    await request(app.getHttpServer())
+      .post('/api/v1/help/articles/not-a-uuid/feedback')
+      .set(auth(org1Token))
+      .send({ helpful: true })
+      .expect(400);
   });
 
   it('feedback hoogt de teller op', async () => {

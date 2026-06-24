@@ -2606,3 +2606,47 @@ export interface UserPresence {
 export interface ChatUnreadResponse {
   count: number;
 }
+
+// ── Helpsysteem (IMP_PRD-10) ────────────────────────────────────────────────
+export enum HelpArticleStatus {
+  DRAFT = 'DRAFT',
+  PUBLISHED = 'PUBLISHED',
+  ARCHIVED = 'ARCHIVED',
+}
+
+export interface HelpCategory {
+  id: string;
+  orgId: string | null; // null = globaal
+  slug: string;
+  name: string;
+  description: string | null;
+  icon: string | null;
+  order: number;
+  parentId: string | null;
+  isPublished: boolean;
+  createdAt: string;
+  updatedAt: string;
+  articles?: HelpArticle[]; // bij categorie-detail
+}
+
+export interface HelpArticle {
+  id: string;
+  orgId: string | null; // null = globaal
+  categoryId: string;
+  slug: string;
+  title: string;
+  excerpt: string | null;
+  body: string;
+  status: HelpArticleStatus;
+  tags: string[];
+  moduleKeys: string[];
+  order: number;
+  viewCount: number;
+  helpfulYes: number;
+  helpfulNo: number;
+  authorId: string | null;
+  publishedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  category?: { id: string; name: string; slug: string } | null;
+}

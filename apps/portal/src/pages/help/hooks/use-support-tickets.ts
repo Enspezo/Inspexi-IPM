@@ -10,6 +10,8 @@ import type {
 
 interface TicketListParams {
   scope?: 'mine' | 'org';
+  /** Alleen voor SUPERUSER: filter de wachtrij op één organisatie. */
+  orgId?: string;
   status?: string;
   page?: number;
   limit?: number;
@@ -33,6 +35,7 @@ interface UpdateTicketInput {
 export function useSupportTickets(params: TicketListParams = {}) {
   const q = new URLSearchParams();
   if (params.scope) q.set('scope', params.scope);
+  if (params.orgId) q.set('orgId', params.orgId);
   if (params.status) q.set('status', params.status);
   if (params.page) q.set('page', String(params.page));
   if (params.limit) q.set('limit', String(params.limit));

@@ -160,6 +160,26 @@ describe('SupportTicketsService', () => {
       const where = mockPrisma.supportTicket.findMany.mock.calls[0][0].where;
       expect(where.createdById).toBe('mg');
     });
+
+    it('superuser met orgId filtert de wachtrij op die organisatie', async () => {
+      await service.findAll(superuser, { orgId: 'orgB' });
+      const where = mockPrisma.supportTicket.findMany.mock.calls[0][0].where;
+      expect(where.orgId).toBe('orgB');
+      expect(where.createdById).toBeUndefined();
+    });
+
+    it('niet-superuser negeert orgId (geen cross-tenant lek)', async () => {
+      await service.findAll(inspecteur, { orgId: 'orgB' });
+      const where = mockPrisma.supportTicket.findMany.mock.calls[0][0].where;
+      expect(where.orgId).toBe('orgA');
+      expect(where.createdById).toBe('insp');
+    });
+
+    it('management negeert orgId-param (blijft eigen org)', async () => {
+      await service.findAll(manager, { scope: 'org', orgId: 'orgB' });
+      const where = mockPrisma.supportTicket.findMany.mock.calls[0][0].where;
+      expect(where.orgId).toBe('orgA');
+    });
   });
 
   describe('stats', () => {

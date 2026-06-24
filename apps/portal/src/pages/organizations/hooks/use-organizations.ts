@@ -6,11 +6,12 @@ import type {
   OrganizationEntitlements,
 } from '@/lib/entitlements';
 
-export function useOrganizations() {
+export function useOrganizations(opts?: { enabled?: boolean }) {
   return useQuery<Organization[]>({
     queryKey: ['organizations'],
     queryFn: () => apiClient.get<Organization[]>('/organizations'),
     staleTime: 15 * 60 * 1000, // 15 min — org list (superuser), rarely changes
+    enabled: opts?.enabled ?? true,
   });
 }
 

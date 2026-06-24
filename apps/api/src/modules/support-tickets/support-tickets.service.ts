@@ -35,6 +35,7 @@ const userSelect = {
 const ticketInclude = {
   createdBy: { select: userSelect },
   assignedTo: { select: userSelect },
+  organization: { select: { id: true, name: true } },
 } as const;
 
 @Injectable()
@@ -54,7 +55,7 @@ export class SupportTicketsService {
 
   // ── Lijst ──────────────────────────────────────────────────────────────────
   async findAll(user: User, q: ListSupportTicketsDto) {
-    const { scope, status, page = 1, limit = 20, sortOrder = 'desc' } = q;
+    const { scope, status, orgId, page = 1, limit = 20, sortOrder = 'desc' } = q;
 
     const where: Prisma.SupportTicketWhereInput = {
       isDeleted: false,
@@ -62,9 +63,8 @@ export class SupportTicketsService {
     };
 
     if (this.isSuperuser(user)) {
-      // SUPERUSER zonder org → support-wachtrij over alle organisaties
-      // (orgScope geeft {} terug, dus geen org-filter).
-      Object.assign(where, orgScope(user));
+      // SUPERUSER: support-wachtrij over alle organisaties; optioneel op één org filteren.
+      if (orgId) where.orgId = orgId;
     } else {
       where.orgId = user.orgId!;
       // 'org' alleen voor management; anders (of bij 'mine') alleen eigen tickets.

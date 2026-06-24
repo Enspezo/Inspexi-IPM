@@ -2715,5 +2715,6 @@ export interface SupportTicket {
   updatedAt: string;
   createdBy?: UserSummary;
   assignedTo?: UserSummary | null;
+  organization?: { id: string; name: string } | null;
   messages?: SupportTicketMessage[];
 }

@@ -1,17 +1,7 @@
-// Frontend-spiegel van de backend feature-catalogus
-// (apps/api/src/modules/entitlements/feature-catalog.ts). Het klantportaal draait
-// volledig op één feature (BASIS_INSPECTIES, PRD §2.2), maar we houden de volledige
-// key-lijst aan voor een type-veilige, herbruikbare gating-laag.
-export const FEATURE_KEYS = [
-  'BASIS_CRM',
-  'CRM_COMPLEET',
-  'BASIS_UITVOERING',
-  'UITVOERING_COMPLEET',
-  'BASIS_INSPECTIES',
-  'BASIS_WORKFLOW',
-  'WORKFLOW_COMPLEET',
-  'WEBHOOKS',
-  'CUSTOM_FIELDS',
-] as const;
-
-export type FeatureKey = (typeof FEATURE_KEYS)[number];
+// Re-export van het gedeelde workspace-pakket @inspexi/entitlements — de
+// bron-van-waarheid voor de SaaS-feature-keys (gedeeld met de backend). Het
+// klantportaal draait volledig op één feature (BASIS_INSPECTIES, PRD §2.2), maar
+// houdt de volledige, type-veilige key-lijst aan. Dit dunne bestand houdt het
+// bestaande importpad (`@/lib/features`) intact.
+export { FEATURE_KEYS } from '@inspexi/entitlements';
+export type { FeatureKey } from '@inspexi/entitlements';

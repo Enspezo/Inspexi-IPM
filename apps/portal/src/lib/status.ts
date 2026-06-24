@@ -256,3 +256,11 @@ export const SUPPORT_TICKET_PRIORITY: StatusMap = {
   [SupportTicketPriority.HOOG]: { label: 'Hoog', classes: 'bg-orange-100 text-orange-800' },
   [SupportTicketPriority.URGENT]: { label: 'Urgent', classes: 'bg-red-100 text-red-800' },
 };
+
+/** IMP_PRD-10 Fase 5 — support-toegang logacties. */
+export const SUPPORT_ACCESS_ACTION: StatusMap = {
+  ENABLED: { label: 'Ingeschakeld', classes: 'bg-green-100 text-green-800' },
+  DISABLED: { label: 'Uitgeschakeld', classes: 'bg-gray-100 text-gray-700' },
+  EXPIRED: { label: 'Verlopen', classes: 'bg-amber-100 text-amber-800' },
+  ACCESSED: { label: 'Ingezien', classes: 'bg-blue-100 text-blue-800' },
+};

@@ -14,6 +14,7 @@ import { FeatureGuard } from './common/guards/feature.guard';
 import { AppThrottlerGuard } from './common/guards/app-throttler.guard';
 import { AllExceptionsFilter } from './common/filters';
 import { AuditContextInterceptor } from './common/interceptors/audit-context.interceptor';
+import { SupportAccessInterceptor } from './common/interceptors/support-access.interceptor';
 import { EmailModule } from './common/services/email.module';
 import { TenantCacheModule } from './common/services/tenant-cache.module';
 import { EntitlementsModule } from './modules/entitlements/entitlements.module';
@@ -181,6 +182,12 @@ import { VoiceModule } from './modules/voice/voice.module';
     {
       provide: APP_INTERCEPTOR,
       useClass: AuditContextInterceptor,
+    },
+    // IMP_PRD-10 Fase 5 — logt ACCESSED wanneer een SUPERUSER een org-subdomein
+    // bekijkt terwijl support-toegang aanstaat (org-status uit de tenant-cache).
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: SupportAccessInterceptor,
     },
     {
       provide: APP_GUARD,

@@ -1,4 +1,4 @@
-import { IsIn, IsOptional, IsEnum, IsInt, Min } from 'class-validator';
+import { IsIn, IsOptional, IsEnum, IsInt, IsUUID, Min } from 'class-validator';
 import { Type } from 'class-transformer';
 import { SupportTicketStatus } from '@prisma/client';
 
@@ -7,6 +7,11 @@ export class ListSupportTicketsDto {
   @IsOptional()
   @IsIn(['mine', 'org'])
   scope?: 'mine' | 'org';
+
+  /** Alleen voor SUPERUSER: filter de wachtrij op één organisatie. */
+  @IsOptional()
+  @IsUUID()
+  orgId?: string;
 
   @IsOptional()
   @IsEnum(SupportTicketStatus)

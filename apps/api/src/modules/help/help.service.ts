@@ -138,6 +138,66 @@ export class HelpService {
     });
   }
 
+  // ── Contextuele suggesties (Fase 3) ──────────────────────────────────────
+  /**
+   * Suggesties voor de huidige view. moduleKey-match (GIN-index op module_keys)
+   * is primair; optionele vrije zoekterm matcht titel/excerpt/tags. Org-specifiek
+   * krijgt voorrang boven globaal. Bij geen treffers een fallback (meest bekeken)
+   * zodat het paneel nooit leeg is. `total` laat de UI "Meer" tonen.
+   */
+  async getContextual(
+    user: User,
+    moduleKey?: string,
+    q?: string,
+    limit = 20,
+  ): Promise<{ items: unknown[]; total: number }> {
+    const include = { category: { select: { id: true, name: true, slug: true } } };
+    const base: Prisma.HelpArticleWhereInput = {
+      status: 'PUBLISHED',
+      ...this.visibilityWhere(user),
+    };
+
+    const primaryWhere: Prisma.HelpArticleWhereInput = {
+      ...base,
+      ...(moduleKey ? { moduleKeys: { hasSome: [moduleKey] } } : {}),
+      ...(q
+        ? {
+            OR: [
+              { title: { contains: q, mode: 'insensitive' } },
+              { excerpt: { contains: q, mode: 'insensitive' } },
+              { tags: { hasSome: [q.toLowerCase()] } },
+            ],
+          }
+        : {}),
+    };
+
+    let items = await this.prisma.helpArticle.findMany({
+      where: primaryWhere,
+      include,
+      take: 50,
+    });
+
+    // Fallback: nooit een leeg paneel.
+    if (items.length === 0) {
+      items = await this.prisma.helpArticle.findMany({
+        where: base,
+        include,
+        orderBy: [{ viewCount: 'desc' }, { order: 'asc' }],
+        take: limit,
+      });
+    }
+
+    // Rangschikking: org-specifiek vóór globaal, daarna meest bekeken / volgorde.
+    items.sort((a, b) => {
+      const orgRank = Number(b.orgId !== null) - Number(a.orgId !== null);
+      if (orgRank !== 0) return orgRank;
+      if (b.viewCount !== a.viewCount) return b.viewCount - a.viewCount;
+      return a.order - b.order;
+    });
+
+    return { items: items.slice(0, limit), total: items.length };
+  }
+
   // ── Beheer: scope-resolutie ──────────────────────────────────────────────
   /** Bepaalt de orgId waaronder geschreven wordt + bewaakt schrijfrechten. */
   private resolveWriteOrgId(user: User, requestedOrgId?: string | null): string | null {

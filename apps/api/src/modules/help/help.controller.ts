@@ -12,7 +12,7 @@ import { User } from '@prisma/client';
 import { ALL_STAFF } from '@/common/auth/roles';
 import { Roles, CurrentUser } from '@/common/decorators';
 import { HelpService } from './help.service';
-import { ListHelpArticlesDto, HelpFeedbackDto } from './dto';
+import { ListHelpArticlesDto, HelpFeedbackDto, ContextualHelpDto } from './dto';
 
 @ApiTags('Help')
 @ApiBearerAuth()
@@ -38,6 +38,15 @@ export class HelpController {
   @ApiOperation({ summary: 'Gepubliceerde artikelen (gefilterd op zichtbaarheid)' })
   async articles(@CurrentUser() user: User, @Query() q: ListHelpArticlesDto) {
     return { success: true, data: await this.help.listArticles(user, q) };
+  }
+
+  // Vóór articles/:slug zodat "contextual" niet als slug wordt opgevat.
+  @Get('articles/contextual')
+  @Roles(...ALL_STAFF)
+  @ApiOperation({ summary: 'Contextuele KB-suggesties voor de huidige view' })
+  async contextual(@CurrentUser() user: User, @Query() q: ContextualHelpDto) {
+    const data = await this.help.getContextual(user, q.module, q.q, q.limit ?? 20);
+    return { success: true, data };
   }
 
   @Get('articles/:slug')

@@ -13,6 +13,7 @@ import { QuickCreateButton } from '@/components/layout/quick-create-button';
 import { ChatButton } from '@/components/chat';
 import { TaskStatus } from '@/types';
 import type { Notification } from '@/types';
+import { getNotificationRoute } from '@/lib/notifications';
 
 function formatRelativeTime(dateStr: string): string {
   const now = new Date();
@@ -27,13 +28,6 @@ function formatRelativeTime(dateStr: string): string {
   if (diffHour < 24) return `${diffHour} uur geleden`;
   if (diffDay < 7) return `${diffDay} dag${diffDay > 1 ? 'en' : ''} geleden`;
   return date.toLocaleDateString('nl-NL');
-}
-
-function getEntityRoute(notif: Notification): string | null {
-  if (!notif.entityType || !notif.entityId) return null;
-  if (notif.entityType === 'quote') return `/quotes/${notif.entityId}`;
-  if (notif.entityType === 'request') return `/requests/${notif.entityId}`;
-  return null;
 }
 
 export function Header() {
@@ -81,7 +75,7 @@ export function Header() {
       markRead.mutate(notif.id);
     }
     setIsNotifOpen(false);
-    const route = getEntityRoute(notif);
+    const route = getNotificationRoute(notif);
     if (route) navigate(route);
   };
 

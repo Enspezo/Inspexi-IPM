@@ -8,7 +8,14 @@ import {
   SupportTicketStatus,
 } from '@prisma/client';
 import { PrismaService } from '@/prisma/prisma.service';
-import { paginate, assertFound, orgScope, requireOrg, MANAGEMENT_ROLES } from '@/common';
+import {
+  paginate,
+  assertFound,
+  assertSameOrg,
+  orgScope,
+  requireOrg,
+  MANAGEMENT_ROLES,
+} from '@/common';
 import { NotificationsService } from '../notifications/notifications.service';
 import {
   CreateSupportTicketDto,
@@ -251,7 +258,9 @@ export class SupportTicketsService {
         where: { id },
         data: {
           lastMessageAt: new Date(),
-          ...(isSupport && !ticket.firstResponseAt
+          // firstResponseAt = eerste klant-zichtbare support-reactie (interne
+          // notities tellen niet mee als "eerste reactie").
+          ...(isSupport && !dto.isInternal && !ticket.firstResponseAt
             ? { firstResponseAt: new Date() }
             : {}),
           // Klant reageert op 'wacht op klant' → terug naar 'in behandeling'.
@@ -304,6 +313,10 @@ export class SupportTicketsService {
     if (!canEdit) {
       throw new ForbiddenException('Geen rechten om dit ticket te wijzigen');
     }
+
+    // Voorkom cross-tenant toewijzing: de assignee moet bij de eigen org horen
+    // (no-op voor SUPERUSER → die mag over alle orgs toewijzen).
+    await assertSameOrg(this.prisma.user, dto.assignedToId, user.orgId, 'Gebruiker');
 
     const data: Prisma.SupportTicketUpdateInput = {};
     if (dto.priority) data.priority = dto.priority;

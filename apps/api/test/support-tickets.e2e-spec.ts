@@ -29,6 +29,7 @@ describe('Support tickets (e2e)', () => {
 
   let superUserId: string;
   let inspUserId: string;
+  let org2UserId: string;
 
   const createdTicketIds: string[] = [];
 
@@ -93,12 +94,14 @@ describe('Support tickets (e2e)', () => {
       login('admin@testbedrijf.nl'),
     ]);
 
-    const [su, insp] = await Promise.all([
+    const [su, insp, org2User] = await Promise.all([
       prisma.user.findFirst({ where: { email: 'superuser@inspexi.nl' } }),
       prisma.user.findFirst({ where: { email: 'inspecteur@inspexi-demo.nl' } }),
+      prisma.user.findFirst({ where: { email: 'admin@testbedrijf.nl' } }),
     ]);
     superUserId = su!.id;
     inspUserId = insp!.id;
+    org2UserId = org2User!.id;
   });
 
   afterAll(async () => {
@@ -302,6 +305,22 @@ describe('Support tickets (e2e)', () => {
         .set(auth(org1ManagerToken))
         .send({ status: 'OPGELOST' })
         .expect(403);
+    });
+
+    it('weigert toewijzing aan een gebruiker van een andere org (403)', async () => {
+      await request(app.getHttpServer())
+        .patch(`/api/v1/support-tickets/${createdTicketIds[1]}`)
+        .set(auth(org1AdminToken))
+        .send({ assignedToId: org2UserId })
+        .expect(403);
+    });
+
+    it('staat toewijzing aan een eigen-org gebruiker toe (positieve controle)', async () => {
+      await request(app.getHttpServer())
+        .patch(`/api/v1/support-tickets/${createdTicketIds[1]}`)
+        .set(auth(org1AdminToken))
+        .send({ assignedToId: inspUserId })
+        .expect(200);
     });
 
     it('ORG_ADMIN mag muteren, zet resolvedAt en notificeert de aanmaker', async () => {

@@ -25,7 +25,7 @@ describe('SupportTicketsService', () => {
       count: jest.fn(),
     },
     supportTicketMessage: { create: jest.fn() },
-    user: { findMany: jest.fn() },
+    user: { findMany: jest.fn(), findUnique: jest.fn() },
     $transaction: jest.fn(),
   };
   const mockNotifications = { dispatch: jest.fn() };
@@ -360,6 +360,26 @@ describe('SupportTicketsService', () => {
       await service.update(orgAdmin, 't1', { assignedToId: null });
       expect(mockPrisma.supportTicket.update.mock.calls[0][0].data.assignedTo).toEqual({
         disconnect: true,
+      });
+    });
+
+    it('weigert een cross-tenant assignee (403)', async () => {
+      mockPrisma.supportTicket.findUnique.mockResolvedValue({ ...baseTicket });
+      // assertSameOrg leest user.orgId van de assignee → andere org.
+      mockPrisma.user.findUnique.mockResolvedValue({ orgId: 'orgB' });
+      await expect(
+        service.update(orgAdmin, 't1', { assignedToId: 'foreign-user' }),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+      expect(mockPrisma.supportTicket.update).not.toHaveBeenCalled();
+    });
+
+    it('staat een same-org assignee toe', async () => {
+      mockPrisma.supportTicket.findUnique.mockResolvedValue({ ...baseTicket });
+      mockPrisma.user.findUnique.mockResolvedValue({ orgId: 'orgA' });
+      mockPrisma.supportTicket.update.mockResolvedValue({ id: 't1' });
+      await service.update(orgAdmin, 't1', { assignedToId: 'eigen-user' });
+      expect(mockPrisma.supportTicket.update.mock.calls[0][0].data.assignedTo).toEqual({
+        connect: { id: 'eigen-user' },
       });
     });
 

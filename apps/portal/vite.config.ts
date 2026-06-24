@@ -8,6 +8,12 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
+      // Workspace-pakket vanuit TS-source (Vite/Vitest compileert het); de
+      // backend consumeert dezelfde package via dist. Eén bron-van-waarheid.
+      '@inspexi/entitlements': path.resolve(
+        __dirname,
+        '../../packages/entitlements/src/index.ts',
+      ),
     },
   },
   server: {

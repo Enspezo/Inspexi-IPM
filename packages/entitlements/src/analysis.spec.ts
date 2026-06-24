@@ -1,7 +1,9 @@
 import {
   analyzeEntitlements,
+  forcedDependencies,
   resolveEffectiveFeatures,
 } from './analysis';
+import { FEATURE_CATALOG_LIST } from './feature-catalog';
 
 const BASIS = ['BASIS_CRM', 'BASIS_UITVOERING', 'BASIS_INSPECTIES', 'BASIS_WORKFLOW'];
 
@@ -92,6 +94,27 @@ describe('entitlements.analysis', () => {
       );
       expect(effective).not.toContain('WORKFLOW_COMPLEET');
       expect(warnings).toEqual([]);
+    });
+  });
+
+  describe('forcedDependencies', () => {
+    it('forceert transitieve deps van de selectie (CRM_COMPLEET → BASIS_CRM)', () => {
+      const forced = [
+        ...forcedDependencies(FEATURE_CATALOG_LIST, ['CRM_COMPLEET']),
+      ];
+      expect(forced).toContain('BASIS_CRM');
+    });
+
+    it('selectie zonder deps forceert niets', () => {
+      expect([
+        ...forcedDependencies(FEATURE_CATALOG_LIST, ['BASIS_CRM']),
+      ]).toEqual([]);
+    });
+
+    it('negeert onbekende keys', () => {
+      expect([
+        ...forcedDependencies(FEATURE_CATALOG_LIST, ['LEGACY_KEY']),
+      ]).toEqual([]);
     });
   });
 });

@@ -112,6 +112,9 @@ const SearchPage = lazy(() => import('@/pages/search/search-page'));
 const EmailTemplatesPage = lazy(() => import('@/pages/email-templates/email-templates-page'));
 const EmailTemplateDetailPage = lazy(() => import('@/pages/email-templates/email-template-detail-page'));
 const ErrorReportsPage = lazy(() => import('@/pages/error-reports/error-reports-page'));
+const HelpCenterPage = lazy(() => import('@/pages/help/help-center-page'));
+const HelpArticlePage = lazy(() => import('@/pages/help/help-article-page'));
+const HelpAdminPage = lazy(() => import('@/pages/help/help-admin-page'));
 const NotesPage = lazy(() => import('@/pages/notes/notes-page'));
 const FavoritesPage = lazy(() => import('@/pages/favorites/favorites-page'));
 const WorkOrdersPage = lazy(() => import('@/pages/work-orders/work-orders-page'));
@@ -193,6 +196,10 @@ export default function App() {
             <Route path="/plans" element={<PlansPage />} />
             <Route path="/plans/:id" element={<PlanDetailPage />} />
             <Route path="/error-reports" element={<ErrorReportsPage />} />
+            <Route path="/help" element={<HelpCenterPage />} />
+            <Route path="/help/category/:slug" element={<HelpCenterPage />} />
+            <Route path="/help/article/:slug" element={<HelpArticlePage />} />
+            <Route path="/help/admin" element={<HelpAdminPage />} />
             <Route path="/classification-models" element={<ClassificationModelsPage />} />
             <Route path="/classification-models/:id" element={<ClassificationModelDetailPage />} />
             <Route path="/norm-types" element={<NormTypesPage />} />

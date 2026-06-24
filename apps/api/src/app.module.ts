@@ -45,6 +45,7 @@ import { ProjectsModule } from './modules/projects/projects.module';
 import { KvkModule } from './modules/kvk/kvk.module';
 import { VatModule } from './modules/vat/vat.module';
 import { ErrorReportsModule } from './modules/error-reports/error-reports.module';
+import { HelpModule } from './modules/help/help.module';
 import { NotesModule } from './modules/notes/notes.module';
 import { ChatModule } from './modules/chat/chat.module';
 import { FavoritesModule } from './modules/favorites/favorites.module';
@@ -126,6 +127,7 @@ import { VoiceModule } from './modules/voice/voice.module';
     KvkModule,
     VatModule,
     ErrorReportsModule,
+    HelpModule,
     NotesModule,
     ChatModule,
     FavoritesModule,

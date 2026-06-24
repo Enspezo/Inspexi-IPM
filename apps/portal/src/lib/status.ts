@@ -12,6 +12,7 @@ import {
   Availability,
   ChatThreadStatus,
   ContactType,
+  HelpArticleStatus,
   LogType,
   PlanningStatus,
   Priority,
@@ -231,4 +232,10 @@ export const CHAT_PRESENCE_DOT: Record<string, string> = {
 export const CHAT_THREAD_STATUS: StatusMap = {
   [ChatThreadStatus.OPEN]: { label: 'Open', classes: 'bg-blue-100 text-blue-800' },
   [ChatThreadStatus.AFGEROND]: { label: 'Afgerond', classes: 'bg-gray-100 text-gray-600' },
+};
+
+export const HELP_ARTICLE_STATUS: StatusMap = {
+  [HelpArticleStatus.DRAFT]: { label: 'Concept', classes: 'bg-gray-100 text-gray-700' },
+  [HelpArticleStatus.PUBLISHED]: { label: 'Gepubliceerd', classes: 'bg-green-100 text-green-800' },
+  [HelpArticleStatus.ARCHIVED]: { label: 'Gearchiveerd', classes: 'bg-amber-100 text-amber-800' },
 };

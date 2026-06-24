@@ -14,7 +14,9 @@ import {
   assertSameOrg,
   orgScope,
   requireOrg,
-  MANAGEMENT_ROLES,
+  isSuperuser,
+  isManagement,
+  USER_SUMMARY_SELECT,
 } from '@/common';
 import { NotificationsService } from '../notifications/notifications.service';
 import {
@@ -24,17 +26,10 @@ import {
   ListSupportTicketsDto,
 } from './dto';
 
-const userSelect = {
-  id: true,
-  firstName: true,
-  lastName: true,
-  email: true,
-} as const;
-
 /** Velden die altijd in detail/lijst worden meegestuurd. */
 const ticketInclude = {
-  createdBy: { select: userSelect },
-  assignedTo: { select: userSelect },
+  createdBy: { select: USER_SUMMARY_SELECT },
+  assignedTo: { select: USER_SUMMARY_SELECT },
   organization: { select: { id: true, name: true } },
 } as const;
 
@@ -45,14 +40,6 @@ export class SupportTicketsService {
     private notifications: NotificationsService,
   ) {}
 
-  private isSuperuser(u: User): boolean {
-    return u.roles.includes(Role.SUPERUSER);
-  }
-
-  private isManagement(u: User): boolean {
-    return u.roles.some((r) => (MANAGEMENT_ROLES as readonly Role[]).includes(r));
-  }
-
   // ── Lijst ──────────────────────────────────────────────────────────────────
   async findAll(user: User, q: ListSupportTicketsDto) {
     const { scope, status, orgId, page = 1, limit = 20, sortOrder = 'desc' } = q;
@@ -62,13 +49,13 @@ export class SupportTicketsService {
       ...(status ? { status } : {}),
     };
 
-    if (this.isSuperuser(user)) {
+    if (isSuperuser(user)) {
       // SUPERUSER: support-wachtrij over alle organisaties; optioneel op één org filteren.
       if (orgId) where.orgId = orgId;
     } else {
       where.orgId = user.orgId!;
       // 'org' alleen voor management; anders (of bij 'mine') alleen eigen tickets.
-      if (scope !== 'org' || !this.isManagement(user)) {
+      if (scope !== 'org' || !isManagement(user)) {
         where.createdById = user.id;
       }
     }
@@ -84,11 +71,11 @@ export class SupportTicketsService {
 
   async stats(user: User): Promise<Record<string, number>> {
     const where: Prisma.SupportTicketWhereInput = { isDeleted: false };
-    if (this.isSuperuser(user)) {
+    if (isSuperuser(user)) {
       Object.assign(where, orgScope(user));
     } else {
       where.orgId = user.orgId!;
-      if (!this.isManagement(user)) where.createdById = user.id;
+      if (!isManagement(user)) where.createdById = user.id;
     }
 
     const grouped = await this.prisma.supportTicket.groupBy({
@@ -111,7 +98,7 @@ export class SupportTicketsService {
           ...ticketInclude,
           messages: {
             orderBy: { createdAt: 'asc' },
-            include: { author: { select: userSelect } },
+            include: { author: { select: USER_SUMMARY_SELECT } },
           },
         },
       }),
@@ -119,7 +106,7 @@ export class SupportTicketsService {
     );
     this.assertCanView(user, ticket);
     // Interne notities verbergen voor niet-support (alleen superuser/support ziet ze).
-    if (!this.isSuperuser(user)) {
+    if (!isSuperuser(user)) {
       ticket.messages = ticket.messages.filter((m) => !m.isInternal);
     }
     return ticket;
@@ -129,12 +116,12 @@ export class SupportTicketsService {
     user: User,
     ticket: { orgId: string; createdById: string },
   ): void {
-    if (this.isSuperuser(user)) return;
+    if (isSuperuser(user)) return;
     if (ticket.orgId !== user.orgId) {
       throw new ForbiddenException('Geen toegang tot dit ticket');
     }
     // Niet-management mag alleen eigen tickets inzien.
-    if (!this.isManagement(user) && ticket.createdById !== user.id) {
+    if (!isManagement(user) && ticket.createdById !== user.id) {
       throw new ForbiddenException('Geen toegang tot dit ticket');
     }
   }
@@ -235,7 +222,7 @@ export class SupportTicketsService {
     );
     this.assertCanView(user, ticket);
 
-    const isSupport = this.isSuperuser(user);
+    const isSupport = isSuperuser(user);
     if (dto.isInternal && !isSupport) {
       throw new ForbiddenException('Alleen support mag interne notities plaatsen');
     }
@@ -252,7 +239,7 @@ export class SupportTicketsService {
           body: dto.body,
           isInternal: dto.isInternal ?? false,
         },
-        include: { author: { select: userSelect } },
+        include: { author: { select: USER_SUMMARY_SELECT } },
       }),
       this.prisma.supportTicket.update({
         where: { id },
@@ -308,7 +295,7 @@ export class SupportTicketsService {
     // Muteren mag alleen door SUPERUSER of ORG_ADMIN van de eigen org.
     // MANAGER mag inzien maar niet wijzigen.
     const canEdit =
-      this.isSuperuser(user) ||
+      isSuperuser(user) ||
       (user.roles.includes(Role.ORG_ADMIN) && ticket.orgId === user.orgId);
     if (!canEdit) {
       throw new ForbiddenException('Geen rechten om dit ticket te wijzigen');

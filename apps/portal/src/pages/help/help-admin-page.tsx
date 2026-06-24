@@ -2,17 +2,19 @@ import { useState } from 'react';
 import { useAuth } from '@/providers/auth-provider';
 import { PageHeader } from '@/components/layout/page-header';
 import {
-  Card,
   Button,
   StatusBadge,
   Spinner,
   ErrorBox,
   Tabs,
+  Table,
   useConfirm,
   useToast,
+  type Column,
 } from '@/components/ui';
 import { HELP_ARTICLE_STATUS } from '@/lib/status';
 import { ADMIN_ROLES } from '@/lib/roles';
+import { hasRole } from '@/lib/has-role';
 import { HelpArticleStatus, Role, type HelpArticle, type HelpCategory } from '@/types';
 import {
   useAdminHelpArticles,
@@ -30,8 +32,8 @@ export default function HelpAdminPage() {
   const { user } = useAuth();
   const confirm = useConfirm();
   const { showToast } = useToast();
-  const canManage = !!user?.roles?.some((r) => ADMIN_ROLES.includes(r));
-  const isSuperuser = !!user?.roles?.includes(Role.SUPERUSER);
+  const canManage = hasRole(user, ADMIN_ROLES);
+  const isSuperuser = hasRole(user, Role.SUPERUSER);
 
   const { data, isLoading, error } = useAdminHelpArticles(
     { limit: 50 },
@@ -117,6 +119,88 @@ export default function HelpAdminPage() {
     });
   };
 
+  const articleColumns: Column<HelpArticle>[] = [
+    {
+      key: 'title',
+      header: 'Titel',
+      render: (a) => <span className="font-medium text-gray-900">{a.title}</span>,
+    },
+    { key: 'category', header: 'Categorie', render: (a) => a.category?.name ?? '—' },
+    {
+      key: 'scope',
+      header: 'Scope',
+      render: (a) => (a.orgId ? 'Org-specifiek' : 'Globaal'),
+    },
+    {
+      key: 'status',
+      header: 'Status',
+      render: (a) => <StatusBadge map={HELP_ARTICLE_STATUS} status={a.status} />,
+    },
+    { key: 'viewCount', header: 'Weergaven', render: (a) => a.viewCount },
+    {
+      key: 'actions',
+      header: '',
+      className: 'text-right',
+      render: (a) => (
+        <div className="space-x-2 whitespace-nowrap text-right">
+          <Button size="sm" variant="ghost" onClick={() => openEdit(a)}>
+            Bewerken
+          </Button>
+          {a.status !== HelpArticleStatus.PUBLISHED && (
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={() => onPublish(a)}
+              disabled={publish.isPending}
+            >
+              Publiceren
+            </Button>
+          )}
+          <Button size="sm" variant="danger" onClick={() => onDelete(a)}>
+            Verwijderen
+          </Button>
+        </div>
+      ),
+    },
+  ];
+
+  const categoryColumns: Column<HelpCategory>[] = [
+    {
+      key: 'name',
+      header: 'Naam',
+      render: (c) => <span className="font-medium text-gray-900">{c.name}</span>,
+    },
+    {
+      key: 'scope',
+      header: 'Scope',
+      render: (c) => (c.orgId ? 'Org-specifiek' : 'Globaal'),
+    },
+    {
+      key: 'parent',
+      header: 'Bovenliggend',
+      render: (c) => (c.parentId ? categoryNameById.get(c.parentId) ?? '—' : '—'),
+    },
+    { key: 'order', header: 'Volgorde', render: (c) => c.order },
+    {
+      key: 'actions',
+      header: '',
+      className: 'text-right',
+      render: (c) =>
+        canManageCategory(c) ? (
+          <div className="space-x-2 whitespace-nowrap text-right">
+            <Button size="sm" variant="ghost" onClick={() => openEditCat(c)}>
+              Bewerken
+            </Button>
+            <Button size="sm" variant="danger" onClick={() => onDeleteCat(c)}>
+              Verwijderen
+            </Button>
+          </div>
+        ) : (
+          <span className="text-xs text-gray-400">Globaal — alleen-lezen</span>
+        ),
+    },
+  ];
+
   const tabs = [
     { key: 'articles', label: 'Artikelen', count: data?.total ?? 0 },
     { key: 'categories', label: 'Categorieën', count: categories?.length ?? 0 },
@@ -139,125 +223,21 @@ export default function HelpAdminPage() {
       <Tabs tabs={tabs} active={tab} onChange={setTab} />
 
       {tab === 'articles' && (
-        <Card>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b text-left text-gray-500">
-                  <th className="py-2 font-medium">Titel</th>
-                  <th className="font-medium">Categorie</th>
-                  <th className="font-medium">Scope</th>
-                  <th className="font-medium">Status</th>
-                  <th className="font-medium">Weergaven</th>
-                  <th />
-                </tr>
-              </thead>
-              <tbody>
-                {data?.data.map((a) => (
-                  <tr key={a.id} className="border-b last:border-0">
-                    <td className="py-2 font-medium text-gray-900">{a.title}</td>
-                    <td className="text-gray-600">{a.category?.name ?? '—'}</td>
-                    <td className="text-gray-600">
-                      {a.orgId ? 'Org-specifiek' : 'Globaal'}
-                    </td>
-                    <td>
-                      <StatusBadge map={HELP_ARTICLE_STATUS} status={a.status} />
-                    </td>
-                    <td className="text-gray-600">{a.viewCount}</td>
-                    <td className="space-x-2 whitespace-nowrap py-2 text-right">
-                      <Button size="sm" variant="ghost" onClick={() => openEdit(a)}>
-                        Bewerken
-                      </Button>
-                      {a.status !== HelpArticleStatus.PUBLISHED && (
-                        <Button
-                          size="sm"
-                          variant="secondary"
-                          onClick={() => onPublish(a)}
-                          disabled={publish.isPending}
-                        >
-                          Publiceren
-                        </Button>
-                      )}
-                      <Button size="sm" variant="danger" onClick={() => onDelete(a)}>
-                        Verwijderen
-                      </Button>
-                    </td>
-                  </tr>
-                ))}
-                {data && data.data.length === 0 && (
-                  <tr>
-                    <td colSpan={6} className="py-6 text-center text-gray-500">
-                      Nog geen artikelen. Maak er een aan met “Nieuw artikel”.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </Card>
+        <Table
+          columns={articleColumns}
+          data={data?.data ?? []}
+          keyExtractor={(a) => a.id}
+          emptyMessage="Nog geen artikelen. Maak er een aan met “Nieuw artikel”."
+        />
       )}
 
       {tab === 'categories' && (
-        <Card>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b text-left text-gray-500">
-                  <th className="py-2 font-medium">Naam</th>
-                  <th className="font-medium">Scope</th>
-                  <th className="font-medium">Bovenliggend</th>
-                  <th className="font-medium">Volgorde</th>
-                  <th />
-                </tr>
-              </thead>
-              <tbody>
-                {categories?.map((c) => (
-                  <tr key={c.id} className="border-b last:border-0">
-                    <td className="py-2 font-medium text-gray-900">{c.name}</td>
-                    <td className="text-gray-600">
-                      {c.orgId ? 'Org-specifiek' : 'Globaal'}
-                    </td>
-                    <td className="text-gray-600">
-                      {c.parentId ? categoryNameById.get(c.parentId) ?? '—' : '—'}
-                    </td>
-                    <td className="text-gray-600">{c.order}</td>
-                    <td className="space-x-2 whitespace-nowrap py-2 text-right">
-                      {canManageCategory(c) ? (
-                        <>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => openEditCat(c)}
-                          >
-                            Bewerken
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="danger"
-                            onClick={() => onDeleteCat(c)}
-                          >
-                            Verwijderen
-                          </Button>
-                        </>
-                      ) : (
-                        <span className="text-xs text-gray-400">
-                          Globaal — alleen-lezen
-                        </span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-                {categories && categories.length === 0 && (
-                  <tr>
-                    <td colSpan={5} className="py-6 text-center text-gray-500">
-                      Nog geen categorieën. Maak er een aan met “Nieuwe categorie”.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </Card>
+        <Table
+          columns={categoryColumns}
+          data={categories ?? []}
+          keyExtractor={(c) => c.id}
+          emptyMessage="Nog geen categorieën. Maak er een aan met “Nieuwe categorie”."
+        />
       )}
 
       <ArticleEditorModal

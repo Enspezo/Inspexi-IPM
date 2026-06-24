@@ -150,6 +150,8 @@ const entityLabels: Record<string, Record<string, string>> = {
     quoteApprovalThreshold: 'Goedkeuringsgrens offertes',
     quoteApprovalRequiredRole: 'Vereiste goedkeur-rol offertes',
     planId: 'Abonnement',
+    supportAccessEnabled: 'Support-toegang',
+    supportAccessExpiresAt: 'Support-toegang verloopt op',
   },
   Plan: {
     slug: 'Slug',

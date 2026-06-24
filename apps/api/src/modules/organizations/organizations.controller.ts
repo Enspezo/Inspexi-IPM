@@ -41,7 +41,7 @@ import {
 import { Roles, CurrentUser, Public } from '@/common/decorators';
 import { PrismaService } from '@/prisma';
 import { EntitlementsService } from '@/modules/entitlements/entitlements.service';
-import { FEATURE_KEYS } from '@/modules/entitlements/feature-catalog';
+import { FEATURE_KEYS } from '@inspexi/entitlements';
 
 @ApiTags('Organizations')
 @ApiBearerAuth()

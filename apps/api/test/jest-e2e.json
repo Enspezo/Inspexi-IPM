@@ -7,6 +7,7 @@
     "^.+\\.(t|j)s$": "ts-jest"
   },
   "moduleNameMapper": {
+    "^@inspexi/entitlements$": "<rootDir>/../../../packages/entitlements/src/index.ts",
     "^@/(.*)$": "<rootDir>/../src/$1"
   },
   "maxWorkers": 1

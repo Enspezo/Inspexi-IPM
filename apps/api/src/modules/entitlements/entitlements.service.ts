@@ -1,7 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '@/prisma';
-import { FeatureKey } from './feature-catalog';
-import { resolveEffectiveFeatures } from './entitlements.analysis';
+import { FeatureKey, resolveEffectiveFeatures } from '@inspexi/entitlements';
 
 interface CacheEntry {
   features: FeatureKey[];

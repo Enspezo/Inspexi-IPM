@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Button, Card, ErrorBox, Select, Spinner, useToast } from '@/components/ui';
-import { overrideStateFor, type FeatureOverrideState } from '@/lib/entitlements';
+import { overrideStateFor, FeatureOverrideState } from '@/lib/entitlements';
 import { usePlans, useFeatureCatalog } from '@/pages/plans/hooks/use-plans';
 import {
   useOrganizationEntitlements,
@@ -9,9 +9,9 @@ import {
 } from '../hooks/use-organizations';
 
 const STATE_OPTIONS: { value: FeatureOverrideState; label: string }[] = [
-  { value: 'PLAN', label: 'Volg abonnement' },
-  { value: 'ENABLED', label: 'Bijgeschakeld (aan)' },
-  { value: 'DISABLED', label: 'Afgeschakeld (uit)' },
+  { value: FeatureOverrideState.PLAN, label: 'Volg abonnement' },
+  { value: FeatureOverrideState.ENABLED, label: 'Bijgeschakeld (aan)' },
+  { value: FeatureOverrideState.DISABLED, label: 'Afgeschakeld (uit)' },
 ];
 
 /**

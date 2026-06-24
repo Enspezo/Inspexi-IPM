@@ -13,15 +13,14 @@ import { TenantCacheService } from '@/common/services/tenant-cache.service';
 import {
   CreateOrganizationDto,
   UpdateOrganizationDto,
-  OrganizationFeatureState,
+  FeatureOverrideState,
 } from './dto';
 import {
   STORAGE_PROVIDER,
   StorageProvider,
 } from '@/common/services/storage/storage.interface';
 import { EntitlementsService } from '@/modules/entitlements/entitlements.service';
-import { analyzeEntitlements } from '@/modules/entitlements/entitlements.analysis';
-import { isFeatureKey } from '@/modules/entitlements/feature-catalog';
+import { analyzeEntitlements, isFeatureKey } from '@inspexi/entitlements';
 
 @Injectable()
 export class OrganizationsService {
@@ -199,7 +198,7 @@ export class OrganizationsService {
   async setFeatureOverride(
     orgId: string,
     featureKey: string,
-    state: OrganizationFeatureState,
+    state: FeatureOverrideState,
     userId: string,
   ) {
     if (!isFeatureKey(featureKey)) {
@@ -211,14 +210,14 @@ export class OrganizationsService {
       where: { orgId_featureKey: { orgId, featureKey } },
     });
 
-    if (state === OrganizationFeatureState.PLAN) {
+    if (state === FeatureOverrideState.PLAN) {
       if (existing) {
         await this.prisma.organizationFeature.delete({
           where: { id: existing.id },
         });
       }
     } else {
-      const enabled = state === OrganizationFeatureState.ENABLED;
+      const enabled = state === FeatureOverrideState.ENABLED;
       if (existing) {
         await this.prisma.organizationFeature.update({
           where: { id: existing.id },

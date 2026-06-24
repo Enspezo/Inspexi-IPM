@@ -11,7 +11,7 @@ import {
   FEATURE_KEYS,
   FeatureKey,
   isFeatureKey,
-} from './feature-catalog';
+} from '@inspexi/entitlements';
 import { CreatePlanDto, UpdatePlanDto } from './dto';
 
 /**

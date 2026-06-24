@@ -787,6 +787,9 @@ export enum NotificationType {
   CHAT_BERICHT = 'CHAT_BERICHT',
   CHAT_TEAM_BERICHT = 'CHAT_TEAM_BERICHT',
   CHAT_MENTION = 'CHAT_MENTION',
+  SUPPORT_TICKET_AANGEMAAKT = 'SUPPORT_TICKET_AANGEMAAKT',
+  SUPPORT_TICKET_REACTIE = 'SUPPORT_TICKET_REACTIE',
+  SUPPORT_TICKET_STATUS = 'SUPPORT_TICKET_STATUS',
 }
 
 export interface Notification {
@@ -2649,4 +2652,68 @@ export interface HelpArticle {
   createdAt: string;
   updatedAt: string;
   category?: { id: string; name: string; slug: string } | null;
+}
+
+// ─── IMP_PRD-10 Fase 4: Support-tickets ─────────────────
+
+export enum SupportTicketStatus {
+  NIEUW = 'NIEUW',
+  IN_BEHANDELING = 'IN_BEHANDELING',
+  WACHT_OP_KLANT = 'WACHT_OP_KLANT',
+  OPGELOST = 'OPGELOST',
+  GESLOTEN = 'GESLOTEN',
+}
+
+export enum SupportTicketPriority {
+  LAAG = 'LAAG',
+  NORMAAL = 'NORMAAL',
+  HOOG = 'HOOG',
+  URGENT = 'URGENT',
+}
+
+export enum SupportTicketCategory {
+  VRAAG = 'VRAAG',
+  PROBLEEM = 'PROBLEEM',
+  BUG = 'BUG',
+  FEATURE_REQUEST = 'FEATURE_REQUEST',
+  FACTUUR = 'FACTUUR',
+  OVERIG = 'OVERIG',
+}
+
+export type SupportMessageAuthorType = 'USER' | 'SUPPORT' | 'SYSTEM';
+
+export interface SupportTicketMessage {
+  id: string;
+  ticketId: string;
+  orgId: string;
+  authorId: string | null;
+  authorType: SupportMessageAuthorType;
+  body: string;
+  isInternal: boolean;
+  createdAt: string;
+  author?: UserSummary;
+}
+
+export interface SupportTicket {
+  id: string;
+  orgId: string;
+  ticketNumber: number;
+  subject: string;
+  description: string;
+  status: SupportTicketStatus;
+  priority: SupportTicketPriority;
+  category: SupportTicketCategory;
+  contextModule: string | null;
+  contextUrl: string | null;
+  createdById: string;
+  assignedToId: string | null;
+  firstResponseAt: string | null;
+  resolvedAt: string | null;
+  closedAt: string | null;
+  lastMessageAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  createdBy?: UserSummary;
+  assignedTo?: UserSummary | null;
+  messages?: SupportTicketMessage[];
 }

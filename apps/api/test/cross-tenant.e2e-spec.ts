@@ -46,6 +46,7 @@ describe('Cross-tenant FK isolation (e2e)', () => {
   let planBId: string;
   let assetBId: string;
   let categoryBId: string;
+  let ticketBId: string; // org B support-ticket (victim) — read/mutate isolation
   let cmBId: string;
   // Stream B — extra org-B fixtures (read-isolatie + body-FK aanvallen)
   let findingBId: string;
@@ -378,6 +379,22 @@ describe('Cross-tenant FK isolation (e2e)', () => {
     });
     projectAId = projectA.id;
 
+    // Support-ticket van org B (slachtoffer) — org A mag dit niet zien/muteren.
+    const ticketB = await prisma.supportTicket.create({
+      data: {
+        orgId: orgB.id,
+        ticketNumber: 1,
+        subject: 'Ticket B',
+        description: 'Vertrouwelijk voor org B',
+        createdById: userB.id,
+        lastMessageAt: new Date(),
+        messages: {
+          create: [{ orgId: orgB.id, authorId: userB.id, authorType: 'USER', body: 'Vertrouwelijk voor org B' }],
+        },
+      },
+    });
+    ticketBId = ticketB.id;
+
     // Login as org A's admin
     const loginRes = await request(app.getHttpServer())
       .post('/api/v1/auth/login')
@@ -433,6 +450,9 @@ describe('Cross-tenant FK isolation (e2e)', () => {
       await prisma.note.deleteMany({ where: { orgId: { in: orgIds } } });
       await prisma.product.deleteMany({ where: { orgId: { in: orgIds } } });
       await prisma.contact.deleteMany({ where: { orgId: { in: orgIds } } });
+      // Support-tickets (berichten cascaden, maar expliciet voor de zekerheid).
+      await prisma.supportTicketMessage.deleteMany({ where: { orgId: { in: orgIds } } });
+      await prisma.supportTicket.deleteMany({ where: { orgId: { in: orgIds } } });
       await prisma.notification.deleteMany({ where: { orgId: { in: orgIds } } });
       await prisma.syncQueue.deleteMany({ where: { userId: { in: userIds } } });
       // Numbering schemes are auto-provisioned when requests/quotes/projects/products
@@ -1290,6 +1310,41 @@ describe('Cross-tenant FK isolation (e2e)', () => {
         .patch(`/api/v1/quotes/${quoteAId}`)
         .set('Authorization', `Bearer ${tokenA}`)
         .send({ locationId: locationBId })
+        .expect(403);
+    });
+  });
+
+  // ─── Support-tickets — cross-tenant read/mutate isolatie ─────────────
+  describe('Support tickets — cross-tenant isolatie', () => {
+    it('rejects reading another org\'s ticket (403)', async () => {
+      await request(app.getHttpServer())
+        .get(`/api/v1/support-tickets/${ticketBId}`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .expect(403);
+    });
+
+    it('does not leak another org\'s ticket in the org list', async () => {
+      const res = await request(app.getHttpServer())
+        .get('/api/v1/support-tickets?scope=org')
+        .set('Authorization', `Bearer ${tokenA}`)
+        .expect(200);
+      const ids = res.body.data.data.map((t: { id: string }) => t.id);
+      expect(ids).not.toContain(ticketBId);
+    });
+
+    it('rejects posting a message to another org\'s ticket (403)', async () => {
+      await request(app.getHttpServer())
+        .post(`/api/v1/support-tickets/${ticketBId}/messages`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({ body: 'inject' })
+        .expect(403);
+    });
+
+    it('rejects mutating another org\'s ticket (403)', async () => {
+      await request(app.getHttpServer())
+        .patch(`/api/v1/support-tickets/${ticketBId}`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({ status: 'OPGELOST' })
         .expect(403);
     });
   });

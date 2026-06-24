@@ -7,6 +7,9 @@ import {
   Patch,
   Param,
   Body,
+  Query,
+  Ip,
+  Headers,
   ParseUUIDPipe,
   ForbiddenException,
   NotFoundException,
@@ -27,11 +30,13 @@ import { Response } from 'express';
 import { User, Role } from '@prisma/client';
 import { ORG_ADMINS } from '@/common/auth/roles';
 import { OrganizationsService } from './organizations.service';
+import { SupportAccessService } from './support-access.service';
 import {
   CreateOrganizationDto,
   UpdateOrganizationDto,
   AssignPlanDto,
   SetOrganizationFeatureDto,
+  SetSupportAccessDto,
 } from './dto';
 import { Roles, CurrentUser, Public } from '@/common/decorators';
 import { PrismaService } from '@/prisma';
@@ -44,6 +49,7 @@ import { FEATURE_KEYS } from '@/modules/entitlements/feature-catalog';
 export class OrganizationsController {
   constructor(
     private organizationsService: OrganizationsService,
+    private supportAccess: SupportAccessService,
     private prisma: PrismaService,
     private entitlements: EntitlementsService,
   ) {}
@@ -131,6 +137,61 @@ export class OrganizationsController {
   async getEntitlements(@Param('id', ParseUUIDPipe) id: string) {
     const data = await this.organizationsService.getEntitlements(id);
     return { success: true, data };
+  }
+
+  // ─── IMP_PRD-10 Fase 5: Support-toegang ──────────────────
+  // Geplaatst vóór de generieke `:id`-routes (scope-guard zit in de service).
+
+  @Get(':id/support-access')
+  @Roles(...ORG_ADMINS)
+  @ApiOperation({ summary: 'Status support-toegang' })
+  @ApiResponse({ status: 200, description: 'Toggle-status + vervaltijd' })
+  @ApiResponse({ status: 403, description: 'Geen toegang tot deze organisatie' })
+  async getSupportAccess(
+    @CurrentUser() user: User,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return { success: true, data: await this.supportAccess.getStatus(user, id) };
+  }
+
+  @Patch(':id/support-access')
+  @Roles(...ORG_ADMINS)
+  @ApiOperation({ summary: 'Support-toegang in-/uitschakelen (gelogd)' })
+  @ApiResponse({ status: 200, description: 'Nieuwe toggle-status' })
+  @ApiResponse({ status: 403, description: 'Geen toegang tot deze organisatie' })
+  async setSupportAccess(
+    @CurrentUser() user: User,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: SetSupportAccessDto,
+    @Ip() ip: string,
+    @Headers('user-agent') userAgent: string,
+  ) {
+    return {
+      success: true,
+      data: await this.supportAccess.setAccess(user, id, dto, ip, userAgent),
+    };
+  }
+
+  @Get(':id/support-access/logs')
+  @Roles(...ORG_ADMINS)
+  @ApiOperation({ summary: 'Support-toegang logboek' })
+  @ApiResponse({ status: 200, description: 'Gepagineerde logregels' })
+  @ApiResponse({ status: 403, description: 'Geen toegang tot deze organisatie' })
+  async supportAccessLogs(
+    @CurrentUser() user: User,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return {
+      success: true,
+      data: await this.supportAccess.listLogs(
+        user,
+        id,
+        Number(page) || 1,
+        Number(limit) || 20,
+      ),
+    };
   }
 
   @Get(':id')

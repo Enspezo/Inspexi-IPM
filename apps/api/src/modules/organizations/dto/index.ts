@@ -5,3 +5,4 @@ export {
   SetOrganizationFeatureDto,
   OrganizationFeatureState,
 } from './set-organization-feature.dto';
+export { SetSupportAccessDto } from './support-access.dto';

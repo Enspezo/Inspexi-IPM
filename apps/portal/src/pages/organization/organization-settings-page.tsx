@@ -15,6 +15,7 @@ import { CustomFieldsManagement } from './components/custom-fields-management';
 import { DocumentTagsManagement } from './components/document-tags-management';
 import { NumberingSchemesManagement } from './components/numbering-schemes-management';
 import QuotaTab from './components/quota-tab';
+import { SupportAccessSection } from './components/support-access-section';
 import {
   useGroupNotificationPrefs,
   useSaveGroupNotificationPrefs,
@@ -264,7 +265,7 @@ export default function OrganizationSettingsPage() {
   const deleteLogoMutation = useDeleteLogo(user?.orgId);
 
   // Tab state
-  const [activeTab, setActiveTab] = useState<'huisstijl' | 'financieel' | 'communicatie' | 'inspecteur-portal' | 'notificaties' | 'eigen-velden' | 'document-tags' | 'nummering' | 'quota'>('huisstijl');
+  const [activeTab, setActiveTab] = useState<'huisstijl' | 'financieel' | 'communicatie' | 'inspecteur-portal' | 'notificaties' | 'eigen-velden' | 'document-tags' | 'nummering' | 'quota' | 'support'>('huisstijl');
 
   // Logo preview state
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
@@ -420,6 +421,7 @@ export default function OrganizationSettingsPage() {
     { key: 'document-tags', label: 'Document-tags' },
     { key: 'nummering', label: 'Nummering' },
     { key: 'quota', label: 'Quota' },
+    { key: 'support', label: 'Support-toegang' },
   ];
 
   return (
@@ -445,6 +447,10 @@ export default function OrganizationSettingsPage() {
       {activeTab === 'notificaties' && <GroupNotificationPrefsCard />}
 
       {activeTab === 'quota' && <QuotaTab />}
+
+      {activeTab === 'support' && user?.orgId && (
+        <SupportAccessSection orgId={user.orgId} />
+      )}
 
       {activeTab === 'huisstijl' && (
       <>

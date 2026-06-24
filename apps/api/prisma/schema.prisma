@@ -1,10 +1,13 @@
 generator client {
-  provider = "prisma-client-js"
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  // pg_trgm levert de gin_trgm_ops operator-class voor de typo-tolerante KB-zoek.
+  extensions = [pg_trgm]
 }
 
 // ─── Enums ───────────────────────────────────────────────
@@ -4179,6 +4182,12 @@ model HelpArticle {
   @@unique([orgId, slug])
   @@index([orgId, status])
   @@index([categoryId, order])
+  // pg_trgm/GIN-indexen voor typo-tolerante KB-zoek (oorspronkelijk via raw SQL in
+  // 20260623214008_help_trigram_search). Hier in het schema gemodelleerd met de
+  // bestaande indexnamen (map:) zodat `migrate dev` ze herkent i.p.v. te willen droppen.
+  @@index([title(ops: raw("gin_trgm_ops"))], type: Gin, map: "idx_help_articles_title_trgm")
+  @@index([excerpt(ops: raw("gin_trgm_ops"))], type: Gin, map: "idx_help_articles_excerpt_trgm")
+  @@index([moduleKeys], type: Gin, map: "idx_help_articles_module_keys")
   @@map("imp_help_articles")
 }
 

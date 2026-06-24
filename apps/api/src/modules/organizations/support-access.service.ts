@@ -1,7 +1,7 @@
 import { ForbiddenException, Injectable } from '@nestjs/common';
 import { Prisma, Role, SupportAccessAction, User } from '@prisma/client';
 import { PrismaService } from '@/prisma';
-import { paginate, assertFound } from '@/common';
+import { paginate, assertFound, isSuperuser, USER_SUMMARY_SELECT } from '@/common';
 import { TenantCacheService } from '@/common/services/tenant-cache.service';
 import { SetSupportAccessDto } from './dto/support-access.dto';
 
@@ -24,7 +24,7 @@ export class SupportAccessService {
 
   /** ORG_ADMIN mag alleen de eigen org; SUPERUSER mag alle orgs. */
   private assertScope(user: User, orgId: string) {
-    if (user.roles.includes(Role.SUPERUSER)) return;
+    if (isSuperuser(user)) return;
     if (user.orgId !== orgId) {
       throw new ForbiddenException('Geen toegang tot deze organisatie');
     }
@@ -97,9 +97,7 @@ export class SupportAccessService {
     return paginate(this.prisma.supportAccessLog, {
       where: { orgId } as Prisma.SupportAccessLogWhereInput,
       include: {
-        performedBy: {
-          select: { id: true, firstName: true, lastName: true, email: true },
-        },
+        performedBy: { select: USER_SUMMARY_SELECT },
       },
       orderBy: { createdAt: 'desc' },
       page,

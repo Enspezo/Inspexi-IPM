@@ -2,20 +2,21 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { PageHeader } from '@/components/layout/page-header';
 import {
-  Card,
   Button,
   StatusBadge,
   Spinner,
   ErrorBox,
   Tabs,
   Select,
+  Table,
+  type Column,
 } from '@/components/ui';
 import { SUPPORT_TICKET_STATUS, SUPPORT_TICKET_PRIORITY } from '@/lib/status';
 import { formatDateTime } from '@/lib/format';
 import { useAuth } from '@/providers/auth-provider';
 import { MANAGEMENT_ROLES } from '@/lib/roles';
 import { hasRole } from '@/lib/has-role';
-import { Role } from '@/types';
+import { Role, type SupportTicket } from '@/types';
 import { useOrganizations } from '@/pages/organizations/hooks/use-organizations';
 import { useSupportTickets } from '../hooks/use-support-tickets';
 
@@ -53,7 +54,45 @@ export default function TicketsPage() {
       ]
     : [{ key: 'mine' as const, label: 'Mijn tickets' }];
 
-  const colCount = isSuperuser ? 6 : 5;
+  const ticketColumns: Column<SupportTicket>[] = [
+    { key: 'number', header: '#', render: (t) => `#${t.ticketNumber}` },
+    ...(isSuperuser
+      ? [
+          {
+            key: 'org',
+            header: 'Organisatie',
+            render: (t: SupportTicket) => t.organization?.name ?? '—',
+          },
+        ]
+      : []),
+    {
+      key: 'subject',
+      header: 'Onderwerp',
+      render: (t) => (
+        <Link
+          to={`/help/tickets/${t.id}`}
+          className="font-medium text-primary-600 hover:underline"
+        >
+          {t.subject}
+        </Link>
+      ),
+    },
+    {
+      key: 'status',
+      header: 'Status',
+      render: (t) => <StatusBadge map={SUPPORT_TICKET_STATUS} status={t.status} />,
+    },
+    {
+      key: 'priority',
+      header: 'Prioriteit',
+      render: (t) => <StatusBadge map={SUPPORT_TICKET_PRIORITY} status={t.priority} />,
+    },
+    {
+      key: 'lastActivity',
+      header: 'Laatste activiteit',
+      render: (t) => formatDateTime(t.lastMessageAt),
+    },
+  ];
 
   return (
     <div className="space-y-6">
@@ -94,56 +133,12 @@ export default function TicketsPage() {
       {error && <ErrorBox>Kon tickets niet laden.</ErrorBox>}
 
       {data && (
-        <Card>
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b text-left text-gray-500">
-                <th className="py-2 pr-4 font-medium">#</th>
-                {isSuperuser && (
-                  <th className="py-2 pr-4 font-medium">Organisatie</th>
-                )}
-                <th className="py-2 pr-4 font-medium">Onderwerp</th>
-                <th className="py-2 pr-4 font-medium">Status</th>
-                <th className="py-2 pr-4 font-medium">Prioriteit</th>
-                <th className="py-2 font-medium">Laatste activiteit</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.data.map((t) => (
-                <tr key={t.id} className="border-b last:border-0 hover:bg-gray-50">
-                  <td className="py-2 pr-4 text-gray-500">#{t.ticketNumber}</td>
-                  {isSuperuser && (
-                    <td className="py-2 pr-4 text-gray-700">
-                      {t.organization?.name ?? '—'}
-                    </td>
-                  )}
-                  <td className="py-2 pr-4">
-                    <Link
-                      to={`/help/tickets/${t.id}`}
-                      className="font-medium text-primary-600 hover:underline"
-                    >
-                      {t.subject}
-                    </Link>
-                  </td>
-                  <td className="py-2 pr-4">
-                    <StatusBadge map={SUPPORT_TICKET_STATUS} status={t.status} />
-                  </td>
-                  <td className="py-2 pr-4">
-                    <StatusBadge map={SUPPORT_TICKET_PRIORITY} status={t.priority} />
-                  </td>
-                  <td className="py-2 text-gray-500">{formatDateTime(t.lastMessageAt)}</td>
-                </tr>
-              ))}
-              {data.data.length === 0 && (
-                <tr>
-                  <td colSpan={colCount} className="py-6 text-center text-gray-500">
-                    Geen tickets.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </Card>
+        <Table
+          columns={ticketColumns}
+          data={data.data}
+          keyExtractor={(t) => t.id}
+          emptyMessage="Geen tickets."
+        />
       )}
     </div>
   );

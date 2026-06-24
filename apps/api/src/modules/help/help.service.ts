@@ -3,9 +3,9 @@ import {
   ForbiddenException,
   Injectable,
 } from '@nestjs/common';
-import { Prisma, Role, User } from '@prisma/client';
+import { Prisma, User } from '@prisma/client';
 import { PrismaService } from '@/prisma';
-import { paginate, buildOrderBy, assertFound } from '@/common';
+import { paginate, buildOrderBy, assertFound, isSuperuser } from '@/common';
 import { slugify, uniqueSlug } from './help.helpers';
 import {
   CreateHelpArticleDto,
@@ -17,49 +17,66 @@ import {
 
 const ARTICLE_SORT = ['title', 'order', 'viewCount', 'createdAt', 'updatedAt'];
 
+/** Gedeelde include: artikel + compacte categorie (id/naam/slug). */
+const ARTICLE_CATEGORY_INCLUDE = {
+  category: { select: { id: true, name: true, slug: true } },
+} as const;
+
+type HelpArticleWithCategory = Prisma.HelpArticleGetPayload<{
+  include: typeof ARTICLE_CATEGORY_INCLUDE;
+}>;
+
 @Injectable()
 export class HelpService {
   constructor(private prisma: PrismaService) {}
 
-  private isSuperuser(user: User) {
-    return user.roles.includes(Role.SUPERUSER);
-  }
-
-  /** Zichtbaarheid voor artikelen: globaal (orgId null) OF eigen org. SUPERUSER ziet alles. */
-  private visibilityWhere(user: User): Prisma.HelpArticleWhereInput {
-    if (this.isSuperuser(user)) return {};
-    return { OR: [{ orgId: null }, { orgId: user.orgId }] };
-  }
-
-  /** Zichtbaarheid voor categorieën: globaal OF eigen org. SUPERUSER ziet alles. */
-  private categoryVisibilityWhere(user: User): Prisma.HelpCategoryWhereInput {
-    if (this.isSuperuser(user)) return {};
+  /**
+   * Org-zichtbaarheid: globaal (orgId null) OF eigen org; SUPERUSER ziet alles.
+   * De vorm is identiek voor HelpArticle en HelpCategory (beide modellen hebben
+   * `orgId` + `OR`), dus één helper bedient beide where-inputs.
+   */
+  private orgVisibilityWhere(user: User): { OR?: { orgId: string | null }[] } {
+    if (isSuperuser(user)) return {};
     return { OR: [{ orgId: null }, { orgId: user.orgId }] };
   }
 
   /**
    * Deterministische volgorde voor lezen-op-slug. Door @@unique([orgId, slug])
-   * kunnen een globaal én een org-artikel dezelfde slug hebben.
-   * - Gewone gebruiker (scope = {eigen org, globaal}) → org-specifiek wint (nulls-last),
-   *   zodat een org-override consistent voorrang heeft op de globale versie.
+   * kunnen een globaal én een org-record dezelfde slug hebben.
+   * - Gewone gebruiker (scope = {eigen org, globaal}) → org-specifiek wint
+   *   (nulls-last), zodat een org-override consistent voorrang heeft.
    * - SUPERUSER (scope = alles) → globaal eerst (nulls-first) voor determinisme.
+   * Identiek voor HelpArticle en HelpCategory (beide sorteren op `orgId`).
    */
-  private articleSlugOrderBy(user: User): Prisma.HelpArticleOrderByWithRelationInput {
-    return this.isSuperuser(user)
+  private slugOrderBy(
+    user: User,
+  ): { orgId: { sort: 'asc' | 'desc'; nulls: 'first' | 'last' } } {
+    return isSuperuser(user)
       ? { orgId: { sort: 'asc', nulls: 'first' } }
       : { orgId: { sort: 'desc', nulls: 'last' } };
   }
 
-  private categorySlugOrderBy(user: User): Prisma.HelpCategoryOrderByWithRelationInput {
-    return this.isSuperuser(user)
-      ? { orgId: { sort: 'asc', nulls: 'first' } }
-      : { orgId: { sort: 'desc', nulls: 'last' } };
+  /**
+   * Atomische teller-ophoging buiten de Prisma-client om. Bewust via raw SQL:
+   * dit omzeilt de audit-`$use` middleware, zodat een view/feedback géén
+   * auditeerbare wijziging wordt. De kolomnaam is een interne literal (geen
+   * user-input) en wordt veilig als identifier ge-`raw`-t.
+   */
+  private bumpCounter(
+    id: string,
+    column: 'view_count' | 'helpful_yes' | 'helpful_no',
+  ) {
+    return this.prisma.$executeRaw(
+      Prisma.sql`UPDATE imp_help_articles SET ${Prisma.raw(column)} = ${Prisma.raw(
+        column,
+      )} + 1 WHERE id = ${id}::uuid`,
+    );
   }
 
   // ── Categorieën (lezen) ──────────────────────────────────────────────────
   async listCategories(user: User) {
     return this.prisma.helpCategory.findMany({
-      where: { isPublished: true, ...this.categoryVisibilityWhere(user) },
+      where: { isPublished: true, ...this.orgVisibilityWhere(user) },
       orderBy: [{ order: 'asc' }, { name: 'asc' }],
     });
   }
@@ -67,8 +84,8 @@ export class HelpService {
   async getCategoryBySlug(user: User, slug: string) {
     const category = assertFound(
       await this.prisma.helpCategory.findFirst({
-        where: { slug, ...this.categoryVisibilityWhere(user) },
-        orderBy: this.categorySlugOrderBy(user),
+        where: { slug, ...this.orgVisibilityWhere(user) },
+        orderBy: this.slugOrderBy(user),
       }),
       'Categorie',
     );
@@ -76,7 +93,7 @@ export class HelpService {
       where: {
         categoryId: category.id,
         status: 'PUBLISHED',
-        ...this.visibilityWhere(user),
+        ...this.orgVisibilityWhere(user),
       },
       orderBy: [{ order: 'asc' }, { title: 'asc' }],
     });
@@ -88,13 +105,13 @@ export class HelpService {
     const { categoryId, search, page = 1, limit = 20, sortBy, sortOrder = 'asc' } = q;
     const where: Prisma.HelpArticleWhereInput = {
       status: 'PUBLISHED',
-      ...this.visibilityWhere(user),
+      ...this.orgVisibilityWhere(user),
       ...(categoryId ? { categoryId } : {}),
       ...(search ? { title: { contains: search, mode: 'insensitive' } } : {}),
     };
     return paginate(this.prisma.helpArticle, {
       where,
-      include: { category: { select: { id: true, name: true, slug: true } } },
+      include: ARTICLE_CATEGORY_INCLUDE,
       orderBy: buildOrderBy(sortBy, sortOrder, ARTICLE_SORT, { order: 'asc' }),
       page,
       limit,
@@ -104,34 +121,25 @@ export class HelpService {
   async getArticleBySlug(user: User, slug: string) {
     const article = assertFound(
       await this.prisma.helpArticle.findFirst({
-        where: { slug, status: 'PUBLISHED', ...this.visibilityWhere(user) },
-        include: { category: { select: { id: true, name: true, slug: true } } },
-        orderBy: this.articleSlugOrderBy(user),
+        where: { slug, status: 'PUBLISHED', ...this.orgVisibilityWhere(user) },
+        include: ARTICLE_CATEGORY_INCLUDE,
+        orderBy: this.slugOrderBy(user),
       }),
       'Artikel',
     );
-    // viewCount via raw SQL → omzeilt de audit-$use-middleware (geen audit-rij per view)
-    this.prisma
-      .$executeRaw`UPDATE imp_help_articles SET view_count = view_count + 1 WHERE id = ${article.id}::uuid`
-      .catch(() => undefined);
+    // Fire-and-forget viewCount-bump (audit-bypass — zie bumpCounter).
+    this.bumpCounter(article.id, 'view_count').catch(() => undefined);
     return article;
   }
 
   async giveFeedback(user: User, id: string, helpful: boolean) {
     const article = assertFound(
       await this.prisma.helpArticle.findFirst({
-        where: { id, ...this.visibilityWhere(user) },
+        where: { id, ...this.orgVisibilityWhere(user) },
       }),
       'Artikel',
     );
-    // raw SQL → omzeilt audit-middleware (feedback is geen auditeerbare wijziging)
-    if (helpful) {
-      await this.prisma
-        .$executeRaw`UPDATE imp_help_articles SET helpful_yes = helpful_yes + 1 WHERE id = ${article.id}::uuid`;
-    } else {
-      await this.prisma
-        .$executeRaw`UPDATE imp_help_articles SET helpful_no = helpful_no + 1 WHERE id = ${article.id}::uuid`;
-    }
+    await this.bumpCounter(article.id, helpful ? 'helpful_yes' : 'helpful_no');
     return this.prisma.helpArticle.findUnique({
       where: { id: article.id },
       select: { id: true, helpfulYes: true, helpfulNo: true },
@@ -151,15 +159,14 @@ export class HelpService {
     moduleKey?: string,
     q?: string,
     limit = 20,
-  ): Promise<{ items: unknown[] }> {
-    const include = { category: { select: { id: true, name: true, slug: true } } };
+  ): Promise<{ items: HelpArticleWithCategory[] }> {
     const orderBy: Prisma.HelpArticleOrderByWithRelationInput[] = [
       { viewCount: 'desc' },
       { order: 'asc' },
     ];
     const base: Prisma.HelpArticleWhereInput = {
       status: 'PUBLISHED',
-      ...this.visibilityWhere(user),
+      ...this.orgVisibilityWhere(user),
     };
 
     const primaryWhere: Prisma.HelpArticleWhereInput = {
@@ -186,7 +193,7 @@ export class HelpService {
     // org-voorrang volgt daarna in JS.
     let items = await this.prisma.helpArticle.findMany({
       where: primaryWhere,
-      include,
+      include: ARTICLE_CATEGORY_INCLUDE,
       orderBy,
       take: 50,
     });
@@ -197,7 +204,7 @@ export class HelpService {
     if (items.length === 0 && !q) {
       items = await this.prisma.helpArticle.findMany({
         where: base,
-        include,
+        include: ARTICLE_CATEGORY_INCLUDE,
         orderBy,
         take: limit,
       });
@@ -217,7 +224,7 @@ export class HelpService {
   // ── Beheer: scope-resolutie ──────────────────────────────────────────────
   /** Bepaalt de orgId waaronder geschreven wordt + bewaakt schrijfrechten. */
   private resolveWriteOrgId(user: User, requestedOrgId?: string | null): string | null {
-    if (this.isSuperuser(user)) return requestedOrgId ?? null; // superuser: globaal of gekozen org
+    if (isSuperuser(user)) return requestedOrgId ?? null; // superuser: globaal of gekozen org
     // ORG_ADMIN mag alleen voor eigen org schrijven (nooit globaal)
     if (requestedOrgId && requestedOrgId !== user.orgId) {
       throw new ForbiddenException('Geen rechten voor deze organisatie');
@@ -269,7 +276,7 @@ export class HelpService {
       await this.prisma.helpCategory.findUnique({ where: { id } }),
       'Categorie',
     );
-    if (!this.isSuperuser(user) && cat.orgId !== user.orgId) {
+    if (!isSuperuser(user) && cat.orgId !== user.orgId) {
       throw new ForbiddenException('Geen rechten op deze categorie'); // ORG_ADMIN kan globaal niet wijzigen
     }
     let nextSlug: string | undefined;
@@ -306,7 +313,7 @@ export class HelpService {
       await this.prisma.helpCategory.findUnique({ where: { id } }),
       'Categorie',
     );
-    if (!this.isSuperuser(user) && cat.orgId !== user.orgId) {
+    if (!isSuperuser(user) && cat.orgId !== user.orgId) {
       throw new ForbiddenException('Geen rechten op deze categorie');
     }
     const [articleCount, childCount] = await Promise.all([
@@ -334,14 +341,14 @@ export class HelpService {
       sortOrder = 'desc',
     } = q;
     const where: Prisma.HelpArticleWhereInput = {
-      ...this.visibilityWhere(user), // SUPERUSER: alles; ORG_ADMIN: globaal + eigen org
+      ...this.orgVisibilityWhere(user), // SUPERUSER: alles; ORG_ADMIN: globaal + eigen org
       ...(status ? { status } : {}),
       ...(categoryId ? { categoryId } : {}),
       ...(search ? { title: { contains: search, mode: 'insensitive' } } : {}),
     };
     return paginate(this.prisma.helpArticle, {
       where,
-      include: { category: { select: { id: true, name: true, slug: true } } },
+      include: ARTICLE_CATEGORY_INCLUDE,
       orderBy: buildOrderBy(sortBy, sortOrder, ARTICLE_SORT, { updatedAt: 'desc' }),
       page,
       limit,
@@ -380,7 +387,7 @@ export class HelpService {
       await this.prisma.helpArticle.findUnique({ where: { id } }),
       'Artikel',
     );
-    if (!this.isSuperuser(user) && article.orgId !== user.orgId) {
+    if (!isSuperuser(user) && article.orgId !== user.orgId) {
       throw new ForbiddenException('Geen rechten op dit artikel');
     }
     if (dto.categoryId) {
@@ -422,7 +429,7 @@ export class HelpService {
       await this.prisma.helpArticle.findUnique({ where: { id } }),
       'Artikel',
     );
-    if (!this.isSuperuser(user) && article.orgId !== user.orgId) {
+    if (!isSuperuser(user) && article.orgId !== user.orgId) {
       throw new ForbiddenException('Geen rechten op dit artikel');
     }
     return this.prisma.helpArticle.update({
@@ -436,7 +443,7 @@ export class HelpService {
       await this.prisma.helpArticle.findUnique({ where: { id } }),
       'Artikel',
     );
-    if (!this.isSuperuser(user) && article.orgId !== user.orgId) {
+    if (!isSuperuser(user) && article.orgId !== user.orgId) {
       throw new ForbiddenException('Geen rechten op dit artikel');
     }
     await this.prisma.helpArticle.delete({ where: { id } });

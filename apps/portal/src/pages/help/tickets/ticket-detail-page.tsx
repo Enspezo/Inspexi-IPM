@@ -7,6 +7,7 @@ import { SUPPORT_TICKET_STATUS, SUPPORT_TICKET_PRIORITY } from '@/lib/status';
 import { formatDateTime } from '@/lib/format';
 import { useAuth } from '@/providers/auth-provider';
 import { ADMIN_ROLES } from '@/lib/roles';
+import { hasRole } from '@/lib/has-role';
 import { Role, SupportTicketStatus, SupportTicketPriority } from '@/types';
 import {
   useSupportTicket,
@@ -35,8 +36,8 @@ export default function TicketDetailPage() {
   if (isLoading) return <Spinner size="lg" />;
   if (error || !ticket) return <ErrorBox>Ticket niet gevonden.</ErrorBox>;
 
-  const canEdit = !!user?.roles?.some((r) => ADMIN_ROLES.includes(r));
-  const isSupport = !!user?.roles?.includes(Role.SUPERUSER);
+  const canEdit = hasRole(user, ADMIN_ROLES);
+  const isSupport = hasRole(user, Role.SUPERUSER);
 
   async function sendReply() {
     if (!reply.trim()) return;

@@ -1,18 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useHelp } from '@/providers/help-provider';
 import { Input } from '@/components/ui';
+import { useDebounce } from '@/hooks/use-debounce';
 import { HelpSuggestions } from './help-suggestions';
 import { HelpChatPanel } from './help-chat-panel';
-
-function useDebounce<T>(value: T, delay = 300): T {
-  const [debounced, setDebounced] = useState(value);
-  useEffect(() => {
-    const t = setTimeout(() => setDebounced(value), delay);
-    return () => clearTimeout(t);
-  }, [value, delay]);
-  return debounced;
-}
 
 const HelpIcon = (
   <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">

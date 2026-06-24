@@ -1,17 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { PageHeader } from '@/components/layout/page-header';
 import { Card, Input, Spinner, ErrorBox } from '@/components/ui';
+import { useDebounce } from '@/hooks/use-debounce';
 import { useHelpCategories, useHelpCategory, useHelpArticles } from './hooks/use-help';
-
-function useDebounce<T>(value: T, delay: number): T {
-  const [debounced, setDebounced] = useState<T>(value);
-  useEffect(() => {
-    const timer = setTimeout(() => setDebounced(value), delay);
-    return () => clearTimeout(timer);
-  }, [value, delay]);
-  return debounced;
-}
 
 export default function HelpCenterPage() {
   const { slug } = useParams<{ slug?: string }>();

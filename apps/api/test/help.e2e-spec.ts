@@ -43,6 +43,13 @@ describe('Help / Knowledge base (e2e)', () => {
   let org1CollisionId: string;
   const COLLISION_SLUG = 'e2e-collision-slug';
 
+  // Contextuele suggesties (Fase 3): eigen module-key + uniek zoektoken in org2's titel
+  const CTX_MODULE = 'e2ectx';
+  const CTX_SECRET_TOKEN = 'Geheimorg';
+  let ctxGlobalId: string;
+  let ctxOrg1Id: string;
+  let ctxOrg2Id: string;
+
   async function login(email: string, password = 'Password123!') {
     const res = await request(app.getHttpServer())
       .post('/api/v1/auth/login')
@@ -163,6 +170,35 @@ describe('Help / Knowledge base (e2e)', () => {
     });
     org1CollisionId = o1c.id;
     await publish(org1Token, org1CollisionId);
+
+    // Contextuele fixtures: globaal + org1 + org2, allemaal met dezelfde moduleKey.
+    const ctxG = await createArticle(superToken, {
+      categoryId: globalCategoryId,
+      title: 'E2E Ctx Globaal artikel',
+      body: 'global ctx',
+      moduleKeys: [CTX_MODULE],
+    });
+    ctxGlobalId = ctxG.id;
+    await publish(superToken, ctxGlobalId);
+
+    const ctxO1 = await createArticle(org1Token, {
+      categoryId: globalCategoryId,
+      title: 'E2E Ctx Org1 artikel',
+      body: 'org1 ctx',
+      moduleKeys: [CTX_MODULE],
+    });
+    ctxOrg1Id = ctxO1.id;
+    await publish(org1Token, ctxOrg1Id);
+
+    // org2-artikel met een uniek zoektoken in de titel (mag nooit naar org1 lekken).
+    const ctxO2 = await createArticle(org2Token, {
+      categoryId: globalCategoryId,
+      title: `E2E Ctx ${CTX_SECRET_TOKEN} artikel`,
+      body: 'org2 ctx',
+      moduleKeys: [CTX_MODULE],
+    });
+    ctxOrg2Id = ctxO2.id;
+    await publish(org2Token, ctxOrg2Id);
   });
 
   afterAll(async () => {
@@ -290,6 +326,50 @@ describe('Help / Knowledge base (e2e)', () => {
       .expect(200);
     expect(res.body.data.id).toBe(globalCollisionId);
     expect(res.body.data.orgId).toBeNull();
+  });
+
+  // ── Contextuele suggesties (Fase 3) ───────────────────────────────────────
+  it('contextual: moduleKey-match toont globaal + eigen-org, niet andere org (org eerst)', async () => {
+    const res = await request(app.getHttpServer())
+      .get(`/api/v1/help/articles/contextual?module=${CTX_MODULE}`)
+      .set(auth(org1Token))
+      .expect(200);
+    const items = res.body.data.items as { id: string; orgId: string | null }[];
+    const ids = items.map((a) => a.id);
+    expect(ids).toContain(ctxGlobalId);
+    expect(ids).toContain(ctxOrg1Id);
+    expect(ids).not.toContain(ctxOrg2Id); // cross-tenant isolatie
+    // org-specifiek vóór globaal
+    expect(ids.indexOf(ctxOrg1Id)).toBeLessThan(ids.indexOf(ctxGlobalId));
+    expect(typeof res.body.data.total).toBe('number');
+  });
+
+  it('contextual: vrije zoekterm lekt geen artikel van een andere org', async () => {
+    const res = await request(app.getHttpServer())
+      .get(
+        `/api/v1/help/articles/contextual?module=${CTX_MODULE}&q=${CTX_SECRET_TOKEN}`,
+      )
+      .set(auth(org1Token))
+      .expect(200);
+    const ids = (res.body.data.items as { id: string }[]).map((a) => a.id);
+    expect(ids).not.toContain(ctxOrg2Id); // de zoekterm matcht alleen org2's titel
+  });
+
+  it('contextual: fallback vult het paneel als de module geen treffers heeft', async () => {
+    const res = await request(app.getHttpServer())
+      .get('/api/v1/help/articles/contextual?module=zzgeenmodule')
+      .set(auth(org1Token))
+      .expect(200);
+    const items = res.body.data.items as {
+      id: string;
+      status: string;
+      orgId: string | null;
+    }[];
+    expect(items.length).toBeGreaterThan(0); // nooit leeg
+    const ids = items.map((a) => a.id);
+    expect(ids).not.toContain(draftArticleId); // geen DRAFT
+    expect(ids).not.toContain(ctxOrg2Id); // geen andere-org artikel
+    expect(items.every((a) => a.status === 'PUBLISHED')).toBe(true);
   });
 
   // ── Categorieën (beheer) ──────────────────────────────────────────────────

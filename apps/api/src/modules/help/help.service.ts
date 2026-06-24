@@ -160,12 +160,18 @@ export class HelpService {
     const primaryWhere: Prisma.HelpArticleWhereInput = {
       ...base,
       ...(moduleKey ? { moduleKeys: { hasSome: [moduleKey] } } : {}),
+      // Tekstmatch via AND-genest, zodat de zichtbaarheids-OR uit `base`
+      // (globaal OF eigen org) niet wordt overschreven door deze OR.
       ...(q
         ? {
-            OR: [
-              { title: { contains: q, mode: 'insensitive' } },
-              { excerpt: { contains: q, mode: 'insensitive' } },
-              { tags: { hasSome: [q.toLowerCase()] } },
+            AND: [
+              {
+                OR: [
+                  { title: { contains: q, mode: 'insensitive' } },
+                  { excerpt: { contains: q, mode: 'insensitive' } },
+                  { tags: { hasSome: [q.toLowerCase()] } },
+                ],
+              },
             ],
           }
         : {}),

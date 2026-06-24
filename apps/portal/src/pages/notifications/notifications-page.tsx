@@ -12,6 +12,7 @@ import {
 } from '@/components/table-config';
 import {
   NOTIFICATION_MODELS,
+  getNotificationRoute,
   getTypeLabel,
   getTypesForModel,
   type NotificationModel,
@@ -37,16 +38,6 @@ const readFilterOptions = [
   { value: '', label: 'Alle notificaties' },
   { value: 'true', label: 'Alleen ongelezen' },
 ];
-
-function getEntityRoute(notif: Notification): string | null {
-  if (!notif.entityType || !notif.entityId) return null;
-  if (notif.entityType === 'quote') return `/quotes/${notif.entityId}`;
-  if (notif.entityType === 'request') return `/requests/${notif.entityId}`;
-  if (notif.entityType === 'task') return `/tasks/${notif.entityId}`;
-  if (notif.entityType === 'document') return `/documents`;
-  if (notif.entityType === 'planningItem') return `/planning/${notif.entityId}`;
-  return null;
-}
 
 export default function NotificationsPage() {
   const navigate = useNavigate();
@@ -83,7 +74,7 @@ export default function NotificationsPage() {
       if (!notif.isRead) {
         markRead.mutate(notif.id);
       }
-      const route = getEntityRoute(notif);
+      const route = getNotificationRoute(notif);
       if (route) navigate(route);
     },
     [markRead, navigate],

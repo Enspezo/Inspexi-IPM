@@ -1,4 +1,4 @@
-import { NotificationType } from '@/types';
+import { NotificationType, type Notification } from '@/types';
 
 /**
  * Single source of truth voor het groeperen van notificaties per "model"
@@ -207,4 +207,33 @@ export function getTypeLabel(type: NotificationType | string): string {
 /** NL-label voor een model-key. */
 export function getModelLabel(model: NotificationModel): string {
   return NOTIFICATION_MODELS.find((m) => m.key === model)?.label ?? model;
+}
+
+/**
+ * Doel-route voor een notificatie op basis van entityType (of null als er geen
+ * koppeling is). Eén bron-van-waarheid: de header-dropdown én de
+ * notificatiepagina delen deze mapping zodat ze niet kunnen driften.
+ *
+ * Let op: entityType-waarden volgen wat de backend dispatcht — meestal de
+ * lowercase resource-naam, maar supporttickets gebruiken het PascalCase
+ * modelnaam `SupportTicket`.
+ */
+export function getNotificationRoute(notif: Notification): string | null {
+  if (!notif.entityType || !notif.entityId) return null;
+  switch (notif.entityType) {
+    case 'quote':
+      return `/quotes/${notif.entityId}`;
+    case 'request':
+      return `/requests/${notif.entityId}`;
+    case 'task':
+      return `/tasks/${notif.entityId}`;
+    case 'document':
+      return '/documents';
+    case 'planningItem':
+      return `/planning/${notif.entityId}`;
+    case 'SupportTicket':
+      return `/help/tickets/${notif.entityId}`;
+    default:
+      return null;
+  }
 }

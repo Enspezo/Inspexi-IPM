@@ -11,6 +11,10 @@
  * dashboard, e-mailsjablonen, notificatie-dispatch) en platform-functies
  * (organisaties, foutmeldingen, inspectie-systeem — alleen SUPERUSER) staan
  * bewust NIET in de catalogus: die zijn altijd aan en worden nooit gegate.
+ *
+ * Dit is het gedeelde workspace-pakket `@inspexi/entitlements`: backend (resolver,
+ * guard, plan-CRUD), portal en client-portal consumeren hetzelfde bestand zodat
+ * er één bron-van-waarheid is (PRD-09 refactor — geen 3-4× duplicaat meer).
  */
 
 export const FEATURE_KEYS = [
@@ -94,6 +98,15 @@ export const FEATURE_CATALOG: Record<FeatureKey, FeatureDef> = {
     dependsOn: [],
   },
 };
+
+/**
+ * Catalogus als array, geordend volgens FEATURE_KEYS. Voedt de array-gedreven
+ * resolver/analyse (`*With`-functies + de static convenience-wrappers) en is
+ * exact wat `GET /admin/features` aan de portal levert.
+ */
+export const FEATURE_CATALOG_LIST: FeatureDef[] = FEATURE_KEYS.map(
+  (key) => FEATURE_CATALOG[key],
+);
 
 /** Type-guard: is een willekeurige string een bekende feature-key? */
 export function isFeatureKey(value: string): value is FeatureKey {

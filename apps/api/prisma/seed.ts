@@ -7,7 +7,7 @@ import * as zlib from 'zlib';
 import { seedLookups } from './seed-lookups';
 import { backfillNumbering } from './backfill-numbering';
 import { DEFAULT_VOICE_BASE_PROMPT } from '../src/modules/voice/default-base-prompt';
-import { FEATURE_KEYS } from '../src/modules/entitlements/feature-catalog';
+import { FEATURE_KEYS } from '@inspexi/entitlements';
 
 const prisma = new PrismaClient();
 

@@ -3,6 +3,6 @@ export { UpdateOrganizationDto } from './update-organization.dto';
 export { AssignPlanDto } from './assign-plan.dto';
 export {
   SetOrganizationFeatureDto,
-  OrganizationFeatureState,
+  FeatureOverrideState,
 } from './set-organization-feature.dto';
 export { SetSupportAccessDto } from './support-access.dto';

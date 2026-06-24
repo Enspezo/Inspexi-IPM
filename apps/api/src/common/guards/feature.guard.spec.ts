@@ -10,7 +10,7 @@ import {
 } from '../decorators/requires-feature.decorator';
 import { TenantContext } from '../interfaces/tenant-context.interface';
 import { EntitlementsService } from '@/modules/entitlements/entitlements.service';
-import { FeatureKey } from '@/modules/entitlements/feature-catalog';
+import { FeatureKey } from '@inspexi/entitlements';
 
 describe('FeatureGuard', () => {
   let reflector: Reflector;

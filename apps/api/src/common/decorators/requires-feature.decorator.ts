@@ -1,5 +1,5 @@
 import { SetMetadata } from '@nestjs/common';
-import { FeatureKey } from '@/modules/entitlements/feature-catalog';
+import { FeatureKey } from '@inspexi/entitlements';
 
 export const REQUIRES_FEATURE_KEY = 'requiresFeature';
 export const ALLOW_DOWNGRADED_EXPORT_KEY = 'allowDowngradedExport';

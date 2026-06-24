@@ -482,7 +482,7 @@ model Organization {
 
 // ─── SaaS-abonnementen & feature-entitlements (PRD-09) ───
 // De feature-catalogus (keys/labels/afhankelijkheden) leeft in code
-// (src/modules/entitlements/feature-catalog.ts). Deze tabellen slaan alleen
+// (packages/entitlements — @inspexi/entitlements). Deze tabellen slaan alleen
 // plannen (templates) en per-org-afwijkingen op die naar feature-keys verwijzen.
 
 model Plan {

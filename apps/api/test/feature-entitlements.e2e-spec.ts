@@ -5,7 +5,7 @@ import cookieParser from 'cookie-parser';
 import bcrypt from 'bcrypt';
 import { AppModule } from '@/app.module';
 import { PrismaService } from '@/prisma';
-import { FEATURE_KEYS } from '@/modules/entitlements/feature-catalog';
+import { FEATURE_KEYS } from '@inspexi/entitlements';
 
 /**
  * Fase 1 — backend feature-enforcement (PRD-09 §5.1). Verifieert dat de

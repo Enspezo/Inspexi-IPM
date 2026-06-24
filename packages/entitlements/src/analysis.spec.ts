@@ -1,7 +1,7 @@
 import {
   analyzeEntitlements,
   resolveEffectiveFeatures,
-} from './entitlements.analysis';
+} from './analysis';
 
 const BASIS = ['BASIS_CRM', 'BASIS_UITVOERING', 'BASIS_INSPECTIES', 'BASIS_WORKFLOW'];
 

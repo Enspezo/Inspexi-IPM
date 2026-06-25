@@ -11,6 +11,7 @@ const config: Config = {
   coverageDirectory: '../coverage',
   testEnvironment: 'node',
   moduleNameMapper: {
+    '^@inspexi/calibration$': '<rootDir>/../../../packages/calibration/src/index.ts',
     '^@inspexi/entitlements$': '<rootDir>/../../../packages/entitlements/src/index.ts',
     '^@/(.*)$': '<rootDir>/$1',
   },

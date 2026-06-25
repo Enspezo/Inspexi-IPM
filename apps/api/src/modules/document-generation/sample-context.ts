@@ -149,6 +149,17 @@ export function buildSampleContext(documentType: DocumentType = DocumentType.REP
             fields: { L1: '> 1 MΩ', L2: '> 1 MΩ', L3: '> 1 MΩ' },
           },
         ],
+        usedInstruments: [
+          {
+            id: 'mi-1',
+            code: 'MM-001',
+            brand: 'Fluke',
+            type: '1587 FC',
+            serialNumber: 'SN-12345',
+            lastCalibrationDate: now,
+            nextCalibrationDue: now,
+          },
+        ],
       },
     ],
     currentDate: now,

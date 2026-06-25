@@ -43,6 +43,7 @@ import type {
   FindingData,
   PhotoData,
   MeasurementSheetData,
+  UsedInstrumentData,
   FindingSummary,
   PdfOptions,
 } from '../document-generation/types';
@@ -603,6 +604,31 @@ export class GeneratedDocumentsService {
     );
     const findingsSummary = this.buildFindingsSummary(findings);
 
+    // Gebruikte meetmiddelen: snapshot-first (historische juistheid); val terug op
+    // één batch-query op de live meetmiddelen voor records zonder snapshot.
+    const fallbackIds = [
+      ...new Set(
+        plan.measurementSheetRecords
+          .filter((r) => !this.readInstrumentSnapshot(r.data))
+          .flatMap((r) => r.usedInstrumentIds ?? []),
+      ),
+    ];
+    const liveInstruments = fallbackIds.length
+      ? await this.prisma.measurementInstrument.findMany({
+          where: { id: { in: fallbackIds }, orgId: plan.orgId },
+          select: {
+            id: true,
+            code: true,
+            brand: true,
+            type: true,
+            serialNumber: true,
+            lastCalibrationDate: true,
+            nextCalibrationDue: true,
+          },
+        })
+      : [];
+    const liveById = new Map(liveInstruments.map((i) => [i.id, i]));
+
     const measurementSheets: MeasurementSheetData[] = plan.measurementSheetRecords.map((record) => ({
       id: record.id,
       name: record.template.name,
@@ -612,6 +638,20 @@ export class GeneratedDocumentsService {
       date: record.completedAt || record.createdAt,
       inspector: inspector.name,
       sections: this.parseMeasurementData(record.data as Record<string, unknown>),
+      usedInstruments:
+        this.readInstrumentSnapshot(record.data) ??
+        (record.usedInstrumentIds ?? [])
+          .map((id) => liveById.get(id))
+          .filter((i): i is NonNullable<typeof i> => Boolean(i))
+          .map((i) => ({
+            id: i.id,
+            code: i.code,
+            brand: i.brand,
+            type: i.type,
+            serialNumber: i.serialNumber,
+            lastCalibrationDate: i.lastCalibrationDate,
+            nextCalibrationDue: i.nextCalibrationDue,
+          })),
     }));
 
     const now = new Date();
@@ -732,6 +772,12 @@ export class GeneratedDocumentsService {
       if (formData) Object.assign(result, formData);
     }
     return result;
+  }
+
+  /** Leest het ingebakken meetmiddel-snapshot uit record.data (of null). */
+  private readInstrumentSnapshot(data: unknown): UsedInstrumentData[] | null {
+    const snap = (data as Record<string, unknown> | null)?.__usedInstrumentsSnapshot;
+    return Array.isArray(snap) ? (snap as UsedInstrumentData[]) : null;
   }
 
   private parseMeasurementData(

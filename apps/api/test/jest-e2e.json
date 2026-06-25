@@ -7,6 +7,7 @@
     "^.+\\.(t|j)s$": "ts-jest"
   },
   "moduleNameMapper": {
+    "^@inspexi/calibration$": "<rootDir>/../../../packages/calibration/src/index.ts",
     "^@inspexi/entitlements$": "<rootDir>/../../../packages/entitlements/src/index.ts",
     "^@/(.*)$": "<rootDir>/../src/$1"
   },

@@ -53,6 +53,7 @@ const FK_TARGETS: Map<string, Map<string, string>> = (() => {
  */
 const FALLBACK_FIELD_MODEL: Readonly<Record<string, string>> = {
   createdBy: 'User',
+  createdById: 'User',
   ownerId: 'User',
   assignedTo: 'User',
   reviewerId: 'User',

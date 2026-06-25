@@ -495,6 +495,11 @@ async function main() {
   await prisma.standaloneMeasurementValue.deleteMany();
   await prisma.standaloneMeasurement.deleteMany();
   await prisma.locationImage.deleteMany();
+  // meetmiddelen (children first; before user/org/inspectionPlan deletes)
+  await prisma.inspectionPlanDefaultInstrument.deleteMany();
+  await prisma.userDefaultInstrument.deleteMany();
+  await prisma.calibration.deleteMany();
+  await prisma.measurementInstrument.deleteMany();
   // measurement sheets
   await prisma.measurementSheetRecord.deleteMany();
   await prisma.measurementSheetVersionHistory.deleteMany();

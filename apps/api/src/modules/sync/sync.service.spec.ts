@@ -23,6 +23,9 @@ describe('SyncService', () => {
     photo: delegate(),
     contact: delegate(),
     syncQueue: delegate(),
+    measurementInstrument: delegate(),
+    userDefaultInstrument: delegate(),
+    inspectionPlanDefaultInstrument: delegate(),
   };
 
   // ChatService is delegated to for the additive chat sync; mock its snapshot/apply.
@@ -347,8 +350,24 @@ describe('SyncService', () => {
       mockPrisma.contact.findMany.mockResolvedValue([
         { id: 'c1', orgId: 'org-1', companyName: 'Acme', firstName: null, lastName: null, type: 'COMPANY' },
       ]);
+      // changed instruments (first call), tombstones (second call)
+      mockPrisma.measurementInstrument.findMany
+        .mockResolvedValueOnce([{ id: 'mi1', orgId: 'org-1', code: 'MM-001', brand: 'Fluke' }])
+        .mockResolvedValueOnce([{ id: 'mi-del' }]);
+      mockPrisma.userDefaultInstrument.findMany.mockResolvedValue([{ instrumentId: 'mi-fav' }]);
+      mockPrisma.inspectionPlanDefaultInstrument.findMany.mockResolvedValue([
+        { inspectionPlanId: 'p1', instrumentId: 'mi-plan' },
+      ]);
 
       const result = await service.pull(user);
+
+      // Pull-only meetmiddelen + voorkeuren + per-plan defaults + tombstones.
+      expect(result.measurementInstruments).toEqual([
+        { id: 'mi1', orgId: 'org-1', code: 'MM-001', brand: 'Fluke' },
+      ]);
+      expect(result.userDefaultInstrumentIds).toEqual(['mi-fav']);
+      expect(result.inspectionPlans[0].defaultInstrumentIds).toEqual(['mi-plan']);
+      expect(result.deletedIds.measurementInstruments).toEqual(['mi-del']);
 
       expect(result).toHaveProperty('inspectionPlans');
       expect(result).toHaveProperty('assets');
@@ -380,6 +399,9 @@ describe('SyncService', () => {
       mockPrisma.finding.findMany.mockResolvedValue([]);
       mockPrisma.photo.findMany.mockResolvedValue([]);
       mockPrisma.contact.findMany.mockResolvedValue([]);
+      mockPrisma.measurementInstrument.findMany.mockResolvedValue([]);
+      mockPrisma.userDefaultInstrument.findMany.mockResolvedValue([]);
+      mockPrisma.inspectionPlanDefaultInstrument.findMany.mockResolvedValue([]);
 
       const result = await service.pull(user);
 
@@ -390,6 +412,11 @@ describe('SyncService', () => {
       expect(result.deletedIds).toHaveProperty('inspectionPlans');
       expect(result.deletedIds).toHaveProperty('assets');
       expect(result.deletedIds).toHaveProperty('findings');
+
+      // Additive meetmiddel keys (read-only referentie + voorkeuren + tombstones).
+      expect(result).toHaveProperty('measurementInstruments');
+      expect(result).toHaveProperty('userDefaultInstrumentIds');
+      expect(result.deletedIds).toHaveProperty('measurementInstruments');
 
       // Additive chat keys.
       expect(result.chatThreads).toEqual([{ id: 't1', type: 'DIRECT' }]);

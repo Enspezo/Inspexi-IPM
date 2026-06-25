@@ -14,6 +14,7 @@ jest.setTimeout(60000);
 
 const HOST = 'req35contact.localhost';
 const CLIENT_PW = 'ClientPass123!';
+const STAFF_PW = 'StaffPass123!';
 const PUBLIC_TOKEN = 'req35-public-token';
 
 // Bewust onderscheidende waarden zodat assertions ondubbelzinnig zijn.
@@ -23,23 +24,33 @@ const INSPECTOR_CONTACT_EMAIL = 'contact.req35@req35.nl';
 const STATIC_PHONE = '+31 20 999 8888';
 const STATIC_EMAIL = 'static.req35@req35.nl';
 
+// Staf-actor die de inspecteur-contactgegevens namens de inspecteur beheert.
+const ADMIN_LOGIN_EMAIL = 'e2e-req35-admin@req35.nl';
+// Waarden die de admin via PATCH /users/:id zet (onderscheidend van de seed-waarden hierboven).
+const ADMIN_SET_PHONE = '+31 6 11 22 33 44';
+const ADMIN_SET_EMAIL = 'admin-set.req35@req35.nl';
+
 describe('Inspecteur-contact zichtbaarheid (e2e)', () => {
   let app: INestApplication;
   let prisma: PrismaService;
 
   let orgId: string;
   let inspectorId: string;
+  let adminId: string;
   let contactId: string;
   let planId: string;
   let clientUserId: string;
   let planningItemId: string;
   let planningSessionId: string;
   let token: string; // client-realm access token
+  let adminToken: string; // staf-realm access token (ORG_ADMIN)
+  let inspectorToken: string; // staf-realm access token (INSPECTEUR)
 
   const clientEmail = 'e2e-req35-client@test.nl';
 
   const onHost = (path: string) => request(app.getHttpServer()).get(path).set('Host', HOST);
   const postHost = (path: string) => request(app.getHttpServer()).post(path).set('Host', HOST);
+  const patchHost = (path: string) => request(app.getHttpServer()).patch(path).set('Host', HOST);
   const bearer = (t: string) => ({ Authorization: `Bearer ${t}` });
 
   /** Zet de org-modus + statische waarden vers in de DB (resolutie leest altijd vers). */
@@ -106,6 +117,20 @@ describe('Inspecteur-contact zichtbaarheid (e2e)', () => {
       },
     });
     inspectorId = inspector.id;
+
+    // ORG_ADMIN in dezelfde org — beheert de inspecteur-contactgegevens via PATCH /users/:id.
+    const admin = await prisma.user.create({
+      data: {
+        email: ADMIN_LOGIN_EMAIL,
+        passwordHash: staffHash,
+        firstName: 'Anne',
+        lastName: 'Admin',
+        roles: ['ORG_ADMIN'],
+        orgId: org.id,
+        emailVerifiedAt: new Date(),
+      },
+    });
+    adminId = admin.id;
 
     const contact = await prisma.contact.create({
       data: { orgId: org.id, type: 'COMPANY', companyName: 'REQ35 Opdrachtgever BV' },
@@ -194,6 +219,16 @@ describe('Inspecteur-contact zichtbaarheid (e2e)', () => {
       .send({ email: clientEmail, password: CLIENT_PW })
       .expect(201);
     token = login.body.data.accessToken;
+
+    const adminLogin = await postHost('/api/v1/auth/login')
+      .send({ email: ADMIN_LOGIN_EMAIL, password: STAFF_PW })
+      .expect(201);
+    adminToken = adminLogin.body.data.accessToken;
+
+    const inspectorLogin = await postHost('/api/v1/auth/login')
+      .send({ email: INSPECTOR_LOGIN_EMAIL, password: STAFF_PW })
+      .expect(201);
+    inspectorToken = inspectorLogin.body.data.accessToken;
   });
 
   afterAll(async () => {
@@ -208,8 +243,8 @@ describe('Inspecteur-contact zichtbaarheid (e2e)', () => {
       await prisma.inspectionPlan.deleteMany({ where: { id: planId } });
       await prisma.contact.deleteMany({ where: { orgId } });
       await prisma.auditLog.deleteMany({ where: { orgId } });
-      await prisma.refreshToken.deleteMany({ where: { userId: inspectorId } });
-      await prisma.user.deleteMany({ where: { id: inspectorId } });
+      await prisma.refreshToken.deleteMany({ where: { userId: { in: [inspectorId, adminId] } } });
+      await prisma.user.deleteMany({ where: { orgId } });
       await prisma.organization.deleteMany({ where: { id: orgId } });
     } finally {
       await app.close();
@@ -340,6 +375,82 @@ describe('Inspecteur-contact zichtbaarheid (e2e)', () => {
       expect(user.phone).toBeNull();
       expect(user.email).toBeNull();
       expect(JSON.stringify(res.body.data)).not.toContain(INSPECTOR_CONTACT_PHONE);
+    });
+  });
+
+  // ─── Admin beheert inspecteur-contactgegevens: PATCH /users/:id ─────────────
+  // Deze blok muteert de inspecteur-velden en staat daarom bewust als laatste,
+  // zodat de zichtbaarheidstests hierboven nog de oorspronkelijke seed-waarden zien.
+
+  describe('admin beheert inspecteur-contactgegevens', () => {
+    it('ORG_ADMIN kan telefoon/e-mail + toestemming van de inspecteur bijwerken', async () => {
+      const res = await patchHost(`/api/v1/users/${inspectorId}`)
+        .set(bearer(adminToken))
+        .send({
+          contactPhone: ADMIN_SET_PHONE,
+          contactEmail: ADMIN_SET_EMAIL,
+          sharePhoneWithClients: true,
+          shareEmailWithClients: true,
+        })
+        .expect(200);
+
+      // Staf-facing response mag de rauwe velden tonen, maar nooit de passwordHash.
+      expect(res.body.data.contactPhone).toBe(ADMIN_SET_PHONE);
+      expect(res.body.data.contactEmail).toBe(ADMIN_SET_EMAIL);
+      expect(res.body.data.sharePhoneWithClients).toBe(true);
+      expect(res.body.data.shareEmailWithClients).toBe(true);
+      expect(res.body.data.passwordHash).toBeUndefined();
+
+      // Persistentie bevestigen op DB-niveau.
+      const persisted = await prisma.user.findUnique({ where: { id: inspectorId } });
+      expect(persisted?.contactPhone).toBe(ADMIN_SET_PHONE);
+      expect(persisted?.contactEmail).toBe(ADMIN_SET_EMAIL);
+      expect(persisted?.sharePhoneWithClients).toBe(true);
+      expect(persisted?.shareEmailWithClients).toBe(true);
+    });
+
+    it('de door de admin gezette waarden komen via de normale resolutie in het klantportaal', async () => {
+      await setOrgModes({ phone: 'INSPECTOR', email: 'INSPECTOR' });
+      const res = await onHost(`/api/v1/client/inspections/${planId}`).set(bearer(token)).expect(200);
+
+      // Beide kanalen nu mét toestemming → beide tonen de admin-waarden (geen statische terugval).
+      expect(res.body.data.assignedUser.phone).toBe(ADMIN_SET_PHONE);
+      expect(res.body.data.assignedUser.email).toBe(ADMIN_SET_EMAIL);
+      const raw = JSON.stringify(res.body.data);
+      expect(raw).not.toContain('sharePhoneWithClients');
+      expect(raw).not.toContain(INSPECTOR_LOGIN_EMAIL);
+    });
+
+    it('telefoon leegmaken zet de telefoon-toestemming automatisch uit', async () => {
+      const res = await patchHost(`/api/v1/users/${inspectorId}`)
+        .set(bearer(adminToken))
+        // Bewust toestemming op true proberen te houden terwijl de waarde leeg is.
+        .send({ contactPhone: '', sharePhoneWithClients: true })
+        .expect(200);
+
+      expect(res.body.data.contactPhone).toBeNull();
+      expect(res.body.data.sharePhoneWithClients).toBe(false);
+
+      const persisted = await prisma.user.findUnique({ where: { id: inspectorId } });
+      expect(persisted?.contactPhone).toBeNull();
+      expect(persisted?.sharePhoneWithClients).toBe(false);
+      // E-mailkanaal blijft ongemoeid.
+      expect(persisted?.contactEmail).toBe(ADMIN_SET_EMAIL);
+      expect(persisted?.shareEmailWithClients).toBe(true);
+    });
+
+    it('een niet-admin (INSPECTEUR) mag een andere gebruiker niet bijwerken (403)', async () => {
+      await patchHost(`/api/v1/users/${inspectorId}`)
+        .set(bearer(inspectorToken))
+        .send({ contactPhone: '+31 6 00 00 00 00' })
+        .expect(403);
+    });
+
+    it('ongeldig e-mailadres wordt geweigerd (400)', async () => {
+      await patchHost(`/api/v1/users/${inspectorId}`)
+        .set(bearer(adminToken))
+        .send({ contactEmail: 'geen-geldig-adres' })
+        .expect(400);
     });
   });
 });

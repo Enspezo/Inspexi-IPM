@@ -193,6 +193,22 @@ describe('MeasurementInstruments (e2e)', () => {
     expect(codes).toEqual(expect.arrayContaining(['MM-E2E-1', 'MM-E2E-2']));
   });
 
+  // De portal laadt "alles" (limit=200) voor client-side filtering. De query-DTO
+  // overschrijft daarom de base-cap @Max(100); deze cases borgen de grens op 200.
+  it('GET /measurement-instruments accepts limit=200 (portal load-all)', async () => {
+    await base()
+      .get('/api/v1/measurement-instruments?limit=200')
+      .set('Authorization', `Bearer ${tokens.insp}`)
+      .expect(200);
+  });
+
+  it('GET /measurement-instruments rejects limit above 200 → 400', async () => {
+    await base()
+      .get('/api/v1/measurement-instruments?limit=201')
+      .set('Authorization', `Bearer ${tokens.insp}`)
+      .expect(400);
+  });
+
   it('GET suggestions returns distinct brands', async () => {
     const res = await base()
       .get('/api/v1/measurement-instruments/suggestions')

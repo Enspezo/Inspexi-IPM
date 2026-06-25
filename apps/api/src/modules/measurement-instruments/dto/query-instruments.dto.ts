@@ -1,6 +1,6 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { Transform } from 'class-transformer';
-import { IsBoolean, IsEnum, IsIn, IsOptional, IsString, IsUUID } from 'class-validator';
+import { Transform, Type } from 'class-transformer';
+import { IsBoolean, IsEnum, IsIn, IsInt, IsOptional, IsString, IsUUID, Max, Min } from 'class-validator';
 import { MeasurementInstrumentStatus } from '@prisma/client';
 import { BasePaginationQueryDto } from '@/common/dto';
 
@@ -8,6 +8,16 @@ const CALIBRATION_STATUSES = ['GEEN_KALIBRATIE', 'GELDIG', 'BINNENKORT', 'VERLOP
 
 /** Filters voor de meetmiddelen-lijst. */
 export class QueryMeasurementInstrumentsDto extends BasePaginationQueryDto {
+  // Override van de base-cap (@Max(100)): de lijst laadt "alles" voor client-side
+  // filtering in de portal (vgl. tasks/quotes), dus we staan tot 200 toe.
+  @ApiPropertyOptional({ default: 20, maximum: 200 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(200)
+  limit?: number = 20;
+
   @ApiPropertyOptional({ description: 'Zoek op nummer, merk, type of serienummer' })
   @IsOptional()
   @IsString()

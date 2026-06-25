@@ -35,6 +35,7 @@ import { TasksModule } from './modules/tasks/tasks.module';
 import { StorageModule } from './common/services/storage/storage.module';
 import { DocumentsModule } from './modules/documents/documents.module';
 import { DocumentTagsModule } from './modules/document-tags/document-tags.module';
+import { InspectorCertificatesModule } from './modules/inspector-certificates/inspector-certificates.module';
 import { WebhooksModule } from './modules/webhooks/webhooks.module';
 import { PlanningModule } from './modules/planning/planning.module';
 import { SearchModule } from './modules/search/search.module';
@@ -118,6 +119,7 @@ import { VoiceModule } from './modules/voice/voice.module';
     StorageModule,
     DocumentsModule,
     DocumentTagsModule,
+    InspectorCertificatesModule,
     WebhooksModule,
     PlanningModule,
     SearchModule,

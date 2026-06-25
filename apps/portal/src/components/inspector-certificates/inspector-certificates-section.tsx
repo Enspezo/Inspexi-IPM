@@ -19,6 +19,7 @@ import {
   useDeleteInspectorCertificate,
 } from '@/pages/inspectors/hooks/use-inspector-certificates';
 import { CertificateFormModal } from './certificate-form-modal';
+import { CertificatePreviewModal } from './certificate-preview-modal';
 
 interface InspectorCertificatesSectionProps {
   userId: string;
@@ -42,6 +43,7 @@ export function InspectorCertificatesSection({
 
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [editing, setEditing] = useState<InspectorCertificate | null>(null);
+  const [previewing, setPreviewing] = useState<InspectorCertificate | null>(null);
 
   const certificates = data?.data ?? [];
 
@@ -94,16 +96,29 @@ export function InspectorCertificatesSection({
       header: 'Document',
       render: (c) =>
         c.hasDocument ? (
-          <button
-            type="button"
-            onClick={() => handleDownload(c)}
-            className="inline-flex items-center gap-1 font-medium text-primary-600 hover:text-primary-800 hover:underline"
-          >
-            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-            </svg>
-            Download
-          </button>
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => setPreviewing(c)}
+              className="inline-flex items-center gap-1 font-medium text-primary-600 hover:text-primary-800 hover:underline"
+            >
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+              </svg>
+              Bekijken
+            </button>
+            <button
+              type="button"
+              onClick={() => handleDownload(c)}
+              title="Downloaden"
+              className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+            >
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+              </svg>
+            </button>
+          </div>
         ) : (
           <span className="text-gray-400">—</span>
         ),
@@ -186,6 +201,11 @@ export function InspectorCertificatesSection({
         onClose={() => setEditing(null)}
         userId={userId}
         certificate={editing}
+      />
+      <CertificatePreviewModal
+        isOpen={!!previewing}
+        onClose={() => setPreviewing(null)}
+        certificate={previewing}
       />
     </div>
   );

@@ -264,3 +264,31 @@ export const SUPPORT_ACCESS_ACTION: StatusMap = {
   EXPIRED: { label: 'Verlopen', classes: 'bg-amber-100 text-amber-800' },
   ACCESSED: { label: 'Ingezien', classes: 'bg-blue-100 text-blue-800' },
 };
+
+// ─── PRD-11: Inspecteur-certificaten — geldigheidsstatus ──────────────────
+// Afgeleide status (geen enum): berekend uit `validUntil` via getCertificateValidityKey.
+
+export type CertificateValidityKey = 'verlopen' | 'binnenkort' | 'geldig' | 'geen-einddatum';
+
+export const CERTIFICATE_VALIDITY: StatusMap = {
+  verlopen: { label: 'Verlopen', classes: 'bg-red-100 text-red-800' },
+  binnenkort: { label: 'Verloopt binnenkort', classes: 'bg-orange-100 text-orange-800' },
+  geldig: { label: 'Geldig', classes: 'bg-green-100 text-green-800' },
+  'geen-einddatum': { label: 'Geen einddatum', classes: 'bg-gray-100 text-gray-600' },
+};
+
+/**
+ * Bepaalt de geldigheidsstatus van een certificaat o.b.v. `validUntil`:
+ * verlopen (verstreken), binnenkort (≤ 30 dagen), geldig, of geen-einddatum.
+ */
+export function getCertificateValidityKey(
+  validUntil: string | null | undefined,
+): CertificateValidityKey {
+  if (!validUntil) return 'geen-einddatum';
+  const end = new Date(validUntil);
+  if (Number.isNaN(end.getTime())) return 'geen-einddatum';
+  const days = Math.ceil((end.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+  if (days < 0) return 'verlopen';
+  if (days <= 30) return 'binnenkort';
+  return 'geldig';
+}

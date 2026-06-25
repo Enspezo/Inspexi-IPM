@@ -996,6 +996,29 @@ export interface CrmDocument {
   tags?: DocumentTagRef[];
 }
 
+// ─── PRD-11: Inspecteur-certificaten / diploma's ────────
+
+export interface InspectorCertificate {
+  id: string;
+  orgId: string;
+  userId: string;
+  type: string;
+  number: string | null;
+  issueDate: string;
+  validUntil: string | null;
+  issuer: string;
+  // Bestand-metadata (storageKey wordt nooit naar de client gestuurd).
+  fileName: string | null;
+  originalName: string | null;
+  mimeType: string | null;
+  size: number | null;
+  hasDocument: boolean;
+  isDeleted: boolean;
+  createdAt: string;
+  updatedAt: string;
+  user?: UserSummary;
+}
+
 // ─── PRD-07: Planning & Afspraken ───────────────────────
 
 export enum PlanningStatus {

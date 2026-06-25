@@ -477,6 +477,9 @@ model Organization {
   supportTickets    SupportTicket[]
   supportAccessLogs SupportAccessLog[]
 
+  // Inspecteur-certificaten (PRD-11)
+  inspectorCertificates InspectorCertificate[]
+
   @@map("imp_organizations")
 }
 
@@ -651,6 +654,9 @@ model User {
   assignedSupportTickets SupportTicket[]        @relation("SupportTicketAssignedTo")
   supportTicketMessages  SupportTicketMessage[] @relation("SupportTicketMessageAuthor")
   supportAccessLogs      SupportAccessLog[]     @relation("SupportAccessLogPerformedBy")
+
+  // Inspecteur-certificaten / diploma's (PRD-11)
+  inspectorCertificates InspectorCertificate[] @relation("InspectorCertificates")
 
   @@index([orgId, isDeleted])
   @@map("imp_users")
@@ -4261,4 +4267,37 @@ model SupportAccessLog {
 
   @@index([orgId, createdAt])
   @@map("imp_support_access_logs")
+}
+
+// ─── Inspecteur-certificaten / diploma's (PRD-11) ───
+// Rol-specifieke datalaag voor INSPECTEUR-gebruikers: diploma's en certificaten
+// met een optioneel privé-document. Bewust een op zichzelf staande module (géén
+// generiek polymorf framework) en LOS van het generieke /documents DMS — het
+// certificaatbestand mag nooit via /documents zichtbaar of downloadbaar zijn.
+
+model InspectorCertificate {
+  id           String    @id @default(uuid()) @db.Uuid
+  orgId        String    @map("org_id") @db.Uuid
+  userId       String    @map("user_id") @db.Uuid
+  type         String // Soort certificaat/diploma (vrije tekst, autocomplete)
+  number       String? // Certificaatnummer (optioneel)
+  issueDate    DateTime  @map("issue_date") @db.Date // Datum van afgifte
+  validUntil   DateTime? @map("valid_until") @db.Date // Geldig tot (optioneel)
+  issuer       String // Uitgevende instantie (vrije tekst, autocomplete)
+  // Privé-bestand (optioneel) — opgeslagen via de StorageProvider.
+  storageKey   String?   @map("storage_key")
+  fileName     String?   @map("file_name")
+  originalName String?   @map("original_name")
+  mimeType     String?   @map("mime_type")
+  size         Int?
+  isDeleted    Boolean   @default(false) @map("is_deleted")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [orgId], references: [id])
+  user         User         @relation("InspectorCertificates", fields: [userId], references: [id])
+
+  @@index([orgId, userId])
+  @@index([userId])
+  @@map("imp_inspector_certificates")
 }

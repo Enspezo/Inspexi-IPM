@@ -33,6 +33,7 @@ import {
   useDeleteInspectionPlan,
 } from './hooks/use-inspections';
 import { useInspectionAssets } from './hooks/use-location-images';
+import { PlanDefaultInstrumentsSection } from '@/pages/meetmiddelen/components/plan-default-instruments-section';
 import { AssetsTab } from './components/assets-tab';
 import { DocumentsTab } from './components/documents-tab';
 
@@ -307,6 +308,10 @@ export default function InspectionDetailPage() {
                   <InfoField label="Notities" value={plan.notes} />
                 </dl>
               )}
+            </Card>
+
+            <Card title="Standaard meetmiddelen">
+              <PlanDefaultInstrumentsSection planId={id!} canEdit={userCanWrite} />
             </Card>
           </div>
         )}

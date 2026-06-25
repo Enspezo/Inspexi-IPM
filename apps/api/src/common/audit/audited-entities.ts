@@ -193,6 +193,18 @@ export const AUDITED_ENTITIES: readonly AuditedEntity[] = [
     table: 'imp_inspector_certificates',
     displayFields: ['type', 'issuer'],
   },
+
+  // Meetmiddelen + kalibraties
+  {
+    model: 'MeasurementInstrument',
+    table: 'imp_measurement_instruments',
+    displayFields: ['code', 'brand'],
+  },
+  {
+    model: 'Calibration',
+    table: 'imp_measurement_instrument_calibrations',
+    display: (r) => `Kalibratie #${shortId(r)}`,
+  },
 ];
 
 /** Builds a display function from an entry's `display` / `displayFields`, falling back to id. */

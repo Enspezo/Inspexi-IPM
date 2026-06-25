@@ -19,7 +19,7 @@ import {
   PassFailOperator,
 } from '@prisma/client';
 import { PrismaService } from '@/prisma';
-import { orgScope, assertFound, assertSameOrg, requireOrg } from '@/common';
+import { orgScope, assertFound, assertSameOrg, assertAllSameOrg, requireOrg } from '@/common';
 import {
   CreateMeasurementSheetRecordDto,
   UpdateMeasurementSheetRecordDto,
@@ -145,14 +145,30 @@ export class MeasurementSheetRecordsService {
       throw new BadRequestException('Alleen ACTIEVE templates kunnen gebruikt worden');
     }
 
+    // Gebruikte meetmiddelen: org-scope valideren + snapshot voor documenthistorie
+    const usedInstrumentIds = dto.usedInstrumentIds ?? [];
+    await assertAllSameOrg(
+      this.prisma.measurementInstrument,
+      usedInstrumentIds,
+      asset.orgId,
+      'meetmiddelen',
+    );
+
     // Snapshot + lege datastructuur
     const templateSnapshot = this.createTemplateSnapshot(template);
-    const initialData: Record<string, Record<string, Record<string, FieldValue>>> = {};
+    const initialData: Record<string, unknown> = {};
     for (const section of template.sections) {
-      initialData[section.code] = { '0': {} };
+      const rows: Record<string, Record<string, FieldValue>> = { '0': {} };
       for (const field of section.fields) {
-        initialData[section.code]['0'][field.code] = { value: null, passFail: null };
+        rows['0'][field.code] = { value: null, passFail: null };
       }
+      initialData[section.code] = rows;
+    }
+    if (usedInstrumentIds.length) {
+      initialData.__usedInstrumentsSnapshot = await this.resolveInstrumentSnapshot(
+        usedInstrumentIds,
+        asset.orgId,
+      );
     }
 
     return this.prisma.measurementSheetRecord.create({
@@ -164,7 +180,8 @@ export class MeasurementSheetRecordsService {
         templateVersion: template.version,
         templateSnapshot: templateSnapshot as unknown as Prisma.InputJsonValue,
         status: MeasurementSheetRecordStatus.IN_PROGRESS,
-        data: initialData as unknown as Prisma.InputJsonValue,
+        data: initialData as Prisma.InputJsonValue,
+        usedInstrumentIds,
         deviceId,
         createdBy: user.id,
       },
@@ -184,15 +201,42 @@ export class MeasurementSheetRecordsService {
       throw new BadRequestException('Alleen meetstaten met status IN_PROGRESS kunnen bijgewerkt worden');
     }
 
+    if (dto.usedInstrumentIds !== undefined) {
+      await assertAllSameOrg(
+        this.prisma.measurementInstrument,
+        dto.usedInstrumentIds,
+        record.orgId,
+        'meetmiddelen',
+      );
+    }
+
     const snapshot = record.templateSnapshot as unknown as ReturnType<
       typeof this.createTemplateSnapshot
     >;
     const updatedData = this.evaluatePassFail(dto.data, snapshot);
 
+    // Meetmiddel-snapshot opnieuw afleiden (nieuwe set) of de bestaande behouden —
+    // evaluatePassFail bouwt alleen de sectie-data, dus de snapshot her-attachen.
+    const dataOut: Record<string, unknown> = {
+      ...(updatedData as unknown as Record<string, unknown>),
+    };
+    const existingSnap = (record.data as Record<string, unknown> | null)?.__usedInstrumentsSnapshot;
+    if (dto.usedInstrumentIds !== undefined) {
+      dataOut.__usedInstrumentsSnapshot = await this.resolveInstrumentSnapshot(
+        dto.usedInstrumentIds,
+        record.orgId,
+      );
+    } else if (existingSnap !== undefined) {
+      dataOut.__usedInstrumentsSnapshot = existingSnap;
+    }
+
     return this.prisma.measurementSheetRecord.update({
       where: { id: record.id },
       data: {
-        data: updatedData as unknown as Prisma.InputJsonValue,
+        data: dataOut as Prisma.InputJsonValue,
+        ...(dto.usedInstrumentIds !== undefined
+          ? { usedInstrumentIds: dto.usedInstrumentIds }
+          : {}),
         deviceId,
         syncedAt: new Date(),
       },
@@ -255,6 +299,39 @@ export class MeasurementSheetRecordsService {
   }
 
   // ── helpers ──
+
+  /**
+   * Resolve gebruikte meetmiddelen → details-snapshot voor documenthistorie.
+   * Behoudt de volgorde; slaat ontbrekende/cross-org ids over (org-scope).
+   */
+  private async resolveInstrumentSnapshot(ids: string[], orgId: string) {
+    if (!ids.length) return [];
+    const instruments = await this.prisma.measurementInstrument.findMany({
+      where: { id: { in: ids }, orgId },
+      select: {
+        id: true,
+        code: true,
+        brand: true,
+        type: true,
+        serialNumber: true,
+        lastCalibrationDate: true,
+        nextCalibrationDue: true,
+      },
+    });
+    const byId = new Map(instruments.map((i) => [i.id, i]));
+    return ids
+      .map((id) => byId.get(id))
+      .filter((i): i is NonNullable<typeof i> => Boolean(i))
+      .map((i) => ({
+        id: i.id,
+        code: i.code,
+        brand: i.brand,
+        type: i.type,
+        serialNumber: i.serialNumber,
+        lastCalibrationDate: i.lastCalibrationDate?.toISOString() ?? null,
+        nextCalibrationDue: i.nextCalibrationDue?.toISOString() ?? null,
+      }));
+  }
 
   /** Snapshot van het template voor versie-tracking. */
   private createTemplateSnapshot(

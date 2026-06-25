@@ -8,6 +8,7 @@ import { seedLookups } from './seed-lookups';
 import { backfillNumbering } from './backfill-numbering';
 import { DEFAULT_VOICE_BASE_PROMPT } from '../src/modules/voice/default-base-prompt';
 import { FEATURE_KEYS } from '@inspexi/entitlements';
+import { addMonths } from '@inspexi/calibration';
 
 const prisma = new PrismaClient();
 
@@ -495,6 +496,11 @@ async function main() {
   await prisma.standaloneMeasurementValue.deleteMany();
   await prisma.standaloneMeasurement.deleteMany();
   await prisma.locationImage.deleteMany();
+  // meetmiddelen (children first; before user/org/inspectionPlan deletes)
+  await prisma.inspectionPlanDefaultInstrument.deleteMany();
+  await prisma.userDefaultInstrument.deleteMany();
+  await prisma.calibration.deleteMany();
+  await prisma.measurementInstrument.deleteMany();
   // measurement sheets
   await prisma.measurementSheetRecord.deleteMany();
   await prisma.measurementSheetVersionHistory.deleteMany();
@@ -2523,10 +2529,29 @@ async function main() {
             ].join('\n'),
           },
           {
+            code: 'meetmiddelen',
+            title: 'Gebruikte meetmiddelen',
+            sectionType: SectionType.STATIC,
+            sortOrder: 2,
+            contentHtml: [
+              '{{#each measurementSheets}}',
+              '{{#if this.usedInstruments.length}}',
+              '<h3>{{this.name}}</h3>',
+              '<table>',
+              '<tr><th>Nummer</th><th>Merk</th><th>Type</th><th>Serienr.</th><th>Laatste kalibratie</th><th>Verloopt</th></tr>',
+              '{{#each this.usedInstruments}}',
+              '<tr><td>{{this.code}}</td><td>{{this.brand}}</td><td>{{this.type}}</td><td>{{this.serialNumber}}</td><td>{{formatDate this.lastCalibrationDate "DD-MM-YYYY"}}</td><td>{{formatDate this.nextCalibrationDue "DD-MM-YYYY"}}</td></tr>',
+              '{{/each}}',
+              '</table>',
+              '{{/if}}',
+              '{{/each}}',
+            ].join('\n'),
+          },
+          {
             code: 'ondertekening',
             title: 'Ondertekening',
             sectionType: SectionType.SIGNATURE_BLOCK,
-            sortOrder: 2,
+            sortOrder: 3,
           },
         ],
       },
@@ -2775,6 +2800,146 @@ async function main() {
   });
   console.log('  ✓ Meetstaat-records (2: asset1 geslaagd, asset2 afgekeurd op groep 3)');
   console.log('  → Demo-inspectie compleet: + 2 locaties, 1 plattegrond + 3 markers, 2 meetstaat-records');
+
+  // ─── Meetmiddelen + kalibraties (demo) ─────────────────
+  // Drie meetmiddelen met afgeleide statussen: binnenkort verlopend, verlopen en geldig.
+  // De afgeleide cache (lastCalibrationDate/nextCalibrationDue) wordt hier expliciet
+  // gezet (de recompute draait normaal in de service, niet bij een rauwe prisma.create).
+  console.log('\n📏 Seeding meetmiddelen + kalibraties...');
+  const mmDay = 1000 * 60 * 60 * 24;
+  const mmNow = Date.now();
+  const mmAdminId = createdOrg1Users[Role.ORG_ADMIN];
+
+  async function seedInstrument(opts: {
+    code: string;
+    brand: string;
+    type: string;
+    serialNumber: string;
+    intervalMonths: number;
+    assignedToUserId: string | null;
+    calibrations: Array<{
+      daysAgo: number;
+      performedBy: string;
+      certificateNumber?: string;
+      withDocument?: boolean;
+    }>;
+  }) {
+    const instrument = await prisma.measurementInstrument.create({
+      data: {
+        orgId: org1.id,
+        code: opts.code,
+        brand: opts.brand,
+        type: opts.type,
+        serialNumber: opts.serialNumber,
+        calibrationIntervalMonths: opts.intervalMonths,
+        assignedToUserId: opts.assignedToUserId,
+        createdById: mmAdminId,
+      },
+    });
+
+    let latest: Date | null = null;
+    for (const c of opts.calibrations) {
+      const calDate = new Date(mmNow - c.daysAgo * mmDay);
+      if (!latest || calDate > latest) latest = calDate;
+
+      let fileFields: Record<string, unknown> = {};
+      if (c.withDocument) {
+        const filename = `kalibratiecertificaat-${opts.code}.pdf`;
+        const key = `${org1.id}/measurement-instruments/${instrument.id}/calibrations/${randomUUID()}-${filename}`;
+        const bytes = makeCertificatePdf(
+          `Kalibratiecertificaat ${opts.code} — ${opts.brand} ${opts.type}`,
+        );
+        const full = path.join(process.env.UPLOAD_DIR || './uploads', key);
+        fs.mkdirSync(path.dirname(full), { recursive: true });
+        fs.writeFileSync(full, bytes);
+        fileFields = {
+          storageKey: key,
+          fileName: filename,
+          originalName: filename,
+          mimeType: 'application/pdf',
+          size: bytes.length,
+        };
+      }
+
+      await prisma.calibration.create({
+        data: {
+          orgId: org1.id,
+          instrumentId: instrument.id,
+          calibrationDate: calDate,
+          performedBy: c.performedBy,
+          certificateNumber: c.certificateNumber ?? null,
+          createdById: mmAdminId,
+          ...fileFields,
+        },
+      });
+    }
+
+    await prisma.measurementInstrument.update({
+      where: { id: instrument.id },
+      data: {
+        lastCalibrationDate: latest,
+        nextCalibrationDue: latest ? addMonths(latest, opts.intervalMonths) : null,
+      },
+    });
+    return instrument;
+  }
+
+  // BINNENKORT — laatste kalibratie ~340 dagen geleden, interval 12 mnd → verloopt over ~3-4 weken
+  const mi1 = await seedInstrument({
+    code: 'MM-001',
+    brand: 'Fluke',
+    type: '1587 FC',
+    serialNumber: 'SN-FLK-1587-001',
+    intervalMonths: 12,
+    assignedToUserId: inspecteurId,
+    calibrations: [
+      { daysAgo: 400, performedBy: 'KalibratieLab BV', certificateNumber: 'CAL-2025-0412' },
+      { daysAgo: 340, performedBy: 'KalibratieLab BV', certificateNumber: 'CAL-2025-0588', withDocument: true },
+    ],
+  });
+
+  // VERLOPEN — laatste kalibratie ~395 dagen geleden, interval 12 mnd → ~1 maand verlopen
+  const mi2 = await seedInstrument({
+    code: 'MM-002',
+    brand: 'Megger',
+    type: 'MIT430/2',
+    serialNumber: 'SN-MGR-430-002',
+    intervalMonths: 12,
+    assignedToUserId: null, // op voorraad
+    calibrations: [
+      { daysAgo: 395, performedBy: 'IJkmeester Nederland', certificateNumber: 'IJK-2025-1180', withDocument: true },
+    ],
+  });
+
+  // GELDIG — recent gekalibreerd, interval 24 mnd
+  const mi3 = await seedInstrument({
+    code: 'MM-003',
+    brand: 'Gossen Metrawatt',
+    type: 'PROFITEST',
+    serialNumber: 'SN-GMC-PT-003',
+    intervalMonths: 24,
+    assignedToUserId: inspecteurId,
+    calibrations: [
+      { daysAgo: 60, performedBy: 'KalibratieLab BV', certificateNumber: 'CAL-2026-0042', withDocument: true },
+    ],
+  });
+
+  // Niveau 1 — globale standaard-meetmiddelen voor de demo-inspecteur
+  await prisma.userDefaultInstrument.createMany({
+    data: [
+      { orgId: org1.id, userId: inspecteurId, instrumentId: mi1.id },
+      { orgId: org1.id, userId: inspecteurId, instrumentId: mi3.id },
+    ],
+  });
+
+  // Gebruikte meetmiddelen op het geslaagde demo-meetstaat-record (asset1)
+  await prisma.measurementSheetRecord.updateMany({
+    where: { assetId: asset1.id, templateId: measSheet.id },
+    data: { usedInstrumentIds: [mi1.id, mi3.id] },
+  });
+
+  console.log('  ✓ 3 meetmiddelen (binnenkort/verlopen/geldig) + kalibraties + 3 certificaten');
+  console.log('  ✓ Niveau-1 standaard-meetmiddelen voor de demo-inspecteur + usedInstrumentIds op meetstaat');
 
   // ─── Client-portal demo (Fase 6) ───────────────────────
   // Onboarded demo-klant met een vaste, niet-gebruikte magic-link op het bestaande

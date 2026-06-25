@@ -790,6 +790,8 @@ export enum NotificationType {
   SUPPORT_TICKET_AANGEMAAKT = 'SUPPORT_TICKET_AANGEMAAKT',
   SUPPORT_TICKET_REACTIE = 'SUPPORT_TICKET_REACTIE',
   SUPPORT_TICKET_STATUS = 'SUPPORT_TICKET_STATUS',
+  MEETMIDDEL_KALIBRATIE_BINNENKORT = 'MEETMIDDEL_KALIBRATIE_BINNENKORT',
+  MEETMIDDEL_KALIBRATIE_VERLOPEN = 'MEETMIDDEL_KALIBRATIE_VERLOPEN',
 }
 
 export interface Notification {
@@ -1017,6 +1019,63 @@ export interface InspectorCertificate {
   createdAt: string;
   updatedAt: string;
   user?: UserSummary;
+}
+
+// ─── Meetmiddelen (measurement instruments) + Kalibraties ───────────────────
+
+export enum MeasurementInstrumentStatus {
+  ACTIEF = 'ACTIEF',
+  BUITEN_GEBRUIK = 'BUITEN_GEBRUIK',
+  AFGEKEURD = 'AFGEKEURD',
+}
+
+/** Afgeleide kalibratiestatus (geen DB-enum) — berekend uit laatste kalibratie + interval. */
+export type MeasurementCalibrationStatus =
+  | 'GEEN_KALIBRATIE'
+  | 'GELDIG'
+  | 'BINNENKORT'
+  | 'VERLOPEN';
+
+export interface MeasurementInstrument {
+  id: string;
+  orgId: string;
+  code: string;
+  brand: string;
+  type: string;
+  serialNumber: string | null;
+  calibrationIntervalMonths: number;
+  status: MeasurementInstrumentStatus;
+  assignedToUserId: string | null;
+  notes: string | null;
+  // Afgeleide cache (laatste kalibratie + verloopdatum).
+  lastCalibrationDate: string | null;
+  nextCalibrationDue: string | null;
+  isDeleted: boolean;
+  createdAt: string;
+  updatedAt: string;
+  // Door de API verrijkt:
+  calibrationStatus?: MeasurementCalibrationStatus;
+  assignedTo?: UserSummary | null;
+  calibrationCount?: number;
+}
+
+export interface Calibration {
+  id: string;
+  orgId: string;
+  instrumentId: string;
+  calibrationDate: string;
+  performedBy: string;
+  certificateNumber: string | null;
+  notes: string | null;
+  // Bestand-metadata (storageKey wordt nooit naar de client gestuurd).
+  fileName: string | null;
+  originalName: string | null;
+  mimeType: string | null;
+  size: number | null;
+  hasDocument: boolean;
+  isDeleted: boolean;
+  createdAt: string;
+  updatedAt: string;
 }
 
 // ─── PRD-07: Planning & Afspraken ───────────────────────
@@ -2522,6 +2581,7 @@ export interface MeasurementSheetRecord {
   updatedAt: string;
   completedAt: string | null;
   createdBy: string;
+  usedInstrumentIds: string[];
   // Include-projecties uit de endpoints:
   template?: { id: string; code: string; name: string; version: string };
   asset?: { id: string; name: string; assetType: string; inspectionPlanId?: string };

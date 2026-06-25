@@ -42,3 +42,15 @@ export function downloadCertificateDocument(
 ): Promise<void> {
   return downloadFromPath(`/inspector-certificates/${certId}/document`, fileName);
 }
+
+/** Kalibratiecertificaat van een meetmiddel downloaden. */
+export function downloadCalibrationDocument(
+  instrumentId: string,
+  calibrationId: string,
+  fileName: string,
+): Promise<void> {
+  return downloadFromPath(
+    `/measurement-instruments/${instrumentId}/calibrations/${calibrationId}/document`,
+    fileName,
+  );
+}

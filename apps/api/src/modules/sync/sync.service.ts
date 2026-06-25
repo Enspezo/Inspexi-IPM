@@ -104,14 +104,64 @@ export class SyncService {
       select: { id: true, type: true, companyName: true, firstName: true, lastName: true, orgId: true },
     });
 
+    // Meetmiddelen — read-only referentie (pull-only, zoals contacts). Tombstones via
+    // isDeleted+updatedAt (dit model heeft geen deletedAt). Kalibraties syncen niet.
+    const [measurementInstruments, delInstruments, userDefaults, planDefaults] = await Promise.all([
+      this.prisma.measurementInstrument.findMany({
+        where: {
+          ...scope,
+          isDeleted: false,
+          OR: [{ createdAt: { gt: since } }, { updatedAt: { gt: since } }],
+        },
+        select: {
+          id: true,
+          orgId: true,
+          code: true,
+          brand: true,
+          type: true,
+          serialNumber: true,
+          status: true,
+          assignedToUserId: true,
+          calibrationIntervalMonths: true,
+          lastCalibrationDate: true,
+          nextCalibrationDue: true,
+        },
+      }),
+      this.prisma.measurementInstrument.findMany({
+        where: { ...scope, isDeleted: true, updatedAt: { gt: since } },
+        select: { id: true },
+      }),
+      this.prisma.userDefaultInstrument.findMany({
+        where: { userId: user.id },
+        select: { instrumentId: true },
+      }),
+      this.prisma.inspectionPlanDefaultInstrument.findMany({
+        where: { inspectionPlanId: { in: plans.map((p) => p.id) } },
+        select: { inspectionPlanId: true, instrumentId: true },
+      }),
+    ]);
+    const defaultsByPlan = new Map<string, string[]>();
+    for (const d of planDefaults) {
+      const arr = defaultsByPlan.get(d.inspectionPlanId) ?? [];
+      arr.push(d.instrumentId);
+      defaultsByPlan.set(d.inspectionPlanId, arr);
+    }
+
     // Additieve chat-uitbreiding (REQ1 PR2): membership-scoped threads/messages +
     // presence. Bestaande keys blijven ongewijzigd; een oude PWA negeert deze.
     const chat = await this.chat.getSyncSnapshot(user, since);
 
     return {
-      inspectionPlans: plans.map(toWire),
+      inspectionPlans: plans.map((p) => ({
+        ...toWire(p),
+        // Niveau-2 voorkeur per inspectie (additief; lege array als geen defaults).
+        defaultInstrumentIds: defaultsByPlan.get(p.id) ?? [],
+      })),
       assets: assets.map(toWire),
       findings: findings.map(toWire),
+      // Meetmiddelen pull-only + globale (niveau-1) voorkeur van de device-gebruiker.
+      measurementInstruments,
+      userDefaultInstrumentIds: userDefaults.map((d) => d.instrumentId),
       photos: photos.map((p) => ({
         id: p.id,
         entityType: wirePhotoType[p.entityType] ?? p.entityType,
@@ -132,6 +182,8 @@ export class SyncService {
         inspectionPlans: delPlans.map((x) => x.id),
         assets: delAssets.map((x) => x.id),
         findings: delFindings.map((x) => x.id),
+        // Additief — meetmiddel-tombstones:
+        measurementInstruments: delInstruments.map((x) => x.id),
         // Additief — chat tombstones:
         chatThreads: chat.deletedThreadIds,
         chatMessages: chat.deletedMessageIds,

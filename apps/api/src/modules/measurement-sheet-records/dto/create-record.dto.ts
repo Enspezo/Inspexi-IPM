@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsString, IsUUID, IsOptional } from 'class-validator';
+import { IsString, IsUUID, IsOptional, IsArray, ArrayUnique } from 'class-validator';
 
 export class CreateMeasurementSheetRecordDto {
   @ApiProperty({ description: 'Globaal meetstaat-template (snapshot bij aanmaken)' })
@@ -14,4 +14,11 @@ export class CreateMeasurementSheetRecordDto {
   @IsOptional()
   @IsUUID()
   inspectionPlanId?: string;
+
+  @ApiPropertyOptional({ type: [String], description: 'Gebruikte meetmiddelen (instrument-UUIDs)' })
+  @IsOptional()
+  @IsArray()
+  @ArrayUnique()
+  @IsUUID(undefined, { each: true, message: 'Ongeldig meetmiddel-id' })
+  usedInstrumentIds?: string[];
 }

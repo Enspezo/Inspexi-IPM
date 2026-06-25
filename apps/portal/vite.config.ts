@@ -14,6 +14,10 @@ export default defineConfig({
         __dirname,
         '../../packages/entitlements/src/index.ts',
       ),
+      '@inspexi/calibration': path.resolve(
+        __dirname,
+        '../../packages/calibration/src/index.ts',
+      ),
     },
   },
   server: {

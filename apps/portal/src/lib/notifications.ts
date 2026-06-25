@@ -26,6 +26,7 @@ export type NotificationModel =
   | 'PROJECTEN'
   | 'FOUTMELDINGEN'
   | 'INSPECTIEPLANNEN'
+  | 'MEETMIDDELEN'
   | 'CHAT'
   | 'SUPPORT';
 
@@ -121,6 +122,14 @@ export const NOTIFICATION_MODELS: NotificationModelDef[] = [
     ],
   },
   {
+    key: 'MEETMIDDELEN',
+    label: 'Meetmiddelen',
+    types: [
+      NotificationType.MEETMIDDEL_KALIBRATIE_BINNENKORT,
+      NotificationType.MEETMIDDEL_KALIBRATIE_VERLOPEN,
+    ],
+  },
+  {
     key: 'CHAT',
     label: 'Chat',
     types: [
@@ -178,6 +187,8 @@ export const NOTIFICATION_TYPE_LABELS: Record<NotificationType, string> = {
   [NotificationType.SUPPORT_TICKET_AANGEMAAKT]: 'Nieuw supportticket',
   [NotificationType.SUPPORT_TICKET_REACTIE]: 'Reactie op supportticket',
   [NotificationType.SUPPORT_TICKET_STATUS]: 'Supportticket status gewijzigd',
+  [NotificationType.MEETMIDDEL_KALIBRATIE_BINNENKORT]: 'Kalibratie verloopt binnenkort',
+  [NotificationType.MEETMIDDEL_KALIBRATIE_VERLOPEN]: 'Kalibratie verlopen',
 };
 
 /** Afgeleide lookup: type → model-key. */
@@ -233,6 +244,8 @@ export function getNotificationRoute(notif: Notification): string | null {
       return `/planning/${notif.entityId}`;
     case 'SupportTicket':
       return `/help/tickets/${notif.entityId}`;
+    case 'measurementInstrument':
+      return `/meetmiddelen/${notif.entityId}`;
     default:
       return null;
   }

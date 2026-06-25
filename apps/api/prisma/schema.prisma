@@ -133,6 +133,8 @@ enum NotificationType {
   SUPPORT_TICKET_AANGEMAAKT
   SUPPORT_TICKET_REACTIE
   SUPPORT_TICKET_STATUS
+  MEETMIDDEL_KALIBRATIE_BINNENKORT
+  MEETMIDDEL_KALIBRATIE_VERLOPEN
 }
 
 enum AuditAction {
@@ -480,6 +482,12 @@ model Organization {
   // Inspecteur-certificaten (PRD-11)
   inspectorCertificates InspectorCertificate[]
 
+  // Meetmiddelen
+  measurementInstruments           MeasurementInstrument[]
+  calibrations                     Calibration[]
+  userDefaultInstruments           UserDefaultInstrument[]
+  inspectionPlanDefaultInstruments InspectionPlanDefaultInstrument[]
+
   @@map("imp_organizations")
 }
 
@@ -657,6 +665,10 @@ model User {
 
   // Inspecteur-certificaten / diploma's (PRD-11)
   inspectorCertificates InspectorCertificate[] @relation("InspectorCertificates")
+
+  // Meetmiddelen
+  assignedInstruments MeasurementInstrument[] @relation("MeasurementInstrumentAssignee")
+  defaultInstruments  UserDefaultInstrument[]
 
   @@index([orgId, isDeleted])
   @@map("imp_users")
@@ -2537,8 +2549,9 @@ model InspectionPlan {
   clientAccess            InspectionClientAccess[]
   magicLinks              ClientMagicLink[]
   inspectionMessages      InspectionMessage[]
-  clientRequests          ClientRequest[]          @relation("RelatedInspectionPlan")
+  clientRequests          ClientRequest[]                   @relation("RelatedInspectionPlan")
   standaloneMeasurements  StandaloneMeasurement[]
+  instrumentDefaults      InspectionPlanDefaultInstrument[]
 
   @@index([orgId, statusCode])
   @@index([contactId])
@@ -3597,10 +3610,12 @@ model MeasurementSheetRecord {
   assetId          String  @map("asset_id") @db.Uuid
   inspectionPlanId String? @map("inspection_plan_id") @db.Uuid
 
-  templateVersion  String                       @map("template_version")
-  templateSnapshot Json                         @map("template_snapshot")
-  status           MeasurementSheetRecordStatus @default(IN_PROGRESS)
-  data             Json                         @default("{}")
+  templateVersion   String                       @map("template_version")
+  templateSnapshot  Json                         @map("template_snapshot")
+  status            MeasurementSheetRecordStatus @default(IN_PROGRESS)
+  data              Json                         @default("{}")
+  // Gebruikte meetmiddelen (instrument-UUID's); bron van waarheid, reist mee via REST.
+  usedInstrumentIds String[]                     @default([]) @map("used_instrument_ids") @db.Uuid
 
   finalCheckExecuted Boolean  @default(false) @map("final_check_executed")
   finalCheckPassed   Boolean? @map("final_check_passed")
@@ -4300,4 +4315,114 @@ model InspectorCertificate {
   @@index([orgId, userId])
   @@index([userId])
   @@map("imp_inspector_certificates")
+}
+
+// ─── Meetmiddelen (measurement instruments) + Kalibraties ────────────────────
+
+enum MeasurementInstrumentStatus {
+  ACTIEF
+  BUITEN_GEBRUIK
+  AFGEKEURD
+}
+
+/// Meetmiddel — apparatuur van een organisatie, optioneel toegewezen aan één inspecteur.
+/// `assignedToUserId == null` ⇒ "op voorraad". Verloopdatum is afgeleid: laatste
+/// kalibratiedatum + interval (gedenormaliseerd gecachet in lastCalibrationDate/nextCalibrationDue).
+model MeasurementInstrument {
+  id                        String                      @id @default(uuid()) @db.Uuid
+  orgId                     String                      @map("org_id") @db.Uuid
+  code                      String // Uniek nummer (uniek per org)
+  brand                     String // Merk
+  type                      String // Type
+  serialNumber              String?                     @map("serial_number") // Serienummer (optioneel)
+  calibrationIntervalMonths Int                         @map("calibration_interval_months") // Kalibratie-interval in maanden
+  status                    MeasurementInstrumentStatus @default(ACTIEF)
+  assignedToUserId          String?                     @map("assigned_to_user_id") @db.Uuid // Huidige houder; null = op voorraad
+  notes                     String?
+  // Gedenormaliseerde cache (herberekend bij elke kalibratie-mutatie)
+  lastCalibrationDate       DateTime?                   @map("last_calibration_date")
+  nextCalibrationDue        DateTime?                   @map("next_calibration_due")
+  // Dedupe voor verloop-notificaties (stage: "30d" | "expired")
+  lastExpiryNotifiedStage   String?                     @map("last_expiry_notified_stage")
+  lastExpiryNotifiedAt      DateTime?                   @map("last_expiry_notified_at")
+  isDeleted                 Boolean                     @default(false) @map("is_deleted")
+  createdById               String?                     @map("created_by_id") @db.Uuid
+  createdAt                 DateTime                    @default(now()) @map("created_at")
+  updatedAt                 DateTime                    @updatedAt @map("updated_at")
+
+  organization       Organization                      @relation(fields: [orgId], references: [id])
+  assignedTo         User?                             @relation("MeasurementInstrumentAssignee", fields: [assignedToUserId], references: [id], onDelete: SetNull)
+  calibrations       Calibration[]
+  userDefaults       UserDefaultInstrument[]
+  inspectionDefaults InspectionPlanDefaultInstrument[]
+
+  @@unique([orgId, code])
+  @@index([orgId, nextCalibrationDue])
+  @@index([orgId, assignedToUserId])
+  @@index([orgId, updatedAt])
+  @@map("imp_measurement_instruments")
+}
+
+/// Kalibratie — één kalibratie-gebeurtenis van een meetmiddel, met optioneel
+/// kalibratiecertificaat (embedded storage-metadata zoals InspectorCertificate).
+model Calibration {
+  id                String   @id @default(uuid()) @db.Uuid
+  orgId             String   @map("org_id") @db.Uuid
+  instrumentId      String   @map("instrument_id") @db.Uuid
+  calibrationDate   DateTime @map("calibration_date")
+  performedBy       String   @map("performed_by") // Uitvoerende instantie
+  certificateNumber String?  @map("certificate_number")
+  notes             String?
+  // Kalibratiecertificaat (optioneel) — opgeslagen via de StorageProvider.
+  storageKey        String?  @map("storage_key")
+  fileName          String?  @map("file_name")
+  originalName      String?  @map("original_name")
+  mimeType          String?  @map("mime_type")
+  size              Int?
+  isDeleted         Boolean  @default(false) @map("is_deleted")
+  createdById       String?  @map("created_by_id") @db.Uuid
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  organization Organization          @relation(fields: [orgId], references: [id])
+  instrument   MeasurementInstrument @relation(fields: [instrumentId], references: [id], onDelete: Cascade)
+
+  @@index([orgId, instrumentId])
+  @@map("imp_measurement_instrument_calibrations")
+}
+
+/// Voorkeur niveau 1 — globale set favoriete meetmiddelen per inspecteur.
+model UserDefaultInstrument {
+  id           String   @id @default(uuid()) @db.Uuid
+  orgId        String   @map("org_id") @db.Uuid
+  userId       String   @map("user_id") @db.Uuid
+  instrumentId String   @map("instrument_id") @db.Uuid
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  organization Organization          @relation(fields: [orgId], references: [id])
+  user         User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  instrument   MeasurementInstrument @relation(fields: [instrumentId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, instrumentId])
+  @@index([orgId])
+  @@index([instrumentId])
+  @@map("imp_user_default_instruments")
+}
+
+/// Voorkeur niveau 2 — override-set meetmiddelen per inspectie.
+model InspectionPlanDefaultInstrument {
+  id               String   @id @default(uuid()) @db.Uuid
+  orgId            String   @map("org_id") @db.Uuid
+  inspectionPlanId String   @map("inspection_plan_id") @db.Uuid
+  instrumentId     String   @map("instrument_id") @db.Uuid
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  organization   Organization          @relation(fields: [orgId], references: [id])
+  inspectionPlan InspectionPlan        @relation(fields: [inspectionPlanId], references: [id], onDelete: Cascade)
+  instrument     MeasurementInstrument @relation(fields: [instrumentId], references: [id], onDelete: Cascade)
+
+  @@unique([inspectionPlanId, instrumentId])
+  @@index([orgId])
+  @@index([instrumentId])
+  @@map("imp_inspection_plan_default_instruments")
 }

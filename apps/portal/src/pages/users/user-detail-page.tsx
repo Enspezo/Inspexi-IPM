@@ -21,8 +21,9 @@ import { DocumentsSidebarSection } from '@/components/layout/sidebar-sections';
 import { AddressSearchInput } from '@/components/ui';
 import type { ParsedAddress } from '@/lib/geocoding';
 import { getErrorMessage } from '@/lib/api-client';
+import { InspectorCertificatesSection } from '@/components/inspector-certificates';
 
-type Tab = 'overzicht' | 'instellingen';
+type Tab = 'overzicht' | 'certificering' | 'instellingen';
 
 const canWrite = [Role.SUPERUSER, Role.ORG_ADMIN];
 
@@ -212,8 +213,11 @@ export default function UserDetailPage() {
     ? `${currentStreet} ${currentHouseNumber}, ${currentPostalCode} ${currentCity}`
     : undefined;
 
+  // De certificering-tab is alleen relevant voor inspecteurs (PRD-11).
+  const isInspector = userRecord.roles.includes(Role.INSPECTEUR);
   const tabs: { key: Tab; label: string }[] = [
     { key: 'overzicht', label: 'Overzicht' },
+    ...(isInspector ? [{ key: 'certificering' as Tab, label: 'Certificering' }] : []),
     { key: 'instellingen', label: 'Instellingen' },
   ];
 
@@ -586,6 +590,10 @@ export default function UserDetailPage() {
               )}
             </div>
           </div>
+        )}
+
+        {activeTab === 'certificering' && (
+          <InspectorCertificatesSection userId={userRecord.id} canEdit />
         )}
 
         {activeTab === 'instellingen' && (

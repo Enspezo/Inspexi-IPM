@@ -13,6 +13,7 @@ import type {
 } from '@/types';
 import { useAssetFindings } from '../hooks/use-location-images';
 import { useAssetMeasurementRecords } from '../hooks/use-measurement-records';
+import { useMeetmiddelen } from '@/pages/meetmiddelen/hooks/use-meetmiddelen';
 
 interface AssetsTabProps {
   assets: Asset[];
@@ -219,6 +220,38 @@ function FinalCheckBadge({ passed }: { passed: boolean | null }) {
 }
 
 // ── Read-only weergave van de ingevulde waarden per sectie/rij/veld ──
+/** Read-only weergave van de gebruikte meetmiddelen (snapshot-first, anders live-lookup). */
+function UsedInstrumentsBlock({ record }: { record: MeasurementSheetRecord }) {
+  const { data: list } = useMeetmiddelen({ limit: 200 });
+  const snapshot = (record.data as Record<string, unknown> | null)?.__usedInstrumentsSnapshot as
+    | Array<{ code: string; brand: string; type: string }>
+    | undefined;
+  const ids = record.usedInstrumentIds ?? [];
+  if ((!snapshot || snapshot.length === 0) && ids.length === 0) return null;
+
+  const byId = new Map((list?.data ?? []).map((m) => [m.id, m]));
+  const labels =
+    snapshot && snapshot.length > 0
+      ? snapshot.map((s) => `${s.code} — ${s.brand} ${s.type}`)
+      : ids.map((id) => {
+          const m = byId.get(id);
+          return m ? `${m.code} — ${m.brand} ${m.type}` : 'Onbekend meetmiddel';
+        });
+
+  return (
+    <div>
+      <p className="mb-1 text-xs font-semibold text-gray-700">Gebruikte meetmiddelen</p>
+      <div className="flex flex-wrap gap-1.5">
+        {labels.map((label, i) => (
+          <span key={i} className="rounded-md bg-gray-100 px-2 py-0.5 text-xs text-gray-700">
+            {label}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function MeasurementRecordValues({ record }: { record: MeasurementSheetRecord }) {
   const sections = record.templateSnapshot?.sections ?? [];
   const data = record.data ?? {};
@@ -242,6 +275,8 @@ function MeasurementRecordValues({ record }: { record: MeasurementSheetRecord })
           ))}
         </ul>
       )}
+
+      <UsedInstrumentsBlock record={record} />
 
       {sections.map((section) => {
         const rows = data[section.code] ?? {};

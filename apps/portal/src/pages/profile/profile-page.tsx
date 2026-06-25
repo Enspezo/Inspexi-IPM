@@ -18,6 +18,7 @@ import { AvatarCard } from './components/avatar-card';
 import { SignatureCard } from './components/signature-card';
 import { HomeAddressCard } from './components/home-address-card';
 import { ApprovalDefaultsCard } from './components/approval-defaults-card';
+import { MyDefaultInstrumentsSection } from '@/pages/meetmiddelen/components/my-default-instruments-section';
 import { ActivityTab } from './components/activity-tab';
 
 const profileSchema = z.object({
@@ -125,6 +126,13 @@ export default function ProfilePage() {
 
           {/* Contactgegevens klantportaal (only for inspectors) */}
           {user && hasRole(user, Role.INSPECTEUR) && <ClientContactCard />}
+
+          {/* Standaard meetmiddelen — niveau 1 (only for inspectors) */}
+          {user && hasRole(user, Role.INSPECTEUR) && (
+            <Card title="Standaard meetmiddelen">
+              <MyDefaultInstrumentsSection />
+            </Card>
+          )}
 
           {/* Signature */}
           <SignatureCard />

@@ -292,3 +292,19 @@ export function getCertificateValidityKey(
   if (days <= 30) return 'binnenkort';
   return 'geldig';
 }
+
+// ─── Meetmiddelen — kalibratiestatus + levenscyclus ───────────────────────
+// De kalibratiestatus-sleutel komt uit @inspexi/calibration (computeCalibrationStatus).
+
+export const MEETMIDDEL_KALIBRATIE_STATUS: StatusMap = {
+  GELDIG: { label: 'Geldig', classes: 'bg-green-100 text-green-800' },
+  BINNENKORT: { label: 'Verloopt binnenkort', classes: 'bg-orange-100 text-orange-800' },
+  VERLOPEN: { label: 'Verlopen', classes: 'bg-red-100 text-red-800' },
+  GEEN_KALIBRATIE: { label: 'Geen kalibratie', classes: 'bg-gray-100 text-gray-600' },
+};
+
+export const MEETMIDDEL_STATUS: StatusMap = {
+  ACTIEF: { label: 'Actief', classes: 'bg-green-100 text-green-800' },
+  BUITEN_GEBRUIK: { label: 'Buiten gebruik', classes: 'bg-gray-100 text-gray-700' },
+  AFGEKEURD: { label: 'Afgekeurd', classes: 'bg-red-100 text-red-800' },
+};

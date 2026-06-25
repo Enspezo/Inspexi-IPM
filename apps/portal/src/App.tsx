@@ -140,6 +140,8 @@ const NormTypesPage = lazy(() => import('@/pages/norm-types/norm-types-page'));
 const NormTypeDetailPage = lazy(() => import('@/pages/norm-types/norm-type-detail-page'));
 const AssetTypesPage = lazy(() => import('@/pages/asset-types/asset-types-page'));
 const AssetTypeDetailPage = lazy(() => import('@/pages/asset-types/asset-type-detail-page'));
+const MeetmiddelenPage = lazy(() => import('@/pages/meetmiddelen/meetmiddelen-page'));
+const MeetmiddelDetailPage = lazy(() => import('@/pages/meetmiddelen/meetmiddel-detail-page'));
 const LocationTypesPage = lazy(() => import('@/pages/location-types/location-types-page'));
 const LocationTypeDetailPage = lazy(() => import('@/pages/location-types/location-type-detail-page'));
 const MeasurementSheetTemplatesPage = lazy(() => import('@/pages/measurement-sheet-templates/measurement-sheet-templates-page'));
@@ -267,6 +269,8 @@ export default function App() {
               <Route path="/assets/:id" element={<AssetDetailPage />} />
               <Route path="/inspectors" element={<InspectorsPage />} />
               <Route path="/inspectors/:userId" element={<InspectorDetailPage />} />
+              <Route path="/meetmiddelen" element={<MeetmiddelenPage />} />
+              <Route path="/meetmiddelen/:id" element={<MeetmiddelDetailPage />} />
               <Route path="/checklists" element={<ChecklistsPage />} />
               <Route path="/checklists/:id" element={<ChecklistDetailPage />} />
               <Route path="/checklist-items" element={<ChecklistItemsPage />} />

@@ -186,6 +186,13 @@ export const AUDITED_ENTITIES: readonly AuditedEntity[] = [
     table: 'imp_support_tickets',
     display: (r) => `#${r.ticketNumber ?? ''} ${r.subject ?? ''}`.trim() || r.id,
   },
+
+  // Inspecteur-certificaten / diploma's (PRD-11)
+  {
+    model: 'InspectorCertificate',
+    table: 'imp_inspector_certificates',
+    displayFields: ['type', 'issuer'],
+  },
 ];
 
 /** Builds a display function from an entry's `display` / `displayFields`, falling back to id. */

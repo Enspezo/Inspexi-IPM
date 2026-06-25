@@ -162,9 +162,13 @@ export const apiClient = {
       method: 'DELETE',
     }),
 
-  upload: <T>(endpoint: string, formData: FormData) =>
+  upload: <T>(
+    endpoint: string,
+    formData: FormData,
+    method: 'POST' | 'PATCH' | 'PUT' = 'POST',
+  ) =>
     request<T>(endpoint, {
-      method: 'POST',
+      method,
       body: formData,
     }),
 };

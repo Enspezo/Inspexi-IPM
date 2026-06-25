@@ -87,6 +87,35 @@ function makeFloorPlanPng(width = 800, height = 600): Buffer {
 }
 
 /**
+ * Bouwt een minimale, geldige één-pagina PDF (A4) met een titelregel — gebruikt om
+ * een demo-inspecteurcertificaat met een écht downloadbaar document te seeden.
+ */
+function makeCertificatePdf(title: string): Buffer {
+  const stream = `BT /F1 22 Tf 72 760 Td (${title.replace(/[()\\]/g, ' ')}) Tj ET`;
+  const objects = [
+    '<< /Type /Catalog /Pages 2 0 R >>',
+    '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>',
+    `<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`,
+    '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',
+  ];
+
+  let pdf = '%PDF-1.4\n';
+  const offsets: number[] = [];
+  objects.forEach((obj, i) => {
+    offsets.push(Buffer.byteLength(pdf, 'latin1'));
+    pdf += `${i + 1} 0 obj\n${obj}\nendobj\n`;
+  });
+  const xrefStart = Buffer.byteLength(pdf, 'latin1');
+  pdf += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
+  offsets.forEach((off) => {
+    pdf += `${off.toString().padStart(10, '0')} 00000 n \n`;
+  });
+  pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefStart}\n%%EOF`;
+  return Buffer.from(pdf, 'latin1');
+}
+
+/**
  * Bevriest een meetstaat-template (+secties+velden) tot een snapshot, identiek
  * aan MeasurementSheetRecordsService.createTemplateSnapshot (Decimals → string).
  */
@@ -592,6 +621,8 @@ async function main() {
   await prisma.document.deleteMany();
   await prisma.documentTag.deleteMany();
   await prisma.task.deleteMany();
+  // Inspecteur-certificaten (PRD-11, FK → user + organization)
+  await prisma.inspectorCertificate.deleteMany();
   // Custom fields & email templates
   await prisma.numberingCounter.deleteMany();
   await prisma.numberingScheme.deleteMany();
@@ -794,6 +825,47 @@ async function main() {
       data: { defaultApprovalPersonId: createdOrg1Users[Role.MANAGER] },
     });
   }
+
+  // ─── Inspecteur-certificaten / diploma's (PRD-11) ───
+  // Twee demo-certificaten voor de inspecteur: één geldig (mét echt downloadbaar
+  // document) en één dat binnen 30 dagen verloopt (zonder document).
+  const certInspecteurId = createdOrg1Users[Role.INSPECTEUR];
+  const DAY_MS = 1000 * 60 * 60 * 24;
+  const certFilename = 'vca-vol-diploma-demo.pdf';
+  const certKey = `${org1.id}/inspector-certificates/${certInspecteurId}/${randomUUID()}-${certFilename}`;
+  const certBytes = makeCertificatePdf('VCA-VOL diploma - InspeXi Demo');
+  const certFullPath = path.join(process.env.UPLOAD_DIR || './uploads', certKey);
+  fs.mkdirSync(path.dirname(certFullPath), { recursive: true });
+  fs.writeFileSync(certFullPath, certBytes);
+
+  await prisma.inspectorCertificate.create({
+    data: {
+      orgId: org1.id,
+      userId: certInspecteurId,
+      type: 'VCA-VOL',
+      number: 'NL-VCA-2024-00123',
+      issueDate: new Date('2024-02-01'),
+      validUntil: new Date(Date.now() + DAY_MS * 365 * 3), // ~3 jaar geldig
+      issuer: 'VCA Examenbureau',
+      storageKey: certKey,
+      fileName: certFilename,
+      originalName: certFilename,
+      mimeType: 'application/pdf',
+      size: certBytes.length,
+    },
+  });
+
+  await prisma.inspectorCertificate.create({
+    data: {
+      orgId: org1.id,
+      userId: certInspecteurId,
+      type: 'NEN 3140 Vakbekwaam Persoon',
+      issueDate: new Date('2021-09-15'),
+      validUntil: new Date(Date.now() + DAY_MS * 20), // verloopt over ~20 dagen
+      issuer: 'Hoogspanning Opleidingen B.V.',
+    },
+  });
+  console.log('  ✓ 2 inspecteur-certificaten (1 geldig mét document, 1 verloopt binnen 30 dagen)');
 
   // Org 2 users
   const org2Users = [

@@ -127,6 +127,8 @@ const InspectionsPage = lazy(() => import('@/pages/inspections/inspections-page'
 const InspectionDetailPage = lazy(() => import('@/pages/inspections/inspection-detail-page'));
 const AssetsPage = lazy(() => import('@/pages/assets/assets-page'));
 const AssetDetailPage = lazy(() => import('@/pages/assets/asset-detail-page'));
+const InspectorsPage = lazy(() => import('@/pages/inspectors/inspectors-page'));
+const InspectorDetailPage = lazy(() => import('@/pages/inspectors/inspector-detail-page'));
 const ChecklistsPage = lazy(() => import('@/pages/checklists/checklists-page'));
 const ChecklistDetailPage = lazy(() => import('@/pages/checklists/checklist-detail-page'));
 const ChecklistItemsPage = lazy(() => import('@/pages/checklist-items/checklist-items-page'));
@@ -263,6 +265,8 @@ export default function App() {
               <Route path="/inspections/:id" element={<InspectionDetailPage />} />
               <Route path="/assets" element={<AssetsPage />} />
               <Route path="/assets/:id" element={<AssetDetailPage />} />
+              <Route path="/inspectors" element={<InspectorsPage />} />
+              <Route path="/inspectors/:userId" element={<InspectorDetailPage />} />
               <Route path="/checklists" element={<ChecklistsPage />} />
               <Route path="/checklists/:id" element={<ChecklistDetailPage />} />
               <Route path="/checklist-items" element={<ChecklistItemsPage />} />

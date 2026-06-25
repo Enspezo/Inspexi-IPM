@@ -77,6 +77,8 @@ describe('FK target resolution (per entityType, field)', () => {
     expect(resolveFkTargetModel('GeneratedDocument', 'generatedBy')).toBe('User');
     // OrganizationFeature.updatedById now has a real FK relation → resolved via DMMF.
     expect(resolveFkTargetModel('OrganizationFeature', 'updatedById')).toBe('User');
+    // InspectorCertificate.userId is a real relation → resolved via DMMF (PRD-11).
+    expect(resolveFkTargetModel('InspectorCertificate', 'userId')).toBe('User');
   });
 
   it('resolves inspection-domain FKs the old global map missed', () => {

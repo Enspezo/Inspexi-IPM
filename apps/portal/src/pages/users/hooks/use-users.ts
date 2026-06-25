@@ -128,6 +128,10 @@ interface AdminUpdateUserDto {
   homeCity?: string | null;
   homeLat?: number | null;
   homeLng?: number | null;
+  contactPhone?: string | null;
+  contactEmail?: string | null;
+  sharePhoneWithClients?: boolean;
+  shareEmailWithClients?: boolean;
 }
 
 export function useAdminUpdateUser() {

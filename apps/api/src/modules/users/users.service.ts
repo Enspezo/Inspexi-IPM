@@ -458,6 +458,16 @@ export class UsersService {
     if ('homeLat' in dto) data.homeLat = dto.homeLat ?? null;
     if ('homeLng' in dto) data.homeLng = dto.homeLng ?? null;
 
+    // Klantportaal-contactgegevens + per-kanaal toestemming (namens de inspecteur beheerd).
+    // Identieke normalisatie als in updateProfile.
+    if ('contactPhone' in dto) data.contactPhone = (dto.contactPhone || '').trim() || null;
+    if ('contactEmail' in dto) data.contactEmail = (dto.contactEmail || '').trim() || null;
+    if (dto.sharePhoneWithClients !== undefined) data.sharePhoneWithClients = dto.sharePhoneWithClients;
+    if (dto.shareEmailWithClients !== undefined) data.shareEmailWithClients = dto.shareEmailWithClients;
+    // Toestemming vervalt automatisch wanneer de bijbehorende waarde in dit verzoek leeg wordt gemaakt.
+    if ('contactPhone' in dto && !data.contactPhone) data.sharePhoneWithClients = false;
+    if ('contactEmail' in dto && !data.contactEmail) data.shareEmailWithClients = false;
+
     const updated = await this.prisma.user.update({
       where: { id },
       data,

@@ -47,6 +47,7 @@ describe('Cross-tenant FK isolation (e2e)', () => {
   let assetBId: string;
   let categoryBId: string;
   let ticketBId: string; // org B support-ticket (victim) — read/mutate isolation
+  let certBId: string; // org B inspector-certificate (victim) — read/create isolation
   let cmBId: string;
   // Stream B — extra org-B fixtures (read-isolatie + body-FK aanvallen)
   let findingBId: string;
@@ -395,6 +396,18 @@ describe('Cross-tenant FK isolation (e2e)', () => {
     });
     ticketBId = ticketB.id;
 
+    // Inspecteur-certificaat van org B (slachtoffer) — org A mag dit niet zien/maken (PRD-11).
+    const certB = await prisma.inspectorCertificate.create({
+      data: {
+        orgId: orgB.id,
+        userId: userB.id,
+        type: 'VCA-VOL',
+        issueDate: new Date('2024-01-01'),
+        issuer: 'Examenbureau B',
+      },
+    });
+    certBId = certB.id;
+
     // Login as org A's admin
     const loginRes = await request(app.getHttpServer())
       .post('/api/v1/auth/login')
@@ -459,6 +472,8 @@ describe('Cross-tenant FK isolation (e2e)', () => {
       // are created, so drop counters + schemes before the orgs they reference.
       await prisma.numberingCounter.deleteMany({ where: { scheme: { orgId: { in: orgIds } } } });
       await prisma.numberingScheme.deleteMany({ where: { orgId: { in: orgIds } } });
+      // Inspecteur-certificaten (PRD-11) vóór de users/orgs waar ze naar verwijzen.
+      await prisma.inspectorCertificate.deleteMany({ where: { orgId: { in: orgIds } } });
       await prisma.auditLog.deleteMany({ where: { orgId: { in: orgIds } } });
       await prisma.refreshToken.deleteMany({ where: { userId: { in: userIds } } });
       await prisma.user.deleteMany({ where: { id: { in: userIds } } });
@@ -1345,6 +1360,38 @@ describe('Cross-tenant FK isolation (e2e)', () => {
         .patch(`/api/v1/support-tickets/${ticketBId}`)
         .set('Authorization', `Bearer ${tokenA}`)
         .send({ status: 'OPGELOST' })
+        .expect(403);
+    });
+  });
+
+  // ─── Inspecteur-certificaten — cross-tenant isolatie (PRD-11) ────────
+  // Een GET op andermans certificaat wordt org-scoped geladen → 404 (geen leak);
+  // aanmaken voor een inspecteur uit een andere org → 403 (assertSameOrg-stijl).
+  describe('Inspector certificates — cross-tenant isolatie', () => {
+    it("rejects reading another org's certificate (404)", async () => {
+      await request(app.getHttpServer())
+        .get(`/api/v1/inspector-certificates/${certBId}`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .expect(404);
+    });
+
+    it("does not leak another org's certificate when querying its userId", async () => {
+      const res = await request(app.getHttpServer())
+        .get('/api/v1/inspector-certificates')
+        .query({ userId: userBId })
+        .set('Authorization', `Bearer ${tokenA}`)
+        .expect(200);
+      expect(res.body.data.data).toHaveLength(0);
+    });
+
+    it("rejects creating a certificate for another org's inspector (403)", async () => {
+      await request(app.getHttpServer())
+        .post('/api/v1/inspector-certificates')
+        .set('Authorization', `Bearer ${tokenA}`)
+        .field('userId', userBId)
+        .field('type', 'Sneaky')
+        .field('issueDate', '2024-01-01')
+        .field('issuer', 'X')
         .expect(403);
     });
   });

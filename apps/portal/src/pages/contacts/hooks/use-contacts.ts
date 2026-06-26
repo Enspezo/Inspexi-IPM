@@ -18,6 +18,7 @@ interface ListContactsParams {
   search?: string;
   type?: ContactType;
   onlyMine?: boolean;
+  supplierOnly?: boolean;
   page?: number;
   limit?: number;
   sortBy?: string;
@@ -30,6 +31,7 @@ export function useContacts(params: ListContactsParams = {}) {
   if (params.search) queryParams.set('search', params.search);
   if (params.type) queryParams.set('type', params.type);
   if (params.onlyMine) queryParams.set('onlyMine', 'true');
+  if (params.supplierOnly) queryParams.set('supplierOnly', 'true');
   if (params.page) queryParams.set('page', String(params.page));
   if (params.limit) queryParams.set('limit', String(params.limit));
   if (params.sortBy) queryParams.set('sortBy', params.sortBy);
@@ -63,6 +65,10 @@ interface CreateContactDto {
   website?: string;
   vatNumber?: string;
   cocNumber?: string;
+  isSupplier?: boolean;
+  supplierCustomerNumber?: string;
+  purchaseConditions?: string;
+  supplierRating?: boolean;
   notes?: string;
   ownerId?: string;
 }

@@ -51,6 +51,7 @@ export default function ContactsPage() {
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [onlyMine, setOnlyMine] = useState(() => tenantStorage.getItem('filter-mine:contacts') === 'true');
+  const [supplierOnly, setSupplierOnly] = useState(() => tenantStorage.getItem('filter-supplier:contacts') === 'true');
   const [page, setPage] = useState(1);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
 
@@ -175,6 +176,21 @@ export default function ContactsPage() {
         );
       },
     },
+    {
+      key: 'isSupplier',
+      header: 'Leverancier',
+      filterable: true,
+      filterType: 'select',
+      filterOptions: [
+        { value: 'Ja', label: 'Ja' },
+        { value: 'Nee', label: 'Nee' },
+      ],
+      groupable: true,
+      getFilterValue: (contact) => (contact.isSupplier ? 'Ja' : 'Nee'),
+      render: (contact) => (
+        <span className="text-gray-600">{contact.isSupplier ? 'Ja' : 'Nee'}</span>
+      ),
+    },
   ];
 
   const {
@@ -204,6 +220,7 @@ export default function ContactsPage() {
   const { data, isLoading, error } = useContacts({
     search: debouncedSearch.length >= 3 ? debouncedSearch : undefined,
     onlyMine: onlyMine || undefined,
+    supplierOnly: supplierOnly || undefined,
     page,
     limit: 20,
     sortBy: apiSort?.sortBy,
@@ -287,6 +304,19 @@ export default function ContactsPage() {
             }}
           />
           <span className="text-gray-700">Mijn relaties</span>
+        </label>
+        <label className="inline-flex cursor-pointer items-center gap-2 whitespace-nowrap rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm transition-colors hover:border-gray-400">
+          <input
+            type="checkbox"
+            className="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+            checked={supplierOnly}
+            onChange={(e) => {
+              setSupplierOnly(e.target.checked);
+              tenantStorage.setItem('filter-supplier:contacts', String(e.target.checked));
+              setPage(1);
+            }}
+          />
+          <span className="text-gray-700">Alleen leveranciers</span>
         </label>
       </div>
 

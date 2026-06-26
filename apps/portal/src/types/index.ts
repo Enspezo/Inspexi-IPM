@@ -185,6 +185,10 @@ export interface Contact {
   vatNumber: string | null;
   vatValidation: Record<string, unknown> | null;
   cocNumber: string | null;
+  isSupplier: boolean;
+  supplierCustomerNumber?: string | null;
+  purchaseConditions?: string | null;
+  supplierRating?: boolean | null;
   notes: string | null;
   priceTableId: string | null;
   ownerId: string | null;

@@ -81,6 +81,20 @@ describe('Auth (e2e)', () => {
       expect(refreshCookie).toBeDefined();
     });
 
+    it('should accept an optional deviceId (whitelisted, not 400)', async () => {
+      const res = await request(app.getHttpServer())
+        .post('/api/v1/auth/login')
+        .send({
+          email: 'e2e-auth@test.nl',
+          password: 'TestPass123!',
+          deviceId: 'pwa-device-123',
+        })
+        .expect(200);
+
+      expect(res.body.success).toBe(true);
+      expect(res.body.data.accessToken).toBeDefined();
+    });
+
     it('should return 401 for invalid credentials', async () => {
       const res = await request(app.getHttpServer())
         .post('/api/v1/auth/login')

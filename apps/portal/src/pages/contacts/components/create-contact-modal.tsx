@@ -4,7 +4,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { ContactType, CustomFieldEntityType } from '@/types';
 import type { Contact } from '@/types';
-import { Modal, Input, Button, useToast, KvkSearchInput, Spinner, VatInput } from '@/components/ui';
+import { Modal, Input, Button, Checkbox, useToast, KvkSearchInput, Spinner, VatInput } from '@/components/ui';
 import { getKvkProfile } from '@/lib/kvk';
 import type { KvkSearchResult } from '@/lib/kvk';
 import type { VatValidationResult } from '@/lib/vat';
@@ -22,6 +22,7 @@ const contactSchema = z.object({
   website: z.string().optional(),
   vatNumber: z.string().optional(),
   cocNumber: z.string().optional(),
+  isSupplier: z.boolean().optional(),
   notes: z.string().optional(),
   customFields: z.record(z.any()).optional(),
 });
@@ -131,6 +132,8 @@ export function CreateContactModal({ isOpen, onClose, onCreated }: CreateContact
       };
       const created = await createMutation.mutateAsync({
         ...cleaned,
+        // Alleen bedrijven kunnen leverancier zijn
+        isSupplier: data.type === ContactType.COMPANY ? data.isSupplier ?? false : false,
         ...(vatValidation ? { vatValidation: vatValidation as any } : {}),
       } as any);
 
@@ -338,6 +341,11 @@ export function CreateContactModal({ isOpen, onClose, onCreated }: CreateContact
               label="Website"
               placeholder="https://bedrijf.nl"
               {...register('website')}
+            />
+
+            <Checkbox
+              label="Deze relatie is een leverancier"
+              {...register('isSupplier')}
             />
           </>
         ) : (

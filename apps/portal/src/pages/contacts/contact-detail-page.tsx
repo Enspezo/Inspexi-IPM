@@ -38,12 +38,13 @@ import { ContactRequestsTab } from './components/contact-requests-tab';
 import { ContactQuotesTab } from './components/contact-quotes-tab';
 import { ContactPlanningTab } from './components/contact-planning-tab';
 import { ContactProjectsTab } from './components/contact-projects-tab';
+import { ContactInkoopTab } from './components/contact-inkoop-tab';
 import { ContactHistorySidebar } from './components/contact-history-sidebar';
 import { ContactTasksSidebar } from './components/contact-tasks-sidebar';
 import { ViesNameModal } from './components/vies-name-modal';
 import { getErrorMessage } from '@/lib/api-client';
 
-type Tab = 'algemeen' | 'adressen' | 'locaties' | 'aanvragen' | 'offertes' | 'planning' | 'projecten';
+type Tab = 'algemeen' | 'adressen' | 'locaties' | 'aanvragen' | 'offertes' | 'planning' | 'projecten' | 'inkoop';
 
 const canWrite = [Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE];
 
@@ -162,6 +163,7 @@ export default function ContactDetailPage() {
         website: contact.website || '',
         vatNumber: contact.vatNumber || '',
         cocNumber: contact.cocNumber || '',
+        isSupplier: contact.isSupplier ?? false,
         notes: contact.notes || '',
         ownerId: contact.ownerId || '',
         customFields: contact.customFields ?? {},
@@ -182,6 +184,7 @@ export default function ContactDetailPage() {
         ...(vatValidation ? { vatValidation: vatValidation as any } : {}),
         ...(viesNameApplied.current ? { viesNameApplied: true } : {}),
         cocNumber: data.cocNumber || undefined,
+        isSupplier: data.isSupplier,
         notes: data.notes || undefined,
         ownerId: data.ownerId || undefined,
         customFields: data.customFields,
@@ -205,6 +208,7 @@ export default function ContactDetailPage() {
         website: contact.website || '',
         vatNumber: contact.vatNumber || '',
         cocNumber: contact.cocNumber || '',
+        isSupplier: contact.isSupplier ?? false,
         notes: contact.notes || '',
         ownerId: contact.ownerId || '',
         customFields: contact.customFields ?? {},
@@ -252,6 +256,7 @@ export default function ContactDetailPage() {
     { key: 'offertes', label: `Offertes (${contact.quotes?.length || 0})` },
     { key: 'planning', label: `Planning (${contactPlanningItems.length})` },
     { key: 'projecten', label: `Projecten (${contactProjects.length})` },
+    ...(contact.isSupplier ? [{ key: 'inkoop' as Tab, label: 'Inkoop' }] : []),
   ];
 
   // Merge logs + emails into timeline
@@ -472,6 +477,10 @@ export default function ContactDetailPage() {
 
       {activeTab === 'projecten' && (
         <ContactProjectsTab projects={contactProjects} />
+      )}
+
+      {activeTab === 'inkoop' && contact.isSupplier && (
+        <ContactInkoopTab contact={contact} userCanWrite={!!userCanWrite} />
       )}
 
       {/* Acties onderaan */}

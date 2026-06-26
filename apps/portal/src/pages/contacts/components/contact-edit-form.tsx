@@ -2,7 +2,7 @@ import { Controller, type Control, type FieldErrors, type UseFormRegister } from
 import { z } from 'zod';
 import { ContactType, CustomFieldEntityType } from '@/types';
 import type { Contact, User } from '@/types';
-import { Button, Card, Input, Spinner, VatInput } from '@/components/ui';
+import { Button, Card, Checkbox, Input, Spinner, VatInput } from '@/components/ui';
 import { type VatValidationResult } from '@/lib/vat';
 import { CustomFieldsForm } from '@/components/custom-fields';
 
@@ -15,6 +15,7 @@ export const contactSchema = z.object({
   website: z.string().optional(),
   vatNumber: z.string().optional(),
   cocNumber: z.string().optional(),
+  isSupplier: z.boolean().optional(),
   notes: z.string().optional(),
   ownerId: z.string().optional(),
   customFields: z.record(z.any()).optional(),
@@ -90,6 +91,10 @@ export function ContactEditForm({
               />
               <Input label="Website" {...register('website')} />
             </div>
+            <Checkbox
+              label="Deze relatie is een leverancier"
+              {...register('isSupplier')}
+            />
           </>
         )}
         {contact.type === ContactType.INDIVIDUAL && (

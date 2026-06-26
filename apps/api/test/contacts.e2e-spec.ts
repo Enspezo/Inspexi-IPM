@@ -205,6 +205,21 @@ describe('Contacts API (e2e)', () => {
       }
     });
 
+    it('can filter by supplierOnly=true', async () => {
+      const res = await request(app.getHttpServer())
+        .get('/api/v1/contacts')
+        .query({ supplierOnly: 'true' })
+        .set('Authorization', `Bearer ${org1AdminToken}`)
+        .expect(200);
+
+      expect(res.body.success).toBe(true);
+      // Seed marks Bouwbedrijf De Vries BV as a supplier
+      expect(res.body.data.data.length).toBeGreaterThanOrEqual(1);
+      for (const contact of res.body.data.data) {
+        expect(contact.isSupplier).toBe(true);
+      }
+    });
+
     it('WERKVOORBEREIDER can list contacts (read access)', async () => {
       const res = await request(app.getHttpServer())
         .get('/api/v1/contacts')

@@ -18,4 +18,9 @@ export class ListContactsQueryDto extends BasePaginationQueryDto {
   @IsOptional()
   @IsBooleanString()
   onlyMine?: string;
+
+  @ApiPropertyOptional({ description: 'Alleen leveranciers tonen' })
+  @IsOptional()
+  @IsBooleanString()
+  supplierOnly?: string;
 }

@@ -723,6 +723,13 @@ model Contact {
   vatNumber     String?     @map("vat_number")
   vatValidation Json?       @map("vat_validation")
   cocNumber     String?     @map("coc_number")
+
+  // Leverancier / inkoop
+  isSupplier             Boolean  @default(false) @map("is_supplier")
+  supplierCustomerNumber String?  @map("supplier_customer_number")
+  purchaseConditions     String?  @map("purchase_conditions")
+  supplierRating         Boolean? @map("supplier_rating")
+
   notes         String?
   priceTableId  String?     @map("price_table_id") @db.Uuid
   ownerId       String?     @map("owner_id") @db.Uuid
@@ -752,6 +759,7 @@ model Contact {
 
   @@index([orgId])
   @@index([ownerId])
+  @@index([orgId, isSupplier])
   @@map("imp_contacts")
 }
 

@@ -913,6 +913,10 @@ async function main() {
       website: 'https://devries-bouw.nl',
       vatNumber: 'NL123456789B01',
       cocNumber: '12345678',
+      isSupplier: true,
+      supplierCustomerNumber: 'KL-2024-IX',
+      purchaseConditions: 'Betaling binnen 30 dagen. Levering franco huis. Retour binnen 14 dagen.',
+      supplierRating: true,
       notes: 'Vaste klant sinds 2020. Hoofdzakelijk kantoorpanden.',
     },
   });

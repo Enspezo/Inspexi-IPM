@@ -22,6 +22,7 @@ export function ContactInfoCard({
             <InfoField label="KvK-nummer" value={contact.cocNumber} />
             <InfoField label="BTW-nummer" value={contact.vatNumber} />
             <InfoField label="Website" value={contact.website} />
+            <InfoField label="Leverancier" value={contact.isSupplier ? 'Ja' : 'Nee'} />
           </>
         )}
         {contact.type === ContactType.INDIVIDUAL && (

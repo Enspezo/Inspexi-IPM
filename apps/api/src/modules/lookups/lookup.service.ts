@@ -52,6 +52,54 @@ export interface LookupRow {
   isSystem: boolean;
 }
 
+/** Publieke item-vorm (subset van LookupRow) zoals de inspecteur-PWA die verwacht. */
+export interface LookupItem {
+  code: string;
+  label: string;
+  color: string | null;
+  sortOrder: number;
+  isActive: boolean;
+}
+
+/**
+ * Gegroepeerde lookups-vorm voor de bare `GET /lookups`-collectie. Sleutels en
+ * waardetypes komen exact overeen met het `Lookups`-contract van de inspecteur-PWA
+ * (Inspexi-App `apps/inspectie-app/src/services/api/lookupsApi.ts`).
+ */
+export interface GroupedLookups {
+  findingStatuses: LookupItem[];
+  projectStatuses: LookupItem[];
+  assetStatuses: LookupItem[];
+  planStatuses: LookupItem[];
+  reportStatuses: LookupItem[];
+  clientRequestStatuses: LookupItem[];
+  passFailStatuses: LookupItem[];
+  resolutionStatuses: LookupItem[];
+  inspectionTypes: LookupItem[];
+  clientRequestTypes: LookupItem[];
+  signatoryTypes: LookupItem[];
+  signerRoles: LookupItem[];
+  normTypes: LookupItem[];
+}
+
+/**
+ * Map van PWA-sleutel → lookup-kind. Dekt 11 van de 13 sleutels; `projectStatuses`
+ * en `normTypes` komen niet uit de lookup-tabellen (zie listAllGrouped).
+ */
+const GROUPED_KEY_TO_KIND = {
+  findingStatuses: 'finding-status-types',
+  assetStatuses: 'asset-status-types',
+  planStatuses: 'plan-status-types',
+  reportStatuses: 'report-status-types',
+  clientRequestStatuses: 'client-request-status-types',
+  passFailStatuses: 'pass-fail-status-types',
+  resolutionStatuses: 'resolution-status-types',
+  inspectionTypes: 'inspection-types',
+  clientRequestTypes: 'client-request-types',
+  signatoryTypes: 'signatory-types',
+  signerRoles: 'signer-roles',
+} as const satisfies Record<string, LookupKind>;
+
 /**
  * Minimale delegate-vorm die de 11 structureel identieke lookup-modellen delen.
  * Prisma genereert per model een eigen, generiek delegate-type, dus een dynamische
@@ -132,6 +180,56 @@ export class LookupService {
       if (!existing || (row.orgId && !existing.orgId)) byCode.set(row.code, row);
     }
     return [...byCode.values()].sort((a, b) => a.sortOrder - b.sortOrder);
+  }
+
+  /**
+   * Alle lookup-categorieën in één gegroepeerd object, in de vorm die de inspecteur-PWA
+   * (`Lookups`-type) verwacht. Org-voorrang per categorie via listMergedByOrg; SUPERUSER
+   * (orgId null) ziet alleen systeemdefaults. Twee sleutels wijken af van de lookup-tabellen:
+   * - `projectStatuses`: in Beheer een enum (`Project.status`), geen lookup-tabel → lege lijst.
+   * - `normTypes`: komt uit `NormTypeDefinition` (globaal, geen org-scope, geen kleur).
+   */
+  async listAllGrouped(user: User): Promise<GroupedLookups> {
+    const orgId = user.roles.includes(Role.SUPERUSER) ? null : user.orgId;
+    const toItem = (r: LookupRow): LookupItem => ({
+      code: r.code,
+      label: r.label,
+      color: r.color,
+      sortOrder: r.sortOrder,
+      isActive: r.isActive,
+    });
+
+    const keys = Object.keys(GROUPED_KEY_TO_KIND) as (keyof typeof GROUPED_KEY_TO_KIND)[];
+    const [lists, normTypes] = await Promise.all([
+      Promise.all(keys.map((key) => this.listMergedByOrg(GROUPED_KEY_TO_KIND[key], orgId))),
+      this.listNormTypes(),
+    ]);
+    const grouped = {} as Record<keyof typeof GROUPED_KEY_TO_KIND, LookupItem[]>;
+    keys.forEach((key, i) => {
+      grouped[key] = lists[i].map(toItem);
+    });
+
+    return {
+      ...grouped,
+      projectStatuses: [],
+      normTypes,
+    };
+  }
+
+  /** Norm-typedefinities als LookupItem[] (globaal, niet org-scoped, tombstones uitgesloten). */
+  private async listNormTypes(): Promise<LookupItem[]> {
+    const rows = await this.prisma.normTypeDefinition.findMany({
+      where: { deletedAt: null },
+      orderBy: [{ sortOrder: 'asc' }, { label: 'asc' }],
+      select: { code: true, label: true, sortOrder: true, isActive: true },
+    });
+    return rows.map((r) => ({
+      code: r.code,
+      label: r.label,
+      color: null,
+      sortOrder: r.sortOrder,
+      isActive: r.isActive,
+    }));
   }
 
   /** Beheer-lijst (ruwe rijen, ongemerged) voor de instellingen-UI. */

@@ -31,6 +31,16 @@ export class LookupController {
     return kind as LookupKind;
   }
 
+  @Get()
+  @Roles(...ALL_STAFF)
+  @ApiOperation({
+    summary: 'Alle lookup-categorieën gegroepeerd (collectie voor de inspecteur-PWA)',
+  })
+  async listAll(@CurrentUser() user: User) {
+    const data = await this.lookups.listAllGrouped(user);
+    return { success: true, data };
+  }
+
   @Get(':kind')
   @Roles(...ALL_STAFF)
   @ApiOperation({ summary: 'Lookup-waarden ophalen (systeemdefaults + org-overrides, gemerged)' })

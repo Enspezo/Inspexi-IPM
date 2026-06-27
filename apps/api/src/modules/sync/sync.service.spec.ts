@@ -38,6 +38,8 @@ describe('SyncService', () => {
       users: [{ id: 'u1', availability: 'BESCHIKBAAR' }],
     }),
     applySyncMessage: jest.fn().mockResolvedValue({ id: 'm-new', status: 'success' }),
+    applySyncThread: jest.fn().mockResolvedValue({ id: 't-new', status: 'success' }),
+    applySyncPresence: jest.fn().mockResolvedValue({ id: 'user-1', status: 'success' }),
   };
 
   const user = { id: 'user-1', orgId: 'org-1', roles: [Role.INSPECTEUR] } as any;
@@ -449,6 +451,93 @@ describe('SyncService', () => {
       expect(result.processed.chatMessages).toBe(1);
       // The generic mutator must be untouched by chat pushes.
       expect(mockPrisma.inspectionPlan.create).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('push — chat threads & presence', () => {
+    it('delegates chat threads to ChatService and counts them', async () => {
+      const dto = {
+        deviceId: 'dev-1',
+        changes: {
+          chatThreads: [
+            { operation: 'create', data: { id: 't1', type: 'DIRECT', userId: 'user-2' } },
+          ],
+        },
+      } as any;
+
+      const result = await service.push(user, dto);
+
+      expect(mockChat.applySyncThread).toHaveBeenCalledWith(
+        user,
+        'create',
+        expect.objectContaining({ id: 't1', type: 'DIRECT', userId: 'user-2' }),
+      );
+      expect(result.processed.chatThreads).toBe(1);
+      expect(result.errors).toEqual([]);
+      expect(mockPrisma.inspectionPlan.create).not.toHaveBeenCalled();
+    });
+
+    it('delegates presence to ChatService (user from JWT, not payload)', async () => {
+      const dto = {
+        deviceId: 'dev-1',
+        changes: {
+          presence: [{ operation: 'update', data: { id: 'p1', availability: 'BEZIG' } }],
+        },
+      } as any;
+
+      const result = await service.push(user, dto);
+
+      expect(mockChat.applySyncPresence).toHaveBeenCalledWith(
+        user,
+        expect.objectContaining({ availability: 'BEZIG' }),
+      );
+      expect(result.processed.presence).toBe(1);
+      expect(result.errors).toEqual([]);
+    });
+
+    it('processes threads before messages so a same-push thread exists for its messages', async () => {
+      const order: string[] = [];
+      mockChat.applySyncThread.mockImplementationOnce(async () => {
+        order.push('thread');
+        return { id: 't1', status: 'success' };
+      });
+      mockChat.applySyncMessage.mockImplementationOnce(async () => {
+        order.push('message');
+        return { id: 'm1', status: 'success' };
+      });
+
+      const dto = {
+        deviceId: 'dev-1',
+        changes: {
+          chatMessages: [{ operation: 'create', data: { id: 'm1', threadId: 't1', content: 'hoi' } }],
+          chatThreads: [{ operation: 'create', data: { id: 't1', type: 'DIRECT', userId: 'user-2' } }],
+        },
+      } as any;
+
+      await service.push(user, dto);
+
+      expect(order).toEqual(['thread', 'message']);
+    });
+
+    it('reports a per-item error (entityType=chatThread) without aborting the push', async () => {
+      mockChat.applySyncThread.mockRejectedValueOnce(new Error('Gebruiker niet gevonden'));
+
+      const dto = {
+        deviceId: 'dev-1',
+        changes: {
+          chatThreads: [{ operation: 'create', data: { id: 't-bad', type: 'DIRECT', userId: 'nope' } }],
+          presence: [{ operation: 'update', data: { id: 'p1', availability: 'BEZIG' } }],
+        },
+      } as any;
+
+      const result = await service.push(user, dto);
+
+      expect(result.processed.chatThreads).toBe(0);
+      expect(result.errors).toEqual([
+        expect.objectContaining({ entityType: 'chatThread', entityId: 't-bad' }),
+      ]);
+      // A failing thread must not block presence (or anything after it).
+      expect(result.processed.presence).toBe(1);
     });
   });
 });

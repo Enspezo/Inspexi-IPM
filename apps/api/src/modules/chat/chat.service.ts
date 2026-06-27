@@ -6,6 +6,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import {
+  Availability,
   ChatThreadType,
   ChatThreadStatus,
   NoteEntityType,
@@ -315,19 +316,28 @@ export class ChatService {
       where: { id: threadId, orgId, deletedAt: null },
     });
     if (!thread) throw new NotFoundException('Gesprek niet gevonden');
+    await this.assertThreadMembership(thread, user);
+    return thread;
+  }
 
+  /**
+   * Membership-check op een reeds (org-scoped) geladen thread: deelnemer bij
+   * DIRECT, rollid bij TEAM. Geeft 404 i.p.v. 403 zodat we niet onthullen of een
+   * thread van een ander team/org bestaat.
+   */
+  private async assertThreadMembership(
+    thread: { id: string; type: ChatThreadType; teamRole: Role | null },
+    user: User,
+  ): Promise<void> {
     if (thread.type === ChatThreadType.DIRECT) {
       const part = await this.prisma.chatParticipant.findUnique({
-        where: { threadId_userId: { threadId, userId: user.id } },
+        where: { threadId_userId: { threadId: thread.id, userId: user.id } },
         select: { id: true },
       });
       if (!part) throw new NotFoundException('Gesprek niet gevonden');
-    } else {
-      if (!thread.teamRole || !user.roles.includes(thread.teamRole)) {
-        throw new NotFoundException('Gesprek niet gevonden');
-      }
+    } else if (!thread.teamRole || !user.roles.includes(thread.teamRole)) {
+      throw new NotFoundException('Gesprek niet gevonden');
     }
-    return thread;
   }
 
   /** Zorgt dat de team-threads + (caught-up) deelnemer-rij van de gebruiker bestaan. */
@@ -965,6 +975,224 @@ export class ChatService {
       { id, deviceId: data.deviceId ? String(data.deviceId) : undefined },
     );
     return { id: msg.id, status: 'success' };
+  }
+
+  /**
+   * Past een via /sync gepushte thread-wijziging toe. Net als berichten lopen
+   * threads bewust NIET via de generieke sync-mutator: ze vereisen membership-
+   * autorisatie (deelnemer bij DIRECT, rollid bij TEAM) + deterministische dedup
+   * (directKey / teamRole). Idempotent op client-UUID zodat replay veilig is; de
+   * server kent gezaghebbende timestamps toe (createdAt/updatedAt via Prisma).
+   */
+  async applySyncThread(
+    user: User,
+    operation: 'create' | 'update' | 'delete',
+    data: Record<string, unknown>,
+  ): Promise<{ id: string; status: 'success' }> {
+    const orgId = requireOrg(user);
+    await this.assertChatEnabled(orgId);
+    const id = data.id ? String(data.id) : undefined;
+
+    if (operation === 'delete') {
+      if (!id) throw new BadRequestException('Thread-id ontbreekt');
+      // Replay-veilig: een al verdwenen/afwezige thread (binnen onze org) is een
+      // no-op. Bestaat hij wél, dan moet de gebruiker er lid van zijn.
+      const existing = await this.prisma.chatThread.findFirst({
+        where: { id, orgId },
+        select: { id: true, type: true, teamRole: true, deletedAt: true },
+      });
+      if (!existing || existing.deletedAt) return { id, status: 'success' };
+      await this.assertThreadMembership(existing, user);
+      await this.prisma.chatThread.update({ where: { id }, data: { deletedAt: new Date() } });
+      return { id, status: 'success' };
+    }
+
+    if (operation === 'update') {
+      if (!id) throw new BadRequestException('Thread-id ontbreekt');
+      const thread = await this.loadAccessibleThread(id, user);
+      const patch: Prisma.ChatThreadUpdateInput = {};
+      if (data.subject !== undefined) {
+        patch.subject = data.subject ? String(data.subject) : null;
+      }
+      // Referentie alleen koppelen als de thread er nog geen heeft (consistent
+      // met de REST-flow); cross-org wordt door assertReferenceInOrg geblokkeerd.
+      if (data.referenceEntityType !== undefined && !thread.referenceEntityType) {
+        const refType = data.referenceEntityType ? String(data.referenceEntityType) : null;
+        const refId = data.referenceEntityId ? String(data.referenceEntityId) : null;
+        await this.assertReferenceInOrg(refType, refId, orgId);
+        patch.referenceEntityType = refType;
+        patch.referenceEntityId = refId;
+      }
+      if (Object.keys(patch).length > 0) {
+        await this.prisma.chatThread.update({ where: { id }, data: patch });
+      }
+      return { id, status: 'success' };
+    }
+
+    // create. Idempotent op client-UUID: een al-geadopteerde thread is al gesynct
+    // — bevestig membership en geef de id terug.
+    if (id) {
+      const existing = await this.prisma.chatThread.findFirst({
+        where: { id, orgId, deletedAt: null },
+        select: { id: true, type: true, teamRole: true },
+      });
+      if (existing) {
+        await this.assertThreadMembership(existing, user);
+        return { id: existing.id, status: 'success' };
+      }
+    }
+
+    const type = String(data.type ?? '');
+    if (type === ChatThreadType.DIRECT) return this.adoptDirectThread(user, orgId, id, data);
+    if (type === ChatThreadType.TEAM) return this.adoptTeamThread(user, orgId, data);
+    throw new BadRequestException('Onbekend of ontbrekend thread-type');
+  }
+
+  /** Adopteert/dedupt een offline aangemaakte 1-op-1 thread (client-UUID → server). */
+  private async adoptDirectThread(
+    user: User,
+    orgId: string,
+    clientId: string | undefined,
+    data: Record<string, unknown>,
+  ): Promise<{ id: string; status: 'success' }> {
+    const otherId = data.userId ? String(data.userId) : '';
+    if (!otherId) throw new BadRequestException('userId is vereist voor een 1-op-1 chat');
+    if (otherId === user.id) throw new BadRequestException('U kunt geen chat met uzelf starten');
+    // Cross-tenant-isolatie: de andere deelnemer moet in dezelfde org zitten.
+    const other = await this.prisma.user.findFirst({
+      where: { id: otherId, orgId, isDeleted: false },
+      select: { id: true },
+    });
+    if (!other) throw new NotFoundException('Gebruiker niet gevonden');
+
+    const refType = data.referenceEntityType ? String(data.referenceEntityType) : null;
+    const refId = data.referenceEntityId ? String(data.referenceEntityId) : null;
+    await this.assertReferenceInOrg(refType, refId, orgId);
+
+    const directKey = this.directKey(user.id, otherId);
+    // Bestaat er al een DIRECT-thread voor dit paar, dan is die de bron van
+    // waarheid (mogelijk al door pull geleverd) — dedup ernaartoe.
+    let thread = await this.prisma.chatThread.findFirst({
+      where: { orgId, directKey, deletedAt: null },
+      select: { id: true },
+    });
+    if (!thread) {
+      try {
+        thread = await this.prisma.$transaction(async (tx) => {
+          const t = await tx.chatThread.create({
+            data: {
+              ...(clientId ? { id: clientId } : {}),
+              orgId,
+              type: ChatThreadType.DIRECT,
+              directKey,
+              subject: data.subject ? String(data.subject) : null,
+              referenceEntityType: refType,
+              referenceEntityId: refId,
+              createdById: user.id,
+              deviceId: data.deviceId ? String(data.deviceId) : null,
+              syncedAt: new Date(),
+            },
+            select: { id: true },
+          });
+          await tx.chatParticipant.createMany({
+            data: [
+              { threadId: t.id, userId: user.id, lastReadAt: new Date() },
+              { threadId: t.id, userId: otherId },
+            ],
+          });
+          return t;
+        });
+      } catch (e) {
+        if (!isUniqueViolation(e)) throw e;
+        thread = await this.prisma.chatThread.findFirst({
+          where: { orgId, directKey, deletedAt: null },
+          select: { id: true },
+        });
+      }
+    }
+    if (!thread) throw new NotFoundException('Gesprek niet gevonden');
+    return { id: thread.id, status: 'success' };
+  }
+
+  /** Zorgt dat de (org+rol-unieke) team-thread bestaat en de gebruiker lid is. */
+  private async adoptTeamThread(
+    user: User,
+    orgId: string,
+    data: Record<string, unknown>,
+  ): Promise<{ id: string; status: 'success' }> {
+    const roleRaw = data.teamRole ? String(data.teamRole) : '';
+    if (!roleRaw || !(roleRaw in Role)) {
+      throw new BadRequestException('teamRole is vereist voor een team-chat');
+    }
+    const role = roleRaw as Role;
+    if (!user.roles.includes(role)) throw new ForbiddenException('U hoort niet bij dit team');
+
+    let thread = await this.prisma.chatThread.findFirst({
+      where: { orgId, type: ChatThreadType.TEAM, teamRole: role, deletedAt: null },
+      select: { id: true },
+    });
+    if (!thread) {
+      try {
+        thread = await this.prisma.chatThread.create({
+          data: {
+            orgId,
+            type: ChatThreadType.TEAM,
+            teamRole: role,
+            subject: data.subject ? String(data.subject) : null,
+            createdById: user.id,
+            deviceId: data.deviceId ? String(data.deviceId) : null,
+            syncedAt: new Date(),
+          },
+          select: { id: true },
+        });
+      } catch (e) {
+        if (!isUniqueViolation(e)) throw e;
+        thread = await this.prisma.chatThread.findFirst({
+          where: { orgId, type: ChatThreadType.TEAM, teamRole: role, deletedAt: null },
+          select: { id: true },
+        });
+      }
+    }
+    if (!thread) throw new NotFoundException('Gesprek niet gevonden');
+
+    await this.prisma.chatParticipant
+      .upsert({
+        where: { threadId_userId: { threadId: thread.id, userId: user.id } },
+        update: {},
+        create: { threadId: thread.id, userId: user.id, lastReadAt: new Date() },
+      })
+      .catch((e) => {
+        if (!isUniqueViolation(e)) throw e;
+      });
+    return { id: thread.id, status: 'success' };
+  }
+
+  /**
+   * Past een via /sync gepushte presence-wijziging toe. De gebruiker komt ALTIJD
+   * uit de JWT (nooit uit de payload) — een device kan enkel de eigen status
+   * zetten. Raw SQL, net als touchLastSeen, zodat de audit-middleware (User is
+   * geaudit) niet bij elke statuswissel ruis logt. `last_seen_at` = nu (server).
+   */
+  async applySyncPresence(
+    user: User,
+    data: Record<string, unknown>,
+  ): Promise<{ id: string; status: 'success' }> {
+    await this.assertChatEnabled(requireOrg(user));
+    const availability = data.availability ? String(data.availability) : '';
+    if (!(availability in Availability)) {
+      throw new BadRequestException('Ongeldige beschikbaarheidsstatus');
+    }
+    const note = data.availabilityNote != null ? String(data.availabilityNote) : null;
+    await this.prisma.$executeRaw`
+      UPDATE imp_users
+      SET availability = ${availability}::"Availability",
+          availability_note = ${note},
+          last_seen_at = now()
+      WHERE id = ${user.id}::uuid
+    `;
+    // Echo de door de PWA gestuurde id terug (zodat die het item als gesynct
+    // markeert); de update zelf gebruikt altijd de JWT-gebruiker.
+    return { id: data.id ? String(data.id) : user.id, status: 'success' };
   }
 
   // ─────────────────────────────────────────────────────────────────────────

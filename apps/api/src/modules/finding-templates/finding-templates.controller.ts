@@ -39,6 +39,15 @@ export class FindingTemplatesController {
     return { success: true, ...(await this.service.findAll(user, query)) };
   }
 
+  @Get('all')
+  @Roles(...READ_ROLES)
+  @ApiOperation({
+    summary: 'Alle actieve sjablonen (org + systeem) zonder paginatie — voor de inspecteur-PWA',
+  })
+  async findAllActive(@CurrentUser() user: User) {
+    return { success: true, data: await this.service.findAllActive(user) };
+  }
+
   @Get('categories')
   @Roles(...READ_ROLES)
   @ApiOperation({ summary: 'Categorieën die door sjablonen worden gebruikt' })

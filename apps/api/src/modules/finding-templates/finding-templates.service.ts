@@ -80,6 +80,27 @@ export class FindingTemplatesService {
     });
   }
 
+  /**
+   * Alle ACTIEVE templates (eigen org + systeem) zonder paginatie — voor de inspecteur-PWA,
+   * die alle constatering-templates in één call offline cachet. Superuser (orgId null) ziet
+   * alles. Dezelfde org-scope en item-vorm als findAll, maar zonder limit/paginatie-envelope.
+   */
+  async findAllActive(user: User) {
+    const orgId = user.orgId;
+    const where: Prisma.FindingTemplateWhereInput = {
+      AND: [
+        { isActive: true },
+        orgId ? { OR: [{ orgId }, { orgId: null, isSystem: true }] } : {},
+      ],
+    };
+
+    return this.prisma.findingTemplate.findMany({
+      where,
+      include: TEMPLATE_INCLUDE,
+      orderBy: [{ category: { name: 'asc' } }, { shortDescription: 'asc' }],
+    });
+  }
+
   /** Categorieën die door templates worden gebruikt (eigen org + systeem). */
   async getUsedCategories(user: User, includeSystem = true) {
     const orgId = user.orgId;

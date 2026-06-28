@@ -144,6 +144,29 @@ export function useInspectionAssets(planId: string | undefined) {
   });
 }
 
+/** Asset aanmaken onder een plan. Invalideert de plan-asset-lijst (assets-tab + plattegrond). */
+export interface CreateAssetInput {
+  assetType: string;
+  name: string;
+  identifier?: string;
+  locationDescription?: string;
+  parentAssetId?: string;
+  notes?: string;
+}
+
+export function useCreateAsset() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ planId, data }: { planId: string; data: CreateAssetInput }) =>
+      apiClient.post<Asset>(`/inspection-plans/${planId}/assets`, data),
+    onSuccess: (_d, { planId }) => {
+      qc.invalidateQueries({ queryKey: ['inspection-assets', planId] });
+      qc.invalidateQueries({ queryKey: ['inspection-plans', planId] });
+      qc.invalidateQueries({ queryKey: ['assets'] });
+    },
+  });
+}
+
 export function useStandaloneMeasurements(planId: string | undefined) {
   return useQuery<StandaloneMeasurement[]>({
     queryKey: ['standalone-measurements', planId],

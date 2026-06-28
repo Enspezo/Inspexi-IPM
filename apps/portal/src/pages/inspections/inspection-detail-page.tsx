@@ -316,7 +316,9 @@ export default function InspectionDetailPage() {
           </div>
         )}
 
-        {activeTab === 'assets' && <AssetsTab assets={assets} isLoading={assetsLoading} />}
+        {activeTab === 'assets' && (
+          <AssetsTab assets={assets} isLoading={assetsLoading} planId={id!} canCreate={userCanWrite} />
+        )}
 
         {activeTab === 'plattegrond' && (
           <Suspense

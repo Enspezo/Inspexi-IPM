@@ -3,7 +3,7 @@
 // plattegrond. Per asset zijn de bevindingen uitklapbaar (GET /assets/:id/findings),
 // en daaronder de ingevulde meetstaten (GET /measurement-sheet-records?assetId=…).
 import { useState } from 'react';
-import { Card, Spinner, LookupBadge, StatusBadge } from '@/components/ui';
+import { Card, Spinner, LookupBadge, StatusBadge, Button } from '@/components/ui';
 import { MEASUREMENT_SHEET_RECORD_STATUS } from '@/lib/status';
 import { formatDate } from '@/lib/format';
 import type {
@@ -14,16 +14,27 @@ import type {
 import { useAssetFindings } from '../hooks/use-location-images';
 import { useAssetMeasurementRecords } from '../hooks/use-measurement-records';
 import { useMeetmiddelen } from '@/pages/meetmiddelen/hooks/use-meetmiddelen';
+import { CreateAssetModal } from './create-asset-modal';
 
 interface AssetsTabProps {
   assets: Asset[];
   isLoading: boolean;
+  planId: string;
+  canCreate: boolean;
 }
 
-export function AssetsTab({ assets, isLoading }: AssetsTabProps) {
+export function AssetsTab({ assets, isLoading, planId, canCreate }: AssetsTabProps) {
+  const [isCreateOpen, setIsCreateOpen] = useState(false);
+
+  const createButton = canCreate ? (
+    <Button variant="secondary" onClick={() => setIsCreateOpen(true)}>
+      Aanmaken
+    </Button>
+  ) : undefined;
+
   if (isLoading) {
     return (
-      <Card title="Assets">
+      <Card title="Assets" actions={createButton}>
         <div className="flex justify-center py-8">
           <Spinner />
         </div>
@@ -32,17 +43,23 @@ export function AssetsTab({ assets, isLoading }: AssetsTabProps) {
   }
 
   return (
-    <Card title={`Assets (${assets.length})`}>
-      {assets.length === 0 ? (
-        <p className="py-4 text-sm text-gray-500">Geen assets gekoppeld aan deze inspectie.</p>
-      ) : (
-        <ul className="-my-2 divide-y divide-gray-100">
-          {assets.map((asset) => (
-            <AssetRow key={asset.id} asset={asset} />
-          ))}
-        </ul>
+    <>
+      <Card title={`Assets (${assets.length})`} actions={createButton}>
+        {assets.length === 0 ? (
+          <p className="py-4 text-sm text-gray-500">Geen assets gekoppeld aan deze inspectie.</p>
+        ) : (
+          <ul className="-my-2 divide-y divide-gray-100">
+            {assets.map((asset) => (
+              <AssetRow key={asset.id} asset={asset} />
+            ))}
+          </ul>
+        )}
+      </Card>
+
+      {isCreateOpen && (
+        <CreateAssetModal isOpen={isCreateOpen} onClose={() => setIsCreateOpen(false)} planId={planId} />
       )}
-    </Card>
+    </>
   );
 }
 

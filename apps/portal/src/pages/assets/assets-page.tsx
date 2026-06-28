@@ -2,24 +2,32 @@
 // pages/inspections/inspections-page.tsx (DetailPageLayout + TableConfigSidebar +
 // useTableConfig + ColumnDef + Table + PageHeader + server-paginatie).
 // Status is een LOOKUP → <LookupBadge>; filteropties dynamisch uit useLookups.
-// Overzicht-only: geen "Nieuw"-knop, geen detail-navigatie (naam = platte tekst).
+// "Asset aanmaken" via ActionMenu (kiest het plan in de modal, want een asset
+// hangt altijd onder een inspectieplan).
 
 import { useState, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { Asset } from '@/types';
-import { ErrorBox, Spinner, Table, Input, Select, Button } from '@/components/ui';
+import { ErrorBox, Spinner, Table, Input, Select, Button, ActionMenu } from '@/components/ui';
 import { LookupBadge } from '@/components/ui/lookup-badge';
 import { DetailPageLayout } from '@/components/layout/detail-page-layout';
 import { PageHeader } from '@/components/layout/page-header';
 import { TableConfigSidebar, useTableConfig, type ColumnDef } from '@/components/table-config';
 import { useLookups } from '@/lib/lookups';
+import { useAuth } from '@/providers/auth-provider';
+import { CRM_ROLES } from '@/lib/roles';
 import { useAssets } from './hooks/use-assets';
+import { CreateAssetModal } from '@/pages/inspections/components/create-asset-modal';
 
 export default function AssetsPage() {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [page, setPage] = useState(1);
+  const [isCreateOpen, setIsCreateOpen] = useState(false);
+
+  const userCanWrite = !!user && user.roles.some((r) => CRM_ROLES.includes(r));
 
   // Filteropties dynamisch uit de asset-status lookup (systeemdefaults + org-overrides)
   const { data: assetStatuses } = useLookups('asset-status-types');
@@ -132,7 +140,27 @@ export default function AssetsPage() {
       }
     >
       <div className="space-y-6">
-        <PageHeader title="Assets" description="Org-breed assetregister" />
+        <PageHeader
+          title="Assets"
+          description="Org-breed assetregister"
+          actions={
+            userCanWrite ? (
+              <ActionMenu
+                secondaryActions={[
+                  {
+                    label: 'Asset aanmaken',
+                    icon: (
+                      <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                      </svg>
+                    ),
+                    onClick: () => setIsCreateOpen(true),
+                  },
+                ]}
+              />
+            ) : undefined
+          }
+        />
 
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
           <div className="flex-1">
@@ -169,6 +197,10 @@ export default function AssetsPage() {
           <p className="text-sm text-gray-500">{total} {total !== 1 ? 'assets' : 'asset'}</p>
         )}
       </div>
+
+      {isCreateOpen && (
+        <CreateAssetModal isOpen={isCreateOpen} onClose={() => setIsCreateOpen(false)} />
+      )}
     </DetailPageLayout>
   );
 }

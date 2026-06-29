@@ -18,7 +18,8 @@ describe('SyncService', () => {
 
   const mockPrisma = {
     inspectionPlan: delegate(),
-    asset: delegate(),
+    // Unified asset tree: de 'asset' sync-entiteit gebruikt nu de assetNode-delegate.
+    assetNode: delegate(),
     finding: delegate(),
     photo: delegate(),
     contact: delegate(),
@@ -86,7 +87,7 @@ describe('SyncService', () => {
     it('creates an asset when the parent plan is in the SAME org', async () => {
       // covers both assertSameOrg's internal findUnique and resolveOrgId's findUnique
       mockPrisma.inspectionPlan.findUnique.mockResolvedValue({ orgId: 'org-1' });
-      mockPrisma.asset.create.mockResolvedValue({ id: 'a1' });
+      mockPrisma.assetNode.create.mockResolvedValue({ id: 'a1' });
 
       const dto = {
         deviceId: 'dev-1',
@@ -99,7 +100,7 @@ describe('SyncService', () => {
 
       const result = await service.push(user, dto);
 
-      expect(mockPrisma.asset.create).toHaveBeenCalledWith(
+      expect(mockPrisma.assetNode.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({ orgId: 'org-1' }),
         }),
@@ -122,7 +123,7 @@ describe('SyncService', () => {
 
       const result = await service.push(user, dto);
 
-      expect(mockPrisma.asset.create).not.toHaveBeenCalled();
+      expect(mockPrisma.assetNode.create).not.toHaveBeenCalled();
       expect(result.errors).toHaveLength(1);
       expect(result.processed.assets).toBe(0);
     });
@@ -342,7 +343,7 @@ describe('SyncService', () => {
       mockPrisma.inspectionPlan.findMany
         .mockResolvedValueOnce([{ id: 'p1', projectName: 'X', internalNotes: 'SECRET', orgId: 'org-1' }])
         .mockResolvedValueOnce([]);
-      mockPrisma.asset.findMany.mockResolvedValue([]);
+      mockPrisma.assetNode.findMany.mockResolvedValue([]);
       mockPrisma.finding.findMany.mockResolvedValue([]);
       mockPrisma.photo.findMany.mockResolvedValue([
         { id: 'ph1', entityType: 'inspection_plan', entityId: 'p1' },
@@ -395,7 +396,7 @@ describe('SyncService', () => {
 
     it('adds chat additively without changing existing keys/shape', async () => {
       mockPrisma.inspectionPlan.findMany.mockResolvedValue([]);
-      mockPrisma.asset.findMany.mockResolvedValue([]);
+      mockPrisma.assetNode.findMany.mockResolvedValue([]);
       mockPrisma.finding.findMany.mockResolvedValue([]);
       mockPrisma.photo.findMany.mockResolvedValue([]);
       mockPrisma.contact.findMany.mockResolvedValue([]);

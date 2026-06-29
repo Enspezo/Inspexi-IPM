@@ -8,7 +8,7 @@
 // Conflict: optimistic — server.updatedAt > client.syncedAt op een update.
 
 import { Injectable, BadRequestException } from '@nestjs/common';
-import { User, Prisma, SyncStatus } from '@prisma/client';
+import { User, Prisma, SyncStatus, AssetNodeType } from '@prisma/client';
 import { PrismaService } from '@/prisma';
 import { orgScope, assertSameOrg, requireOrg } from '@/common';
 import { PushDto, ResolveDto } from './dto';
@@ -61,7 +61,8 @@ export class SyncService {
   private delegateFor(model: SyncModelName): SyncDelegate {
     const delegates: Record<SyncModelName, unknown> = {
       inspectionPlan: this.prisma.inspectionPlan,
-      asset: this.prisma.asset,
+      // TODO(Fase 3): unify into assetNodes sync entity — asset = ASSET-type AssetNode.
+      asset: this.prisma.assetNode,
       finding: this.prisma.finding,
     };
     return delegates[model] as SyncDelegate;
@@ -79,15 +80,16 @@ export class SyncService {
       OR: [{ createdAt: { gt: since } }, { updatedAt: { gt: since } }],
     };
 
+    // TODO(Fase 3): unify into assetNodes sync entity — assets are ASSET-type AssetNodes.
     const [plans, assets, findings] = await Promise.all([
       this.prisma.inspectionPlan.findMany({ where: changedWhere }),
-      this.prisma.asset.findMany({ where: changedWhere }),
+      this.prisma.assetNode.findMany({ where: { ...changedWhere, nodeType: AssetNodeType.ASSET } }),
       this.prisma.finding.findMany({ where: changedWhere }),
     ]);
 
     const [delPlans, delAssets, delFindings] = await Promise.all([
       this.prisma.inspectionPlan.findMany({ where: { ...scope, deletedAt: { gt: since } }, select: { id: true } }),
-      this.prisma.asset.findMany({ where: { ...scope, deletedAt: { gt: since } }, select: { id: true } }),
+      this.prisma.assetNode.findMany({ where: { ...scope, deletedAt: { gt: since }, nodeType: AssetNodeType.ASSET }, select: { id: true } }),
       this.prisma.finding.findMany({ where: { ...scope, deletedAt: { gt: since } }, select: { id: true } }),
     ]);
 

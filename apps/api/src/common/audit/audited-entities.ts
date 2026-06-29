@@ -92,13 +92,8 @@ export const AUDITED_ENTITIES: readonly AuditedEntity[] = [
 
   // Inspectiedomein — configuratie & planning (Fase 1)
   { model: 'InspectionPlan', table: 'imp_inspection_plans', displayFields: ['projectName'] },
-  { model: 'Asset', table: 'imp_assets', displayFields: ['name', 'identifier'] },
+  { model: 'AssetNode', table: 'imp_asset_nodes', displayFields: ['name', 'identifier'] },
   { model: 'Finding', table: 'imp_findings', displayFields: ['shortDescription'] },
-  {
-    model: 'InspectionLocation',
-    table: 'imp_inspection_locations',
-    displayFields: ['name', 'identifier'],
-  },
   { model: 'Checklist', table: 'imp_checklists', displayFields: ['name', 'code'] },
   { model: 'ChecklistItem', table: 'imp_checklist_items', displayFields: ['question', 'code'] },
   { model: 'Category', table: 'imp_categories', displayFields: ['name'] },

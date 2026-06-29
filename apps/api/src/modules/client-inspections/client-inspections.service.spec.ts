@@ -12,6 +12,7 @@ describe('ClientInspectionsService (tenant + ClientAccess scoping)', () => {
     inspectionClientAccess: { findMany: jest.fn() },
     inspectionPlan: { findFirst: jest.fn(), findMany: jest.fn() },
     finding: { findMany: jest.fn(), count: jest.fn() },
+    assetNode: { findMany: jest.fn() },
     generatedDocument: { findMany: jest.fn() },
     documentSignature: { findMany: jest.fn() },
   };
@@ -108,10 +109,15 @@ describe('ClientInspectionsService (tenant + ClientAccess scoping)', () => {
       mockPrisma.inspectionClientAccess.findMany.mockResolvedValue([]);
       mockPrisma.inspectionPlan.findFirst
         .mockResolvedValueOnce({ id: 'plan-1' }) // access-check
-        .mockResolvedValueOnce({
-          id: 'plan-1',
-          assets: [{ findings: [{ statusCode: STATUS_OPEN }, { statusCode: STATUS_RESOLVED }] }],
-        }); // detail
+        .mockResolvedValueOnce({ id: 'plan-1' }); // detail
+      // Findings dragen sinds de unified-tree zelf assetNodeId + inspectionPlanId.
+      mockPrisma.finding.findMany.mockResolvedValue([
+        { id: 'f1', assetNodeId: 'an-1', statusCode: STATUS_OPEN, shortDescription: 'a', classificationValues: {} },
+        { id: 'f2', assetNodeId: 'an-1', statusCode: STATUS_RESOLVED, shortDescription: 'b', classificationValues: {} },
+      ]);
+      mockPrisma.assetNode.findMany.mockResolvedValue([
+        { id: 'an-1', name: 'Asset 1', typeCode: 'switchboard', statusCode: 'ok' },
+      ]);
 
       const res = await service.detail(user, 'org-A', 'plan-1');
       expect(res.findingCounts).toEqual({ total: 2, open: 1, resolved: 1 });
@@ -124,7 +130,6 @@ describe('ClientInspectionsService (tenant + ClientAccess scoping)', () => {
         .mockResolvedValueOnce({ id: 'plan-1' }) // access-check
         .mockResolvedValueOnce({
           id: 'plan-1',
-          assets: [],
           // org-modus: telefoon mét consent → inspecteur; e-mail zónder consent → statische terugval
           organization: {
             inspectorPhoneDisplay: 'INSPECTOR',
@@ -143,6 +148,7 @@ describe('ClientInspectionsService (tenant + ClientAccess scoping)', () => {
           },
           reviewer: { id: 'insp-1', firstName: 'In', lastName: 'Spector' },
         });
+      mockPrisma.finding.findMany.mockResolvedValue([]);
 
       const res = await service.detail(user, 'org-A', 'plan-1');
 

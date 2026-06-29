@@ -5,6 +5,8 @@ import {
   IsUUID,
   IsDateString,
   IsNumber,
+  IsArray,
+  ArrayUnique,
 } from 'class-validator';
 
 export class CreateInspectionPlanDto {
@@ -16,6 +18,23 @@ export class CreateInspectionPlanDto {
   @IsOptional()
   @IsUUID()
   projectId?: string;
+
+  @ApiPropertyOptional({
+    description: 'CRM-hoofdlocatie = boom-wortel. De asset-/locatieboom wordt lazily aangemaakt.',
+  })
+  @IsOptional()
+  @IsUUID()
+  locationId?: string;
+
+  @ApiPropertyOptional({
+    description: 'Deellocaties in scope (LOCATION asset-node-ids; moeten in de boom van locationId zitten)',
+    type: [String],
+  })
+  @IsOptional()
+  @IsArray()
+  @ArrayUnique()
+  @IsUUID(undefined, { each: true, message: 'Ongeldig scope-locatie-id' })
+  scopeLocationIds?: string[];
 
   @ApiPropertyOptional({ description: 'Inspectie-template (org of systeem)' })
   @IsOptional()

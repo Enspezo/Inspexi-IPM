@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { User } from '@prisma/client';
+import { User, AssetNodeType } from '@prisma/client';
 import { PrismaService } from '@/prisma';
 import {
   orgScope,
@@ -87,11 +87,11 @@ export class PortalStatsService {
       this.prisma.finding.count({
         where: { ...scope, deletedAt: null, statusCode: STATUS_OPEN },
       }),
-      this.prisma.asset.count({
-        where: { ...scope, deletedAt: null },
+      this.prisma.assetNode.count({
+        where: { ...scope, deletedAt: null, nodeType: AssetNodeType.ASSET },
       }),
-      this.prisma.inspectionLocation.count({
-        where: { ...scope, deletedAt: null },
+      this.prisma.assetNode.count({
+        where: { ...scope, deletedAt: null, nodeType: AssetNodeType.LOCATION },
       }),
     ]);
 

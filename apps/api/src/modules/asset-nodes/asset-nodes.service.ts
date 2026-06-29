@@ -9,7 +9,7 @@ import { CreateAssetNodeDto, MoveAssetNodeDto, UpdateAssetNodeDto } from './dto'
 const DEFAULT_ROOT_TYPE_CODE = 'locatie';
 
 /** Raw projectie van een AssetNode incl. de niet-Prisma-selecteerbare ltree `path`. */
-interface RawNode {
+export interface AssetNodeRow {
   id: string;
   orgId: string;
   nodeType: AssetNodeType;
@@ -28,6 +28,9 @@ interface RawNode {
   createdAt: Date;
   updatedAt: Date;
 }
+
+/** @deprecated interne alias — gebruik {@link AssetNodeRow}. */
+type RawNode = AssetNodeRow;
 
 type TreeNode = RawNode & {
   children: TreeNode[];
@@ -99,7 +102,7 @@ export class AssetNodesService {
         throw new BadRequestException('rootLocationId is verplicht voor een wortel-node');
       }
       await assertSameOrg(this.prisma.location, dto.rootLocationId, orgId, 'Locatie');
-      return this.createRoot(orgId, dto.rootLocationId, user, {
+      const root = await this.createRoot(orgId, dto.rootLocationId, user, {
         typeCode: dto.typeCode,
         name: dto.name,
         identifier: dto.identifier,
@@ -108,6 +111,7 @@ export class AssetNodesService {
         notes: dto.notes,
         deviceId,
       });
+      return this.findById(root.id, user);
     }
 
     // Child-node onder een bestaande parent.
@@ -267,6 +271,144 @@ export class AssetNodesService {
     return this.createRoot(orgId, location.id, user, { typeCode, name: location.name });
   }
 
+  // ── Plan- & scope-helpers (Fase 2b) ───────────────────────
+
+  /**
+   * `rootLocationId` van de boom-wortel waaronder deze node hangt. De wortel is
+   * het eerste ltree-label van het pad (`subpath(path, 0, 1)`); diens
+   * `root_location_id` is de CRM-hoofdlocatie van de hele boom. `null` als de
+   * node niet bestaat (binnen de org-scope).
+   */
+  async getTreeRootLocationId(
+    assetNodeId: string,
+    orgId: string | null,
+  ): Promise<string | null> {
+    const orgFilter = orgId ? Prisma.sql`AND child.org_id = ${orgId}::uuid` : Prisma.empty;
+    const rows = await this.prisma.$queryRaw<{ rootLocationId: string | null }[]>(Prisma.sql`
+      SELECT root.root_location_id AS "rootLocationId"
+      FROM imp_asset_nodes child
+      JOIN imp_asset_nodes root ON root.path = subpath(child.path, 0, 1)
+      WHERE child.id = ${assetNodeId}::uuid AND child.deleted_at IS NULL ${orgFilter}
+    `);
+    return rows[0]?.rootLocationId ?? null;
+  }
+
+  /**
+   * Valideert dat `assetNodeId` bestaat (zelfde org) en in de boom van het plan
+   * zit: de boom-wortel moet `rootLocationId === plan.locationId` hebben. Gooit
+   * NotFound (onbekende node / cross-tenant) of BadRequest (verkeerde boom / plan
+   * zonder hoofdlocatie). Wordt gebruikt vóór het schrijven van een uitvoerings-
+   * record (finding/visual/measurement/sheet).
+   */
+  async assertNodeInPlanTree(
+    assetNodeId: string,
+    plan: { id: string; locationId: string | null; orgId: string },
+  ): Promise<AssetNodeRow> {
+    if (!plan.locationId) {
+      throw new BadRequestException('Het inspectieplan heeft geen hoofdlocatie (locationId)');
+    }
+    const node = assertFound(await this.getNodeRaw(assetNodeId, plan.orgId), 'Asset-node');
+    const rootLocationId = await this.getTreeRootLocationId(assetNodeId, plan.orgId);
+    if (rootLocationId !== plan.locationId) {
+      throw new BadRequestException(
+        'De asset-node hoort niet bij de hoofdlocatie van dit inspectieplan',
+      );
+    }
+    return node;
+  }
+
+  /**
+   * Valideert een scope-deellocatie: node bestaat (zelfde org), is een LOCATION
+   * en zit in de boom van `planLocationId`.
+   */
+  async assertValidScopeLocation(
+    assetNodeId: string,
+    planLocationId: string,
+    orgId: string,
+  ): Promise<void> {
+    const node = assertFound(await this.getNodeRaw(assetNodeId, orgId), 'Scope-locatie');
+    if (node.nodeType !== AssetNodeType.LOCATION) {
+      throw new BadRequestException('Een scope-locatie moet een LOCATION-node zijn');
+    }
+    const rootLocationId = await this.getTreeRootLocationId(assetNodeId, orgId);
+    if (rootLocationId !== planLocationId) {
+      throw new BadRequestException(
+        'De scope-locatie hoort niet bij de hoofdlocatie van dit inspectieplan',
+      );
+    }
+  }
+
+  /**
+   * Default-parent voor een node die "vanuit een inspectie" wordt aangemaakt: de
+   * enige scope-deellocatie als er precies één is, anders de wortel-LOCATION-node
+   * van de boom. De wortel wordt zo nodig lazily aangemaakt (ensureRootNode).
+   */
+  async resolveDefaultParentForPlan(planId: string, user: User): Promise<string> {
+    const plan = assertFound(
+      await this.prisma.inspectionPlan.findFirst({
+        where: { id: planId, ...orgScope(user), deletedAt: null },
+        select: {
+          locationId: true,
+          scopeLocations: { select: { assetNodeId: true } },
+        },
+      }),
+      'Inspectieplan',
+    );
+    if (!plan.locationId) {
+      throw new BadRequestException('Het inspectieplan heeft geen hoofdlocatie (locationId)');
+    }
+    if (plan.scopeLocations.length === 1) {
+      return plan.scopeLocations[0].assetNodeId;
+    }
+    const root = await this.ensureRootNode(plan.locationId, user);
+    return root.id;
+  }
+
+  /** Platte lijst van nodes in de boom van een CRM-Locatie (optioneel op nodeType). */
+  async listLocationNodes(
+    locationId: string,
+    user: User,
+    nodeType?: AssetNodeType,
+  ): Promise<AssetNodeRow[]> {
+    const root = await this.ensureRootNode(locationId, user);
+    return this.listSubtree(root.id, orgScope(user).orgId ?? null, nodeType);
+  }
+
+  /**
+   * Read-only variant van {@link listLocationNodes} op basis van orgId i.p.v. een
+   * `User` (voor doc-generatie/achtergrondtaken): maakt GEEN wortel aan. Geeft een
+   * lege lijst als de boom nog niet bestaat.
+   */
+  async listLocationNodesByOrg(
+    locationId: string,
+    orgId: string | null,
+    nodeType?: AssetNodeType,
+  ): Promise<AssetNodeRow[]> {
+    const root = await this.prisma.assetNode.findUnique({
+      where: { rootLocationId: locationId },
+      select: { id: true },
+    });
+    if (!root) return [];
+    return this.listSubtree(root.id, orgId, nodeType);
+  }
+
+  /** Platte lijst van nodes in de boom van een plan (via `plan.locationId`). */
+  async listPlanNodes(
+    planId: string,
+    user: User,
+    nodeType?: AssetNodeType,
+  ): Promise<AssetNodeRow[]> {
+    const plan = assertFound(
+      await this.prisma.inspectionPlan.findFirst({
+        where: { id: planId, ...orgScope(user), deletedAt: null },
+        select: { locationId: true },
+      }),
+      'Inspectieplan',
+    );
+    if (!plan.locationId) return [];
+    return this.listLocationNodes(plan.locationId, user, nodeType);
+  }
+
   // ── Helpers ───────────────────────────────────────────────
 
   private async createRoot(
@@ -344,6 +486,26 @@ export class AssetNodesService {
 
     const enriched = await this.enrich(rows);
     return this.buildHierarchy(enriched, root.parentId);
+  }
+
+  /** Platte, op `path` geordende subtree-lijst (incl. wortel), optioneel op nodeType. */
+  private async listSubtree(
+    rootId: string,
+    orgId: string | null,
+    nodeType?: AssetNodeType,
+  ): Promise<AssetNodeRow[]> {
+    const root = await this.getNodeRaw(rootId, orgId);
+    if (!root) return [];
+    const orgFilter = orgId ? Prisma.sql`AND org_id = ${orgId}::uuid` : Prisma.empty;
+    const typeFilter = nodeType
+      ? Prisma.sql`AND node_type = ${nodeType}::"AssetNodeType"`
+      : Prisma.empty;
+    return this.prisma.$queryRaw<AssetNodeRow[]>(Prisma.sql`
+      SELECT ${NODE_COLUMNS}
+      FROM imp_asset_nodes
+      WHERE deleted_at IS NULL AND path <@ ${root.path}::ltree ${typeFilter} ${orgFilter}
+      ORDER BY path
+    `);
   }
 
   /** Voegt findingCount toe via één grouped query over de subtree-nodes. */

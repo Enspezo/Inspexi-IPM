@@ -3,10 +3,10 @@ import { IsOptional, IsUUID, IsEnum } from 'class-validator';
 import { MeasurementSheetRecordStatus } from '@prisma/client';
 
 export class QueryMeasurementSheetRecordsDto {
-  @ApiPropertyOptional({ description: 'Filter op asset' })
+  @ApiPropertyOptional({ description: 'Filter op asset-node' })
   @IsOptional()
   @IsUUID()
-  assetId?: string;
+  assetNodeId?: string;
 
   @ApiPropertyOptional({ description: 'Filter op inspectieplan' })
   @IsOptional()

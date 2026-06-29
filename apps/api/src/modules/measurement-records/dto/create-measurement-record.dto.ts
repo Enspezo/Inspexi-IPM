@@ -1,4 +1,4 @@
-import { ApiPropertyOptional } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   IsArray,
   IsDateString,
@@ -8,6 +8,10 @@ import {
 } from 'class-validator';
 
 export class CreateMeasurementRecordDto {
+  @ApiProperty({ description: 'Inspectieplan waaronder deze meting valt' })
+  @IsUUID()
+  inspectionPlanId: string;
+
   @ApiPropertyOptional({
     description: 'Metingen (lijst van meetwaarden), bv. [{ "label": "Riso", "value": 1.2 }]',
     type: [Object],

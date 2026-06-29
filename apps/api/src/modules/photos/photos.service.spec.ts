@@ -13,7 +13,7 @@ describe('PhotosService', () => {
   let service: PhotosService;
 
   const mockPrisma = {
-    asset: { findFirst: jest.fn() },
+    assetNode: { findFirst: jest.fn() },
     finding: { findFirst: jest.fn() },
     inspectionPlan: { findFirst: jest.fn() },
     photo: { findFirst: jest.fn(), create: jest.fn() },
@@ -47,7 +47,7 @@ describe('PhotosService', () => {
     const file = { buffer: Buffer.from('img-bytes'), mimetype: 'image/jpeg', size: 100 };
 
     it('uploads the original + a thumbnail and stores the thumbnail path', async () => {
-      mockPrisma.asset.findFirst.mockResolvedValue({ orgId: 'org-1' });
+      mockPrisma.assetNode.findFirst.mockResolvedValue({ orgId: 'org-1' });
       mockPrisma.photo.create.mockResolvedValue({ id: 'photo-1' });
 
       const result = await service.upload(file, { entityType: 'asset', entityId: 'a1' } as any, user);
@@ -79,7 +79,7 @@ describe('PhotosService', () => {
     });
 
     it('falls back to the original key when thumbnail generation fails (fail-soft)', async () => {
-      mockPrisma.asset.findFirst.mockResolvedValue({ orgId: 'org-1' });
+      mockPrisma.assetNode.findFirst.mockResolvedValue({ orgId: 'org-1' });
       mockPrisma.photo.create.mockResolvedValue({ id: 'photo-x' });
       mockMakeThumbnail.mockRejectedValueOnce(new Error('Input buffer contains unsupported image format'));
 
@@ -115,7 +115,7 @@ describe('PhotosService', () => {
       await service.upload(file, { entityType: 'inspectionPlan', entityId: 'p1' } as any, user);
 
       expect(mockPrisma.inspectionPlan.findFirst).toHaveBeenCalledTimes(1);
-      expect(mockPrisma.asset.findFirst).not.toHaveBeenCalled();
+      expect(mockPrisma.assetNode.findFirst).not.toHaveBeenCalled();
       expect(mockPrisma.photo.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({ entityType: PhotoEntityType.inspection_plan }),
@@ -124,7 +124,7 @@ describe('PhotosService', () => {
     });
 
     it('throws NotFoundException when the entity is missing or cross-org', async () => {
-      mockPrisma.asset.findFirst.mockResolvedValue(null);
+      mockPrisma.assetNode.findFirst.mockResolvedValue(null);
       await expect(
         service.upload(file, { entityType: 'asset', entityId: 'a1' } as any, user),
       ).rejects.toThrow(NotFoundException);

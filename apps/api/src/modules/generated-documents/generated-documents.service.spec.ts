@@ -10,6 +10,7 @@ import { LookupService } from '../lookups/lookup.service';
 import { DocumentRenderService } from '../document-generation/document-render.service';
 import { PdfGenerationService } from '../document-generation/pdf-generation.service';
 import { WordExportService } from '../document-generation/word-export.service';
+import { AssetNodesService } from '../asset-nodes/asset-nodes.service';
 
 describe('GeneratedDocumentsService', () => {
   let service: GeneratedDocumentsService;
@@ -33,6 +34,9 @@ describe('GeneratedDocumentsService', () => {
     },
     photo: { findMany: jest.fn() },
     normTypeDefinition: { findFirst: jest.fn() },
+    finding: { findMany: jest.fn() },
+    measurementSheetRecord: { findMany: jest.fn() },
+    measurementInstrument: { findMany: jest.fn() },
   };
 
   const mockRender = { renderHtml: jest.fn() };
@@ -42,6 +46,8 @@ describe('GeneratedDocumentsService', () => {
   const mockEmail = { sendNotificationEmail: jest.fn() };
   const mockLookups = { resolveLookup: jest.fn() };
   const mockConfig = { get: jest.fn((_k: string, def?: string) => def) };
+  // Asset nodes are assembled from the AssetNode tree (Fase 2b) instead of plan.assets.
+  const mockAssetNodes = { listLocationNodesByOrg: jest.fn().mockResolvedValue([]) };
 
   const user = {
     id: 'user-1',
@@ -81,7 +87,6 @@ describe('GeneratedDocumentsService', () => {
     assignedUser: { firstName: 'Inge', lastName: 'Specteur', email: 'inge@org1.nl' },
     reviewer: null,
     inspectionTemplate: { classificationModel: { characteristics: [] } },
-    assets: [],
     measurementSheetRecords: [],
   });
 
@@ -104,6 +109,10 @@ describe('GeneratedDocumentsService', () => {
   beforeEach(async () => {
     jest.clearAllMocks();
     mockEmail.sendNotificationEmail.mockResolvedValue(undefined);
+    mockAssetNodes.listLocationNodesByOrg.mockResolvedValue([]);
+    mockPrisma.finding.findMany.mockResolvedValue([]);
+    mockPrisma.measurementSheetRecord.findMany.mockResolvedValue([]);
+    mockPrisma.measurementInstrument.findMany.mockResolvedValue([]);
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -116,6 +125,7 @@ describe('GeneratedDocumentsService', () => {
         { provide: EmailService, useValue: mockEmail },
         { provide: ConfigService, useValue: mockConfig },
         { provide: LookupService, useValue: mockLookups },
+        { provide: AssetNodesService, useValue: mockAssetNodes },
       ],
     }).compile();
 

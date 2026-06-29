@@ -3,6 +3,7 @@ import { NotFoundException, BadRequestException, ForbiddenException } from '@nes
 import { Role, InspectionExecStatus } from '@prisma/client';
 import { MeasurementRecordsService } from './measurement-records.service';
 import { PrismaService } from '@/prisma';
+import { AssetNodesService } from '../asset-nodes/asset-nodes.service';
 
 describe('MeasurementRecordsService', () => {
   let service: MeasurementRecordsService;
@@ -15,8 +16,13 @@ describe('MeasurementRecordsService', () => {
       update: jest.fn(),
       delete: jest.fn(),
     },
-    asset: { findFirst: jest.fn() },
+    assetNode: { findFirst: jest.fn() },
+    inspectionPlan: { findFirst: jest.fn() },
     user: { findUnique: jest.fn() },
+  };
+
+  const mockAssetNodesService = {
+    assertNodeInPlanTree: jest.fn(),
   };
 
   const mockUser = {
@@ -26,6 +32,9 @@ describe('MeasurementRecordsService', () => {
     roles: [Role.ORG_ADMIN],
   } as any;
 
+  const createDto = (overrides: Record<string, unknown> = {}) =>
+    ({ inspectionPlanId: 'plan-1', ...overrides }) as any;
+
   beforeEach(async () => {
     jest.clearAllMocks();
 
@@ -33,43 +42,54 @@ describe('MeasurementRecordsService', () => {
       providers: [
         MeasurementRecordsService,
         { provide: PrismaService, useValue: mockPrismaService },
+        { provide: AssetNodesService, useValue: mockAssetNodesService },
       ],
     }).compile();
 
     service = module.get<MeasurementRecordsService>(MeasurementRecordsService);
+
+    mockAssetNodesService.assertNodeInPlanTree.mockResolvedValue({
+      id: 'node-1',
+      orgId: 'org-1',
+      nodeType: 'ASSET',
+    });
+    mockPrismaService.inspectionPlan.findFirst.mockResolvedValue({
+      id: 'plan-1',
+      orgId: 'org-1',
+      locationId: 'loc-1',
+    });
   });
 
   describe('findAllByAsset', () => {
-    it('should throw NotFoundException with NL message when asset not in org', async () => {
-      mockPrismaService.asset.findFirst.mockResolvedValue(null);
+    it('should throw NotFoundException with NL message when asset-node not in org', async () => {
+      mockPrismaService.assetNode.findFirst.mockResolvedValue(null);
 
-      await expect(service.findAllByAsset('asset-x', mockUser)).rejects.toThrow(
+      await expect(service.findAllByAsset('node-x', mockUser)).rejects.toThrow(
         NotFoundException,
       );
-      await expect(service.findAllByAsset('asset-x', mockUser)).rejects.toThrow(
-        'Asset niet gevonden',
+      await expect(service.findAllByAsset('node-x', mockUser)).rejects.toThrow(
+        'Asset-node niet gevonden',
       );
     });
 
-    it('should return measurement records for the asset', async () => {
-      mockPrismaService.asset.findFirst.mockResolvedValue({ id: 'asset-1', orgId: 'org-1' });
+    it('should return measurement records for the asset-node', async () => {
+      mockPrismaService.assetNode.findFirst.mockResolvedValue({ id: 'node-1', orgId: 'org-1' });
       mockPrismaService.measurementRecord.findMany.mockResolvedValue([
-        { id: 'm-1', assetId: 'asset-1', status: InspectionExecStatus.not_started },
+        { id: 'm-1', assetNodeId: 'node-1', inspectionPlanId: 'plan-1', status: InspectionExecStatus.not_started },
       ]);
 
-      const result = await service.findAllByAsset('asset-1', mockUser);
+      const result = await service.findAllByAsset('node-1', mockUser);
 
       expect(result).toHaveLength(1);
       expect(result[0].id).toBe('m-1');
       expect(mockPrismaService.measurementRecord.findMany).toHaveBeenCalledWith(
-        expect.objectContaining({ where: { assetId: 'asset-1' } }),
+        expect.objectContaining({ where: { assetNodeId: 'node-1' } }),
       );
     });
   });
 
   describe('create', () => {
-    it('should set orgId from asset, default status not_started, and capture deviceId', async () => {
-      mockPrismaService.asset.findFirst.mockResolvedValue({ id: 'asset-1', orgId: 'org-1' });
+    it('should set orgId from user, default status not_started, and capture deviceId', async () => {
       mockPrismaService.measurementRecord.create.mockResolvedValue({
         id: 'm-new',
         status: InspectionExecStatus.not_started,
@@ -77,14 +97,19 @@ describe('MeasurementRecordsService', () => {
         createdAt: new Date(),
       });
 
-      const result = await service.create('asset-1', mockUser, {}, 'device-abc');
+      const result = await service.create('node-1', mockUser, createDto(), 'device-abc');
 
       expect(result.status).toBe(InspectionExecStatus.not_started);
+      expect(mockAssetNodesService.assertNodeInPlanTree).toHaveBeenCalledWith(
+        'node-1',
+        expect.objectContaining({ id: 'plan-1' }),
+      );
       expect(mockPrismaService.measurementRecord.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
             orgId: 'org-1',
-            assetId: 'asset-1',
+            assetNodeId: 'node-1',
+            inspectionPlanId: 'plan-1',
             status: InspectionExecStatus.not_started,
             measurements: [],
             deviceId: 'device-abc',
@@ -94,10 +119,9 @@ describe('MeasurementRecordsService', () => {
     });
 
     it('should convert calibrationDate string to a Date', async () => {
-      mockPrismaService.asset.findFirst.mockResolvedValue({ id: 'asset-1', orgId: 'org-1' });
       mockPrismaService.measurementRecord.create.mockResolvedValue({ id: 'm-new' });
 
-      await service.create('asset-1', mockUser, { calibrationDate: '2026-01-15' });
+      await service.create('node-1', mockUser, createDto({ calibrationDate: '2026-01-15' }));
 
       const createCall = mockPrismaService.measurementRecord.create.mock.calls[0][0];
       expect(createCall.data.calibrationDate).toBeInstanceOf(Date);
@@ -105,29 +129,28 @@ describe('MeasurementRecordsService', () => {
     });
 
     it('should leave calibrationDate undefined when not provided', async () => {
-      mockPrismaService.asset.findFirst.mockResolvedValue({ id: 'asset-1', orgId: 'org-1' });
       mockPrismaService.measurementRecord.create.mockResolvedValue({ id: 'm-new' });
 
-      await service.create('asset-1', mockUser, {});
+      await service.create('node-1', mockUser, createDto());
 
       const createCall = mockPrismaService.measurementRecord.create.mock.calls[0][0];
       expect(createCall.data.calibrationDate).toBeUndefined();
     });
 
-    it('should throw NotFoundException when asset not in org', async () => {
-      mockPrismaService.asset.findFirst.mockResolvedValue(null);
+    it('should throw NotFoundException when the plan is not in org', async () => {
+      mockPrismaService.inspectionPlan.findFirst.mockResolvedValue(null);
 
-      await expect(service.create('asset-x', mockUser, {})).rejects.toThrow(
+      await expect(service.create('node-1', mockUser, createDto())).rejects.toThrow(
         NotFoundException,
       );
+      expect(mockPrismaService.measurementRecord.create).not.toHaveBeenCalled();
     });
 
     it('should validate inspectorId against the user org (assertSameOrg)', async () => {
-      mockPrismaService.asset.findFirst.mockResolvedValue({ id: 'asset-1', orgId: 'org-1' });
       mockPrismaService.user.findUnique.mockResolvedValue({ orgId: 'org-1' });
       mockPrismaService.measurementRecord.create.mockResolvedValue({ id: 'm-new' });
 
-      await service.create('asset-1', mockUser, { inspectorId: 'insp-1' });
+      await service.create('node-1', mockUser, createDto({ inspectorId: 'insp-1' }));
 
       expect(mockPrismaService.user.findUnique).toHaveBeenCalledWith({
         where: { id: 'insp-1' },
@@ -136,18 +159,17 @@ describe('MeasurementRecordsService', () => {
     });
 
     it('should throw ForbiddenException when inspectorId belongs to another org', async () => {
-      mockPrismaService.asset.findFirst.mockResolvedValue({ id: 'asset-1', orgId: 'org-1' });
       mockPrismaService.user.findUnique.mockResolvedValue({ orgId: 'org-2' });
 
       await expect(
-        service.create('asset-1', mockUser, { inspectorId: 'insp-other' }),
+        service.create('node-1', mockUser, createDto({ inspectorId: 'insp-other' })),
       ).rejects.toThrow(ForbiddenException);
     });
 
     it('should throw BadRequestException when user has no org', async () => {
       const noOrgUser = { ...mockUser, orgId: null } as any;
 
-      await expect(service.create('asset-1', noOrgUser, {})).rejects.toThrow(
+      await expect(service.create('node-1', noOrgUser, createDto())).rejects.toThrow(
         BadRequestException,
       );
     });

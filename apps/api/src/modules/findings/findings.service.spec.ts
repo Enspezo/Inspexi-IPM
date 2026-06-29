@@ -5,6 +5,7 @@ import { FindingsService } from './findings.service';
 import { PrismaService } from '@/prisma';
 import { STATUS_OPEN, STATUS_RESOLVED } from '@/common';
 import { LookupService } from '../lookups/lookup.service';
+import { AssetNodesService } from '../asset-nodes/asset-nodes.service';
 
 describe('FindingsService', () => {
   let service: FindingsService;
@@ -16,7 +17,8 @@ describe('FindingsService', () => {
       create: jest.fn(),
       update: jest.fn(),
     },
-    asset: { findFirst: jest.fn() },
+    assetNode: { findFirst: jest.fn() },
+    inspectionPlan: { findFirst: jest.fn() },
     visualInspection: { findFirst: jest.fn() },
     measurementRecord: { findFirst: jest.fn() },
     findingTemplate: { findFirst: jest.fn() },
@@ -28,12 +30,22 @@ describe('FindingsService', () => {
     resolveLookup: jest.fn(),
   };
 
+  const mockAssetNodesService = {
+    assertNodeInPlanTree: jest.fn(),
+  };
+
   const mockUser = {
     id: 'user-1',
     orgId: 'org-1',
     email: 'admin@test.nl',
     roles: [Role.ORG_ADMIN],
   } as any;
+
+  const dtoBase = {
+    inspectionPlanId: 'plan-1',
+    inspectionType: FindingInspectionType.visual,
+    shortDescription: 'Test',
+  };
 
   beforeEach(async () => {
     jest.clearAllMocks();
@@ -43,6 +55,7 @@ describe('FindingsService', () => {
         FindingsService,
         { provide: PrismaService, useValue: mockPrismaService },
         { provide: LookupService, useValue: mockLookupService },
+        { provide: AssetNodesService, useValue: mockAssetNodesService },
       ],
     }).compile();
 
@@ -51,34 +64,44 @@ describe('FindingsService', () => {
     // Defaults for enrichment lookups
     mockPrismaService.photo.findMany.mockResolvedValue([]);
     mockPrismaService.user.findMany.mockResolvedValue([]);
+    mockAssetNodesService.assertNodeInPlanTree.mockResolvedValue({
+      id: 'node-1',
+      orgId: 'org-1',
+      nodeType: 'ASSET',
+    });
+    mockPrismaService.inspectionPlan.findFirst.mockResolvedValue({
+      id: 'plan-1',
+      orgId: 'org-1',
+      locationId: 'loc-1',
+    });
   });
 
   describe('findAllByAsset', () => {
-    it('should throw NotFoundException with NL message when asset not in org', async () => {
-      mockPrismaService.asset.findFirst.mockResolvedValue(null);
+    it('should throw NotFoundException with NL message when asset-node not in org', async () => {
+      mockPrismaService.assetNode.findFirst.mockResolvedValue(null);
 
-      await expect(service.findAllByAsset('asset-x', mockUser)).rejects.toThrow(
+      await expect(service.findAllByAsset('node-x', mockUser)).rejects.toThrow(
         NotFoundException,
       );
-      await expect(service.findAllByAsset('asset-x', mockUser)).rejects.toThrow(
-        'Asset niet gevonden',
+      await expect(service.findAllByAsset('node-x', mockUser)).rejects.toThrow(
+        'Asset-node niet gevonden',
       );
     });
 
-    it('should return findings for the asset', async () => {
-      mockPrismaService.asset.findFirst.mockResolvedValue({ id: 'asset-1', orgId: 'org-1' });
+    it('should return findings for the asset-node', async () => {
+      mockPrismaService.assetNode.findFirst.mockResolvedValue({ id: 'node-1', orgId: 'org-1' });
       mockPrismaService.finding.findMany.mockResolvedValue([
-        { id: 'f-1', assetId: 'asset-1', createdBy: null },
+        { id: 'f-1', assetNodeId: 'node-1', inspectionPlanId: 'plan-1', createdBy: null },
       ]);
 
-      const result = await service.findAllByAsset('asset-1', mockUser);
+      const result = await service.findAllByAsset('node-1', mockUser);
 
       expect(result).toHaveLength(1);
       expect(result[0].id).toBe('f-1');
       expect(result[0].photos).toEqual([]);
       expect(mockPrismaService.finding.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: expect.objectContaining({ assetId: 'asset-1', deletedAt: null }),
+          where: expect.objectContaining({ assetNodeId: 'node-1', deletedAt: null }),
         }),
       );
     });
@@ -86,7 +109,6 @@ describe('FindingsService', () => {
 
   describe('create', () => {
     it('should set statusCode "open" and capture deviceId', async () => {
-      mockPrismaService.asset.findFirst.mockResolvedValue({ id: 'asset-1', orgId: 'org-1' });
       mockPrismaService.finding.create.mockResolvedValue({
         id: 'f-new',
         statusCode: STATUS_OPEN,
@@ -95,18 +117,23 @@ describe('FindingsService', () => {
       });
 
       const result = await service.create(
-        'asset-1',
+        'node-1',
         mockUser,
-        { inspectionType: FindingInspectionType.visual, shortDescription: 'Test' } as any,
+        { ...dtoBase } as any,
         'device-abc',
       );
 
       expect(result.statusCode).toBe(STATUS_OPEN);
+      expect(mockAssetNodesService.assertNodeInPlanTree).toHaveBeenCalledWith(
+        'node-1',
+        expect.objectContaining({ id: 'plan-1' }),
+      );
       expect(mockPrismaService.finding.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
             orgId: 'org-1',
-            assetId: 'asset-1',
+            assetNodeId: 'node-1',
+            inspectionPlanId: 'plan-1',
             statusCode: STATUS_OPEN,
             createdBy: 'user-1',
             deviceId: 'device-abc',
@@ -115,16 +142,13 @@ describe('FindingsService', () => {
       );
     });
 
-    it('should throw NotFoundException when asset not in org', async () => {
-      mockPrismaService.asset.findFirst.mockResolvedValue(null);
+    it('should throw NotFoundException when the plan is not in org', async () => {
+      mockPrismaService.inspectionPlan.findFirst.mockResolvedValue(null);
 
       await expect(
-        service.create(
-          'asset-x',
-          mockUser,
-          { inspectionType: FindingInspectionType.visual, shortDescription: 'Test' } as any,
-        ),
+        service.create('node-1', mockUser, { ...dtoBase } as any),
       ).rejects.toThrow(NotFoundException);
+      expect(mockPrismaService.finding.create).not.toHaveBeenCalled();
     });
   });
 

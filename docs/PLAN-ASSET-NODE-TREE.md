@@ -97,7 +97,7 @@ Verwijzingen naar **`InspectionPlan`** die van betekenis veranderen:
 ### 3.1 Eén unified `AssetNode` (vervangt `Asset` + `InspectionLocation`)
 
 ```prisma
-enum NodeType {
+enum AssetNodeType {
   LOCATION
   ASSET
 }
@@ -106,12 +106,11 @@ model AssetNode {
   id    String @id @default(uuid()) @db.Uuid
   orgId String @map("org_id") @db.Uuid            // gedenormaliseerd voor tenant-scope + sync-org
 
-  nodeType NodeType @map("node_type")
+  nodeType AssetNodeType @map("node_type")
 
   // Boomstructuur
   parentId       String? @map("parent_id") @db.Uuid          // NULL = wortel (altijd een LOCATION)
-  rootLocationId String  @map("root_location_id") @db.Uuid   // gedenormaliseerd: CRM-Location waartoe deze boom hoort
-  crmLocationId  String? @unique @map("crm_location_id") @db.Uuid // alleen gevuld op de wortelnode (1:1 met CRM-Location)
+  rootLocationId String? @unique @map("root_location_id") @db.Uuid // alleen op de wortel: 1:1 FK → CRM-Location; NULL op niet-root
 
   // Identiteit & type (code-string, net als nu)
   typeCode   String  @map("type_code")   // → AssetTypeDefinition.code (ASSET) of LocationTypeDefinition.code (LOCATION)
@@ -138,7 +137,7 @@ model AssetNode {
   deletedAt DateTime? @map("deleted_at")
 
   organization Organization @relation(fields: [orgId], references: [id])
-  crmLocation  Location?    @relation("AssetNodeRoot", fields: [crmLocationId], references: [id])
+  rootLocation Location?    @relation("AssetNodeRoot", fields: [rootLocationId], references: [id]) // alleen op de wortel
   parent       AssetNode?   @relation("AssetNodeHierarchy", fields: [parentId], references: [id])
   children     AssetNode[]  @relation("AssetNodeHierarchy")
   createdByUser User?       @relation("AssetNodeCreatedBy", fields: [createdBy], references: [id])
@@ -155,9 +154,9 @@ model AssetNode {
   planScopes              InspectionPlanLocation[]                // inspecties waarvoor deze LOCATION-node in scope is
 
   @@index([orgId])
-  @@index([rootLocationId])
   @@index([parentId])
   @@index([orgId, updatedAt])
+  // rootLocationId is al geïndexeerd via @unique
   // GiST-index op `path` kan Prisma niet uitdrukken voor een Unsupported-veld → handmatig in de migratie:
   //   CREATE INDEX imp_asset_nodes_path_gist ON imp_asset_nodes USING GIST (path);
   @@map("imp_asset_nodes")
@@ -169,13 +168,13 @@ model AssetNode {
 - Extensie aanzetten in de migratie: `CREATE EXTENSION IF NOT EXISTS ltree;`
 - `path` is `Unsupported("ltree")?` zodat Prisma de juiste kolomtype migreert; Prisma Client kan dit veld niet selecteren/filteren → boom-queries gaan via `$queryRaw` met ltree-operatoren (`<@` descendant, `@>` ancestor, `nlevel`, `subpath`).
 - **UUID-gotcha:** ltree-labels mogen alleen `[A-Za-z0-9_]` bevatten; UUID's bevatten `-`. Labels = **hyphen-stripped UUID** (`replace(id::text,'-','')`, 32 hex-tekens — geldig label).
-- Path + depth worden gevuld door een `BEFORE INSERT/UPDATE`-trigger (parentpath `||` eigen label). Een `move` herschrijft de subtree-paths met `UPDATE ... SET path = :newbase || subpath(path, nlevel(:oldbase)) WHERE path <@ :oldbase`.
+- Path + depth worden gevuld door een `BEFORE INSERT/UPDATE`-trigger (parentpath `||` eigen label). Een `move` herschrijft de subtree-paths **én depth** met `UPDATE ... SET path = :newbase || subpath(path, nlevel(:oldbase) - 1), depth = nlevel(<dat pad>) WHERE path <@ :oldbase` (de trigger fixt alleen de verplaatste node, niet z'n descendants → depth zou anders stale worden).
 - GiST-index op `path` voor snelle subtree-/ancestor-queries (handmatig in de migratie, zie boven).
 
 **Boom-invarianten** (afgedwongen in de service-laag; DB kan conditionele constraints niet mooi uitdrukken):
 
-1. De **wortel** heeft `parentId = NULL`, `nodeType = LOCATION`, en `crmLocationId` gezet (uniek). De eerste node in een boom is dus altijd een Locatie die 1:1 aan een CRM-Locatie hangt.
-2. `rootLocationId` is op **élke** node gelijk aan de `crmLocationId` van de wortel → "geef de hele boom voor locatie X" is één geïndexeerde query.
+1. De **wortel** heeft `parentId = NULL`, `nodeType = LOCATION`, en `rootLocationId` gezet (uniek, 1:1 FK → CRM-Locatie). Een node is wortel ⇔ `parentId IS NULL` ⇔ `rootLocationId IS NOT NULL`. De eerste node in een boom is dus altijd een Locatie die 1:1 aan een CRM-Locatie hangt.
+2. Niet-root-nodes hebben `rootLocationId = NULL` en bereiken hun CRM-locatie door naar de wortel te klimmen. "Geef de hele boom voor locatie X": wortel opzoeken via de unique FK → `WHERE path <@ wortel.path` (beide geïndexeerd).
 3. Een `LOCATION`-node mag alleen een `LOCATION`-node als parent hebben.
 4. Een `ASSET`-node mag een `LOCATION`-node óf een `ASSET`-node als parent hebben.
 5. **Type-constraints**: bestaande `AssetTypeConstraint` (asset→asset) en `LocationTypeConstraint` (locatie→locatie) blijven gelden binnen hun eigen niveau. De overgang locatie→asset (eerste asset onder een locatie) kent géén constraint en is altijd toegestaan.
@@ -219,7 +218,7 @@ model InspectionPlanLocation {
 ```
 
 - `InspectionPlan.locationId` (CRM-hoofdlocatie) bepaalt de **boom** waarin gewerkt wordt (`rootLocationId = plan.locationId`); `scopeLocations` bepalen **welke deellocaties** binnen die boom in scope zijn. Leeg = de hele boom (wortel) in scope.
-- **Invariant:** elke `scopeLocation.assetNode` is `nodeType = LOCATION` en heeft `rootLocationId = plan.locationId` (alle deellocaties horen bij dezelfde hoofdlocatie-boom).
+- **Invariant:** elke `scopeLocation.assetNode` is `nodeType = LOCATION` en zit in de boom waarvan de wortel `rootLocationId = plan.locationId` heeft (alle deellocaties horen bij dezelfde hoofdlocatie-boom; afleiden via de boom-wortel, niet via een veld op de deellocatie-node zelf).
 - **Default-parent** bij een asset **vanuit een inspectie**: precies één scope-deellocatie → die node; meerdere → de gebruiker kiest; geen scope → de wortel-LOCATION-node. De UI toont de parent-selector altijd voorgevuld en wijzigbaar.
 - Uitvoeringsrecords krijgen een directe `inspectionPlanId` (zie 3.4), zodat "wat is er tijdens inspectie X vastgelegd" niet meer via de asset hoeft te lopen.
 
@@ -241,7 +240,7 @@ model InspectionPlanLocation {
 
 ```
 Diepte  Node                         nodeType   typeCode
-0       Hoofdkantoor (CRM-Locatie)   LOCATION   gebouw        ← crmLocationId gezet, rootLocationId = zichzelf
+0       Hoofdkantoor (CRM-Locatie)   LOCATION   gebouw        ← rootLocationId gezet (1:1 FK → CRM-Locatie)
 1       └─ Verdieping 3              LOCATION   verdieping
 2          └─ Serverruimte 3A        LOCATION   ruimte
 3             └─ Hoofdverdeler HVK   ASSET      verdeler
@@ -258,7 +257,7 @@ Inspectie "EBI 2026" heeft `locationId = Hoofdkantoor` (hoofdlocatie) en bijvoor
 
 | Laag | Wijziging | Omvang |
 |---|---|---|
-| **Prisma-schema** | Nieuwe `AssetNode` + `NodeType` (ltree `path`); join `InspectionPlanLocation`; FK-renames (§2.4); `InspectionPlan.locationId`; `Location.assetNodeRoot`; verwijderen `Asset`/`InspectionLocation` | Groot |
+| **Prisma-schema** | Nieuwe `AssetNode` + `AssetNodeType` (ltree `path`); join `InspectionPlanLocation`; FK-renames (§2.4); `InspectionPlan.locationId`; `Location.assetNodeRoot`; verwijderen `Asset`/`InspectionLocation` | Groot |
 | **Migratie** | Eén `migrate dev`-migratie (dev/seed → big-bang); migratie-SQL handmatig aanvullen met `CREATE EXTENSION ltree`, path-trigger en GiST-index | Middel |
 | **API — nieuw `asset-nodes`-module** | Tree-CRUD: tree-per-locatie (raw ltree-query), node detail, create (parent + type-constraint), move (subtree-path via raw SQL), soft-delete-subtree | Groot |
 | **API — bestaande modules** | `assets` + `inspection-locations` → herschrijven als thin wrappers of opheffen; `findings`/`visual-inspections`/`measurements`/`measurement-sheets` services zetten `inspectionPlanId` + `assetNodeId`; `inspection-plans` create zet `locationId` + ensure-root-node | Groot |
@@ -304,18 +303,19 @@ Elke fase = één of enkele commits, los testbaar. Volgorde respecteert afhankel
 ### Fase 1 — Schema & migratie
 **Doel:** `AssetNode` bestaat, alle FK's wijzen er correct heen, oude tabellen weg, één nette migratie.
 
-- `NodeType` enum + `AssetNode`-model (§3.1, ltree `path`) + join `InspectionPlanLocation` (§3.3) toevoegen.
+- `AssetNodeType` enum + `AssetNode`-model (§3.1, ltree `path`) + join `InspectionPlanLocation` (§3.3) toevoegen.
 - `InspectionPlan.locationId` (+ relatie) + `scopeLocations`, `Location.assetNodeRoot`-back-relatie toevoegen.
 - Alle FK-renames uit §2.4 / §3.4 doorvoeren; `Asset` en `InspectionLocation` verwijderen.
 - `inspectionPlanId` toevoegen aan `VisualInspection`/`MeasurementRecord`/`Finding` (required) en op `MeasurementSheetRecord` required maken.
 - Migratie draaien vanuit `apps/api/` met `npx prisma migrate dev --name unified-asset-node-tree` (**nooit** `db push`), daarna de **gegenereerde migratie-SQL handmatig aanvullen** met `CREATE EXTENSION IF NOT EXISTS ltree;`, de path/depth-trigger en de GiST-index, en de migratie opnieuw toepassen.
-- `apps/portal/src/types/index.ts` + `apps/api`-types bijwerken (AssetNode-interface, NodeType).
+- `apps/portal/src/types/index.ts` + `apps/api`-types bijwerken (AssetNode-interface, AssetNodeType).
 
 > **Prompt 1 (schema):**
 > ```
 > In apps/api/prisma/schema.prisma, implement the unified AssetNode model exactly as specified in
-> docs/PLAN-ASSET-NODE-TREE.md §3 (model AssetNode with `path Unsupported("ltree")?`, enum NodeType,
-> table imp_asset_nodes) and the join model InspectionPlanLocation (§3.3, imp_inspection_plan_locations).
+> docs/PLAN-ASSET-NODE-TREE.md §3 (model AssetNode with `path Unsupported("ltree")?` and a root-only
+> `rootLocationId String? @unique` FK to Location, enum AssetNodeType, table imp_asset_nodes) and the
+> join model InspectionPlanLocation (§3.3, imp_inspection_plan_locations).
 > Then:
 > - Remove models Asset and InspectionLocation.
 > - Repoint every FK that referenced Asset to AssetNode (rename to assetNodeId): VisualInspection,
@@ -343,8 +343,8 @@ Elke fase = één of enkele commits, los testbaar. Volgorde respecteert afhankel
 >   - an AFTER UPDATE OF parent_id trigger (or service-side raw UPDATE) that rewrites descendant paths:
 >     UPDATE imp_asset_nodes SET path = NEW.path || subpath(path, nlevel(OLD.path)) WHERE path <@ OLD.path;
 >   - CREATE INDEX imp_asset_nodes_path_gist ON imp_asset_nodes USING GIST (path);
-> Re-apply and fix any migration errors. Then update apps/portal/src/types/index.ts: add NodeType and
-> AssetNode interfaces, remove the standalone Asset/InspectionLocation interfaces, and update every type
+> Re-apply and fix any migration errors. Then update apps/portal/src/types/index.ts: add AssetNodeType
+> and AssetNode interfaces, remove the standalone Asset/InspectionLocation interfaces, and update every type
 > that referenced assetId/locationId on execution records to assetNodeId/nodeId. Run `npx turbo run build`
 > from the root and fix all TypeScript errors.
 > ```
@@ -353,24 +353,24 @@ Elke fase = één of enkele commits, los testbaar. Volgorde respecteert afhankel
 **Doel:** persistente tree-CRUD + uitvoeringsrecords dragen plan-context; assets aanmaken vanuit een inspectie defaulten naar de plan-locatie.
 
 - Nieuwe module `apps/api/src/modules/asset-nodes/` met:
-  - `GET /locations/:crmLocationId/tree` — hele boom voor een CRM-locatie (ensure-root-node on first call; subtree via raw ltree-query `WHERE path <@ :rootPath`).
+  - `GET /locations/:locationId/tree` — hele boom voor een CRM-locatie (ensure-root-node on first call; subtree via raw ltree-query `WHERE path <@ :rootPath`).
   - `GET /asset-nodes/:id`, `POST /asset-nodes` (parent + nodeType + typeCode + constraint-validatie; path/depth via trigger), `PATCH /asset-nodes/:id`, `POST /asset-nodes/:id/move` (subtree-paths herschrijven via raw SQL), `DELETE /asset-nodes/:id` (soft-delete subtree via `path <@`).
   - `GET /inspection-plans/:planId/tree` — boom van `plan.locationId` met de `scopeLocations` gemarkeerd.
 - Constraint-helpers (parent-type-validatie, locatie→asset altijd toegestaan, invarianten uit §3.1); path/depth komen uit de DB-trigger, niet uit de service.
 - `inspection-plans` create/update: `locationId` (hoofdlocatie) accepteren, valideren same-org, **ensure-root-node** aanmaken als die nog niet bestaat; `scopeLocations` (deellocatie-nodes) accepteren en valideren dat elke node `nodeType = LOCATION` en `rootLocationId = plan.locationId` heeft.
 - `findings`/`visual-inspections`/`measurements`/`measurement-sheets` services: zet `inspectionPlanId` + `assetNodeId`; valideer dat de asset-node `rootLocationId = plan.locationId` heeft.
 - `assets`-module en `inspection-locations`-module: endpoints behouden als thin compat-wrappers die naar `asset-nodes` mappen (verwijderen ná de PWA-cutover — zie Fase 3).
-- Cross-tenant: `assertSameOrg`/`assertAllSameOrg` op `parentId`, `crmLocationId`, `assetNodeId`, `locationId`, `scopeLocations[].assetNodeId`.
+- Cross-tenant: `assertSameOrg`/`assertAllSameOrg` op `parentId`, `rootLocationId`, `assetNodeId`, `locationId`, `scopeLocations[].assetNodeId`.
 
 > **Prompt 2a (asset-nodes module):**
 > ```
 > Create a new NestJS module apps/api/src/modules/asset-nodes/ following the conventions in CLAUDE.md
 > (controller delegates to service, @Roles, @ApiTags, paginate/orgScope/assertFound helpers from @/common,
 > @Controller('asset-nodes') without the api/v1 prefix). Endpoints:
->   GET  /locations/:crmLocationId/tree        -> full AssetNode tree for a CRM Location (call ensureRootNode first)
+>   GET  /locations/:locationId/tree           -> full AssetNode tree for a CRM Location (call ensureRootNode first)
 >   GET  /inspection-plans/:planId/tree        -> tree for plan.locationId, with scopeLocations flagged
 >   GET  /asset-nodes/:id
->   POST /asset-nodes                          -> { parentId?, nodeType, typeCode, name, identifier?, description?, technicalData?, notes?, crmLocationId? }
+>   POST /asset-nodes                          -> { parentId?, nodeType, typeCode, name, identifier?, description?, technicalData?, notes?, rootLocationId? (only when creating a root) }
 >   PATCH /asset-nodes/:id
 >   POST /asset-nodes/:id/move                 -> { newParentId, sortOrder? }  (rewrite ltree path/depth for the whole subtree)
 >   DELETE /asset-nodes/:id                    -> soft-delete subtree (set deletedAt on node + descendants via path <@)
@@ -378,24 +378,26 @@ Elke fase = één of enkele commits, los testbaar. Volgorde respecteert afhankel
 > $queryRaw using ltree operators (WHERE path <@ :rootPath ORDER BY path); implement move as a raw UPDATE
 > rewriting descendant paths (path = :newBase || subpath(path, nlevel(:oldBase))). Implement a TreeService
 > helper that enforces the invariants from docs/PLAN-ASSET-NODE-TREE.md §3.1 (root is a LOCATION with
-> crmLocationId + parentId null; LOCATION parent must be LOCATION; ASSET parent may be LOCATION or ASSET;
-> rootLocationId denormalised on every node) and validates type constraints via the existing
-> AssetTypesService / LocationTypesService (asset->asset and location->location constraints; location->asset
-> is always allowed). Add ensureRootNode(crmLocationId, user) that creates the root LOCATION node 1:1 with
-> the CRM Location if missing (guard the race with the crmLocationId @unique constraint). Write unit tests
-> (.spec.ts) for move (subtree path rewrite), invariants, and constraint validation. Use assertSameOrg for
-> parentId/crmLocationId.
+> rootLocationId set + parentId null; LOCATION parent must be LOCATION; ASSET parent may be LOCATION or ASSET;
+> a node's site is found by climbing to its root (the ancestor with parent_id IS NULL), whose
+> rootLocationId is the CRM Location) and validates type constraints via the existing AssetTypesService /
+> LocationTypesService (asset->asset and location->location constraints; location->asset is always allowed).
+> Add ensureRootNode(locationId, user) that creates the root LOCATION node with rootLocationId = that CRM
+> Location if missing (guard the race with the rootLocationId @unique constraint). Write unit tests
+> (.spec.ts) for move (subtree path + depth rewrite), invariants, and constraint validation. Use
+> assertSameOrg for parentId/rootLocationId.
 > ```
 >
 > **Prompt 2b (plan + scope + execution wiring):**
 > ```
 > Update apps/api/src/modules/inspection-plans: accept locationId (CRM hoofdlocatie) on create/update,
 > validate same-org, and call AssetNodesService.ensureRootNode(locationId, user) so the plan's working tree
-> exists. Add management of scopeLocations (InspectionPlanLocation join rows): accept an array of LOCATION
-> assetNodeIds, validate each is nodeType=LOCATION and rootLocationId===plan.locationId and same-org, and
-> expose endpoints to add/remove scope locations. Then update the findings, visual-inspections,
-> measurement-records and measurement-sheet services so that creating any execution record sets
-> inspectionPlanId AND assetNodeId, and validates that the asset node's rootLocationId === plan.locationId.
+> exists. Add management of scopeLocations (InspectionPlanLocation join rows, each with orgId + isPrimary):
+> accept an array of LOCATION assetNodeIds, validate each is nodeType=LOCATION, same-org, and that its tree
+> root's rootLocationId === plan.locationId, and expose endpoints to add/remove scope locations. Then update
+> the findings, visual-inspections, measurement-records and measurement-sheet services so that creating any
+> execution record sets inspectionPlanId AND assetNodeId, and validates that the asset node's tree root
+> (the ancestor with parent_id IS NULL) has rootLocationId === plan.locationId.
 > When an asset node is created "from an inspection" (POST /inspection-plans/:planId/asset-nodes or a
 > from-plan flag), default parentId to: the single scope location if there is exactly one, else the plan's
 > root LOCATION node — and always allow the caller to override it. Update all affected .spec.ts and e2e suites.
@@ -404,7 +406,7 @@ Elke fase = één of enkele commits, los testbaar. Volgorde respecteert afhankel
 ### Fase 3 — Sync-contract + PWA-coördinatie (breaking, cross-repo)
 **Doel:** sync werkt op persistente nodes; PWA en backend op dezelfde contractversie.
 
-- `sync-mapper.ts`: vervang `assets`/`inspectionLocations` door één `assetNodes`-entiteit; `org: { from: 'self' }` (node heeft eigen `orgId`); `allowed`-lijst = node-velden (`parentId`, `rootLocationId`, `crmLocationId`, `nodeType`, `typeCode`, `name`, `identifier`, `description`, `technicalData`, `statusCode`, `notes`, `sortOrder`, `createdBy`, `deviceId`). Voeg `inspectionPlanId` toe aan de sync-allowed van findings/visual-inspections/measurements.
+- `sync-mapper.ts`: vervang `assets`/`inspectionLocations` door één `assetNodes`-entiteit; `org: { from: 'self' }` (node heeft eigen `orgId`); `allowed`-lijst = node-velden (`parentId`, `rootLocationId` (alleen op roots), `nodeType`, `typeCode`, `name`, `identifier`, `description`, `technicalData`, `statusCode`, `notes`, `sortOrder`, `createdBy`, `deviceId`). `path`/`depth` zitten **niet** in de allowed-lijst (trigger-onderhouden). Voeg `inspectionPlanId` toe aan de sync-allowed van findings/visual-inspections/measurements.
 - Versiebump van het sync-contract (bv. `v2.1`) met een korte migratienotitie; backend accepteert tijdelijk beide of weigert oude clients met duidelijke foutcode.
 - **Verplichte deliverable: PWA-cutoverhandleiding** `docs/fase3/PWA-CUTOVER-ASSET-NODE.md` — beschrijft het nieuwe contract (entiteit `assetNodes`, org-from-self, ltree-path-veld dat de PWA als string ontvangt), de Dexie-migratie (v9 → v10: `assets` + `locations` stores samenvoegen tot `assetNodes`), offline-aanmaken van assets zónder plan-koppeling (met `rootLocationId`/`parentId`), en de stap-voor-stap cutovervolgorde + rollback.
 - **Companion-taak in `../Inspexi-App`** (aparte repo, branch `feat/pwa-v2-sync-contract`): de cutover zelf uitvoeren volgens die handleiding.
@@ -413,8 +415,9 @@ Elke fase = één of enkele commits, los testbaar. Volgorde respecteert afhankel
 > ```
 > Update apps/api/src/modules/sync/sync-mapper.ts: remove the assets and inspectionLocations sync
 > entities and add a single assetNodes entity for model assetNode with org derivation { from: 'self' }
-> (the node has its own orgId) and an allowed list of: parentId, rootLocationId, crmLocationId, nodeType,
-> typeCode, name, identifier, description, technicalData, statusCode, notes, sortOrder, createdBy, deviceId.
+> (the node has its own orgId) and an allowed list of: parentId, rootLocationId (only set on root nodes),
+> nodeType, typeCode, name, identifier, description, technicalData, statusCode, notes, sortOrder, createdBy,
+> deviceId. Do NOT include path/depth (trigger-maintained).
 > Add inspectionPlanId to the allowed lists of findings, visual-inspections and measurement-records sync
 > entities. Bump the sync contract version. Update sync e2e tests. Then WRITE the cutover guide at
 > docs/fase3/PWA-CUTOVER-ASSET-NODE.md covering: the new contract (assetNodes entity, org-from-self, the
@@ -437,7 +440,7 @@ Elke fase = één of enkele commits, los testbaar. Volgorde respecteert afhankel
 > ```
 > In apps/portal, build a reusable asset-tree UI under src/components/asset-tree/ (TreeExplorer with
 > expand/collapse, breadcrumb, icons by typeCode, and create/move/soft-delete actions with a parent
-> selector). Add hooks src/pages/inspections/hooks/use-asset-nodes.ts (useAssetTree(crmLocationId),
+> selector). Add hooks src/pages/inspections/hooks/use-asset-nodes.ts (useAssetTree(locationId),
 > usePlanTree(planId), useCreateAssetNode, useMoveAssetNode, useDeleteAssetNode) using apiClient +
 > TanStack Query per CLAUDE.md conventions. Then:
 > - Replace the inspection detail "Assets" tab (apps/portal/src/pages/inspections/components/assets-tab.tsx)
@@ -454,7 +457,7 @@ Elke fase = één of enkele commits, los testbaar. Volgorde respecteert afhankel
 **Doel:** demo werkt end-to-end op het nieuwe model; CLAUDE.md klopt weer.
 
 - `prisma/seed.ts`: bouw een echte boom — wortel-LOCATION-node ↔ demo-CRM-Location, 1–2 sub-locaties, 2 assets; findings/metingen met `inspectionPlanId` + `assetNodeId`; demo-plan krijgt `locationId` + één `InspectionPlanLocation` scope-rij. Opruimvolgorde (kinderen eerst) bijwerken.
-- E2E: `assets.e2e`/`inspection-locations.e2e` herschrijven naar `asset-nodes.e2e`; `cross-tenant.e2e` uitbreiden met node-FK-aanvallen (vreemde `parentId`/`crmLocationId`/`assetNodeId`).
+- E2E: `assets.e2e`/`inspection-locations.e2e` herschrijven naar `asset-nodes.e2e`; `cross-tenant.e2e` uitbreiden met node-FK-aanvallen (vreemde `parentId`/`rootLocationId`/`assetNodeId`).
 - `CLAUDE.md`: modellenaantal (126 → nieuw), modulelijst (`asset-nodes` i.p.v. `assets`+`inspection-locations`), seed-opruimvolgorde, en de nieuwe gotcha "assets zijn persistent, niet plan-gescopet".
 
 > **Prompt 5 (seed + tests + docs):**
@@ -467,7 +470,7 @@ Elke fase = één of enkele commits, los testbaar. Volgorde respecteert afhankel
 > assetNode; AssetNode is self-referential so delete children before parents (or a single deleteMany after
 > all FK referrers are gone). Rewrite the assets/inspection-locations e2e suites into asset-nodes.e2e-spec.ts
 > and extend cross-tenant.e2e-spec.ts with AssetNode FK-injection attacks (foreign
-> parentId/crmLocationId/assetNodeId/scope assetNodeId must 403). Update CLAUDE.md: model count, module list
+> parentId/rootLocationId/assetNodeId/scope assetNodeId must 403). Update CLAUDE.md: model count, module list
 > (asset-nodes replaces assets + inspection-locations), seed cleanup order, and add a gotcha that assets are
 > now persistent and decoupled from inspection plans. Run `npx turbo run build`, `cd apps/api && pnpm test
 > && pnpm test:e2e` and fix failures.
@@ -493,7 +496,7 @@ PWA-cutover (Inspexi-App) is een **harde** afhankelijkheid van Fase 3 en moet in
 2. **ltree-complexiteit (besloten implementatie).** Prisma kent ltree niet native → `path` is `Unsupported("ltree")?` en is **niet querybaar via Prisma Client**; alle boom-/ancestor-/descendant-queries en de `move` gaan via `$queryRaw`. Aandachtspunten: (a) labels mogen geen `-` bevatten → hyphen-stripped UUID's; (b) path/depth worden door een DB-trigger gevuld, dus de migratie-SQL moet handmatig worden aangevuld (extensie + trigger + GiST-index) bovenop wat `prisma migrate` genereert; (c) een `move` herschrijft descendant-paths met een raw `UPDATE ... subpath(...)`; (d) de seed/tests mogen niet aannemen dat `path` via Prisma terugkomt. Dit is bewust gekozen (MAIC-getrouw, snelle subtree-queries) i.r.t. de extra raw-SQL-onderhoudslast.
 3. **Floor-plan/markers structuur-vs-uitvoering.** Plattegrond is persistent op de node; finding-markers zijn per inspectie. v1 filtert finding-markers in de UI op de actieve inspectie; als plattegronden per inspectie moeten verschillen is een latere `inspectionPlanId` op `LocationImage` nodig (§3.4-notitie).
 4. **Type-constraint-gat locatie→asset.** De bestaande `AssetTypeConstraint` kent alleen asset→asset parents; een asset direct onder een locatie zou daardoor afgewezen worden. Regel: locatie→asset is altijd toegestaan; asset→asset blijft constraint-gevalideerd (§3.1.5). Expliciet implementeren, niet vergeten.
-5. **Ensure-root-node race.** Twee gelijktijdige inspecties op dezelfde nieuwe locatie kunnen beide een wortelnode willen maken. Mitigatie: `crmLocationId @unique` + upsert/`ON CONFLICT`-achtige create in een transactie.
+5. **Ensure-root-node race.** Twee gelijktijdige inspecties op dezelfde nieuwe locatie kunnen beide een wortelnode willen maken. Mitigatie: `rootLocationId @unique` + upsert/`ON CONFLICT`-achtige create in een transactie.
 6. **`migrate dev` discipline.** Eén nette migratie vanuit `apps/api/`; **nooit** `db push` (zie de bestaande P3006-gotcha in CLAUDE.md). Dev draait op seed-data, dus geen prod-datamigratie nodig — big-bang is verantwoord.
 7. **`LocationTypeScope` semantiek.** Na deze wijziging: `scope = CRM`-types beschrijven het objecttype van de CRM-`Location`; `scope = INSPECTION`-types beschrijven sub-locatie-nodes in de boom. De wortelnode kan beide werelden raken (het is de CRM-locatie én de boom-wortel) — kies bij seed/UI bewust welk type-domein de wortel toont.
 8. **Deellocatie-scope discipline.** Alle `scopeLocations` moeten in dezelfde hoofdlocatie-boom zitten (`rootLocationId = plan.locationId`) en `nodeType = LOCATION` zijn. Een verplaatsing (`move`) van een scope-node naar een andere boom moet de scope-koppeling invalideren of blokkeren — afdwingen in de service.

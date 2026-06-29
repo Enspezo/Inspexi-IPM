@@ -14,6 +14,20 @@
 
 ---
 
+## Statusupdate — tussentijdse review na Fase 1–2 (juni 2026)
+
+**Fase 0–2 zijn uitgevoerd en gecommit** (`0cc7868` schema/migratie, `e94a884` asset-nodes module, `61774a5` rewire). De implementatie volgt het herziene ontwerp nauwgezet: root-only `rootLocationId @unique`, `path Unsupported("ltree")?`, ltree-extensie + GiST + BEFORE/AFTER-triggers (descendants' **depth** wordt in de AFTER-trigger meegenomen — eerdere flag opgelost), raw-SQL ltree in de service, site-afleiding via de boom-wortel (`assertNodeInPlanTree`), en compat-wrappers voor `assets`/`inspection-locations`. Scope-deellocaties zijn geïmplementeerd via `InspectionPlanLocation` + endpoints op `inspection-plans`.
+
+**Gevolg voor de resterende fases:**
+
+- **Fase 3 is nu blokkerend en gaat vóór Fase 4.** De sync-delegates zijn als stopgap herwezen naar `assetNode` (`asset` → `prisma.assetNode` met `nodeType=ASSET`), maar `sync-mapper.ts` heeft nog de **oude** `allowed`-velden (`parentAssetId`, `assetType`, `inspectionPlanId`, `locationId`, `locationDescription`) en `org`-afleiding via het verdwenen `asset`-parent. Concreet: **push faalt** (schrijft niet-bestaande kolommen op `AssetNode`) en **pull levert de verkeerde veldnamen** op. De PWA-sync voor assets/findings is dus niet functioneel tot Fase 3 (bevestigd door `TODO(Fase 3)`-comments in `sync.service.ts`/`sync-mapper.ts`).
+- **Geverifieerd schoon:** documentgeneratie (`generated-documents.service.ts`) is al omgezet naar `assetNode`/`assetNodeId`; er zijn **geen** overige callers van `prisma.asset`/`prisma.inspectionLocation` buiten de wrappers.
+- **Transitierisico:** de compat-wrapper `POST /inspection-plans/:planId/assets` lost de parent op via `resolveDefaultParentForPlan(planId)` → vereist `plan.locationId`. Plannen zónder `locationId` (oude/PWA-plannen) kunnen via die route geen asset aanmaken; documentgeneratie degradeert dan netjes naar lege assetlijst. Fase 3 moet `locationId` op het plan-sync-contract zetten.
+
+De fase-secties hieronder zijn op deze bevindingen bijgewerkt (zie de ⓘ-notities).
+
+---
+
 ## 1. Probleem in één alinea
 
 Vandaag hangen zowel `Asset` als `InspectionLocation` **verplicht onder één `InspectionPlan`** (`inspection_plan_id` is `NOT NULL`, `onDelete: Cascade`). Een asset is dus geen zelfstandig, herbruikbaar object maar een wegwerp-record van één inspectie: verwijder je de inspectie, dan verdwijnen de assets. Dat botst met de eis dat assets een **persistente boom** vormen (zoals MAIC), niet onder een inspectie *hangen* maar er wél *tijdens* een inspectie bij gemaakt kunnen worden, en dat de boom hoort bij de **CRM-locatie** waar de inspectie betrekking op heeft. Ook ontbreekt elke koppeling tussen de CRM-`Location` (relatie-adres, met BAG/PDOK-data) en de inspectie-locatieboom.
@@ -403,50 +417,70 @@ Elke fase = één of enkele commits, los testbaar. Volgorde respecteert afhankel
 > root LOCATION node — and always allow the caller to override it. Update all affected .spec.ts and e2e suites.
 > ```
 
-### Fase 3 — Sync-contract + PWA-coördinatie (breaking, cross-repo)
+### Fase 3 — Sync-contract + PWA-coördinatie (breaking, cross-repo) — **nu blokkerend, vóór Fase 4**
 **Doel:** sync werkt op persistente nodes; PWA en backend op dezelfde contractversie.
 
-- `sync-mapper.ts`: vervang `assets`/`inspectionLocations` door één `assetNodes`-entiteit; `org: { from: 'self' }` (node heeft eigen `orgId`); `allowed`-lijst = node-velden (`parentId`, `rootLocationId` (alleen op roots), `nodeType`, `typeCode`, `name`, `identifier`, `description`, `technicalData`, `statusCode`, `notes`, `sortOrder`, `createdBy`, `deviceId`). `path`/`depth` zitten **niet** in de allowed-lijst (trigger-onderhouden). Voeg `inspectionPlanId` toe aan de sync-allowed van findings/visual-inspections/measurements.
-- Versiebump van het sync-contract (bv. `v2.1`) met een korte migratienotitie; backend accepteert tijdelijk beide of weigert oude clients met duidelijke foutcode.
-- **Verplichte deliverable: PWA-cutoverhandleiding** `docs/fase3/PWA-CUTOVER-ASSET-NODE.md` — beschrijft het nieuwe contract (entiteit `assetNodes`, org-from-self, ltree-path-veld dat de PWA als string ontvangt), de Dexie-migratie (v9 → v10: `assets` + `locations` stores samenvoegen tot `assetNodes`), offline-aanmaken van assets zónder plan-koppeling (met `rootLocationId`/`parentId`), en de stap-voor-stap cutovervolgorde + rollback.
+> ⓘ **Werkelijke staat (na Fase 2):** de sync-set is `inspectionPlans` + `assets` + `findings` (er is **geen** aparte `inspectionLocations`-entiteit). De delegates zijn al herwezen (`asset` → `prisma.assetNode` met `nodeType=ASSET`), maar de `allowed`-velden, `org`-afleiding en wire-veldnamen in `sync-mapper.ts` zijn nog de oude → **push faalt, pull levert verkeerde namen**. Fase 3 = het mapper-contract repareren, niet de delegates.
+
+- `sync-mapper.ts`: hernoem de `assets`-entiteit naar `assetNodes` (delegate is al `assetNode`); zet `org: { from: 'self' }`; vervang de `allowed`-lijst door node-velden (`parentId`, `rootLocationId` (alleen op roots), `nodeType`, `typeCode`, `name`, `identifier`, `description`, `technicalData`, `statusCode`, `notes`, `sortOrder`, `createdBy`, `deviceId`). `path`/`depth` zitten **niet** in de allowed-lijst (trigger-onderhouden).
+- `findings`-entiteit repareren: `org: { from: 'self' }` (Finding heeft een eigen `orgId`), hernoem `assetId` → `assetNodeId` in `allowed`, voeg `inspectionPlanId` toe. Verbreed de union-types `EntityConfig.model` / `singular` / `org.parentModel` zodat `'assetNode'` is toegestaan en verwijder het verdwenen `asset`-parent.
+- Voeg `locationId` toe aan de `inspectionPlans`-`allowed` (de PWA moet de hoofdlocatie meesturen, anders kan een gesyncte plan geen werk-boom/parent oplossen — zie transitierisico in de statusupdate).
+- **Beslissing (open):** nemen we `visualInspections` / `measurementRecords` / `measurementSheetRecords` / `standaloneMeasurements` óók als sync-entiteiten op (ze dragen nu `inspectionPlanId` + `assetNodeId` en ontstaan in de PWA)? Nu zitten ze niet in de sync-set. Zo ja: nieuwe entiteiten met `org: { from: 'self' }` + `assetNodeId`/`inspectionPlanId` in `allowed`.
+- Versiebump van het sync-contract (bv. `v2.1`) met een korte migratienotitie.
+- **Verplichte deliverable: PWA-cutoverhandleiding** `docs/fase3/PWA-CUTOVER-ASSET-NODE.md` — nieuw contract (entiteit `assetNodes`, org-from-self, oude→nieuwe veldnamen `parentAssetId→parentId` / `assetType→typeCode` / `locationDescription→description`, géén `inspectionPlanId`/`locationId` meer op de node, ltree-`path` niet in het contract), de Dexie-migratie (v9 → v10: `assets` + `locations` stores samenvoegen tot `assetNodes`), offline-aanmaken van assets zónder plan-koppeling (met `rootLocationId`/`parentId`), `locationId` op het plan, en de stap-voor-stap cutovervolgorde + rollback.
 - **Companion-taak in `../Inspexi-App`** (aparte repo, branch `feat/pwa-v2-sync-contract`): de cutover zelf uitvoeren volgens die handleiding.
 
 > **Prompt 3 (backend sync):**
 > ```
-> Update apps/api/src/modules/sync/sync-mapper.ts: remove the assets and inspectionLocations sync
-> entities and add a single assetNodes entity for model assetNode with org derivation { from: 'self' }
-> (the node has its own orgId) and an allowed list of: parentId, rootLocationId (only set on root nodes),
-> nodeType, typeCode, name, identifier, description, technicalData, statusCode, notes, sortOrder, createdBy,
-> deviceId. Do NOT include path/depth (trigger-maintained).
-> Add inspectionPlanId to the allowed lists of findings, visual-inspections and measurement-records sync
-> entities. Bump the sync contract version. Update sync e2e tests. Then WRITE the cutover guide at
+> Current state (post-Fase-2): apps/api/src/modules/sync/ has 3 sync entities — inspectionPlans, assets,
+> findings. The delegates were already repointed (asset -> prisma.assetNode filtered to nodeType=ASSET),
+> but sync-mapper.ts still has the OLD allowed fields / org derivation, so push fails and pull emits wrong
+> field names. Fix the mapper, not the delegates:
+> - Rename the `assets` entity key to `assetNodes`; set org { from: 'self' } (AssetNode has its own orgId);
+>   replace its allowed list with node fields: parentId, rootLocationId (root-only), nodeType, typeCode,
+>   name, identifier, description, technicalData, statusCode, notes, sortOrder, createdBy, deviceId. Do NOT
+>   include path/depth (trigger-maintained).
+> - Fix the `findings` entity: org { from: 'self' } (Finding has orgId), rename assetId -> assetNodeId in
+>   allowed, add inspectionPlanId. Widen the EntityConfig.model / singular / org.parentModel unions to allow
+>   'assetNode' and drop the removed 'asset' parent.
+> - Add locationId to the inspectionPlans allowed list (PWA must send the hoofdlocatie).
+> - Decide with me whether to ADD visualInspections / measurementRecords / measurementSheetRecords /
+>   standaloneMeasurements as sync entities (org from self, assetNodeId + inspectionPlanId in allowed).
+> Bump the sync contract version. Update sync unit/e2e tests. Then WRITE the cutover guide at
 > docs/fase3/PWA-CUTOVER-ASSET-NODE.md covering: the new contract (assetNodes entity, org-from-self, the
-> ltree path delivered to the PWA as a plain string), the Dexie v9->v10 migration (merge the assets +
-> locations stores into a single assetNodes store), offline asset creation without a plan link (using
-> rootLocationId/parentId), and a step-by-step cutover order with rollback. Do NOT touch the ../Inspexi-App
-> repo — the cutover guide is the hand-off for that repo.
+> old->new field renames parentAssetId->parentId / assetType->typeCode / locationDescription->description,
+> no more inspectionPlanId/locationId on the node, ltree path NOT in the contract), the Dexie v9->v10
+> migration (merge assets + locations stores into a single assetNodes store), offline asset creation without
+> a plan link (using rootLocationId/parentId), locationId on the plan, and a step-by-step cutover order with
+> rollback. Do NOT touch the ../Inspexi-App repo — the cutover guide is the hand-off for that repo.
 > ```
 
 ### Fase 4 — Portal (staf-backoffice)
 **Doel:** één boom-UI voor Locatie+Asset, herbruikt op CRM-Locatie-detail én in de inspectie.
 
-- Tree-component `components/asset-tree/` (expand/collapse, breadcrumb, node-iconen op `typeCode`, create/move/delete, parent-selector). Data via `GET /locations/:id/tree` of `/inspection-plans/:planId/tree`.
-- Inspectie-detail "Assets"-tab → boomweergave van de werk-boom (met scope-deellocaties gemarkeerd); "Asset toevoegen" opent modal met parent-selector **voorgevuld** op de scope-deellocatie (bij precies één) of de hoofdlocatie-wortel, altijd wijzigbaar.
+> ⓘ **Endpoints bestaan al (Fase 2):** `GET /locations/:locationId/tree`, `GET /inspection-plans/:planId/tree` (markeert scope-nodes met `inScope`), `GET/POST/PATCH/DELETE /asset-nodes`, `POST /asset-nodes/:id/move`, en op de inspectie: `GET/POST/DELETE /inspection-plans/:id/scope-locations/...` + `POST /inspection-plans/:planId/asset-nodes` (de **server** kiest de default-parent via `resolveDefaultParentForPlan`). De compat-wrappers blijven werken, dus Fase 4 kan **incrementeel** — geen big-bang.
+
+- Tree-component `components/asset-tree/` (expand/collapse, breadcrumb, node-iconen op `typeCode`, create/move/delete, parent-selector). Data via `GET /locations/:locationId/tree` of `/inspection-plans/:planId/tree` (gebruik de `inScope`-vlag om scope-deellocaties te markeren).
+- Inspectie-detail "Assets"-tab → boomweergave van de werk-boom; "Asset toevoegen" roept `POST /inspection-plans/:planId/asset-nodes` aan (server vult parent voor) en toont de parent-selector voorgevuld + wijzigbaar (overschrijf via `parentId`).
+- **Nieuw t.o.v. oorspronkelijk plan: scope-locatiebeheer.** UI om deellocaties voor de inspectie te kiezen/verwijderen via de `scope-locations`-endpoints (LOCATION-nodes uit de boom), met `isPrimary`-markering.
 - "Plattegrond"-tab: locatie-selector uit de boom (LOCATION-nodes).
 - CRM-Locatie-detailpagina: nieuwe sectie met de inspectie-boom + uitgebreide inspectievelden (technicalData op de wortelnode, gestuurd door `LocationTypeDefinition` met `scope = INSPECTION`).
-- Hooks `pages/.../hooks/use-asset-nodes.ts` (tree-query, create/move/delete-mutaties) — géén handmatige `apiClient.get` in `useEffect`, conform CLAUDE.md.
+- Hooks `pages/.../hooks/use-asset-nodes.ts` (tree-query, create/move/delete-mutaties, scope-locations) — géén handmatige `apiClient.get` in `useEffect`, conform CLAUDE.md.
 
 > **Prompt 4 (portal tree UI):**
 > ```
 > In apps/portal, build a reusable asset-tree UI under src/components/asset-tree/ (TreeExplorer with
 > expand/collapse, breadcrumb, icons by typeCode, and create/move/soft-delete actions with a parent
 > selector). Add hooks src/pages/inspections/hooks/use-asset-nodes.ts (useAssetTree(locationId),
-> usePlanTree(planId), useCreateAssetNode, useMoveAssetNode, useDeleteAssetNode) using apiClient +
-> TanStack Query per CLAUDE.md conventions. Then:
+> usePlanTree(planId), useCreateAssetNode, useMoveAssetNode, useDeleteAssetNode, useScopeLocations) using
+> apiClient + TanStack Query per CLAUDE.md conventions. Use the existing Fase-2 endpoints; the compat
+> wrappers stay, so do this incrementally. Then:
 > - Replace the inspection detail "Assets" tab (apps/portal/src/pages/inspections/components/assets-tab.tsx)
->   with the tree of the plan's working tree (scope locations flagged); the "add asset" modal must pre-fill
->   the parent selector with the single scope location if there is exactly one, else the plan's root LOCATION
->   node, editable by the user.
+>   with GET /inspection-plans/:planId/tree (use the inScope flag to highlight scope locations); the "add
+>   asset" action calls POST /inspection-plans/:planId/asset-nodes (the server picks the default parent) and
+>   shows the parent selector pre-filled + editable (override via parentId).
+> - Add a scope-locations manager: pick/remove LOCATION nodes for the inspection via
+>   GET/POST/DELETE /inspection-plans/:id/scope-locations/:assetNodeId, showing the isPrimary one.
 > - Update the floor-plan tab's location selector to use LOCATION nodes from the tree.
 > - Add an inspection-tree section + extended inspection fields (technicalData driven by the INSPECTION-scoped
 >   LocationTypeDefinition) to the CRM Location detail page.
@@ -456,24 +490,27 @@ Elke fase = één of enkele commits, los testbaar. Volgorde respecteert afhankel
 ### Fase 5 — Seed, tests, docs
 **Doel:** demo werkt end-to-end op het nieuwe model; CLAUDE.md klopt weer.
 
-- `prisma/seed.ts`: bouw een echte boom — wortel-LOCATION-node ↔ demo-CRM-Location, 1–2 sub-locaties, 2 assets; findings/metingen met `inspectionPlanId` + `assetNodeId`; demo-plan krijgt `locationId` + één `InspectionPlanLocation` scope-rij. Opruimvolgorde (kinderen eerst) bijwerken.
-- E2E: `assets.e2e`/`inspection-locations.e2e` herschrijven naar `asset-nodes.e2e`; `cross-tenant.e2e` uitbreiden met node-FK-aanvallen (vreemde `parentId`/`rootLocationId`/`assetNodeId`).
-- `CLAUDE.md`: modellenaantal (126 → nieuw), modulelijst (`asset-nodes` i.p.v. `assets`+`inspection-locations`), seed-opruimvolgorde, en de nieuwe gotcha "assets zijn persistent, niet plan-gescopet".
+- `prisma/seed.ts`: bouw een echte boom — wortel-LOCATION-node ↔ demo-CRM-Location, 1–2 sub-locaties, 2 assets; **niet** zelf `path`/`depth` zetten (de trigger doet dat — insert parents vóór children zodat de parentpath bestaat). Findings/metingen met `inspectionPlanId` + `assetNodeId`; demo-plan krijgt `locationId` + één `InspectionPlanLocation` scope-rij.
+- Seed-opruimvolgorde let op **RESTRICT**-FK's: `InspectionPlanLocation` (asset_node_id RESTRICT) én `StandaloneMeasurement` (location_node_id RESTRICT) **vóór** `AssetNode`; de executierecords (VisualInspection/MeasurementRecord/Finding/MeasurementSheetRecord) cascaden op `assetNodeId`. AssetNode is zelf-referentieel → kinderen vóór ouders, of één `deleteMany` nadat alle RESTRICT-verwijzers weg zijn.
+- E2E: **behoud** de bestaande `assets.e2e`/`inspection-locations.e2e` (die testen nu de compat-wrappers tot de PWA-cutover) en **voeg** `asset-nodes.e2e` toe; `cross-tenant.e2e` uitbreiden met node-FK-aanvallen (vreemde `parentId`/`rootLocationId`/`assetNodeId`/scope-`assetNodeId` → 403).
+- `CLAUDE.md`: modellenaantal bijwerken, modulelijst (`asset-nodes` toegevoegd; `assets`/`inspection-locations` zijn nu wrappers), seed-opruimvolgorde, en gotchas: "assets zijn persistent, niet plan-gescopet" + "sync-mapper verwijst nog naar oud contract tot Fase 3".
 
 > **Prompt 5 (seed + tests + docs):**
 > ```
 > Update apps/api/prisma/seed.ts to build a real AssetNode tree for the demo org: a root LOCATION node
-> linked 1:1 to the demo CRM Location, 1-2 child LOCATION nodes, and 2 ASSET nodes under them; set the
-> demo inspection plan's locationId (hoofdlocatie) and add one InspectionPlanLocation scope row pointing at
-> a child LOCATION node; seed findings and a measurement-sheet record referencing assetNodeId +
-> inspectionPlanId. Fix the cleanup order: delete inspectionPlanLocation and the execution records before
-> assetNode; AssetNode is self-referential so delete children before parents (or a single deleteMany after
-> all FK referrers are gone). Rewrite the assets/inspection-locations e2e suites into asset-nodes.e2e-spec.ts
-> and extend cross-tenant.e2e-spec.ts with AssetNode FK-injection attacks (foreign
-> parentId/rootLocationId/assetNodeId/scope assetNodeId must 403). Update CLAUDE.md: model count, module list
-> (asset-nodes replaces assets + inspection-locations), seed cleanup order, and add a gotcha that assets are
-> now persistent and decoupled from inspection plans. Run `npx turbo run build`, `cd apps/api && pnpm test
-> && pnpm test:e2e` and fix failures.
+> linked 1:1 to the demo CRM Location, 1-2 child LOCATION nodes, and 2 ASSET nodes under them. Do NOT set
+> path/depth yourself — the DB trigger fills them, so insert parents before children. Set the demo plan's
+> locationId (hoofdlocatie) and add one InspectionPlanLocation scope row pointing at a child LOCATION node;
+> seed findings and a measurement-sheet record referencing assetNodeId + inspectionPlanId. Fix the cleanup
+> order for the RESTRICT FKs: delete InspectionPlanLocation and StandaloneMeasurement (both RESTRICT on the
+> node FK) BEFORE AssetNode; execution records cascade on assetNodeId. AssetNode is self-referential, so
+> delete children before parents (or a single deleteMany once all RESTRICT referrers are gone). KEEP the
+> existing assets/inspection-locations e2e suites (they now exercise the compat wrappers until the PWA
+> cutover) and ADD asset-nodes.e2e-spec.ts; extend cross-tenant.e2e-spec.ts with AssetNode FK-injection
+> attacks (foreign parentId/rootLocationId/assetNodeId/scope assetNodeId must 403). Update CLAUDE.md: model
+> count, module list (asset-nodes added; assets + inspection-locations are now compat wrappers), seed cleanup
+> order, and gotchas (assets persistent & plan-decoupled; sync-mapper still on the old contract until Fase 3).
+> Run `npx turbo run build`, `cd apps/api && pnpm test && pnpm test:e2e` and fix failures.
 > ```
 
 ---
@@ -481,18 +518,18 @@ Elke fase = één of enkele commits, los testbaar. Volgorde respecteert afhankel
 ## 6. Volgorde & afhankelijkheden (samengevat)
 
 ```
-Fase 0 (ADR/contract)  ──►  Fase 1 (schema/migratie)  ──►  Fase 2 (API)  ──►  Fase 4 (portal)
-                                                       └──►  Fase 3 (sync)  ──►  PWA-companion (aparte repo)
-Fase 5 (seed/tests/docs) loopt mee met 1–4 en sluit af na 2/3.
+Fase 0–2 ✅ uitgevoerd  ──►  Fase 3 (sync) ⚠ blokkerend  ──►  Fase 4 (portal)
+                                  └──►  PWA-companion (aparte repo)
+Fase 5 (seed/tests/docs) loopt mee en sluit af na 3/4.
 ```
 
-PWA-cutover (Inspexi-App) is een **harde** afhankelijkheid van Fase 3 en moet in lockstep: zolang de PWA nog `inspectionPlanId` op assets stuurt, mag de oude sync-entiteit niet verdwijnen. Vandaar de contract-versiebump.
+**Herprioritering (rev. 2 → na Fase 2):** Fase 3 gaat nu **vóór** Fase 4. De API is al omgezet, maar het sync-contract is functioneel stuk (push faalt, pull verkeerde namen), dus de PWA werkt niet tot Fase 3 klaar is. De portal (Fase 4) kan ondertussen op de compat-wrappers blijven draaien. PWA-cutover (Inspexi-App) is een **harde** afhankelijkheid van Fase 3 en moet in lockstep.
 
 ---
 
 ## 7. Risico's & aandachtspunten
 
-1. **Sync-contract is breaking (grootste risico).** Assets ontkoppelen van het plan verandert het `/sync`-v2-contract waar de PWA op draait. Mitigatie: contractversiebump + overgangsperiode waarin de backend zowel oude (plan-gescopete) als nieuwe (node) payloads accepteert, of een harde cutover gecoördineerd met de `feat/pwa-v2-sync-contract`-branch. **Niet mergen zonder PWA-companion.**
+1. **Sync-contract is breaking (grootste risico) — nu al actief.** Na Fase 2 zijn de sync-delegates herwezen naar `assetNode`, maar het mapper-contract (allowed/org/wire-namen) is nog oud → **push faalt en pull levert verkeerde veldnamen**. De PWA-sync voor assets/findings is dus nu niet functioneel. Mitigatie: Fase 3 met contractversiebump, gecoördineerd met de `feat/pwa-v2-sync-contract`-branch. **Niet mergen/uitrollen naar PWA-gebruikers zonder de PWA-companion.**
 2. **ltree-complexiteit (besloten implementatie).** Prisma kent ltree niet native → `path` is `Unsupported("ltree")?` en is **niet querybaar via Prisma Client**; alle boom-/ancestor-/descendant-queries en de `move` gaan via `$queryRaw`. Aandachtspunten: (a) labels mogen geen `-` bevatten → hyphen-stripped UUID's; (b) path/depth worden door een DB-trigger gevuld, dus de migratie-SQL moet handmatig worden aangevuld (extensie + trigger + GiST-index) bovenop wat `prisma migrate` genereert; (c) een `move` herschrijft descendant-paths met een raw `UPDATE ... subpath(...)`; (d) de seed/tests mogen niet aannemen dat `path` via Prisma terugkomt. Dit is bewust gekozen (MAIC-getrouw, snelle subtree-queries) i.r.t. de extra raw-SQL-onderhoudslast.
 3. **Floor-plan/markers structuur-vs-uitvoering.** Plattegrond is persistent op de node; finding-markers zijn per inspectie. v1 filtert finding-markers in de UI op de actieve inspectie; als plattegronden per inspectie moeten verschillen is een latere `inspectionPlanId` op `LocationImage` nodig (§3.4-notitie).
 4. **Type-constraint-gat locatie→asset.** De bestaande `AssetTypeConstraint` kent alleen asset→asset parents; een asset direct onder een locatie zou daardoor afgewezen worden. Regel: locatie→asset is altijd toegestaan; asset→asset blijft constraint-gevalideerd (§3.1.5). Expliciet implementeren, niet vergeten.

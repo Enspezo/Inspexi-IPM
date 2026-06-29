@@ -12,7 +12,7 @@ import { Injectable, BadRequestException } from '@nestjs/common';
 import { User, Prisma, SyncStatus } from '@prisma/client';
 import { PrismaService } from '@/prisma';
 import { orgScope, assertSameOrg, requireOrg } from '@/common';
-import { PushDto, ResolveDto } from './dto';
+import { PushDto, ResolveDto, EntityChangeDto } from './dto';
 import {
   SYNC_ENTITIES, SyncEntityKey, SyncModelName, FkCheckModel, SyncRecordData,
   SYNC_CONTRACT_VERSION, toDbData, toChildRows, toWire,
@@ -49,6 +49,40 @@ function asRecord(value: unknown): Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : {};
+}
+
+/**
+ * Sorteert een `assetNodes`-push-batch zó dat een ouder altijd vóór z'n kind verwerkt wordt.
+ * Nodig omdat een node-create de FK `parent_id` raakt én de BEFORE-trigger die de parent-`path`
+ * uitleest: een kind dat vóór z'n in dezelfde push aangemaakte ouder binnenkomt, zou anders falen.
+ * Stabiele topologische sort (DFS over de in-batch parent→kind-afhankelijkheid); cycli en
+ * id-loze records worden defensief afgehandeld (geen oneindige recursie, niets stilletjes weg).
+ */
+export function orderAssetNodesParentFirst(changes: EntityChangeDto[]): EntityChangeDto[] {
+  const byId = new Map<string, EntityChangeDto>();
+  for (const c of changes) {
+    const id = String(c.data.id ?? '');
+    if (id) byId.set(id, c);
+  }
+  const ordered: EntityChangeDto[] = [];
+  const placed = new Set<string>();
+  const visit = (c: EntityChangeDto, stack: Set<string>): void => {
+    const id = String(c.data.id ?? '');
+    if (id && placed.has(id)) return;
+    const parentId = typeof c.data.parentId === 'string' ? c.data.parentId : undefined;
+    // Volg alleen een parent die óók in deze batch wordt aangemaakt; `!stack.has` breekt cycli.
+    if (parentId && byId.has(parentId) && !stack.has(parentId)) {
+      visit(byId.get(parentId)!, new Set(stack).add(id));
+    }
+    if (!id) {
+      ordered.push(c); // id-loos: behoud volgorde, processChange faalt er netjes op
+    } else if (!placed.has(id)) {
+      placed.add(id);
+      ordered.push(c);
+    }
+  };
+  for (const c of changes) visit(c, new Set(c.data.id ? [String(c.data.id)] : []));
+  return ordered;
 }
 
 @Injectable()
@@ -245,7 +279,11 @@ export class SyncService {
     for (const key of Object.keys(SYNC_ENTITIES)) processed[key] = 0;
 
     for (const key of Object.keys(SYNC_ENTITIES) as SyncEntityKey[]) {
-      const group = dto.changes[key] ?? [];
+      // assetNodes: ouder vóór kind verwerken binnen de batch (FK parent_id + path-trigger).
+      const group =
+        key === 'assetNodes'
+          ? orderAssetNodesParentFirst(dto.changes[key] ?? [])
+          : dto.changes[key] ?? [];
       for (const change of group) {
         try {
           const r = await this.processChange(key, change.operation, change.data, user, orgId, dto.deviceId);

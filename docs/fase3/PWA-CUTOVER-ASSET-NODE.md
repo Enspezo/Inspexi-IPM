@@ -116,6 +116,13 @@ De server accepteert **alleen** deze scalars (de rest wordt genegeerd):
 **Nooit meesturen:** `orgId`, `path`, `depth` (trigger/server), en **geen**
 `inspectionPlanId`/`locationId` op de node.
 
+**Aanmaakvolgorde (parent vóór kind).** Een node-create raakt de FK `parent_id` én een
+BEFORE-trigger die het pad van de ouder uitleest; een kind dat vóór z'n ouder verwerkt wordt,
+faalt. De server **sorteert de `assetNodes`-push-batch nu zelf** topologisch (ouder vóór kind),
+dus een gemengde volgorde binnen één push is veilig. Toch aanbevolen voor de PWA: bouw de
+`assetNodes`-groep bij voorkeur al in ouder-vóór-kind-volgorde, en behandel een enkele `failed`
+op een kind als "volgende sync opnieuw" (idempotent op client-id) — niet als harde fout.
+
 ### 1.4 `findings` — wijzigingen
 
 - `assetId` → **`assetNodeId`** (verplicht, → een ASSET-node).

@@ -14,6 +14,7 @@ describe('MeasurementRecords (e2e)', () => {
   let testContactId: string;
   let testAssetTypeId: string;
   let testNormTypeId: string;
+  let testLocationId: string;
   let testPlanId: string;
   let testAssetId: string;
   let accessToken: string;
@@ -94,11 +95,26 @@ describe('MeasurementRecords (e2e)', () => {
     });
     testNormTypeId = normType.id;
 
-    // Inspection plan
+    // CRM-Locatie = hoofdlocatie / boom-wortel van de AssetNode-boom.
+    const location = await prisma.location.create({
+      data: {
+        orgId: org.id,
+        contactId: contact.id,
+        name: 'E2E Measurements Locatie',
+        street: 'Teststraat',
+        houseNumber: '1',
+        postalCode: '1000AA',
+        city: 'Teststad',
+      },
+    });
+    testLocationId = location.id;
+
+    // Inspection plan (met hoofdlocatie zodat de boom-wortel kan ontstaan)
     const plan = await prisma.inspectionPlan.create({
       data: {
         orgId: org.id,
         contactId: contact.id,
+        locationId: location.id,
         projectName: 'E2E Measurements Plan',
         normTypeCode: 'e2emeasnorm',
         createdBy: user.id,
@@ -106,17 +122,29 @@ describe('MeasurementRecords (e2e)', () => {
     });
     testPlanId = plan.id;
 
-    // Asset under the plan
-    const asset = await prisma.asset.create({
+    // Wortel-LOCATION-node (parent eerst), daarna de ASSET-node eronder.
+    const rootNode = await prisma.assetNode.create({
       data: {
         orgId: org.id,
-        inspectionPlanId: plan.id,
-        assetType: 'e2emeaskast',
+        nodeType: 'LOCATION',
+        rootLocationId: location.id,
+        typeCode: 'locatie',
+        name: 'Wortel',
+        createdBy: user.id,
+      },
+    });
+
+    const assetNode = await prisma.assetNode.create({
+      data: {
+        orgId: org.id,
+        nodeType: 'ASSET',
+        parentId: rootNode.id,
+        typeCode: 'kast',
         name: 'Kast 1',
         createdBy: user.id,
       },
     });
-    testAssetId = asset.id;
+    testAssetId = assetNode.id;
 
     // Login
     const loginRes = await request(app.getHttpServer())
@@ -128,10 +156,13 @@ describe('MeasurementRecords (e2e)', () => {
   afterAll(async () => {
     try {
       await prisma.measurementRecord.deleteMany({ where: { id: { in: createdRecordIds } } });
-      await prisma.asset.deleteMany({ where: { id: testAssetId } });
+      // AssetNode.parentId is SET NULL → één deleteMany ruimt de hele boom op
+      // (wortel-LOCATION + assets). Daarna pas de CRM-Locatie en de rest in FK-volgorde.
+      await prisma.assetNode.deleteMany({ where: { orgId: testOrgId } });
       await prisma.inspectionPlan.deleteMany({ where: { id: testPlanId } });
       await prisma.normTypeDefinition.deleteMany({ where: { id: testNormTypeId } });
       await prisma.assetTypeDefinition.deleteMany({ where: { id: testAssetTypeId } });
+      await prisma.location.deleteMany({ where: { id: testLocationId } });
       await prisma.contact.deleteMany({ where: { id: testContactId } });
       await prisma.auditLog.deleteMany({ where: { userId: testUserId } });
       await prisma.refreshToken.deleteMany({ where: { userId: testUserId } });
@@ -147,7 +178,11 @@ describe('MeasurementRecords (e2e)', () => {
       const res = await request(app.getHttpServer())
         .post(`/api/v1/assets/${testAssetId}/measurement-records`)
         .set('Authorization', `Bearer ${accessToken}`)
-        .send({ instrumentType: 'Megger MIT430', calibrationDate: '2026-01-15' })
+        .send({
+          inspectionPlanId: testPlanId,
+          instrumentType: 'Megger MIT430',
+          calibrationDate: '2026-01-15',
+        })
         .expect(201);
 
       expect(res.body.success).toBe(true);
@@ -156,18 +191,26 @@ describe('MeasurementRecords (e2e)', () => {
       createdRecordIds.push(res.body.data.id);
     });
 
+    it('should return 400 when inspectionPlanId is missing', async () => {
+      await request(app.getHttpServer())
+        .post(`/api/v1/assets/${testAssetId}/measurement-records`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ instrumentType: 'X' })
+        .expect(400);
+    });
+
     it('should return 401 without authentication', async () => {
       await request(app.getHttpServer())
         .post(`/api/v1/assets/${testAssetId}/measurement-records`)
-        .send({ instrumentType: 'X' })
+        .send({ inspectionPlanId: testPlanId, instrumentType: 'X' })
         .expect(401);
     });
 
-    it('should return 404 for an asset in another org (cross-tenant)', async () => {
+    it('should return 404 for an asset node in another org (cross-tenant)', async () => {
       await request(app.getHttpServer())
         .post('/api/v1/assets/00000000-0000-0000-0000-000000000000/measurement-records')
         .set('Authorization', `Bearer ${accessToken}`)
-        .send({ instrumentType: 'X' })
+        .send({ inspectionPlanId: testPlanId, instrumentType: 'X' })
         .expect(404);
     });
   });
@@ -197,7 +240,7 @@ describe('MeasurementRecords (e2e)', () => {
 
       expect(res.body.success).toBe(true);
       expect(res.body.data.id).toBe(id);
-      expect(res.body.data.asset).toBeDefined();
+      expect(res.body.data.assetNode).toBeDefined();
       expect(Array.isArray(res.body.data.findings)).toBe(true);
     });
 
@@ -274,7 +317,7 @@ describe('MeasurementRecords (e2e)', () => {
       const createRes = await request(app.getHttpServer())
         .post(`/api/v1/assets/${testAssetId}/measurement-records`)
         .set('Authorization', `Bearer ${accessToken}`)
-        .send({ instrumentType: 'To delete' })
+        .send({ inspectionPlanId: testPlanId, instrumentType: 'To delete' })
         .expect(201);
 
       const id = createRes.body.data.id;

@@ -14,8 +14,9 @@ describe('MeasurementSheetRecords (e2e)', () => {
   let testContactId: string;
   let testAssetTypeId: string;
   let testNormTypeId: string;
+  let testLocationId: string;
   let testPlanId: string;
-  let testAssetId: string;
+  let testAssetNodeId: string;
   let testTemplateId: string;
   let testSectionId: string;
   let testFieldId: string;
@@ -93,11 +94,26 @@ describe('MeasurementSheetRecords (e2e)', () => {
     });
     testNormTypeId = normType.id;
 
-    // Inspection plan
+    // CRM-Locatie = hoofdlocatie / boom-wortel van de AssetNode-boom.
+    const location = await prisma.location.create({
+      data: {
+        orgId: org.id,
+        contactId: contact.id,
+        name: 'E2E MSR Locatie',
+        street: 'Teststraat',
+        houseNumber: '1',
+        postalCode: '1000AA',
+        city: 'Teststad',
+      },
+    });
+    testLocationId = location.id;
+
+    // Inspection plan (met hoofdlocatie zodat de asset-node in de boom valt)
     const plan = await prisma.inspectionPlan.create({
       data: {
         orgId: org.id,
         contactId: contact.id,
+        locationId: location.id,
         projectName: 'E2E MSR Plan',
         normTypeCode: 'e2emsrnorm',
         createdBy: user.id,
@@ -105,17 +121,30 @@ describe('MeasurementSheetRecords (e2e)', () => {
     });
     testPlanId = plan.id;
 
-    // Asset under the plan
-    const asset = await prisma.asset.create({
+    // AssetNode-boom: wortel-LOCATION-node (parent) → ASSET-node (child).
+    // PARENT BEFORE CHILD: de triggers onderhouden path/depth via parent_id.
+    const rootNode = await prisma.assetNode.create({
       data: {
         orgId: org.id,
-        inspectionPlanId: plan.id,
-        assetType: 'e2emsrkast',
+        nodeType: 'LOCATION',
+        rootLocationId: location.id,
+        typeCode: 'locatie',
+        name: 'Wortel',
+        createdBy: user.id,
+      },
+    });
+
+    const assetNode = await prisma.assetNode.create({
+      data: {
+        orgId: org.id,
+        nodeType: 'ASSET',
+        parentId: rootNode.id,
+        typeCode: 'e2emsrkast',
         name: 'Kast 1',
         createdBy: user.id,
       },
     });
-    testAssetId = asset.id;
+    testAssetNodeId = assetNode.id;
 
     // Global measurement sheet template (ACTIEF) + 1 section + 1 required field
     const template = await prisma.measurementSheetTemplate.create({
@@ -166,10 +195,13 @@ describe('MeasurementSheetRecords (e2e)', () => {
       await prisma.measurementSheetField.deleteMany({ where: { id: testFieldId } });
       await prisma.measurementSheetSection.deleteMany({ where: { id: testSectionId } });
       await prisma.measurementSheetTemplate.deleteMany({ where: { id: testTemplateId } });
-      await prisma.asset.deleteMany({ where: { id: testAssetId } });
+      // AssetNode.parentId is SET NULL, so a single deleteMany clears the whole
+      // tree (root LOCATION + asset). Delete before the CRM location & contact.
+      await prisma.assetNode.deleteMany({ where: { orgId: testOrgId } });
       await prisma.inspectionPlan.deleteMany({ where: { id: testPlanId } });
       await prisma.normTypeDefinition.deleteMany({ where: { id: testNormTypeId } });
       await prisma.assetTypeDefinition.deleteMany({ where: { id: testAssetTypeId } });
+      await prisma.location.deleteMany({ where: { id: testLocationId } });
       await prisma.contact.deleteMany({ where: { id: testContactId } });
       await prisma.auditLog.deleteMany({ where: { userId: testUserId } });
       await prisma.refreshToken.deleteMany({ where: { userId: testUserId } });
@@ -188,7 +220,7 @@ describe('MeasurementSheetRecords (e2e)', () => {
         .set('X-Device-ID', 'device-e2e')
         .send({
           templateId: testTemplateId,
-          assetId: testAssetId,
+          assetNodeId: testAssetNodeId,
           inspectionPlanId: testPlanId,
         })
         .expect(201);
@@ -211,7 +243,7 @@ describe('MeasurementSheetRecords (e2e)', () => {
     it('should return 401 without authentication', async () => {
       await request(app.getHttpServer())
         .post('/api/v1/measurement-sheet-records')
-        .send({ templateId: testTemplateId, assetId: testAssetId })
+        .send({ templateId: testTemplateId, assetNodeId: testAssetNodeId })
         .expect(401);
     });
 
@@ -219,15 +251,15 @@ describe('MeasurementSheetRecords (e2e)', () => {
       await request(app.getHttpServer())
         .post('/api/v1/measurement-sheet-records')
         .set('Authorization', `Bearer ${accessToken}`)
-        .send({ assetId: testAssetId })
+        .send({ assetNodeId: testAssetNodeId })
         .expect(400);
     });
   });
 
   describe('GET /api/v1/measurement-sheet-records', () => {
-    it('should list records (filtered by assetId)', async () => {
+    it('should list records (filtered by assetNodeId)', async () => {
       const res = await request(app.getHttpServer())
-        .get(`/api/v1/measurement-sheet-records?assetId=${testAssetId}`)
+        .get(`/api/v1/measurement-sheet-records?assetNodeId=${testAssetNodeId}`)
         .set('Authorization', `Bearer ${accessToken}`)
         .expect(200);
 
@@ -322,7 +354,11 @@ describe('MeasurementSheetRecords (e2e)', () => {
       const createRes = await request(app.getHttpServer())
         .post('/api/v1/measurement-sheet-records')
         .set('Authorization', `Bearer ${accessToken}`)
-        .send({ templateId: testTemplateId, assetId: testAssetId })
+        .send({
+          templateId: testTemplateId,
+          assetNodeId: testAssetNodeId,
+          inspectionPlanId: testPlanId,
+        })
         .expect(201);
 
       const id = createRes.body.data.id;

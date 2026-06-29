@@ -529,6 +529,52 @@ Elke fase = één of enkele commits, los testbaar. Volgorde respecteert afhankel
 > Run `npx turbo run build`, `cd apps/api && pnpm test && pnpm test:e2e` and fix failures.
 > ```
 
+### Fase 5.1 — dekkingsgaten dichten (vóór de PWA-cutover)
+Na de Fase 5-review resteren twee test/seed-dekkingsgaten (geen correctheidsbugs):
+
+- **Seed dekt niet alle 7 sync-entiteiten:** de demo seedt findings + measurement-sheet-records maar géén `VisualInspection` en géén `StandaloneMeasurement` → de pull oefent twee van de vier nieuwe executie-entiteiten nooit.
+- **Sync-e2e mist** een ordering-test (kind-vóór-ouder `assetNodes`-batch → beide slagen via `orderAssetNodesParentFirst`) en push→pull-CRUD voor de vier executie-entiteiten (nu alleen als sleutel in de pull-respons gecheckt). De sorteer-logica is wél unit-getest (`sync-order.spec.ts`, groen).
+
+> **Prompt 5.1 (seed + sync-e2e dekking):**
+> ```
+> We're closing two test/seed coverage gaps before the PWA cutover on the unified AssetNode tree
+> (sync contract v3). Do NOT change the v3 contract or the sync-mapper field whitelists.
+>
+> TASK 1 — Seed all 7 sync entities in the demo.
+> In apps/api/prisma/seed.ts, find the demo block that builds rootNode/floorNode/asset1/asset2 with
+> demoPlan and prints "Demo AssetNode-boom: hoofdlocatie → Verdieping 1 ...". It seeds findings +
+> measurementSheetRecords but NOT a VisualInspection or a StandaloneMeasurement. Add:
+>  - one prisma.visualInspection.create on asset1: { orgId, assetNodeId: asset1.id,
+>    inspectionPlanId: demoPlan.id, status: 'completed' (InspectionExecStatus), checklistResults: a
+>    small JSON array, inspectorId: the inspecteur, startedAt/completedAt }. NOTE: VisualInspection has
+>    NO createdBy column — do not set it.
+>  - one prisma.standaloneMeasurement.create rooted at a LOCATION node: { orgId,
+>    inspectionPlanId: demoPlan.id, locationNodeId: floorNode.id, measurementType (e.g.
+>    'isolatieweerstand'), description, linkedAssetNodeId: asset1.id, createdBy: inspecteur, deviceId }
+>    WITH nested values: { create: [ { fieldName, fieldType, value, unit?, passFailCode? } ... ] }
+>    (see model StandaloneMeasurementValue).
+> Update the demo summary console.log to mention the added VisualInspection + StandaloneMeasurement.
+> The cleanup block already deletes both (and standaloneMeasurementValue) in the correct RESTRICT order
+> — do not change it. Run `pnpm db:seed` and fix errors.
+>
+> TASK 2 — Sync e2e coverage in apps/api/test/sync.e2e-spec.ts (v3 contract).
+>  (a) Add a push-ordering test: push ONE assetNodes group where a CHILD create appears BEFORE its
+>      PARENT create in the array (parent = a new root with rootLocationId, or a child of an existing
+>      root; child.parentId = the new parent's id). Expect BOTH processed: 'success' (the server sorts
+>      parent-first via orderAssetNodesParentFirst). Then pull and assert both nodes exist with the
+>      correct parentId.
+>  (b) Add smoke push→pull (plus one delete→tombstone) for the four execution entities:
+>      visualInspections, measurementRecords, measurementSheetRecords, standaloneMeasurements. Ensure a
+>      plan (with locationId) + an ASSET node + a LOCATION node exist (reuse the suite's fixtures), then
+>      push a create with assetNodeId + inspectionPlanId (locationNodeId for standaloneMeasurements;
+>      templateId + templateVersion + templateSnapshot for measurementSheetRecords — reuse a seeded
+>      MeasurementSheetTemplate or create a minimal one). Expect processed; pull and assert it appears in
+>      the matching response array. For standaloneMeasurements include a nested values array and assert
+>      the values come back on pull. For at least one entity, push a delete and assert its id surfaces in
+>      deletedIds.
+> Keep existing tests green. Run `cd apps/api && pnpm test:e2e` (sync suite at minimum) and fix failures.
+> ```
+
 ---
 
 ## 6. Volgorde & afhankelijkheden (samengevat)

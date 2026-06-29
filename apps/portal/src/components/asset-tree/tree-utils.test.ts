@@ -19,6 +19,7 @@ function node(partial: Partial<AssetNode> & { id: string }): AssetNode {
     parentId: null,
     rootLocationId: null,
     typeCode: 'building',
+    nodeNumber: null,
     name: partial.id,
     identifier: null,
     description: null,

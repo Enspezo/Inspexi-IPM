@@ -2,6 +2,7 @@ import { BadRequestException } from '@nestjs/common';
 import { AssetNodeType, Prisma, User } from '@prisma/client';
 import { AssetNodesService } from './asset-nodes.service';
 import { TreeService } from './tree.service';
+import { NumberingService } from '../numbering/numbering.service';
 
 const user = { id: 'u1', orgId: 'org1', roles: ['ORG_ADMIN'] } as unknown as User;
 
@@ -23,6 +24,7 @@ describe('AssetNodesService', () => {
   let service: AssetNodesService;
   let prisma: any;
   let tree: TreeService;
+  let numbering: NumberingService;
   let nodes: Record<string, any>;
 
   beforeEach(() => {
@@ -35,14 +37,23 @@ describe('AssetNodesService', () => {
         update: jest.fn(),
       },
       location: { findFirst: jest.fn() },
-      locationTypeDefinition: { findUnique: jest.fn() },
+      locationTypeDefinition: { findUnique: jest.fn(), findMany: jest.fn().mockResolvedValue([]) },
+      assetTypeDefinition: { findMany: jest.fn().mockResolvedValue([]) },
       $executeRaw: jest.fn().mockResolvedValue(1),
     };
     tree = new TreeService(
       { validateParentConstraint: jest.fn().mockResolvedValue({ valid: true }) } as never,
       { validateParentConstraint: jest.fn().mockResolvedValue({ valid: true }) } as never,
     );
-    service = new AssetNodesService(prisma, tree);
+    // Fake numbering engine: voert de create-callback uit met een vast/handmatig
+    // nummer en geeft `prisma` als tx-client door (waar assetNode.create gemockt is).
+    numbering = {
+      runWithGeneratedNumber: jest.fn(
+        async (_model: unknown, _org: unknown, opts: any, create: any) =>
+          create(prisma, opts.manual ?? 'NUM-0001'),
+      ),
+    } as unknown as NumberingService;
+    service = new AssetNodesService(prisma, tree, numbering);
 
     // getNodeRaw is the single raw read used by move/create/update; stub it from fixtures.
     jest.spyOn(service as any, 'getNodeRaw').mockImplementation(async (...args: unknown[]) => nodes[args[0] as string] ?? null);
@@ -166,6 +177,47 @@ describe('AssetNodesService', () => {
 
       const res = await service.ensureRootNode('loc1', user);
       expect(res).toEqual({ id: 'raceWinner' });
+    });
+  });
+
+  describe('create — server-assigned nodeNumber', () => {
+    it('numbers an ASSET child via the ASSET_NODE scheme and stores nodeNumber', async () => {
+      prisma.assetNode.create.mockResolvedValue({ id: 'newAsset' });
+
+      await service.create(user, {
+        parentId: 'locA',
+        nodeType: AssetNodeType.ASSET,
+        typeCode: 'verdeler',
+        name: 'Hoofdverdeler',
+      });
+
+      expect(numbering.runWithGeneratedNumber).toHaveBeenCalledWith(
+        'ASSET_NODE',
+        'org1',
+        expect.any(Object),
+        expect.any(Function),
+      );
+      expect(prisma.assetNode.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ nodeNumber: 'NUM-0001', typeCode: 'verdeler' }),
+        }),
+      );
+    });
+
+    it('honours a manual nodeNumber when supplied', async () => {
+      prisma.assetNode.create.mockResolvedValue({ id: 'newAsset' });
+
+      await service.create(user, {
+        parentId: 'locA',
+        nodeType: AssetNodeType.ASSET,
+        typeCode: 'verdeler',
+        name: 'Hoofdverdeler',
+        nodeNumber: 'EIGEN-1',
+      });
+
+      expect(prisma.assetNode.create).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ nodeNumber: 'EIGEN-1' }) }),
+      );
     });
   });
 });

@@ -1,7 +1,8 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
-import { AssetNodeType, Prisma, User } from '@prisma/client';
+import { AssetNodeType, NumberingModel, Prisma, User } from '@prisma/client';
 import { PrismaService } from '@/prisma';
 import { assertFound, assertSameOrg, orgScope, requireOrg } from '@/common';
+import { NumberingService } from '../numbering/numbering.service';
 import { TreeService } from './tree.service';
 import { CreateAssetNodeDto, MoveAssetNodeDto, UpdateAssetNodeDto } from './dto';
 
@@ -16,6 +17,7 @@ export interface AssetNodeRow {
   parentId: string | null;
   rootLocationId: string | null;
   typeCode: string;
+  nodeNumber: string | null;
   name: string;
   identifier: string | null;
   description: string | null;
@@ -41,7 +43,7 @@ type TreeNode = RawNode & {
 
 const NODE_COLUMNS = Prisma.sql`
   id, org_id AS "orgId", node_type AS "nodeType", parent_id AS "parentId",
-  root_location_id AS "rootLocationId", type_code AS "typeCode", name, identifier,
+  root_location_id AS "rootLocationId", type_code AS "typeCode", node_number AS "nodeNumber", name, identifier,
   description, technical_data AS "technicalData", status AS "statusCode", notes,
   sort_order AS "sortOrder", path::text AS path, depth,
   created_at AS "createdAt", updated_at AS "updatedAt"
@@ -52,6 +54,7 @@ export class AssetNodesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly tree: TreeService,
+    private readonly numbering: NumberingService,
   ) {}
 
   // ── Tree reads ────────────────────────────────────────────
@@ -110,6 +113,7 @@ export class AssetNodesService {
         technicalData: dto.technicalData,
         notes: dto.notes,
         deviceId,
+        manual: dto.nodeNumber,
       });
       return this.findById(root.id, user);
     }
@@ -130,23 +134,38 @@ export class AssetNodesService {
 
     const sortOrder = dto.sortOrder ?? (await this.nextSortOrder(parent.id));
 
-    const created = await this.prisma.assetNode.create({
-      data: {
-        orgId,
-        nodeType: dto.nodeType,
-        parentId: parent.id,
-        typeCode: dto.typeCode,
-        name: dto.name,
-        identifier: dto.identifier,
-        description: dto.description,
-        technicalData: (dto.technicalData ?? {}) as Prisma.InputJsonValue,
-        notes: dto.notes,
-        sortOrder,
-        createdBy: user.id,
-        deviceId,
+    // Server-toegekend, uniek-per-org nodenummer (LOCATION_NODE/ASSET_NODE-schema).
+    // De ltree path/depth-triggers draaien BEFORE INSERT binnen deze tx; pad/diepte
+    // worden dus niet in de service gezet.
+    const created = await this.numbering.runWithGeneratedNumber(
+      this.numberingModelFor(dto.nodeType),
+      orgId,
+      {
+        manual: dto.nodeNumber,
+        loadContext: async () => ({
+          typeShortCode: await this.resolveTypeShortCode(orgId, dto.nodeType, dto.typeCode),
+        }),
       },
-      select: { id: true },
-    });
+      (tx, nodeNumber) =>
+        tx.assetNode.create({
+          data: {
+            orgId,
+            nodeType: dto.nodeType,
+            parentId: parent.id,
+            typeCode: dto.typeCode,
+            nodeNumber,
+            name: dto.name,
+            identifier: dto.identifier,
+            description: dto.description,
+            technicalData: (dto.technicalData ?? {}) as Prisma.InputJsonValue,
+            notes: dto.notes,
+            sortOrder,
+            createdBy: user.id,
+            deviceId,
+          },
+          select: { id: true },
+        }),
+    );
     return this.findById(created.id, user);
   }
 
@@ -423,41 +442,90 @@ export class AssetNodesService {
       technicalData?: Record<string, unknown>;
       notes?: string;
       deviceId?: string;
+      manual?: string;
     },
   ): Promise<{ id: string }> {
     try {
-      const node = await this.prisma.assetNode.create({
-        data: {
-          orgId,
-          nodeType: AssetNodeType.LOCATION,
-          parentId: null,
-          rootLocationId,
-          typeCode: data.typeCode,
-          name: data.name,
-          identifier: data.identifier,
-          description: data.description,
-          technicalData: (data.technicalData ?? {}) as Prisma.InputJsonValue,
-          notes: data.notes,
-          createdBy: user.id,
-          deviceId: data.deviceId,
+      // De wortel is altijd een LOCATION → LOCATION_NODE-schema. nodeNumber wordt
+      // server-toegekend (uniek-per-org); de ltree-triggers draaien BEFORE INSERT.
+      return await this.numbering.runWithGeneratedNumber(
+        NumberingModel.LOCATION_NODE,
+        orgId,
+        {
+          manual: data.manual,
+          loadContext: async () => ({
+            typeShortCode: await this.resolveTypeShortCode(
+              orgId,
+              AssetNodeType.LOCATION,
+              data.typeCode,
+            ),
+          }),
         },
-        select: { id: true },
-      });
-      return node;
-    } catch (e) {
-      // Race: een gelijktijdige insert won de unique rootLocationId — lees terug.
-      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
-        const row = assertFound(
-          await this.prisma.assetNode.findUnique({
-            where: { rootLocationId },
+        (tx, nodeNumber) =>
+          tx.assetNode.create({
+            data: {
+              orgId,
+              nodeType: AssetNodeType.LOCATION,
+              parentId: null,
+              rootLocationId,
+              typeCode: data.typeCode,
+              nodeNumber,
+              name: data.name,
+              identifier: data.identifier,
+              description: data.description,
+              technicalData: (data.technicalData ?? {}) as Prisma.InputJsonValue,
+              notes: data.notes,
+              createdBy: user.id,
+              deviceId: data.deviceId,
+            },
             select: { id: true },
           }),
-          'Boom-wortel',
-        );
-        return row;
-      }
+      );
+    } catch (e) {
+      // Race: een gelijktijdige insert won de unique rootLocationId (de numbering-
+      // retry kan zo'n P2002 in een ConflictException veranderd hebben). Lees de
+      // bestaande wortel terug als die nu bestaat; anders propageren we de fout.
+      const existing = await this.prisma.assetNode.findUnique({
+        where: { rootLocationId },
+        select: { id: true },
+      });
+      if (existing) return existing;
       throw e;
     }
+  }
+
+  /** NumberingModel dat bij een nodeType hoort. */
+  private numberingModelFor(nodeType: AssetNodeType): NumberingModel {
+    return nodeType === AssetNodeType.LOCATION
+      ? NumberingModel.LOCATION_NODE
+      : NumberingModel.ASSET_NODE;
+  }
+
+  /**
+   * Shortcode (`[typecode]`) van het type-def dat bij `typeCode` hoort: een
+   * org-specifieke definitie heeft voorrang op een systeem-/globale (orgId null).
+   * `null` als er geen match of geen shortcode is (de placeholder valt dan veilig
+   * terug op een lege string).
+   */
+  private async resolveTypeShortCode(
+    orgId: string,
+    nodeType: AssetNodeType,
+    typeCode: string,
+  ): Promise<string | null> {
+    if (nodeType === AssetNodeType.ASSET) {
+      const defs = await this.prisma.assetTypeDefinition.findMany({
+        where: { code: typeCode, OR: [{ orgId }, { orgId: null }], deletedAt: null },
+        select: { orgId: true, shortCode: true },
+      });
+      const match = defs.find((d) => d.orgId === orgId) ?? defs[0];
+      return match?.shortCode ?? null;
+    }
+    const defs = await this.prisma.locationTypeDefinition.findMany({
+      where: { code: typeCode, OR: [{ orgId }, { orgId: null }], deletedAt: null },
+      select: { orgId: true, shortCode: true },
+    });
+    const match = defs.find((d) => d.orgId === orgId) ?? defs[0];
+    return match?.shortCode ?? null;
   }
 
   private async getNodeRaw(id: string, orgId: string | null): Promise<RawNode | null> {

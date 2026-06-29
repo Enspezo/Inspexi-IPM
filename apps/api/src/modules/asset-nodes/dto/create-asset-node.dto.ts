@@ -52,4 +52,12 @@ export class CreateAssetNodeDto {
   @IsOptional()
   @IsUUID()
   rootLocationId?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Handmatig nodenummer. Alleen toegestaan als het nummeringsschema (LOCATION_NODE/ASSET_NODE) handmatige invoer toestaat; anders wordt het serverzijdig gegenereerd.',
+  })
+  @IsOptional()
+  @IsString()
+  nodeNumber?: string;
 }

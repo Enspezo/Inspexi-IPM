@@ -113,8 +113,13 @@ De server accepteert **alleen** deze scalars (de rest wordt genegeerd):
 | `createdBy` | uuid? | |
 | `deviceId` | string? | |
 
-**Nooit meesturen:** `orgId`, `path`, `depth` (trigger/server), en **geen**
+**Nooit meesturen:** `orgId`, `path`, `depth` (trigger/server), `nodeNumber`, en **geen**
 `inspectionPlanId`/`locationId` op de node.
+
+**`nodeNumber` is server-toegekend + read-only.** Net als `orgId` kent de server het
+nodenummer bij create zelf toe via de numbering-engine (`LOCATION_NODE`- resp.
+`ASSET_NODE`-schema, per `nodeType`); het staat niet in de whitelist en de PWA stuurt het
+nooit. Pull geeft `nodeNumber` wél terug (gewone kolom) — toon het read-only.
 
 **Aanmaakvolgorde (parent vóór kind).** Een node-create raakt de FK `parent_id` én een
 BEFORE-trigger die het pad van de ouder uitleest; een kind dat vóór z'n ouder verwerkt wordt,

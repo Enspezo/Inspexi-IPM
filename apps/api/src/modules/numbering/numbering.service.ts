@@ -293,6 +293,10 @@ export class NumberingService {
         return { delegate: this.prisma.product as never, field: 'productCode' };
       case 'WORK_ORDER':
         return { delegate: this.prisma.workOrder as never, field: 'workOrderNumber' };
+      case 'LOCATION_NODE':
+      case 'ASSET_NODE':
+        // Beide node-schema's schrijven dezelfde kolom; prefix/shortcode houden ze uit elkaar.
+        return { delegate: this.prisma.assetNode as never, field: 'nodeNumber' };
     }
   }
 }

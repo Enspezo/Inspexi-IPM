@@ -14,6 +14,7 @@ const schema = z.object({
     .string()
     .min(1, 'Code is verplicht')
     .regex(/^[a-z0-9]+$/, 'alleen kleine letters en cijfers'),
+  shortCode: z.string().optional(),
   name: z.string().min(1, 'Naam is verplicht'),
   description: z.string().optional(),
   icon: z.string().optional(),
@@ -45,6 +46,7 @@ export function CreateLocationTypeModal({ isOpen, onClose }: Props) {
     if (isOpen) {
       reset({
         code: '',
+        shortCode: '',
         name: '',
         description: '',
         icon: '',
@@ -64,6 +66,7 @@ export function CreateLocationTypeModal({ isOpen, onClose }: Props) {
     try {
       const created = await createMutation.mutateAsync({
         code: data.code,
+        shortCode: data.shortCode || undefined,
         name: data.name,
         description: data.description || undefined,
         icon: data.icon || undefined,
@@ -87,6 +90,13 @@ export function CreateLocationTypeModal({ isOpen, onClose }: Props) {
           <Input label="Code" placeholder="bijv. gebouw" error={errors.code?.message} {...register('code')} />
           <Input label="Naam" placeholder="Weergavenaam" error={errors.name?.message} {...register('name')} />
         </div>
+
+        <Input
+          label="Shortcode"
+          placeholder="bijv. GEB"
+          helperText="Gebruikt voor de [typecode]-placeholder in de locatie-nummering."
+          {...register('shortCode')}
+        />
 
         <div>
           <label className="mb-1 block text-sm font-medium text-gray-700">Omschrijving</label>

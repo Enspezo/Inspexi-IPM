@@ -168,7 +168,24 @@ describe('Numbering (e2e)', () => {
         .expect(200);
 
       const models = res.body.data.map((s: { model: string }) => s.model).sort();
-      expect(models).toEqual(['PRODUCT', 'PROJECT', 'QUOTE', 'REQUEST', 'WORK_ORDER']);
+      expect(models).toEqual([
+        'ASSET_NODE', 'LOCATION_NODE', 'PRODUCT', 'PROJECT', 'QUOTE', 'REQUEST', 'WORK_ORDER',
+      ]);
+    });
+
+    it('previews the node-numbering schemes (LOCATION_NODE / ASSET_NODE)', async () => {
+      const loc = await request(app.getHttpServer())
+        .get('/api/v1/numbering-schemes/LOCATION_NODE/preview')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(200);
+      expect(loc.body.data.example).toContain('LOC-');
+
+      const asset = await request(app.getHttpServer())
+        .get('/api/v1/numbering-schemes/ASSET_NODE/preview')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(200);
+      // [typecode] resolves to the sample shortcode (WCD) in the preview.
+      expect(asset.body.data.example).toContain('WCD-');
     });
 
     it('returns a preview example without mutating the counter', async () => {

@@ -277,6 +277,9 @@ function TreeRow({
             <span className={`truncate text-sm ${isSelected ? 'font-semibold' : 'font-medium'} text-gray-900`}>
               {node.name}
             </span>
+            {node.nodeNumber && (
+              <span className="shrink-0 font-mono text-[11px] text-gray-400">{node.nodeNumber}</span>
+            )}
             {node.identifier && <span className="truncate text-xs text-gray-400">{node.identifier}</span>}
           </button>
 

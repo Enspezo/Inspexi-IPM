@@ -4,6 +4,7 @@ import { Role, SyncStatus } from '@prisma/client';
 import { SyncService } from './sync.service';
 import { PrismaService } from '@/prisma';
 import { ChatService } from '../chat/chat.service';
+import { NumberingService } from '../numbering/numbering.service';
 
 describe('SyncService', () => {
   let service: SyncService;
@@ -32,6 +33,17 @@ describe('SyncService', () => {
     measurementInstrument: delegate(),
     userDefaultInstrument: delegate(),
     inspectionPlanDefaultInstrument: delegate(),
+    assetTypeDefinition: { ...delegate(), findMany: jest.fn().mockResolvedValue([]) },
+    locationTypeDefinition: { ...delegate(), findMany: jest.fn().mockResolvedValue([]) },
+  };
+
+  // Numbering-engine: voert de create-callback uit met een vast nodeNumber en geeft
+  // `mockPrisma` als tx-client door (waar assetNode.create gemockt is).
+  const mockNumbering = {
+    runWithGeneratedNumber: jest.fn(
+      async (_model: unknown, _org: unknown, _opts: unknown, create: any) =>
+        create(mockPrisma, 'NODE-0001'),
+    ),
   };
 
   // ChatService is delegated to for the additive chat sync; mock its snapshot/apply.
@@ -59,6 +71,7 @@ describe('SyncService', () => {
         SyncService,
         { provide: PrismaService, useValue: mockPrisma },
         { provide: ChatService, useValue: mockChat },
+        { provide: NumberingService, useValue: mockNumbering },
       ],
     }).compile();
 
@@ -105,13 +118,45 @@ describe('SyncService', () => {
 
       const result = await service.push(user, dto);
 
+      // nodeNumber is server-toegekend via de numbering-engine (ASSET → ASSET_NODE-schema).
+      expect(mockNumbering.runWithGeneratedNumber).toHaveBeenCalledWith(
+        'ASSET_NODE',
+        'org-1',
+        expect.any(Object),
+        expect.any(Function),
+      );
       expect(mockPrisma.assetNode.create).toHaveBeenCalledWith(
         expect.objectContaining({
-          data: expect.objectContaining({ id: 'a1', orgId: 'org-1', createdBy: 'user-1', typeCode: 'electrical_installation' }),
+          data: expect.objectContaining({
+            id: 'a1', orgId: 'org-1', createdBy: 'user-1',
+            typeCode: 'electrical_installation', nodeNumber: 'NODE-0001',
+          }),
         }),
       );
       expect(result.processed.assetNodes).toBe(1);
       expect(result.errors).toHaveLength(0);
+    });
+
+    it('numbers a LOCATION asset node via the LOCATION_NODE scheme', async () => {
+      mockPrisma.assetNode.create.mockResolvedValue({ id: 'loc1' });
+
+      const dto = {
+        deviceId: 'dev-1',
+        changes: {
+          assetNodes: [
+            { operation: 'create', data: { id: 'loc1', nodeType: 'LOCATION', typeCode: 'gebouw', name: 'Verdieping 1' } },
+          ],
+        },
+      } as any;
+
+      await service.push(user, dto);
+
+      expect(mockNumbering.runWithGeneratedNumber).toHaveBeenCalledWith(
+        'LOCATION_NODE',
+        'org-1',
+        expect.any(Object),
+        expect.any(Function),
+      );
     });
 
     it('rejects an asset node whose parentId is in ANOTHER org (cross-tenant FK check)', async () => {

@@ -14,6 +14,8 @@ export const NUMBERING_MODELS: readonly NumberingModel[] = [
   'PROJECT',
   'PRODUCT',
   'WORK_ORDER',
+  'LOCATION_NODE',
+  'ASSET_NODE',
 ];
 
 /** Per-model catalogue of allowed placeholder tokens (used in prefix/suffix). */
@@ -23,6 +25,8 @@ export const MODEL_PLACEHOLDERS: Record<NumberingModel, readonly string[]> = {
   PROJECT: ['jaar', 'maand', 'dag', 'postcode', 'contact'],
   PRODUCT: ['jaar', 'maand', 'dag', 'groep'],
   WORK_ORDER: ['jaar', 'maand', 'dag', 'postcode', 'huisnummer', 'contact'],
+  LOCATION_NODE: ['jaar', 'maand', 'dag', 'typecode'],
+  ASSET_NODE: ['jaar', 'maand', 'dag', 'typecode'],
 };
 
 /** Human-readable description per placeholder token (for the settings UI / docs). */
@@ -34,6 +38,7 @@ export const PLACEHOLDER_LABELS: Record<string, string> = {
   huisnummer: 'Huisnummer van de locatie',
   contact: 'Naam van de relatie',
   groep: 'Productgroep',
+  typecode: 'Shortcode van het asset-/locatietype',
 };
 
 export interface DefaultScheme {
@@ -103,6 +108,27 @@ export const DEFAULT_SCHEMES: Record<NumberingModel, DefaultScheme> = {
     resetPolicy: 'PER_YEAR',
     allowManualEntry: false,
   },
+  LOCATION_NODE: {
+    prefix: 'LOC-',
+    suffix: '',
+    mode: 'SEQUENTIAL',
+    start: 1,
+    interval: 1,
+    digits: 4,
+    resetPolicy: 'CONTINUOUS',
+    allowManualEntry: false,
+  },
+  ASSET_NODE: {
+    // `[typecode]` valt terug op '' wanneer het type geen shortcode heeft (veilig).
+    prefix: '[typecode]-',
+    suffix: '',
+    mode: 'SEQUENTIAL',
+    start: 1,
+    interval: 1,
+    digits: 4,
+    resetPolicy: 'CONTINUOUS',
+    allowManualEntry: false,
+  },
 };
 
 /** Bounds for the configurable numeric fields (mirrored by the DTO validators). */
@@ -128,6 +154,8 @@ export interface NumberingContext {
   contact?: string | null;
   /** Product group name (`[groep]`). */
   groep?: string | null;
+  /** Shortcode of the asset-/location-type definition (`[typecode]`). */
+  typeShortCode?: string | null;
 }
 
 /** Reduce a free-text placeholder value to a number-safe token (UPPER, alphanumeric). */
@@ -180,6 +208,7 @@ function placeholderValues(
     huisnummer: sanitizePlaceholderValue(ctx.huisnummer),
     contact: sanitizePlaceholderValue(ctx.contact),
     groep: sanitizePlaceholderValue(ctx.groep),
+    typecode: sanitizePlaceholderValue(ctx.typeShortCode),
   };
 }
 
@@ -272,11 +301,13 @@ export function validateAffix(
  * common path skips the extra lookups entirely.
  */
 export function schemeNeedsContext(prefix: string, suffix: string): boolean {
-  return /\[(postcode|huisnummer|contact|groep)\]/i.test(`${prefix}${suffix}`);
+  return /\[(postcode|huisnummer|contact|groep|typecode)\]/i.test(`${prefix}${suffix}`);
 }
 
 /** A representative context so the settings UI / preview always renders every token. */
 export function sampleContext(model: NumberingModel): NumberingContext {
   if (model === 'PRODUCT') return { groep: 'Algemeen' };
+  if (model === 'ASSET_NODE') return { typeShortCode: 'WCD' };
+  if (model === 'LOCATION_NODE') return { typeShortCode: 'GEB' };
   return { postcode: '1234AB', huisnummer: '12', contact: 'Voorbeeld BV' };
 }

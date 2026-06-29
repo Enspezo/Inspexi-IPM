@@ -296,6 +296,8 @@ enum NumberingModel {
   PROJECT
   PRODUCT
   WORK_ORDER
+  LOCATION_NODE
+  ASSET_NODE
 }
 
 enum NumberingMode {
@@ -2592,6 +2594,7 @@ model AssetNode {
 
   // Identiteit & type (code-string, net als nu)
   typeCode   String  @map("type_code") // → AssetTypeDefinition.code (ASSET) of LocationTypeDefinition.code (LOCATION)
+  nodeNumber String? @map("node_number") // server-toegekend, uniek per org (NumberingModel LOCATION_NODE/ASSET_NODE)
   name       String
   identifier String?
 
@@ -2631,6 +2634,7 @@ model AssetNode {
   standaloneMeasurements  StandaloneMeasurement[]  @relation("NodeStandalone")
   planScopes              InspectionPlanLocation[] // inspecties waarvoor deze LOCATION-node in scope is
 
+  @@unique([orgId, nodeNumber])
   @@index([orgId])
   @@index([parentId])
   @@index([orgId, updatedAt])
@@ -3118,6 +3122,7 @@ model AssetTypeDefinition {
   orgId String? @map("org_id") @db.Uuid
 
   code        String
+  shortCode   String? @map("short_code") // shortcode voor [typecode] in AssetNode-nummering
   name        String
   description String?
   icon        String?
@@ -3138,6 +3143,7 @@ model AssetTypeDefinition {
   measurementConfigs AssetTypeMeasurementConfig[]
 
   @@unique([orgId, code])
+  @@unique([orgId, shortCode])
   @@map("imp_asset_type_definitions")
 }
 
@@ -3212,6 +3218,7 @@ model LocationTypeDefinition {
   orgId String? @map("org_id") @db.Uuid
 
   code        String
+  shortCode   String? @map("short_code") // shortcode voor [typecode] in AssetNode-nummering
   name        String
   description String?
   icon        String?
@@ -3233,6 +3240,7 @@ model LocationTypeDefinition {
   locations          Location[]
 
   @@unique([orgId, code])
+  @@unique([orgId, shortCode])
   @@index([scope])
   @@map("imp_location_type_definitions")
 }

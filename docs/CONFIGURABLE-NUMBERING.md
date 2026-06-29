@@ -15,15 +15,34 @@ atomic counter + retry.
 | Quote   | `quoteNumber` (exists) | migrate to engine    |
 | Project | `projectNumber` (exists) | migrate to engine  |
 | Product | `productCode` (new)    | new field + backfill |
+| WorkOrder | `workOrderNumber`    | migrate to engine    |
+| **LOCATION_NODE** | `AssetNode.nodeNumber` (new) | server-assigned on LOCATION-node create + backfill |
+| **ASSET_NODE**    | `AssetNode.nodeNumber` (new) | server-assigned on ASSET-node create + backfill |
 
 WorkOrder / Location / Contact follow later — the engine is generic (extend `NumberingModel`).
 A future Invoice model plugs in as one more `NumberingModel` value + default scheme.
+
+**AssetNode numbering (LOCATION_NODE + ASSET_NODE).** The unified AssetNode tree gets
+**two independent schemes** that both write the single `AssetNode.nodeNumber` column
+(`@@unique([orgId, nodeNumber])`); the distinct prefix/shortcode keep the strings apart
+and the P2002-retry covers any collision. `nodeType` picks the scheme: a LOCATION-node
+uses `LOCATION_NODE` (default `LOC-####`, CONTINUOUS), an ASSET-node uses `ASSET_NODE`
+(default `[typecode]-####`, CONTINUOUS, e.g. `VERD-0001`). `nodeNumber` is **server-owned**
+(like `orgId`): assigned in `AssetNodesService.create`/`createRoot` and in the `/sync`
+assetNodes push-create path; the PWA never sends it. A manual number is accepted on
+create only when the scheme allows it.
+
+**New placeholder `[typecode]`.** Allowed for `LOCATION_NODE`/`ASSET_NODE` only. It
+resolves to the sanitized `shortCode` of the matching type definition
+(`AssetTypeDefinition` for ASSET, `LocationTypeDefinition` for LOCATION, looked up by
+`(orgId|null, typeCode)`, org-specific wins). A type without a shortcode → empty string
+(safe; uniqueness still comes from the autonumber).
 
 ## Data model
 
 ### Enums
 
-- `NumberingModel { REQUEST, QUOTE, PROJECT, PRODUCT }` — extendable.
+- `NumberingModel { REQUEST, QUOTE, PROJECT, PRODUCT, WORK_ORDER, LOCATION_NODE, ASSET_NODE }` — extendable.
 - `NumberingMode { SEQUENTIAL, RANDOM }`.
 - `NumberingReset { CONTINUOUS, PER_YEAR, PER_MONTH }`.
 
@@ -69,7 +88,9 @@ backfill populates them.
 - **Placeholder resolution** in prefix/suffix: date (`[jaar]`/`[maand]`/`[dag]`) + per-model
   data-driven catalog. Missing data → empty (safe); uniqueness comes from the autonumber.
   - REQUEST/QUOTE/PROJECT: `[jaar] [maand] [dag] [postcode] [contact]`
+  - WORK_ORDER: `[jaar] [maand] [dag] [postcode] [huisnummer] [contact]`
   - PRODUCT: `[jaar] [maand] [dag] [groep]`
+  - LOCATION_NODE/ASSET_NODE: `[jaar] [maand] [dag] [typecode]` (`[typecode]` = type-def `shortCode`)
   - Data values are sanitized (uppercased, non-alphanumerics stripped).
 - **Compose**: `resolve(prefix) + zeroPad(value, digits) + resolve(suffix)`. RANDOM uses a
   `digits`-wide random number as the numeric part.

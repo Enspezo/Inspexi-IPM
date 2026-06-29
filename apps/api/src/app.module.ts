@@ -58,6 +58,7 @@ import { LookupModule } from './modules/lookups/lookup.module';
 import { InspectionPlansModule } from './modules/inspection-plans/inspection-plans.module';
 import { AssetTypesModule } from './modules/asset-types/asset-types.module';
 import { AssetsModule } from './modules/assets/assets.module';
+import { AssetNodesModule } from './modules/asset-nodes/asset-nodes.module';
 import { FindingsModule } from './modules/findings/findings.module';
 import { NormTypesModule } from './modules/norm-types/norm-types.module';
 import { ClassificationModelsModule } from './modules/classification-models/classification-models.module';
@@ -144,6 +145,7 @@ import { VoiceModule } from './modules/voice/voice.module';
     InspectionPlansModule,
     AssetTypesModule,
     AssetsModule,
+    AssetNodesModule,
     FindingsModule,
     NormTypesModule,
     ClassificationModelsModule,

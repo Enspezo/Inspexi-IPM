@@ -269,11 +269,11 @@ describe('Cross-tenant FK isolation (e2e)', () => {
       },
     });
     planBId = planB.id;
-    const assetB = await prisma.asset.create({
+    const assetB = await prisma.assetNode.create({
       data: {
         orgId: orgB.id,
-        inspectionPlanId: planB.id,
-        assetType: 'kast',
+        nodeType: 'ASSET',
+        typeCode: 'kast',
         name: 'Asset B',
         createdBy: userB.id,
       },
@@ -286,11 +286,12 @@ describe('Cross-tenant FK isolation (e2e)', () => {
     categoryBId = categoryB.id;
 
     // ─── Stream B: extra org B-fixtures ─────────────────
-    // Constatering op org B's asset (read-isolatie GET /findings/:id → 404).
+    // Constatering op org B's asset-node (read-isolatie GET /findings/:id → 404).
     const findingB = await prisma.finding.create({
       data: {
         orgId: orgB.id,
-        assetId: assetB.id,
+        assetNodeId: assetB.id,
+        inspectionPlanId: planB.id,
         inspectionType: 'visual',
         shortDescription: 'Finding B',
         createdBy: userB.id,
@@ -330,11 +331,11 @@ describe('Cross-tenant FK isolation (e2e)', () => {
       },
     });
     planAId = planA.id;
-    const assetA = await prisma.asset.create({
+    const assetA = await prisma.assetNode.create({
       data: {
         orgId: orgA.id,
-        inspectionPlanId: planA.id,
-        assetType: 'e2extata',
+        nodeType: 'ASSET',
+        typeCode: 'e2extata',
         name: 'Asset A',
         createdBy: userA.id,
       },
@@ -354,7 +355,8 @@ describe('Cross-tenant FK isolation (e2e)', () => {
     const findingA = await prisma.finding.create({
       data: {
         orgId: orgA.id,
-        assetId: assetA.id,
+        assetNodeId: assetA.id,
+        inspectionPlanId: planA.id,
         inspectionType: 'visual',
         shortDescription: 'Finding A',
         createdBy: userA.id,
@@ -435,7 +437,7 @@ describe('Cross-tenant FK isolation (e2e)', () => {
       await prisma.task.deleteMany({ where: { id: { in: createdTaskIds } } });
       // Inspectiedomein (kinderen eerst): finding → asset → plan → template → cm → norm
       await prisma.finding.deleteMany({ where: { orgId: { in: orgIds } } });
-      await prisma.asset.deleteMany({ where: { orgId: { in: orgIds } } });
+      await prisma.assetNode.deleteMany({ where: { orgId: { in: orgIds } } });
       await prisma.inspectionPlan.deleteMany({ where: { orgId: { in: orgIds } } });
       await prisma.findingTemplate.deleteMany({ where: { orgId: { in: orgIds } } });
       await prisma.inspectionTemplate.deleteMany({ where: { orgId: { in: orgIds } } });
@@ -1061,12 +1063,12 @@ describe('Cross-tenant FK isolation (e2e)', () => {
 
   // ─── Sync push: cross-tenant parent FKs ───────────────
   // Org A pushes records whose parent FK belongs to org B. The sync service
-  // injects orgId from the parent hierarchy and validates it with
-  // assertSameOrg, so the parent is "not the caller's" → the change is
-  // reported in `errors` and NEVER written. Plan/asset of org B reuse the
+  // validates every incoming FK with assertSameOrg (v3: orgId is taken from the
+  // caller's own org, so a cross-tenant FK is "not the caller's") → the change is
+  // reported in `errors` and NEVER written. Plan/asset-node of org B reuse the
   // suite's existing planBId/assetBId fixtures.
   describe('Sync push cross-tenant', () => {
-    it('rejects an asset create referencing org B\'s plan (error, never written)', async () => {
+    it('rejects an asset-node create whose parentId is org B\'s node (error, never written)', async () => {
       const clientAssetId = randomUUID();
 
       const res = await request(app.getHttpServer())
@@ -1075,13 +1077,14 @@ describe('Cross-tenant FK isolation (e2e)', () => {
         .send({
           deviceId: 'dev-xtenant-a',
           changes: {
-            assets: [
+            assetNodes: [
               {
                 operation: 'create',
                 data: {
                   id: clientAssetId,
-                  inspectionPlanId: planBId,
-                  assetType: 'electrical_installation',
+                  parentId: assetBId, // org B's node → cross-tenant
+                  nodeType: 'ASSET',
+                  typeCode: 'electrical_installation',
                   name: 'Hack',
                 },
               },
@@ -1095,9 +1098,9 @@ describe('Cross-tenant FK isolation (e2e)', () => {
       expect(
         res.body.data.errors.map((e: { entityId: string }) => e.entityId),
       ).toContain(clientAssetId);
-      expect(res.body.data.processed.assets).toBe(0);
+      expect(res.body.data.processed.assetNodes).toBe(0);
 
-      const written = await prisma.asset.findUnique({ where: { id: clientAssetId } });
+      const written = await prisma.assetNode.findUnique({ where: { id: clientAssetId } });
       expect(written).toBeNull();
     });
 
@@ -1125,7 +1128,7 @@ describe('Cross-tenant FK isolation (e2e)', () => {
       expect(after?.projectName).not.toBe('Hacked');
     });
 
-    it('rejects a finding create referencing org B\'s asset (error, never written)', async () => {
+    it('rejects a finding create referencing org B\'s asset-node (error, never written)', async () => {
       const clientFindingId = randomUUID();
 
       const res = await request(app.getHttpServer())
@@ -1139,7 +1142,8 @@ describe('Cross-tenant FK isolation (e2e)', () => {
                 operation: 'create',
                 data: {
                   id: clientFindingId,
-                  assetId: assetBId,
+                  assetNodeId: assetBId, // org B's node → cross-tenant
+                  inspectionPlanId: planAId,
                   inspectionType: 'visual',
                   shortDescription: 'x',
                 },

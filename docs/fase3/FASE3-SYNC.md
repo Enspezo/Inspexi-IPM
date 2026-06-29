@@ -172,3 +172,28 @@ Aparte PR in de PWA-repo.
 - **Classificatie** is de zwaarste PWA-wijziging (enum → model) — plan die apart.
 - **vi/mr/signatures-sync** is bewust nog niet meegenomen; bevestig met het PWA-team of/wanneer die via push moeten.
 - **Thumbnails + signed URLs** blijven Fase 4 (nu: download-route, thumbnailPath = origineel).
+
+## 8. v3 — unified AssetNode tree (update)
+
+> §1–§7 hierboven beschrijven het oorspronkelijke **v2**-contract. Sinds de unificatie van
+> `assets`+`locations` tot één recursieve **AssetNode-boom** serveert de Beheer-API
+> **v3** (`contractVersion: 3` in elke pull). Breaking changes t.o.v. v2:
+>
+> - **`assets` → `assetNodes`** (body + `deletedIds`): één boom met `nodeType`
+>   `LOCATION|ASSET`. `org` is overal **self** (eigen `orgId`-kolom); cross-tenant FK's
+>   (`parentId`/`assetNodeId`/`inspectionPlanId`/…) worden geweigerd via `assertSameOrg`.
+> - **Node-velden hernoemd:** `parentAssetId`→`parentId`, `assetType`→`typeCode`,
+>   `locationDescription`→`description`. **Geen** `inspectionPlanId`/`locationId` meer op de
+>   node; ltree `path`/`depth` zitten **niet** in het contract (DB-trigger).
+> - **`inspectionPlans.locationId`** (hoofdlocatie) toegevoegd aan de whitelist.
+> - **`findings`:** `assetId`→`assetNodeId` + verplichte `inspectionPlanId`.
+> - **Vier nieuwe uitvoerings-entiteiten** (create/update/delete + tombstones):
+>   `visualInspections`, `measurementRecords`, `measurementSheetRecords`,
+>   `standaloneMeasurements`. Hiervoor kregen VisualInspection/MeasurementRecord/
+>   MeasurementSheetRecord een `deletedAt`-kolom (migratie
+>   `20260629140000_add_soft_delete_execution_records`). `StandaloneMeasurementValue`
+>   reist **genest** mee (`values[]`, replace-on-write).
+>
+> **PWA-cutover (aparte repo):** zie **`docs/fase3/PWA-CUTOVER-ASSET-NODE.md`** — nieuw
+> contract, Dexie v9→v10 (merge assets+locations → `assetNodes`), offline aanmaken zonder
+> plan-link, en de cutover-volgorde met rollback.

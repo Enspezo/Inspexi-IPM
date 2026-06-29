@@ -2673,6 +2673,7 @@ model VisualInspection {
   updatedAt DateTime  @updatedAt @map("updated_at")
   syncedAt  DateTime? @map("synced_at")
   deviceId  String?   @map("device_id")
+  deletedAt DateTime? @map("deleted_at") // sync tombstone (PWA v2-contract)
 
   organization   Organization   @relation(fields: [orgId], references: [id])
   assetNode      AssetNode      @relation(fields: [assetNodeId], references: [id], onDelete: Cascade)
@@ -2707,6 +2708,7 @@ model MeasurementRecord {
   updatedAt DateTime  @updatedAt @map("updated_at")
   syncedAt  DateTime? @map("synced_at")
   deviceId  String?   @map("device_id")
+  deletedAt DateTime? @map("deleted_at") // sync tombstone (PWA v2-contract)
 
   organization   Organization   @relation(fields: [orgId], references: [id])
   assetNode      AssetNode      @relation(fields: [assetNodeId], references: [id], onDelete: Cascade)
@@ -3648,6 +3650,7 @@ model MeasurementSheetRecord {
   createdAt   DateTime  @default(now()) @map("created_at")
   updatedAt   DateTime  @updatedAt @map("updated_at")
   completedAt DateTime? @map("completed_at")
+  deletedAt   DateTime? @map("deleted_at") // sync tombstone (PWA v2-contract)
   createdBy   String    @map("created_by") @db.Uuid
 
   organization   Organization             @relation(fields: [orgId], references: [id])

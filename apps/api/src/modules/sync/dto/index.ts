@@ -1,5 +1,6 @@
-// v2 sync-contract — entiteit-gegroepeerd, veldnamen ALIGNED op het Beheer-schema
-// (statusCode, contactId, orgId, classificationValues, normTypeCode).
+// v3 sync-contract — entiteit-gegroepeerd, veldnamen ALIGNED op het Beheer-schema
+// (statusCode, contactId, orgId, classificationValues, normTypeCode). Unified AssetNode tree:
+// `assets` → `assetNodes`; vier uitvoerings-entiteiten toegevoegd.
 
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
@@ -32,11 +33,27 @@ export class PushChangesGroupDto {
 
   @ApiPropertyOptional({ type: [EntityChangeDto] })
   @IsOptional() @IsArray() @ValidateNested({ each: true }) @Type(() => EntityChangeDto)
-  assets?: EntityChangeDto[];
+  assetNodes?: EntityChangeDto[];
 
   @ApiPropertyOptional({ type: [EntityChangeDto] })
   @IsOptional() @IsArray() @ValidateNested({ each: true }) @Type(() => EntityChangeDto)
   findings?: EntityChangeDto[];
+
+  @ApiPropertyOptional({ type: [EntityChangeDto] })
+  @IsOptional() @IsArray() @ValidateNested({ each: true }) @Type(() => EntityChangeDto)
+  visualInspections?: EntityChangeDto[];
+
+  @ApiPropertyOptional({ type: [EntityChangeDto] })
+  @IsOptional() @IsArray() @ValidateNested({ each: true }) @Type(() => EntityChangeDto)
+  measurementRecords?: EntityChangeDto[];
+
+  @ApiPropertyOptional({ type: [EntityChangeDto] })
+  @IsOptional() @IsArray() @ValidateNested({ each: true }) @Type(() => EntityChangeDto)
+  measurementSheetRecords?: EntityChangeDto[];
+
+  @ApiPropertyOptional({ type: [EntityChangeDto] })
+  @IsOptional() @IsArray() @ValidateNested({ each: true }) @Type(() => EntityChangeDto)
+  standaloneMeasurements?: EntityChangeDto[];
 
   // Additief (REQ1 PR2): chat-berichten van de PWA-inspecteur. Verwerkt via
   // ChatService (membership-auth + notificaties), niet via de generieke mutator.

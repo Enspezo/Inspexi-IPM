@@ -97,7 +97,7 @@ describe('Sync v2 round-trip (e2e)', () => {
       // Children first (creates write auditLog rows for audited models).
       await prisma.photo.deleteMany({ where: { orgId: { in: orgIds } } });
       await prisma.finding.deleteMany({ where: { orgId: { in: orgIds } } });
-      await prisma.asset.deleteMany({ where: { orgId: { in: orgIds } } });
+      await prisma.assetNode.deleteMany({ where: { orgId: { in: orgIds } } });
       await prisma.inspectionPlan.deleteMany({ where: { orgId: { in: orgIds } } });
       await prisma.contact.deleteMany({ where: { orgId: { in: orgIds } } });
       await prisma.syncQueue.deleteMany({ where: { userId: { in: userIds } } });
@@ -111,7 +111,7 @@ describe('Sync v2 round-trip (e2e)', () => {
     }
   });
 
-  it('1. pull (empty) returns all 7 keys + this org\'s contact', async () => {
+  it('1. pull (empty) returns the v3 contract keys + this org\'s contact', async () => {
     const res = await request(app.getHttpServer())
       .get('/api/v1/sync/pull')
       .set('Authorization', `Bearer ${token}`)
@@ -120,13 +120,18 @@ describe('Sync v2 round-trip (e2e)', () => {
     expect(res.body.success).toBe(true);
     const data = res.body.data;
     expect(Array.isArray(data.inspectionPlans)).toBe(true);
-    expect(Array.isArray(data.assets)).toBe(true);
+    expect(Array.isArray(data.assetNodes)).toBe(true);
     expect(Array.isArray(data.findings)).toBe(true);
+    expect(Array.isArray(data.visualInspections)).toBe(true);
+    expect(Array.isArray(data.measurementRecords)).toBe(true);
+    expect(Array.isArray(data.measurementSheetRecords)).toBe(true);
+    expect(Array.isArray(data.standaloneMeasurements)).toBe(true);
     expect(Array.isArray(data.photos)).toBe(true);
     expect(Array.isArray(data.contacts)).toBe(true);
+    expect(data.contractVersion).toBe(3);
     expect(data.deletedIds).toBeDefined();
     expect(Array.isArray(data.deletedIds.inspectionPlans)).toBe(true);
-    expect(Array.isArray(data.deletedIds.assets)).toBe(true);
+    expect(Array.isArray(data.deletedIds.assetNodes)).toBe(true);
     expect(Array.isArray(data.deletedIds.findings)).toBe(true);
     expect(typeof data.serverTime).toBe('string');
 
@@ -169,7 +174,7 @@ describe('Sync v2 round-trip (e2e)', () => {
     expect(persisted?.projectName).toBe('E2E Plan');
   });
 
-  it('3. push create asset + finding → both processed', async () => {
+  it('3. push create asset node + finding → both processed', async () => {
     assetId = randomUUID();
     findingId = randomUUID();
 
@@ -179,23 +184,26 @@ describe('Sync v2 round-trip (e2e)', () => {
       .send({
         deviceId,
         changes: {
-          assets: [
+          // Unified tree: an ASSET node (no plan/location link on the node itself).
+          assetNodes: [
             {
               operation: 'create',
               data: {
                 id: assetId,
-                inspectionPlanId: planId,
-                assetType: 'electrical_installation',
+                nodeType: 'ASSET',
+                typeCode: 'electrical_installation',
                 name: 'Board',
               },
             },
           ],
+          // Finding references the node + the plan directly (v3).
           findings: [
             {
               operation: 'create',
               data: {
                 id: findingId,
-                assetId,
+                assetNodeId: assetId,
+                inspectionPlanId: planId,
                 inspectionType: 'visual',
                 shortDescription: 'Defect',
               },
@@ -206,7 +214,7 @@ describe('Sync v2 round-trip (e2e)', () => {
       .expect(201);
 
     expect(res.body.success).toBe(true);
-    expect(res.body.data.processed.assets).toBe(1);
+    expect(res.body.data.processed.assetNodes).toBe(1);
     expect(res.body.data.processed.findings).toBe(1);
     expect(res.body.data.errors).toHaveLength(0);
     expect(res.body.data.conflicts).toHaveLength(0);
@@ -224,7 +232,7 @@ describe('Sync v2 round-trip (e2e)', () => {
     expect(res.body.success).toBe(true);
     const data = res.body.data;
     expect(data.inspectionPlans.map((p: { id: string }) => p.id)).toContain(planId);
-    expect(data.assets.map((a: { id: string }) => a.id)).toContain(assetId);
+    expect(data.assetNodes.map((a: { id: string }) => a.id)).toContain(assetId);
     expect(data.findings.map((f: { id: string }) => f.id)).toContain(findingId);
   });
 

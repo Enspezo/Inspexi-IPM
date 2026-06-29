@@ -5,6 +5,7 @@ import {
   periodKeyFor,
   randomCandidate,
   resolvePlaceholders,
+  sampleContext,
   sanitizePlaceholderValue,
   schemeNeedsContext,
   validateAffix,
@@ -123,6 +124,28 @@ describe('numbering.helpers', () => {
       );
     });
 
+    it('resolves and sanitizes a [typecode] placeholder from typeShortCode', () => {
+      const scheme = {
+        model: 'ASSET_NODE' as NumberingModel,
+        prefix: '[typecode]-',
+        suffix: '',
+        digits: 4,
+      };
+      const date = new Date('2026-06-22T12:00:00Z');
+      expect(composeNumber(scheme, 1, { typeShortCode: 'verd' }, date)).toBe('VERD-0001');
+    });
+
+    it('collapses [typecode] to empty when the type has no shortcode', () => {
+      const scheme = {
+        model: 'ASSET_NODE' as NumberingModel,
+        prefix: '[typecode]-',
+        suffix: '',
+        digits: 4,
+      };
+      const date = new Date('2026-06-22T12:00:00Z');
+      expect(composeNumber(scheme, 3, { typeShortCode: null }, date)).toBe('-0003');
+    });
+
     it('supports a suffix', () => {
       const scheme = {
         model: 'PRODUCT' as NumberingModel,
@@ -170,6 +193,17 @@ describe('numbering.helpers', () => {
       expect(result.error).toContain('[postcode]');
     });
 
+    it('accepts [typecode] on ASSET_NODE / LOCATION_NODE', () => {
+      expect(validateAffix('[typecode]-', 'ASSET_NODE', 'Prefix')).toEqual({ valid: true });
+      expect(validateAffix('[typecode]-', 'LOCATION_NODE', 'Prefix')).toEqual({ valid: true });
+    });
+
+    it('rejects [typecode] on a non-node model (QUOTE)', () => {
+      const result = validateAffix('[typecode]-', 'QUOTE', 'Prefix');
+      expect(result.valid).toBe(false);
+      expect(result.error).toContain('[typecode]');
+    });
+
     it('rejects a literal space', () => {
       const result = validateAffix('OFF -', 'QUOTE', 'Prefix');
       expect(result.valid).toBe(false);
@@ -201,6 +235,10 @@ describe('numbering.helpers', () => {
       expect(schemeNeedsContext('PRD-[groep]', '')).toBe(true);
     });
 
+    it('is true when a [typecode] token is present', () => {
+      expect(schemeNeedsContext('[typecode]-', '')).toBe(true);
+    });
+
     it('is false for only [jaar]/literal text', () => {
       expect(schemeNeedsContext('OFF-[jaar]-', '')).toBe(false);
       expect(schemeNeedsContext('PRD-', '')).toBe(false);
@@ -223,7 +261,7 @@ describe('numbering.helpers', () => {
   describe('DEFAULT_SCHEMES', () => {
     it('has all numbering models', () => {
       expect(Object.keys(DEFAULT_SCHEMES).sort()).toEqual(
-        ['PRODUCT', 'PROJECT', 'QUOTE', 'REQUEST', 'WORK_ORDER'].sort(),
+        ['ASSET_NODE', 'LOCATION_NODE', 'PRODUCT', 'PROJECT', 'QUOTE', 'REQUEST', 'WORK_ORDER'].sort(),
       );
     });
 
@@ -239,6 +277,23 @@ describe('numbering.helpers', () => {
 
     it('PRODUCT uses a CONTINUOUS reset policy', () => {
       expect(DEFAULT_SCHEMES.PRODUCT.resetPolicy).toBe('CONTINUOUS');
+    });
+
+    it('ASSET_NODE uses the [typecode]- prefix with a CONTINUOUS reset', () => {
+      expect(DEFAULT_SCHEMES.ASSET_NODE.prefix).toBe('[typecode]-');
+      expect(DEFAULT_SCHEMES.ASSET_NODE.resetPolicy).toBe('CONTINUOUS');
+    });
+
+    it('LOCATION_NODE uses the LOC- prefix with a CONTINUOUS reset', () => {
+      expect(DEFAULT_SCHEMES.LOCATION_NODE.prefix).toBe('LOC-');
+      expect(DEFAULT_SCHEMES.LOCATION_NODE.resetPolicy).toBe('CONTINUOUS');
+    });
+  });
+
+  describe('sampleContext', () => {
+    it('provides a typeShortCode sample for the node models', () => {
+      expect(sampleContext('ASSET_NODE').typeShortCode).toBeTruthy();
+      expect(sampleContext('LOCATION_NODE').typeShortCode).toBeTruthy();
     });
   });
 });

@@ -955,7 +955,14 @@ export interface DocumentTag {
 }
 
 // ─── Configureerbare nummering (per org, per model) ──────────────────────
-export type NumberingModel = 'REQUEST' | 'QUOTE' | 'PROJECT' | 'PRODUCT' | 'WORK_ORDER';
+export type NumberingModel =
+  | 'REQUEST'
+  | 'QUOTE'
+  | 'PROJECT'
+  | 'PRODUCT'
+  | 'WORK_ORDER'
+  | 'LOCATION_NODE'
+  | 'ASSET_NODE';
 export type NumberingMode = 'SEQUENTIAL' | 'RANDOM';
 export type NumberingReset = 'CONTINUOUS' | 'PER_YEAR' | 'PER_MONTH';
 
@@ -1998,6 +2005,8 @@ export interface AssetNode {
   /** Alleen gevuld op de root-LOCATION-node (1:1 met een CRM-locatie). */
   rootLocationId: string | null;
   typeCode: string;
+  /** Server-toegekend, uniek-per-org nodenummer (read-only). */
+  nodeNumber: string | null;
   name: string;
   identifier: string | null;
   description: string | null;
@@ -2360,6 +2369,7 @@ export interface AssetTypeDefinition {
   id: string;
   orgId: string | null;
   code: string;
+  shortCode: string | null;
   name: string;
   description: string | null;
   icon: string | null;
@@ -2409,6 +2419,7 @@ export interface LocationTypeDefinition {
   id: string;
   orgId: string | null;
   code: string;
+  shortCode: string | null;
   name: string;
   description: string | null;
   icon: string | null;

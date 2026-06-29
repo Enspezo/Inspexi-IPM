@@ -108,6 +108,9 @@ describe('Sync v2 round-trip (e2e)', () => {
       await prisma.assetNode.deleteMany({ where: { orgId: { in: orgIds } } });
       await prisma.inspectionPlan.deleteMany({ where: { orgId: { in: orgIds } } });
       await prisma.contact.deleteMany({ where: { orgId: { in: orgIds } } });
+      // Sync-create van assetNodes auto-provisioneert numbering-schemas (+counters).
+      await prisma.numberingCounter.deleteMany({ where: { scheme: { orgId: { in: orgIds } } } });
+      await prisma.numberingScheme.deleteMany({ where: { orgId: { in: orgIds } } });
       await prisma.syncQueue.deleteMany({ where: { userId: { in: userIds } } });
       await prisma.notification.deleteMany({ where: { orgId: { in: orgIds } } });
       await prisma.auditLog.deleteMany({ where: { orgId: { in: orgIds } } });

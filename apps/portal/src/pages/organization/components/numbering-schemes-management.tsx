@@ -14,6 +14,8 @@ const MODEL_LABELS: Record<NumberingModel, string> = {
   PROJECT: 'Project',
   PRODUCT: 'Product',
   WORK_ORDER: 'Werkbon',
+  LOCATION_NODE: 'Locatie-nummering',
+  ASSET_NODE: 'Asset-nummering',
 };
 
 /** Allowed placeholders per model — mirrors the backend catalogue. */
@@ -23,6 +25,8 @@ const MODEL_PLACEHOLDERS: Record<NumberingModel, string[]> = {
   PROJECT: ['jaar', 'maand', 'dag', 'postcode', 'contact'],
   PRODUCT: ['jaar', 'maand', 'dag', 'groep'],
   WORK_ORDER: ['jaar', 'maand', 'dag', 'postcode', 'huisnummer', 'contact'],
+  LOCATION_NODE: ['jaar', 'maand', 'dag', 'typecode'],
+  ASSET_NODE: ['jaar', 'maand', 'dag', 'typecode'],
 };
 
 const PLACEHOLDER_LABELS: Record<string, string> = {
@@ -33,10 +37,13 @@ const PLACEHOLDER_LABELS: Record<string, string> = {
   huisnummer: 'Huisnummer',
   contact: 'Relatie',
   groep: 'Productgroep',
+  typecode: 'Type-shortcode',
 };
 
 /** Display order of the model cards. */
-const MODEL_ORDER: NumberingModel[] = ['REQUEST', 'QUOTE', 'PROJECT', 'WORK_ORDER', 'PRODUCT'];
+const MODEL_ORDER: NumberingModel[] = [
+  'REQUEST', 'QUOTE', 'PROJECT', 'WORK_ORDER', 'PRODUCT', 'LOCATION_NODE', 'ASSET_NODE',
+];
 
 const MODE_OPTIONS = [
   { value: 'SEQUENTIAL', label: 'Oplopend (teller)' },

@@ -106,11 +106,11 @@ describe('AssetNodes (e2e)', () => {
     // Org type-definitions zonder constraints → elke ouder toegestaan.
     testLocationTypeCode = 'e2elocnode';
     await prisma.locationTypeDefinition.create({
-      data: { orgId: org.id, code: testLocationTypeCode, name: 'Ruimte', isSystem: false },
+      data: { orgId: org.id, code: testLocationTypeCode, name: 'Ruimte', shortCode: 'RMT', isSystem: false },
     });
     testAssetTypeCode = 'e2eassetnode';
     await prisma.assetTypeDefinition.create({
-      data: { orgId: org.id, code: testAssetTypeCode, name: 'Verdeler', isSystem: false },
+      data: { orgId: org.id, code: testAssetTypeCode, name: 'Verdeler', shortCode: 'VERD', isSystem: false },
     });
 
     const plan = await prisma.inspectionPlan.create({
@@ -143,6 +143,9 @@ describe('AssetNodes (e2e)', () => {
       await prisma.locationTypeDefinition.deleteMany({ where: { orgId: testOrgId } });
       await prisma.location.deleteMany({ where: { id: testCrmLocationId } });
       await prisma.contact.deleteMany({ where: { id: testContactId } });
+      // Node-create auto-provisioneert numbering-schemas (+counters) voor de org.
+      await prisma.numberingCounter.deleteMany({ where: { scheme: { orgId: testOrgId } } });
+      await prisma.numberingScheme.deleteMany({ where: { orgId: testOrgId } });
       await prisma.auditLog.deleteMany({ where: { userId: testUserId } });
       await prisma.refreshToken.deleteMany({ where: { userId: testUserId } });
       await prisma.user.deleteMany({ where: { id: testUserId } });
@@ -202,10 +205,12 @@ describe('AssetNodes (e2e)', () => {
       expect(res.body.data.nodeType).toBe('LOCATION');
       expect(res.body.data.parentId).toBe(rootNodeId);
       expect(res.body.data.depth).toBe(1);
+      // LOCATION_NODE-schema: LOC-#### (server-toegekend).
+      expect(res.body.data.nodeNumber).toMatch(/^LOC-\d{4,}$/);
       roomNodeId = res.body.data.id;
     });
 
-    it('creates an ASSET node under the room LOCATION', async () => {
+    it('creates an ASSET node under the room LOCATION with a [typecode]-number', async () => {
       const res = await request(app.getHttpServer())
         .post('/api/v1/asset-nodes')
         .set('Authorization', `Bearer ${accessToken}`)
@@ -221,7 +226,23 @@ describe('AssetNodes (e2e)', () => {
       expect(res.body.success).toBe(true);
       expect(res.body.data.nodeType).toBe('ASSET');
       expect(res.body.data.parentId).toBe(roomNodeId);
+      // ASSET_NODE-schema: [typecode]-#### → de shortCode 'VERD' van het asset-type.
+      expect(res.body.data.nodeNumber).toMatch(/^VERD-\d{4,}$/);
       assetNodeId = res.body.data.id;
+    });
+
+    it('rejects a manual nodeNumber when the scheme forbids it (400)', async () => {
+      await request(app.getHttpServer())
+        .post('/api/v1/asset-nodes')
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({
+          parentId: roomNodeId,
+          nodeType: 'ASSET',
+          typeCode: testAssetTypeCode,
+          name: 'Handmatig genummerd',
+          nodeNumber: 'EIGEN-9999',
+        })
+        .expect(400);
     });
 
     it('rejects a LOCATION node under an ASSET node (400)', async () => {

@@ -193,6 +193,9 @@ describe('LocationImages (e2e)', () => {
       await prisma.normTypeDefinition.deleteMany({ where: { id: testNormTypeId } });
       await prisma.location.deleteMany({ where: { id: testCrmLocationId } });
       await prisma.contact.deleteMany({ where: { id: testContactId } });
+      // Node-create auto-provisioneert numbering-schemas (+counters) voor de org.
+      await prisma.numberingCounter.deleteMany({ where: { scheme: { orgId: testOrgId } } });
+      await prisma.numberingScheme.deleteMany({ where: { orgId: testOrgId } });
       await prisma.auditLog.deleteMany({ where: { userId: testUserId } });
       await prisma.refreshToken.deleteMany({ where: { userId: testUserId } });
       await prisma.user.deleteMany({ where: { id: testUserId } });

@@ -166,6 +166,56 @@ describe('NumberingService', () => {
         service.runWithGeneratedNumber('REQUEST', ORG, {}, create),
       ).rejects.toThrow(ConflictException);
     });
+
+    it('ASSET_NODE: resolves [typecode] from the loaded context (e.g. WCD-0005)', async () => {
+      mockPrisma.numberingScheme.upsert.mockResolvedValue(
+        sequentialScheme({
+          model: 'ASSET_NODE',
+          prefix: '[typecode]-',
+          resetPolicy: 'CONTINUOUS',
+        }),
+      );
+      mockPrisma.$queryRaw.mockResolvedValue([{ value: 5 }]);
+      mockPrisma.$transaction.mockImplementation((cb: (tx: unknown) => unknown) => cb(mockTx));
+
+      const create = jest.fn(async (_tx, value: string) => ({ id: 'n1', number: value }));
+      const loadContext = jest.fn(async () => ({ typeShortCode: 'wcd' }));
+
+      const result = await service.runWithGeneratedNumber(
+        'ASSET_NODE',
+        ORG,
+        { loadContext },
+        create,
+      );
+
+      // loadContext runs because the prefix carries the data-driven [typecode] token.
+      expect(loadContext).toHaveBeenCalledTimes(1);
+      expect(create.mock.calls[0][1]).toBe('WCD-0005');
+      expect(result).toEqual({ id: 'n1', number: 'WCD-0005' });
+    });
+
+    it('LOCATION_NODE: provisions the LOC- default scheme via ensureScheme', async () => {
+      // Geen bestaand schema → upsert geeft het default LOCATION_NODE-schema terug.
+      mockPrisma.numberingScheme.upsert.mockImplementation(async (args: any) => ({
+        id: 'loc-scheme',
+        orgId: ORG,
+        isActive: true,
+        ...args.create,
+      }));
+      mockPrisma.$queryRaw.mockResolvedValue([{ value: 1 }]);
+      mockPrisma.$transaction.mockImplementation((cb: (tx: unknown) => unknown) => cb(mockTx));
+
+      const create = jest.fn(async (_tx, value: string) => ({ id: 'l1', number: value }));
+      const result = await service.runWithGeneratedNumber('LOCATION_NODE', ORG, {}, create);
+
+      expect(mockPrisma.numberingScheme.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { orgId_model: { orgId: ORG, model: 'LOCATION_NODE' } },
+          create: expect.objectContaining({ prefix: 'LOC-', resetPolicy: 'CONTINUOUS' }),
+        }),
+      );
+      expect(result).toEqual({ id: 'l1', number: 'LOC-0001' });
+    });
   });
 
   describe('validateManualNumber', () => {

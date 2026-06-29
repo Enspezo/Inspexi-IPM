@@ -123,6 +123,7 @@ export class AssetTypesService {
       data: {
         orgId: isSystem ? null : orgId,
         code: dto.code,
+        shortCode: dto.shortCode?.trim() || null,
         name: dto.name,
         description: dto.description,
         icon: dto.icon,
@@ -144,6 +145,8 @@ export class AssetTypesService {
       where: { id },
       data: {
         name: dto.name,
+        shortCode:
+          dto.shortCode === undefined ? undefined : dto.shortCode.trim() || null,
         description: dto.description,
         icon: dto.icon,
         color: dto.color,
@@ -186,6 +189,7 @@ export class AssetTypesService {
       data: {
         orgId,
         code: source.code,
+        shortCode: source.shortCode,
         name: source.name,
         description: source.description,
         icon: source.icon,

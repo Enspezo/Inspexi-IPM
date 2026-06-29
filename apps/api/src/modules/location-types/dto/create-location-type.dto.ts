@@ -15,6 +15,14 @@ export class CreateLocationTypeDto {
   @IsString()
   code: string;
 
+  @ApiPropertyOptional({
+    example: 'GEB',
+    description: 'Shortcode voor de [typecode]-placeholder in de locatie-nummering',
+  })
+  @IsOptional()
+  @IsString()
+  shortCode?: string;
+
   @ApiProperty({ example: 'Gebouw' })
   @IsString()
   name: string;

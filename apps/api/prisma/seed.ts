@@ -2374,6 +2374,7 @@ async function main() {
   await prisma.assetTypeDefinition.create({
     data: {
       code: 'electrical_installation',
+      shortCode: 'EI', // [typecode] in de ASSET_NODE-nummering → bv. EI-0001
       name: 'Elektrische installatie',
       description: 'Laagspanningsinstallatie',
       icon: 'zap',
@@ -2392,6 +2393,7 @@ async function main() {
   await prisma.assetTypeDefinition.create({
     data: {
       code: 'pv_installation',
+      shortCode: 'PV', // [typecode] in de ASSET_NODE-nummering → bv. PV-0001
       name: 'Zonnestroominstallatie',
       description: 'PV-installatie',
       icon: 'sun',
@@ -2409,6 +2411,7 @@ async function main() {
   await prisma.locationTypeDefinition.create({
     data: {
       code: 'distribution_room',
+      shortCode: 'VR', // [typecode] beschikbaar als de LOCATION_NODE-nummering het gebruikt
       name: 'Verdeelruimte',
       description: 'Ruimte met verdeelinrichting',
       icon: 'door-open',

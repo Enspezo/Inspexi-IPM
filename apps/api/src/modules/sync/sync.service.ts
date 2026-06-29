@@ -9,7 +9,7 @@
 // gecontroleerd (cross-tenant). Conflict: optimistic — server.updatedAt > client.syncedAt.
 
 import { Injectable, BadRequestException } from '@nestjs/common';
-import { User, Prisma, SyncStatus } from '@prisma/client';
+import { AssetNodeType, User, Prisma, NumberingModel, SyncStatus } from '@prisma/client';
 import { PrismaService } from '@/prisma';
 import { orgScope, assertSameOrg, requireOrg } from '@/common';
 import { PushDto, ResolveDto, EntityChangeDto } from './dto';
@@ -18,6 +18,7 @@ import {
   SYNC_CONTRACT_VERSION, toDbData, toChildRows, toWire,
 } from './sync-mapper';
 import { ChatService } from '../chat/chat.service';
+import { NumberingService } from '../numbering/numbering.service';
 
 type OpResult =
   | { entityType: string; entityId: string; status: 'success' }
@@ -90,6 +91,7 @@ export class SyncService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly chat: ChatService,
+    private readonly numbering: NumberingService,
   ) {}
 
   /** Expliciete map model-naam → Prisma-delegate, i.p.v. een dynamische `this.prisma[name]`. */
@@ -114,6 +116,31 @@ export class SyncService {
       location: this.prisma.location,
     };
     return delegates[model] as SyncDelegate;
+  }
+
+  /**
+   * Shortcode (`[typecode]`) van het type-def dat bij `typeCode` hoort, voor de
+   * server-toegekende nodeNumber-generatie. Org-specifiek wint van systeem/globaal
+   * (orgId null); `null` als er geen match/shortcode is (placeholder → '').
+   */
+  private async resolveTypeShortCode(
+    orgId: string,
+    nodeType: AssetNodeType,
+    typeCode: string,
+  ): Promise<string | null> {
+    if (!typeCode) return null;
+    if (nodeType === AssetNodeType.ASSET) {
+      const defs = await this.prisma.assetTypeDefinition.findMany({
+        where: { code: typeCode, OR: [{ orgId }, { orgId: null }], deletedAt: null },
+        select: { orgId: true, shortCode: true },
+      });
+      return (defs.find((d) => d.orgId === orgId) ?? defs[0])?.shortCode ?? null;
+    }
+    const defs = await this.prisma.locationTypeDefinition.findMany({
+      where: { code: typeCode, OR: [{ orgId }, { orgId: null }], deletedAt: null },
+      select: { orgId: true, shortCode: true },
+    });
+    return (defs.find((d) => d.orgId === orgId) ?? defs[0])?.shortCode ?? null;
   }
 
   /** Valideer dat alle aanwezige FK-waarden bij de eigen org horen (no-op voor superuser). */
@@ -398,6 +425,34 @@ export class SyncService {
       const createData: Record<string, unknown> = { ...fields, id, orgId };
       if (cfg.injectCreatedBy) createData.createdBy = data.createdBy ?? user.id;
       if (cfg.nestedChild && childRows) createData[cfg.nestedChild.relation] = { create: childRows };
+
+      // AssetNode: nodeNumber is server-owned (zoals orgId) — nooit van de client
+      // (het zit niet in de allowed-whitelist). Ken het serverzijdig toe via de
+      // numbering-engine; LOCATION/ASSET kiezen elk hun eigen schema.
+      if (key === 'assetNodes') {
+        const nodeType =
+          String(data.nodeType) === AssetNodeType.LOCATION
+            ? AssetNodeType.LOCATION
+            : AssetNodeType.ASSET;
+        const typeCode = String(data.typeCode ?? '');
+        await this.numbering.runWithGeneratedNumber(
+          nodeType === AssetNodeType.LOCATION
+            ? NumberingModel.LOCATION_NODE
+            : NumberingModel.ASSET_NODE,
+          orgId,
+          {
+            loadContext: async () => ({
+              typeShortCode: await this.resolveTypeShortCode(orgId, nodeType, typeCode),
+            }),
+          },
+          (tx, nodeNumber) =>
+            tx.assetNode.create({
+              data: { ...createData, nodeNumber } as unknown as Prisma.AssetNodeUncheckedCreateInput,
+            }),
+        );
+        return { ...ref, status: 'success' };
+      }
+
       await model.create({ data: createData });
       return { ...ref, status: 'success' };
     }

@@ -40,6 +40,7 @@ const MANAGE_ROLES: Role[] = [Role.SUPERUSER, Role.ORG_ADMIN];
 
 const schema = z.object({
   name: z.string().min(1, 'Naam is verplicht'),
+  shortCode: z.string().optional(),
   description: z.string().optional(),
   icon: z.string().optional(),
   color: z.string().optional(),
@@ -81,6 +82,7 @@ export default function LocationTypeDetailPage() {
     if (locationType) {
       resetForm({
         name: locationType.name || '',
+        shortCode: locationType.shortCode || '',
         description: locationType.description || '',
         icon: locationType.icon || '',
         color: locationType.color || '',
@@ -128,6 +130,7 @@ export default function LocationTypeDetailPage() {
         id: id!,
         data: {
           name: data.name,
+          shortCode: data.shortCode || null,
           description: data.description || null,
           icon: data.icon || null,
           color: data.color || null,
@@ -222,6 +225,12 @@ export default function LocationTypeDetailPage() {
             {isEditing ? (
               <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
                 <Input label="Naam" {...register('name')} error={errors.name?.message} />
+                <Input
+                  label="Shortcode"
+                  placeholder="bijv. GEB"
+                  helperText="Gebruikt voor de [typecode]-placeholder in de locatie-nummering."
+                  {...register('shortCode')}
+                />
                 <div>
                   <label className="mb-1 block text-sm font-medium text-gray-700">Beschrijving</label>
                   <textarea
@@ -273,6 +282,7 @@ export default function LocationTypeDetailPage() {
               <dl className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <InfoField label="Naam" value={locationType.name} />
                 <InfoField label="Code" value={locationType.code} />
+                <InfoField label="Shortcode" value={locationType.shortCode} />
                 <InfoField
                   label="Kleur"
                   value={

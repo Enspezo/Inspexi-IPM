@@ -26,6 +26,14 @@
 
 De fase-secties hieronder zijn op deze bevindingen bijgewerkt (zie de ⓘ-notities).
 
+## Statusupdate — tussentijdse review na Fase 3–4 (juni 2026)
+
+**Fase 3 (sync) en Fase 4 (portal) zijn uitgevoerd** (nog te committen). Beide volgen het plan; sync staat op **contract v3**: `assetNodes`-entiteit (org-from-self, géén `path`/`depth`/`inspectionPlanId`/`locationId` in het contract), `findings` gerepareerd, `locationId` op het plan, en de vier executie-entiteiten (`visualInspections`/`measurementRecords`/`measurementSheetRecords`/`standaloneMeasurements`) met geneste `StandaloneMeasurementValue` (replace-on-write). De beide beslissingen zijn verwerkt: **`deletedAt` is via migratie** (`20260629140000_add_soft_delete_execution_records`) toegevoegd aan VisualInspection/MeasurementRecord/MeasurementSheetRecord, en alle vier entiteiten zitten in de sync-set. Extra (beter dan gevraagd): per-entiteit `fkChecks` voor cross-tenant + een `injectCreatedBy`-flag. De portal heeft een herbruikbare `TreeExplorer`, hooks via TanStack Query, `usePlanTree`+`inScope`, scope-locatie-manager, plattegrond-selector uit LOCATION-nodes, en een inspectie-boom + INSPECTION-velden op de CRM-locatiepagina.
+
+**Opgelost in deze review:** de **aanmaakvolgorde bij sync-push van `assetNodes`** (een kind dat vóór z'n ouder binnenkomt, faalde op de FK + path-trigger) wordt nu **server-side opgevangen** via een topologische sort van de batch (`orderAssetNodesParentFirst` in `sync.service.ts`, met unit-test `sync-order.spec.ts`); de cutover-doc beschrijft de waarborg + de aanbevolen PWA-volgorde.
+
+**Resterende kleine punten (zie Fase 5 + risico's):** portal leest findings/meetstaten nog via oude compat-params (`?assetId=`); `useInspectionLocations()` is dode code; Fase 3/4 staat nog ongecommit (incl. nieuwe migratie + `asset-tree/`).
+
 ---
 
 ## 1. Probleem in één alinea
@@ -497,10 +505,11 @@ Elke fase = één of enkele commits, los testbaar. Volgorde respecteert afhankel
 ### Fase 5 — Seed, tests, docs
 **Doel:** demo werkt end-to-end op het nieuwe model; CLAUDE.md klopt weer.
 
-- `prisma/seed.ts`: bouw een echte boom — wortel-LOCATION-node ↔ demo-CRM-Location, 1–2 sub-locaties, 2 assets; **niet** zelf `path`/`depth` zetten (de trigger doet dat — insert parents vóór children zodat de parentpath bestaat). Findings/metingen met `inspectionPlanId` + `assetNodeId`; demo-plan krijgt `locationId` + één `InspectionPlanLocation` scope-rij.
+- `prisma/seed.ts`: bouw een echte boom — wortel-LOCATION-node ↔ demo-CRM-Location, 1–2 sub-locaties, 2 assets; **niet** zelf `path`/`depth` zetten (de trigger doet dat — insert parents vóór children zodat de parentpath bestaat). Findings/metingen met `inspectionPlanId` + `assetNodeId`; demo-plan krijgt `locationId` + één `InspectionPlanLocation` scope-rij. Seed ook één `VisualInspection` + één `StandaloneMeasurement` (met `values`) zodat de demo álle nieuwe sync-entiteiten dekt.
 - Seed-opruimvolgorde let op **RESTRICT**-FK's: `InspectionPlanLocation` (asset_node_id RESTRICT) én `StandaloneMeasurement` (location_node_id RESTRICT) **vóór** `AssetNode`; de executierecords (VisualInspection/MeasurementRecord/Finding/MeasurementSheetRecord) cascaden op `assetNodeId`. AssetNode is zelf-referentieel → kinderen vóór ouders, of één `deleteMany` nadat alle RESTRICT-verwijzers weg zijn.
-- E2E: **behoud** de bestaande `assets.e2e`/`inspection-locations.e2e` (die testen nu de compat-wrappers tot de PWA-cutover) en **voeg** `asset-nodes.e2e` toe; `cross-tenant.e2e` uitbreiden met node-FK-aanvallen (vreemde `parentId`/`rootLocationId`/`assetNodeId`/scope-`assetNodeId` → 403).
-- `CLAUDE.md`: modellenaantal bijwerken, modulelijst (`asset-nodes` toegevoegd; `assets`/`inspection-locations` zijn nu wrappers), seed-opruimvolgorde, en gotchas: "assets zijn persistent, niet plan-gescopet" + "sync-mapper verwijst nog naar oud contract tot Fase 3".
+- E2E: **behoud** de bestaande `assets.e2e`/`inspection-locations.e2e` (die testen nu de compat-wrappers tot de PWA-cutover) en **voeg** `asset-nodes.e2e` toe; `cross-tenant.e2e` uitbreiden met node-FK-aanvallen (vreemde `parentId`/`rootLocationId`/`assetNodeId`/scope-`assetNodeId` → 403). Voeg een **sync-push ordering-e2e** toe: push een `assetNodes`-batch met een kind vóór z'n ouder → beide slagen (server sorteert parent-first via `orderAssetNodesParentFirst`). De unit-test daarvoor staat al in `sync-order.spec.ts`.
+- Opruimen: portal-AssetsTab van de oude compat-params (`?assetId=`, `/assets/:id/findings`) naar de node-endpoints brengen; dode `useInspectionLocations()` verwijderen.
+- `CLAUDE.md`: modellenaantal bijwerken, modulelijst (`asset-nodes` toegevoegd; `assets`/`inspection-locations` zijn nu wrappers), seed-opruimvolgorde, **sync-contract v3** (entiteiten + `deletedAt` op VI/MR/MSR), de asset-tree portal-componenten, en gotchas: "assets zijn persistent, niet plan-gescopet" + "assetNodes-push wordt server-side parent-first gesorteerd".
 
 > **Prompt 5 (seed + tests + docs):**
 > ```

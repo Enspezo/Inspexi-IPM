@@ -428,14 +428,14 @@ model Organization {
   // Inspectiedomein (Fase 1)
   normConfigurations       NormConfiguration[]
   inspectionPlans          InspectionPlan[]
-  assets                   Asset[]
+  assetNodes               AssetNode[]
+  inspectionPlanLocations  InspectionPlanLocation[]
   visualInspections        VisualInspection[]
   measurementRecords       MeasurementRecord[]
   findings                 Finding[]
   inspectionPhotos         Photo[]
   inspectionSignatures     Signature[]
   reports                  Report[]
-  inspectionLocations      InspectionLocation[]
   checklistItems           ChecklistItem[]
   checklists               Checklist[]
   categories               Category[]
@@ -630,26 +630,25 @@ model User {
   createdWorkOrders WorkOrder[]                 @relation("WorkOrderCreatedByUser")
 
   // Inspectiedomein (Fase 1)
-  assignedInspectionPlans    InspectionPlan[]               @relation("InspectionPlanAssignee")
-  reviewingInspectionPlans   InspectionPlan[]               @relation("InspectionPlanReviewer")
-  createdInspectionPlans     InspectionPlan[]               @relation("InspectionPlanCreatedBy")
-  modifiedInspectionPlans    InspectionPlan[]               @relation("InspectionPlanModifiedBy")
-  createdAssets              Asset[]                        @relation("AssetCreatedBy")
-  visualInspections          VisualInspection[]             @relation("VisualInspectionInspector")
-  measurementRecords         MeasurementRecord[]            @relation("MeasurementRecordInspector")
-  createdFindings            Finding[]                      @relation("FindingCreatedBy")
-  resolvedFindings           Finding[]                      @relation("FindingResolvedBy")
-  uploadedInspectionPhotos   Photo[]                        @relation("PhotoUploadedBy")
-  inspectionSignatures       Signature[]                    @relation("SignatoryUser")
-  approvedReports            Report[]                       @relation("ReportApprovedBy")
-  createdReports             Report[]                       @relation("ReportCreatedBy")
-  createdInspectionLocations InspectionLocation[]           @relation("InspectionLocationCreatedBy")
-  syncQueueItems             SyncQueue[]                    @relation("SyncQueueUser")
-  resolvedSyncItems          SyncQueue[]                    @relation("SyncResolvedBy")
-  deviceRegistrations        DeviceRegistration[]
-  inspectionMessages         InspectionMessage[]            @relation("MessageUser")
-  voiceUserPrompts           VoiceUserPrompt[]              @relation("VoiceUserPromptUser")
-  uploadedInspectionDocx     DocumentTemplateDocxRevision[] @relation("InspectionDocxRevisionUploadedBy")
+  assignedInspectionPlans  InspectionPlan[]               @relation("InspectionPlanAssignee")
+  reviewingInspectionPlans InspectionPlan[]               @relation("InspectionPlanReviewer")
+  createdInspectionPlans   InspectionPlan[]               @relation("InspectionPlanCreatedBy")
+  modifiedInspectionPlans  InspectionPlan[]               @relation("InspectionPlanModifiedBy")
+  createdAssetNodes        AssetNode[]                    @relation("AssetNodeCreatedBy")
+  visualInspections        VisualInspection[]             @relation("VisualInspectionInspector")
+  measurementRecords       MeasurementRecord[]            @relation("MeasurementRecordInspector")
+  createdFindings          Finding[]                      @relation("FindingCreatedBy")
+  resolvedFindings         Finding[]                      @relation("FindingResolvedBy")
+  uploadedInspectionPhotos Photo[]                        @relation("PhotoUploadedBy")
+  inspectionSignatures     Signature[]                    @relation("SignatoryUser")
+  approvedReports          Report[]                       @relation("ReportApprovedBy")
+  createdReports           Report[]                       @relation("ReportCreatedBy")
+  syncQueueItems           SyncQueue[]                    @relation("SyncQueueUser")
+  resolvedSyncItems        SyncQueue[]                    @relation("SyncResolvedBy")
+  deviceRegistrations      DeviceRegistration[]
+  inspectionMessages       InspectionMessage[]            @relation("MessageUser")
+  voiceUserPrompts         VoiceUserPrompt[]              @relation("VoiceUserPromptUser")
+  uploadedInspectionDocx   DocumentTemplateDocxRevision[] @relation("InspectionDocxRevisionUploadedBy")
 
   // Interne chat (REQ1)
   createdChatThreads ChatThread[]      @relation("ChatThreadCreatedBy")
@@ -730,13 +729,13 @@ model Contact {
   purchaseConditions     String?  @map("purchase_conditions")
   supplierRating         Boolean? @map("supplier_rating")
 
-  notes         String?
-  priceTableId  String?     @map("price_table_id") @db.Uuid
-  ownerId       String?     @map("owner_id") @db.Uuid
-  customFields  Json?       @map("custom_fields")
-  isDeleted     Boolean     @default(false) @map("is_deleted")
-  createdAt     DateTime    @default(now()) @map("created_at")
-  updatedAt     DateTime    @updatedAt @map("updated_at")
+  notes        String?
+  priceTableId String?  @map("price_table_id") @db.Uuid
+  ownerId      String?  @map("owner_id") @db.Uuid
+  customFields Json?    @map("custom_fields")
+  isDeleted    Boolean  @default(false) @map("is_deleted")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
 
   organization       Organization           @relation(fields: [orgId], references: [id])
   owner              User?                  @relation("ContactOwner", fields: [ownerId], references: [id])
@@ -868,6 +867,8 @@ model Location {
   planningItems          PlanningItem[]
   projects               Project[]
   locationContactPersons LocationContactPerson[]
+  inspectionPlans        InspectionPlan[]
+  assetNodeRoot          AssetNode?              @relation("AssetNodeRoot") // 1:1; de wortel van de inspectie-boom voor deze locatie
 
   @@index([contactId])
   @@index([locationTypeId])
@@ -2489,10 +2490,11 @@ model ClassificationOption {
 // ─── Inspectieplan (kern) ────────────────────────────────
 
 model InspectionPlan {
-  id        String  @id @default(uuid()) @db.Uuid
-  orgId     String  @map("org_id") @db.Uuid
-  contactId String  @map("contact_id") @db.Uuid // was clientId → Beheer Contact
-  projectId String? @map("project_id") @db.Uuid // Beheer Project
+  id         String  @id @default(uuid()) @db.Uuid
+  orgId      String  @map("org_id") @db.Uuid
+  contactId  String  @map("contact_id") @db.Uuid // was clientId → Beheer Contact
+  projectId  String? @map("project_id") @db.Uuid // Beheer Project
+  locationId String? @map("location_id") @db.Uuid // CRM-Location = hoofdlocatie / boom-wortel
 
   inspectionTemplateId String? @map("inspection_template_id") @db.Uuid
 
@@ -2541,6 +2543,7 @@ model InspectionPlan {
   organization            Organization        @relation(fields: [orgId], references: [id])
   contact                 Contact             @relation(fields: [contactId], references: [id])
   project                 Project?            @relation(fields: [projectId], references: [id])
+  location                Location?           @relation(fields: [locationId], references: [id])
   assignedUser            User?               @relation("InspectionPlanAssignee", fields: [assignedTo], references: [id])
   reviewer                User?               @relation("InspectionPlanReviewer", fields: [reviewerId], references: [id])
   installationResponsible ContactPerson?      @relation("PlanInstallationResponsible", fields: [installationResponsibleId], references: [id])
@@ -2548,8 +2551,10 @@ model InspectionPlan {
   lastModifiedByUser      User?               @relation("InspectionPlanModifiedBy", fields: [lastModifiedBy], references: [id])
   inspectionTemplate      InspectionTemplate? @relation(fields: [inspectionTemplateId], references: [id])
 
-  assets                  Asset[]
-  locations               InspectionLocation[]
+  scopeLocations          InspectionPlanLocation[]
+  visualInspections       VisualInspection[]
+  measurementRecords      MeasurementRecord[]
+  findings                Finding[]
   signatures              Signature[]
   reports                 Report[]
   measurementSheetRecords MeasurementSheetRecord[]
@@ -2564,29 +2569,44 @@ model InspectionPlan {
   @@index([orgId, statusCode])
   @@index([contactId])
   @@index([projectId])
+  @@index([locationId])
   @@index([assignedTo])
   @@index([orgId, updatedAt])
   @@map("imp_inspection_plans")
 }
 
-model Asset {
-  id               String  @id @default(uuid()) @db.Uuid
-  orgId            String  @map("org_id") @db.Uuid // denormaliseerd voor tenant-scope
-  inspectionPlanId String  @map("inspection_plan_id") @db.Uuid
-  parentAssetId    String? @map("parent_asset_id") @db.Uuid
-  locationId       String? @map("location_id") @db.Uuid
+enum AssetNodeType {
+  LOCATION
+  ASSET
+}
 
-  assetType           String  @map("asset_type")
-  name                String
-  identifier          String?
-  locationDescription String? @map("location_description")
+model AssetNode {
+  id    String @id @default(uuid()) @db.Uuid
+  orgId String @map("org_id") @db.Uuid // gedenormaliseerd voor tenant-scope + sync-org
 
-  sortOrder     Int     @default(0) @map("sort_order")
-  treePath      String? @map("tree_path")
-  statusCode    String  @default("new") @map("status") // → imp_asset_status_types.code
-  technicalData Json    @default("{}") @map("technical_data")
+  nodeType AssetNodeType @map("node_type")
+
+  // Boomstructuur
+  parentId       String? @map("parent_id") @db.Uuid // NULL = wortel (altijd een LOCATION)
+  rootLocationId String? @unique @map("root_location_id") @db.Uuid // alleen op de wortel: 1:1 FK → CRM-Location; NULL op niet-root
+
+  // Identiteit & type (code-string, net als nu)
+  typeCode   String  @map("type_code") // → AssetTypeDefinition.code (ASSET) of LocationTypeDefinition.code (LOCATION)
+  name       String
+  identifier String?
+
+  // Inhoud
+  description   String? // locatie-omschrijving / asset-locationDescription
+  technicalData Json    @default("{}") @map("technical_data") // custom velden per type-definitie
+  statusCode    String  @default("new") @map("status") // → imp_asset_status_types.code (vnl. voor ASSET)
   notes         String?
 
+  // Materialised path (PostgreSQL ltree)
+  sortOrder Int                   @default(0) @map("sort_order")
+  path      Unsupported("ltree")? // labels = hyphen-stripped UUIDs; gevuld via DB-trigger
+  depth     Int                   @default(0)
+
+  // Audit/sync
   createdAt DateTime  @default(now()) @map("created_at")
   updatedAt DateTime  @updatedAt @map("updated_at")
   syncedAt  DateTime? @map("synced_at")
@@ -2594,29 +2614,53 @@ model Asset {
   deviceId  String?   @map("device_id")
   deletedAt DateTime? @map("deleted_at")
 
-  organization            Organization             @relation(fields: [orgId], references: [id])
-  inspectionPlan          InspectionPlan           @relation(fields: [inspectionPlanId], references: [id], onDelete: Cascade)
-  parentAsset             Asset?                   @relation("AssetHierarchy", fields: [parentAssetId], references: [id])
-  childAssets             Asset[]                  @relation("AssetHierarchy")
-  location                InspectionLocation?      @relation("AssetLocation", fields: [locationId], references: [id])
-  createdByUser           User?                    @relation("AssetCreatedBy", fields: [createdBy], references: [id])
+  organization  Organization @relation(fields: [orgId], references: [id])
+  rootLocation  Location?    @relation("AssetNodeRoot", fields: [rootLocationId], references: [id]) // alleen op de wortel
+  parent        AssetNode?   @relation("AssetNodeHierarchy", fields: [parentId], references: [id])
+  children      AssetNode[]  @relation("AssetNodeHierarchy")
+  createdByUser User?        @relation("AssetNodeCreatedBy", fields: [createdBy], references: [id])
+
+  // Uitvoerings-back-relations (alleen relevant voor ASSET-nodes, m.u.v. image op LOCATION-nodes)
   visualInspections       VisualInspection[]
   measurementRecords      MeasurementRecord[]
   findings                Finding[]
   measurementSheetRecords MeasurementSheetRecord[]
   markers                 LocationImageMarker[]
   linkedMeasurements      StandaloneMeasurement[]  @relation("LinkedAsset")
+  image                   LocationImage? // floor-plan op een LOCATION-node
+  standaloneMeasurements  StandaloneMeasurement[]  @relation("NodeStandalone")
+  planScopes              InspectionPlanLocation[] // inspecties waarvoor deze LOCATION-node in scope is
 
   @@index([orgId])
-  @@index([inspectionPlanId])
+  @@index([parentId])
   @@index([orgId, updatedAt])
-  @@map("imp_assets")
+  // rootLocationId is al geïndexeerd via @unique
+  // GiST-index op `path` kan Prisma niet uitdrukken voor een Unsupported-veld → handmatig in de migratie:
+  //   CREATE INDEX imp_asset_nodes_path_gist ON imp_asset_nodes USING GIST (path);
+  @@map("imp_asset_nodes")
+}
+
+model InspectionPlanLocation {
+  id               String  @id @default(uuid()) @db.Uuid
+  orgId            String  @map("org_id") @db.Uuid
+  inspectionPlanId String  @map("inspection_plan_id") @db.Uuid
+  assetNodeId      String  @map("asset_node_id") @db.Uuid // moet nodeType = LOCATION zijn
+  isPrimary        Boolean @default(false) @map("is_primary")
+
+  organization   Organization   @relation(fields: [orgId], references: [id])
+  inspectionPlan InspectionPlan @relation(fields: [inspectionPlanId], references: [id], onDelete: Cascade)
+  assetNode      AssetNode      @relation(fields: [assetNodeId], references: [id])
+
+  @@unique([inspectionPlanId, assetNodeId])
+  @@index([assetNodeId])
+  @@map("imp_inspection_plan_locations")
 }
 
 model VisualInspection {
-  id      String @id @default(uuid()) @db.Uuid
-  orgId   String @map("org_id") @db.Uuid
-  assetId String @map("asset_id") @db.Uuid
+  id               String @id @default(uuid()) @db.Uuid
+  orgId            String @map("org_id") @db.Uuid
+  assetNodeId      String @map("asset_node_id") @db.Uuid
+  inspectionPlanId String @map("inspection_plan_id") @db.Uuid
 
   status           InspectionExecStatus @default(not_started)
   checklistResults Json                 @default("[]") @map("checklist_results")
@@ -2630,20 +2674,23 @@ model VisualInspection {
   syncedAt  DateTime? @map("synced_at")
   deviceId  String?   @map("device_id")
 
-  organization Organization @relation(fields: [orgId], references: [id])
-  asset        Asset        @relation(fields: [assetId], references: [id], onDelete: Cascade)
-  inspector    User?        @relation("VisualInspectionInspector", fields: [inspectorId], references: [id])
-  findings     Finding[]
+  organization   Organization   @relation(fields: [orgId], references: [id])
+  assetNode      AssetNode      @relation(fields: [assetNodeId], references: [id], onDelete: Cascade)
+  inspectionPlan InspectionPlan @relation(fields: [inspectionPlanId], references: [id], onDelete: Cascade)
+  inspector      User?          @relation("VisualInspectionInspector", fields: [inspectorId], references: [id])
+  findings       Finding[]
 
   @@index([orgId])
-  @@index([assetId])
+  @@index([assetNodeId])
+  @@index([inspectionPlanId])
   @@map("imp_visual_inspections")
 }
 
 model MeasurementRecord {
-  id      String @id @default(uuid()) @db.Uuid
-  orgId   String @map("org_id") @db.Uuid
-  assetId String @map("asset_id") @db.Uuid
+  id               String @id @default(uuid()) @db.Uuid
+  orgId            String @map("org_id") @db.Uuid
+  assetNodeId      String @map("asset_node_id") @db.Uuid
+  inspectionPlanId String @map("inspection_plan_id") @db.Uuid
 
   status       InspectionExecStatus @default(not_started)
   measurements Json                 @default("[]")
@@ -2661,20 +2708,23 @@ model MeasurementRecord {
   syncedAt  DateTime? @map("synced_at")
   deviceId  String?   @map("device_id")
 
-  organization Organization @relation(fields: [orgId], references: [id])
-  asset        Asset        @relation(fields: [assetId], references: [id], onDelete: Cascade)
-  inspector    User?        @relation("MeasurementRecordInspector", fields: [inspectorId], references: [id])
-  findings     Finding[]
+  organization   Organization   @relation(fields: [orgId], references: [id])
+  assetNode      AssetNode      @relation(fields: [assetNodeId], references: [id], onDelete: Cascade)
+  inspectionPlan InspectionPlan @relation(fields: [inspectionPlanId], references: [id], onDelete: Cascade)
+  inspector      User?          @relation("MeasurementRecordInspector", fields: [inspectorId], references: [id])
+  findings       Finding[]
 
   @@index([orgId])
-  @@index([assetId])
+  @@index([assetNodeId])
+  @@index([inspectionPlanId])
   @@map("imp_measurement_records")
 }
 
 model Finding {
   id                  String  @id @default(uuid()) @db.Uuid
   orgId               String  @map("org_id") @db.Uuid
-  assetId             String  @map("asset_id") @db.Uuid
+  assetNodeId         String  @map("asset_node_id") @db.Uuid
+  inspectionPlanId    String  @map("inspection_plan_id") @db.Uuid
   visualInspectionId  String? @map("visual_inspection_id") @db.Uuid
   measurementRecordId String? @map("measurement_record_id") @db.Uuid
   findingTemplateId   String? @map("finding_template_id") @db.Uuid
@@ -2706,7 +2756,8 @@ model Finding {
   deletedAt DateTime? @map("deleted_at")
 
   organization      Organization          @relation(fields: [orgId], references: [id])
-  asset             Asset                 @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  assetNode         AssetNode             @relation(fields: [assetNodeId], references: [id], onDelete: Cascade)
+  inspectionPlan    InspectionPlan        @relation(fields: [inspectionPlanId], references: [id], onDelete: Cascade)
   visualInspection  VisualInspection?     @relation(fields: [visualInspectionId], references: [id])
   measurementRecord MeasurementRecord?    @relation(fields: [measurementRecordId], references: [id])
   findingTemplate   FindingTemplate?      @relation(fields: [findingTemplateId], references: [id])
@@ -2716,7 +2767,8 @@ model Finding {
   markers           LocationImageMarker[]
 
   @@index([orgId])
-  @@index([assetId])
+  @@index([assetNodeId])
+  @@index([inspectionPlanId])
   @@index([findingTemplateId])
   @@index([orgId, statusCode])
   @@map("imp_findings")
@@ -2830,44 +2882,6 @@ model Report {
   @@index([orgId])
   @@index([inspectionPlanId])
   @@map("imp_reports")
-}
-
-// ─── Inspectie-locaties (hernoemd t.o.v. Beheer's Location) ──
-
-model InspectionLocation {
-  id               String  @id @default(uuid()) @db.Uuid
-  orgId            String  @map("org_id") @db.Uuid
-  inspectionPlanId String  @map("inspection_plan_id") @db.Uuid
-  parentLocationId String? @map("parent_location_id") @db.Uuid
-
-  locationType  String  @map("location_type")
-  name          String
-  identifier    String?
-  description   String?
-  sortOrder     Int     @default(0) @map("sort_order")
-  treePath      String? @map("tree_path")
-  technicalData Json    @default("{}") @map("technical_data")
-  notes         String?
-
-  createdAt DateTime  @default(now()) @map("created_at")
-  updatedAt DateTime  @updatedAt @map("updated_at")
-  syncedAt  DateTime? @map("synced_at")
-  createdBy String?   @map("created_by") @db.Uuid
-  deviceId  String?   @map("device_id")
-  deletedAt DateTime? @map("deleted_at")
-
-  organization           Organization            @relation(fields: [orgId], references: [id])
-  inspectionPlan         InspectionPlan          @relation(fields: [inspectionPlanId], references: [id], onDelete: Cascade)
-  parentLocation         InspectionLocation?     @relation("InspectionLocationHierarchy", fields: [parentLocationId], references: [id])
-  childLocations         InspectionLocation[]    @relation("InspectionLocationHierarchy")
-  createdByUser          User?                   @relation("InspectionLocationCreatedBy", fields: [createdBy], references: [id])
-  assets                 Asset[]                 @relation("AssetLocation")
-  image                  LocationImage?
-  standaloneMeasurements StandaloneMeasurement[]
-
-  @@index([orgId])
-  @@index([inspectionPlanId])
-  @@map("imp_inspection_locations")
 }
 
 // ─── Checklistbeheer ─────────────────────────────────────
@@ -3612,11 +3626,11 @@ model MeasurementSheetVersionHistory {
 }
 
 model MeasurementSheetRecord {
-  id               String  @id @default(uuid()) @db.Uuid
-  orgId            String  @map("org_id") @db.Uuid
-  templateId       String  @map("template_id") @db.Uuid
-  assetId          String  @map("asset_id") @db.Uuid
-  inspectionPlanId String? @map("inspection_plan_id") @db.Uuid
+  id               String @id @default(uuid()) @db.Uuid
+  orgId            String @map("org_id") @db.Uuid
+  templateId       String @map("template_id") @db.Uuid
+  assetNodeId      String @map("asset_node_id") @db.Uuid
+  inspectionPlanId String @map("inspection_plan_id") @db.Uuid
 
   templateVersion   String                       @map("template_version")
   templateSnapshot  Json                         @map("template_snapshot")
@@ -3638,12 +3652,12 @@ model MeasurementSheetRecord {
 
   organization   Organization             @relation(fields: [orgId], references: [id])
   template       MeasurementSheetTemplate @relation(fields: [templateId], references: [id])
-  asset          Asset                    @relation(fields: [assetId], references: [id], onDelete: Cascade)
-  inspectionPlan InspectionPlan?          @relation(fields: [inspectionPlanId], references: [id])
+  assetNode      AssetNode                @relation(fields: [assetNodeId], references: [id], onDelete: Cascade)
+  inspectionPlan InspectionPlan           @relation(fields: [inspectionPlanId], references: [id])
 
   @@index([orgId])
   @@index([templateId])
-  @@index([assetId])
+  @@index([assetNodeId])
   @@index([inspectionPlanId])
   @@index([status])
   @@map("imp_measurement_sheet_records")
@@ -3652,9 +3666,9 @@ model MeasurementSheetRecord {
 // ─── Location images & standalone measurements ───────────
 
 model LocationImage {
-  id         String @id @default(uuid()) @db.Uuid
-  orgId      String @map("org_id") @db.Uuid
-  locationId String @unique @map("location_id") @db.Uuid
+  id     String @id @default(uuid()) @db.Uuid
+  orgId  String @map("org_id") @db.Uuid
+  nodeId String @unique @map("node_id") @db.Uuid // LOCATION-node (1:1)
 
   storagePath      String  @map("storage_path")
   thumbnailPath    String? @map("thumbnail_path")
@@ -3671,11 +3685,11 @@ model LocationImage {
   deviceId  String?   @map("device_id")
 
   organization Organization          @relation(fields: [orgId], references: [id])
-  location     InspectionLocation    @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  node         AssetNode             @relation(fields: [nodeId], references: [id], onDelete: Cascade)
   markers      LocationImageMarker[]
 
   @@index([orgId])
-  @@index([locationId])
+  @@index([nodeId])
   @@map("imp_location_images")
 }
 
@@ -3688,7 +3702,7 @@ model LocationImageMarker {
   positionY  Float      @map("position_y")
   markerType MarkerType @map("marker_type")
 
-  assetId                 String? @map("asset_id") @db.Uuid
+  assetNodeId             String? @map("asset_node_id") @db.Uuid
   findingId               String? @map("finding_id") @db.Uuid
   standaloneMeasurementId String? @map("standalone_measurement_id") @db.Uuid
 
@@ -3705,13 +3719,13 @@ model LocationImageMarker {
 
   organization          Organization           @relation(fields: [orgId], references: [id])
   locationImage         LocationImage          @relation(fields: [locationImageId], references: [id], onDelete: Cascade)
-  asset                 Asset?                 @relation(fields: [assetId], references: [id], onDelete: SetNull)
+  assetNode             AssetNode?             @relation(fields: [assetNodeId], references: [id], onDelete: SetNull)
   finding               Finding?               @relation(fields: [findingId], references: [id], onDelete: SetNull)
   standaloneMeasurement StandaloneMeasurement? @relation(fields: [standaloneMeasurementId], references: [id], onDelete: SetNull)
 
   @@index([orgId])
   @@index([locationImageId])
-  @@index([assetId])
+  @@index([assetNodeId])
   @@index([findingId])
   @@index([standaloneMeasurementId])
   @@map("imp_location_image_markers")
@@ -3721,12 +3735,12 @@ model StandaloneMeasurement {
   id               String @id @default(uuid()) @db.Uuid
   orgId            String @map("org_id") @db.Uuid
   inspectionPlanId String @map("inspection_plan_id") @db.Uuid
-  locationId       String @map("location_id") @db.Uuid
+  locationNodeId   String @map("location_node_id") @db.Uuid // LOCATION-node
 
-  measurementType String  @map("measurement_type")
-  description     String?
-  linkedAssetId   String? @map("linked_asset_id") @db.Uuid
-  sampleId        String? @map("sample_id") @db.Uuid
+  measurementType   String  @map("measurement_type")
+  description       String?
+  linkedAssetNodeId String? @map("linked_asset_node_id") @db.Uuid
+  sampleId          String? @map("sample_id") @db.Uuid
 
   createdAt DateTime  @default(now()) @map("created_at")
   updatedAt DateTime  @updatedAt @map("updated_at")
@@ -3735,17 +3749,17 @@ model StandaloneMeasurement {
   deviceId  String?   @map("device_id")
   deletedAt DateTime? @map("deleted_at")
 
-  organization   Organization                 @relation(fields: [orgId], references: [id])
-  inspectionPlan InspectionPlan               @relation(fields: [inspectionPlanId], references: [id], onDelete: Cascade)
-  location       InspectionLocation           @relation(fields: [locationId], references: [id])
-  linkedAsset    Asset?                       @relation("LinkedAsset", fields: [linkedAssetId], references: [id])
-  values         StandaloneMeasurementValue[]
-  markers        LocationImageMarker[]
+  organization    Organization                 @relation(fields: [orgId], references: [id])
+  inspectionPlan  InspectionPlan               @relation(fields: [inspectionPlanId], references: [id], onDelete: Cascade)
+  locationNode    AssetNode                    @relation("NodeStandalone", fields: [locationNodeId], references: [id])
+  linkedAssetNode AssetNode?                   @relation("LinkedAsset", fields: [linkedAssetNodeId], references: [id])
+  values          StandaloneMeasurementValue[]
+  markers         LocationImageMarker[]
 
   @@index([orgId])
   @@index([inspectionPlanId])
-  @@index([locationId])
-  @@index([linkedAssetId])
+  @@index([locationNodeId])
+  @@index([linkedAssetNodeId])
   @@map("imp_standalone_measurements")
 }
 

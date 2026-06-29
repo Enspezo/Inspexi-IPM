@@ -424,10 +424,13 @@ Elke fase = één of enkele commits, los testbaar. Volgorde respecteert afhankel
 
 - `sync-mapper.ts`: hernoem de `assets`-entiteit naar `assetNodes` (delegate is al `assetNode`); zet `org: { from: 'self' }`; vervang de `allowed`-lijst door node-velden (`parentId`, `rootLocationId` (alleen op roots), `nodeType`, `typeCode`, `name`, `identifier`, `description`, `technicalData`, `statusCode`, `notes`, `sortOrder`, `createdBy`, `deviceId`). `path`/`depth` zitten **niet** in de allowed-lijst (trigger-onderhouden).
 - `findings`-entiteit repareren: `org: { from: 'self' }` (Finding heeft een eigen `orgId`), hernoem `assetId` → `assetNodeId` in `allowed`, voeg `inspectionPlanId` toe. Verbreed de union-types `EntityConfig.model` / `singular` / `org.parentModel` zodat `'assetNode'` is toegestaan en verwijder het verdwenen `asset`-parent.
-- Voeg `locationId` toe aan de `inspectionPlans`-`allowed` (de PWA moet de hoofdlocatie meesturen, anders kan een gesyncte plan geen werk-boom/parent oplossen — zie transitierisico in de statusupdate).
-- **Beslissing (open):** nemen we `visualInspections` / `measurementRecords` / `measurementSheetRecords` / `standaloneMeasurements` óók als sync-entiteiten op (ze dragen nu `inspectionPlanId` + `assetNodeId` en ontstaan in de PWA)? Nu zitten ze niet in de sync-set. Zo ja: nieuwe entiteiten met `org: { from: 'self' }` + `assetNodeId`/`inspectionPlanId` in `allowed`.
+- Voeg `locationId` toe aan de `inspectionPlans`-`allowed` (**besloten**: de PWA stuurt de hoofdlocatie verplicht mee, anders kan een gesyncte plan geen werk-boom/parent oplossen — zie transitierisico in de statusupdate).
+- **Besloten — uitbreiden sync-set:** voeg `visualInspections`, `measurementRecords`, `measurementSheetRecords` en `standaloneMeasurements` toe als sync-entiteiten (`org: { from: 'self' }`, met `assetNodeId` + `inspectionPlanId` in `allowed`). Aandachtspunten bij implementatie:
+  - **Soft-delete-gat:** `VisualInspection`, `MeasurementRecord` en `MeasurementSheetRecord` hebben (nog) géén `deletedAt`, terwijl het sync-contract tombstones verwacht (`softDelete: true`). Kies: óf `deletedAt` toevoegen aan die drie modellen (kleine migratie — aanbevolen voor consistentie), óf ze als create/update-only syncen (geen delete-propagatie). `StandaloneMeasurement` en `Finding` hebben al `deletedAt`.
+  - **Geneste waarden:** `StandaloneMeasurement` heeft kind-rijen `StandaloneMeasurementValue` — bepaal of die als geneste payload meereizen of als eigen sync-entiteit.
+  - `dateFields` per entiteit meegeven (bv. `startedAt`/`completedAt`/`calibrationDate`).
 - Versiebump van het sync-contract (bv. `v2.1`) met een korte migratienotitie.
-- **Verplichte deliverable: PWA-cutoverhandleiding** `docs/fase3/PWA-CUTOVER-ASSET-NODE.md` — nieuw contract (entiteit `assetNodes`, org-from-self, oude→nieuwe veldnamen `parentAssetId→parentId` / `assetType→typeCode` / `locationDescription→description`, géén `inspectionPlanId`/`locationId` meer op de node, ltree-`path` niet in het contract), de Dexie-migratie (v9 → v10: `assets` + `locations` stores samenvoegen tot `assetNodes`), offline-aanmaken van assets zónder plan-koppeling (met `rootLocationId`/`parentId`), `locationId` op het plan, en de stap-voor-stap cutovervolgorde + rollback.
+- **Verplichte deliverable: PWA-cutoverhandleiding** `docs/fase3/PWA-CUTOVER-ASSET-NODE.md` — nieuw contract (entiteit `assetNodes`, org-from-self, oude→nieuwe veldnamen `parentAssetId→parentId` / `assetType→typeCode` / `locationDescription→description`, géén `inspectionPlanId`/`locationId` meer op de node, ltree-`path` niet in het contract), de Dexie-migratie (v9 → v10: `assets` + `locations` stores samenvoegen tot `assetNodes`), offline-aanmaken van assets zónder plan-koppeling (met `rootLocationId`/`parentId`), `locationId` op het plan, de vier nieuwe executie-entiteiten (`visualInspections`/`measurementRecords`/`measurementSheetRecords`/`standaloneMeasurements`) met `assetNodeId`+`inspectionPlanId`, en de stap-voor-stap cutovervolgorde + rollback.
 - **Companion-taak in `../Inspexi-App`** (aparte repo, branch `feat/pwa-v2-sync-contract`): de cutover zelf uitvoeren volgens die handleiding.
 
 > **Prompt 3 (backend sync):**
@@ -443,9 +446,13 @@ Elke fase = één of enkele commits, los testbaar. Volgorde respecteert afhankel
 > - Fix the `findings` entity: org { from: 'self' } (Finding has orgId), rename assetId -> assetNodeId in
 >   allowed, add inspectionPlanId. Widen the EntityConfig.model / singular / org.parentModel unions to allow
 >   'assetNode' and drop the removed 'asset' parent.
-> - Add locationId to the inspectionPlans allowed list (PWA must send the hoofdlocatie).
-> - Decide with me whether to ADD visualInspections / measurementRecords / measurementSheetRecords /
->   standaloneMeasurements as sync entities (org from self, assetNodeId + inspectionPlanId in allowed).
+> - Add locationId to the inspectionPlans allowed list (PWA must send the hoofdlocatie — required).
+> - ADD four execution sync entities: visualInspections, measurementRecords, measurementSheetRecords,
+>   standaloneMeasurements (org { from: 'self' }, with assetNodeId + inspectionPlanId in allowed, plus their
+>   own scalar fields and dateFields). NOTE: VisualInspection / MeasurementRecord / MeasurementSheetRecord
+>   have NO deletedAt column yet but the sync contract assumes softDelete tombstones — add a deletedAt column
+>   to those three models (small migration, preferred) OR make them create/update-only sync entities; flag
+>   which you chose. Decide how StandaloneMeasurementValue child rows travel (nested payload vs own entity).
 > Bump the sync contract version. Update sync unit/e2e tests. Then WRITE the cutover guide at
 > docs/fase3/PWA-CUTOVER-ASSET-NODE.md covering: the new contract (assetNodes entity, org-from-self, the
 > old->new field renames parentAssetId->parentId / assetType->typeCode / locationDescription->description,

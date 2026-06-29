@@ -275,7 +275,9 @@ export class SyncService {
   async push(user: User, dto: PushDto) {
     const orgId = requireOrg(user);
     const results: OpResult[] = [];
-    const processed: Record<string, number> = { chatMessages: 0 };
+    // Dynamisch over alle v3-entiteiten (incl. assetNodes); de chat-keys worden door
+    // de SYNC_ENTITIES-loop niet gedekt en seeden we expliciet zodat geen counter mist.
+    const processed: Record<string, number> = { chatThreads: 0, chatMessages: 0, presence: 0 };
     for (const key of Object.keys(SYNC_ENTITIES)) processed[key] = 0;
 
     for (const key of Object.keys(SYNC_ENTITIES) as SyncEntityKey[]) {
@@ -300,15 +302,34 @@ export class SyncService {
       }
     }
 
+    // Additief: chat-threads. Bewust NIET via de generieke mutator — ze vereisen
+    // membership-autorisatie + deterministische dedup — dus delegeren we naar
+    // ChatService (idempotent op client-UUID). Verwerk threads VÓÓR berichten,
+    // zodat een in dezelfde push aangemaakte thread bestaat als z'n berichten
+    // worden toegepast.
+    for (const change of dto.changes.chatThreads ?? []) {
+      try {
+        const r = await this.chat.applySyncThread(user, change.operation, change.data);
+        results.push({ entityType: 'chatThread', entityId: r.id, status: 'success' });
+        processed.chatThreads++;
+      } catch (e: any) {
+        results.push({
+          entityType: 'chatThread',
+          entityId: String(change.data.id ?? ''),
+          status: 'failed',
+          error: e?.message ?? 'Onbekende fout',
+        });
+      }
+    }
+
     // Additief (REQ1 PR2): chat-berichten. Bewust NIET via de generieke mutator —
     // ze vereisen membership-autorisatie + notificatie-dispatch — dus delegeren we
     // naar ChatService (idempotent op client-id).
-    let chatMessagesProcessed = 0;
     for (const change of dto.changes.chatMessages ?? []) {
       try {
         const r = await this.chat.applySyncMessage(user, change.operation, change.data);
         results.push({ entityType: 'chatMessage', entityId: r.id, status: 'success' });
-        chatMessagesProcessed++;
+        processed.chatMessages++;
       } catch (e: any) {
         results.push({
           entityType: 'chatMessage',
@@ -318,7 +339,23 @@ export class SyncService {
         });
       }
     }
-    processed.chatMessages = chatMessagesProcessed;
+
+    // Additief: presence. De gebruiker komt uit de JWT; de payload bepaalt enkel
+    // status + notitie.
+    for (const change of dto.changes.presence ?? []) {
+      try {
+        const r = await this.chat.applySyncPresence(user, change.data);
+        results.push({ entityType: 'presence', entityId: r.id, status: 'success' });
+        processed.presence++;
+      } catch (e: any) {
+        results.push({
+          entityType: 'presence',
+          entityId: String(change.data.id ?? ''),
+          status: 'failed',
+          error: e?.message ?? 'Onbekende fout',
+        });
+      }
+    }
 
     return {
       processed,

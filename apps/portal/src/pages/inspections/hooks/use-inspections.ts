@@ -39,6 +39,15 @@ export function useInspectionPlan(id: string) {
   });
 }
 
+export function useCreateInspectionPlan() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: Record<string, unknown>) =>
+      apiClient.post<InspectionPlan>('/inspection-plans', data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['inspection-plans'] }),
+  });
+}
+
 export function useUpdateInspectionPlan() {
   const qc = useQueryClient();
   return useMutation({

@@ -60,6 +60,19 @@ export class PushChangesGroupDto {
   @ApiPropertyOptional({ type: [EntityChangeDto] })
   @IsOptional() @IsArray() @ValidateNested({ each: true }) @Type(() => EntityChangeDto)
   chatMessages?: EntityChangeDto[];
+
+  // Additief: chat-threads (PWA stuurt deze bij het offline aanmaken van een
+  // 1-op-1 gesprek). Idempotent geadopteerd op client-UUID via ChatService —
+  // moet vóór chatMessages verwerkt worden zodat de thread bestaat.
+  @ApiPropertyOptional({ type: [EntityChangeDto] })
+  @IsOptional() @IsArray() @ValidateNested({ each: true }) @Type(() => EntityChangeDto)
+  chatThreads?: EntityChangeDto[];
+
+  // Additief: presence (eigen beschikbaarheidsstatus). De gebruiker komt altijd
+  // uit de JWT; de payload bepaalt alleen status + notitie.
+  @ApiPropertyOptional({ type: [EntityChangeDto] })
+  @IsOptional() @IsArray() @ValidateNested({ each: true }) @Type(() => EntityChangeDto)
+  presence?: EntityChangeDto[];
 }
 
 export class PushDto {

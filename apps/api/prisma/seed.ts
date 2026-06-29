@@ -1,4 +1,4 @@
-import { PrismaClient, Role, ContactType, LogType, PriceType, RequestSource, RequestStatus, Priority, QuoteStatus, NotificationType, PlanningStatus, AcceptanceStatus, ProjectStatus, AssetFieldType, ChecklistStatus, TemplateStatus, MeasurementSheetTemplateStatus, MeasurementSheetFieldType, FindingInspectionType, DocumentType, DocumentEntityType, TemplateMode, SectionType, ClientUserStatus, ClientAccessRole, GeneratedDocumentStatus, SignatureStatus, MarkerType, MeasurementSheetRecordStatus, PassFailOperator, LocationTypeScope, Availability, ChatThreadType, ChatThreadStatus, ContactDisplayMode } from '@prisma/client';
+import { PrismaClient, Role, ContactType, LogType, PriceType, RequestSource, RequestStatus, Priority, QuoteStatus, NotificationType, PlanningStatus, AcceptanceStatus, ProjectStatus, AssetFieldType, ChecklistStatus, TemplateStatus, MeasurementSheetTemplateStatus, MeasurementSheetFieldType, FindingInspectionType, DocumentType, DocumentEntityType, TemplateMode, SectionType, ClientUserStatus, ClientAccessRole, GeneratedDocumentStatus, SignatureStatus, MarkerType, MeasurementSheetRecordStatus, InspectionExecStatus, PassFailOperator, LocationTypeScope, Availability, ChatThreadType, ChatThreadStatus, ContactDisplayMode } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { randomUUID } from 'crypto';
 import * as fs from 'fs';
@@ -2724,6 +2724,47 @@ async function main() {
     '  ✓ Demo AssetNode-boom: hoofdlocatie → Verdieping 1 (scope) → 2 assets + 2 findings',
   );
 
+  // Visuele inspectie op asset1 (completed). VisualInspection heeft GEEN createdBy-kolom.
+  await prisma.visualInspection.create({
+    data: {
+      orgId: org1.id,
+      assetNodeId: asset1.id,
+      inspectionPlanId: demoPlan.id,
+      status: InspectionExecStatus.completed,
+      checklistResults: [
+        { itemCode: 'cover-present', label: 'Afdekking aanwezig', result: 'fail' },
+        { itemCode: 'labeling', label: 'Bekabeling gelabeld', result: 'pass' },
+        { itemCode: 'earthing', label: 'Aarding aanwezig', result: 'pass' },
+      ] as any,
+      inspectorId: inspecteurId,
+      startedAt: new Date('2026-06-15T10:30:00Z'),
+      completedAt: new Date('2026-06-15T10:45:00Z'),
+      deviceId: 'demo-device-001',
+    },
+  });
+
+  // Standalone-meting geworteld op een LOCATION-node (Verdieping 1), gekoppeld aan asset1.
+  await prisma.standaloneMeasurement.create({
+    data: {
+      orgId: org1.id,
+      inspectionPlanId: demoPlan.id,
+      locationNodeId: floorNode.id,
+      measurementType: 'isolatieweerstand',
+      description: 'Steekproef isolatieweerstand op verdieping 1',
+      linkedAssetNodeId: asset1.id,
+      createdBy: inspecteurId,
+      deviceId: 'demo-device-001',
+      values: {
+        create: [
+          { fieldName: 'R_iso', fieldType: 'number', value: '210', unit: 'MΩ', passFailCode: 'pass' },
+          { fieldName: 'U_test', fieldType: 'number', value: '500', unit: 'V' },
+          { fieldName: 'Opmerking', fieldType: 'text', value: 'Meting binnen norm' },
+        ],
+      },
+    },
+  });
+  console.log('  ✓ Visuele inspectie (asset1) + standalone-meting (Verdieping 1 → asset1, 3 waarden)');
+
   // Plattegrond op de root-locatie: genereer een echte 800x600 PNG en schrijf 'm naar
   // de lokale storage (UPLOAD_DIR), zodat de afbeelding in het portal daadwerkelijk
   // rendert. Key-patroon = location-images.service: `${orgId}/${uuid}-${filename}`.
@@ -2859,7 +2900,7 @@ async function main() {
     },
   });
   console.log('  ✓ Meetstaat-records (2: asset1 geslaagd, asset2 afgekeurd op groep 3)');
-  console.log('  → Demo-inspectie compleet: + 2 locaties, 1 plattegrond + 3 markers, 2 meetstaat-records');
+  console.log('  → Demo-inspectie compleet: + 2 locaties, 1 plattegrond + 3 markers, 2 meetstaat-records, 1 visuele inspectie, 1 standalone-meting');
 
   // ─── Meetmiddelen + kalibraties (demo) ─────────────────
   // Drie meetmiddelen met afgeleide statussen: binnenkort verlopend, verlopen en geldig.

@@ -97,6 +97,14 @@ describe('Sync v2 round-trip (e2e)', () => {
       // Children first (creates write auditLog rows for audited models).
       await prisma.photo.deleteMany({ where: { orgId: { in: orgIds } } });
       await prisma.finding.deleteMany({ where: { orgId: { in: orgIds } } });
+      // Execution entities. standaloneMeasurement RESTRICTs on locationNodeId, so it
+      // (its values cascade) must go before assetNode. The sheet-template has no orgId
+      // and is RESTRICT-referenced by its records → delete records first, then template.
+      await prisma.standaloneMeasurement.deleteMany({ where: { orgId: { in: orgIds } } });
+      await prisma.visualInspection.deleteMany({ where: { orgId: { in: orgIds } } });
+      await prisma.measurementRecord.deleteMany({ where: { orgId: { in: orgIds } } });
+      await prisma.measurementSheetRecord.deleteMany({ where: { orgId: { in: orgIds } } });
+      await prisma.measurementSheetTemplate.deleteMany({ where: { createdBy: { in: userIds } } });
       await prisma.assetNode.deleteMany({ where: { orgId: { in: orgIds } } });
       await prisma.inspectionPlan.deleteMany({ where: { orgId: { in: orgIds } } });
       await prisma.contact.deleteMany({ where: { orgId: { in: orgIds } } });
@@ -328,5 +336,199 @@ describe('Sync v2 round-trip (e2e)', () => {
       .expect(200);
 
     expect(pullRes.body.data.deletedIds.findings).toContain(findingId);
+  });
+
+  it('8. push assetNodes with child before parent → server orders parent-first, both succeed', async () => {
+    const since = new Date(Date.now() - 1000).toISOString();
+    const parentNodeId = randomUUID();
+    const childNodeId = randomUUID();
+
+    const res = await request(app.getHttpServer())
+      .post('/api/v1/sync/push')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        deviceId,
+        changes: {
+          // Child appears BEFORE its (same-batch) parent. orderAssetNodesParentFirst
+          // must reorder so the parent (and its path-trigger) is processed first.
+          assetNodes: [
+            {
+              operation: 'create',
+              data: {
+                id: childNodeId,
+                nodeType: 'ASSET',
+                typeCode: 'electrical_installation',
+                name: 'Child node',
+                parentId: parentNodeId,
+              },
+            },
+            {
+              operation: 'create',
+              data: {
+                id: parentNodeId,
+                nodeType: 'ASSET',
+                typeCode: 'electrical_installation',
+                name: 'Parent node',
+                // Child of the existing root asset created in test 3.
+                parentId: assetId,
+              },
+            },
+          ],
+        },
+      })
+      .expect(201);
+
+    expect(res.body.success).toBe(true);
+    expect(res.body.data.processed.assetNodes).toBe(2);
+    expect(res.body.data.errors).toHaveLength(0);
+    expect(res.body.data.conflicts).toHaveLength(0);
+
+    const pull = await request(app.getHttpServer())
+      .get('/api/v1/sync/pull')
+      .query({ since })
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+
+    const byId = new Map<string, { id: string; parentId: string | null }>(
+      pull.body.data.assetNodes.map((n: { id: string; parentId: string | null }) => [n.id, n]),
+    );
+    expect(byId.get(parentNodeId)?.parentId).toBe(assetId);
+    expect(byId.get(childNodeId)?.parentId).toBe(parentNodeId);
+  });
+
+  it('9. push→pull the four execution entities (with nested values + a delete tombstone)', async () => {
+    const since = new Date(Date.now() - 1000).toISOString();
+
+    // A LOCATION node to root the standalone measurement on, and a minimal
+    // measurement-sheet template (no orgId column) for the sheet record snapshot.
+    const locationNodeId = randomUUID();
+    const tmpl = await prisma.measurementSheetTemplate.create({
+      data: {
+        code: `E2E-MS-${randomUUID().slice(0, 8)}`,
+        name: 'E2E Meetstaat',
+        normTypeCode: 'NEN1010',
+        createdBy: userAId,
+      },
+    });
+
+    const viId = randomUUID();
+    const mrId = randomUUID();
+    const msrId = randomUUID();
+    const smId = randomUUID();
+
+    const pushRes = await request(app.getHttpServer())
+      .post('/api/v1/sync/push')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        deviceId,
+        changes: {
+          assetNodes: [
+            {
+              operation: 'create',
+              data: { id: locationNodeId, nodeType: 'LOCATION', typeCode: 'distribution_room', name: 'Meetlocatie' },
+            },
+          ],
+          visualInspections: [
+            {
+              operation: 'create',
+              data: {
+                id: viId,
+                assetNodeId: assetId,
+                inspectionPlanId: planId,
+                status: 'completed',
+                checklistResults: [{ itemCode: 'cover', result: 'pass' }],
+              },
+            },
+          ],
+          measurementRecords: [
+            {
+              operation: 'create',
+              data: {
+                id: mrId,
+                assetNodeId: assetId,
+                inspectionPlanId: planId,
+                status: 'completed',
+                measurements: [{ name: 'R_iso', value: 210 }],
+              },
+            },
+          ],
+          measurementSheetRecords: [
+            {
+              operation: 'create',
+              data: {
+                id: msrId,
+                assetNodeId: assetId,
+                inspectionPlanId: planId,
+                templateId: tmpl.id,
+                templateVersion: tmpl.version,
+                templateSnapshot: { sections: [] },
+                status: 'COMPLETED',
+                data: {},
+              },
+            },
+          ],
+          standaloneMeasurements: [
+            {
+              operation: 'create',
+              data: {
+                id: smId,
+                inspectionPlanId: planId,
+                locationNodeId,
+                measurementType: 'isolatieweerstand',
+                description: 'E2E standalone meting',
+                linkedAssetNodeId: assetId,
+                values: [
+                  { fieldName: 'R_iso', fieldType: 'number', value: '210', unit: 'MΩ', passFailCode: 'pass' },
+                  { fieldName: 'U_test', fieldType: 'number', value: '500', unit: 'V' },
+                ],
+              },
+            },
+          ],
+        },
+      })
+      .expect(201);
+
+    expect(pushRes.body.success).toBe(true);
+    expect(pushRes.body.data.processed.assetNodes).toBe(1);
+    expect(pushRes.body.data.processed.visualInspections).toBe(1);
+    expect(pushRes.body.data.processed.measurementRecords).toBe(1);
+    expect(pushRes.body.data.processed.measurementSheetRecords).toBe(1);
+    expect(pushRes.body.data.processed.standaloneMeasurements).toBe(1);
+    expect(pushRes.body.data.errors).toHaveLength(0);
+    expect(pushRes.body.data.conflicts).toHaveLength(0);
+
+    const pull = await request(app.getHttpServer())
+      .get('/api/v1/sync/pull')
+      .query({ since })
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+
+    const d = pull.body.data;
+    expect(d.visualInspections.map((x: { id: string }) => x.id)).toContain(viId);
+    expect(d.measurementRecords.map((x: { id: string }) => x.id)).toContain(mrId);
+    expect(d.measurementSheetRecords.map((x: { id: string }) => x.id)).toContain(msrId);
+
+    const sm = d.standaloneMeasurements.find((x: { id: string }) => x.id === smId);
+    expect(sm).toBeDefined();
+    expect(sm.values.map((v: { fieldName: string }) => v.fieldName).sort()).toEqual(['R_iso', 'U_test']);
+
+    // delete one execution entity → its id surfaces in pull deletedIds.
+    const beforeDelete = new Date(Date.now() - 1000).toISOString();
+    const delRes = await request(app.getHttpServer())
+      .post('/api/v1/sync/push')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        deviceId,
+        changes: { visualInspections: [{ operation: 'delete', data: { id: viId } }] },
+      })
+      .expect(201);
+    expect(delRes.body.data.processed.visualInspections).toBe(1);
+
+    const pull2 = await request(app.getHttpServer())
+      .get('/api/v1/sync/pull')
+      .query({ since: beforeDelete })
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+    expect(pull2.body.data.deletedIds.visualInspections).toContain(viId);
   });
 });

@@ -42,13 +42,13 @@ export class StandaloneMeasurementsService {
         inspectionPlanId: planId,
         ...orgScope(user),
         deletedAt: null,
-        ...(options?.locationId ? { locationId: options.locationId } : {}),
+        ...(options?.locationId ? { locationNodeId: options.locationId } : {}),
       },
       orderBy: { createdAt: 'desc' },
       include: {
         values: { orderBy: { fieldName: 'asc' } },
-        location: { select: { id: true, name: true, locationType: true } },
-        linkedAsset: { select: { id: true, name: true, assetType: true } },
+        locationNode: { select: { id: true, name: true, typeCode: true } },
+        linkedAssetNode: { select: { id: true, name: true, typeCode: true } },
       },
     });
   }
@@ -59,8 +59,8 @@ export class StandaloneMeasurementsService {
         where: { id, ...orgScope(user), deletedAt: null },
         include: {
           values: { orderBy: { fieldName: 'asc' } },
-          location: { select: { id: true, name: true, locationType: true } },
-          linkedAsset: { select: { id: true, name: true, assetType: true } },
+          locationNode: { select: { id: true, name: true, typeCode: true } },
+          linkedAssetNode: { select: { id: true, name: true, typeCode: true } },
         },
       }),
       'Meting',
@@ -76,8 +76,8 @@ export class StandaloneMeasurementsService {
     const orgId = requireOrg(user);
     const plan = await this.getPlanInOrg(planId, user);
 
-    // Locatie moet binnen dezelfde organisatie vallen
-    await assertSameOrg(this.prisma.inspectionLocation, dto.locationId, orgId, 'Locatie');
+    // Locatie moet binnen dezelfde organisatie vallen (LOCATION-node)
+    await assertSameOrg(this.prisma.assetNode, dto.locationId, orgId, 'Locatie');
 
     // Optionele pass/fail-codes op de meegegeven waarden valideren (lookup)
     for (const v of dto.values ?? []) {
@@ -88,7 +88,7 @@ export class StandaloneMeasurementsService {
       data: {
         orgId: plan.orgId,
         inspectionPlanId: planId,
-        locationId: dto.locationId,
+        locationNodeId: dto.locationId,
         measurementType: dto.measurementType,
         description: dto.description,
         createdBy: user.id,
@@ -157,12 +157,12 @@ export class StandaloneMeasurementsService {
     const orgId = requireOrg(user);
     const measurement = await this.findScoped(id, user);
 
-    // Asset moet binnen dezelfde organisatie vallen
-    await assertSameOrg(this.prisma.asset, dto.assetId, orgId, 'Asset');
+    // Asset moet binnen dezelfde organisatie vallen (ASSET-node)
+    await assertSameOrg(this.prisma.assetNode, dto.assetId, orgId, 'Asset');
 
     return this.prisma.standaloneMeasurement.update({
       where: { id: measurement.id },
-      data: { linkedAssetId: dto.assetId },
+      data: { linkedAssetNodeId: dto.assetId },
     });
   }
 

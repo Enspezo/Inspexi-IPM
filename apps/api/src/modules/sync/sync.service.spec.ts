@@ -18,8 +18,14 @@ describe('SyncService', () => {
 
   const mockPrisma = {
     inspectionPlan: delegate(),
-    asset: delegate(),
+    // Unified asset tree: de 'assetNodes' sync-entiteit gebruikt de assetNode-delegate.
+    assetNode: delegate(),
     finding: delegate(),
+    visualInspection: delegate(),
+    measurementRecord: delegate(),
+    measurementSheetRecord: delegate(),
+    standaloneMeasurement: delegate(),
+    location: delegate(),
     photo: delegate(),
     contact: delegate(),
     syncQueue: delegate(),
@@ -85,48 +91,128 @@ describe('SyncService', () => {
       expect(result.conflicts).toHaveLength(0);
     });
 
-    it('creates an asset when the parent plan is in the SAME org', async () => {
-      // covers both assertSameOrg's internal findUnique and resolveOrgId's findUnique
-      mockPrisma.inspectionPlan.findUnique.mockResolvedValue({ orgId: 'org-1' });
-      mockPrisma.asset.create.mockResolvedValue({ id: 'a1' });
+    it('creates an asset node with self-org + createdBy (org from self)', async () => {
+      mockPrisma.assetNode.create.mockResolvedValue({ id: 'a1' });
 
       const dto = {
         deviceId: 'dev-1',
         changes: {
-          assets: [
-            { operation: 'create', data: { id: 'a1', inspectionPlanId: 'p1', assetType: 'electrical_installation', name: 'Board' } },
+          assetNodes: [
+            { operation: 'create', data: { id: 'a1', nodeType: 'ASSET', typeCode: 'electrical_installation', name: 'Board' } },
           ],
         },
       } as any;
 
       const result = await service.push(user, dto);
 
-      expect(mockPrisma.asset.create).toHaveBeenCalledWith(
+      expect(mockPrisma.assetNode.create).toHaveBeenCalledWith(
         expect.objectContaining({
-          data: expect.objectContaining({ orgId: 'org-1' }),
+          data: expect.objectContaining({ id: 'a1', orgId: 'org-1', createdBy: 'user-1', typeCode: 'electrical_installation' }),
         }),
       );
-      expect(result.processed.assets).toBe(1);
+      expect(result.processed.assetNodes).toBe(1);
       expect(result.errors).toHaveLength(0);
     });
 
-    it('rejects an asset whose parent plan is in ANOTHER org (cross-tenant)', async () => {
-      mockPrisma.inspectionPlan.findUnique.mockResolvedValue({ orgId: 'org-2' });
+    it('rejects an asset node whose parentId is in ANOTHER org (cross-tenant FK check)', async () => {
+      // assertFkChecks → assertSameOrg(assetNode, parentId) → parent belongs to org-2.
+      mockPrisma.assetNode.findUnique.mockResolvedValue({ orgId: 'org-2' });
 
       const dto = {
         deviceId: 'dev-1',
         changes: {
-          assets: [
-            { operation: 'create', data: { id: 'a1', inspectionPlanId: 'p1', assetType: 'electrical_installation', name: 'Board' } },
+          assetNodes: [
+            { operation: 'create', data: { id: 'a1', parentId: 'parent-x', nodeType: 'ASSET', typeCode: 'x', name: 'Board' } },
           ],
         },
       } as any;
 
       const result = await service.push(user, dto);
 
-      expect(mockPrisma.asset.create).not.toHaveBeenCalled();
+      expect(mockPrisma.assetNode.create).not.toHaveBeenCalled();
       expect(result.errors).toHaveLength(1);
-      expect(result.processed.assets).toBe(0);
+      expect(result.processed.assetNodes).toBe(0);
+    });
+
+    it('rejects a finding whose assetNodeId is in ANOTHER org (cross-tenant FK check)', async () => {
+      mockPrisma.assetNode.findUnique.mockResolvedValue({ orgId: 'org-2' });
+
+      const dto = {
+        deviceId: 'dev-1',
+        changes: {
+          findings: [
+            {
+              operation: 'create',
+              data: { id: 'f1', assetNodeId: 'node-b', inspectionPlanId: 'p1', inspectionType: 'visual', shortDescription: 'x' },
+            },
+          ],
+        },
+      } as any;
+
+      const result = await service.push(user, dto);
+
+      expect(mockPrisma.finding.create).not.toHaveBeenCalled();
+      expect(result.errors).toHaveLength(1);
+      expect(result.processed.findings).toBe(0);
+    });
+
+    it('creates a visual inspection WITHOUT injecting createdBy (no createdBy column)', async () => {
+      // Same-org FK checks pass.
+      mockPrisma.assetNode.findUnique.mockResolvedValue({ orgId: 'org-1' });
+      mockPrisma.inspectionPlan.findUnique.mockResolvedValue({ orgId: 'org-1' });
+      mockPrisma.visualInspection.create.mockResolvedValue({ id: 'vi1' });
+
+      const dto = {
+        deviceId: 'dev-1',
+        changes: {
+          visualInspections: [
+            { operation: 'create', data: { id: 'vi1', assetNodeId: 'node-a', inspectionPlanId: 'p1', status: 'in_progress' } },
+          ],
+        },
+      } as any;
+
+      const result = await service.push(user, dto);
+
+      const createArg = mockPrisma.visualInspection.create.mock.calls[0][0];
+      expect(createArg.data).toEqual(
+        expect.objectContaining({ id: 'vi1', orgId: 'org-1', assetNodeId: 'node-a', inspectionPlanId: 'p1' }),
+      );
+      expect(createArg.data).not.toHaveProperty('createdBy');
+      expect(result.processed.visualInspections).toBe(1);
+    });
+
+    it('creates a standalone measurement with nested values (replace-on-write child)', async () => {
+      mockPrisma.inspectionPlan.findUnique.mockResolvedValue({ orgId: 'org-1' });
+      mockPrisma.assetNode.findUnique.mockResolvedValue({ orgId: 'org-1' });
+      mockPrisma.standaloneMeasurement.create.mockResolvedValue({ id: 'sm1' });
+
+      const dto = {
+        deviceId: 'dev-1',
+        changes: {
+          standaloneMeasurements: [
+            {
+              operation: 'create',
+              data: {
+                id: 'sm1',
+                inspectionPlanId: 'p1',
+                locationNodeId: 'loc-1',
+                measurementType: 'isolation',
+                values: [
+                  { fieldName: 'R_iso', fieldType: 'number', value: '500', unit: 'MΩ', passFailCode: 'pass', bogus: 'drop-me' },
+                ],
+              },
+            },
+          ],
+        },
+      } as any;
+
+      const result = await service.push(user, dto);
+
+      const createArg = mockPrisma.standaloneMeasurement.create.mock.calls[0][0];
+      expect(createArg.data.values).toEqual({
+        create: [{ fieldName: 'R_iso', fieldType: 'number', value: '500', unit: 'MΩ', passFailCode: 'pass' }],
+      });
+      expect(result.processed.standaloneMeasurements).toBe(1);
     });
 
     it('records an error when a create record is missing its id', async () => {
@@ -344,8 +430,12 @@ describe('SyncService', () => {
       mockPrisma.inspectionPlan.findMany
         .mockResolvedValueOnce([{ id: 'p1', projectName: 'X', internalNotes: 'SECRET', orgId: 'org-1' }])
         .mockResolvedValueOnce([]);
-      mockPrisma.asset.findMany.mockResolvedValue([]);
+      mockPrisma.assetNode.findMany.mockResolvedValue([]);
       mockPrisma.finding.findMany.mockResolvedValue([]);
+      mockPrisma.visualInspection.findMany.mockResolvedValue([]);
+      mockPrisma.measurementRecord.findMany.mockResolvedValue([]);
+      mockPrisma.measurementSheetRecord.findMany.mockResolvedValue([]);
+      mockPrisma.standaloneMeasurement.findMany.mockResolvedValue([]);
       mockPrisma.photo.findMany.mockResolvedValue([
         { id: 'ph1', entityType: 'inspection_plan', entityId: 'p1' },
       ]);
@@ -372,11 +462,16 @@ describe('SyncService', () => {
       expect(result.deletedIds.measurementInstruments).toEqual(['mi-del']);
 
       expect(result).toHaveProperty('inspectionPlans');
-      expect(result).toHaveProperty('assets');
+      expect(result).toHaveProperty('assetNodes');
       expect(result).toHaveProperty('findings');
+      expect(result).toHaveProperty('visualInspections');
+      expect(result).toHaveProperty('measurementRecords');
+      expect(result).toHaveProperty('measurementSheetRecords');
+      expect(result).toHaveProperty('standaloneMeasurements');
       expect(result).toHaveProperty('photos');
       expect(result).toHaveProperty('contacts');
       expect(result).toHaveProperty('deletedIds');
+      expect(result).toHaveProperty('contractVersion', 3);
       expect(result).toHaveProperty('serverTime');
 
       // toWire strips internalNotes
@@ -397,8 +492,12 @@ describe('SyncService', () => {
 
     it('adds chat additively without changing existing keys/shape', async () => {
       mockPrisma.inspectionPlan.findMany.mockResolvedValue([]);
-      mockPrisma.asset.findMany.mockResolvedValue([]);
+      mockPrisma.assetNode.findMany.mockResolvedValue([]);
       mockPrisma.finding.findMany.mockResolvedValue([]);
+      mockPrisma.visualInspection.findMany.mockResolvedValue([]);
+      mockPrisma.measurementRecord.findMany.mockResolvedValue([]);
+      mockPrisma.measurementSheetRecord.findMany.mockResolvedValue([]);
+      mockPrisma.standaloneMeasurement.findMany.mockResolvedValue([]);
       mockPrisma.photo.findMany.mockResolvedValue([]);
       mockPrisma.contact.findMany.mockResolvedValue([]);
       mockPrisma.measurementInstrument.findMany.mockResolvedValue([]);
@@ -407,13 +506,15 @@ describe('SyncService', () => {
 
       const result = await service.pull(user);
 
-      // Existing contract keys remain present and unchanged in name.
-      for (const key of ['inspectionPlans', 'assets', 'findings', 'photos', 'contacts', 'serverTime']) {
+      // Existing contract keys remain present (v3: assets → assetNodes).
+      for (const key of ['inspectionPlans', 'assetNodes', 'findings', 'photos', 'contacts', 'serverTime']) {
         expect(result).toHaveProperty(key);
       }
       expect(result.deletedIds).toHaveProperty('inspectionPlans');
-      expect(result.deletedIds).toHaveProperty('assets');
+      expect(result.deletedIds).toHaveProperty('assetNodes');
       expect(result.deletedIds).toHaveProperty('findings');
+      expect(result.deletedIds).toHaveProperty('visualInspections');
+      expect(result.deletedIds).toHaveProperty('standaloneMeasurements');
 
       // Additive meetmiddel keys (read-only referentie + voorkeuren + tombstones).
       expect(result).toHaveProperty('measurementInstruments');

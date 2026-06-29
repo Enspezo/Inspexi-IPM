@@ -19,7 +19,8 @@ import {
   PassFailOperator,
 } from '@prisma/client';
 import { PrismaService } from '@/prisma';
-import { orgScope, assertFound, assertSameOrg, assertAllSameOrg, requireOrg } from '@/common';
+import { orgScope, assertFound, assertAllSameOrg, requireOrg } from '@/common';
+import { AssetNodesService } from '../asset-nodes/asset-nodes.service';
 import {
   CreateMeasurementSheetRecordDto,
   UpdateMeasurementSheetRecordDto,
@@ -57,7 +58,10 @@ interface FinalCheckResult {
 
 @Injectable()
 export class MeasurementSheetRecordsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly assetNodes: AssetNodesService,
+  ) {}
 
   /** Org-scoped record of NotFound (NL). */
   private async getRecordInOrg(id: string, user: User) {
@@ -66,8 +70,8 @@ export class MeasurementSheetRecordsService {
         where: { id, ...orgScope(user) },
         include: {
           template: { select: { id: true, code: true, name: true, version: true } },
-          asset: {
-            select: { id: true, name: true, assetType: true, inspectionPlanId: true },
+          assetNode: {
+            select: { id: true, name: true, typeCode: true },
           },
         },
       }),
@@ -77,11 +81,11 @@ export class MeasurementSheetRecordsService {
 
   /** Lijst met filters (plat — geen paginatie, conform App). */
   async findAll(user: User, query: QueryMeasurementSheetRecordsDto) {
-    const { assetId, inspectionPlanId, templateId, status } = query;
+    const { assetNodeId, inspectionPlanId, templateId, status } = query;
 
     const where: Prisma.MeasurementSheetRecordWhereInput = {
       ...orgScope(user),
-      ...(assetId ? { assetId } : {}),
+      ...(assetNodeId ? { assetNodeId } : {}),
       ...(inspectionPlanId ? { inspectionPlanId } : {}),
       ...(templateId ? { templateId } : {}),
       ...(status ? { status } : {}),
@@ -91,7 +95,7 @@ export class MeasurementSheetRecordsService {
       where,
       include: {
         template: { select: { id: true, code: true, name: true, version: true } },
-        asset: { select: { id: true, name: true, assetType: true } },
+        assetNode: { select: { id: true, name: true, typeCode: true } },
       },
       orderBy: { createdAt: 'desc' },
     });
@@ -105,27 +109,17 @@ export class MeasurementSheetRecordsService {
   async create(user: User, dto: CreateMeasurementSheetRecordDto, deviceId?: string) {
     const orgId = requireOrg(user);
 
-    // FK-validatie binnen dezelfde org (asset + optioneel plan)
-    await assertSameOrg(this.prisma.asset, dto.assetId, orgId, 'Asset');
-    if (dto.inspectionPlanId) {
-      await assertSameOrg(
-        this.prisma.inspectionPlan,
-        dto.inspectionPlanId,
-        orgId,
-        'Inspectieplan',
-      );
-    }
-
-    // Asset moet daadwerkelijk bestaan/scoped zijn — orgId voor de record halen we hier vandaan
-    const asset = assertFound(
-      await this.prisma.asset.findFirst({ where: { id: dto.assetId, ...orgScope(user), deletedAt: null } }),
-      'Asset',
+    // Plan binnen de org + de asset-node binnen de boom van dit plan
+    // (rootLocationId === plan.locationId). Dit vervangt de oude
+    // asset.inspectionPlanId-koppeling: assets zijn nu losgekoppeld van plannen.
+    const plan = assertFound(
+      await this.prisma.inspectionPlan.findFirst({
+        where: { id: dto.inspectionPlanId, ...orgScope(user), deletedAt: null },
+        select: { id: true, orgId: true, locationId: true },
+      }),
+      'Inspectieplan',
     );
-
-    // Asset moet bij het opgegeven plan horen
-    if (dto.inspectionPlanId && asset.inspectionPlanId !== dto.inspectionPlanId) {
-      throw new BadRequestException('Asset hoort niet bij het opgegeven inspectieplan');
-    }
+    await this.assetNodes.assertNodeInPlanTree(dto.assetNodeId, plan);
 
     // GLOBAAL template laden (geen orgId → alleen assertFound)
     const template = assertFound(
@@ -150,7 +144,7 @@ export class MeasurementSheetRecordsService {
     await assertAllSameOrg(
       this.prisma.measurementInstrument,
       usedInstrumentIds,
-      asset.orgId,
+      orgId,
       'meetmiddelen',
     );
 
@@ -167,16 +161,16 @@ export class MeasurementSheetRecordsService {
     if (usedInstrumentIds.length) {
       initialData.__usedInstrumentsSnapshot = await this.resolveInstrumentSnapshot(
         usedInstrumentIds,
-        asset.orgId,
+        orgId,
       );
     }
 
     return this.prisma.measurementSheetRecord.create({
       data: {
-        orgId: asset.orgId,
+        orgId,
         templateId: template.id,
-        assetId: dto.assetId,
-        inspectionPlanId: dto.inspectionPlanId ?? null,
+        assetNodeId: dto.assetNodeId,
+        inspectionPlanId: plan.id,
         templateVersion: template.version,
         templateSnapshot: templateSnapshot as unknown as Prisma.InputJsonValue,
         status: MeasurementSheetRecordStatus.IN_PROGRESS,
@@ -187,7 +181,7 @@ export class MeasurementSheetRecordsService {
       },
       include: {
         template: { select: { id: true, code: true, name: true, version: true } },
-        asset: { select: { id: true, name: true, assetType: true } },
+        assetNode: { select: { id: true, name: true, typeCode: true } },
       },
     });
   }
@@ -242,7 +236,7 @@ export class MeasurementSheetRecordsService {
       },
       include: {
         template: { select: { id: true, code: true, name: true, version: true } },
-        asset: { select: { id: true, name: true, assetType: true } },
+        assetNode: { select: { id: true, name: true, typeCode: true } },
       },
     });
   }
@@ -293,7 +287,7 @@ export class MeasurementSheetRecordsService {
       },
       include: {
         template: { select: { id: true, code: true, name: true, version: true } },
-        asset: { select: { id: true, name: true, assetType: true } },
+        assetNode: { select: { id: true, name: true, typeCode: true } },
       },
     });
   }

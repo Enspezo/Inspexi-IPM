@@ -11,6 +11,7 @@ import { Injectable } from '@nestjs/common';
 import { User, Prisma, InspectionExecStatus } from '@prisma/client';
 import { PrismaService } from '@/prisma';
 import { orgScope, assertFound, assertSameOrg, requireOrg } from '@/common';
+import { AssetNodesService } from '../asset-nodes/asset-nodes.service';
 import {
   CreateMeasurementRecordDto,
   UpdateMeasurementRecordDto,
@@ -18,26 +19,30 @@ import {
 
 @Injectable()
 export class MeasurementRecordsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly assetNodes: AssetNodesService,
+  ) {}
 
-  private async getAssetInOrg(assetId: string, user: User) {
+  private async getAssetNodeInOrg(assetNodeId: string, user: User) {
     return assertFound(
-      await this.prisma.asset.findFirst({
-        where: { id: assetId, ...orgScope(user), deletedAt: null },
+      await this.prisma.assetNode.findFirst({
+        where: { id: assetNodeId, ...orgScope(user), deletedAt: null },
       }),
-      'Asset',
+      'Asset-node',
     );
   }
 
-  async findAllByAsset(assetId: string, user: User) {
-    await this.getAssetInOrg(assetId, user);
+  async findAllByAsset(assetNodeId: string, user: User) {
+    await this.getAssetNodeInOrg(assetNodeId, user);
 
     return this.prisma.measurementRecord.findMany({
-      where: { assetId },
+      where: { assetNodeId },
       orderBy: { createdAt: 'desc' },
       select: {
         id: true,
-        assetId: true,
+        assetNodeId: true,
+        inspectionPlanId: true,
         status: true,
         measurements: true,
         instrumentType: true,
@@ -57,7 +62,7 @@ export class MeasurementRecordsService {
       await this.prisma.measurementRecord.findFirst({
         where: { id, ...orgScope(user) },
         include: {
-          asset: { select: { id: true, name: true, assetType: true } },
+          assetNode: { select: { id: true, name: true, typeCode: true } },
           findings: {
             where: { deletedAt: null },
             orderBy: { createdAt: 'desc' },
@@ -75,13 +80,22 @@ export class MeasurementRecordsService {
   }
 
   async create(
-    assetId: string,
+    assetNodeId: string,
     user: User,
     dto: CreateMeasurementRecordDto,
     deviceId?: string,
   ) {
     const orgId = requireOrg(user);
-    const asset = await this.getAssetInOrg(assetId, user);
+
+    // Plan binnen de org + de asset-node binnen de boom van dit plan.
+    const plan = assertFound(
+      await this.prisma.inspectionPlan.findFirst({
+        where: { id: dto.inspectionPlanId, ...orgScope(user), deletedAt: null },
+        select: { id: true, orgId: true, locationId: true },
+      }),
+      'Inspectieplan',
+    );
+    await this.assetNodes.assertNodeInPlanTree(assetNodeId, plan);
 
     if (dto.inspectorId) {
       await assertSameOrg(this.prisma.user, dto.inspectorId, orgId, 'Inspecteur');
@@ -89,8 +103,9 @@ export class MeasurementRecordsService {
 
     return this.prisma.measurementRecord.create({
       data: {
-        orgId: asset.orgId,
-        assetId,
+        orgId,
+        assetNodeId,
+        inspectionPlanId: plan.id,
         status: InspectionExecStatus.not_started,
         measurements: (dto.measurements ?? []) as Prisma.InputJsonValue,
         instrumentType: dto.instrumentType,

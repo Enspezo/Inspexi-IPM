@@ -1,27 +1,28 @@
-// v2 sync — entiteit-gegroepeerd, aligned op Beheer-schema, tenant-veilig.
-// Contract: pull → {inspectionPlans, assets, findings, photos, contacts, deletedIds, serverTime}
-//           push → {deviceId, clientTime, changes:{inspectionPlans[],assets[],findings[]}}
+// v3 sync — entiteit-gegroepeerd, aligned op Beheer-schema (unified AssetNode tree), tenant-veilig.
+// Contract: pull → {inspectionPlans, assetNodes, findings, visualInspections, measurementRecords,
+//                    measurementSheetRecords, standaloneMeasurements, photos, contacts, deletedIds, serverTime}
+//           push → {deviceId, clientTime, changes:{<entityKey>[]...}}
 //           resolve → {deviceId, resolutions:[{entityType,entityId,resolution,mergedData?}]}
 //
 // Veiligheid: nooit blind data spreaden (whitelist via sync-mapper), orgId server-side
-// geïnjecteerd uit de hiërarchie, parent-FK met assertSameOrg gecontroleerd.
-// Conflict: optimistic — server.updatedAt > client.syncedAt op een update.
+// geïnjecteerd (elke entiteit heeft een eigen orgId-kolom), FK's met assertSameOrg
+// gecontroleerd (cross-tenant). Conflict: optimistic — server.updatedAt > client.syncedAt.
 
 import { Injectable, BadRequestException } from '@nestjs/common';
 import { User, Prisma, SyncStatus } from '@prisma/client';
 import { PrismaService } from '@/prisma';
 import { orgScope, assertSameOrg, requireOrg } from '@/common';
-import { PushDto, ResolveDto } from './dto';
-import { SYNC_ENTITIES, SyncEntityKey, SyncRecordData, toDbData, toWire } from './sync-mapper';
+import { PushDto, ResolveDto, EntityChangeDto } from './dto';
+import {
+  SYNC_ENTITIES, SyncEntityKey, SyncModelName, FkCheckModel, SyncRecordData,
+  SYNC_CONTRACT_VERSION, toDbData, toChildRows, toWire,
+} from './sync-mapper';
 import { ChatService } from '../chat/chat.service';
 
 type OpResult =
   | { entityType: string; entityId: string; status: 'success' }
   | { entityType: string; entityId: string; status: 'conflict'; clientData: SyncRecordData; serverData: unknown }
   | { entityType: string; entityId: string; status: 'failed'; error: string };
-
-/** Prisma-modelnamen die de sync aanraakt (eigen entiteiten + parent-modellen). */
-type SyncModelName = 'inspectionPlan' | 'asset' | 'finding';
 
 /** Bestaande db-rij zoals de sync die leest (alleen `updatedAt` wordt expliciet gebruikt). */
 interface SyncRow {
@@ -50,6 +51,40 @@ function asRecord(value: unknown): Record<string, unknown> {
     : {};
 }
 
+/**
+ * Sorteert een `assetNodes`-push-batch zó dat een ouder altijd vóór z'n kind verwerkt wordt.
+ * Nodig omdat een node-create de FK `parent_id` raakt én de BEFORE-trigger die de parent-`path`
+ * uitleest: een kind dat vóór z'n in dezelfde push aangemaakte ouder binnenkomt, zou anders falen.
+ * Stabiele topologische sort (DFS over de in-batch parent→kind-afhankelijkheid); cycli en
+ * id-loze records worden defensief afgehandeld (geen oneindige recursie, niets stilletjes weg).
+ */
+export function orderAssetNodesParentFirst(changes: EntityChangeDto[]): EntityChangeDto[] {
+  const byId = new Map<string, EntityChangeDto>();
+  for (const c of changes) {
+    const id = String(c.data.id ?? '');
+    if (id) byId.set(id, c);
+  }
+  const ordered: EntityChangeDto[] = [];
+  const placed = new Set<string>();
+  const visit = (c: EntityChangeDto, stack: Set<string>): void => {
+    const id = String(c.data.id ?? '');
+    if (id && placed.has(id)) return;
+    const parentId = typeof c.data.parentId === 'string' ? c.data.parentId : undefined;
+    // Volg alleen een parent die óók in deze batch wordt aangemaakt; `!stack.has` breekt cycli.
+    if (parentId && byId.has(parentId) && !stack.has(parentId)) {
+      visit(byId.get(parentId)!, new Set(stack).add(id));
+    }
+    if (!id) {
+      ordered.push(c); // id-loos: behoud volgorde, processChange faalt er netjes op
+    } else if (!placed.has(id)) {
+      placed.add(id);
+      ordered.push(c);
+    }
+  };
+  for (const c of changes) visit(c, new Set(c.data.id ? [String(c.data.id)] : []));
+  return ordered;
+}
+
 @Injectable()
 export class SyncService {
   constructor(
@@ -61,10 +96,33 @@ export class SyncService {
   private delegateFor(model: SyncModelName): SyncDelegate {
     const delegates: Record<SyncModelName, unknown> = {
       inspectionPlan: this.prisma.inspectionPlan,
-      asset: this.prisma.asset,
+      assetNode: this.prisma.assetNode,
       finding: this.prisma.finding,
+      visualInspection: this.prisma.visualInspection,
+      measurementRecord: this.prisma.measurementRecord,
+      measurementSheetRecord: this.prisma.measurementSheetRecord,
+      standaloneMeasurement: this.prisma.standaloneMeasurement,
     };
     return delegates[model] as SyncDelegate;
+  }
+
+  /** Delegate voor de same-org FK-checks (cross-tenant guard op inkomende FK-waarden). */
+  private checkDelegate(model: FkCheckModel): SyncDelegate {
+    const delegates: Record<FkCheckModel, unknown> = {
+      assetNode: this.prisma.assetNode,
+      inspectionPlan: this.prisma.inspectionPlan,
+      location: this.prisma.location,
+    };
+    return delegates[model] as SyncDelegate;
+  }
+
+  /** Valideer dat alle aanwezige FK-waarden bij de eigen org horen (no-op voor superuser). */
+  private async assertFkChecks(key: SyncEntityKey, data: SyncRecordData, user: User): Promise<void> {
+    for (const chk of SYNC_ENTITIES[key].fkChecks ?? []) {
+      const fkId = data[chk.field] as string | undefined;
+      if (!fkId) continue;
+      await assertSameOrg(this.checkDelegate(chk.model), fkId, user.orgId, chk.label);
+    }
   }
 
   // ── PULL ───────────────────────────────────────────────
@@ -79,16 +137,28 @@ export class SyncService {
       OR: [{ createdAt: { gt: since } }, { updatedAt: { gt: since } }],
     };
 
-    const [plans, assets, findings] = await Promise.all([
-      this.prisma.inspectionPlan.findMany({ where: changedWhere }),
-      this.prisma.asset.findMany({ where: changedWhere }),
-      this.prisma.finding.findMany({ where: changedWhere }),
-    ]);
+    // Unified AssetNode tree: assetNodes draagt zowel LOCATION- als ASSET-nodes (de PWA
+    // smelt zijn assets- en locations-stores samen tot één assetNodes-store).
+    const [plans, assetNodes, findings, visualInspections, measurementRecords, measurementSheetRecords, standaloneMeasurements] =
+      await Promise.all([
+        this.prisma.inspectionPlan.findMany({ where: changedWhere }),
+        this.prisma.assetNode.findMany({ where: changedWhere }),
+        this.prisma.finding.findMany({ where: changedWhere }),
+        this.prisma.visualInspection.findMany({ where: changedWhere }),
+        this.prisma.measurementRecord.findMany({ where: changedWhere }),
+        this.prisma.measurementSheetRecord.findMany({ where: changedWhere }),
+        this.prisma.standaloneMeasurement.findMany({ where: changedWhere, include: { values: true } }),
+      ]);
 
-    const [delPlans, delAssets, delFindings] = await Promise.all([
-      this.prisma.inspectionPlan.findMany({ where: { ...scope, deletedAt: { gt: since } }, select: { id: true } }),
-      this.prisma.asset.findMany({ where: { ...scope, deletedAt: { gt: since } }, select: { id: true } }),
-      this.prisma.finding.findMany({ where: { ...scope, deletedAt: { gt: since } }, select: { id: true } }),
+    const deletedWhere = { ...scope, deletedAt: { gt: since } };
+    const [delPlans, delNodes, delFindings, delVi, delMr, delMsr, delSm] = await Promise.all([
+      this.prisma.inspectionPlan.findMany({ where: deletedWhere, select: { id: true } }),
+      this.prisma.assetNode.findMany({ where: deletedWhere, select: { id: true } }),
+      this.prisma.finding.findMany({ where: deletedWhere, select: { id: true } }),
+      this.prisma.visualInspection.findMany({ where: deletedWhere, select: { id: true } }),
+      this.prisma.measurementRecord.findMany({ where: deletedWhere, select: { id: true } }),
+      this.prisma.measurementSheetRecord.findMany({ where: deletedWhere, select: { id: true } }),
+      this.prisma.standaloneMeasurement.findMany({ where: deletedWhere, select: { id: true } }),
     ]);
 
     // Foto's (metadata + auth-download-route; PWA cachet de blob lokaal)
@@ -157,8 +227,12 @@ export class SyncService {
         // Niveau-2 voorkeur per inspectie (additief; lege array als geen defaults).
         defaultInstrumentIds: defaultsByPlan.get(p.id) ?? [],
       })),
-      assets: assets.map(toWire),
+      assetNodes: assetNodes.map(toWire),
       findings: findings.map(toWire),
+      visualInspections: visualInspections.map(toWire),
+      measurementRecords: measurementRecords.map(toWire),
+      measurementSheetRecords: measurementSheetRecords.map(toWire),
+      standaloneMeasurements: standaloneMeasurements.map(toWire),
       // Meetmiddelen pull-only + globale (niveau-1) voorkeur van de device-gebruiker.
       measurementInstruments,
       userDefaultInstrumentIds: userDefaults.map((d) => d.instrumentId),
@@ -180,14 +254,19 @@ export class SyncService {
       users: chat.users,
       deletedIds: {
         inspectionPlans: delPlans.map((x) => x.id),
-        assets: delAssets.map((x) => x.id),
+        assetNodes: delNodes.map((x) => x.id),
         findings: delFindings.map((x) => x.id),
+        visualInspections: delVi.map((x) => x.id),
+        measurementRecords: delMr.map((x) => x.id),
+        measurementSheetRecords: delMsr.map((x) => x.id),
+        standaloneMeasurements: delSm.map((x) => x.id),
         // Additief — meetmiddel-tombstones:
         measurementInstruments: delInstruments.map((x) => x.id),
         // Additief — chat tombstones:
         chatThreads: chat.deletedThreadIds,
         chatMessages: chat.deletedMessageIds,
       },
+      contractVersion: SYNC_CONTRACT_VERSION,
       serverTime: serverTime.toISOString(),
     };
   }
@@ -196,17 +275,17 @@ export class SyncService {
   async push(user: User, dto: PushDto) {
     const orgId = requireOrg(user);
     const results: OpResult[] = [];
-    const processed: Record<string, number> = {
-      inspectionPlans: 0,
-      assets: 0,
-      findings: 0,
-      chatThreads: 0,
-      chatMessages: 0,
-      presence: 0,
-    };
+    // Dynamisch over alle v3-entiteiten (incl. assetNodes); de chat-keys worden door
+    // de SYNC_ENTITIES-loop niet gedekt en seeden we expliciet zodat geen counter mist.
+    const processed: Record<string, number> = { chatThreads: 0, chatMessages: 0, presence: 0 };
+    for (const key of Object.keys(SYNC_ENTITIES)) processed[key] = 0;
 
     for (const key of Object.keys(SYNC_ENTITIES) as SyncEntityKey[]) {
-      const group = dto.changes[key] ?? [];
+      // assetNodes: ouder vóór kind verwerken binnen de batch (FK parent_id + path-trigger).
+      const group =
+        key === 'assetNodes'
+          ? orderAssetNodesParentFirst(dto.changes[key] ?? [])
+          : dto.changes[key] ?? [];
       for (const change of group) {
         try {
           const r = await this.processChange(key, change.operation, change.data, user, orgId, dto.deviceId);
@@ -307,14 +386,19 @@ export class SyncService {
       return { ...ref, status: 'success' };
     }
 
-    // orgId server-side bepalen (nooit van de client)
+    // orgId server-side bepalen (nooit van de client) + cross-tenant FK-check op inkomende FK's
     const orgId = await this.resolveOrgId(key, data, userOrgId, user);
+    await this.assertFkChecks(key, data, user);
     const fields = toDbData(key, data);
 
+    // Geneste kind-rijen (bv. StandaloneMeasurementValue) reizen mee in dezelfde payload.
+    const childRows = cfg.nestedChild ? toChildRows(cfg.nestedChild, data) : null;
+
     if (operation === 'create') {
-      await model.create({
-        data: { ...fields, id, orgId, createdBy: data.createdBy ?? user.id },
-      });
+      const createData: Record<string, unknown> = { ...fields, id, orgId };
+      if (cfg.injectCreatedBy) createData.createdBy = data.createdBy ?? user.id;
+      if (cfg.nestedChild && childRows) createData[cfg.nestedChild.relation] = { create: childRows };
+      await model.create({ data: createData });
       return { ...ref, status: 'success' };
     }
 
@@ -340,7 +424,12 @@ export class SyncService {
       return { ...ref, status: 'conflict', clientData: data, serverData };
     }
 
-    await model.update({ where: { id }, data: { ...fields, syncedAt: new Date() } });
+    const updateData: Record<string, unknown> = { ...fields, syncedAt: new Date() };
+    // replace-on-write: alleen als de client het kind-veld meestuurde.
+    if (cfg.nestedChild && childRows) {
+      updateData[cfg.nestedChild.relation] = { deleteMany: {}, create: childRows };
+    }
+    await model.update({ where: { id }, data: updateData });
     return { ...ref, status: 'success' };
   }
 

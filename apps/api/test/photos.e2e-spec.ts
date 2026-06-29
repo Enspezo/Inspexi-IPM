@@ -23,6 +23,7 @@ describe('Photos upload/download (e2e)', () => {
   let orgAId: string;
   let userAId: string;
   let contactAId: string;
+  let locationAId: string;
   let planAId: string;
   let assetAId: string;
   let tokenA: string;
@@ -88,10 +89,25 @@ describe('Photos upload/download (e2e)', () => {
     });
     contactAId = contactA.id;
 
+    // CRM-Locatie = hoofdlocatie / boom-wortel van de AssetNode-boom.
+    const locationA = await prisma.location.create({
+      data: {
+        orgId: orgA.id,
+        contactId: contactA.id,
+        name: 'Photos Locatie A',
+        street: 'Teststraat',
+        houseNumber: '1',
+        postalCode: '1000AA',
+        city: 'Teststad',
+      },
+    });
+    locationAId = locationA.id;
+
     const planA = await prisma.inspectionPlan.create({
       data: {
         orgId: orgA.id,
         contactId: contactA.id,
+        locationId: locationA.id,
         projectName: 'Photos Plan A',
         normTypeCode: 'NEN1010',
         createdBy: userA.id,
@@ -99,16 +115,29 @@ describe('Photos upload/download (e2e)', () => {
     });
     planAId = planA.id;
 
-    const assetA = await prisma.asset.create({
+    // AssetNode-boom: wortel-LOCATION-node → ASSET-node (parent vóór child).
+    const rootNodeA = await prisma.assetNode.create({
       data: {
         orgId: orgA.id,
-        inspectionPlanId: planA.id,
-        assetType: 'electrical_installation',
+        nodeType: 'LOCATION',
+        rootLocationId: locationA.id,
+        typeCode: 'locatie',
+        name: 'Wortel',
+        createdBy: userA.id,
+      },
+    });
+
+    const assetNodeA = await prisma.assetNode.create({
+      data: {
+        orgId: orgA.id,
+        nodeType: 'ASSET',
+        parentId: rootNodeA.id,
+        typeCode: 'kast',
         name: 'Photos Asset A',
         createdBy: userA.id,
       },
     });
-    assetAId = assetA.id;
+    assetAId = assetNodeA.id;
 
     // ─── Org B (cross-org probe) ────────────────────────
     const orgB = await prisma.organization.create({
@@ -145,11 +174,13 @@ describe('Photos upload/download (e2e)', () => {
     const userIds = [userAId, userBId];
 
     try {
-      // Children first (Asset/InspectionPlan are audited).
+      // Children first. AssetNode.parentId is SET NULL, so a single deleteMany
+      // clears the whole tree (root LOCATION + ASSET nodes).
       await prisma.photo.deleteMany({ where: { orgId: { in: orgIds } } });
       await prisma.finding.deleteMany({ where: { orgId: { in: orgIds } } });
-      await prisma.asset.deleteMany({ where: { orgId: { in: orgIds } } });
+      await prisma.assetNode.deleteMany({ where: { orgId: { in: orgIds } } });
       await prisma.inspectionPlan.deleteMany({ where: { orgId: { in: orgIds } } });
+      await prisma.location.deleteMany({ where: { orgId: { in: orgIds } } });
       await prisma.contact.deleteMany({ where: { orgId: { in: orgIds } } });
       await prisma.syncQueue.deleteMany({ where: { userId: { in: userIds } } });
       await prisma.notification.deleteMany({ where: { orgId: { in: orgIds } } });

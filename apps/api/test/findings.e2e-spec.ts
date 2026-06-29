@@ -14,6 +14,7 @@ describe('Findings (e2e)', () => {
   let testContactId: string;
   let testAssetTypeId: string;
   let testNormTypeId: string;
+  let testLocationId: string;
   let testPlanId: string;
   let testAssetId: string;
   let accessToken: string;
@@ -94,11 +95,28 @@ describe('Findings (e2e)', () => {
     });
     testNormTypeId = normType.id;
 
-    // Inspection plan
+    // CRM-Locatie = hoofdlocatie / boom-wortel van de AssetNode-boom. Het plan
+    // verwijst hiernaar via locationId; finding-create valideert dat de asset-node
+    // binnen de boom van plan.locationId zit (assertNodeInPlanTree).
+    const location = await prisma.location.create({
+      data: {
+        orgId: org.id,
+        contactId: contact.id,
+        name: 'E2E Findings Locatie',
+        street: 'Teststraat',
+        houseNumber: '1',
+        postalCode: '1000AA',
+        city: 'Teststad',
+      },
+    });
+    testLocationId = location.id;
+
+    // Inspection plan (met hoofdlocatie zodat de boom-wortel kan ontstaan)
     const plan = await prisma.inspectionPlan.create({
       data: {
         orgId: org.id,
         contactId: contact.id,
+        locationId: location.id,
         projectName: 'E2E Findings Plan',
         normTypeCode: 'e2enorm',
         createdBy: user.id,
@@ -106,13 +124,27 @@ describe('Findings (e2e)', () => {
     });
     testPlanId = plan.id;
 
-    // Asset under the plan
-    const asset = await prisma.asset.create({
+    // Wortel-LOCATION-node (1:1 aan de CRM-Locatie). Parent vóór child invoegen zodat
+    // de DB-trigger path/depth invult.
+    const rootNode = await prisma.assetNode.create({
       data: {
         orgId: org.id,
-        inspectionPlanId: plan.id,
-        assetType: 'e2ekast',
-        name: 'Kast 1',
+        nodeType: 'LOCATION',
+        rootLocationId: location.id,
+        typeCode: 'locatie',
+        name: 'Wortel',
+        createdBy: user.id,
+      },
+    });
+
+    // ASSET-node onder de wortel — vervangt de oude "asset id".
+    const asset = await prisma.assetNode.create({
+      data: {
+        orgId: org.id,
+        nodeType: 'ASSET',
+        parentId: rootNode.id,
+        typeCode: 'e2ekast',
+        name: 'Asset',
         createdBy: user.id,
       },
     });
@@ -128,10 +160,13 @@ describe('Findings (e2e)', () => {
   afterAll(async () => {
     try {
       await prisma.finding.deleteMany({ where: { id: { in: createdFindingIds } } });
-      await prisma.asset.deleteMany({ where: { id: testAssetId } });
+      // AssetNode.parentId is SET NULL, dus één deleteMany ruimt de hele boom op
+      // (wortel-LOCATION + asset). Findings RESTRICT'en niet (al verwijderd hierboven).
+      await prisma.assetNode.deleteMany({ where: { orgId: testOrgId } });
       await prisma.inspectionPlan.deleteMany({ where: { id: testPlanId } });
       await prisma.normTypeDefinition.deleteMany({ where: { id: testNormTypeId } });
       await prisma.assetTypeDefinition.deleteMany({ where: { id: testAssetTypeId } });
+      await prisma.location.deleteMany({ where: { id: testLocationId } });
       await prisma.contact.deleteMany({ where: { id: testContactId } });
       await prisma.auditLog.deleteMany({ where: { userId: testUserId } });
       await prisma.refreshToken.deleteMany({ where: { userId: testUserId } });
@@ -147,7 +182,7 @@ describe('Findings (e2e)', () => {
       const res = await request(app.getHttpServer())
         .post(`/api/v1/assets/${testAssetId}/findings`)
         .set('Authorization', `Bearer ${accessToken}`)
-        .send({ inspectionType: 'visual', shortDescription: 'Test' })
+        .send({ inspectionPlanId: testPlanId, inspectionType: 'visual', shortDescription: 'Test' })
         .expect(201);
 
       expect(res.body.success).toBe(true);
@@ -159,15 +194,15 @@ describe('Findings (e2e)', () => {
     it('should return 401 without authentication', async () => {
       await request(app.getHttpServer())
         .post(`/api/v1/assets/${testAssetId}/findings`)
-        .send({ inspectionType: 'visual', shortDescription: 'Test' })
+        .send({ inspectionPlanId: testPlanId, inspectionType: 'visual', shortDescription: 'Test' })
         .expect(401);
     });
 
-    it('should return 400 for missing required fields', async () => {
+    it('should return 400 when inspectionPlanId is missing', async () => {
       await request(app.getHttpServer())
         .post(`/api/v1/assets/${testAssetId}/findings`)
         .set('Authorization', `Bearer ${accessToken}`)
-        .send({ shortDescription: 'No inspection type' })
+        .send({ inspectionType: 'visual', shortDescription: 'No plan' })
         .expect(400);
     });
   });
@@ -197,7 +232,7 @@ describe('Findings (e2e)', () => {
 
       expect(res.body.success).toBe(true);
       expect(res.body.data.id).toBe(id);
-      expect(res.body.data.asset).toBeDefined();
+      expect(res.body.data.assetNode).toBeDefined();
     });
 
     it('should return 404 for non-existent finding', async () => {
@@ -241,7 +276,7 @@ describe('Findings (e2e)', () => {
       const createRes = await request(app.getHttpServer())
         .post(`/api/v1/assets/${testAssetId}/findings`)
         .set('Authorization', `Bearer ${accessToken}`)
-        .send({ inspectionType: 'visual', shortDescription: 'To delete' })
+        .send({ inspectionPlanId: testPlanId, inspectionType: 'visual', shortDescription: 'To delete' })
         .expect(201);
 
       const id = createRes.body.data.id;

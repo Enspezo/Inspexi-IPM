@@ -1939,6 +1939,7 @@ export interface InspectionPlan {
   contactId: string;
   projectId: string | null;
   inspectionTemplateId: string | null;
+  locationId: string | null;
   projectName: string;
   description: string | null;
   referenceNumber: string | null;
@@ -1977,48 +1978,114 @@ export interface InspectionPlan {
   assignedUser?: UserSummary | null;
   reviewer?: UserSummary | null;
   inspectionTemplate?: InspectionTemplate | null;
-  assets?: Asset[];
-  locations?: InspectionLocation[];
+  location?: LocationSummary | null;
+  scopeLocations?: InspectionPlanLocation[];
   signatures?: Signature[];
   reports?: Report[];
 }
 
-export interface Asset {
+/** Unified recursive node: één boom met LOCATION- en ASSET-knopen (MAIC-model). */
+export enum AssetNodeType {
+  LOCATION = 'LOCATION',
+  ASSET = 'ASSET',
+}
+
+export interface AssetNode {
   id: string;
   orgId: string;
-  inspectionPlanId: string;
-  parentAssetId: string | null;
-  locationId: string | null;
-  assetType: string;
+  nodeType: AssetNodeType;
+  parentId: string | null;
+  /** Alleen gevuld op de root-LOCATION-node (1:1 met een CRM-locatie). */
+  rootLocationId: string | null;
+  typeCode: string;
   name: string;
   identifier: string | null;
-  locationDescription: string | null;
-  sortOrder: number;
-  treePath: string | null;
-  statusCode: string;
+  description: string | null;
   technicalData: Record<string, unknown>;
+  statusCode: string;
   notes: string | null;
+  sortOrder: number;
+  /** ltree materialized path (server-maintained); niet via Prisma Client schrijfbaar. */
+  path: string | null;
+  depth: number;
   createdAt: string;
   updatedAt: string;
   syncedAt: string | null;
   createdBy: string | null;
   deviceId: string | null;
   deletedAt: string | null;
-  parentAsset?: Asset | null;
-  childAssets?: Asset[];
-  location?: InspectionLocation | null;
+  // Relaties / include-projecties:
+  parent?: AssetNode | null;
+  children?: AssetNode[];
+  rootLocation?: LocationSummary | null;
   findings?: Finding[];
-  // Berekende projectie-velden uit de lijst-endpoints (GET /inspection-plans/:id/assets):
+  // Berekende projectie-velden uit de tree/lijst-endpoints:
   childCount?: number;
   findingCount?: number;
   visualInspectionStatus?: string;
   measurementStatus?: string;
+  /** Alleen in de planboom (GET /inspection-plans/:id/tree): valt deze LOCATION binnen de scope. */
+  inScope?: boolean;
+}
+
+/** Koppeling van een inspectieplan aan een deellocatie-node (scope). */
+export interface InspectionPlanLocation {
+  id: string;
+  orgId: string;
+  inspectionPlanId: string;
+  assetNodeId: string;
+  isPrimary: boolean;
+  assetNode?: AssetNode;
+}
+
+/**
+ * Legacy compat-shape van de assets-wrappers (GET /assets,
+ * GET /inspection-plans/:id/assets?flat=true). Deze endpoints mappen ASSET-nodes
+ * terug op het oude Asset-contract; de boom-UI gebruikt {@link AssetNode}.
+ */
+export interface Asset {
+  id: string;
+  parentAssetId: string | null;
+  assetType: string;
+  name: string;
+  identifier: string | null;
+  locationDescription: string | null;
+  sortOrder: number;
+  statusCode: string;
+  technicalData: Record<string, unknown>;
+  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
+  /** Alleen aanwezig op detail-/uitvoeringsprojecties. */
+  inspectionPlanId?: string | null;
+  findingCount?: number;
+  _count?: Record<string, number>;
+}
+
+/**
+ * Legacy compat-shape van de inspection-locations-wrapper
+ * (GET /inspection-plans/:id/locations?flat=true). Mapt LOCATION-nodes terug op
+ * het oude contract; de boom-UI gebruikt {@link AssetNode}.
+ */
+export interface InspectionLocation {
+  id: string;
+  parentLocationId: string | null;
+  locationType: string;
+  name: string;
+  identifier: string | null;
+  description: string | null;
+  sortOrder: number;
+  technicalData: Record<string, unknown>;
+  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface Finding {
   id: string;
   orgId: string;
-  assetId: string;
+  inspectionPlanId: string;
+  assetNodeId: string;
   visualInspectionId: string | null;
   measurementRecordId: string | null;
   findingTemplateId: string | null;
@@ -2042,40 +2109,16 @@ export interface Finding {
   createdBy: string | null;
   deviceId: string | null;
   deletedAt: string | null;
-  asset?: Asset;
+  assetNode?: AssetNode;
   findingTemplate?: FindingTemplate | null;
-}
-
-export interface InspectionLocation {
-  id: string;
-  orgId: string;
-  inspectionPlanId: string;
-  parentLocationId: string | null;
-  locationType: string;
-  name: string;
-  identifier: string | null;
-  description: string | null;
-  sortOrder: number;
-  treePath: string | null;
-  technicalData: Record<string, unknown>;
-  notes: string | null;
-  createdAt: string;
-  updatedAt: string;
-  syncedAt: string | null;
-  createdBy: string | null;
-  deviceId: string | null;
-  deletedAt: string | null;
-  parentLocation?: InspectionLocation | null;
-  childLocations?: InspectionLocation[];
-  assets?: Asset[];
 }
 
 export interface StandaloneMeasurement {
   id: string;
   orgId: string;
   inspectionPlanId: string;
-  locationId: string | null;
-  assetId: string | null;
+  locationNodeId: string | null;
+  linkedAssetNodeId: string | null;
   measurementType: string;
   description: string | null;
   createdAt: string;
@@ -2093,7 +2136,7 @@ export interface LocationImageMarker {
   positionX: number; // % 0-100
   positionY: number; // % 0-100
   markerType: MarkerType;
-  assetId: string | null;
+  assetNodeId: string | null;
   findingId: string | null;
   standaloneMeasurementId: string | null;
   annotation: Record<string, unknown> | null;
@@ -2106,7 +2149,7 @@ export interface LocationImageMarker {
   createdBy: string | null;
   deviceId: string | null;
   // Door de API meegestuurde (deels geselecteerde) relaties:
-  asset?: Pick<Asset, 'id' | 'name' | 'assetType' | 'statusCode'> | null;
+  assetNode?: Pick<AssetNode, 'id' | 'name' | 'typeCode' | 'nodeType' | 'statusCode'> | null;
   finding?: Pick<Finding, 'id' | 'shortDescription' | 'statusCode' | 'classificationValues'> | null;
   standaloneMeasurement?: Pick<StandaloneMeasurement, 'id' | 'measurementType' | 'description'> | null;
 }
@@ -2114,7 +2157,7 @@ export interface LocationImageMarker {
 export interface LocationImage {
   id: string;
   orgId: string;
-  locationId: string;
+  nodeId: string;
   storagePath: string;
   thumbnailPath: string | null;
   originalFilename: string | null;
@@ -2570,8 +2613,8 @@ export interface MeasurementSheetRecord {
   id: string;
   orgId: string;
   templateId: string;
-  assetId: string;
-  inspectionPlanId: string | null;
+  assetNodeId: string;
+  inspectionPlanId: string;
   templateVersion: string;
   templateSnapshot: MeasurementSheetTemplateSnapshot;
   status: MeasurementSheetRecordStatus;
@@ -2588,7 +2631,7 @@ export interface MeasurementSheetRecord {
   usedInstrumentIds: string[];
   // Include-projecties uit de endpoints:
   template?: { id: string; code: string; name: string; version: string };
-  asset?: { id: string; name: string; assetType: string; inspectionPlanId?: string };
+  assetNode?: { id: string; name: string; typeCode: string; inspectionPlanId?: string };
 }
 
 // ─── Voice-prompts (3-lagen prompt-model voor spraakinvoer) ───

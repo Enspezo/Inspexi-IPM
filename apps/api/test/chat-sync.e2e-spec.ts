@@ -103,13 +103,13 @@ describe('Chat sync (e2e)', () => {
       .expect(200);
     const data = res.body.data;
 
-    // Existing v2 contract — unchanged.
-    for (const key of ['inspectionPlans', 'assets', 'findings', 'photos', 'contacts', 'deletedIds', 'serverTime']) {
+    // Existing contract keys — chat is purely additive (v3: assets → assetNodes).
+    for (const key of ['inspectionPlans', 'assetNodes', 'findings', 'photos', 'contacts', 'deletedIds', 'serverTime']) {
       expect(data).toHaveProperty(key);
     }
     expect(Array.isArray(data.inspectionPlans)).toBe(true);
     expect(data.deletedIds).toHaveProperty('inspectionPlans');
-    expect(data.deletedIds).toHaveProperty('assets');
+    expect(data.deletedIds).toHaveProperty('assetNodes');
     expect(data.deletedIds).toHaveProperty('findings');
 
     // Additive chat keys.

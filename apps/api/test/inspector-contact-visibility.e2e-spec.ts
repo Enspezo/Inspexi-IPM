@@ -220,14 +220,15 @@ describe('Inspecteur-contact zichtbaarheid (e2e)', () => {
       .expect(201);
     token = login.body.data.accessToken;
 
+    // Staff /auth/login is @HttpCode(200); only the client realm returns 201.
     const adminLogin = await postHost('/api/v1/auth/login')
       .send({ email: ADMIN_LOGIN_EMAIL, password: STAFF_PW })
-      .expect(201);
+      .expect(200);
     adminToken = adminLogin.body.data.accessToken;
 
     const inspectorLogin = await postHost('/api/v1/auth/login')
       .send({ email: INSPECTOR_LOGIN_EMAIL, password: STAFF_PW })
-      .expect(201);
+      .expect(200);
     inspectorToken = inspectorLogin.body.data.accessToken;
   });
 

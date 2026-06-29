@@ -21,10 +21,7 @@ describe('StandaloneMeasurementsService', () => {
     inspectionPlan: {
       findFirst: jest.fn(),
     },
-    inspectionLocation: {
-      findUnique: jest.fn(),
-    },
-    asset: {
+    assetNode: {
       findUnique: jest.fn(),
     },
   };
@@ -60,8 +57,8 @@ describe('StandaloneMeasurementsService', () => {
         id: 'plan-1',
         orgId: 'org-1',
       });
-      // assertSameOrg(inspectionLocation) → same org
-      mockPrismaService.inspectionLocation.findUnique.mockResolvedValue({ orgId: 'org-1' });
+      // assertSameOrg(assetNode LOCATION) → same org
+      mockPrismaService.assetNode.findUnique.mockResolvedValue({ orgId: 'org-1' });
       mockPrismaService.standaloneMeasurement.create.mockResolvedValue({
         id: 'm-new',
         createdAt: new Date(),
@@ -75,7 +72,7 @@ describe('StandaloneMeasurementsService', () => {
       );
 
       expect(result.id).toBe('m-new');
-      expect(mockPrismaService.inspectionLocation.findUnique).toHaveBeenCalledWith({
+      expect(mockPrismaService.assetNode.findUnique).toHaveBeenCalledWith({
         where: { id: 'loc-1' },
         select: { orgId: true },
       });
@@ -84,7 +81,7 @@ describe('StandaloneMeasurementsService', () => {
           data: expect.objectContaining({
             orgId: 'org-1',
             inspectionPlanId: 'plan-1',
-            locationId: 'loc-1',
+            locationNodeId: 'loc-1',
             measurementType: 'isolatiemeting',
             createdBy: 'user-1',
             deviceId: 'device-9',
@@ -119,7 +116,7 @@ describe('StandaloneMeasurementsService', () => {
         orgId: 'org-1',
       });
       // location belongs to another org
-      mockPrismaService.inspectionLocation.findUnique.mockResolvedValue({ orgId: 'org-2' });
+      mockPrismaService.assetNode.findUnique.mockResolvedValue({ orgId: 'org-2' });
 
       await expect(
         service.create(
@@ -136,7 +133,7 @@ describe('StandaloneMeasurementsService', () => {
         id: 'plan-1',
         orgId: 'org-1',
       });
-      mockPrismaService.inspectionLocation.findUnique.mockResolvedValue({ orgId: 'org-1' });
+      mockPrismaService.assetNode.findUnique.mockResolvedValue({ orgId: 'org-1' });
       mockPrismaService.standaloneMeasurement.create.mockResolvedValue({ id: 'm-new' });
 
       await service.create('plan-1', mockUser, {
@@ -272,22 +269,22 @@ describe('StandaloneMeasurementsService', () => {
         id: 'm-1',
         orgId: 'org-1',
       });
-      mockPrismaService.asset.findUnique.mockResolvedValue({ orgId: 'org-1' });
+      mockPrismaService.assetNode.findUnique.mockResolvedValue({ orgId: 'org-1' });
       mockPrismaService.standaloneMeasurement.update.mockResolvedValue({
         id: 'm-1',
-        linkedAssetId: 'asset-1',
+        linkedAssetNodeId: 'asset-1',
       });
 
       const result = await service.linkAsset('m-1', mockUser, { assetId: 'asset-1' } as any);
 
-      expect(result.linkedAssetId).toBe('asset-1');
-      expect(mockPrismaService.asset.findUnique).toHaveBeenCalledWith({
+      expect(result.linkedAssetNodeId).toBe('asset-1');
+      expect(mockPrismaService.assetNode.findUnique).toHaveBeenCalledWith({
         where: { id: 'asset-1' },
         select: { orgId: true },
       });
       expect(mockPrismaService.standaloneMeasurement.update).toHaveBeenCalledWith({
         where: { id: 'm-1' },
-        data: { linkedAssetId: 'asset-1' },
+        data: { linkedAssetNodeId: 'asset-1' },
       });
     });
 
@@ -296,7 +293,7 @@ describe('StandaloneMeasurementsService', () => {
         id: 'm-1',
         orgId: 'org-1',
       });
-      mockPrismaService.asset.findUnique.mockResolvedValue({ orgId: 'org-2' });
+      mockPrismaService.assetNode.findUnique.mockResolvedValue({ orgId: 'org-2' });
 
       await expect(
         service.linkAsset('m-1', mockUser, { assetId: 'asset-other' } as any),

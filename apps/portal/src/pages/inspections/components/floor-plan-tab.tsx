@@ -1,11 +1,12 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { Button, Card, Select, Spinner, ErrorBox, useToast, useConfirm } from '@/components/ui';
 import { LocationImageViewer, type Marker, type Annotation } from '@/components/location-image-viewer';
-import { MarkerType } from '@/types';
+import { MarkerType, AssetNodeType } from '@/types';
 import { getAccessToken, getErrorMessage } from '@/lib/api-client';
 import { useLookups, type LookupRow } from '@/lib/lookups';
+import { usePlanTree } from '../hooks/use-asset-nodes';
+import { normalizeTree, flattenTree, indentLabel } from '@/components/asset-tree';
 import {
-  useInspectionLocations,
   useLocationImage,
   useUploadLocationImage,
   useDeleteLocationImage,
@@ -35,14 +36,20 @@ function lookupOf(rows: LookupRow[] | undefined, code: string | null | undefined
  * met klikbare markers. Per locatie hoort één afbeelding (location-images).
  */
 export function FloorPlanTab({ planId, canWrite }: { planId: string; canWrite: boolean }) {
-  const { data: locations, isLoading, error } = useInspectionLocations(planId);
+  const { data: treeData, isLoading, error } = usePlanTree(planId);
   const [selectedLocationId, setSelectedLocationId] = useState('');
 
+  // Alleen LOCATION-nodes uit de boom kunnen een plattegrond dragen.
+  const locationNodes = useMemo(
+    () => flattenTree(normalizeTree(treeData)).filter((n) => n.nodeType === AssetNodeType.LOCATION),
+    [treeData],
+  );
+
   useEffect(() => {
-    if (locations && locations.length > 0 && !selectedLocationId) {
-      setSelectedLocationId(locations[0].id);
+    if (locationNodes.length > 0 && !selectedLocationId) {
+      setSelectedLocationId(locationNodes[0].id);
     }
-  }, [locations, selectedLocationId]);
+  }, [locationNodes, selectedLocationId]);
 
   if (isLoading) {
     return (
@@ -54,7 +61,7 @@ export function FloorPlanTab({ planId, canWrite }: { planId: string; canWrite: b
     );
   }
   if (error) return <ErrorBox>Fout bij het laden van de locaties.</ErrorBox>;
-  if (!locations || locations.length === 0) {
+  if (locationNodes.length === 0) {
     return (
       <Card title="Plattegrond">
         <p className="text-sm text-gray-500">
@@ -64,9 +71,9 @@ export function FloorPlanTab({ planId, canWrite }: { planId: string; canWrite: b
     );
   }
 
-  const locationOptions = locations.map((l) => ({
+  const locationOptions = locationNodes.map((l) => ({
     value: l.id,
-    label: l.identifier ? `${l.name} (${l.identifier})` : l.name,
+    label: indentLabel(l),
   }));
 
   return (
@@ -166,16 +173,16 @@ function LocationFloorPlan({
       let label = m.label ?? undefined;
       let linkedEntity: Marker['linkedEntity'];
 
-      if (m.markerType === MarkerType.ASSET && m.asset) {
-        const row = lookupOf(assetStatuses, m.asset.statusCode);
+      if (m.markerType === MarkerType.ASSET && m.assetNode) {
+        const row = lookupOf(assetStatuses, m.assetNode.statusCode);
         linkedEntity = {
-          id: m.asset.id,
-          name: m.asset.name,
-          type: m.asset.assetType,
+          id: m.assetNode.id,
+          name: m.assetNode.name,
+          type: m.assetNode.typeCode,
           status: row?.label,
           classificationColor: row?.color ?? undefined,
         };
-        if (!label) label = m.asset.name;
+        if (!label) label = m.assetNode.name;
       } else if (m.markerType === MarkerType.FINDING && m.finding) {
         const row = lookupOf(findingStatuses, m.finding.statusCode);
         linkedEntity = {

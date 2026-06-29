@@ -15,10 +15,9 @@ describe('PortalStatsService', () => {
     finding: {
       count: jest.fn(),
     },
-    asset: {
-      count: jest.fn(),
-    },
-    inspectionLocation: {
+    // Unified asset tree: assets (nodeType ASSET) en locaties (nodeType LOCATION)
+    // worden beide via assetNode.count geteld (asset-call eerst, dan locatie-call).
+    assetNode: {
       count: jest.fn(),
     },
     contact: {
@@ -53,8 +52,7 @@ describe('PortalStatsService', () => {
     // Sensible numeric defaults so aggregations resolve.
     mockPrismaService.inspectionPlan.count.mockResolvedValue(0);
     mockPrismaService.finding.count.mockResolvedValue(0);
-    mockPrismaService.asset.count.mockResolvedValue(0);
-    mockPrismaService.inspectionLocation.count.mockResolvedValue(0);
+    mockPrismaService.assetNode.count.mockResolvedValue(0);
     mockPrismaService.inspectionPlan.findMany.mockResolvedValue([]);
     mockPrismaService.contact.findMany.mockResolvedValue([]);
   });
@@ -66,8 +64,9 @@ describe('PortalStatsService', () => {
         .mockResolvedValueOnce(2) // pendingReview
         .mockResolvedValueOnce(1); // completedThisWeek
       mockPrismaService.finding.count.mockResolvedValueOnce(3); // criticalFindings
-      mockPrismaService.asset.count.mockResolvedValueOnce(7); // totalAssets
-      mockPrismaService.inspectionLocation.count.mockResolvedValueOnce(4); // totalLocations
+      mockPrismaService.assetNode.count
+        .mockResolvedValueOnce(7) // totalAssets (nodeType ASSET)
+        .mockResolvedValueOnce(4); // totalLocations (nodeType LOCATION)
 
       const result = await service.getDashboardStats(orgUser);
 
@@ -92,12 +91,11 @@ describe('PortalStatsService', () => {
       expect(mockPrismaService.finding.count.mock.calls[0][0].where).toEqual(
         expect.objectContaining({ orgId: 'org-1' }),
       );
-      expect(mockPrismaService.asset.count.mock.calls[0][0].where).toEqual(
-        expect.objectContaining({ orgId: 'org-1' }),
-      );
-      expect(
-        mockPrismaService.inspectionLocation.count.mock.calls[0][0].where,
-      ).toEqual(expect.objectContaining({ orgId: 'org-1' }));
+      for (const call of mockPrismaService.assetNode.count.mock.calls) {
+        expect(call[0].where).toEqual(
+          expect.objectContaining({ orgId: 'org-1' }),
+        );
+      }
     });
 
     it('does NOT apply an orgId filter for a superuser', async () => {
@@ -109,12 +107,9 @@ describe('PortalStatsService', () => {
       expect(
         mockPrismaService.finding.count.mock.calls[0][0].where,
       ).not.toHaveProperty('orgId');
-      expect(
-        mockPrismaService.asset.count.mock.calls[0][0].where,
-      ).not.toHaveProperty('orgId');
-      expect(
-        mockPrismaService.inspectionLocation.count.mock.calls[0][0].where,
-      ).not.toHaveProperty('orgId');
+      for (const call of mockPrismaService.assetNode.count.mock.calls) {
+        expect(call[0].where).not.toHaveProperty('orgId');
+      }
     });
 
     it('counts critical findings as open findings', async () => {

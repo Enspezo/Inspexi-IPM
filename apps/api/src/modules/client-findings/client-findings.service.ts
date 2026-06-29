@@ -41,11 +41,11 @@ export class ClientFindingsService {
     const finding = await this.prisma.finding.findFirst({
       where: { id: findingId, orgId: org, deletedAt: null },
       include: {
-        asset: { select: { id: true, name: true, inspectionPlanId: true, locationDescription: true } },
+        assetNode: { select: { id: true, name: true, description: true } },
       },
     });
     if (!finding) throw new NotFoundException('Constatering niet gevonden');
-    await this.inspections.assertInspectionAccess(user.id, org, finding.asset.inspectionPlanId);
+    await this.inspections.assertInspectionAccess(user.id, org, finding.inspectionPlanId);
     return finding;
   }
 
@@ -54,7 +54,7 @@ export class ClientFindingsService {
     const finding = await this.prisma.finding.findUnique({
       where: { id: findingId },
       include: {
-        asset: { select: { id: true, name: true, locationDescription: true, inspectionPlanId: true } },
+        assetNode: { select: { id: true, name: true, description: true } },
         resolutions: {
           orderBy: { resolvedAt: 'desc' },
           include: {
@@ -176,7 +176,7 @@ export class ClientFindingsService {
       select: {
         photoUrl: true,
         resolution: {
-          select: { finding: { select: { asset: { select: { inspectionPlanId: true } } } } },
+          select: { finding: { select: { inspectionPlanId: true } } },
         },
       },
     });
@@ -184,7 +184,7 @@ export class ClientFindingsService {
     await this.inspections.assertInspectionAccess(
       user.id,
       org,
-      photo.resolution.finding.asset.inspectionPlanId,
+      photo.resolution.finding.inspectionPlanId,
     );
     const buffer = await this.storage.download(photo.photoUrl);
     return { buffer, mimeType: photo.photoUrl.endsWith('.png') ? 'image/png' : 'image/jpeg' };

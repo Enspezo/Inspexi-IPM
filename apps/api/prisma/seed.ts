@@ -1,4 +1,4 @@
-import { PrismaClient, Role, ContactType, LogType, PriceType, RequestSource, RequestStatus, Priority, QuoteStatus, NotificationType, PlanningStatus, AcceptanceStatus, ProjectStatus, AssetFieldType, ChecklistStatus, TemplateStatus, MeasurementSheetTemplateStatus, MeasurementSheetFieldType, FindingInspectionType, DocumentType, DocumentEntityType, TemplateMode, SectionType, ClientUserStatus, ClientAccessRole, GeneratedDocumentStatus, SignatureStatus, MarkerType, MeasurementSheetRecordStatus, PassFailOperator, LocationTypeScope, Availability, ChatThreadType, ChatThreadStatus, ContactDisplayMode } from '@prisma/client';
+import { PrismaClient, Role, ContactType, LogType, PriceType, RequestSource, RequestStatus, Priority, QuoteStatus, NotificationType, PlanningStatus, AcceptanceStatus, ProjectStatus, AssetFieldType, ChecklistStatus, TemplateStatus, MeasurementSheetTemplateStatus, MeasurementSheetFieldType, FindingInspectionType, DocumentType, DocumentEntityType, TemplateMode, SectionType, ClientUserStatus, ClientAccessRole, GeneratedDocumentStatus, SignatureStatus, MarkerType, MeasurementSheetRecordStatus, InspectionExecStatus, PassFailOperator, LocationTypeScope, Availability, ChatThreadType, ChatThreadStatus, ContactDisplayMode } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { randomUUID } from 'crypto';
 import * as fs from 'fs';
@@ -306,12 +306,13 @@ async function seedVariantOrg(
     },
   });
 
-  // Inspectieplan + asset + findings (Basis Inspecties).
+  // Inspectieplan met hoofdlocatie (= CRM-Locatie / boom-wortel) (Basis Inspecties).
   const plan = await prisma.inspectionPlan.create({
     data: {
       orgId: org.id,
       contactId: contact.id,
       projectId: project.id,
+      locationId: location.id,
       projectName: `NEN 1010 inspectie ${cfg.name}`,
       description: 'Periodieke veiligheidsinspectie van de elektrische installatie.',
       referenceNumber: 'INSP-2026-0001',
@@ -328,23 +329,60 @@ async function seedVariantOrg(
       createdBy: admin.id,
     },
   });
-  const asset = await prisma.asset.create({
+
+  // AssetNode-boom: wortel-LOCATION (1:1 aan de CRM-Locatie) → deellocatie → asset.
+  // path/depth worden door de DB-trigger gevuld → parent vóór kind inserten.
+  const rootNode = await prisma.assetNode.create({
     data: {
       orgId: org.id,
-      inspectionPlanId: plan.id,
-      assetType: 'electrical_installation',
+      nodeType: 'LOCATION',
+      rootLocationId: location.id,
+      typeCode: 'distribution_room',
+      name: location.name,
+      createdBy: inspecteur.id,
+    },
+  });
+  const roomNode = await prisma.assetNode.create({
+    data: {
+      orgId: org.id,
+      nodeType: 'LOCATION',
+      parentId: rootNode.id,
+      typeCode: 'distribution_room',
+      name: 'Verdeelruimte',
+      identifier: 'VR-01',
+      createdBy: inspecteur.id,
+    },
+  });
+  const asset = await prisma.assetNode.create({
+    data: {
+      orgId: org.id,
+      nodeType: 'ASSET',
+      parentId: roomNode.id,
+      typeCode: 'electrical_installation',
       name: 'Hoofdverdeler HVK',
       identifier: 'HVK-01',
       statusCode: 'new',
-      sortOrder: 0,
+      createdBy: inspecteur.id,
     },
   });
+
+  // Scope-deellocatie: de verdeelruimte als (primaire) scope van het plan.
+  await prisma.inspectionPlanLocation.create({
+    data: {
+      orgId: org.id,
+      inspectionPlanId: plan.id,
+      assetNodeId: roomNode.id,
+      isPrimary: true,
+    },
+  });
+
   // Eén open bevinding (om op te lossen via klantportaal) + één geclassificeerde (C2)
   // bevinding zodat het ondertekenbare document een classificatie toont.
   await prisma.finding.create({
     data: {
       orgId: org.id,
-      assetId: asset.id,
+      assetNodeId: asset.id,
+      inspectionPlanId: plan.id,
       inspectionType: FindingInspectionType.visual,
       shortDescription: 'Ontbrekende afdekking op verdeelinrichting',
       longDescription: 'De afdekking ontbreekt; aanraakgevaar voor spanningvoerende delen.',
@@ -356,7 +394,8 @@ async function seedVariantOrg(
   await prisma.finding.create({
     data: {
       orgId: org.id,
-      assetId: asset.id,
+      assetNodeId: asset.id,
+      inspectionPlanId: plan.id,
       inspectionType: FindingInspectionType.visual,
       shortDescription: 'Beschadigde mantel op hoofdvoedingskabel',
       longDescription: 'De mantel is plaatselijk beschadigd; de isolatie is zichtbaar aangetast.',
@@ -491,7 +530,8 @@ async function main() {
   await prisma.documentSection.deleteMany();
   await prisma.documentTemplateDocxRevision.deleteMany();
   await prisma.documentTemplate.deleteMany();
-  // location images & standalone measurements
+  // location images & standalone measurements. StandaloneMeasurement RESTRICTs on
+  // its location-node FK → it must go before the AssetNode tree (below).
   await prisma.locationImageMarker.deleteMany();
   await prisma.standaloneMeasurementValue.deleteMany();
   await prisma.standaloneMeasurement.deleteMany();
@@ -518,8 +558,12 @@ async function main() {
   await prisma.photo.deleteMany();
   await prisma.signature.deleteMany();
   await prisma.report.deleteMany();
-  await prisma.asset.deleteMany();
-  await prisma.inspectionLocation.deleteMany();
+  // Unified AssetNode tree (Fase 1-3). The execution records above cascade on
+  // assetNodeId, but the two RESTRICT referrers must be cleared first:
+  // InspectionPlanLocation (scope rows) and StandaloneMeasurement (deleted above).
+  // AssetNode.parentId is SET NULL, so a single deleteMany handles the whole tree.
+  await prisma.inspectionPlanLocation.deleteMany();
+  await prisma.assetNode.deleteMany();
   await prisma.inspectionPlan.deleteMany();
   // checklists
   await prisma.checklistVersionHistory.deleteMany();
@@ -2563,11 +2607,15 @@ async function main() {
   });
   console.log('  ✓ Document template (PLAN) (1)');
 
-  // 8. Demo-inspectieplan (org1, contact1, inspecteur) met assets + findings
+  // 8. Demo-inspectieplan (org1, contact1, inspecteur) op de unified AssetNode-boom.
+  // De hoofdlocatie (locationId) = CRM-Locatie "Kantoorpand Zuidas" = boom-wortel.
+  const inspecteurId = createdOrg1Users[Role.INSPECTEUR];
+
   const demoPlan = await prisma.inspectionPlan.create({
     data: {
       orgId: org1.id,
       contactId: contact1.id,
+      locationId: loc1Kantoor.id,
       projectName: 'NEN 1010 inspectie hoofdkantoor De Vries',
       description: 'Periodieke veiligheidsinspectie van de elektrische installatie',
       referenceNumber: 'INSP-2026-0001',
@@ -2585,33 +2633,74 @@ async function main() {
     },
   });
 
-  const asset1 = await prisma.asset.create({
+  // AssetNode-boom: wortel-LOCATION (1:1 aan de CRM-Locatie) → deellocatie
+  // "Verdieping 1" → 2 assets. path/depth worden door de DB-trigger gevuld, dus
+  // parents vóór kinderen inserten.
+  const rootNode = await prisma.assetNode.create({
     data: {
       orgId: org1.id,
-      inspectionPlanId: demoPlan.id,
-      assetType: 'electrical_installation',
+      nodeType: 'LOCATION',
+      rootLocationId: loc1Kantoor.id,
+      typeCode: 'distribution_room',
+      name: 'Hoofdkantoor',
+      identifier: 'LOC-HK',
+      createdBy: inspecteurId,
+    },
+  });
+  const floorNode = await prisma.assetNode.create({
+    data: {
+      orgId: org1.id,
+      nodeType: 'LOCATION',
+      parentId: rootNode.id,
+      typeCode: 'distribution_room',
+      name: 'Verdieping 1',
+      identifier: 'LOC-V1',
+      createdBy: inspecteurId,
+    },
+  });
+
+  const asset1 = await prisma.assetNode.create({
+    data: {
+      orgId: org1.id,
+      nodeType: 'ASSET',
+      parentId: floorNode.id,
+      typeCode: 'electrical_installation',
       name: 'Hoofdverdeler HVK',
       identifier: 'HVK-01',
       statusCode: 'new',
       sortOrder: 0,
+      createdBy: inspecteurId,
     },
   });
-  const asset2 = await prisma.asset.create({
+  const asset2 = await prisma.assetNode.create({
     data: {
       orgId: org1.id,
-      inspectionPlanId: demoPlan.id,
-      assetType: 'electrical_installation',
+      nodeType: 'ASSET',
+      parentId: floorNode.id,
+      typeCode: 'electrical_installation',
       name: 'Onderverdeler kantoor',
       identifier: 'OVK-02',
       statusCode: 'new',
       sortOrder: 1,
+      createdBy: inspecteurId,
+    },
+  });
+
+  // Scope-deellocatie: "Verdieping 1" als (primaire) scope van het plan.
+  await prisma.inspectionPlanLocation.create({
+    data: {
+      orgId: org1.id,
+      inspectionPlanId: demoPlan.id,
+      assetNodeId: floorNode.id,
+      isPrimary: true,
     },
   });
 
   const finding1 = await prisma.finding.create({
     data: {
       orgId: org1.id,
-      assetId: asset1.id,
+      assetNodeId: asset1.id,
+      inspectionPlanId: demoPlan.id,
       inspectionType: FindingInspectionType.visual,
       shortDescription: 'Ontbrekende afdekking op verdeelinrichting',
       longDescription: 'De afdekking van de hoofdverdeler ontbreekt, aanraakgevaar voor spanningvoerende delen.',
@@ -2622,7 +2711,8 @@ async function main() {
   await prisma.finding.create({
     data: {
       orgId: org1.id,
-      assetId: asset2.id,
+      assetNodeId: asset2.id,
+      inspectionPlanId: demoPlan.id,
       inspectionType: FindingInspectionType.measurement,
       shortDescription: 'Isolatieweerstand onder norm op groep 3',
       longDescription: 'Gemeten isolatieweerstand 0,3 MΩ, onder de minimumwaarde van 1 MΩ.',
@@ -2630,43 +2720,50 @@ async function main() {
       statusCode: 'open',
     },
   });
-  console.log('  ✓ Demo inspection plan + 2 assets + 2 findings');
+  console.log(
+    '  ✓ Demo AssetNode-boom: hoofdlocatie → Verdieping 1 (scope) → 2 assets + 2 findings',
+  );
 
-  // ─── Locaties, plattegrond & meetstaten (inspectiedomein) ───────────────
-  // Additief op het bestaande demo-plan. treePath blijft leeg (de
-  // inspection-locations.service bouwt de boom via parentLocationId, niet via treePath).
-  const inspecteurId = createdOrg1Users[Role.INSPECTEUR];
-
-  const rootLocation = await prisma.inspectionLocation.create({
+  // Visuele inspectie op asset1 (completed). VisualInspection heeft GEEN createdBy-kolom.
+  await prisma.visualInspection.create({
     data: {
       orgId: org1.id,
+      assetNodeId: asset1.id,
       inspectionPlanId: demoPlan.id,
-      locationType: 'distribution_room',
-      name: 'Hoofdkantoor',
-      identifier: 'LOC-HK',
-      sortOrder: 0,
-      createdBy: inspecteurId,
-    },
-  });
-  const floorLocation = await prisma.inspectionLocation.create({
-    data: {
-      orgId: org1.id,
-      inspectionPlanId: demoPlan.id,
-      parentLocationId: rootLocation.id,
-      locationType: 'distribution_room',
-      name: 'Verdieping 1',
-      identifier: 'LOC-V1',
-      sortOrder: 0,
-      createdBy: inspecteurId,
+      status: InspectionExecStatus.completed,
+      checklistResults: [
+        { itemCode: 'cover-present', label: 'Afdekking aanwezig', result: 'fail' },
+        { itemCode: 'labeling', label: 'Bekabeling gelabeld', result: 'pass' },
+        { itemCode: 'earthing', label: 'Aarding aanwezig', result: 'pass' },
+      ] as any,
+      inspectorId: inspecteurId,
+      startedAt: new Date('2026-06-15T10:30:00Z'),
+      completedAt: new Date('2026-06-15T10:45:00Z'),
+      deviceId: 'demo-device-001',
     },
   });
 
-  // Assets aan de verdieping koppelen (Asset.locationId / relation "AssetLocation").
-  await prisma.asset.updateMany({
-    where: { id: { in: [asset1.id, asset2.id] } },
-    data: { locationId: floorLocation.id },
+  // Standalone-meting geworteld op een LOCATION-node (Verdieping 1), gekoppeld aan asset1.
+  await prisma.standaloneMeasurement.create({
+    data: {
+      orgId: org1.id,
+      inspectionPlanId: demoPlan.id,
+      locationNodeId: floorNode.id,
+      measurementType: 'isolatieweerstand',
+      description: 'Steekproef isolatieweerstand op verdieping 1',
+      linkedAssetNodeId: asset1.id,
+      createdBy: inspecteurId,
+      deviceId: 'demo-device-001',
+      values: {
+        create: [
+          { fieldName: 'R_iso', fieldType: 'number', value: '210', unit: 'MΩ', passFailCode: 'pass' },
+          { fieldName: 'U_test', fieldType: 'number', value: '500', unit: 'V' },
+          { fieldName: 'Opmerking', fieldType: 'text', value: 'Meting binnen norm' },
+        ],
+      },
+    },
   });
-  console.log('  ✓ Locatieboom (2 niveaus: Hoofdkantoor → Verdieping 1) + assets gekoppeld');
+  console.log('  ✓ Visuele inspectie (asset1) + standalone-meting (Verdieping 1 → asset1, 3 waarden)');
 
   // Plattegrond op de root-locatie: genereer een echte 800x600 PNG en schrijf 'm naar
   // de lokale storage (UPLOAD_DIR), zodat de afbeelding in het portal daadwerkelijk
@@ -2683,7 +2780,7 @@ async function main() {
   const floorPlanImage = await prisma.locationImage.create({
     data: {
       orgId: org1.id,
-      locationId: rootLocation.id,
+      nodeId: rootNode.id,
       storagePath: floorPlanKey,
       originalFilename: floorPlanFilename,
       fileSize: floorPlanBytes.length,
@@ -2704,7 +2801,7 @@ async function main() {
         positionX: 27,
         positionY: 30,
         markerType: MarkerType.ASSET,
-        assetId: asset1.id,
+        assetNodeId: asset1.id,
         label: 'Hoofdverdeler HVK',
         createdBy: inspecteurId,
       },
@@ -2714,7 +2811,7 @@ async function main() {
         positionX: 73,
         positionY: 64,
         markerType: MarkerType.ASSET,
-        assetId: asset2.id,
+        assetNodeId: asset2.id,
         label: 'Onderverdeler kantoor',
         createdBy: inspecteurId,
       },
@@ -2750,7 +2847,7 @@ async function main() {
     data: {
       orgId: org1.id,
       templateId: measSheet.id,
-      assetId: asset1.id,
+      assetNodeId: asset1.id,
       inspectionPlanId: demoPlan.id,
       templateVersion: measSheet.version,
       templateSnapshot: measSnapshot as any,
@@ -2773,7 +2870,7 @@ async function main() {
     data: {
       orgId: org1.id,
       templateId: measSheet.id,
-      assetId: asset2.id,
+      assetNodeId: asset2.id,
       inspectionPlanId: demoPlan.id,
       templateVersion: measSheet.version,
       templateSnapshot: measSnapshot as any,
@@ -2803,7 +2900,7 @@ async function main() {
     },
   });
   console.log('  ✓ Meetstaat-records (2: asset1 geslaagd, asset2 afgekeurd op groep 3)');
-  console.log('  → Demo-inspectie compleet: + 2 locaties, 1 plattegrond + 3 markers, 2 meetstaat-records');
+  console.log('  → Demo-inspectie compleet: + 2 locaties, 1 plattegrond + 3 markers, 2 meetstaat-records, 1 visuele inspectie, 1 standalone-meting');
 
   // ─── Meetmiddelen + kalibraties (demo) ─────────────────
   // Drie meetmiddelen met afgeleide statussen: binnenkort verlopend, verlopen en geldig.
@@ -2938,7 +3035,7 @@ async function main() {
 
   // Gebruikte meetmiddelen op het geslaagde demo-meetstaat-record (asset1)
   await prisma.measurementSheetRecord.updateMany({
-    where: { assetId: asset1.id, templateId: measSheet.id },
+    where: { assetNodeId: asset1.id, templateId: measSheet.id },
     data: { usedInstrumentIds: [mi1.id, mi3.id] },
   });
 
@@ -2960,7 +3057,8 @@ async function main() {
   await prisma.finding.create({
     data: {
       orgId: org1.id,
-      assetId: asset1.id,
+      assetNodeId: asset1.id,
+      inspectionPlanId: demoPlan.id,
       inspectionType: FindingInspectionType.visual,
       shortDescription: 'Beschadigde mantel op hoofdvoedingskabel',
       longDescription: 'De mantel van de hoofdvoedingskabel is plaatselijk beschadigd; de isolatie is zichtbaar aangetast.',

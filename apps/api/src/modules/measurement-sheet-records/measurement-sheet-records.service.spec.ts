@@ -1,8 +1,9 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
+import { NotFoundException, BadRequestException } from '@nestjs/common';
 import { Role, MeasurementSheetRecordStatus } from '@prisma/client';
 import { MeasurementSheetRecordsService } from './measurement-sheet-records.service';
 import { PrismaService } from '@/prisma';
+import { AssetNodesService } from '../asset-nodes/asset-nodes.service';
 
 describe('MeasurementSheetRecordsService', () => {
   let service: MeasurementSheetRecordsService;
@@ -16,8 +17,13 @@ describe('MeasurementSheetRecordsService', () => {
       delete: jest.fn(),
     },
     measurementSheetTemplate: { findUnique: jest.fn() },
-    asset: { findUnique: jest.fn(), findFirst: jest.fn(), findMany: jest.fn() },
-    inspectionPlan: { findUnique: jest.fn(), findMany: jest.fn() },
+    measurementInstrument: { findMany: jest.fn() },
+    assetNode: { findUnique: jest.fn(), findFirst: jest.fn(), findMany: jest.fn() },
+    inspectionPlan: { findUnique: jest.fn(), findFirst: jest.fn(), findMany: jest.fn() },
+  };
+
+  const mockAssetNodesService = {
+    assertNodeInPlanTree: jest.fn(),
   };
 
   const mockUser = {
@@ -117,10 +123,13 @@ describe('MeasurementSheetRecordsService', () => {
   beforeEach(async () => {
     jest.clearAllMocks();
 
+    mockAssetNodesService.assertNodeInPlanTree.mockResolvedValue(undefined);
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         MeasurementSheetRecordsService,
         { provide: PrismaService, useValue: mockPrismaService },
+        { provide: AssetNodesService, useValue: mockAssetNodesService },
       ],
     }).compile();
 
@@ -128,15 +137,12 @@ describe('MeasurementSheetRecordsService', () => {
   });
 
   describe('create (snapshot)', () => {
-    it('captures templateVersion, snapshots structure, derives orgId from asset', async () => {
-      // assertSameOrg(asset) → org match
-      mockPrismaService.asset.findUnique.mockResolvedValue({ orgId: 'org-1' });
-      // scoped asset lookup (orgId source)
-      mockPrismaService.asset.findFirst.mockResolvedValue({
-        id: 'asset-1',
-        orgId: 'org-1',
-        inspectionPlanId: null,
-      });
+    const plan = { id: 'plan-1', orgId: 'org-1', locationId: 'loc-1' };
+
+    it('captures templateVersion, snapshots structure, and creates with assetNodeId + plan', async () => {
+      // Plan is loaded (org-scoped) and the asset-node is asserted in its tree.
+      mockPrismaService.inspectionPlan.findFirst.mockResolvedValue(plan);
+      mockAssetNodesService.assertNodeInPlanTree.mockResolvedValue(undefined);
       mockPrismaService.measurementSheetTemplate.findUnique.mockResolvedValue(activeTemplate);
       mockPrismaService.measurementSheetRecord.create.mockImplementation(async (args: any) => ({
         id: 'rec-new',
@@ -145,15 +151,17 @@ describe('MeasurementSheetRecordsService', () => {
 
       const result = await service.create(
         mockUser,
-        { templateId: 'tmpl-1', assetId: 'asset-1' } as any,
+        { templateId: 'tmpl-1', assetNodeId: 'node-1', inspectionPlanId: 'plan-1' } as any,
         'device-xyz',
       );
 
       expect(result.id).toBe('rec-new');
+      expect(mockAssetNodesService.assertNodeInPlanTree).toHaveBeenCalledWith('node-1', plan);
       const createArgs = mockPrismaService.measurementSheetRecord.create.mock.calls[0][0];
       expect(createArgs.data.orgId).toBe('org-1');
       expect(createArgs.data.templateId).toBe('tmpl-1');
-      expect(createArgs.data.assetId).toBe('asset-1');
+      expect(createArgs.data.assetNodeId).toBe('node-1');
+      expect(createArgs.data.inspectionPlanId).toBe('plan-1');
       expect(createArgs.data.templateVersion).toBe('1.2');
       expect(createArgs.data.status).toBe(MeasurementSheetRecordStatus.IN_PROGRESS);
       expect(createArgs.data.deviceId).toBe('device-xyz');
@@ -165,81 +173,62 @@ describe('MeasurementSheetRecordsService', () => {
       expect(createArgs.data.data.sec1['0'].f1).toEqual({ value: null, passFail: null });
     });
 
-    it('throws Forbidden when asset belongs to another org (assertSameOrg)', async () => {
-      mockPrismaService.asset.findUnique.mockResolvedValue({ orgId: 'org-2' });
-
-      await expect(
-        service.create(mockUser, { templateId: 'tmpl-1', assetId: 'asset-1' } as any),
-      ).rejects.toThrow(ForbiddenException);
-    });
-
-    it('throws NotFound when asset does not exist (assertSameOrg)', async () => {
-      mockPrismaService.asset.findUnique.mockResolvedValue(null);
-
-      await expect(
-        service.create(mockUser, { templateId: 'tmpl-1', assetId: 'asset-x' } as any),
-      ).rejects.toThrow(NotFoundException);
-    });
-
-    it('throws Forbidden when inspectionPlan belongs to another org', async () => {
-      mockPrismaService.asset.findUnique.mockResolvedValue({ orgId: 'org-1' });
-      mockPrismaService.inspectionPlan.findUnique.mockResolvedValue({ orgId: 'org-2' });
+    it('throws NotFound (NL) when the inspectionPlan is missing / out of org', async () => {
+      // Org-scoped plan lookup returns null → NotFound (replaces the old asset checks).
+      mockPrismaService.inspectionPlan.findFirst.mockResolvedValue(null);
 
       await expect(
         service.create(mockUser, {
           templateId: 'tmpl-1',
-          assetId: 'asset-1',
+          assetNodeId: 'node-1',
           inspectionPlanId: 'plan-9',
         } as any),
-      ).rejects.toThrow(ForbiddenException);
+      ).rejects.toThrow('Inspectieplan niet gevonden');
     });
 
-    it('throws BadRequest when asset is not part of the given plan', async () => {
-      mockPrismaService.asset.findUnique.mockResolvedValue({ orgId: 'org-1' });
-      mockPrismaService.inspectionPlan.findUnique.mockResolvedValue({ orgId: 'org-1' });
-      mockPrismaService.asset.findFirst.mockResolvedValue({
-        id: 'asset-1',
-        orgId: 'org-1',
-        inspectionPlanId: 'plan-OTHER',
-      });
+    it('throws when the asset-node is not part of the given plan tree', async () => {
+      // Replaces the old "Asset hoort niet bij het opgegeven inspectieplan" check:
+      // the tree membership is now enforced by assertNodeInPlanTree.
+      mockPrismaService.inspectionPlan.findFirst.mockResolvedValue(plan);
+      mockAssetNodesService.assertNodeInPlanTree.mockRejectedValue(
+        new BadRequestException('Node hoort niet bij de boom van dit plan'),
+      );
 
       await expect(
         service.create(mockUser, {
           templateId: 'tmpl-1',
-          assetId: 'asset-1',
+          assetNodeId: 'node-OTHER',
           inspectionPlanId: 'plan-1',
         } as any),
-      ).rejects.toThrow('Asset hoort niet bij het opgegeven inspectieplan');
+      ).rejects.toThrow(BadRequestException);
     });
 
     it('throws NotFound (NL) when template missing', async () => {
-      mockPrismaService.asset.findUnique.mockResolvedValue({ orgId: 'org-1' });
-      mockPrismaService.asset.findFirst.mockResolvedValue({
-        id: 'asset-1',
-        orgId: 'org-1',
-        inspectionPlanId: null,
-      });
+      mockPrismaService.inspectionPlan.findFirst.mockResolvedValue(plan);
       mockPrismaService.measurementSheetTemplate.findUnique.mockResolvedValue(null);
 
       await expect(
-        service.create(mockUser, { templateId: 'gone', assetId: 'asset-1' } as any),
+        service.create(mockUser, {
+          templateId: 'gone',
+          assetNodeId: 'node-1',
+          inspectionPlanId: 'plan-1',
+        } as any),
       ).rejects.toThrow('Meetstaat-template niet gevonden');
     });
 
     it('throws BadRequest when template is not ACTIEF', async () => {
-      mockPrismaService.asset.findUnique.mockResolvedValue({ orgId: 'org-1' });
-      mockPrismaService.asset.findFirst.mockResolvedValue({
-        id: 'asset-1',
-        orgId: 'org-1',
-        inspectionPlanId: null,
-      });
+      mockPrismaService.inspectionPlan.findFirst.mockResolvedValue(plan);
       mockPrismaService.measurementSheetTemplate.findUnique.mockResolvedValue({
         ...activeTemplate,
         status: 'CONCEPT',
       });
 
       await expect(
-        service.create(mockUser, { templateId: 'tmpl-1', assetId: 'asset-1' } as any),
+        service.create(mockUser, {
+          templateId: 'tmpl-1',
+          assetNodeId: 'node-1',
+          inspectionPlanId: 'plan-1',
+        } as any),
       ).rejects.toThrow('Alleen ACTIEVE templates kunnen gebruikt worden');
     });
   });
@@ -428,13 +417,13 @@ describe('MeasurementSheetRecordsService', () => {
       mockPrismaService.measurementSheetRecord.findMany.mockResolvedValue([{ id: 'rec-1' }]);
 
       await service.findAll(mockUser, {
-        assetId: 'asset-1',
+        assetNodeId: 'node-1',
         status: MeasurementSheetRecordStatus.IN_PROGRESS,
       } as any);
 
       const args = mockPrismaService.measurementSheetRecord.findMany.mock.calls[0][0];
       expect(args.where.orgId).toBe('org-1');
-      expect(args.where.assetId).toBe('asset-1');
+      expect(args.where.assetNodeId).toBe('node-1');
       expect(args.where.status).toBe(MeasurementSheetRecordStatus.IN_PROGRESS);
     });
   });

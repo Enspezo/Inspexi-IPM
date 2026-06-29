@@ -1,37 +1,56 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { NotFoundException, BadRequestException } from '@nestjs/common';
-import { Role } from '@prisma/client';
+import { AssetNodeType, Role } from '@prisma/client';
 import { InspectionLocationsService } from './inspection-locations.service';
 import { PrismaService } from '@/prisma';
-import { LocationTypesService } from '../location-types/location-types.service';
+import { AssetNodesService } from '../asset-nodes/asset-nodes.service';
+
+// COMPAT-WRAPPER spec (Fase 2b): InspectionLocationsService maps the old
+// `inspection-plans/:planId/locations` API onto the unified AssetNode tree
+// (nodeType = LOCATION) by delegating writes to AssetNodesService and mapping
+// reads from `prisma.assetNode` back to the old shape (typeCode → locationType,
+// parentId → parentLocationId).
 
 describe('InspectionLocationsService', () => {
   let service: InspectionLocationsService;
 
   const mockPrismaService = {
-    inspectionLocation: {
-      findMany: jest.fn(),
+    assetNode: {
       findFirst: jest.fn(),
-      findUnique: jest.fn(),
-      create: jest.fn(),
+      groupBy: jest.fn(),
       update: jest.fn(),
-      updateMany: jest.fn(),
-      aggregate: jest.fn(),
-      count: jest.fn(),
-    },
-    asset: {
-      updateMany: jest.fn(),
     },
     inspectionPlan: {
       findFirst: jest.fn(),
-      findUnique: jest.fn(),
     },
     $transaction: jest.fn(),
   };
 
-  const mockLocationTypesService = {
-    validateParentConstraint: jest.fn().mockResolvedValue({ valid: true }),
+  const mockAssetNodes = {
+    create: jest.fn(),
+    update: jest.fn(),
+    move: jest.fn(),
+    delete: jest.fn(),
+    ensureRootNode: jest.fn(),
+    listPlanNodes: jest.fn(),
   };
+
+  /** Build a raw AssetNode (the shape the wrapper maps from). */
+  const makeNode = (overrides: Record<string, unknown> = {}) => ({
+    id: 'n1',
+    parentId: null,
+    typeCode: 'gebouw',
+    name: 'G1',
+    identifier: null,
+    description: null,
+    sortOrder: 0,
+    technicalData: {},
+    notes: null,
+    nodeType: AssetNodeType.LOCATION,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    ...overrides,
+  });
 
   const mockUser = {
     id: 'user-1',
@@ -47,33 +66,58 @@ describe('InspectionLocationsService', () => {
       providers: [
         InspectionLocationsService,
         { provide: PrismaService, useValue: mockPrismaService },
-        { provide: LocationTypesService, useValue: mockLocationTypesService },
+        { provide: AssetNodesService, useValue: mockAssetNodes },
       ],
     }).compile();
 
     service = module.get<InspectionLocationsService>(InspectionLocationsService);
-
-    // Sensible defaults
-    mockLocationTypesService.validateParentConstraint.mockResolvedValue({ valid: true });
   });
 
   describe('findById', () => {
-    it('should return the location when found in scope', async () => {
-      const location = { id: 'loc-1', orgId: 'org-1', name: 'G1' };
-      mockPrismaService.inspectionLocation.findFirst.mockResolvedValue(location);
+    it('should map a found LOCATION node back to the old location shape', async () => {
+      mockPrismaService.assetNode.findFirst.mockResolvedValue(
+        makeNode({
+          id: 'loc-1',
+          parentId: 'parent-1',
+          typeCode: 'gebouw',
+          parent: { id: 'parent-1', name: 'Terrein', typeCode: 'terrein' },
+          children: [
+            makeNode({ id: 'child-loc', nodeType: AssetNodeType.LOCATION, typeCode: 'ruimte' }),
+            makeNode({ id: 'child-asset', nodeType: AssetNodeType.ASSET, typeCode: 'container' }),
+          ],
+        }),
+      );
 
       const result = await service.findById('loc-1', mockUser);
 
-      expect(result).toBe(location);
-      expect(mockPrismaService.inspectionLocation.findFirst).toHaveBeenCalledWith(
+      expect(result.id).toBe('loc-1');
+      expect(result.locationType).toBe('gebouw');
+      expect(result.parentLocationId).toBe('parent-1');
+      expect(result.parentLocation).toEqual({
+        id: 'parent-1',
+        name: 'Terrein',
+        locationType: 'terrein',
+      });
+      expect(result.childLocations).toEqual([
+        expect.objectContaining({ id: 'child-loc', locationType: 'ruimte' }),
+      ]);
+      expect(result.assets).toEqual([
+        expect.objectContaining({ id: 'child-asset', locationType: 'container' }),
+      ]);
+      expect(mockPrismaService.assetNode.findFirst).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: expect.objectContaining({ id: 'loc-1', orgId: 'org-1', deletedAt: null }),
+          where: expect.objectContaining({
+            id: 'loc-1',
+            orgId: 'org-1',
+            nodeType: AssetNodeType.LOCATION,
+            deletedAt: null,
+          }),
         }),
       );
     });
 
     it('should throw NL NotFoundException when scoped out', async () => {
-      mockPrismaService.inspectionLocation.findFirst.mockResolvedValue(null);
+      mockPrismaService.assetNode.findFirst.mockResolvedValue(null);
 
       await expect(service.findById('loc-x', mockUser)).rejects.toThrow(NotFoundException);
       await expect(service.findById('loc-x', mockUser)).rejects.toThrow('Locatie niet gevonden');
@@ -81,173 +125,170 @@ describe('InspectionLocationsService', () => {
   });
 
   describe('getCountByPlan', () => {
-    it('should return the location count for a plan', async () => {
-      mockPrismaService.inspectionPlan.findFirst.mockResolvedValue({ id: 'plan-1', orgId: 'org-1' });
-      mockPrismaService.inspectionLocation.count.mockResolvedValue(5);
+    it('should return the count of LOCATION nodes for a plan', async () => {
+      mockAssetNodes.listPlanNodes.mockResolvedValue([
+        makeNode({ id: 'loc-1' }),
+        makeNode({ id: 'loc-2' }),
+      ]);
 
       const result = await service.getCountByPlan('plan-1', mockUser);
 
-      expect(result).toEqual({ count: 5 });
-      expect(mockPrismaService.inspectionLocation.count).toHaveBeenCalledWith({
-        where: { inspectionPlanId: 'plan-1', deletedAt: null },
-      });
+      expect(result).toEqual({ count: 2 });
+      expect(mockAssetNodes.listPlanNodes).toHaveBeenCalledWith(
+        'plan-1',
+        mockUser,
+        AssetNodeType.LOCATION,
+      );
+    });
+  });
+
+  describe('findAllByPlan', () => {
+    it('should list plan LOCATION nodes (flat) with counts mapped to old shape', async () => {
+      mockAssetNodes.listPlanNodes.mockResolvedValue([
+        makeNode({ id: 'loc-1', parentId: null }),
+        makeNode({ id: 'loc-2', parentId: 'loc-1', typeCode: 'ruimte' }),
+      ]);
+      mockPrismaService.assetNode.groupBy.mockResolvedValue([
+        { parentId: 'loc-1', _count: { _all: 4 } },
+      ]);
+
+      const result = (await service.findAllByPlan('plan-1', mockUser, { flat: true })) as any[];
+
+      expect(mockAssetNodes.listPlanNodes).toHaveBeenCalledWith(
+        'plan-1',
+        mockUser,
+        AssetNodeType.LOCATION,
+      );
+      const l1 = result.find((l) => l.id === 'loc-1');
+      expect(l1.locationType).toBe('gebouw');
+      expect(l1.childCount).toBe(1);
+      expect(l1.assetCount).toBe(4);
+      const l2 = result.find((l) => l.id === 'loc-2');
+      expect(l2.parentLocationId).toBe('loc-1');
     });
   });
 
   describe('create', () => {
-    it('should create a location under a plan and call validateParentConstraint', async () => {
+    it('should ensure the plan root node and delegate with mapped fields', async () => {
       mockPrismaService.inspectionPlan.findFirst.mockResolvedValue({
         id: 'plan-1',
-        orgId: 'org-1',
+        locationId: 'crm-loc-1',
       });
-      mockPrismaService.inspectionLocation.aggregate.mockResolvedValue({
-        _max: { sortOrder: 2 },
-      });
-      mockPrismaService.inspectionLocation.create.mockResolvedValue({
-        id: 'loc-new',
-        createdAt: new Date(),
-      });
+      mockAssetNodes.ensureRootNode.mockResolvedValue({ id: 'root-1' });
+      mockAssetNodes.create.mockResolvedValue(makeNode({ id: 'loc-new', typeCode: 'gebouw' }));
 
       const result = await service.create(
         'plan-1',
         mockUser,
-        { locationType: 'gebouw', name: 'G1' } as any,
+        { locationType: 'gebouw', name: 'G1', description: 'hoofdgebouw' } as any,
         'device-9',
       );
 
       expect(result.id).toBe('loc-new');
-      expect(mockLocationTypesService.validateParentConstraint).toHaveBeenCalledWith(
-        'gebouw',
-        null,
+      expect(result.locationType).toBe('gebouw');
+      expect(mockAssetNodes.ensureRootNode).toHaveBeenCalledWith('crm-loc-1', mockUser);
+      expect(mockAssetNodes.create).toHaveBeenCalledWith(
         mockUser,
-      );
-      expect(mockPrismaService.inspectionLocation.create).toHaveBeenCalledWith(
         expect.objectContaining({
-          data: expect.objectContaining({
-            orgId: 'org-1',
-            inspectionPlanId: 'plan-1',
-            locationType: 'gebouw',
-            name: 'G1',
-            sortOrder: 3,
-            createdBy: 'user-1',
-            deviceId: 'device-9',
-          }),
+          parentId: 'root-1',
+          nodeType: AssetNodeType.LOCATION,
+          typeCode: 'gebouw',
+          name: 'G1',
+          description: 'hoofdgebouw',
         }),
+        'device-9',
       );
     });
 
-    it('should throw BadRequest when parent constraint is invalid', async () => {
+    it('should use the explicit parentLocationId without ensuring a root', async () => {
+      mockAssetNodes.create.mockResolvedValue(makeNode({ id: 'loc-new' }));
+
+      await service.create(
+        'plan-1',
+        mockUser,
+        { locationType: 'ruimte', name: 'R1', parentLocationId: 'parent-1' } as any,
+      );
+
+      expect(mockAssetNodes.ensureRootNode).not.toHaveBeenCalled();
+      expect(mockAssetNodes.create).toHaveBeenCalledWith(
+        mockUser,
+        expect.objectContaining({ parentId: 'parent-1' }),
+        undefined,
+      );
+    });
+
+    it('should throw BadRequest when the plan has no main location', async () => {
       mockPrismaService.inspectionPlan.findFirst.mockResolvedValue({
         id: 'plan-1',
-        orgId: 'org-1',
-      });
-      mockPrismaService.inspectionLocation.findFirst.mockResolvedValue({
-        id: 'parent-1',
-        locationType: 'ruimte',
-      });
-      mockLocationTypesService.validateParentConstraint.mockResolvedValue({
-        valid: false,
-        message: 'Type mag niet onder dit ouder-type',
+        locationId: null,
       });
 
       await expect(
-        service.create(
-          'plan-1',
-          mockUser,
-          { locationType: 'gebouw', name: 'G1', parentLocationId: 'parent-1' } as any,
-        ),
+        service.create('plan-1', mockUser, { locationType: 'gebouw', name: 'G1' } as any),
       ).rejects.toThrow(BadRequestException);
-      await expect(
-        service.create(
-          'plan-1',
-          mockUser,
-          { locationType: 'gebouw', name: 'G1', parentLocationId: 'parent-1' } as any,
-        ),
-      ).rejects.toThrow('Type mag niet onder dit ouder-type');
-      expect(mockPrismaService.inspectionLocation.create).not.toHaveBeenCalled();
+      expect(mockAssetNodes.create).not.toHaveBeenCalled();
     });
   });
 
   describe('update', () => {
-    it('should update a scoped location', async () => {
-      mockPrismaService.inspectionLocation.findFirst.mockResolvedValue({
-        id: 'loc-1',
-        orgId: 'org-1',
-      });
-      mockPrismaService.inspectionLocation.update.mockResolvedValue({
-        id: 'loc-1',
-        updatedAt: new Date(),
-      });
+    it('should assert the location node and delegate mapped fields', async () => {
+      mockPrismaService.assetNode.findFirst.mockResolvedValue({ id: 'loc-1' });
+      mockAssetNodes.update.mockResolvedValue(makeNode({ id: 'loc-1', name: 'Nieuw' }));
 
-      const result = await service.update('loc-1', mockUser, { name: 'Nieuw' } as any);
+      const result = await service.update('loc-1', mockUser, {
+        name: 'Nieuw',
+        description: 'aangepast',
+      } as any);
 
       expect(result.id).toBe('loc-1');
-      expect(mockPrismaService.inspectionLocation.update).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: { id: 'loc-1' },
-          data: expect.objectContaining({ name: 'Nieuw' }),
-        }),
+      expect(mockAssetNodes.update).toHaveBeenCalledWith(
+        'loc-1',
+        mockUser,
+        expect.objectContaining({ name: 'Nieuw', description: 'aangepast' }),
       );
+    });
+
+    it('should throw NotFound when the location node is out of scope', async () => {
+      mockPrismaService.assetNode.findFirst.mockResolvedValue(null);
+
+      await expect(
+        service.update('loc-x', mockUser, { name: 'X' } as any),
+      ).rejects.toThrow('Locatie niet gevonden');
+      expect(mockAssetNodes.update).not.toHaveBeenCalled();
     });
   });
 
   describe('move', () => {
-    it('should prevent circular nesting (descendant as new parent)', async () => {
-      mockPrismaService.inspectionLocation.findFirst
-        // location being moved
-        .mockResolvedValueOnce({
-          id: 'loc-1',
-          orgId: 'org-1',
-          locationType: 'gebouw',
-          inspectionPlanId: 'plan-1',
-        })
-        // new parent lookup (within plan)
-        .mockResolvedValueOnce({
-          id: 'loc-2',
-          locationType: 'ruimte',
-          inspectionPlanId: 'plan-1',
-        })
-        // isDescendantOf: loc-2's parent is loc-1 → circular
-        .mockResolvedValueOnce({ parentLocationId: 'loc-1' });
+    it('should reject a move without a new parent', async () => {
+      mockPrismaService.assetNode.findFirst.mockResolvedValue({ id: 'loc-1' });
 
-      await expect(
-        service.move('loc-1', mockUser, { newParentId: 'loc-2' } as any),
-      ).rejects.toThrow('Een locatie kan niet onder zijn eigen kind geplaatst worden');
-      expect(mockPrismaService.inspectionLocation.update).not.toHaveBeenCalled();
+      await expect(service.move('loc-1', mockUser, {} as any)).rejects.toThrow(BadRequestException);
+      expect(mockAssetNodes.move).not.toHaveBeenCalled();
     });
 
-    it('should move to a valid new parent', async () => {
-      mockPrismaService.inspectionLocation.findFirst
-        .mockResolvedValueOnce({
-          id: 'loc-1',
-          orgId: 'org-1',
-          locationType: 'gebouw',
-          inspectionPlanId: 'plan-1',
-        })
-        .mockResolvedValueOnce({
-          id: 'loc-2',
-          locationType: 'ruimte',
-          inspectionPlanId: 'plan-1',
-        })
-        // isDescendantOf: loc-2 has no parent → not circular
-        .mockResolvedValueOnce({ parentLocationId: null });
-      mockPrismaService.inspectionLocation.update.mockResolvedValue({
-        id: 'loc-1',
-        parentLocationId: 'loc-2',
-        sortOrder: 0,
-      });
+    it('should delegate the move and map the result', async () => {
+      mockPrismaService.assetNode.findFirst.mockResolvedValue({ id: 'loc-1' });
+      mockAssetNodes.move.mockResolvedValue(
+        makeNode({ id: 'loc-1', parentId: 'loc-2', sortOrder: 0 }),
+      );
 
-      const result = await service.move('loc-1', mockUser, { newParentId: 'loc-2' } as any);
+      const result = await service.move('loc-1', mockUser, {
+        newParentId: 'loc-2',
+        sortOrder: 0,
+      } as any);
 
       expect(result.parentLocationId).toBe('loc-2');
-      expect(mockPrismaService.inspectionLocation.update).toHaveBeenCalled();
+      expect(mockAssetNodes.move).toHaveBeenCalledWith('loc-1', mockUser, {
+        newParentId: 'loc-2',
+        sortOrder: 0,
+      });
     });
   });
 
   describe('reorder', () => {
-    it('should reorder locations via a transaction', async () => {
-      mockPrismaService.inspectionPlan.findFirst.mockResolvedValue({ id: 'plan-1', orgId: 'org-1' });
-      mockPrismaService.inspectionLocation.update.mockImplementation((args) => args);
+    it('should reorder locations via a scoped transaction', async () => {
+      mockAssetNodes.listPlanNodes.mockResolvedValue([]);
+      mockPrismaService.assetNode.update.mockImplementation((args: unknown) => args);
       mockPrismaService.$transaction.mockResolvedValue([]);
 
       const result = await service.reorder('plan-1', mockUser, {
@@ -255,12 +296,16 @@ describe('InspectionLocationsService', () => {
       } as any);
 
       expect(result).toEqual({ reordered: true });
-      expect(mockPrismaService.$transaction).toHaveBeenCalled();
-      expect(mockPrismaService.inspectionLocation.update).toHaveBeenCalledWith({
+      expect(mockAssetNodes.listPlanNodes).toHaveBeenCalledWith(
+        'plan-1',
+        mockUser,
+        AssetNodeType.LOCATION,
+      );
+      expect(mockPrismaService.assetNode.update).toHaveBeenCalledWith({
         where: { id: 'loc-2' },
         data: { sortOrder: 0 },
       });
-      expect(mockPrismaService.inspectionLocation.update).toHaveBeenCalledWith({
+      expect(mockPrismaService.assetNode.update).toHaveBeenCalledWith({
         where: { id: 'loc-1' },
         data: { sortOrder: 1 },
       });
@@ -268,25 +313,21 @@ describe('InspectionLocationsService', () => {
   });
 
   describe('delete', () => {
-    it('should soft-delete the location, its direct children and child assets', async () => {
-      mockPrismaService.inspectionLocation.findFirst.mockResolvedValue({
-        id: 'loc-1',
-        orgId: 'org-1',
-      });
-      mockPrismaService.inspectionLocation.updateMany.mockResolvedValue({ count: 2 });
-      mockPrismaService.asset.updateMany.mockResolvedValue({ count: 1 });
+    it('should assert the node and delegate the subtree delete', async () => {
+      mockPrismaService.assetNode.findFirst.mockResolvedValue({ id: 'loc-1' });
+      mockAssetNodes.delete.mockResolvedValue(undefined);
 
       const result = await service.delete('loc-1', mockUser);
 
       expect(result).toEqual({ deleted: true });
-      expect(mockPrismaService.inspectionLocation.updateMany).toHaveBeenCalledWith({
-        where: { OR: [{ id: 'loc-1' }, { parentLocationId: 'loc-1' }] },
-        data: { deletedAt: expect.any(Date) },
-      });
-      expect(mockPrismaService.asset.updateMany).toHaveBeenCalledWith({
-        where: { locationId: 'loc-1', deletedAt: null },
-        data: { deletedAt: expect.any(Date) },
-      });
+      expect(mockAssetNodes.delete).toHaveBeenCalledWith('loc-1', mockUser);
+    });
+
+    it('should throw NotFound when the location node is out of scope', async () => {
+      mockPrismaService.assetNode.findFirst.mockResolvedValue(null);
+
+      await expect(service.delete('loc-x', mockUser)).rejects.toThrow('Locatie niet gevonden');
+      expect(mockAssetNodes.delete).not.toHaveBeenCalled();
     });
   });
 });

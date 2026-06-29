@@ -20,6 +20,8 @@ import {
 } from '@/common';
 import { LookupService, LOOKUP_KIND, type LookupKind } from '../lookups/lookup.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { AssetNodesService } from '../asset-nodes/asset-nodes.service';
+import { CreateAssetNodeDto } from '../asset-nodes/dto';
 import {
   CreateInspectionPlanDto,
   UpdateInspectionPlanDto,
@@ -42,6 +44,7 @@ export class InspectionPlansService {
     private prisma: PrismaService,
     private lookups: LookupService,
     private notifications: NotificationsService,
+    private assetNodes: AssetNodesService,
   ) {}
 
   /** Template mag een systeemtemplate (orgId null) of een eigen-org template zijn. */
@@ -195,6 +198,7 @@ export class InspectionPlansService {
     await Promise.all([
       assertSameOrg(this.prisma.contact, dto.contactId, orgId, 'Relatie'),
       assertSameOrg(this.prisma.project, dto.projectId, orgId, 'Project'),
+      assertSameOrg(this.prisma.location, dto.locationId, orgId, 'Hoofdlocatie'),
       assertSameOrg(this.prisma.user, dto.assignedTo, orgId, 'Inspecteur'),
       assertSameOrg(this.prisma.user, dto.reviewerId, orgId, 'Reviewer'),
       assertSameOrg(this.prisma.contactPerson, dto.installationResponsibleId, orgId, 'Installatieverantwoordelijke'),
@@ -208,6 +212,7 @@ export class InspectionPlansService {
         orgId,
         contactId: dto.contactId,
         projectId: dto.projectId ?? null,
+        locationId: dto.locationId ?? null,
         inspectionTemplateId: dto.inspectionTemplateId ?? null,
         projectName: dto.projectName,
         description: dto.description ?? null,
@@ -231,6 +236,16 @@ export class InspectionPlansService {
       },
     });
 
+    // Werkboom: maak de wortel-LOCATION-node lazily aan + zet scope-deellocaties.
+    if (plan.locationId) {
+      await this.assetNodes.ensureRootNode(plan.locationId, user);
+      if (dto.scopeLocationIds?.length) {
+        await this.replaceScopeLocations(plan.id, orgId, plan.locationId, dto.scopeLocationIds);
+      }
+    } else if (dto.scopeLocationIds?.length) {
+      throw new BadRequestException('scopeLocationIds vereist een hoofdlocatie (locationId)');
+    }
+
     // Notify de toegewezen inspecteur (tenzij dat de aanmaker zelf is)
     if (plan.assignedTo && plan.assignedTo !== user.id) {
       this.notify(NotificationType.INSPECTIEPLAN_TOEGEWEZEN, plan, [
@@ -250,6 +265,7 @@ export class InspectionPlansService {
     await Promise.all([
       assertSameOrg(this.prisma.contact, dto.contactId, orgId, 'Relatie'),
       assertSameOrg(this.prisma.project, dto.projectId, orgId, 'Project'),
+      assertSameOrg(this.prisma.location, dto.locationId, orgId, 'Hoofdlocatie'),
       assertSameOrg(this.prisma.user, dto.assignedTo, orgId, 'Inspecteur'),
       assertSameOrg(this.prisma.user, dto.reviewerId, orgId, 'Reviewer'),
       assertSameOrg(this.prisma.contactPerson, dto.installationResponsibleId, orgId, 'Installatieverantwoordelijke'),
@@ -277,6 +293,10 @@ export class InspectionPlansService {
     if (dto.projectId !== undefined)
       data.project = dto.projectId
         ? { connect: { id: dto.projectId } }
+        : { disconnect: true };
+    if (dto.locationId !== undefined)
+      data.location = dto.locationId
+        ? { connect: { id: dto.locationId } }
         : { disconnect: true };
     if (dto.assignedTo !== undefined)
       data.assignedUser = dto.assignedTo
@@ -313,6 +333,24 @@ export class InspectionPlansService {
       where: { id: existing.id },
       data,
     });
+
+    // Werkboom + scope-deellocaties bijhouden.
+    const effectiveLocationId =
+      dto.locationId !== undefined ? dto.locationId : existing.locationId;
+    if (dto.locationId) {
+      await this.assetNodes.ensureRootNode(dto.locationId, user);
+    }
+    if (dto.scopeLocationIds !== undefined) {
+      if (!effectiveLocationId) {
+        throw new BadRequestException('scopeLocationIds vereist een hoofdlocatie (locationId)');
+      }
+      await this.replaceScopeLocations(plan.id, orgId, effectiveLocationId, dto.scopeLocationIds);
+    } else if (dto.locationId !== undefined && dto.locationId !== existing.locationId) {
+      // Hoofdlocatie gewijzigd → bestaande scope-deellocaties horen bij de oude boom.
+      await this.prisma.inspectionPlanLocation.deleteMany({
+        where: { inspectionPlanId: plan.id },
+      });
+    }
 
     // Notify bij wijziging van de toegewezen inspecteur (tenzij naar de aanmaker zelf).
     if (
@@ -414,6 +452,98 @@ export class InspectionPlansService {
     );
 
     return updated;
+  }
+
+  // ─── Scope-deellocaties (InspectionPlanLocation) ───────────
+
+  /**
+   * Vervangt de volledige scope-set van een plan. Valideert elke node
+   * (LOCATION + in de boom van `locationId`) vóór het schrijven. De eerste node
+   * wordt als `isPrimary` gemarkeerd.
+   */
+  private async replaceScopeLocations(
+    planId: string,
+    orgId: string,
+    locationId: string,
+    assetNodeIds: string[],
+  ): Promise<void> {
+    for (const assetNodeId of assetNodeIds) {
+      await this.assetNodes.assertValidScopeLocation(assetNodeId, locationId, orgId);
+    }
+    await this.prisma.$transaction([
+      this.prisma.inspectionPlanLocation.deleteMany({
+        where: { inspectionPlanId: planId },
+      }),
+      ...assetNodeIds.map((assetNodeId, index) =>
+        this.prisma.inspectionPlanLocation.create({
+          data: {
+            orgId,
+            inspectionPlanId: planId,
+            assetNodeId,
+            isPrimary: index === 0,
+          },
+        }),
+      ),
+    ]);
+  }
+
+  /** Lijst van scope-deellocaties van een plan. */
+  async listScopeLocations(planId: string, user: User) {
+    await this.findOne(planId, user);
+    return this.prisma.inspectionPlanLocation.findMany({
+      where: { inspectionPlanId: planId },
+      orderBy: { isPrimary: 'desc' },
+    });
+  }
+
+  /** Voegt één deellocatie toe aan de scope (idempotent). */
+  async addScopeLocation(planId: string, assetNodeId: string, user: User) {
+    const plan = await this.findOne(planId, user);
+    if (!plan.locationId) {
+      throw new BadRequestException('Het inspectieplan heeft geen hoofdlocatie (locationId)');
+    }
+    await this.assetNodes.assertValidScopeLocation(assetNodeId, plan.locationId, plan.orgId);
+
+    const existingCount = await this.prisma.inspectionPlanLocation.count({
+      where: { inspectionPlanId: planId },
+    });
+    await this.prisma.inspectionPlanLocation.upsert({
+      where: { inspectionPlanId_assetNodeId: { inspectionPlanId: planId, assetNodeId } },
+      create: {
+        orgId: plan.orgId,
+        inspectionPlanId: planId,
+        assetNodeId,
+        isPrimary: existingCount === 0,
+      },
+      update: {},
+    });
+    return this.listScopeLocations(planId, user);
+  }
+
+  /** Verwijdert één deellocatie uit de scope. */
+  async removeScopeLocation(planId: string, assetNodeId: string, user: User) {
+    await this.findOne(planId, user);
+    await this.prisma.inspectionPlanLocation.deleteMany({
+      where: { inspectionPlanId: planId, assetNodeId },
+    });
+    return this.listScopeLocations(planId, user);
+  }
+
+  /**
+   * Maakt een asset-node "vanuit een inspectie" aan: zonder expliciete parent
+   * defaultet de parent naar de enige scope-deellocatie (of de wortel-LOCATION)
+   * — de caller mag dit altijd overrulen door `parentId` mee te geven.
+   */
+  async createAssetNodeFromPlan(
+    planId: string,
+    user: User,
+    dto: CreateAssetNodeDto,
+    deviceId?: string,
+  ) {
+    await this.findOne(planId, user); // org-scope + bestaan (404)
+    const parentId =
+      dto.parentId ?? (await this.assetNodes.resolveDefaultParentForPlan(planId, user));
+    return this.assetNodes.create(user, { ...dto, parentId }, deviceId);
   }
 
   /** Soft-delete via deletedAt (tombstone voor sync). */

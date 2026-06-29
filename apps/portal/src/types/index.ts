@@ -2024,6 +2024,8 @@ export interface AssetNode {
   findingCount?: number;
   visualInspectionStatus?: string;
   measurementStatus?: string;
+  /** Alleen in de planboom (GET /inspection-plans/:id/tree): valt deze LOCATION binnen de scope. */
+  inScope?: boolean;
 }
 
 /** Koppeling van een inspectieplan aan een deellocatie-node (scope). */
@@ -2034,6 +2036,49 @@ export interface InspectionPlanLocation {
   assetNodeId: string;
   isPrimary: boolean;
   assetNode?: AssetNode;
+}
+
+/**
+ * Legacy compat-shape van de assets-wrappers (GET /assets,
+ * GET /inspection-plans/:id/assets?flat=true). Deze endpoints mappen ASSET-nodes
+ * terug op het oude Asset-contract; de boom-UI gebruikt {@link AssetNode}.
+ */
+export interface Asset {
+  id: string;
+  parentAssetId: string | null;
+  assetType: string;
+  name: string;
+  identifier: string | null;
+  locationDescription: string | null;
+  sortOrder: number;
+  statusCode: string;
+  technicalData: Record<string, unknown>;
+  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
+  /** Alleen aanwezig op detail-/uitvoeringsprojecties. */
+  inspectionPlanId?: string | null;
+  findingCount?: number;
+  _count?: Record<string, number>;
+}
+
+/**
+ * Legacy compat-shape van de inspection-locations-wrapper
+ * (GET /inspection-plans/:id/locations?flat=true). Mapt LOCATION-nodes terug op
+ * het oude contract; de boom-UI gebruikt {@link AssetNode}.
+ */
+export interface InspectionLocation {
+  id: string;
+  parentLocationId: string | null;
+  locationType: string;
+  name: string;
+  identifier: string | null;
+  description: string | null;
+  sortOrder: number;
+  technicalData: Record<string, unknown>;
+  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface Finding {

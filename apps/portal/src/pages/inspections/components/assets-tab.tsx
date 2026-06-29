@@ -1,134 +1,100 @@
-// Assets-tab van de inspectie-detailpagina. Bron van waarheid = de dedicated
-// lijst-endpoint (GET /inspection-plans/:id/assets?flat=true), net als de
-// plattegrond. Per asset zijn de bevindingen uitklapbaar (GET /assets/:id/findings),
-// en daaronder de ingevulde meetstaten (GET /measurement-sheet-records?assetId=…).
-import { useState } from 'react';
+// Assets-tab van de inspectie-detailpagina. Bron van waarheid = de geünificeerde
+// planboom (GET /inspection-plans/:planId/tree); LOCATION-nodes binnen de scope
+// worden gemarkeerd. Nieuwe objecten via POST /inspection-plans/:planId/asset-nodes
+// (server kiest de default-parent; de ouder-selector is voorgevuld + bewerkbaar).
+// Bij het selecteren van een ASSET-node tonen we zijn bevindingen + meetstaten.
+import { useMemo, useState } from 'react';
 import { Card, Spinner, LookupBadge, StatusBadge } from '@/components/ui';
 import { MEASUREMENT_SHEET_RECORD_STATUS } from '@/lib/status';
 import { formatDate } from '@/lib/format';
-import type {
-  Asset,
-  MeasurementSheetRecord,
-  MeasurementSheetSnapshotField,
-} from '@/types';
+import { AssetNodeType } from '@/types';
+import type { MeasurementSheetRecord, MeasurementSheetSnapshotField } from '@/types';
+import { TreeExplorer, normalizeTree, type TreeNode } from '@/components/asset-tree';
+import { usePlanTree, useScopeLocations } from '../hooks/use-asset-nodes';
 import { useAssetFindings } from '../hooks/use-location-images';
 import { useAssetMeasurementRecords } from '../hooks/use-measurement-records';
 import { useMeetmiddelen } from '@/pages/meetmiddelen/hooks/use-meetmiddelen';
+import { ScopeLocationsManager } from './scope-locations-manager';
 
-interface AssetsTabProps {
-  assets: Asset[];
-  isLoading: boolean;
-}
+export function AssetsTab({ planId, canWrite }: { planId: string; canWrite: boolean }) {
+  const { data: treeData, isLoading } = usePlanTree(planId);
+  const { scopeLocations } = useScopeLocations(planId);
+  const [selected, setSelected] = useState<TreeNode | null>(null);
 
-export function AssetsTab({ assets, isLoading }: AssetsTabProps) {
-  if (isLoading) {
-    return (
-      <Card title="Assets">
-        <div className="flex justify-center py-8">
-          <Spinner />
-        </div>
-      </Card>
-    );
-  }
+  const tree = useMemo(() => normalizeTree(treeData), [treeData]);
+  const rootId = tree[0]?.id ?? null;
+  // Default-parent voor nieuwe objecten: de primaire scope-locatie, anders de root.
+  const primaryScopeId = scopeLocations.find((s) => s.isPrimary)?.assetNodeId ?? null;
+  const defaultParentId = primaryScopeId ?? rootId;
 
   return (
-    <Card title={`Assets (${assets.length})`}>
-      {assets.length === 0 ? (
-        <p className="py-4 text-sm text-gray-500">Geen assets gekoppeld aan deze inspectie.</p>
-      ) : (
-        <ul className="-my-2 divide-y divide-gray-100">
-          {assets.map((asset) => (
-            <AssetRow key={asset.id} asset={asset} />
-          ))}
-        </ul>
+    <div className="space-y-4">
+      <ScopeLocationsManager planId={planId} canWrite={canWrite} />
+
+      <Card title="Objectboom">
+        <TreeExplorer
+          nodes={treeData}
+          isLoading={isLoading}
+          canWrite={canWrite}
+          planId={planId}
+          defaultParentId={defaultParentId}
+          defaultNodeType={AssetNodeType.ASSET}
+          highlightInScope
+          selectedId={selected?.id ?? null}
+          onSelect={setSelected}
+          emptyMessage="Dit inspectieplan heeft nog geen objecten of locaties."
+        />
+      </Card>
+
+      {selected && selected.nodeType === AssetNodeType.ASSET && (
+        <Card title={`Object: ${selected.name}`}>
+          <NodeExecutionDetail nodeId={selected.id} />
+        </Card>
       )}
-    </Card>
+    </div>
   );
 }
 
-function AssetRow({ asset }: { asset: Asset }) {
-  const [expanded, setExpanded] = useState(false);
-  // Bevindingen pas ophalen wanneer de rij uitgeklapt wordt.
-  const { data: findings, isLoading } = useAssetFindings(expanded ? asset.id : undefined);
-  const findingCount = asset.findingCount ?? findings?.length ?? 0;
+// ── Bevindingen + meetstaten van één geselecteerde ASSET-node ──
+function NodeExecutionDetail({ nodeId }: { nodeId: string }) {
+  const { data: findings, isLoading } = useAssetFindings(nodeId);
 
   return (
-    <li className="py-3">
-      <button
-        type="button"
-        onClick={() => setExpanded((v) => !v)}
-        className="flex w-full items-center justify-between gap-3 text-left"
-        aria-expanded={expanded}
-      >
-        <div className="flex min-w-0 items-start gap-2">
-          <svg
-            className={`mt-0.5 h-4 w-4 shrink-0 text-gray-400 transition-transform ${expanded ? 'rotate-90' : ''}`}
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-          >
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-          </svg>
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-x-2">
-              <span className="font-medium text-gray-900">{asset.name}</span>
-              {asset.identifier && (
-                <span className="text-sm text-gray-500">· {asset.identifier}</span>
-              )}
-            </div>
-            <div className="mt-0.5 text-xs text-gray-500">{asset.assetType}</div>
+    <div className="space-y-5">
+      <div>
+        <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">
+          Bevindingen
+        </h4>
+        {isLoading ? (
+          <div className="flex justify-center py-3">
+            <Spinner size="sm" />
           </div>
-        </div>
-        <div className="flex shrink-0 items-center gap-2">
-          {findingCount > 0 && (
-            <span className="inline-flex items-center rounded-full bg-orange-100 px-2 py-0.5 text-xs font-medium text-orange-800">
-              {findingCount} {findingCount === 1 ? 'bevinding' : 'bevindingen'}
-            </span>
-          )}
-          <LookupBadge kind="asset-status-types" code={asset.statusCode} />
-        </div>
-      </button>
+        ) : findings && findings.length > 0 ? (
+          <ul className="space-y-2">
+            {findings.map((f) => (
+              <li key={f.id} className="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-gray-900">{f.shortDescription}</p>
+                    {f.longDescription && (
+                      <p className="mt-0.5 text-xs text-gray-600">{f.longDescription}</p>
+                    )}
+                    {f.normReference && (
+                      <p className="mt-0.5 text-xs text-gray-400">Norm: {f.normReference}</p>
+                    )}
+                  </div>
+                  <LookupBadge kind="finding-status-types" code={f.statusCode} />
+                </div>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="py-1 text-sm text-gray-500">Geen bevindingen voor dit object.</p>
+        )}
+      </div>
 
-      {expanded && (
-        <div className="ml-6 mt-3 space-y-4">
-          {/* Bevindingen (ongewijzigd) */}
-          <div>
-            {isLoading ? (
-              <div className="flex justify-center py-3">
-                <Spinner size="sm" />
-              </div>
-            ) : findings && findings.length > 0 ? (
-              <ul className="space-y-2">
-                {findings.map((f) => (
-                  <li
-                    key={f.id}
-                    className="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2"
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="text-sm font-medium text-gray-900">{f.shortDescription}</p>
-                        {f.longDescription && (
-                          <p className="mt-0.5 text-xs text-gray-600">{f.longDescription}</p>
-                        )}
-                        {f.normReference && (
-                          <p className="mt-0.5 text-xs text-gray-400">Norm: {f.normReference}</p>
-                        )}
-                      </div>
-                      <LookupBadge kind="finding-status-types" code={f.statusCode} />
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p className="py-1 text-sm text-gray-500">Geen bevindingen voor deze asset.</p>
-            )}
-          </div>
-
-          {/* Meetstaten (nieuw) — mount alleen bij open, dus hook laadt lazy */}
-          <AssetMeasurementRecords assetId={asset.id} />
-        </div>
-      )}
-    </li>
+      <AssetMeasurementRecords assetId={nodeId} />
+    </div>
   );
 }
 
@@ -219,8 +185,7 @@ function FinalCheckBadge({ passed }: { passed: boolean | null }) {
   return <span className={`${pill} bg-gray-100 text-gray-600`}>n.v.t.</span>;
 }
 
-// ── Read-only weergave van de ingevulde waarden per sectie/rij/veld ──
-/** Read-only weergave van de gebruikte meetmiddelen (snapshot-first, anders live-lookup). */
+// ── Read-only weergave van de gebruikte meetmiddelen (snapshot-first, anders live-lookup). ──
 function UsedInstrumentsBlock({ record }: { record: MeasurementSheetRecord }) {
   const { data: list } = useMeetmiddelen({ limit: 200 });
   const snapshot = (record.data as Record<string, unknown> | null)?.__usedInstrumentsSnapshot as

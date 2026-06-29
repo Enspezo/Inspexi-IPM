@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { Role } from '@/types';
+import { Role, AssetNodeType } from '@/types';
 import {
   Button,
   Card,
@@ -32,7 +32,8 @@ import {
   useSubmitInspectionPlan,
   useDeleteInspectionPlan,
 } from './hooks/use-inspections';
-import { useInspectionAssets } from './hooks/use-location-images';
+import { usePlanTree } from './hooks/use-asset-nodes';
+import { countByType, normalizeTree } from '@/components/asset-tree';
 import { PlanDefaultInstrumentsSection } from '@/pages/meetmiddelen/components/plan-default-instruments-section';
 import { AssetsTab } from './components/assets-tab';
 import { DocumentsTab } from './components/documents-tab';
@@ -78,7 +79,8 @@ export default function InspectionDetailPage() {
   const confirm = useConfirm();
 
   const { data: plan, isLoading, error } = useInspectionPlan(id!);
-  const { data: assets = [], isLoading: assetsLoading } = useInspectionAssets(id);
+  const { data: planTree } = usePlanTree(id);
+  const assetCount = countByType(normalizeTree(planTree), AssetNodeType.ASSET);
   const updateMutation = useUpdateInspectionPlan();
   const reviewMutation = useReviewInspectionPlan();
   const submitMutation = useSubmitInspectionPlan();
@@ -197,7 +199,7 @@ export default function InspectionDetailPage() {
 
   const tabs = [
     { key: 'overzicht' as const, label: 'Overzicht' },
-    { key: 'assets' as const, label: 'Assets', count: assets.length },
+    { key: 'assets' as const, label: 'Assets', count: assetCount },
     { key: 'plattegrond' as const, label: 'Plattegrond' },
     { key: 'documenten' as const, label: 'Documenten' },
     { key: 'instellingen' as const, label: 'Instellingen' },
@@ -316,7 +318,7 @@ export default function InspectionDetailPage() {
           </div>
         )}
 
-        {activeTab === 'assets' && <AssetsTab assets={assets} isLoading={assetsLoading} />}
+        {activeTab === 'assets' && <AssetsTab planId={id!} canWrite={userCanWrite} />}
 
         {activeTab === 'plattegrond' && (
           <Suspense

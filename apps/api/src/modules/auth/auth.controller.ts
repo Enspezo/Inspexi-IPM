@@ -36,14 +36,18 @@ export class AuthController {
     this.baseDomain = this.config.get<string>('BASE_DOMAIN', 'localhost');
   }
 
-  /** Build cookie options with correct domain for subdomain support */
-  private getCookieOptions() {
+  /**
+   * Build cookie options with correct domain for subdomain support.
+   * remember=true → persistent 30-day cookie; remember=false → session cookie
+   * (no maxAge) that the browser drops when it closes.
+   */
+  private getCookieOptions(remember = true) {
     return {
       httpOnly: true,
       secure: this.baseDomain !== 'localhost',
       sameSite: 'lax' as const,
       path: '/api/v1/auth',
-      maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
+      ...(remember ? { maxAge: 30 * 24 * 60 * 60 * 1000 } : {}), // 30 days or session cookie
       // localhost: no domain set (cookie stays on exact hostname)
       // production: .inspexi.nl (shared across all subdomains)
       ...(this.baseDomain !== 'localhost'
@@ -67,7 +71,11 @@ export class AuthController {
     const ip = req.ip || req.socket?.remoteAddress;
     const ua = req.headers['user-agent'];
     const result = await this.authService.login(dto, ip, ua, req.tenant);
-    res.cookie('refresh_token', result.refreshToken, this.getCookieOptions());
+    res.cookie(
+      'refresh_token',
+      result.refreshToken,
+      this.getCookieOptions(result.remember),
+    );
     return { success: true, data: { accessToken: result.accessToken } };
   }
 
@@ -89,7 +97,11 @@ export class AuthController {
     const ip = req.ip || req.socket?.remoteAddress;
     const ua = req.headers['user-agent'];
     const result = await this.authService.refresh(refreshToken, ip, ua, req.tenant);
-    res.cookie('refresh_token', result.refreshToken, this.getCookieOptions());
+    res.cookie(
+      'refresh_token',
+      result.refreshToken,
+      this.getCookieOptions(result.remember),
+    );
     return { success: true, data: { accessToken: result.accessToken } };
   }
 

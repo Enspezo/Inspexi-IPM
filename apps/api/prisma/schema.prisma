@@ -683,6 +683,7 @@ model RefreshToken {
   revokedAt DateTime? @map("revoked_at")
   ipAddress String?   @map("ip_address")
   userAgent String?   @map("user_agent")
+  rememberMe Boolean  @default(true) @map("remember_me")
   createdAt DateTime  @default(now()) @map("created_at")
 
   user User @relation(fields: [userId], references: [id])

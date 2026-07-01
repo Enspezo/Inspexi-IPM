@@ -152,6 +152,36 @@ describe('AuthService', () => {
       });
     });
 
+    it('persists a 30-day remember-me token by default', async () => {
+      mockPrismaService.user.findUnique.mockResolvedValue(mockUser);
+      (bcrypt.compare as jest.Mock).mockResolvedValue(true);
+      mockPrismaService.refreshToken.create.mockResolvedValue({ id: 'rt-1' });
+
+      const result = await service.login(loginDto);
+
+      expect(result.remember).toBe(true);
+      const { data } = mockPrismaService.refreshToken.create.mock.calls[0][0];
+      expect(data.rememberMe).toBe(true);
+      // ~30 days out (allow a little slack for test runtime)
+      const ms = data.expiresAt.getTime() - Date.now();
+      expect(ms).toBeGreaterThan(29 * 24 * 60 * 60 * 1000);
+    });
+
+    it('issues a short-lived session token when remember is false', async () => {
+      mockPrismaService.user.findUnique.mockResolvedValue(mockUser);
+      (bcrypt.compare as jest.Mock).mockResolvedValue(true);
+      mockPrismaService.refreshToken.create.mockResolvedValue({ id: 'rt-1' });
+
+      const result = await service.login({ ...loginDto, remember: false });
+
+      expect(result.remember).toBe(false);
+      const { data } = mockPrismaService.refreshToken.create.mock.calls[0][0];
+      expect(data.rememberMe).toBe(false);
+      // 12h short session — well under a day
+      const ms = data.expiresAt.getTime() - Date.now();
+      expect(ms).toBeLessThan(24 * 60 * 60 * 1000);
+    });
+
     it('should throw UnauthorizedException for invalid email', async () => {
       mockPrismaService.user.findUnique.mockResolvedValue(null);
 

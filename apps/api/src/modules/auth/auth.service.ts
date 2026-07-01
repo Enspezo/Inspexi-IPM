@@ -52,8 +52,15 @@ export class AuthService {
     // Tenant-aware login checks
     this.assertUserMatchesTenant(user, tenant);
 
+    // "Onthoud mij" default aan; alleen expliciet false verkort de sessie.
+    const remember = dto.remember !== false;
     const accessToken = this.generateAccessToken(user);
-    const refreshToken = await this.createRefreshToken(user.id, ipAddress, userAgent);
+    const refreshToken = await this.createRefreshToken(
+      user.id,
+      ipAddress,
+      userAgent,
+      remember,
+    );
 
     // Clean up expired and old revoked tokens for this user to keep the session list tidy
     await this.prisma.refreshToken.deleteMany({
@@ -68,7 +75,7 @@ export class AuthService {
       },
     });
 
-    return { accessToken, refreshToken };
+    return { accessToken, refreshToken, remember };
   }
 
   async refresh(
@@ -106,15 +113,18 @@ export class AuthService {
       where: { id: storedToken.id },
     });
 
-    // Issue new tokens — carry forward IP/UA from original session if not provided
+    // Issue new tokens — carry forward IP/UA and the "onthoud mij"-keuze from the
+    // original session (older tokens without the column default to remember=true).
+    const remember = storedToken.rememberMe !== false;
     const accessToken = this.generateAccessToken(storedToken.user);
     const newRefreshToken = await this.createRefreshToken(
       storedToken.userId,
       ipAddress ?? storedToken.ipAddress ?? undefined,
       userAgent ?? storedToken.userAgent ?? undefined,
+      remember,
     );
 
-    return { accessToken, refreshToken: newRefreshToken };
+    return { accessToken, refreshToken: newRefreshToken, remember };
   }
 
   async logout(refreshTokenRaw: string) {
@@ -350,15 +360,18 @@ export class AuthService {
     userId: string,
     ipAddress?: string,
     userAgent?: string,
+    remember = true,
   ): Promise<string> {
     const rawToken = uuidv4();
     const tokenHash = this.hashToken(rawToken);
 
-    const refreshExpiration = this.config.get<string>(
-      'JWT_REFRESH_EXPIRATION',
-      '30d',
-    );
-    const expiresAt = this.calculateExpiry(refreshExpiration);
+    // "Onthoud mij" → persistente 30-daagse sessie; anders een kortere,
+    // glijdende sessie die (samen met de session-cookie) bij het sluiten van de
+    // browser eindigt. De DB-vervaltijd is de harde bovengrens.
+    const expiration = remember
+      ? this.config.get<string>('JWT_REFRESH_EXPIRATION', '30d')
+      : this.config.get<string>('JWT_REFRESH_SHORT_EXPIRATION', '12h');
+    const expiresAt = this.calculateExpiry(expiration);
 
     await this.prisma.refreshToken.create({
       data: {
@@ -367,6 +380,7 @@ export class AuthService {
         expiresAt,
         ipAddress: ipAddress ?? null,
         userAgent: userAgent ?? null,
+        rememberMe: remember,
       },
     });
 

@@ -15,7 +15,7 @@ interface AuthContextType {
   user: User | null;
   isLoading: boolean;
   isAuthenticated: boolean;
-  login: (email: string, password: string) => Promise<void>;
+  login: (email: string, password: string, remember?: boolean) => Promise<void>;
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
 }
@@ -81,10 +81,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
   }, [fetchUser]);
 
   const login = useCallback(
-    async (email: string, password: string) => {
+    async (email: string, password: string, remember = true) => {
       const data = await apiClient.post<{ accessToken: string }>(
         '/auth/login',
-        { email, password },
+        { email, password, remember },
       );
       setAccessToken(data.accessToken);
       await fetchUser();

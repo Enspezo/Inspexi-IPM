@@ -17,6 +17,7 @@ import { AuditContextInterceptor } from './common/interceptors/audit-context.int
 import { SupportAccessInterceptor } from './common/interceptors/support-access.interceptor';
 import { EmailModule } from './common/services/email.module';
 import { TenantCacheModule } from './common/services/tenant-cache.module';
+import { EnumerationGuardModule } from './common/services/enumeration-guard.module';
 import { EntitlementsModule } from './modules/entitlements/entitlements.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { OrganizationsModule } from './modules/organizations/organizations.module';
@@ -100,6 +101,8 @@ import { VoiceModule } from './modules/voice/voice.module';
     ThrottlerModule.forRoot([{ name: 'default', ttl: 60000, limit: 120 }]),
     PrismaModule,
     TenantCacheModule,
+    // Per-IP throttle op mislukte org-subdomein-lookups (anti-enumeratie).
+    EnumerationGuardModule,
     // SaaS-abonnementen & feature-entitlements (PRD-09, Fase 0 — resolver only,
     // nog geen enforcement). @Global: levert EntitlementsService app-breed.
     EntitlementsModule,

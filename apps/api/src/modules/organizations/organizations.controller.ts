@@ -13,6 +13,8 @@ import {
   ParseUUIDPipe,
   ForbiddenException,
   NotFoundException,
+  HttpException,
+  HttpStatus,
   UseInterceptors,
   UploadedFile,
   Res,
@@ -40,6 +42,7 @@ import {
 } from './dto';
 import { Roles, CurrentUser, Public } from '@/common/decorators';
 import { PrismaService } from '@/prisma';
+import { EnumerationGuardService } from '@/common/services/enumeration-guard.service';
 import { EntitlementsService } from '@/modules/entitlements/entitlements.service';
 import { FEATURE_KEYS } from '@inspexi/entitlements';
 
@@ -52,6 +55,7 @@ export class OrganizationsController {
     private supportAccess: SupportAccessService,
     private prisma: PrismaService,
     private entitlements: EntitlementsService,
+    private enumerationGuard: EnumerationGuardService,
   ) {}
 
   @Post()
@@ -79,7 +83,24 @@ export class OrganizationsController {
   @ApiOperation({ summary: 'Publieke branding info ophalen op slug (login pagina)' })
   @ApiResponse({ status: 200, description: 'Organisatie branding' })
   @ApiResponse({ status: 404, description: 'Niet gevonden' })
-  async findBySlug(@Param('slug') slug: string) {
+  @ApiResponse({ status: 429, description: 'Te veel mislukte pogingen' })
+  async findBySlug(
+    @Param('slug') slug: string,
+    @Ip() ip: string,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    // Bescherm tegen brute-force enumeratie van geldige slugs. Deelt dezelfde
+    // per-IP teller als TenantMiddleware, zodat beide enumeratie-vectoren
+    // (controller + middleware-404) samen tellen.
+    const blockedSeconds = this.enumerationGuard.isBlocked(ip);
+    if (blockedSeconds > 0) {
+      res.setHeader('Retry-After', String(blockedSeconds));
+      throw new HttpException(
+        'Te veel pogingen, probeer later opnieuw',
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
+
     const org = await this.prisma.organization.findUnique({
       where: { slug },
       select: {
@@ -92,6 +113,8 @@ export class OrganizationsController {
       },
     });
     if (!org) {
+      // Tel alleen mislukte lookups (404); een geslaagde 200 hieronder niet.
+      this.enumerationGuard.recordFailure(ip);
       throw new NotFoundException('Organisatie niet gevonden');
     }
     // Effectieve feature-keys meeleveren (PRD §5.1) zodat het klantportaal — dat

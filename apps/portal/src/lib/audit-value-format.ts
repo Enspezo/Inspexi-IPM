@@ -77,6 +77,12 @@ const enumLabels: Record<string, string> = {
   // AFGEROND already defined above
   GEANNULEERD: 'Geannuleerd',
 
+  // PhaseStatus (PRD-12) — ACTIEF/ON_HOLD/AFGEROND/GEANNULEERD al gedefinieerd
+  NIET_GESTART: 'Niet gestart',
+  // MilestoneStatus (PRD-12) — VERVALLEN al gedefinieerd hierboven
+  OPEN: 'Open',
+  BEHAALD: 'Behaald',
+
   // AcceptanceStatus
   PENDING: 'In afwachting',
   ACCEPTED: 'Geaccepteerd',
@@ -154,6 +160,7 @@ const currencyFields = new Set([
   'discountTotal',
   'vatTotal',
   'total',
+  'budgetAmount',
 ]);
 
 /** Fields containing date/datetime ISO strings */
@@ -171,6 +178,7 @@ const dateFields = new Set([
   'endDate',
   'startTime',
   'endTime',
+  'completedAt',
 ]);
 
 /** UUID v4 pattern — used to detect unresolved UUIDs */
@@ -200,6 +208,9 @@ const FK_FIELDS = new Set([
   'roleId',
   'planId',
   'updatedById',
+  'phaseId',
+  'contactPersonId',
+  'assigneeId',
 ]);
 
 const currencyFormatter = new Intl.NumberFormat('nl-NL', {

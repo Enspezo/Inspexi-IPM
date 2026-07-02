@@ -6,7 +6,10 @@ import {
   DocumentEntityType,
   Role,
   NoteEntityType,
+  PhaseStatus,
+  ProjectStatus,
 } from '@/types';
+import { useConfirm } from '@/components/ui';
 import { ActionMenu, Button, Spinner, StatusBadge, Modal, Tabs } from '@/components/ui';
 import { PROJECT_STATUS } from '@/lib/status';
 import { DetailPageLayout, SidebarSection } from '@/components/layout/detail-page-layout';
@@ -36,6 +39,8 @@ import { useTasks, useUpdateTask } from '../tasks/hooks/use-tasks';
 import { CreateTaskModal } from '@/pages/tasks/components/create-task-modal';
 import { LinkEntitiesModal } from './components/link-entities-modal';
 import { OverviewTab } from './components/project-overview-tab';
+import { ProjectPhasesTab } from './components/project-phases-tab';
+import { useProjectPhases } from './hooks/use-project-phases';
 import { LinkedEntitiesTab } from './components/project-linked-entities-tab';
 import { FollowersTab } from './components/project-followers-tab';
 import { AddFollowerModal } from './components/add-follower-modal';
@@ -46,6 +51,7 @@ import { useUsers } from '@/pages/users/hooks/use-users';
 
 type Tab =
   | 'overzicht'
+  | 'fasen'
   | 'aanvragen'
   | 'offertes'
   | 'planning'
@@ -66,6 +72,7 @@ export default function ProjectDetailPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { showToast } = useToast();
+  const confirm = useConfirm();
   const [activeTab, setActiveTab] = useState<Tab>('overzicht');
   const [linkType, setLinkType] = useState<
     'requests' | 'quotes' | 'planning' | null
@@ -98,6 +105,7 @@ export default function ProjectDetailPage() {
   const { data: planning } = useProjectPlanning(id!);
   const { data: linkedLocations } = useProjectLocations(id!);
   const { data: followers } = useProjectFollowers(id!);
+  const { data: phases } = useProjectPhases(id!);
   const { data: tasksData } = useTasks({
     entityType: TaskEntityType.PROJECT,
     entityId: id,
@@ -125,8 +133,16 @@ export default function ProjectDetailPage() {
 
   const incompleteTasks = tasks.filter(t => t.status !== TaskStatus.VOLTOOID);
 
+  const phaseList = phases ?? [];
+  const closedPhaseStatuses = [PhaseStatus.AFGEROND, PhaseStatus.GEANNULEERD];
+  const donePhases = phaseList.filter((p) => p.status === PhaseStatus.AFGEROND).length;
+  const openPhases = phaseList.filter(
+    (p) => !closedPhaseStatuses.includes(p.status),
+  ).length;
+
   const tabs: { key: Tab; label: string; count?: number }[] = [
     { key: 'overzicht', label: 'Overzicht' },
+    { key: 'fasen', label: 'Fasen', count: phaseList.length },
     { key: 'aanvragen', label: 'Aanvragen', count: requests?.length },
     { key: 'offertes', label: 'Offertes', count: quotes?.length },
     { key: 'planning', label: 'Planning', count: planning?.length },
@@ -346,7 +362,26 @@ export default function ProjectDetailPage() {
               canWrite={!!userCanWrite}
               users={users}
               linkedLocations={linkedLocations ?? []}
+              phaseProgress={
+                phaseList.length > 0
+                  ? { done: donePhases, total: phaseList.length }
+                  : null
+              }
               onUpdate={async (data) => {
+                // §12.12.1: project → AFGEROND met open fasen ⇒ niet-blokkerende waarschuwing.
+                if (
+                  data.status === ProjectStatus.AFGEROND &&
+                  project.status !== ProjectStatus.AFGEROND &&
+                  openPhases > 0
+                ) {
+                  const ok = await confirm({
+                    title: 'Project afronden',
+                    message: `Dit project heeft nog ${openPhases} openstaande ${openPhases === 1 ? 'fase' : 'fasen'}. Toch afronden?`,
+                    confirmLabel: 'Toch afronden',
+                    variant: 'primary',
+                  });
+                  if (!ok) return;
+                }
                 try {
                   await updateMutation.mutateAsync(data);
                   showToast('Project bijgewerkt', 'success');
@@ -356,6 +391,18 @@ export default function ProjectDetailPage() {
               }}
               isUpdating={updateMutation.isPending}
               onDelete={() => setConfirmDelete(true)}
+            />
+          )}
+
+          {/* Tab: Fasen */}
+          {activeTab === 'fasen' && (
+            <ProjectPhasesTab
+              projectId={id!}
+              contactId={project.contactId}
+              phases={phaseList}
+              canWrite={!!userCanWrite}
+              projectQuotes={quotes ?? []}
+              projectPlanning={planning ?? []}
             />
           )}
 

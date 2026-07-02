@@ -16,6 +16,8 @@ import {
   SupportTicketStatus,
   SupportTicketPriority,
   LogType,
+  MilestoneStatus,
+  PhaseStatus,
   PlanningStatus,
   Priority,
   ProjectStatus,
@@ -125,6 +127,22 @@ export const PROJECT_STATUS: StatusMap = {
   [ProjectStatus.ON_HOLD]: { label: 'On hold', classes: 'bg-yellow-100 text-yellow-800' },
   [ProjectStatus.AFGEROND]: { label: 'Afgerond', classes: 'bg-blue-100 text-blue-800' },
   [ProjectStatus.GEANNULEERD]: { label: 'Geannuleerd', classes: 'bg-red-100 text-red-800' },
+};
+
+// ─── PRD-12: Projectfasen ─────────────────────────────────
+
+export const PHASE_STATUS: StatusMap = {
+  [PhaseStatus.NIET_GESTART]: { label: 'Niet gestart', classes: 'bg-gray-100 text-gray-700' },
+  [PhaseStatus.ACTIEF]: { label: 'Actief', classes: 'bg-green-100 text-green-800' },
+  [PhaseStatus.ON_HOLD]: { label: 'On hold', classes: 'bg-amber-100 text-amber-800' },
+  [PhaseStatus.AFGEROND]: { label: 'Afgerond', classes: 'bg-blue-100 text-blue-800' },
+  [PhaseStatus.GEANNULEERD]: { label: 'Geannuleerd', classes: 'bg-red-100 text-red-800' },
+};
+
+export const MILESTONE_STATUS: StatusMap = {
+  [MilestoneStatus.OPEN]: { label: 'Open', classes: 'bg-amber-100 text-amber-800' },
+  [MilestoneStatus.BEHAALD]: { label: 'Behaald', classes: 'bg-green-100 text-green-800' },
+  [MilestoneStatus.VERVALLEN]: { label: 'Vervallen', classes: 'bg-red-100 text-red-800' },
 };
 
 export const LOG_TYPE: StatusMap = {

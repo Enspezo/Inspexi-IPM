@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Spinner } from '@/components/ui/spinner';
+import { Spinner } from '@/components/ui';
 import { apiClient } from '@/lib/api-client';
 import type { Contact, PaginatedResponse } from '@/types';
 import { ContactType } from '@/types';

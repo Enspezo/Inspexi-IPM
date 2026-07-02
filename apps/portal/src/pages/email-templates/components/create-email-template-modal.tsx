@@ -1,11 +1,7 @@
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { Modal } from '@/components/ui/modal';
-import { Input } from '@/components/ui/input';
-import { Select } from '@/components/ui/select';
-import { Button } from '@/components/ui/button';
-import { useToast } from '@/components/ui';
+import { Modal, Input, Select, Button, useToast } from '@/components/ui';
 import { useCreateEmailTemplate } from '../hooks/use-email-templates';
 import { EmailTemplateType } from '@/types';
 import { EMAIL_TYPE_LABELS } from './email-type-labels';

@@ -5,7 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { TenantProvider } from '@/providers/tenant-provider';
 import { ClientAuthProvider } from '@/providers/client-auth-provider';
 import { FeatureProvider } from '@/providers/feature-provider';
-import { ConfirmProvider, ToastProvider } from '@/components/ui';
+import { ConfirmProvider, ToastProvider, ErrorBoundary } from '@/components/ui';
 import App from './App';
 import './styles/index.css';
 
@@ -28,7 +28,9 @@ createRoot(document.getElementById('root')!).render(
             <FeatureProvider>
               <ToastProvider>
                 <ConfirmProvider>
-                  <App />
+                  <ErrorBoundary>
+                    <App />
+                  </ErrorBoundary>
                 </ConfirmProvider>
               </ToastProvider>
             </FeatureProvider>

@@ -6,6 +6,7 @@ import { z } from 'zod';
 import { useMutation } from '@tanstack/react-query';
 import { useAuth } from '@/providers/auth-provider';
 import { apiClient } from '@/lib/api-client';
+import { formatDate } from '@/lib/format';
 import { Card, Input, Button, Badge, Tabs, useToast } from '@/components/ui';
 import { Role } from '@/types';
 import { hasRole } from '@/lib/has-role';
@@ -87,15 +88,6 @@ export default function ProfilePage() {
         'error',
       );
     }
-  };
-
-  const formatDate = (dateStr: string | undefined) => {
-    if (!dateStr) return '-';
-    return new Date(dateStr).toLocaleDateString('nl-NL', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-    });
   };
 
   const tabs: { key: ProfileTab; label: string }[] = [

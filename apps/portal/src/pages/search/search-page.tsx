@@ -18,7 +18,7 @@ import type {
 import { Role } from '@/types';
 import { hasRole } from '@/lib/has-role';
 import { LocationTypeBadge } from '@/components/location-type-badge';
-import { formatCurrency } from '@/lib/format';
+import { formatCurrency, formatNumericDate } from '@/lib/format';
 import { getStatusConfig, QUOTE_STATUS, REQUEST_STATUS, TASK_STATUS } from '@/lib/status';
 import { FavoriteMark } from '@/components/favorites/favorite-icon';
 
@@ -34,10 +34,6 @@ function contactDisplayName(c: {
     [c.firstName, c.lastName].filter(Boolean).join(' ') ||
     '—'
   );
-}
-
-function formatDate(dateStr: string): string {
-  return new Date(dateStr).toLocaleDateString('nl-NL');
 }
 
 // ─── Tab config ──────────────────────────────────────────
@@ -230,7 +226,7 @@ function useRequestColumns(): Column<SearchRequestResult>[] {
     {
       key: 'createdAt',
       header: 'Aangemaakt',
-      render: (r) => formatDate(r.createdAt),
+      render: (r) => formatNumericDate(r.createdAt),
     },
   ];
 }
@@ -275,7 +271,7 @@ function useQuoteColumns(): Column<SearchQuoteResult>[] {
     {
       key: 'createdAt',
       header: 'Aangemaakt',
-      render: (q) => formatDate(q.createdAt),
+      render: (q) => formatNumericDate(q.createdAt),
     },
   ];
 }
@@ -318,7 +314,7 @@ function useTaskColumns(): Column<SearchTaskResult>[] {
     {
       key: 'deadline',
       header: 'Deadline',
-      render: (t) => (t.deadline ? formatDate(t.deadline) : '—'),
+      render: (t) => (t.deadline ? formatNumericDate(t.deadline) : '—'),
     },
   ];
 }
@@ -358,7 +354,7 @@ function useDocumentColumns(): Column<SearchDocumentResult>[] {
     {
       key: 'createdAt',
       header: 'Datum',
-      render: (d) => formatDate(d.createdAt),
+      render: (d) => formatNumericDate(d.createdAt),
     },
   ];
 }

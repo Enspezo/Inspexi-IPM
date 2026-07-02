@@ -1,6 +1,8 @@
-// @Public() op klasniveau → de globale staf-JwtAuthGuard + TenantGuard slaan over.
-// TenantMiddleware blijft draaien, dus @CurrentTenant() levert de org uit het subdomein.
-// /me gebruikt ClientJwtAuthGuard. Auth-routes strenger gerate-limit.
+// @Public() staat per route (niet op klasseniveau) zodat een nieuw endpoint niet
+// per ongeluk publiek wordt: elke route verklaart expliciet dat de globale staf-
+// JwtAuthGuard + TenantGuard mogen overslaan. TenantMiddleware blijft draaien, dus
+// @CurrentTenant() levert de org uit het subdomein. /me is @Public voor de staf-guard
+// maar wordt door ClientJwtAuthGuard bewaakt. Auth-routes strenger gerate-limit.
 //
 // Het refresh-token is stateful (DB-gehasht, roteerbaar/intrekbaar) en wordt als httpOnly,
 // secure, sameSite-cookie op pad /api/v1/client/auth gezet — nooit in de response-body.
@@ -29,7 +31,6 @@ import {
 const CLIENT_REFRESH_COOKIE = 'client_refresh_token';
 
 @ApiTags('Client Auth')
-@Public()
 @RequiresFeature('BASIS_INSPECTIES')
 @Controller('client/auth')
 export class ClientAuthController {
@@ -71,6 +72,7 @@ export class ClientAuthController {
     return rest;
   }
 
+  @Public()
   @Post('login')
   @Throttle({ default: { limit: 10, ttl: 60000 } })
   @ApiOperation({ summary: 'Klant-login (binnen org-subdomein)' })
@@ -84,6 +86,7 @@ export class ClientAuthController {
     return { success: true, data: this.setRefreshCookie(res, result) };
   }
 
+  @Public()
   @Post('register')
   @Throttle({ default: { limit: 5, ttl: 60000 } })
   @ApiOperation({ summary: 'Registreren via uitnodigings-magic-link' })
@@ -97,6 +100,7 @@ export class ClientAuthController {
     return { success: true, data: this.setRefreshCookie(res, result) };
   }
 
+  @Public()
   @Post('magic-link')
   @Throttle({ default: { limit: 20, ttl: 60000 } })
   @ApiOperation({ summary: 'Magic-link valideren' })
@@ -114,6 +118,7 @@ export class ClientAuthController {
     return { success: true, data: result };
   }
 
+  @Public()
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
   @Throttle({ default: { limit: 30, ttl: 60000 } })
@@ -131,6 +136,7 @@ export class ClientAuthController {
     return { success: true, data: this.setRefreshCookie(res, result) };
   }
 
+  @Public()
   @Post('logout')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Uitloggen: refresh-token intrekken en cookie wissen' })
@@ -144,6 +150,7 @@ export class ClientAuthController {
     return { success: true };
   }
 
+  @Public()
   @Post('forgot-password')
   @Throttle({ default: { limit: 5, ttl: 60000 } })
   @ApiOperation({ summary: 'Wachtwoord-reset aanvragen (Resend-mail)' })
@@ -154,6 +161,7 @@ export class ClientAuthController {
     return { success: true, data: await this.service.forgotPassword(dto.email, orgId) };
   }
 
+  @Public()
   @Post('reset-password')
   @Throttle({ default: { limit: 5, ttl: 60000 } })
   @ApiOperation({ summary: 'Wachtwoord resetten met token' })
@@ -161,6 +169,8 @@ export class ClientAuthController {
     return { success: true, data: await this.service.resetPassword(dto) };
   }
 
+  // @Public overslaat de staf-guard; ClientJwtAuthGuard bewaakt deze route zelf.
+  @Public()
   @Get('me')
   @UseGuards(ClientJwtAuthGuard)
   @ApiOperation({ summary: 'Huidige klantgebruiker + toegang binnen deze org' })

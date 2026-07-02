@@ -5,6 +5,7 @@ import {
   ALLOWED_ENTITY_TYPES,
   resolveFkTargetModel,
   displayReference,
+  displaySelect,
   delegateFor,
 } from '@/common/audit';
 
@@ -139,8 +140,11 @@ export class AuditLogService {
         const delegate = (this.prisma as any)[delegateFor(model)];
         if (!delegate?.findMany) continue;
 
+        // M7: fetch only the columns a display renderer can read, not whole rows.
+        const select = displaySelect(model);
         const records = await delegate.findMany({
           where: { id: { in: Array.from(ids) } },
+          ...(select ? { select } : {}),
         });
 
         for (const record of records) {

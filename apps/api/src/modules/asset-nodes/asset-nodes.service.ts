@@ -592,12 +592,21 @@ export class AssetNodesService {
     rows: Array<RawNode & { findingCount: number }>,
     parentId: string | null,
   ): TreeNode[] {
-    return rows
-      .filter((r) => r.parentId === parentId)
-      .map((r) => {
-        const children = this.buildHierarchy(rows, r.id);
+    // Bucket per parentId in één pass (O(n)) i.p.v. een filter per node (O(n²)).
+    // De inkomende `rows` zijn al ORDER BY path gesorteerd, dus de push-volgorde
+    // binnen elke bucket blijft correct.
+    const byParent = new Map<string | null, Array<RawNode & { findingCount: number }>>();
+    for (const r of rows) {
+      const bucket = byParent.get(r.parentId);
+      if (bucket) bucket.push(r);
+      else byParent.set(r.parentId, [r]);
+    }
+    const build = (pid: string | null): TreeNode[] =>
+      (byParent.get(pid) ?? []).map((r) => {
+        const children = build(r.id);
         return { ...r, children, childCount: children.length };
       });
+    return build(parentId);
   }
 
   private flagScope(nodes: TreeNode[], scopeIds: Set<string>): void {

@@ -165,6 +165,15 @@ export class FindingsService {
         'Constatering-template',
       );
     }
+    // Checklist-item: eigen org of een systeem-item (cross-tenant guard).
+    if (dto.checklistItemId) {
+      assertFound(
+        await this.prisma.checklistItem.findFirst({
+          where: { id: dto.checklistItemId, OR: [{ orgId }, { orgId: null, isSystem: true }] },
+        }),
+        'Checklist-item',
+      );
+    }
 
     return this.prisma.finding.create({
       data: {

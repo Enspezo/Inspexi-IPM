@@ -2,7 +2,7 @@ import { Injectable, Logger, OnModuleInit, OnModuleDestroy } from '@nestjs/commo
 import { Prisma, PrismaClient } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import { requestContext } from '../common/services/request-context';
-import { AUDITED_MODELS } from '../common/audit';
+import { AUDITED_MODELS, scalarSelect, getModelScalarFields } from '../common/audit';
 
 /** Fields excluded from change tracking */
 const EXCLUDED_FIELDS = new Set([
@@ -32,7 +32,10 @@ function computeChanges(
   after: Record<string, any>,
 ): Record<string, { from: any; to: any }> | null {
   const changes: Record<string, { from: any; to: any }> = {};
-  for (const key of Object.keys(after)) {
+  // Iterate the `before` keys: the before-state is fetched with a select limited to
+  // the columns the update touches (+ id/orgId), so those are exactly the fields that
+  // can change. `after` (the full write result) carries a value for each of them.
+  for (const key of Object.keys(before)) {
     if (EXCLUDED_FIELDS.has(key)) continue;
     const oldVal = before[key];
     const newVal = after[key];
@@ -81,13 +84,18 @@ export class PrismaService
       const action = params.action;
 
       // Capture before-state for update/delete (best-effort; never blocks the op).
+      // M7: fetch only the columns we actually diff/snapshot instead of the whole row —
+      // no large JSON blobs, no sensitive columns (passwordHash/tokenHash) in memory.
       let before: Record<string, any> | null = null;
       if (action === 'update' || action === 'delete') {
         try {
           const whereId = params.args?.where?.id;
           if (whereId) {
-            before = await (this as any)[this.toCamelCase(model)].findUnique({
+            const delegate = (this as any)[this.toCamelCase(model)];
+            const select = this.beforeStateSelect(model, action, params.args?.data);
+            before = await delegate.findUnique({
               where: { id: whereId },
+              ...(select ? { select } : {}),
             });
           }
         } catch {
@@ -166,6 +174,34 @@ export class PrismaService
 
   private toCamelCase(model: string): string {
     return model.charAt(0).toLowerCase() + model.slice(1);
+  }
+
+  /**
+   * Minimal `select` for the audit before-state (M7).
+   * - update: `id` + `orgId` + the scalar columns the update actually writes — exactly
+   *   the fields `computeChanges` compares, so nothing is over-fetched and no spurious
+   *   diff appears for a column we didn't read.
+   * - delete: every scalar column except the excluded ones (createdAt/updatedAt +
+   *   sensitive hashes), which is what the DELETE snapshot needs — minus the noise.
+   * Returns `undefined` for an unknown model → caller falls back to a full fetch.
+   */
+  private beforeStateSelect(
+    model: string,
+    action: string,
+    data: unknown,
+  ): Record<string, true> | undefined {
+    if (action === 'delete') {
+      const scalars = getModelScalarFields(model);
+      if (!scalars) return undefined;
+      return scalarSelect(
+        model,
+        [...scalars].filter((f) => !EXCLUDED_FIELDS.has(f)),
+      );
+    }
+    const dataKeys =
+      data && typeof data === 'object' && !Array.isArray(data) ? Object.keys(data) : [];
+    const fields = ['orgId', ...dataKeys.filter((k) => !EXCLUDED_FIELDS.has(k))];
+    return scalarSelect(model, fields);
   }
 
   async writeAuditLog(data: {

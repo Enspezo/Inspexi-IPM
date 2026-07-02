@@ -25,8 +25,9 @@ import {
 import { Inject } from '@nestjs/common';
 import { PrismaService } from '@/prisma';
 
+// @Public() staat per route (niet op klasseniveau) zodat een nieuw endpoint niet
+// per ongeluk publiek wordt — elke route verklaart dat expliciet.
 @ApiTags('Planning (public)')
-@Public()
 @RequiresFeature('UITVOERING_COMPLEET')
 @Controller('public/planning')
 export class PlanningPublicController {
@@ -37,6 +38,7 @@ export class PlanningPublicController {
     @Inject(STORAGE_PROVIDER) private readonly storage: StorageProvider,
   ) {}
 
+  @Public()
   @Get(':token')
   @ApiOperation({ summary: 'Afspraakdetails ophalen (publiek)' })
   async findByToken(@Param('token') token: string) {
@@ -44,6 +46,7 @@ export class PlanningPublicController {
     return { success: true, data };
   }
 
+  @Public()
   @Post(':token/questions')
   @ApiOperation({ summary: 'Vraag stellen als klant (publiek)' })
   @HttpCode(HttpStatus.CREATED)
@@ -52,6 +55,7 @@ export class PlanningPublicController {
     return { success: true, data };
   }
 
+  @Public()
   @Post(':token/reschedule-request')
   @ApiOperation({ summary: 'Afspraak verzetverzoek indienen (klant, publiek)' })
   @HttpCode(HttpStatus.CREATED)
@@ -63,6 +67,7 @@ export class PlanningPublicController {
     return { success: true, data };
   }
 
+  @Public()
   @Get(':token/documents')
   @ApiOperation({ summary: 'Gedeelde bijlagen ophalen (publiek)' })
   async getSharedDocuments(@Param('token') token: string) {
@@ -70,6 +75,7 @@ export class PlanningPublicController {
     return { success: true, data };
   }
 
+  @Public()
   @Get(':token/documents/:docId/download')
   @ApiOperation({ summary: 'Gedeelde bijlage downloaden (publiek)' })
   async downloadSharedDocument(
@@ -109,6 +115,7 @@ export class PlanningPublicController {
     res.send(buffer);
   }
 
+  @Public()
   @Get(':token/ics')
   @ApiOperation({ summary: '.ics bestand downloaden (publiek)' })
   async downloadIcs(@Param('token') token: string, @Res() res: Response) {
@@ -146,7 +153,6 @@ export class PlanningPublicController {
 // ─── iCal feed controller ──────────────────────────────────
 
 @ApiTags('iCal')
-@Public()
 @RequiresFeature('UITVOERING_COMPLEET')
 @Controller('ical')
 export class PlanningIcalController {
@@ -154,6 +160,7 @@ export class PlanningIcalController {
 
   constructor(private readonly icalService: PlanningIcalService) {}
 
+  @Public()
   @Get(':ical_token.ics')
   @ApiOperation({ summary: 'Persoonlijke iCal feed voor inspecteur' })
   async getPersonalFeed(

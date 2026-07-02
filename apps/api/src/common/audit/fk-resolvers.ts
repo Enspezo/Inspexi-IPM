@@ -16,7 +16,7 @@
  */
 
 import { Prisma } from '@prisma/client';
-import { ENTITY_DISPLAYS } from './audited-entities';
+import { AUDITED_ENTITIES, ENTITY_DISPLAYS } from './audited-entities';
 
 /** Prisma model name (PascalCase) → client delegate (camelCase). */
 export function delegateFor(model: string): string {
@@ -67,6 +67,90 @@ const FALLBACK_FIELD_MODEL: Readonly<Record<string, string>> = {
   // Prisma-relatie en wordt dus al door FK_TARGETS (DMMF) afgehandeld — geen
   // fallback meer nodig.
 };
+
+/**
+ * `model name → set of scalar/enum column names`, derived from the Prisma datamodel.
+ * Used to build minimal `select` objects for the audit trail (M7) so we never fetch
+ * whole rows — including large JSON blobs or sensitive columns — just to compute a
+ * diff or render a label. Relation (`object`) fields are excluded.
+ */
+const MODEL_SCALAR_FIELDS: Map<string, Set<string>> = (() => {
+  const map = new Map<string, Set<string>>();
+  for (const model of Prisma.dmmf.datamodel.models) {
+    map.set(model.name, new Set(model.fields.filter((f) => f.kind !== 'object').map((f) => f.name)));
+  }
+  return map;
+})();
+
+/** Scalar/enum column names of an audited model, or `undefined` when unknown. */
+export function getModelScalarFields(model: string): ReadonlySet<string> | undefined {
+  return MODEL_SCALAR_FIELDS.get(model);
+}
+
+/**
+ * `model name → (relation field name → its scalar FK column(s))`, from the datamodel.
+ * A Prisma relation-write uses the *relation* name in `data` (e.g. `{ contact: { connect }}`),
+ * not the scalar FK column (`contactId`). To audit such an update we must read that scalar
+ * column in the before-state, so this maps `contact → ['contactId']`.
+ */
+const MODEL_RELATION_SCALARS: Map<string, Map<string, string[]>> = (() => {
+  const map = new Map<string, Map<string, string[]>>();
+  for (const model of Prisma.dmmf.datamodel.models) {
+    const rel = new Map<string, string[]>();
+    for (const field of model.fields) {
+      if (field.relationName && field.relationFromFields && field.relationFromFields.length > 0) {
+        rel.set(field.name, [...field.relationFromFields]);
+      }
+    }
+    if (rel.size > 0) map.set(model.name, rel);
+  }
+  return map;
+})();
+
+/**
+ * Scalar FK column(s) that back a relation field on a model, or `undefined` when the
+ * key is not a relation (i.e. it is already a scalar column or unknown).
+ */
+export function relationScalarColumns(model: string, relationField: string): string[] | undefined {
+  return MODEL_RELATION_SCALARS.get(model)?.get(relationField);
+}
+
+/**
+ * Prisma `select` limited to `id` + the requested fields that are real scalar columns
+ * on the model. Returns `undefined` for an unknown model so the caller can fall back
+ * to a full fetch. Never selects a non-existent column (which would throw at runtime).
+ */
+export function scalarSelect(
+  model: string,
+  fields: Iterable<string>,
+): Record<string, true> | undefined {
+  const scalars = MODEL_SCALAR_FIELDS.get(model);
+  if (!scalars) return undefined;
+  const select: Record<string, true> = { id: true };
+  for (const field of fields) {
+    if (field !== 'id' && scalars.has(field)) select[field] = true;
+  }
+  return select;
+}
+
+/**
+ * Candidate label fields any display renderer may read: every `displayFields` entry in
+ * the registry plus the fields used by the composite `display()`/lookup renderers.
+ * Intersected per model with the real columns, so a `select` stays valid and minimal.
+ */
+const DISPLAY_CANDIDATE_FIELDS: ReadonlySet<string> = new Set<string>([
+  // composite display() + lookup renderers (fk-resolvers + audited-entities):
+  'firstName', 'lastName', 'email', 'companyName', 'street', 'houseNumber', 'city',
+  'name', 'title', 'label', 'code', 'version', 'instrumentType', 'ticketNumber',
+  'subject', 'docxFileName',
+  // all declared displayFields across the audited-entity registry:
+  ...AUDITED_ENTITIES.flatMap((e) => e.displayFields ?? []),
+]);
+
+/** Minimal `select` for rendering a referenced record's display label (M7). */
+export function displaySelect(model: string): Record<string, true> | undefined {
+  return scalarSelect(model, DISPLAY_CANDIDATE_FIELDS);
+}
 
 /**
  * Resolves which model a `(entityType, field)` foreign key points to, or

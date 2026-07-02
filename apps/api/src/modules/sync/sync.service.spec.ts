@@ -5,6 +5,7 @@ import { SyncService } from './sync.service';
 import { PrismaService } from '@/prisma';
 import { ChatService } from '../chat/chat.service';
 import { NumberingService } from '../numbering/numbering.service';
+import { AssetNodesService } from '../asset-nodes/asset-nodes.service';
 
 describe('SyncService', () => {
   let service: SyncService;
@@ -27,6 +28,7 @@ describe('SyncService', () => {
     measurementSheetRecord: delegate(),
     standaloneMeasurement: delegate(),
     location: delegate(),
+    user: delegate(),
     photo: delegate(),
     contact: delegate(),
     syncQueue: delegate(),
@@ -60,6 +62,12 @@ describe('SyncService', () => {
     applySyncPresence: jest.fn().mockResolvedValue({ id: 'user-1', status: 'success' }),
   };
 
+  // AssetNodesService — alleen assertNodeInPlanTree wordt door de sync gebruikt
+  // (boom-integriteit). Default: node zit in de boom (resolve).
+  const mockAssetNodes = {
+    assertNodeInPlanTree: jest.fn().mockResolvedValue({ id: 'node-a', nodeType: 'ASSET' }),
+  };
+
   const user = { id: 'user-1', orgId: 'org-1', roles: [Role.INSPECTEUR] } as any;
   const superuser = { id: 'su', orgId: null, roles: [Role.SUPERUSER] } as any;
 
@@ -72,6 +80,7 @@ describe('SyncService', () => {
         { provide: PrismaService, useValue: mockPrisma },
         { provide: ChatService, useValue: mockChat },
         { provide: NumberingService, useValue: mockNumbering },
+        { provide: AssetNodesService, useValue: mockAssetNodes },
       ],
     }).compile();
 
@@ -205,6 +214,8 @@ describe('SyncService', () => {
       // Same-org FK checks pass.
       mockPrisma.assetNode.findUnique.mockResolvedValue({ orgId: 'org-1' });
       mockPrisma.inspectionPlan.findUnique.mockResolvedValue({ orgId: 'org-1' });
+      // Plan zonder hoofdlocatie → boom-check wordt overgeslagen.
+      mockPrisma.inspectionPlan.findFirst.mockResolvedValue({ id: 'p1', orgId: 'org-1', locationId: null });
       mockPrisma.visualInspection.create.mockResolvedValue({ id: 'vi1' });
 
       const dto = {
@@ -229,6 +240,8 @@ describe('SyncService', () => {
     it('creates a standalone measurement with nested values (replace-on-write child)', async () => {
       mockPrisma.inspectionPlan.findUnique.mockResolvedValue({ orgId: 'org-1' });
       mockPrisma.assetNode.findUnique.mockResolvedValue({ orgId: 'org-1' });
+      // Plan zonder hoofdlocatie → boom-check wordt overgeslagen.
+      mockPrisma.inspectionPlan.findFirst.mockResolvedValue({ id: 'p1', orgId: 'org-1', locationId: null });
       mockPrisma.standaloneMeasurement.create.mockResolvedValue({ id: 'sm1' });
 
       const dto = {
@@ -275,6 +288,178 @@ describe('SyncService', () => {
       expect(mockPrisma.inspectionPlan.create).not.toHaveBeenCalled();
       expect(result.errors).toHaveLength(1);
       expect(result.errors[0].error).toContain('id');
+    });
+  });
+
+  // ── PUSH: server-owned fields & integrity (M1/M2) ─────
+  describe('push — server-owned fields & integrity (M1/M2)', () => {
+    it('M1: ignores non-whitelisted fields, server-injects orgId', async () => {
+      mockPrisma.inspectionPlan.findFirst.mockResolvedValue(null); // geen bestaand record (idempotent-check)
+      mockPrisma.inspectionPlan.create.mockResolvedValue({ id: 'p1' });
+
+      const dto = {
+        deviceId: 'dev-1',
+        changes: {
+          inspectionPlans: [
+            {
+              operation: 'create',
+              data: {
+                id: 'p1', projectName: 'X', normTypeCode: 'NEN1010',
+                // Vreemde/server-owned velden die de whitelist NIET mag doorlaten:
+                orgId: 'EVIL-ORG', nodeNumber: 'HACK', path: 'a.b', depth: 5, bogusField: 'nope',
+              },
+            },
+          ],
+        },
+      } as any;
+
+      const result = await service.push(user, dto);
+
+      const createArg = mockPrisma.inspectionPlan.create.mock.calls[0][0];
+      expect(createArg.data.orgId).toBe('org-1'); // server-injected, niet de client-waarde
+      expect(createArg.data).not.toHaveProperty('bogusField');
+      expect(createArg.data).not.toHaveProperty('path');
+      expect(createArg.data).not.toHaveProperty('depth');
+      expect(createArg.data).not.toHaveProperty('nodeNumber');
+      expect(result.processed.inspectionPlans).toBe(1);
+    });
+
+    it('M2: forces createdBy to the pushing user, ignoring the client value', async () => {
+      mockPrisma.inspectionPlan.findFirst.mockResolvedValue(null); // geen bestaand record (idempotent-check)
+      mockPrisma.inspectionPlan.create.mockResolvedValue({ id: 'p1' });
+
+      const dto = {
+        deviceId: 'dev-1',
+        changes: {
+          inspectionPlans: [
+            { operation: 'create', data: { id: 'p1', projectName: 'X', createdBy: 'someone-else' } },
+          ],
+        },
+      } as any;
+
+      await service.push(user, dto);
+
+      expect(mockPrisma.inspectionPlan.create.mock.calls[0][0].data.createdBy).toBe('user-1');
+    });
+
+    it('M2: forces inspectorId to the pushing user on visual inspections', async () => {
+      mockPrisma.assetNode.findUnique.mockResolvedValue({ orgId: 'org-1' });
+      mockPrisma.inspectionPlan.findUnique.mockResolvedValue({ orgId: 'org-1' });
+      mockPrisma.inspectionPlan.findFirst.mockResolvedValue({ id: 'p1', orgId: 'org-1', locationId: null });
+      mockPrisma.visualInspection.create.mockResolvedValue({ id: 'vi1' });
+
+      const dto = {
+        deviceId: 'dev-1',
+        changes: {
+          visualInspections: [
+            {
+              operation: 'create',
+              data: { id: 'vi1', assetNodeId: 'node-a', inspectionPlanId: 'p1', status: 'in_progress', inspectorId: 'ghost' },
+            },
+          ],
+        },
+      } as any;
+
+      await service.push(user, dto);
+
+      expect(mockPrisma.visualInspection.create.mock.calls[0][0].data.inspectorId).toBe('user-1');
+    });
+
+    it('M2: rejects a plan whose assignedTo user is in ANOTHER org (user-FK check)', async () => {
+      mockPrisma.user.findUnique.mockResolvedValue({ orgId: 'org-2' });
+
+      const dto = {
+        deviceId: 'dev-1',
+        changes: {
+          inspectionPlans: [
+            { operation: 'create', data: { id: 'p1', projectName: 'X', assignedTo: 'user-x' } },
+          ],
+        },
+      } as any;
+
+      const result = await service.push(user, dto);
+
+      expect(mockPrisma.inspectionPlan.create).not.toHaveBeenCalled();
+      expect(result.errors).toHaveLength(1);
+      expect(result.processed.inspectionPlans).toBe(0);
+    });
+
+    it('M2: enforces assetNode tree membership on findings when the plan has a main location', async () => {
+      mockPrisma.assetNode.findUnique.mockResolvedValue({ orgId: 'org-1' });
+      mockPrisma.inspectionPlan.findUnique.mockResolvedValue({ orgId: 'org-1' });
+      mockPrisma.inspectionPlan.findFirst.mockResolvedValue({ id: 'p1', orgId: 'org-1', locationId: 'loc-root' });
+      mockPrisma.finding.create.mockResolvedValue({ id: 'f1' });
+
+      const dto = {
+        deviceId: 'dev-1',
+        changes: {
+          findings: [
+            {
+              operation: 'create',
+              data: { id: 'f1', assetNodeId: 'node-a', inspectionPlanId: 'p1', inspectionType: 'visual', shortDescription: 'x' },
+            },
+          ],
+        },
+      } as any;
+
+      const result = await service.push(user, dto);
+
+      expect(mockAssetNodes.assertNodeInPlanTree).toHaveBeenCalledWith(
+        'node-a',
+        expect.objectContaining({ id: 'p1', locationId: 'loc-root' }),
+      );
+      expect(result.processed.findings).toBe(1);
+    });
+
+    it('M2: rejects a finding whose node is not in the plan tree', async () => {
+      mockPrisma.assetNode.findUnique.mockResolvedValue({ orgId: 'org-1' });
+      mockPrisma.inspectionPlan.findUnique.mockResolvedValue({ orgId: 'org-1' });
+      mockPrisma.inspectionPlan.findFirst.mockResolvedValue({ id: 'p1', orgId: 'org-1', locationId: 'loc-root' });
+      mockAssetNodes.assertNodeInPlanTree.mockRejectedValueOnce(
+        new BadRequestException('De asset-node hoort niet bij de hoofdlocatie van dit inspectieplan'),
+      );
+
+      const dto = {
+        deviceId: 'dev-1',
+        changes: {
+          findings: [
+            {
+              operation: 'create',
+              data: { id: 'f1', assetNodeId: 'node-x', inspectionPlanId: 'p1', inspectionType: 'visual', shortDescription: 'x' },
+            },
+          ],
+        },
+      } as any;
+
+      const result = await service.push(user, dto);
+
+      expect(mockPrisma.finding.create).not.toHaveBeenCalled();
+      expect(result.errors).toHaveLength(1);
+      expect(result.processed.findings).toBe(0);
+    });
+
+    it('M2: treats a create for an already-existing record as an idempotent update', async () => {
+      mockPrisma.inspectionPlan.findFirst.mockResolvedValue({
+        id: 'p1', orgId: 'org-1', updatedAt: new Date('2020-01-01'),
+      });
+      mockPrisma.inspectionPlan.update.mockResolvedValue({ id: 'p1' });
+
+      const dto = {
+        deviceId: 'dev-1',
+        changes: {
+          inspectionPlans: [
+            { operation: 'create', data: { id: 'p1', projectName: 'Retry' } },
+          ],
+        },
+      } as any;
+
+      const result = await service.push(user, dto);
+
+      expect(mockPrisma.inspectionPlan.create).not.toHaveBeenCalled();
+      expect(mockPrisma.inspectionPlan.update).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: 'p1' } }),
+      );
+      expect(result.processed.inspectionPlans).toBe(1);
     });
   });
 

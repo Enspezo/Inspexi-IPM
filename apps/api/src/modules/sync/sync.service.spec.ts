@@ -541,9 +541,12 @@ describe('SyncService', () => {
     });
 
     it('records a conflict when the server is newer than the client', async () => {
+      const serverUpdatedAt = new Date();
       mockPrisma.inspectionPlan.findFirst.mockResolvedValue({
-        id: 'p1', orgId: 'org-1', updatedAt: new Date(),
+        id: 'p1', orgId: 'org-1', updatedAt: serverUpdatedAt,
       });
+      // Geen open conflict aanwezig → create-pad (dedup: find-then-create).
+      mockPrisma.syncQueue.findFirst.mockResolvedValue(null);
       mockPrisma.syncQueue.create.mockResolvedValue({ id: 'q1' });
 
       const dto = {
@@ -563,6 +566,40 @@ describe('SyncService', () => {
         }),
       );
       expect(mockPrisma.inspectionPlan.update).not.toHaveBeenCalled();
+      expect(result.conflicts).toHaveLength(1);
+      // Gat 1: het push-respons-conflict draagt de losse serverVersion (ISO updatedAt).
+      expect(result.conflicts[0]).toEqual(
+        expect.objectContaining({
+          entityType: 'inspectionPlan',
+          entityId: 'p1',
+          serverVersion: serverUpdatedAt.toISOString(),
+        }),
+      );
+    });
+
+    it('dedupes: an existing open conflict row is updated, not re-created', async () => {
+      mockPrisma.inspectionPlan.findFirst.mockResolvedValue({
+        id: 'p1', orgId: 'org-1', updatedAt: new Date(),
+      });
+      // Er bestaat al een open conflict → update-pad, geen tweede create.
+      mockPrisma.syncQueue.findFirst.mockResolvedValue({ id: 'q-open' });
+      mockPrisma.syncQueue.update.mockResolvedValue({ id: 'q-open' });
+
+      const dto = {
+        deviceId: 'dev-1',
+        changes: {
+          inspectionPlans: [
+            { operation: 'update', data: { id: 'p1', projectName: 'Y', syncedAt: '2020-01-01T00:00:00Z' } },
+          ],
+        },
+      } as any;
+
+      const result = await service.push(user, dto);
+
+      expect(mockPrisma.syncQueue.create).not.toHaveBeenCalled();
+      expect(mockPrisma.syncQueue.update).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: 'q-open' } }),
+      );
       expect(result.conflicts).toHaveLength(1);
     });
   });
@@ -616,10 +653,13 @@ describe('SyncService', () => {
       status: 'conflict',
     };
 
+    // Nieuwe base-versie die de update-return draagt (gat 2: results[].serverVersion).
+    const resolvedUpdatedAt = new Date('2026-02-02T00:00:00.000Z');
+
     it('applies the client version', async () => {
       mockPrisma.syncQueue.findFirst.mockResolvedValue(conflictQueueItem);
       mockPrisma.inspectionPlan.findFirst.mockResolvedValue({ id: 'p1', orgId: 'org-1' });
-      mockPrisma.inspectionPlan.update.mockResolvedValue({ id: 'p1' });
+      mockPrisma.inspectionPlan.update.mockResolvedValue({ updatedAt: resolvedUpdatedAt });
       mockPrisma.syncQueue.update.mockResolvedValue({ id: 'q1' });
 
       const dto = {
@@ -633,6 +673,7 @@ describe('SyncService', () => {
         expect.objectContaining({
           where: { id: 'p1' },
           data: expect.objectContaining({ projectName: 'CLIENT', syncedAt: expect.any(Date) }),
+          select: { updatedAt: true },
         }),
       );
       expect(mockPrisma.syncQueue.update).toHaveBeenCalledWith(
@@ -641,12 +682,16 @@ describe('SyncService', () => {
         }),
       );
       expect(result.resolved).toBe(1);
+      // Gat 2: results[] draagt per opgelost item de nieuwe serverVersion.
+      expect(result.results).toEqual([
+        { entityType: 'inspectionPlan', entityId: 'p1', serverVersion: resolvedUpdatedAt.toISOString() },
+      ]);
     });
 
     it('applies the server version', async () => {
       mockPrisma.syncQueue.findFirst.mockResolvedValue(conflictQueueItem);
       mockPrisma.inspectionPlan.findFirst.mockResolvedValue({ id: 'p1', orgId: 'org-1' });
-      mockPrisma.inspectionPlan.update.mockResolvedValue({ id: 'p1' });
+      mockPrisma.inspectionPlan.update.mockResolvedValue({ updatedAt: resolvedUpdatedAt });
       mockPrisma.syncQueue.update.mockResolvedValue({ id: 'q1' });
 
       const dto = {
@@ -666,7 +711,7 @@ describe('SyncService', () => {
     it('applies merged data', async () => {
       mockPrisma.syncQueue.findFirst.mockResolvedValue(conflictQueueItem);
       mockPrisma.inspectionPlan.findFirst.mockResolvedValue({ id: 'p1', orgId: 'org-1' });
-      mockPrisma.inspectionPlan.update.mockResolvedValue({ id: 'p1' });
+      mockPrisma.inspectionPlan.update.mockResolvedValue({ updatedAt: resolvedUpdatedAt });
       mockPrisma.syncQueue.update.mockResolvedValue({ id: 'q1' });
 
       const dto = {
@@ -697,7 +742,26 @@ describe('SyncService', () => {
 
       expect(result.errors).toHaveLength(1);
       expect(result.resolved).toBe(0);
+      expect(result.results).toHaveLength(0);
       expect(mockPrisma.inspectionPlan.update).not.toHaveBeenCalled();
+    });
+
+    it('never resolves a conflict for a record in another org (cross-tenant)', async () => {
+      mockPrisma.syncQueue.findFirst.mockResolvedValue(conflictQueueItem);
+      // Org-gescoped findFirst vindt het record niet (andere org) → geen mutatie.
+      mockPrisma.inspectionPlan.findFirst.mockResolvedValue(null);
+
+      const dto = {
+        deviceId: 'dev-1',
+        resolutions: [{ entityType: 'inspectionPlan', entityId: 'p1', resolution: 'client' }],
+      } as any;
+
+      const result = await service.resolve(user, dto);
+
+      expect(mockPrisma.inspectionPlan.update).not.toHaveBeenCalled();
+      expect(mockPrisma.syncQueue.update).not.toHaveBeenCalled();
+      expect(result.resolved).toBe(0);
+      expect(result.errors).toHaveLength(1);
     });
   });
 

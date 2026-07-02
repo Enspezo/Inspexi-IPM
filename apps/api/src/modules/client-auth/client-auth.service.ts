@@ -4,9 +4,11 @@
 // = de Contacten van deze org waar de klant toegang toe heeft.
 //
 // Geport uit de App-bron (../Inspexi-App/.../client-auth): wachtwoord-reset via Resend +
-// reset-tokens (hergebruikt ClientMagicLink), refresh-rotatie (stateless, aparte secret), en
-// de ClientAccess/InspectionClientAccess-grant bij magic-link-registratie — alles aangepast
-// aan het Beheer-schema (Contact i.p.v. Client) en aan de subdomein-org-context.
+// reset-tokens (hergebruikt ClientMagicLink) en de ClientAccess/InspectionClientAccess-grant bij
+// magic-link-registratie — alles aangepast aan het Beheer-schema (Contact i.p.v. Client) en aan de
+// subdomein-org-context. Het refresh-token is STATEFUL (spiegelt de staf-realm): SHA-256-gehasht in
+// ClientRefreshToken, geroteerd bij refresh en intrekbaar bij logout/wachtwoord-reset; de rauwe
+// waarde loopt als httpOnly-cookie (zie de controller), nooit in de response-body.
 
 import {
   Injectable,

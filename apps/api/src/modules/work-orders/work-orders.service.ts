@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import { User, Role, Prisma, WorkOrderStatus } from '@prisma/client';
 import { PrismaService } from '@/prisma';
-import { paginate, orgScope, assertFound } from '@/common';
+import { paginate, orgScope, assertFound, resolvePhaseLink } from '@/common';
 import { NumberingService } from '@/modules/numbering/numbering.service';
 import {
   CreateWorkOrderDto,
@@ -322,10 +322,17 @@ export class WorkOrdersService {
       );
     }
 
+    // Projectfase-koppeling (PRD-12): een werkbon heeft geen eigen projectId, dus
+    // alleen een org- en bestaanscheck op de fase (geen projectconsistentie).
+    const phaseLink = await resolvePhaseLink(
+      this.prisma.projectPhase, dto.projectPhaseId, user.orgId, undefined,
+    );
+
     return serializeWorkOrder(await this.prisma.workOrder.update({
       where: { id: workOrder.id },
       data: {
         ...(manualNumber !== undefined && { workOrderNumber: manualNumber }),
+        ...(phaseLink !== undefined && { projectPhaseId: phaseLink.phaseId }),
         planningItemId: dto.planningItemId !== undefined ? (dto.planningItemId || null) : undefined,
         internalNotes: dto.internalNotes,
         startTime:

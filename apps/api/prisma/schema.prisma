@@ -169,6 +169,7 @@ enum TaskEntityType {
   QUOTE
   PLANNING
   PROJECT
+  PROJECT_PHASE
   USER
 }
 
@@ -192,6 +193,7 @@ enum DocumentEntityType {
   TASK
   PLANNING
   PROJECT
+  PROJECT_PHASE
   USER
   WORK_ORDER
   SUPPORT_TICKET
@@ -203,6 +205,7 @@ enum NoteEntityType {
   QUOTE
   PLANNING
   PROJECT
+  PROJECT_PHASE
   USER
   WORK_ORDER
 }
@@ -426,6 +429,8 @@ model Organization {
   locationContactPersons   LocationContactPerson[]
   lostReasons              LostReason[]
   contactPersonRoles       ContactPersonRoleOption[]
+  projectPhases            ProjectPhase[]
+  phaseMilestones          PhaseMilestone[]
 
   // Inspectiedomein (Fase 1)
   normConfigurations       NormConfiguration[]
@@ -624,12 +629,17 @@ model User {
   planningSessionInspectors PlanningSessionInspector[]
   emailTemplates            EmailTemplate[]            @relation("EmailTemplateCreatedBy")
 
-  managedProjects   Project[]                   @relation("ProjectManager")
-  createdProjects   Project[]                   @relation("ProjectCreatedByUser")
-  projectFollowers  ProjectFollower[]
-  errorReports      ErrorReport[]
-  docxRevisions     QuoteTemplateDocxRevision[]
-  createdWorkOrders WorkOrder[]                 @relation("WorkOrderCreatedByUser")
+  managedProjects  Project[]         @relation("ProjectManager")
+  createdProjects  Project[]         @relation("ProjectCreatedByUser")
+  projectFollowers ProjectFollower[]
+  errorReports     ErrorReport[]
+
+  // Projectfasen (PRD-12)
+  createdProjectPhases  ProjectPhase[]              @relation("PhaseCreatedByUser")
+  projectPhaseFollowers ProjectPhaseFollower[]
+  assignedMilestones    PhaseMilestone[]            @relation("MilestoneAssignee")
+  docxRevisions         QuoteTemplateDocxRevision[]
+  createdWorkOrders     WorkOrder[]                 @relation("WorkOrderCreatedByUser")
 
   // Inspectiedomein (Fase 1)
   assignedInspectionPlans  InspectionPlan[]               @relation("InspectionPlanAssignee")
@@ -676,15 +686,15 @@ model User {
 }
 
 model RefreshToken {
-  id        String    @id @default(uuid()) @db.Uuid
-  userId    String    @map("user_id") @db.Uuid
-  tokenHash String    @map("token_hash")
-  expiresAt DateTime  @map("expires_at")
-  revokedAt DateTime? @map("revoked_at")
-  ipAddress String?   @map("ip_address")
-  userAgent String?   @map("user_agent")
-  rememberMe Boolean  @default(true) @map("remember_me")
-  createdAt DateTime  @default(now()) @map("created_at")
+  id         String    @id @default(uuid()) @db.Uuid
+  userId     String    @map("user_id") @db.Uuid
+  tokenHash  String    @map("token_hash")
+  expiresAt  DateTime  @map("expires_at")
+  revokedAt  DateTime? @map("revoked_at")
+  ipAddress  String?   @map("ip_address")
+  userAgent  String?   @map("user_agent")
+  rememberMe Boolean   @default(true) @map("remember_me")
+  createdAt  DateTime  @default(now()) @map("created_at")
 
   user User @relation(fields: [userId], references: [id])
 
@@ -829,6 +839,7 @@ model ContactPerson {
   organization           Organization             @relation(fields: [orgId], references: [id])
   role                   ContactPersonRoleOption? @relation(fields: [roleId], references: [id])
   planningItems          PlanningItem[]
+  projectPhases          ProjectPhase[]
   locationContactPersons LocationContactPerson[]
 
   // Inspectiedomein (Fase 1)
@@ -869,6 +880,7 @@ model Location {
   quotes                 Quote[]
   planningItems          PlanningItem[]
   projects               Project[]
+  projectPhases          ProjectPhase[]
   locationContactPersons LocationContactPerson[]
   inspectionPlans        InspectionPlan[]
   assetNodeRoot          AssetNode?              @relation("AssetNodeRoot") // 1:1; de wortel van de inspectie-boom voor deze locatie
@@ -1278,7 +1290,8 @@ model Quote {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  projectId String? @map("project_id") @db.Uuid
+  projectId      String? @map("project_id") @db.Uuid
+  projectPhaseId String? @map("project_phase_id") @db.Uuid
 
   organization     Organization           @relation(fields: [orgId], references: [id])
   template         QuoteTemplate?         @relation(fields: [templateId], references: [id])
@@ -1287,6 +1300,7 @@ model Quote {
   location         Location?              @relation(fields: [locationId], references: [id])
   createdByUser    User                   @relation("QuoteCreatedByUser", fields: [createdBy], references: [id])
   project          Project?               @relation(fields: [projectId], references: [id])
+  projectPhase     ProjectPhase?          @relation(fields: [projectPhaseId], references: [id])
   lines            QuoteLine[]
   approvalRequests QuoteApprovalRequest[]
   questions        QuoteQuestion[]
@@ -1578,7 +1592,8 @@ model PlanningItem {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  projectId String? @map("project_id") @db.Uuid
+  projectId      String? @map("project_id") @db.Uuid
+  projectPhaseId String? @map("project_phase_id") @db.Uuid
 
   organization       Organization        @relation(fields: [orgId], references: [id])
   contact            Contact             @relation(fields: [contactId], references: [id])
@@ -1586,6 +1601,7 @@ model PlanningItem {
   location           Location?           @relation(fields: [locationId], references: [id])
   createdByUser      User                @relation("PlanningCreatedByUser", fields: [createdBy], references: [id])
   project            Project?            @relation(fields: [projectId], references: [id])
+  projectPhase       ProjectPhase?       @relation(fields: [projectPhaseId], references: [id])
   inspectors         PlanningInspector[]
   history            PlanningHistory[]
   rescheduleRequests RescheduleRequest[]
@@ -1743,6 +1759,7 @@ model Project {
   requests       Request[]
   quotes         Quote[]
   planningItems  PlanningItem[]
+  phases         ProjectPhase[]
 
   // Inspectiedomein (Fase 1)
   inspectionPlans InspectionPlan[]
@@ -1772,6 +1789,114 @@ model ProjectFollower {
 
   @@index([projectId])
   @@map("imp_project_followers")
+}
+
+// ─── PRD-12: Projectfasen (deelprojecten binnen een project) ───
+
+enum PhaseStatus {
+  NIET_GESTART
+  ACTIEF
+  ON_HOLD
+  AFGEROND
+  GEANNULEERD
+}
+
+enum MilestoneStatus {
+  OPEN
+  BEHAALD
+  VERVALLEN
+}
+
+model ProjectPhase {
+  id          String      @id @default(uuid()) @db.Uuid
+  orgId       String      @map("org_id") @db.Uuid
+  projectId   String      @map("project_id") @db.Uuid
+  name        String
+  description String?
+  status      PhaseStatus @default(NIET_GESTART)
+  sortOrder   Int         @default(0) @map("sort_order")
+
+  // Eigen context per fase (alles optioneel — erft anders visueel van het project)
+  locationId      String?   @map("location_id") @db.Uuid // CRM-Location
+  contactPersonId String?   @map("contact_person_id") @db.Uuid // ContactPerson van het projectcontact
+  startDate       DateTime? @map("start_date") @db.Date
+  expectedEndDate DateTime? @map("expected_end_date") @db.Date
+  completedAt     DateTime? @map("completed_at")
+
+  // Haak voor deelfacturatie (PRD-08); nu alleen registratie
+  budgetAmount Decimal? @map("budget_amount") @db.Decimal(12, 2)
+
+  isDeleted Boolean   @default(false) @map("is_deleted")
+  deletedAt DateTime? @map("deleted_at")
+  createdBy String    @map("created_by") @db.Uuid
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+
+  organization  Organization           @relation(fields: [orgId], references: [id])
+  project       Project                @relation(fields: [projectId], references: [id])
+  location      Location?              @relation(fields: [locationId], references: [id])
+  contactPerson ContactPerson?         @relation(fields: [contactPersonId], references: [id])
+  createdByUser User                   @relation("PhaseCreatedByUser", fields: [createdBy], references: [id])
+  followers     ProjectPhaseFollower[]
+  milestones    PhaseMilestone[]
+
+  inspectionPlans InspectionPlan[]
+  planningItems   PlanningItem[]
+  workOrders      WorkOrder[]
+  quotes          Quote[]
+
+  @@index([orgId, projectId, sortOrder])
+  @@index([projectId, status])
+  @@map("imp_project_phases")
+}
+
+model ProjectPhaseFollower {
+  id               String   @id @default(uuid()) @db.Uuid
+  phaseId          String   @map("phase_id") @db.Uuid
+  userId           String?  @map("user_id") @db.Uuid
+  email            String?
+  name             String?
+  canViewGeneral   Boolean  @default(true) @map("can_view_general")
+  canViewRequests  Boolean  @default(false) @map("can_view_requests")
+  canViewQuotes    Boolean  @default(true) @map("can_view_quotes")
+  canViewPlanning  Boolean  @default(true) @map("can_view_planning")
+  canViewDocuments Boolean  @default(false) @map("can_view_documents")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  phase ProjectPhase @relation(fields: [phaseId], references: [id], onDelete: Cascade)
+  user  User?        @relation(fields: [userId], references: [id])
+
+  @@index([phaseId])
+  @@map("imp_project_phase_followers")
+}
+
+model PhaseMilestone {
+  id                 String          @id @default(uuid()) @db.Uuid
+  orgId              String          @map("org_id") @db.Uuid
+  phaseId            String          @map("phase_id") @db.Uuid
+  title              String
+  description        String?
+  dueDate            DateTime        @map("due_date") @db.Date
+  status             MilestoneStatus @default(OPEN)
+  completedAt        DateTime?       @map("completed_at")
+  assigneeId         String?         @map("assignee_id") @db.Uuid
+  reminderDaysBefore Int             @default(7) @map("reminder_days_before")
+
+  // Dedupe-patroon identiek aan MeasurementInstrumentsScheduler
+  lastReminderStage String?   @map("last_reminder_stage") // 'upcoming' | 'overdue'
+  lastReminderAt    DateTime? @map("last_reminder_at")
+
+  sortOrder Int      @default(0) @map("sort_order")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [orgId], references: [id])
+  phase        ProjectPhase @relation(fields: [phaseId], references: [id], onDelete: Cascade)
+  assignee     User?        @relation("MilestoneAssignee", fields: [assigneeId], references: [id])
+
+  @@index([phaseId, dueDate])
+  @@index([orgId, status, dueDate])
+  @@map("imp_project_phase_milestones")
 }
 
 // ─── Custom Fields ──────────────────────────────────────
@@ -1959,6 +2084,7 @@ model WorkOrder {
   id              String          @id @default(uuid()) @db.Uuid
   orgId           String          @map("org_id") @db.Uuid
   planningItemId  String?         @map("planning_item_id") @db.Uuid
+  projectPhaseId  String?         @map("project_phase_id") @db.Uuid
   workOrderNumber String          @map("work_order_number")
   status          WorkOrderStatus @default(IN_VOORBEREIDING)
   internalNotes   String?         @map("internal_notes")
@@ -1970,6 +2096,7 @@ model WorkOrder {
 
   organization  Organization    @relation(fields: [orgId], references: [id])
   planningItem  PlanningItem?   @relation(fields: [planningItemId], references: [id])
+  projectPhase  ProjectPhase?   @relation(fields: [projectPhaseId], references: [id])
   createdByUser User            @relation("WorkOrderCreatedByUser", fields: [createdBy], references: [id])
   lines         WorkOrderLine[]
 
@@ -2493,11 +2620,12 @@ model ClassificationOption {
 // ─── Inspectieplan (kern) ────────────────────────────────
 
 model InspectionPlan {
-  id         String  @id @default(uuid()) @db.Uuid
-  orgId      String  @map("org_id") @db.Uuid
-  contactId  String  @map("contact_id") @db.Uuid // was clientId → Beheer Contact
-  projectId  String? @map("project_id") @db.Uuid // Beheer Project
-  locationId String? @map("location_id") @db.Uuid // CRM-Location = hoofdlocatie / boom-wortel
+  id             String  @id @default(uuid()) @db.Uuid
+  orgId          String  @map("org_id") @db.Uuid
+  contactId      String  @map("contact_id") @db.Uuid // was clientId → Beheer Contact
+  projectId      String? @map("project_id") @db.Uuid // Beheer Project
+  projectPhaseId String? @map("project_phase_id") @db.Uuid // PRD-12: optionele fase binnen het project
+  locationId     String? @map("location_id") @db.Uuid // CRM-Location = hoofdlocatie / boom-wortel
 
   inspectionTemplateId String? @map("inspection_template_id") @db.Uuid
 
@@ -2546,6 +2674,7 @@ model InspectionPlan {
   organization            Organization        @relation(fields: [orgId], references: [id])
   contact                 Contact             @relation(fields: [contactId], references: [id])
   project                 Project?            @relation(fields: [projectId], references: [id])
+  projectPhase            ProjectPhase?       @relation(fields: [projectPhaseId], references: [id])
   location                Location?           @relation(fields: [locationId], references: [id])
   assignedUser            User?               @relation("InspectionPlanAssignee", fields: [assignedTo], references: [id])
   reviewer                User?               @relation("InspectionPlanReviewer", fields: [reviewerId], references: [id])
@@ -3222,7 +3351,7 @@ model LocationTypeDefinition {
   orgId String? @map("org_id") @db.Uuid
 
   code        String
-  shortCode   String? @map("short_code") // shortcode voor [typecode] in AssetNode-nummering
+  shortCode   String?           @map("short_code") // shortcode voor [typecode] in AssetNode-nummering
   name        String
   description String?
   icon        String?

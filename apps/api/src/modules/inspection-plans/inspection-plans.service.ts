@@ -11,6 +11,7 @@ import {
   orgScope,
   assertFound,
   assertSameOrg,
+  resolvePhaseLink,
   requireOrg,
   STATUS_DRAFT,
   STATUS_IN_PROGRESS,
@@ -294,6 +295,23 @@ export class InspectionPlansService {
       data.project = dto.projectId
         ? { connect: { id: dto.projectId } }
         : { disconnect: true };
+
+    // Projectfase-koppeling (PRD-12): valideer org + projectconsistentie t.o.v. het
+    // effectieve project (een in dezelfde PATCH gewijzigd projectId telt mee) en
+    // cascadeer het project van de fase wanneer het plan er nog geen heeft.
+    const effectiveProjectId =
+      dto.projectId !== undefined ? dto.projectId : existing.projectId;
+    const phaseLink = await resolvePhaseLink(
+      this.prisma.projectPhase, dto.projectPhaseId, orgId, effectiveProjectId,
+    );
+    if (phaseLink !== undefined) {
+      data.projectPhase = phaseLink.phaseId
+        ? { connect: { id: phaseLink.phaseId } }
+        : { disconnect: true };
+      if (phaseLink.projectId && effectiveProjectId == null) {
+        data.project = { connect: { id: phaseLink.projectId } };
+      }
+    }
     if (dto.locationId !== undefined)
       data.location = dto.locationId
         ? { connect: { id: dto.locationId } }

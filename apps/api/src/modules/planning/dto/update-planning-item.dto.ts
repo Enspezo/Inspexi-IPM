@@ -1,11 +1,17 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsString, IsUUID, IsOptional, IsDateString, IsNumber, Min, IsArray, IsBoolean, IsInt, Max } from 'class-validator';
+import { IsString, IsUUID, IsOptional, IsDateString, IsNumber, Min, IsArray, IsBoolean, IsInt, Max, ValidateIf } from 'class-validator';
 
 export class UpdatePlanningItemDto {
   @ApiPropertyOptional()
   @IsOptional()
   @IsUUID()
   locationId?: string;
+
+  @ApiPropertyOptional({ description: 'Projectfase ID (null om te ontkoppelen). Moet bij hetzelfde project horen (PRD-12).', nullable: true })
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null)
+  @IsUUID()
+  projectPhaseId?: string | null;
 
   @ApiPropertyOptional({ description: 'Contactpersoon ID (optioneel, null om te wissen)' })
   @IsOptional()

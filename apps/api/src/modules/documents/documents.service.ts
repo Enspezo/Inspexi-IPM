@@ -249,6 +249,8 @@ export class DocumentsService {
         return { model: this.prisma.planningItem, label: 'Afspraak' };
       case DocumentEntityType.PROJECT:
         return { model: this.prisma.project, label: 'Project' };
+      case DocumentEntityType.PROJECT_PHASE:
+        return { model: this.prisma.projectPhase, label: 'Projectfase' };
       case DocumentEntityType.WORK_ORDER:
         return { model: this.prisma.workOrder, label: 'Werkbon' };
       case DocumentEntityType.USER:

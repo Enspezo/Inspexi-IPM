@@ -1,4 +1,4 @@
-import { PrismaClient, Role, ContactType, LogType, PriceType, RequestSource, RequestStatus, Priority, QuoteStatus, NotificationType, PlanningStatus, AcceptanceStatus, ProjectStatus, AssetFieldType, ChecklistStatus, TemplateStatus, MeasurementSheetTemplateStatus, MeasurementSheetFieldType, FindingInspectionType, DocumentType, DocumentEntityType, TemplateMode, SectionType, ClientUserStatus, ClientAccessRole, GeneratedDocumentStatus, SignatureStatus, MarkerType, MeasurementSheetRecordStatus, InspectionExecStatus, PassFailOperator, LocationTypeScope, Availability, ChatThreadType, ChatThreadStatus, ContactDisplayMode } from '@prisma/client';
+import { PrismaClient, Role, ContactType, LogType, PriceType, RequestSource, RequestStatus, Priority, QuoteStatus, NotificationType, PlanningStatus, AcceptanceStatus, ProjectStatus, AssetFieldType, ChecklistStatus, TemplateStatus, MeasurementSheetTemplateStatus, MeasurementSheetFieldType, FindingInspectionType, DocumentType, DocumentEntityType, TemplateMode, SectionType, ClientUserStatus, ClientAccessRole, GeneratedDocumentStatus, SignatureStatus, MarkerType, MeasurementSheetRecordStatus, InspectionExecStatus, PassFailOperator, LocationTypeScope, Availability, ChatThreadType, ChatThreadStatus, ContactDisplayMode, PhaseStatus } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { randomUUID } from 'crypto';
 import * as fs from 'fs';
@@ -637,6 +637,11 @@ async function main() {
   await prisma.planningHistory.deleteMany();
   await prisma.planningInspector.deleteMany();
   await prisma.planningItem.deleteMany();
+  // Projectfasen (PRD-12) — kinderen eerst; entiteiten met project_phase_id (quotes/
+  // planning/werkbonnen/inspectieplannen) zijn hierboven al opgeruimd, FK's zijn nullable.
+  await prisma.phaseMilestone.deleteMany();
+  await prisma.projectPhaseFollower.deleteMany();
+  await prisma.projectPhase.deleteMany();
   // Projects (dependent on contacts/locations/users; referenced by nullable FK from requests/quotes/planning)
   await prisma.projectFollower.deleteMany();
   await prisma.project.deleteMany();
@@ -2127,6 +2132,76 @@ async function main() {
     },
   });
 
+  // ─── PRD-12: Projectfasen op het demo-project ──────────────
+  const phase1 = await prisma.projectPhase.create({
+    data: {
+      orgId: org1.id,
+      projectId: project1.id,
+      name: 'Fase 1 — Kantoorpand Zuidas',
+      description: 'Initiële inspectie van het hoofdpand aan de Zuidas.',
+      status: PhaseStatus.ACTIEF,
+      sortOrder: 0,
+      locationId: loc1Kantoor.id,
+      startDate: new Date('2026-06-01'),
+      expectedEndDate: new Date('2026-07-15'),
+      budgetAmount: 4500,
+      createdBy: createdOrg1Users[Role.MANAGER],
+    },
+  });
+  const phase2 = await prisma.projectPhase.create({
+    data: {
+      orgId: org1.id,
+      projectId: project1.id,
+      name: 'Fase 2 — Herinspectie',
+      description: 'Herinspectie na uitvoering van herstelwerkzaamheden.',
+      status: PhaseStatus.NIET_GESTART,
+      sortOrder: 1,
+      createdBy: createdOrg1Users[Role.MANAGER],
+    },
+  });
+
+  // Milestones: één met dueDate binnen 7 dagen (voor de reminder-demo).
+  const milestoneSoon = new Date();
+  milestoneSoon.setDate(milestoneSoon.getDate() + 5);
+  await prisma.phaseMilestone.createMany({
+    data: [
+      {
+        orgId: org1.id,
+        phaseId: phase1.id,
+        title: 'Rapportage pand A gereed',
+        description: 'Concept-rapportage opleveren aan de projectmanager.',
+        dueDate: milestoneSoon,
+        assigneeId: createdOrg1Users[Role.INSPECTEUR],
+        reminderDaysBefore: 7,
+        sortOrder: 0,
+      },
+      {
+        orgId: org1.id,
+        phaseId: phase1.id,
+        title: 'Oplevering aan klant',
+        dueDate: new Date('2026-07-20'),
+        sortOrder: 1,
+      },
+      {
+        orgId: org1.id,
+        phaseId: phase2.id,
+        title: 'Herinspectie ingepland',
+        dueDate: new Date('2026-08-15'),
+        assigneeId: createdOrg1Users[Role.MANAGER],
+        sortOrder: 0,
+      },
+    ],
+  });
+
+  // Eén (interne) volger per fase.
+  await prisma.projectPhaseFollower.createMany({
+    data: [
+      { phaseId: phase1.id, userId: createdOrg1Users[Role.ORG_ADMIN] },
+      { phaseId: phase2.id, userId: createdOrg1Users[Role.ORG_ADMIN] },
+    ],
+  });
+  console.log(`  ✓ Projectfasen: 2 fasen op ${project1.projectNumber} (Fase 1 ACTIEF)`);
+
   const project2 = await prisma.project.create({
     data: {
       orgId: org1.id,
@@ -2635,6 +2710,12 @@ async function main() {
       plannedDate: new Date('2026-07-01'),
       createdBy: createdOrg1Users[Role.ORG_ADMIN],
     },
+  });
+
+  // PRD-12: koppel het demo-inspectieplan aan Fase 1 (project + fase consistent).
+  await prisma.inspectionPlan.update({
+    where: { id: demoPlan.id },
+    data: { projectId: project1.id, projectPhaseId: phase1.id },
   });
 
   // AssetNode-boom: wortel-LOCATION (1:1 aan de CRM-Locatie) → deellocatie

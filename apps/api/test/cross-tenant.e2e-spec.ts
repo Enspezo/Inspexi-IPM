@@ -66,6 +66,9 @@ describe('Cross-tenant FK isolation (e2e)', () => {
   let quoteAId: string; // org A CONCEPT quote (own) — quotes update attack target
   let projectAId: string; // org A project (own) — projects update attack target
 
+  // PRD-12 (project phases) fixtures
+  let phaseBId: string; // org B phase (victim) — projectPhaseId injection target
+
   const createdPlanningIds: string[] = [];
   const createdTaskIds: string[] = [];
   // NB: rows created by PR-2 positive controls are swept by the orgId-bulk
@@ -398,6 +401,15 @@ describe('Cross-tenant FK isolation (e2e)', () => {
     });
     projectAId = projectA.id;
 
+    // PRD-12: org B's project + phase (victim) for projectPhaseId injection tests.
+    const projectB = await prisma.project.create({
+      data: { orgId: orgB.id, projectNumber: 'E2E-XT-B-P001', title: 'Project B', contactId: contactB.id, projectManagerId: userB.id, createdBy: userB.id },
+    });
+    const phaseB = await prisma.projectPhase.create({
+      data: { orgId: orgB.id, projectId: projectB.id, name: 'Fase B', createdBy: userB.id },
+    });
+    phaseBId = phaseB.id;
+
     // Support-ticket van org B (slachtoffer) — org A mag dit niet zien/muteren.
     const ticketB = await prisma.supportTicket.create({
       data: {
@@ -479,6 +491,10 @@ describe('Cross-tenant FK isolation (e2e)', () => {
       // quote is already gone above (quote.requestId → request).
       await prisma.requestStatusHistory.deleteMany({ where: { request: { orgId: { in: orgIds } } } });
       await prisma.request.deleteMany({ where: { orgId: { in: orgIds } } });
+      // PRD-12 project phases (children first) before the projects they reference (RESTRICT).
+      await prisma.phaseMilestone.deleteMany({ where: { orgId: { in: orgIds } } });
+      await prisma.projectPhaseFollower.deleteMany({ where: { phase: { orgId: { in: orgIds } } } });
+      await prisma.projectPhase.deleteMany({ where: { orgId: { in: orgIds } } });
       await prisma.project.deleteMany({ where: { orgId: { in: orgIds } } });
       await prisma.note.deleteMany({ where: { orgId: { in: orgIds }, parentId: { not: null } } });
       await prisma.note.deleteMany({ where: { orgId: { in: orgIds } } });
@@ -1401,6 +1417,42 @@ describe('Cross-tenant FK isolation (e2e)', () => {
         .set('Authorization', `Bearer ${tokenA}`)
         .send({ locationId: locationBId })
         .expect(403);
+    });
+  });
+
+  // ─── PRD-12: cross-tenant projectPhaseId injection ────
+  // Org A tries to link its own quote/planregel to org B's phase. resolvePhaseLink
+  // validates the phase's org first → 403 (before any project-consistency check).
+  describe('PRD-12 — cross-tenant projectPhaseId injection', () => {
+    let planningAId: string;
+
+    beforeAll(async () => {
+      const res = await request(app.getHttpServer())
+        .post('/api/v1/planning')
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({ productName: 'Fase-injectie', contactId: contactAId });
+      planningAId = res.body.data.id;
+      createdPlanningIds.push(planningAId);
+    });
+
+    it("rejects linking an own CONCEPT quote to another org's phase (403)", async () => {
+      await request(app.getHttpServer())
+        .patch(`/api/v1/quotes/${quoteAId}`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({ projectPhaseId: phaseBId })
+        .expect(403);
+      const q = await prisma.quote.findUnique({ where: { id: quoteAId } });
+      expect(q?.projectPhaseId).toBeNull();
+    });
+
+    it("rejects linking an own planregel to another org's phase (403)", async () => {
+      await request(app.getHttpServer())
+        .patch(`/api/v1/planning/${planningAId}`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({ projectPhaseId: phaseBId })
+        .expect(403);
+      const p = await prisma.planningItem.findUnique({ where: { id: planningAId } });
+      expect(p?.projectPhaseId).toBeNull();
     });
   });
 

@@ -10,7 +10,7 @@ import { User, Role, Prisma, QuoteStatus, QuoteTemplate, RequestStatus, Notifica
 import { ConfigService } from '@nestjs/config';
 import { randomUUID } from 'crypto';
 import { PrismaService } from '@/prisma';
-import { paginate, buildOrderBy, orgScope, assertFound, assertSameOrg } from '@/common';
+import { paginate, buildOrderBy, orgScope, assertFound, assertSameOrg, resolvePhaseLink } from '@/common';
 import { NumberingService } from '@/modules/numbering/numbering.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { EmailService } from '@/common/services/email.service';
@@ -174,6 +174,12 @@ export class QuotesService {
       assertSameOrg(this.prisma.location, dto.locationId, user.orgId, 'Locatie'),
     ]);
 
+    // Projectfase-koppeling (PRD-12): valideer org + projectconsistentie en
+    // cascadeer het project van de fase naar de offerte wanneer die er nog geen heeft.
+    const phaseLink = await resolvePhaseLink(
+      this.prisma.projectPhase, dto.projectPhaseId, user.orgId, quote.projectId,
+    );
+
     let customFieldsData: any = undefined;
     if (dto.customFields !== undefined) {
       const merged = {
@@ -210,6 +216,10 @@ export class QuotesService {
         ...(dto.contentBlocks !== undefined && { contentBlocks: dto.contentBlocks }),
         ...(dto.closingBlocks !== undefined && { closingBlocks: dto.closingBlocks }),
         ...(customFieldsData !== undefined && { customFields: customFieldsData as any }),
+        ...(phaseLink !== undefined && {
+          projectPhaseId: phaseLink.phaseId,
+          ...(phaseLink.projectId && quote.projectId == null && { projectId: phaseLink.projectId }),
+        }),
         // Applied last so a template switch wins over any blocks in the same payload.
         ...templateSwitchData,
       },

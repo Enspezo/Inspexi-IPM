@@ -12,7 +12,7 @@ import * as bcrypt from 'bcrypt';
 import { randomUUID } from 'crypto';
 import { User, Role, TaskStatus, Availability } from '@prisma/client';
 import { PrismaService } from '@/prisma';
-import { assertFound, assertSameOrg } from '@/common';
+import { assertFound, assertSameOrg, sanitizeStorageExtension } from '@/common';
 import { EmailService } from '@/common/services/email.service';
 import {
   STORAGE_PROVIDER,
@@ -494,7 +494,7 @@ export class UsersService {
       await this.storage.delete(user.avatarUrl).catch(() => {});
     }
 
-    const ext = file.originalname.split('.').pop() ?? 'png';
+    const ext = sanitizeStorageExtension(file.originalname, 'png');
     const storageKey = `avatars/${userId}/${randomUUID()}.${ext}`;
     await this.storage.upload(storageKey, file.buffer, file.mimetype);
 

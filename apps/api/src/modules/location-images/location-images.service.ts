@@ -18,7 +18,7 @@ import {
 import { User, Prisma, MarkerType, AssetNodeType } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import { PrismaService } from '@/prisma';
-import { orgScope, assertFound, assertSameOrg, requireOrg } from '@/common';
+import { orgScope, assertFound, assertSameOrg, requireOrg, sanitizeStorageFilename } from '@/common';
 import {
   STORAGE_PROVIDER,
   type StorageProvider,
@@ -151,7 +151,7 @@ export class LocationImagesService {
       }
     }
 
-    const storagePath = `${orgId}/${randomUUID()}-${file.originalname}`;
+    const storagePath = `${orgId}/${randomUUID()}-${sanitizeStorageFilename(file.originalname)}`;
     await this.storage.upload(storagePath, file.buffer, file.mimetype);
 
     const data = {

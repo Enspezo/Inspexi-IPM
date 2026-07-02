@@ -161,9 +161,36 @@ export class GeneratedDocumentsService {
   }
 
   async findByInspectionPlan(planId: string, user: User) {
+    // Alleen lijst-metadata selecteren: de zware @db.Text-kolommen (htmlContent,
+    // editedContent en per-signature signatureImage/base64) horen niet in een lijst
+    // en worden pas op detail/preview opgehaald.
     return this.prisma.generatedDocument.findMany({
       where: { inspectionPlanId: planId, ...orgScope(user) },
-      include: { signatures: true },
+      select: {
+        id: true,
+        orgId: true,
+        documentTemplateId: true,
+        inspectionPlanId: true,
+        documentType: true,
+        status: true,
+        isEdited: true,
+        editedAt: true,
+        pdfUrl: true,
+        wordUrl: true,
+        generatedAt: true,
+        generatedBy: true,
+        finalizedAt: true,
+        signatures: {
+          select: {
+            id: true,
+            signerRoleCode: true,
+            signerName: true,
+            status: true,
+            signedAt: true,
+            signatureRequestUrl: true,
+          },
+        },
+      },
       orderBy: { generatedAt: 'desc' },
     });
   }

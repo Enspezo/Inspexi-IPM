@@ -148,6 +148,43 @@ describe('AllExceptionsFilter', () => {
     });
   });
 
+  it('should map a body-parser PayloadTooLargeError to 413', () => {
+    // Express body-parser gooit een gewone Error met numerieke status, geen HttpException.
+    const exception = Object.assign(new Error('request entity too large'), {
+      status: 413,
+      statusCode: 413,
+      type: 'entity.too.large',
+      expose: true,
+    });
+
+    filter.catch(exception, mockHost);
+
+    expect(mockStatus).toHaveBeenCalledWith(HttpStatus.PAYLOAD_TOO_LARGE);
+    expect(mockJson).toHaveBeenCalledWith({
+      success: false,
+      message: 'Verzoek te groot',
+      statusCode: HttpStatus.PAYLOAD_TOO_LARGE,
+    });
+  });
+
+  it('should map malformed-JSON body-parser error to 400 with exposed message', () => {
+    const exception = Object.assign(new SyntaxError('Unexpected token b in JSON'), {
+      status: 400,
+      statusCode: 400,
+      type: 'entity.parse.failed',
+      expose: true,
+    });
+
+    filter.catch(exception, mockHost);
+
+    expect(mockStatus).toHaveBeenCalledWith(HttpStatus.BAD_REQUEST);
+    expect(mockJson).toHaveBeenCalledWith({
+      success: false,
+      message: 'Unexpected token b in JSON',
+      statusCode: HttpStatus.BAD_REQUEST,
+    });
+  });
+
   it('should handle non-Error objects as 500', () => {
     filter.catch('string error', mockHost);
 

@@ -2687,6 +2687,7 @@ model VisualInspection {
   findings       Finding[]
 
   @@index([orgId])
+  @@index([orgId, updatedAt])
   @@index([assetNodeId])
   @@index([inspectionPlanId])
   @@map("imp_visual_inspections")
@@ -2722,6 +2723,7 @@ model MeasurementRecord {
   findings       Finding[]
 
   @@index([orgId])
+  @@index([orgId, updatedAt])
   @@index([assetNodeId])
   @@index([inspectionPlanId])
   @@map("imp_measurement_records")
@@ -2774,6 +2776,7 @@ model Finding {
   markers           LocationImageMarker[]
 
   @@index([orgId])
+  @@index([orgId, updatedAt])
   @@index([assetNodeId])
   @@index([inspectionPlanId])
   @@index([findingTemplateId])
@@ -3668,6 +3671,7 @@ model MeasurementSheetRecord {
   inspectionPlan InspectionPlan           @relation(fields: [inspectionPlanId], references: [id])
 
   @@index([orgId])
+  @@index([orgId, updatedAt])
   @@index([templateId])
   @@index([assetNodeId])
   @@index([inspectionPlanId])
@@ -3769,6 +3773,7 @@ model StandaloneMeasurement {
   markers         LocationImageMarker[]
 
   @@index([orgId])
+  @@index([orgId, updatedAt])
   @@index([inspectionPlanId])
   @@index([locationNodeId])
   @@index([linkedAssetNodeId])
@@ -3820,6 +3825,8 @@ model SyncQueue {
   user         User? @relation("SyncQueueUser", fields: [userId], references: [id])
   resolvedUser User? @relation("SyncResolvedBy", fields: [resolvedBy], references: [id])
 
+  @@index([entityType, entityId, status])
+  @@index([status, createdAt])
   @@map("imp_sync_queue")
 }
 

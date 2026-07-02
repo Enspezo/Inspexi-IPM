@@ -61,31 +61,32 @@ export function ClientAuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   // Bestaande sessie herstellen op mount: het in-memory access-token is na een reload weg, dus
-  // probeer één keer te verversen via de httpOnly refresh-cookie. Guard tegen React 18 StrictMode's
-  // dubbel-aangeroepen effect (twee parallelle refresh-calls racen met de token-rotatie).
+  // probeer één keer te verversen via de httpOnly refresh-cookie. De `didInit`-ref voorkomt dat
+  // React 18 StrictMode's dubbel-aangeroepen effect twee parallelle refresh-calls tegen de
+  // token-rotatie laat racen — restore() draait dus gegarandeerd precies één keer.
+  //
+  // NB: géén `cancelled`-vlag via de cleanup. Onder StrictMode zet die cleanup `cancelled = true`
+  // vóórdat het (door de ref geblokkeerde) tweede effect draait, waardoor de énige restore-run
+  // zowel `/client/auth/me` als `setIsLoading(false)` oversloeg → spinner bleef eeuwig hangen.
   const didInit = useRef(false);
   useEffect(() => {
     if (didInit.current) return;
     didInit.current = true;
 
-    let cancelled = false;
     async function restore() {
       try {
         const token = await refreshAccessToken();
-        if (token && !cancelled) {
+        if (token) {
           const me = await apiClient.get<ClientUser>('/client/auth/me');
-          if (!cancelled) setUser(me);
+          setUser(me);
         }
       } catch {
         // Geen geldige sessie — dat is prima.
       } finally {
-        if (!cancelled) setIsLoading(false);
+        setIsLoading(false);
       }
     }
     restore();
-    return () => {
-      cancelled = true;
-    };
   }, []);
 
   const login = useCallback(async (email: string, password: string) => {

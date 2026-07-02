@@ -1,12 +1,6 @@
-export function formatDate(dateStr: string): string {
-  return new Date(dateStr).toLocaleDateString('nl-NL', {
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-}
+// Gedeelde formatter (lange datum mét tijd) — her-geëxporteerd zodat bestaande
+// imports uit dit helpers-bestand blijven werken.
+export { formatDateTimeLong as formatDate } from '@/lib/format';
 
 export function getContactName(contact?: { companyName?: string | null; firstName?: string | null; lastName?: string | null }): string {
   if (!contact) return '—';

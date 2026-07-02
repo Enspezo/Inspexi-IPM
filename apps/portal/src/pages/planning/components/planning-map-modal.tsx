@@ -9,6 +9,7 @@ import {
   persistLocationCoords,
 } from '@/lib/geocode';
 import type { GeocodeAddress } from '@/lib/geocode';
+import { formatWeekdayShortDate } from '@/lib/format';
 import type { PlanningItem } from '@/types';
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
@@ -36,13 +37,7 @@ function getContactName(item: PlanningItem): string {
 }
 
 function formatDate(d: string | null): string {
-  if (!d) return 'Niet gepland';
-  return new Date(d).toLocaleDateString('nl-NL', {
-    weekday: 'short',
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-  });
+  return d ? formatWeekdayShortDate(d) : 'Niet gepland';
 }
 
 // ─── Types ─────────────────────────────────────────────────────────────────

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Button, TagPill, TagSelect, useToast } from '@/components/ui';
 import { downloadFile } from '@/lib/download-file';
-import { formatFileSize } from '@/lib/format';
+import { formatFileSize, formatDateTimeLong } from '@/lib/format';
 import { getErrorMessage } from '@/lib/api-client';
 import type { CrmDocument } from '@/types';
 import { useUpdateDocument } from '@/pages/documents/hooks/use-documents';
@@ -14,16 +14,6 @@ interface DocumentPreviewModalProps {
   document: CrmDocument | null;
   /** Sta toe om de tags van dit document te bewerken. */
   canEditTags?: boolean;
-}
-
-function formatDate(dateStr: string): string {
-  return new Date(dateStr).toLocaleDateString('nl-NL', {
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
 }
 
 const entityTypeLabels: Record<string, string> = {
@@ -100,7 +90,7 @@ export function DocumentPreviewModal({
           label="Eigenaar"
           value={doc.uploadedBy ? `${doc.uploadedBy.firstName} ${doc.uploadedBy.lastName}` : '—'}
         />
-        <MetaField label="Datum" value={formatDate(doc.createdAt)} />
+        <MetaField label="Datum" value={formatDateTimeLong(doc.createdAt)} />
 
         {doc.description && <MetaField label="Beschrijving" value={doc.description} />}
 

@@ -3,8 +3,13 @@ import {
   formatCurrency,
   formatDate,
   formatDateTime,
+  formatDateTimeLong,
   formatFileSize,
+  formatNumericDate,
   formatShortDate,
+  formatTime,
+  formatWeekdayDate,
+  formatWeekdayShortDate,
 } from './format';
 
 describe('formatDate', () => {
@@ -39,6 +44,58 @@ describe('formatDateTime', () => {
 
   it('returns em dash for empty input', () => {
     expect(formatDateTime(null)).toBe('—');
+  });
+});
+
+describe('formatDateTimeLong', () => {
+  it('uses the long month with a time', () => {
+    const result = formatDateTimeLong(new Date(2026, 5, 8, 14, 30));
+    expect(result).toContain('8 juni 2026');
+    expect(result).toContain('14:30');
+  });
+
+  it('returns em dash for empty input', () => {
+    expect(formatDateTimeLong(null)).toBe('—');
+  });
+});
+
+describe('formatWeekdayDate', () => {
+  it('prefixes the long weekday', () => {
+    expect(formatWeekdayDate('2026-06-08T12:00:00Z')).toBe('maandag 8 juni 2026');
+  });
+
+  it('returns em dash for invalid input', () => {
+    expect(formatWeekdayDate('nope')).toBe('—');
+  });
+});
+
+describe('formatWeekdayShortDate', () => {
+  it('uses the short weekday and month', () => {
+    expect(formatWeekdayShortDate('2026-06-08T12:00:00Z')).toBe('ma 8 jun 2026');
+  });
+});
+
+describe('formatNumericDate', () => {
+  it('formats as numeric nl-NL date', () => {
+    expect(formatNumericDate('2026-06-08T12:00:00Z')).toBe('8-6-2026');
+  });
+
+  it('returns em dash for empty input', () => {
+    expect(formatNumericDate(null)).toBe('—');
+  });
+});
+
+describe('formatTime', () => {
+  it('formats an ISO datetime as HH:MM', () => {
+    expect(formatTime(new Date(2026, 5, 8, 9, 5))).toBe('09:05');
+  });
+
+  it('accepts a bare HH:MM string', () => {
+    expect(formatTime('08:45:00')).toBe('08:45');
+  });
+
+  it('returns em dash for empty input', () => {
+    expect(formatTime(null)).toBe('—');
   });
 });
 

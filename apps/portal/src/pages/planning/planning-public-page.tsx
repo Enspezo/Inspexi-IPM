@@ -1,28 +1,11 @@
 import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { Spinner } from '@/components/ui';
-import { formatFileSize } from '@/lib/format';
+import { formatFileSize, formatWeekdayDate as formatDate, formatTime } from '@/lib/format';
 import type { PlanningItem, CrmDocument, PlanningSession, UserSummary } from '@/types';
 import { PlanningStatus, AcceptanceStatus, SessionStatus } from '@/types';
 
 const API_BASE = '/api/v1';
-
-function formatDate(dateStr: string | null | undefined): string {
-  if (!dateStr) return '-';
-  return new Date(dateStr).toLocaleDateString('nl-NL', {
-    weekday: 'long',
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-  });
-}
-
-function formatTime(timeStr: string | null | undefined): string {
-  if (!timeStr) return '-';
-  const d = new Date(timeStr);
-  if (isNaN(d.getTime())) return timeStr.slice(0, 5);
-  return d.toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' });
-}
 
 function formatDuration(minutes: number | null | undefined): string {
   if (!minutes) return '-';

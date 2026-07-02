@@ -3,14 +3,22 @@ import {
   useContext,
   useState,
   useEffect,
+  useRef,
   useCallback,
   type ReactNode,
 } from 'react';
-import { apiClient, setTokens, clearTokens, getAccessToken } from '@/lib/api-client';
+import {
+  apiClient,
+  setAccessToken,
+  clearTokens,
+  refreshAccessToken,
+} from '@/lib/api-client';
 import type { ClientUser, LoginResult } from '@/types';
 
-// Eigen auth-realm voor het klantportaal (los van de staf-AuthProvider). Tokens worden door de
-// apiClient tenant-gescoped in storage gezet; deze provider houdt alleen de user-state bij.
+// Eigen auth-realm voor het klantportaal (los van de staf-AuthProvider). Het access-token leeft
+// alleen in het geheugen (api-client); het refresh-token is een httpOnly-cookie die de server zet
+// en roteert. Bij een reload herstelt deze provider de sessie via die cookie. Deze provider houdt
+// alleen de user-state bij.
 
 export interface ClientRegisterData {
   magicLinkToken: string;
@@ -28,9 +36,12 @@ interface ClientAuthContextValue {
   isLoading: boolean;
   login: (email: string, password: string) => Promise<void>;
   register: (data: ClientRegisterData) => Promise<void>;
-  /** Directe login na een geldige magic-link (tokens + user komen uit de validate-respons). */
-  loginWithTokens: (accessToken: string, refreshToken: string, user: ClientUser) => void;
-  logout: () => void;
+  /**
+   * Directe login na een geldige magic-link. Het access-token komt uit de validate-respons; de
+   * refresh-cookie is dan al door de server gezet (op diezelfde POST).
+   */
+  loginWithToken: (accessToken: string, user: ClientUser) => void;
+  logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
 }
 
@@ -49,24 +60,29 @@ export function ClientAuthProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener('client-auth:logout', handleLogout);
   }, []);
 
-  // Bestaande sessie herstellen op mount.
+  // Bestaande sessie herstellen op mount: het in-memory access-token is na een reload weg, dus
+  // probeer één keer te verversen via de httpOnly refresh-cookie. Guard tegen React 18 StrictMode's
+  // dubbel-aangeroepen effect (twee parallelle refresh-calls racen met de token-rotatie).
+  const didInit = useRef(false);
   useEffect(() => {
+    if (didInit.current) return;
+    didInit.current = true;
+
     let cancelled = false;
-    async function check() {
-      if (!getAccessToken()) {
-        setIsLoading(false);
-        return;
-      }
+    async function restore() {
       try {
-        const me = await apiClient.get<ClientUser>('/client/auth/me');
-        if (!cancelled) setUser(me);
+        const token = await refreshAccessToken();
+        if (token && !cancelled) {
+          const me = await apiClient.get<ClientUser>('/client/auth/me');
+          if (!cancelled) setUser(me);
+        }
       } catch {
-        clearTokens();
+        // Geen geldige sessie — dat is prima.
       } finally {
         if (!cancelled) setIsLoading(false);
       }
     }
-    check();
+    restore();
     return () => {
       cancelled = true;
     };
@@ -74,26 +90,30 @@ export function ClientAuthProvider({ children }: { children: ReactNode }) {
 
   const login = useCallback(async (email: string, password: string) => {
     const data = await apiClient.post<LoginResult>('/client/auth/login', { email, password });
-    setTokens(data.accessToken, data.refreshToken);
+    setAccessToken(data.accessToken);
     setUser(data.user);
   }, []);
 
   const register = useCallback(async (data: ClientRegisterData) => {
     const res = await apiClient.post<LoginResult>('/client/auth/register', data);
-    setTokens(res.accessToken, res.refreshToken);
+    setAccessToken(res.accessToken);
     setUser(res.user);
   }, []);
 
-  const loginWithTokens = useCallback(
-    (accessToken: string, refreshToken: string, nextUser: ClientUser) => {
-      setTokens(accessToken, refreshToken);
-      setUser(nextUser);
-    },
-    [],
-  );
+  const loginWithToken = useCallback((accessToken: string, nextUser: ClientUser) => {
+    setAccessToken(accessToken);
+    setUser(nextUser);
+  }, []);
 
-  const logout = useCallback(() => {
-    clearTokens(); // → 'client-auth:logout' → handleLogout zet user op null
+  const logout = useCallback(async () => {
+    try {
+      // Trek het refresh-token server-side in en wis de cookie.
+      await apiClient.post('/client/auth/logout');
+    } catch {
+      // Ook bij een netwerkfout de lokale sessie beëindigen.
+    } finally {
+      clearTokens(); // → 'client-auth:logout' → handleLogout zet user op null
+    }
   }, []);
 
   const refreshUser = useCallback(async () => {
@@ -113,7 +133,7 @@ export function ClientAuthProvider({ children }: { children: ReactNode }) {
         isLoading,
         login,
         register,
-        loginWithTokens,
+        loginWithToken,
         logout,
         refreshUser,
       }}

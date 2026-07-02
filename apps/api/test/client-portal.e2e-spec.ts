@@ -291,8 +291,13 @@ describe('Client Portal (e2e)', () => {
       .expect(201);
     expect(res.body.success).toBe(true);
     expect(res.body.data.accessToken).toBeDefined();
-    expect(res.body.data.refreshToken).toBeDefined();
     expect(res.body.data.user.email).toBe(clientEmail);
+    // H2/H3: het refresh-token zit NIET in de body maar in een httpOnly-cookie.
+    expect(res.body.data.refreshToken).toBeUndefined();
+    const setCookie = res.headers['set-cookie'] as unknown as string[];
+    const refreshCookie = setCookie.find((c) => c.startsWith('client_refresh_token='));
+    expect(refreshCookie).toBeDefined();
+    expect(refreshCookie).toMatch(/HttpOnly/i);
     tokenA = res.body.data.accessToken;
   });
 
@@ -478,15 +483,49 @@ describe('Client Portal (e2e)', () => {
     expect(list.body.data.map((p: { id: string }) => p.id)).toContain(planId);
   });
 
-  it('refresh-rotatie geeft een nieuw tokenpaar', async () => {
+  // Haal de refresh-cookie-waarde uit een Set-Cookie-header (voor hergebruik als Cookie).
+  const extractRefreshCookie = (res: request.Response): string => {
+    const setCookie = res.headers['set-cookie'] as unknown as string[];
+    const header = setCookie.find((c) => c.startsWith('client_refresh_token='));
+    return header!.split(';')[0]; // "client_refresh_token=<raw>"
+  };
+
+  it('refresh-rotatie (stateful, via cookie) geeft een nieuw tokenpaar en roteert de cookie', async () => {
     const login = await postA('/api/v1/client/auth/login')
       .send({ email: clientEmail, password: CLIENT_PW })
       .expect(201);
-    const res = await postA('/api/v1/client/auth/refresh')
-      .send({ refreshToken: login.body.data.refreshToken })
-      .expect(201);
+    const cookie1 = extractRefreshCookie(login);
+
+    const res = await postA('/api/v1/client/auth/refresh').set('Cookie', cookie1).expect(200);
     expect(res.body.data.accessToken).toBeDefined();
-    expect(res.body.data.refreshToken).toBeDefined();
+    expect(res.body.data.refreshToken).toBeUndefined(); // nooit in de body
+    const cookie2 = extractRefreshCookie(res);
+    expect(cookie2).not.toBe(cookie1); // rotatie: nieuwe waarde
+
+    // Rotatie: het oude (verbruikte) refresh-token is niet meer bruikbaar.
+    await postA('/api/v1/client/auth/refresh').set('Cookie', cookie1).expect(401);
+    // Het nieuwe token werkt wél.
+    await postA('/api/v1/client/auth/refresh').set('Cookie', cookie2).expect(200);
+  });
+
+  it('weigert refresh zonder cookie', async () => {
+    const res = await postA('/api/v1/client/auth/refresh').expect(200);
+    expect(res.body.success).toBe(false);
+  });
+
+  it('logout trekt het refresh-token in (revoke) en wist de cookie', async () => {
+    const login = await postA('/api/v1/client/auth/login')
+      .send({ email: clientEmail, password: CLIENT_PW })
+      .expect(201);
+    const cookie = extractRefreshCookie(login);
+
+    const logout = await postA('/api/v1/client/auth/logout').set('Cookie', cookie).expect(200);
+    expect(logout.body.success).toBe(true);
+    const cleared = logout.headers['set-cookie'] as unknown as string[];
+    expect(cleared.some((c) => c.startsWith('client_refresh_token=;'))).toBe(true);
+
+    // Na logout is het ingetrokken token niet meer inwisselbaar.
+    await postA('/api/v1/client/auth/refresh').set('Cookie', cookie).expect(401);
   });
 
   // ── B4: realm-kruising ──

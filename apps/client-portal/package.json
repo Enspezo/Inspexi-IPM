@@ -15,6 +15,7 @@
     "@inspexi/entitlements": "workspace:*",
     "@tanstack/react-query": "^5.62.0",
     "clsx": "^2.1.1",
+    "dompurify": "^3.4.11",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-hook-form": "^7.54.2",

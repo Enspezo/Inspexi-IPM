@@ -6,6 +6,7 @@ import { GENERATED_DOCUMENT_STATUS, SIGNATURE_STATUS } from '@/lib/status';
 import { formatDate } from '@/lib/format';
 import { documentTypeLabel } from '@/lib/labels';
 import { downloadClientDocument } from '@/lib/download';
+import { sanitizeHtml } from '@/lib/sanitize-html';
 import { getErrorMessage } from '@/lib/api-client';
 import { SignatureModal } from '@/components/signature-modal';
 import type { DocumentSignature } from '@/types';
@@ -81,7 +82,7 @@ export default function DocumentViewerPage() {
             {doc.htmlContent ? (
               <div
                 className="max-w-none text-sm text-gray-800 [&_h1]:mb-2 [&_h1]:text-lg [&_h1]:font-semibold [&_h2]:mb-1 [&_h2]:mt-3 [&_h2]:text-base [&_h2]:font-semibold [&_table]:w-full [&_table]:border-collapse [&_td]:border [&_td]:border-gray-200 [&_td]:px-2 [&_td]:py-1 [&_th]:border [&_th]:border-gray-200 [&_th]:px-2 [&_th]:py-1"
-                dangerouslySetInnerHTML={{ __html: doc.htmlContent }}
+                dangerouslySetInnerHTML={{ __html: sanitizeHtml(doc.htmlContent) }}
               />
             ) : (
               <p className="py-10 text-center text-sm text-gray-500">

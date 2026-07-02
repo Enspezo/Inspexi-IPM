@@ -42,7 +42,7 @@ export default function MagicLinkPage() {
   const [sp] = useSearchParams();
   const token = paramToken ?? sp.get('token') ?? '';
 
-  const { loginWithTokens } = useClientAuth();
+  const { loginWithToken } = useClientAuth();
   const navigate = useNavigate();
 
   const [status, setStatus] = useState<Status>('loading');
@@ -62,7 +62,7 @@ export default function MagicLinkPage() {
         const res = await apiClient.post<MagicLinkResult>('/client/auth/magic-link', { token });
         if (cancelled) return;
         if (res.requiresRegistration === false) {
-          loginWithTokens(res.accessToken, res.refreshToken, res.user);
+          loginWithToken(res.accessToken, res.user);
           navigate('/dashboard', { replace: true });
         } else {
           setInfo({ email: res.email, inspectionPlanId: res.inspectionPlanId });
@@ -78,7 +78,7 @@ export default function MagicLinkPage() {
     return () => {
       cancelled = true;
     };
-  }, [token, loginWithTokens, navigate]);
+  }, [token, loginWithToken, navigate]);
 
   if (status === 'loading') {
     return (

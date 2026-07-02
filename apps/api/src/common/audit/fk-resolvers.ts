@@ -88,6 +88,34 @@ export function getModelScalarFields(model: string): ReadonlySet<string> | undef
 }
 
 /**
+ * `model name → (relation field name → its scalar FK column(s))`, from the datamodel.
+ * A Prisma relation-write uses the *relation* name in `data` (e.g. `{ contact: { connect }}`),
+ * not the scalar FK column (`contactId`). To audit such an update we must read that scalar
+ * column in the before-state, so this maps `contact → ['contactId']`.
+ */
+const MODEL_RELATION_SCALARS: Map<string, Map<string, string[]>> = (() => {
+  const map = new Map<string, Map<string, string[]>>();
+  for (const model of Prisma.dmmf.datamodel.models) {
+    const rel = new Map<string, string[]>();
+    for (const field of model.fields) {
+      if (field.relationName && field.relationFromFields && field.relationFromFields.length > 0) {
+        rel.set(field.name, [...field.relationFromFields]);
+      }
+    }
+    if (rel.size > 0) map.set(model.name, rel);
+  }
+  return map;
+})();
+
+/**
+ * Scalar FK column(s) that back a relation field on a model, or `undefined` when the
+ * key is not a relation (i.e. it is already a scalar column or unknown).
+ */
+export function relationScalarColumns(model: string, relationField: string): string[] | undefined {
+  return MODEL_RELATION_SCALARS.get(model)?.get(relationField);
+}
+
+/**
  * Prisma `select` limited to `id` + the requested fields that are real scalar columns
  * on the model. Returns `undefined` for an unknown model so the caller can fall back
  * to a full fetch. Never selects a non-existent column (which would throw at runtime).

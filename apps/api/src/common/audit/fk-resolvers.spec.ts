@@ -1,4 +1,9 @@
-import { scalarSelect, displaySelect, getModelScalarFields } from './fk-resolvers';
+import {
+  scalarSelect,
+  displaySelect,
+  getModelScalarFields,
+  relationScalarColumns,
+} from './fk-resolvers';
 
 // M7: the audit trail must fetch only the columns it needs, never whole rows. These
 // tests lock the DMMF-derived select helpers: valid scalar columns are kept, unknown
@@ -42,6 +47,25 @@ describe('audit select helpers (M7)', () => {
       const select = displaySelect('Contact')!;
       expect(select.companyName).toBe(true);
       expect(select.id).toBe(true);
+    });
+  });
+
+  // Regression: an update via a Prisma relation-connect names the relation, not the
+  // scalar FK column, so the audit before-state select must map it back — otherwise a
+  // connect/disconnect FK change silently drops out of the diff.
+  describe('relationScalarColumns', () => {
+    it('maps relation fields to their scalar FK column(s)', () => {
+      expect(relationScalarColumns('InspectionPlan', 'contact')).toEqual(['contactId']);
+      expect(relationScalarColumns('InspectionPlan', 'location')).toEqual(['locationId']);
+      expect(relationScalarColumns('InspectionPlan', 'assignedUser')).toEqual(['assignedTo']);
+      expect(relationScalarColumns('Task', 'assignee')).toEqual(['assigneeId']);
+      expect(relationScalarColumns('VisualInspection', 'inspector')).toEqual(['inspectorId']);
+    });
+
+    it('returns undefined for a scalar column or unknown key', () => {
+      expect(relationScalarColumns('InspectionPlan', 'contactId')).toBeUndefined();
+      expect(relationScalarColumns('InspectionPlan', 'projectName')).toBeUndefined();
+      expect(relationScalarColumns('DoesNotExist', 'contact')).toBeUndefined();
     });
   });
 });

@@ -155,6 +155,46 @@ describe('InspectionPlans (e2e)', () => {
     expect(res.body.data.statusCode).toBe('in_progress');
   });
 
+  // M7 regression: an update that sets a FK via a Prisma relation-connect
+  // (data.assignedUser = { connect }) must still surface the scalar FK change
+  // (assignedTo) in the audit diff. The before-state select maps the relation key
+  // back to its scalar column; without that the change silently dropped out.
+  it('2b. records a relation-connect FK change in the audit diff', async () => {
+    const createRes = await request(app.getHttpServer())
+      .post('/api/v1/inspection-plans')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ contactId: testContactId, projectName: 'E2E Audit FK', normTypeCode: NORM_CODE })
+      .expect(201);
+    const planId = createRes.body.data.id;
+    createdPlanIds.push(planId);
+
+    // PATCH assignedTo → the service writes { assignedUser: { connect: { id } } }.
+    await request(app.getHttpServer())
+      .patch(`/api/v1/inspection-plans/${planId}`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ assignedTo: assigneeId })
+      .expect(200);
+
+    const auditRes = await request(app.getHttpServer())
+      .get(`/api/v1/inspection-plans/${planId}`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+    expect(auditRes.body.data.assignedTo).toBe(assigneeId);
+
+    const logsRes = await request(app.getHttpServer())
+      .get(`/api/v1/audit-logs/InspectionPlan/${planId}`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    const updateEntry = logsRes.body.data.data.find(
+      (e: { action: string; changes: Record<string, unknown> | null }) =>
+        e.action === 'UPDATE' && e.changes && 'assignedTo' in e.changes,
+    );
+    expect(updateEntry).toBeDefined();
+    // `to` is FK-resolved to the assignee's display name — just assert it is set.
+    expect(updateEntry.changes.assignedTo.to).toBeTruthy();
+  });
+
   it('3. should reject submit from draft (400)', async () => {
     // Second plan stays in draft
     const createRes = await request(app.getHttpServer())

@@ -2,7 +2,7 @@ import { Injectable, Logger, OnModuleInit, OnModuleDestroy } from '@nestjs/commo
 import { Prisma, PrismaClient } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import { requestContext } from '../common/services/request-context';
-import { AUDITED_MODELS, scalarSelect, getModelScalarFields } from '../common/audit';
+import { AUDITED_MODELS, scalarSelect, getModelScalarFields, relationScalarColumns } from '../common/audit';
 
 /** Fields excluded from change tracking */
 const EXCLUDED_FIELDS = new Set([
@@ -180,7 +180,10 @@ export class PrismaService
    * Minimal `select` for the audit before-state (M7).
    * - update: `id` + `orgId` + the scalar columns the update actually writes — exactly
    *   the fields `computeChanges` compares, so nothing is over-fetched and no spurious
-   *   diff appears for a column we didn't read.
+   *   diff appears for a column we didn't read. A relation-write names the relation
+   *   (`{ contact: { connect }}`), not the scalar FK column, so those keys are mapped
+   *   back to their FK column(s) via the datamodel — otherwise a connect/disconnect
+   *   FK change would silently drop out of the audit diff.
    * - delete: every scalar column except the excluded ones (createdAt/updatedAt +
    *   sensitive hashes), which is what the DELETE snapshot needs — minus the noise.
    * Returns `undefined` for an unknown model → caller falls back to a full fetch.
@@ -200,7 +203,15 @@ export class PrismaService
     }
     const dataKeys =
       data && typeof data === 'object' && !Array.isArray(data) ? Object.keys(data) : [];
-    const fields = ['orgId', ...dataKeys.filter((k) => !EXCLUDED_FIELDS.has(k))];
+    const fields = ['orgId'];
+    for (const key of dataKeys) {
+      if (EXCLUDED_FIELDS.has(key)) continue;
+      // Relation-write key (contact/assignedUser/…) → its scalar FK column(s); a plain
+      // scalar column passes through (scalarSelect drops anything that isn't a real column).
+      const relationCols = relationScalarColumns(model, key);
+      if (relationCols) fields.push(...relationCols);
+      else fields.push(key);
+    }
     return scalarSelect(model, fields);
   }
 

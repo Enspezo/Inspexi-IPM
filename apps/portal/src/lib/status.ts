@@ -184,6 +184,7 @@ export const ENTITY_TYPE_LABELS: Record<string, string> = {
   [TaskEntityType.QUOTE]: 'Offerte',
   [TaskEntityType.PLANNING]: 'Afspraak',
   [TaskEntityType.PROJECT]: 'Project',
+  [TaskEntityType.PROJECT_PHASE]: 'Projectfase',
   [TaskEntityType.USER]: 'Gebruiker',
   PRODUCT: 'Product',
   TASK: 'Taak',

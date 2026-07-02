@@ -67,6 +67,7 @@ export class QuotesService {
         contact: { select: { id: true, type: true, companyName: true, firstName: true, lastName: true, email: true } },
         template: { select: { id: true, name: true } },
         createdByUser: { select: { id: true, firstName: true, lastName: true, email: true } },
+        projectPhase: { select: { id: true, name: true, sortOrder: true, status: true } },
       },
       orderBy,
       page,

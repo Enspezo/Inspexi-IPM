@@ -669,6 +669,7 @@ export interface Quote {
   requiresApproval: boolean;
   internalNotes: string | null;
   projectId: string | null;
+  projectPhaseId: string | null;
   customFields: Record<string, any> | null;
   createdBy: string;
   createdAt: string;
@@ -693,6 +694,7 @@ export interface Quote {
   questions?: QuoteQuestion[];
   attachments?: QuoteAttachment[];
   project?: { id: string; projectNumber: string } | null;
+  projectPhase?: ProjectPhaseRef | null;
 }
 
 export interface QuoteLine {
@@ -878,6 +880,7 @@ export enum TaskEntityType {
   QUOTE = 'QUOTE',
   PLANNING = 'PLANNING',
   PROJECT = 'PROJECT',
+  PROJECT_PHASE = 'PROJECT_PHASE',
   USER = 'USER',
 }
 
@@ -908,6 +911,7 @@ export enum NoteEntityType {
   QUOTE = 'QUOTE',
   PLANNING = 'PLANNING',
   PROJECT = 'PROJECT',
+  PROJECT_PHASE = 'PROJECT_PHASE',
   USER = 'USER',
   WORK_ORDER = 'WORK_ORDER',
 }
@@ -940,6 +944,7 @@ export enum DocumentEntityType {
   TASK = 'TASK',
   PLANNING = 'PLANNING',
   PROJECT = 'PROJECT',
+  PROJECT_PHASE = 'PROJECT_PHASE',
   USER = 'USER',
   WORK_ORDER = 'WORK_ORDER',
 }
@@ -1203,6 +1208,7 @@ export interface PlanningItem {
   id: string;
   orgId: string;
   projectId: string | null;
+  projectPhaseId: string | null;
   quoteId: string | null;
   contactId: string;
   contactPersonId: string | null;
@@ -1264,6 +1270,7 @@ export interface PlanningItem {
     primaryColor: string | null;
   };
   project?: { id: string; projectNumber: string } | null;
+  projectPhase?: ProjectPhaseRef | null;
 }
 
 // ─── Werkbonnen (Work Orders) ────────────────────────────
@@ -1284,6 +1291,7 @@ export interface WorkOrder {
   internalNotes: string | null;
   startTime: string | null;
   endTime: string | null;
+  projectPhaseId: string | null;
   createdBy: string;
   createdAt: string;
   updatedAt: string;
@@ -1294,6 +1302,8 @@ export interface WorkOrder {
     status: string;
     contactId: string;
     locationId: string | null;
+    projectId?: string | null;
+    project?: { id: string; projectNumber: string } | null;
     contact?: {
       id: string;
       type: string;
@@ -1311,6 +1321,7 @@ export interface WorkOrder {
     };
     inspectors?: PlanningInspector[];
   };
+  projectPhase?: ProjectPhaseRef | null;
   createdByUser?: UserSummary;
   lines?: WorkOrderLine[];
 }
@@ -1408,6 +1419,15 @@ export enum MilestoneStatus {
   OPEN = 'OPEN',
   BEHAALD = 'BEHAALD',
   VERVALLEN = 'VERVALLEN',
+}
+
+/** Lichte fase-referentie zoals meegeleverd op gekoppelde entiteiten (PRD-12 §12.7.2). */
+export interface ProjectPhaseRef {
+  id: string;
+  name: string;
+  sortOrder: number;
+  status: PhaseStatus;
+  projectId?: string;
 }
 
 /** Fasevolger — spiegelt ProjectFollower (§12.3.3). */
@@ -2051,6 +2071,7 @@ export interface InspectionPlan {
   orgId: string;
   contactId: string;
   projectId: string | null;
+  projectPhaseId: string | null;
   inspectionTemplateId: string | null;
   locationId: string | null;
   projectName: string;
@@ -2088,6 +2109,7 @@ export interface InspectionPlan {
   deletedAt: string | null;
   contact?: ContactSummary;
   project?: { id: string; projectNumber: string } | null;
+  projectPhase?: ProjectPhaseRef | null;
   assignedUser?: UserSummary | null;
   reviewer?: UserSummary | null;
   inspectionTemplate?: InspectionTemplate | null;

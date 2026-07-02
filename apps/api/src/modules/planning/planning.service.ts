@@ -116,6 +116,7 @@ const PLANNING_INCLUDE = {
     orderBy: { sessionNumber: 'asc' as const },
   },
   project: { select: { id: true, projectNumber: true } },
+  projectPhase: { select: { id: true, name: true, sortOrder: true, status: true } },
 };
 
 @Injectable()

@@ -150,6 +150,8 @@ export default function PlanningPage() {
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<PlanningStatus | ''>('');
   const [page, setPage] = useState(1);
+  // Fase-kolomfilter (PRD-12): opties uit de zichtbare planregels.
+  const [phaseFilterOptions, setPhaseFilterOptions] = useState<{ value: string; label: string }[]>([]);
 
   // Debounce: wacht 300ms na laatste toetsaanslag, minimaal 3 tekens vereist
   useEffect(() => {
@@ -325,6 +327,20 @@ export default function PlanningPage() {
         );
       },
     },
+    {
+      key: 'phase',
+      header: 'Fase',
+      sidebarLabel: 'Fase',
+      defaultVisible: false,
+      filterable: true,
+      filterType: 'select',
+      filterOptions: phaseFilterOptions,
+      groupable: true,
+      getFilterValue: (item) => item.projectPhase?.name ?? '',
+      render: (item) => (
+        <span className="text-gray-600">{item.projectPhase?.name ?? '—'}</span>
+      ),
+    },
   ];
 
   const {
@@ -374,6 +390,14 @@ export default function PlanningPage() {
 
   // ─── Inspector list derived from loaded items ───────────────────────────────
   const allItems: PlanningItem[] = data?.data ?? [];
+
+  // Fase-filteropties uit de zichtbare planregels (distinct fasenaam).
+  useEffect(() => {
+    const names = Array.from(
+      new Set(allItems.map((i) => i.projectPhase?.name).filter(Boolean) as string[]),
+    ).sort();
+    setPhaseFilterOptions(names.map((n) => ({ value: n, label: n })));
+  }, [data]);
 
   const inspectors = useMemo((): InspectorOption[] => {
     const map = new Map<string, InspectorOption>();

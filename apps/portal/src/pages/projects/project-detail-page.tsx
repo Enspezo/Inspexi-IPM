@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams, Link } from 'react-router-dom';
 import {
   TaskEntityType,
   TaskStatus,
@@ -73,7 +73,11 @@ export default function ProjectDetailPage() {
   const { user } = useAuth();
   const { showToast } = useToast();
   const confirm = useConfirm();
-  const [activeTab, setActiveTab] = useState<Tab>('overzicht');
+  const [searchParams] = useSearchParams();
+  // Deep-link naar een specifieke tab (bv. de fase-InfoField op offerte/planning
+  // linkt terug naar ?tab=fasen).
+  const initialTab = (searchParams.get('tab') as Tab | null) ?? 'overzicht';
+  const [activeTab, setActiveTab] = useState<Tab>(initialTab);
   const [linkType, setLinkType] = useState<
     'requests' | 'quotes' | 'planning' | null
   >(null);

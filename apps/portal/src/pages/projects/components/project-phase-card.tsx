@@ -39,6 +39,7 @@ import {
 import { summarizeMilestones } from './project-phases.helpers';
 import { PhaseMilestoneModal } from './phase-milestone-modal';
 import { AddFollowerModal } from './add-follower-modal';
+import { PhaseActivitySection } from './phase-activity-section';
 
 // ─── Types ─────────────────────────────────────────────────
 
@@ -184,7 +185,7 @@ export function PhaseCard({
 
 // ─── Expanded content (own component so hooks only run when open) ─────────
 
-type Section = 'details' | 'milestones' | 'koppelingen';
+type Section = 'details' | 'milestones' | 'koppelingen' | 'activiteit';
 
 function PhaseCardExpanded({
   projectId,
@@ -210,6 +211,7 @@ function PhaseCardExpanded({
     { key: 'details', label: 'Details' },
     { key: 'milestones', label: 'Milestones', count: phase._count?.milestones },
     { key: 'koppelingen', label: 'Volgers & koppelingen', count: followers?.length },
+    { key: 'activiteit', label: 'Taken & documenten' },
   ];
 
   return (
@@ -238,6 +240,9 @@ function PhaseCardExpanded({
             projectQuotes={projectQuotes}
             projectPlanning={projectPlanning}
           />
+        )}
+        {section === 'activiteit' && (
+          <PhaseActivitySection phaseId={phase.id} canWrite={canWrite} />
         )}
       </div>
 

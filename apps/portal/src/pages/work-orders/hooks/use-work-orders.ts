@@ -78,6 +78,7 @@ export function useUpdateWorkOrder(id: string | undefined) {
       internalNotes?: string;
       startTime?: string;
       endTime?: string;
+      projectPhaseId?: string | null;
     }) => apiClient.patch<WorkOrder>(`/work-orders/${id}`, data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['work-orders'] });

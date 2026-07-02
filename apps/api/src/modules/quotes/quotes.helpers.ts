@@ -164,6 +164,7 @@ export const QUOTE_INCLUDE = {
   },
   attachments: { orderBy: { sortOrder: 'asc' as const } },
   project: { select: { id: true, projectNumber: true } },
+  projectPhase: { select: { id: true, name: true, sortOrder: true, status: true } },
 };
 
 /** Org-scoped quote lookup with full includes (shared by all quote services). */

@@ -32,6 +32,7 @@ import {
   useSubmitInspectionPlan,
   useDeleteInspectionPlan,
 } from './hooks/use-inspections';
+import { PhaseSelect, PhaseInfoField } from '@/components/projects/phase-select';
 import { usePlanTree } from './hooks/use-asset-nodes';
 import { countByType, normalizeTree } from '@/components/asset-tree';
 import { PlanDefaultInstrumentsSection } from '@/pages/meetmiddelen/components/plan-default-instruments-section';
@@ -98,6 +99,9 @@ export default function InspectionDetailPage() {
   const [activeTab, setActiveTab] = useState<Tab>('overzicht');
   const [isEditing, setIsEditing] = useState(false);
   const [reviewNotes, setReviewNotes] = useState('');
+  // Fase-koppeling via custom control (buiten react-hook-form).
+  const [phaseId, setPhaseId] = useState<string | null>(plan?.projectPhaseId ?? null);
+  const phaseDirty = phaseId !== (plan?.projectPhaseId ?? null);
 
   const userCanWrite = !!user && user.roles.some((r) => canWriteRoles.includes(r));
   const userCanReview = !!user && user.roles.some((r) => canReviewRoles.includes(r));
@@ -122,6 +126,7 @@ export default function InspectionDetailPage() {
         notes: plan.notes || '',
         internalNotes: plan.internalNotes || '',
       });
+      setPhaseId(plan.projectPhaseId ?? null);
     }
   }, [plan, resetForm]);
 
@@ -150,6 +155,7 @@ export default function InspectionDetailPage() {
     };
     if (data.statusCode) payload.statusCode = data.statusCode;
     if (data.inspectionTypeCode) payload.inspectionTypeCode = data.inspectionTypeCode;
+    if (phaseDirty) payload.projectPhaseId = phaseId;
     try {
       await updateMutation.mutateAsync({ id: id!, data: payload });
       showToast('Inspectie bijgewerkt', 'success');
@@ -291,9 +297,10 @@ export default function InspectionDetailPage() {
                     <label className="mb-1 block text-sm font-medium text-gray-700">Interne notities</label>
                     <textarea {...register('internalNotes')} rows={2} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:ring-primary-500" />
                   </div>
+                  <PhaseSelect projectId={plan.projectId} value={phaseId} onChange={setPhaseId} />
                   <div className="flex gap-2">
-                    <Button type="submit" disabled={!isDirty} isLoading={updateMutation.isPending}>Opslaan</Button>
-                    <Button type="button" variant="secondary" onClick={() => { resetForm(); setIsEditing(false); }}>Annuleren</Button>
+                    <Button type="submit" disabled={!isDirty && !phaseDirty} isLoading={updateMutation.isPending}>Opslaan</Button>
+                    <Button type="button" variant="secondary" onClick={() => { resetForm(); setPhaseId(plan.projectPhaseId ?? null); setIsEditing(false); }}>Annuleren</Button>
                   </div>
                 </form>
               ) : (
@@ -304,6 +311,7 @@ export default function InspectionDetailPage() {
                   <InfoField label="Inspectietype" value={<LookupBadge kind="inspection-types" code={plan.inspectionTypeCode} />} />
                   <InfoField label="Normtype" value={plan.normTypeCode} />
                   <InfoField label="Opdrachtgever" value={contactName(plan)} />
+                  <PhaseInfoField phase={plan.projectPhase} projectId={plan.projectId} />
                   <InfoField label="Geplande datum" value={plan.plannedDate ? new Date(plan.plannedDate).toLocaleDateString('nl-NL') : null} />
                   <InfoField label="Deadline" value={plan.deadline ? new Date(plan.deadline).toLocaleDateString('nl-NL') : null} />
                   <InfoField label="Omschrijving" value={plan.description} />

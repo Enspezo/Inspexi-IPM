@@ -162,6 +162,7 @@ export class InspectionPlansService {
         contact: { select: contactSelect },
         assignedUser: { select: userSelect },
         reviewer: { select: userSelect },
+        projectPhase: { select: { id: true, name: true, sortOrder: true, status: true } },
       },
       orderBy,
       page,
@@ -180,6 +181,7 @@ export class InspectionPlansService {
         include: {
           contact: { select: contactSelect },
           project: { select: { id: true, title: true, projectNumber: true } },
+          projectPhase: { select: { id: true, name: true, sortOrder: true, status: true } },
           assignedUser: { select: userSelect },
           reviewer: { select: userSelect },
           inspectionTemplate: {

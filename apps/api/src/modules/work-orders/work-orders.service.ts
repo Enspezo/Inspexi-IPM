@@ -25,6 +25,8 @@ const WORK_ORDER_INCLUDE = {
       status: true,
       contactId: true,
       locationId: true,
+      projectId: true,
+      project: { select: { id: true, projectNumber: true } },
       contact: {
         select: {
           id: true,
@@ -58,6 +60,7 @@ const WORK_ORDER_INCLUDE = {
       },
     },
   },
+  projectPhase: { select: { id: true, name: true, sortOrder: true, status: true, projectId: true } },
   createdByUser: {
     select: { id: true, firstName: true, lastName: true, email: true },
   },

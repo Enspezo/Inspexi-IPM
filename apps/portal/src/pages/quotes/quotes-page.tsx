@@ -59,6 +59,8 @@ export default function QuotesPage() {
   const [templateFilter, setTemplateFilter] = useState('');
   const [onlyMine, setOnlyMine] = useState(() => tenantStorage.getItem('filter-mine:quotes') === 'true');
   const [page, setPage] = useState(1);
+  // Fase-kolomfilter (PRD-12): opties uit de zichtbare data, gevuld zodra die geladen is.
+  const [phaseFilterOptions, setPhaseFilterOptions] = useState<{ value: string; label: string }[]>([]);
 
   const { data: templatesData } = useQuoteTemplates({ limit: 200 });
   const templates = templatesData?.data ?? [];
@@ -167,6 +169,20 @@ export default function QuotesPage() {
       ),
     },
     {
+      key: 'phase',
+      header: 'Fase',
+      sidebarLabel: 'Fase',
+      defaultVisible: false,
+      filterable: true,
+      filterType: 'select',
+      filterOptions: phaseFilterOptions,
+      groupable: true,
+      getFilterValue: (quote) => quote.projectPhase?.name ?? '',
+      render: (quote) => (
+        <span className="text-gray-600">{quote.projectPhase?.name ?? '—'}</span>
+      ),
+    },
+    {
       key: 'total',
       header: 'Totaal',
       sortable: true,
@@ -243,6 +259,14 @@ export default function QuotesPage() {
     sortBy: apiSort?.sortBy,
     sortOrder: apiSort?.sortOrder,
   });
+
+  // Fase-filteropties uit de zichtbare offertes (distinct fasenaam).
+  useEffect(() => {
+    const names = Array.from(
+      new Set((data?.data ?? []).map((q) => q.projectPhase?.name).filter(Boolean) as string[]),
+    ).sort();
+    setPhaseFilterOptions(names.map((n) => ({ value: n, label: n })));
+  }, [data]);
 
   if (isLoading) {
     return (

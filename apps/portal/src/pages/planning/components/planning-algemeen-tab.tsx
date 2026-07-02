@@ -1,8 +1,10 @@
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { PlanningStatus } from '@/types';
 import type { ContactPerson, PlanningItem } from '@/types';
 import { Button, Card, Input, StatusBadge, useToast } from '@/components/ui';
 import { ACCEPTANCE_STATUS, WORK_ORDER_STATUS } from '@/lib/status';
+import { PhaseSelect, PhaseInfoField } from '@/components/projects/phase-select';
 import { useUpdatePlanningItem } from '../hooks/use-planning';
 import { useCreateWorkOrder, usePlanningWorkOrders } from '@/pages/work-orders/hooks/use-work-orders';
 import { toDatetimeLocal } from './planning-detail-shared';
@@ -68,6 +70,8 @@ export function PlanningAlgemeenTab({
   const { showToast } = useToast();
   const updateItem = useUpdatePlanningItem(id);
   const createWorkOrder = useCreateWorkOrder();
+  // Fase-koppeling lokaal beheerd (blijft buiten de door de parent doorgegeven edit-state).
+  const [editPhaseId, setEditPhaseId] = useState<string | null>(item.projectPhaseId ?? null);
 
   const handleOpenEdit = () => {
     setEditProductName(item.productName ?? '');
@@ -76,6 +80,7 @@ export function PlanningAlgemeenTab({
     setEditInternalNotes(item.internalNotes ?? '');
     setEditContactPersonId(item.contactPersonId ?? null);
     setEditLocationId(item.locationId ?? null);
+    setEditPhaseId(item.projectPhaseId ?? null);
     setEditMode(true);
   };
 
@@ -88,6 +93,9 @@ export function PlanningAlgemeenTab({
         internalNotes: editInternalNotes || null,
         contactPersonId: editContactPersonId ?? null,
         locationId: editLocationId ?? undefined,
+        ...(editPhaseId !== (item.projectPhaseId ?? null)
+          ? { projectPhaseId: editPhaseId }
+          : {}),
       });
       setEditMode(false);
       showToast('Planregel bijgewerkt', 'success');
@@ -184,6 +192,11 @@ export function PlanningAlgemeenTab({
                   placeholder="Optionele notities..."
                 />
               </div>
+              <PhaseSelect
+                projectId={item.projectId}
+                value={editPhaseId}
+                onChange={setEditPhaseId}
+              />
               <div className="flex gap-2 pt-1">
                 <Button onClick={handleSaveEdit} disabled={updateItem.isPending}>
                   {updateItem.isPending ? 'Opslaan...' : 'Opslaan'}
@@ -285,6 +298,7 @@ export function PlanningAlgemeenTab({
                   {item.durationHours ? `${item.durationHours} uur` : '—'}
                 </dd>
               </div>
+              <PhaseInfoField phase={item.projectPhase} projectId={item.projectId} />
               {item.internalNotes && (
                 <div className="col-span-2">
                   <dt className="text-sm font-medium text-gray-500">Interne notities</dt>

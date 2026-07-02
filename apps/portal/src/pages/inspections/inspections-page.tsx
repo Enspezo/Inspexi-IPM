@@ -31,6 +31,8 @@ export default function InspectionsPage() {
   const [statusFilter, setStatusFilter] = useState('');
   const [page, setPage] = useState(1);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
+  // Fase-kolomfilter (PRD-12): opties uit de zichtbare inspectieplannen.
+  const [phaseFilterOptions, setPhaseFilterOptions] = useState<{ value: string; label: string }[]>([]);
 
   const userCanWrite = !!user && user.roles.some((r) => canWriteRoles.includes(r));
 
@@ -99,6 +101,12 @@ export default function InspectionsPage() {
       sortable: true, sortKey: 'createdAt', getFilterValue: (p) => p.createdAt,
       render: (p) => <span className="text-xs text-gray-500">{new Date(p.createdAt).toLocaleDateString('nl-NL')}</span>,
     },
+    {
+      key: 'phase', header: 'Fase', sidebarLabel: 'Fase', defaultVisible: false,
+      filterable: true, filterType: 'select', filterOptions: phaseFilterOptions, groupable: true,
+      getFilterValue: (p) => p.projectPhase?.name ?? '',
+      render: (p) => <span className="text-gray-600">{p.projectPhase?.name ?? '—'}</span>,
+    },
   ];
 
   const {
@@ -116,6 +124,14 @@ export default function InspectionsPage() {
     page, limit: 20,
     sortBy: apiSort?.sortBy, sortOrder: apiSort?.sortOrder,
   });
+
+  // Fase-filteropties uit de zichtbare inspectieplannen (distinct fasenaam).
+  useEffect(() => {
+    const names = Array.from(
+      new Set((data?.data ?? []).map((p) => p.projectPhase?.name).filter(Boolean) as string[]),
+    ).sort();
+    setPhaseFilterOptions(names.map((n) => ({ value: n, label: n })));
+  }, [data]);
 
   if (isLoading) return <div className="flex h-64 items-center justify-center"><Spinner size="lg" /></div>;
   if (error) return <ErrorBox>Fout bij het laden van inspecties: {(error as Error).message}</ErrorBox>;

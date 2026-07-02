@@ -6,6 +6,7 @@ import { z } from 'zod';
 import type { Quote } from '@/types';
 import { Button, Card, InfoField, Input } from '@/components/ui';
 import { formatDate } from '@/lib/format';
+import { PhaseSelect, PhaseInfoField } from '@/components/projects/phase-select';
 import type { useUpdateQuote } from '../hooks/use-quotes';
 import { getContactName } from './quote-detail-helpers';
 import { QuoteTemplateSwitcher } from './quote-template-switcher';
@@ -31,6 +32,9 @@ export function QuoteInfoCard({
   showToast: (message: string, type?: 'success' | 'error' | 'info') => void;
 }) {
   const [isEditing, setIsEditing] = useState(false);
+  // Fase-koppeling wordt via een custom control beheerd (buiten react-hook-form).
+  const [phaseId, setPhaseId] = useState<string | null>(quote.projectPhaseId ?? null);
+  const phaseDirty = phaseId !== (quote.projectPhaseId ?? null);
 
   const {
     register,
@@ -46,6 +50,7 @@ export function QuoteInfoCard({
         validUntil: quote.validUntil ? quote.validUntil.split('T')[0] : '',
         internalNotes: quote.internalNotes || '',
       });
+      setPhaseId(quote.projectPhaseId ?? null);
     }
   }, [quote, resetForm]);
 
@@ -55,6 +60,7 @@ export function QuoteInfoCard({
         subject: data.subject,
         validUntil: data.validUntil || undefined,
         internalNotes: data.internalNotes || undefined,
+        ...(phaseDirty ? { projectPhaseId: phaseId } : {}),
       });
       showToast('Offerte bijgewerkt', 'success');
       setIsEditing(false);
@@ -70,6 +76,7 @@ export function QuoteInfoCard({
         validUntil: quote.validUntil ? quote.validUntil.split('T')[0] : '',
         internalNotes: quote.internalNotes || '',
       });
+      setPhaseId(quote.projectPhaseId ?? null);
     }
     setIsEditing(false);
   };
@@ -108,11 +115,16 @@ export function QuoteInfoCard({
               placeholder="Interne notities (niet zichtbaar voor klant)..."
             />
           </div>
+          <PhaseSelect projectId={quote.projectId} value={phaseId} onChange={setPhaseId} />
           <div className="flex justify-end gap-3 pt-2">
             <Button type="button" variant="secondary" onClick={handleCancelEdit}>
               Annuleren
             </Button>
-            <Button type="submit" disabled={!isDirty} isLoading={updateQuoteMutation.isPending}>
+            <Button
+              type="submit"
+              disabled={!isDirty && !phaseDirty}
+              isLoading={updateQuoteMutation.isPending}
+            >
               Opslaan
             </Button>
           </div>
@@ -162,6 +174,7 @@ export function QuoteInfoCard({
             {quote.validUntil ? new Date(quote.validUntil).toLocaleDateString('nl-NL', { day: 'numeric', month: 'long', year: 'numeric' }) : '—'}
           </dd>
         </div>
+        <PhaseInfoField phase={quote.projectPhase} projectId={quote.projectId} />
         <div>
           <dt className="text-sm font-medium text-gray-500">Aangemaakt door</dt>
           <dd className="mt-1 text-sm text-gray-900">

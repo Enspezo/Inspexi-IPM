@@ -91,6 +91,7 @@ interface UpdateQuoteDto {
   validUntil?: string;
   internalNotes?: string;
   contentBlocks?: object | null;
+  projectPhaseId?: string | null;
 }
 
 export function useUpdateQuote(id: string) {

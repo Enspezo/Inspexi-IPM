@@ -1,6 +1,9 @@
 // v3: de PWA stuurt al Beheer-veldnamen, dus GEEN rename meer — wel een strikte
 // WHITELIST per entiteit (nooit blind ...data in Prisma spreaden) + datum-coercie.
 // orgId wordt NOOIT door de client gezet: de service injecteert die uit de eigen rij.
+// Ook `createdBy` en `inspectorId` zijn server-owned (staan niet in `allowed`): de
+// service forceert ze op de pushende JWT-gebruiker. `userFkChecks` valideert de
+// overige gebruiker-FK's (assignedTo/reviewerId/resolvedBy) tegen de eigen org.
 //
 // v3-wijzigingen t.o.v. v2 (unified AssetNode tree, breaking):
 //   - `assets` → `assetNodes`: één boom (LOCATION + ASSET) i.p.v. losse assets/locations.
@@ -36,7 +39,7 @@ export type SyncModelName =
   | 'standaloneMeasurement';
 
 /** Modellen waartegen we een same-org FK-check kunnen draaien (cross-tenant guard). */
-export type FkCheckModel = 'assetNode' | 'inspectionPlan' | 'location';
+export type FkCheckModel = 'assetNode' | 'inspectionPlan' | 'location' | 'user' | 'contactPerson';
 
 /**
  * Inkomend client-record (wire) — Beheer-veldnamen. Alleen de sleutels die de service
@@ -78,10 +81,33 @@ interface EntityConfig {
    * orgId-kolom); de `parent`-variant blijft getypeerd voor toekomstig gebruik.
    */
   org: { from: 'self' } | { from: 'parent'; fkField: string; parentModel: 'inspectionPlan' | 'assetNode' };
-  /** Of de service createdBy moet injecteren (modellen zonder createdBy-kolom: false). */
+  /**
+   * Of de service `createdBy` server-side moet zetten op de pushende gebruiker
+   * (modellen zonder createdBy-kolom: false). De client-waarde wordt NOOIT
+   * vertrouwd — `createdBy` staat daarom ook niet in `allowed`.
+   */
   injectCreatedBy: boolean;
+  /**
+   * Of de service `inspectorId` server-side moet forceren op de pushende
+   * gebruiker (bij create én update). Zoals `createdBy` staat het veld niet in
+   * `allowed`, zodat de client het niet kan spoofen.
+   */
+  injectInspectorId?: boolean;
   /** FK-velden die — indien aanwezig — tot dezelfde org moeten horen (cross-tenant). */
   fkChecks?: Array<{ field: string; model: FkCheckModel; label: string }>;
+  /**
+   * User-FK-velden (bv. `assignedTo`, `resolvedBy`) die — indien aanwezig — tot
+   * dezelfde org moeten horen. Client mag ze zetten (i.t.t. createdBy/inspectorId),
+   * maar nooit naar een gebruiker buiten de eigen tenant wijzen.
+   */
+  userFkChecks?: string[];
+  /**
+   * Boom-integriteit: het uitvoeringsrecord moet aan een asset-node hangen die in
+   * de boom van zijn inspectieplan zit (rootLocationId === plan.locationId). Wordt
+   * — net als in het REST-pad — via `AssetNodesService.assertNodeInPlanTree`
+   * afgedwongen. Overgeslagen als het plan (nog) geen hoofdlocatie heeft.
+   */
+  treeCheck?: { nodeField: string; planField: string };
   /** Optioneel: kind-records die genest meereizen. */
   nestedChild?: NestedChildConfig;
 }
@@ -106,7 +132,14 @@ export const SYNC_ENTITIES: Record<SyncEntityKey, EntityConfig> = {
       'addressHouseNumber', 'addressPostalCode', 'addressCity', 'gpsLatitude', 'gpsLongitude',
       'plannedDate', 'plannedDurationHours', 'deadline', 'assignedTo', 'reviewerId',
       'installationResponsibleId', 'statusCode', 'notes', 'internalNotes', 'metadata',
-      ...PLAN_DATES, 'createdBy', 'deviceId',
+      ...PLAN_DATES, 'deviceId',
+    ],
+    // Toewijs-FK's naar gebruikers: client mag ze zetten, maar niet cross-tenant.
+    userFkChecks: ['assignedTo', 'reviewerId'],
+    // installationResponsibleId is een FK naar ContactPerson (niet User) — valideer
+    // tegen het juiste model, gelijk aan het REST-pad (inspection-plans.service).
+    fkChecks: [
+      { field: 'installationResponsibleId', model: 'contactPerson', label: 'Installatieverantwoordelijke' },
     ],
   },
   assetNodes: {
@@ -120,7 +153,7 @@ export const SYNC_ENTITIES: Record<SyncEntityKey, EntityConfig> = {
     allowed: [
       'parentId', 'rootLocationId', 'nodeType', 'typeCode', 'name', 'identifier',
       'description', 'technicalData', 'statusCode', 'notes', 'sortOrder',
-      'createdBy', 'deviceId',
+      'deviceId',
     ],
     fkChecks: [
       { field: 'parentId', model: 'assetNode', label: 'Bovenliggende node' },
@@ -139,12 +172,14 @@ export const SYNC_ENTITIES: Record<SyncEntityKey, EntityConfig> = {
       'inspectionType', 'shortDescription', 'longDescription', 'classificationValues',
       'locationDescription', 'recommendation', 'recommendationCustom', 'normReference',
       'checklistItemId', 'statusCode', 'resolvedAt', 'resolvedBy', 'resolutionNotes',
-      ...FINDING_DATES, 'createdBy', 'deviceId',
+      ...FINDING_DATES, 'deviceId',
     ],
     fkChecks: [
       { field: 'assetNodeId', model: 'assetNode', label: 'Asset-node' },
       { field: 'inspectionPlanId', model: 'inspectionPlan', label: 'Inspectie' },
     ],
+    userFkChecks: ['resolvedBy'],
+    treeCheck: { nodeField: 'assetNodeId', planField: 'inspectionPlanId' },
   },
   visualInspections: {
     model: 'visualInspection',
@@ -152,15 +187,17 @@ export const SYNC_ENTITIES: Record<SyncEntityKey, EntityConfig> = {
     softDelete: true,
     org: { from: 'self' },
     injectCreatedBy: false, // VisualInspection heeft geen createdBy-kolom
+    injectInspectorId: true, // inspectorId = pushende gebruiker (server-authoritative)
     dateFields: VI_DATES,
     allowed: [
       'assetNodeId', 'inspectionPlanId', 'status', 'checklistResults',
-      'startedAt', 'completedAt', 'inspectorId', 'deviceId',
+      'startedAt', 'completedAt', 'deviceId',
     ],
     fkChecks: [
       { field: 'assetNodeId', model: 'assetNode', label: 'Asset-node' },
       { field: 'inspectionPlanId', model: 'inspectionPlan', label: 'Inspectie' },
     ],
+    treeCheck: { nodeField: 'assetNodeId', planField: 'inspectionPlanId' },
   },
   measurementRecords: {
     model: 'measurementRecord',
@@ -168,16 +205,18 @@ export const SYNC_ENTITIES: Record<SyncEntityKey, EntityConfig> = {
     softDelete: true,
     org: { from: 'self' },
     injectCreatedBy: false, // MeasurementRecord heeft geen createdBy-kolom
+    injectInspectorId: true, // inspectorId = pushende gebruiker (server-authoritative)
     dateFields: MR_DATES,
     allowed: [
       'assetNodeId', 'inspectionPlanId', 'status', 'measurements',
       'instrumentType', 'instrumentSerial', 'calibrationDate',
-      'startedAt', 'completedAt', 'inspectorId', 'deviceId',
+      'startedAt', 'completedAt', 'deviceId',
     ],
     fkChecks: [
       { field: 'assetNodeId', model: 'assetNode', label: 'Asset-node' },
       { field: 'inspectionPlanId', model: 'inspectionPlan', label: 'Inspectie' },
     ],
+    treeCheck: { nodeField: 'assetNodeId', planField: 'inspectionPlanId' },
   },
   measurementSheetRecords: {
     model: 'measurementSheetRecord',
@@ -189,12 +228,13 @@ export const SYNC_ENTITIES: Record<SyncEntityKey, EntityConfig> = {
     allowed: [
       'templateId', 'assetNodeId', 'inspectionPlanId', 'templateVersion', 'templateSnapshot',
       'status', 'data', 'usedInstrumentIds', 'finalCheckExecuted', 'finalCheckPassed',
-      'finalCheckResults', 'completedAt', 'createdBy', 'deviceId',
+      'finalCheckResults', 'completedAt', 'deviceId',
     ],
     fkChecks: [
       { field: 'assetNodeId', model: 'assetNode', label: 'Asset-node' },
       { field: 'inspectionPlanId', model: 'inspectionPlan', label: 'Inspectie' },
     ],
+    treeCheck: { nodeField: 'assetNodeId', planField: 'inspectionPlanId' },
   },
   standaloneMeasurements: {
     model: 'standaloneMeasurement',
@@ -207,13 +247,14 @@ export const SYNC_ENTITIES: Record<SyncEntityKey, EntityConfig> = {
     // met een optionele linkedAssetNodeId, plus de verplichte inspectionPlanId.
     allowed: [
       'inspectionPlanId', 'locationNodeId', 'measurementType', 'description',
-      'linkedAssetNodeId', 'sampleId', 'createdBy', 'deviceId',
+      'linkedAssetNodeId', 'sampleId', 'deviceId',
     ],
     fkChecks: [
       { field: 'inspectionPlanId', model: 'inspectionPlan', label: 'Inspectie' },
       { field: 'locationNodeId', model: 'assetNode', label: 'Locatie-node' },
       { field: 'linkedAssetNodeId', model: 'assetNode', label: 'Gekoppelde asset-node' },
     ],
+    treeCheck: { nodeField: 'locationNodeId', planField: 'inspectionPlanId' },
     // Waarde-rijen zijn waarde-objecten (geen eigen orgId/syncedAt/deletedAt) → genest,
     // replace-on-write.
     nestedChild: {

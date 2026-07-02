@@ -19,6 +19,7 @@ import {
 } from './sync-mapper';
 import { ChatService } from '../chat/chat.service';
 import { NumberingService } from '../numbering/numbering.service';
+import { AssetNodesService } from '../asset-nodes/asset-nodes.service';
 
 type OpResult =
   | { entityType: string; entityId: string; status: 'success' }
@@ -92,6 +93,7 @@ export class SyncService {
     private readonly prisma: PrismaService,
     private readonly chat: ChatService,
     private readonly numbering: NumberingService,
+    private readonly assetNodes: AssetNodesService,
   ) {}
 
   /** Expliciete map model-naam → Prisma-delegate, i.p.v. een dynamische `this.prisma[name]`. */
@@ -114,6 +116,8 @@ export class SyncService {
       assetNode: this.prisma.assetNode,
       inspectionPlan: this.prisma.inspectionPlan,
       location: this.prisma.location,
+      user: this.prisma.user,
+      contactPerson: this.prisma.contactPerson,
     };
     return delegates[model] as SyncDelegate;
   }
@@ -150,6 +154,41 @@ export class SyncService {
       if (!fkId) continue;
       await assertSameOrg(this.checkDelegate(chk.model), fkId, user.orgId, chk.label);
     }
+  }
+
+  /**
+   * Valideer dat aanwezige gebruiker-FK's (assignedTo/reviewerId/resolvedBy/…) naar
+   * een gebruiker binnen de eigen org wijzen. Voorkomt dat een client een record aan
+   * een gebruiker uit een andere tenant toewijst. `createdBy`/`inspectorId` staan hier
+   * bewust NIET tussen — die worden server-side geforceerd, niet gevalideerd.
+   */
+  private async assertUserFkChecks(key: SyncEntityKey, data: SyncRecordData, user: User): Promise<void> {
+    for (const field of SYNC_ENTITIES[key].userFkChecks ?? []) {
+      const fkId = data[field] as string | undefined;
+      if (!fkId) continue;
+      await assertSameOrg(this.checkDelegate('user'), fkId, user.orgId, 'Gebruiker');
+    }
+  }
+
+  /**
+   * Dwingt boom-integriteit af (zoals het REST-pad): de node moet in de boom van
+   * zijn inspectieplan zitten. Overgeslagen wanneer node/plan ontbreken in de payload
+   * (bv. partiële update) of wanneer het plan (nog) geen hoofdlocatie heeft — een
+   * offline-plan zonder `locationId` heeft geen boom om tegen te toetsen.
+   */
+  private async assertTreeMembership(key: SyncEntityKey, data: SyncRecordData, user: User): Promise<void> {
+    const cfg = SYNC_ENTITIES[key].treeCheck;
+    if (!cfg) return;
+    const nodeId = data[cfg.nodeField] as string | undefined;
+    const planId = data[cfg.planField] as string | undefined;
+    if (!nodeId || !planId) return;
+    const plan = await this.prisma.inspectionPlan.findFirst({
+      where: { id: planId, ...orgScope(user), deletedAt: null },
+      select: { id: true, orgId: true, locationId: true },
+    });
+    if (!plan) throw new BadRequestException('Inspectieplan niet gevonden');
+    if (!plan.locationId) return;
+    await this.assetNodes.assertNodeInPlanTree(nodeId, plan);
   }
 
   // ── PULL ───────────────────────────────────────────────
@@ -416,14 +455,28 @@ export class SyncService {
     // orgId server-side bepalen (nooit van de client) + cross-tenant FK-check op inkomende FK's
     const orgId = await this.resolveOrgId(key, data, userOrgId, user);
     await this.assertFkChecks(key, data, user);
+    await this.assertUserFkChecks(key, data, user);
+    await this.assertTreeMembership(key, data, user);
     const fields = toDbData(key, data);
+    // inspectorId is server-owned: forceer op de pushende gebruiker (create + update).
+    if (cfg.injectInspectorId) fields.inspectorId = user.id;
 
     // Geneste kind-rijen (bv. StandaloneMeasurementValue) reizen mee in dezelfde payload.
     const childRows = cfg.nestedChild ? toChildRows(cfg.nestedChild, data) : null;
 
     if (operation === 'create') {
+      // Idempotent: een create voor een record dat al bestaat (bv. een retry nadat
+      // een eerdere push half slaagde) mag geen unique-constraint-fout geven. We
+      // adopteren het bestaande record en passen de create-payload als update toe —
+      // dat voorkomt ook een dubbele nodeNumber-toekenning voor assetNodes.
+      const dup = await model.findFirst({ where: { id, ...orgScope(user) } });
+      if (dup) {
+        return this.applyUpdate(cfg, model, id, ref, data, fields, childRows, dup, user, deviceId);
+      }
+
       const createData: Record<string, unknown> = { ...fields, id, orgId };
-      if (cfg.injectCreatedBy) createData.createdBy = data.createdBy ?? user.id;
+      // createdBy is server-owned: altijd de pushende gebruiker, nooit de client-waarde.
+      if (cfg.injectCreatedBy) createData.createdBy = user.id;
       if (cfg.nestedChild && childRows) createData[cfg.nestedChild.relation] = { create: childRows };
 
       // AssetNode: nodeNumber is server-owned (zoals orgId) — nooit van de client
@@ -460,7 +513,26 @@ export class SyncService {
     // update
     const existing = await model.findFirst({ where: { id, ...orgScope(user) } });
     if (!existing) throw new BadRequestException('Record niet gevonden');
+    return this.applyUpdate(cfg, model, id, ref, data, fields, childRows, existing, user, deviceId);
+  }
 
+  /**
+   * Past de whitelisted velden toe op een bestaand record (optimistic-conflict-check
+   * + replace-on-write voor geneste kinderen). Gedeeld door het update-pad en de
+   * idempotente create-adoptie.
+   */
+  private async applyUpdate(
+    cfg: (typeof SYNC_ENTITIES)[SyncEntityKey],
+    model: SyncDelegate,
+    id: string,
+    ref: { entityType: string; entityId: string },
+    data: SyncRecordData,
+    fields: Record<string, unknown>,
+    childRows: Array<Record<string, unknown>> | null,
+    existing: SyncRow,
+    user: User,
+    deviceId: string,
+  ): Promise<OpResult> {
     // optimistic conflict: server nieuwer dan wat de client laatst zag
     const clientSynced = data.syncedAt ? new Date(data.syncedAt) : null;
     if (clientSynced && existing.updatedAt > clientSynced) {

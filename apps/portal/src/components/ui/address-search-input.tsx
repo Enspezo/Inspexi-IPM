@@ -5,7 +5,7 @@ import {
   type AddressSuggestion,
   type ParsedAddress,
 } from '@/lib/geocoding';
-import { Spinner } from './spinner';
+import { Spinner } from '@inspexi/ui';
 
 export interface AddressSearchInputProps {
   onSelect: (address: ParsedAddress) => void;

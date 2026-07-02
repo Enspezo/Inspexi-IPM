@@ -10,6 +10,22 @@ import { ConfigService } from '@nestjs/config';
 import puppeteer, { Browser } from 'puppeteer';
 import type { PdfOptions } from './types';
 
+/** Harde timeout (ms) voor setContent én page.pdf — voorkomt onbegrensd wachten. */
+const RENDER_TIMEOUT_MS = 30_000;
+
+/**
+ * Beslist per resource-request of hij door mag tijdens het renderen. De renderer mag
+ * GEEN externe/lokale bronnen ophalen: alleen het initiële document en ingesloten
+ * `data:`-afbeeldingen zijn toegestaan. Alles met schema `file:`, `http(s):` of een
+ * interne host wordt geblokkeerd (SSRF/lokale-bestandslezing-mitigatie).
+ *
+ * Pure functie zodat de interceptie-beslissing los te unit-testen is.
+ */
+export function isRenderRequestAllowed(url: string, isNavigationRequest: boolean): boolean {
+  if (isNavigationRequest) return true; // het setContent-document zelf
+  return url.startsWith('data:') || url.startsWith('about:');
+}
+
 @Injectable()
 export class PdfGenerationService implements OnModuleDestroy {
   private readonly logger = new Logger(PdfGenerationService.name);
@@ -40,7 +56,20 @@ export class PdfGenerationService implements OnModuleDestroy {
     const browser = await this.getBrowser();
     const page = await browser.newPage();
     try {
-      await page.setContent(html, { waitUntil: 'networkidle0' });
+      // Hardening: geen JS-uitvoering en geen netwerk/bestand-toegang tijdens render.
+      // Neutraliseert zowel de publieke signatureImage-vector als staf-editedContent.
+      await page.setJavaScriptEnabled(false);
+      await page.setRequestInterception(true);
+      page.on('request', (req) => {
+        if (isRenderRequestAllowed(req.url(), req.isNavigationRequest())) {
+          void req.continue();
+        } else {
+          void req.abort();
+        }
+      });
+
+      // Externe requests worden toch geblokkeerd → 'load' i.p.v. 'networkidle0'.
+      await page.setContent(html, { waitUntil: 'load', timeout: RENDER_TIMEOUT_MS });
       const mm = (n?: number) => `${n ?? 20}mm`;
       const headerHtml = this.formatHeaderFooter(opts.headerHtml);
       const footerHtml = this.formatHeaderFooter(opts.footerHtml);
@@ -48,6 +77,7 @@ export class PdfGenerationService implements OnModuleDestroy {
         format: opts.format ?? 'A4',
         landscape: opts.landscape ?? false,
         printBackground: true,
+        timeout: RENDER_TIMEOUT_MS,
         displayHeaderFooter: Boolean(opts.headerHtml || opts.footerHtml),
         headerTemplate: headerHtml,
         footerTemplate: footerHtml,

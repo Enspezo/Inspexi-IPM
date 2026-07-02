@@ -24,7 +24,7 @@ import {
   Prisma,
 } from '@prisma/client';
 import { PrismaService } from '@/prisma';
-import { orgScope, assertFound, assertSameOrg, requireOrg } from '@/common';
+import { orgScope, assertFound, assertSameOrg, requireOrg, escapeHtml, isSafeDataImage } from '@/common';
 import { AssetNodesService } from '../asset-nodes/asset-nodes.service';
 import { STORAGE_PROVIDER } from '@/common/services/storage/storage.interface';
 import type { StorageProvider } from '@/common/services/storage/storage.interface';
@@ -482,15 +482,19 @@ export class GeneratedDocumentsService {
       '<div class="signatures" style="margin-top:48pt;"><h3 style="margin-bottom:24pt;">Handtekeningen</h3>' +
       '<div style="display:flex;flex-wrap:wrap;gap:48pt;">';
     for (const sig of signatures) {
+      // Defensieve laag: alle door de ondertekenaar aangeleverde strings worden
+      // ge-escaped, en de afbeelding wordt alleen ingesloten als het een veilige
+      // base64 data-URL is (geen file:/http(s):/tag-injectie → SSRF-mitigatie).
+      const name = escapeHtml(sig.signerName ?? sig.signerRoleCode);
+      const fn = sig.signerFunction ? escapeHtml(sig.signerFunction) : '';
+      const safeImage = isSafeDataImage(sig.signatureImage) ? sig.signatureImage : null;
       block +=
         '<div style="flex:1;min-width:200pt;margin-bottom:24pt;">' +
-        `<p style="font-weight:bold;margin-bottom:6pt;">${sig.signerName ?? sig.signerRoleCode}</p>` +
-        (sig.signerFunction
-          ? `<p style="font-size:9pt;color:#666;margin-bottom:6pt;">${sig.signerFunction}</p>`
-          : '') +
-        (sig.signatureImage
+        `<p style="font-weight:bold;margin-bottom:6pt;">${name}</p>` +
+        (fn ? `<p style="font-size:9pt;color:#666;margin-bottom:6pt;">${fn}</p>` : '') +
+        (safeImage
           ? `<div style="border:1px solid #ddd;padding:8pt;margin-bottom:6pt;background:#fafafa;">` +
-            `<img src="${sig.signatureImage}" alt="Handtekening" style="max-width:200pt;max-height:80pt;" /></div>`
+            `<img src="${safeImage}" alt="Handtekening" style="max-width:200pt;max-height:80pt;" /></div>`
           : '') +
         `<p style="font-size:9pt;color:#666;">Ondertekend op: ${this.formatDate(sig.signedAt)}</p>` +
         '</div>';

@@ -1,5 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsString, IsOptional, IsEmail } from 'class-validator';
+import { IsSafeDataImage } from '@/common';
 
 export class GenerateDocumentDto {
   @ApiPropertyOptional({ description: 'Optionele notitie bij genereren' })
@@ -35,8 +36,9 @@ export class RequestSignatureDto {
 }
 
 export class SignDocumentDto {
-  @ApiProperty({ description: 'Base64 handtekening-afbeelding' })
+  @ApiProperty({ description: 'Base64 handtekening-afbeelding (data:image/png|jpeg|webp)' })
   @IsString()
+  @IsSafeDataImage()
   signatureImage: string;
 
   @ApiProperty({ description: 'Rol-code van de ondertekenaar' })
@@ -51,8 +53,9 @@ export class SignDocumentDto {
 
 // Publiek (externe link) — geen auth; bewust minimaal.
 export class PublicSignDto {
-  @ApiProperty({ description: 'Base64 handtekening-afbeelding' })
+  @ApiProperty({ description: 'Base64 handtekening-afbeelding (data:image/png|jpeg|webp)' })
   @IsString()
+  @IsSafeDataImage()
   signatureImage: string;
 
   @ApiPropertyOptional()

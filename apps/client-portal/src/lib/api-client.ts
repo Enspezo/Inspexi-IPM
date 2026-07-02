@@ -1,32 +1,27 @@
-import { tenantStorage } from './storage';
 import type { ApiError } from '@/types';
 
-// Client-realm apiClient (los van de staf-portal). Hit /api/v1/client/*. Tokens worden
-// tenant-gescoped opgeslagen (tenantStorage prefixt met de org-slug); de client-realm-refresh
-// verwacht het refresh-token in de body (geen httpOnly-cookie zoals de staf-portal). Op een 401
-// wordt één keer ververst (gedeelde promise) en de originele request opnieuw geprobeerd.
+// Client-realm apiClient (los van de staf-portal). Hit /api/v1/client/*. Het access-token wordt
+// ALLEEN in het geheugen bewaard (nooit in localStorage); het refresh-token loopt als httpOnly,
+// secure, sameSite-cookie op /api/v1/client/auth en wordt door de server geroteerd. Alle requests
+// gaan met `credentials: 'include'` zodat de cookie mee-reist. Op een 401 wordt één keer ververst
+// (gedeelde promise) en de originele request opnieuw geprobeerd.
 const BASE_URL = import.meta.env.VITE_API_URL || '/api/v1';
 
-const ACCESS_KEY = 'client_access_token';
-const REFRESH_KEY = 'client_refresh_token';
+// In-memory access-token — verdwijnt bij een page-reload; de sessie wordt dan hersteld via de
+// httpOnly refresh-cookie (zie ClientAuthProvider).
+let accessToken: string | null = null;
 
 export function getAccessToken(): string | null {
-  return tenantStorage.getItem(ACCESS_KEY);
+  return accessToken;
 }
 
-export function getRefreshToken(): string | null {
-  return tenantStorage.getItem(REFRESH_KEY);
+export function setAccessToken(token: string | null): void {
+  accessToken = token;
 }
 
-export function setTokens(accessToken: string, refreshToken: string): void {
-  tenantStorage.setItem(ACCESS_KEY, accessToken);
-  tenantStorage.setItem(REFRESH_KEY, refreshToken);
-}
-
-/** Verwijdert de tokens en seint via een window-event dat de sessie geëindigd is. */
+/** Wist het access-token en seint via een window-event dat de sessie geëindigd is. */
 export function clearTokens(): void {
-  tenantStorage.removeItem(ACCESS_KEY);
-  tenantStorage.removeItem(REFRESH_KEY);
+  accessToken = null;
   window.dispatchEvent(new CustomEvent('client-auth:logout'));
 }
 
@@ -51,25 +46,29 @@ export function getErrorMessage(err: unknown, fallback: string): string {
 // Gedeelde refresh-promise zodat parallelle 401's maar één refresh-call triggeren.
 let refreshPromise: Promise<string | null> | null = null;
 
-async function refreshAccessToken(): Promise<string | null> {
-  const refreshToken = getRefreshToken();
-  if (!refreshToken) return null;
+/**
+ * Vraagt een nieuw access-token op via de httpOnly refresh-cookie. Retourneert het nieuwe
+ * access-token, of null als er geen geldige sessie (meer) is. De server roteert het refresh-token
+ * en zet de bijgewerkte cookie.
+ */
+export async function refreshAccessToken(): Promise<string | null> {
   try {
     const response = await fetch(`${BASE_URL}/client/auth/refresh`, {
       method: 'POST',
+      credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ refreshToken }),
     });
     if (!response.ok) {
-      clearTokens();
+      setAccessToken(null);
       return null;
     }
     const json = await response.json();
     const data = json?.data ?? json;
-    setTokens(data.accessToken, data.refreshToken);
-    return data.accessToken as string;
+    const token = (data?.accessToken as string | undefined) ?? null;
+    setAccessToken(token);
+    return token;
   } catch {
-    clearTokens();
+    setAccessToken(null);
     return null;
   }
 }
@@ -84,11 +83,15 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
   });
 
-  let response = await fetch(url, { ...options, headers: buildHeaders(getAccessToken()) });
+  let response = await fetch(url, {
+    ...options,
+    headers: buildHeaders(getAccessToken()),
+    credentials: 'include',
+  });
 
-  // De publieke auth-endpoints (login/register/magic/forgot/reset/refresh) mogen de refresh-retry
-  // NIET triggeren: een 401 daar is een echte fout (bijv. onjuiste inloggegevens), geen verlopen
-  // token. /client/auth/me is wél geauthenticeerd en mag dus refreshen.
+  // De publieke auth-endpoints (login/register/magic/forgot/reset/refresh/logout) mogen de
+  // refresh-retry NIET triggeren: een 401 daar is een echte fout (bijv. onjuiste inloggegevens),
+  // geen verlopen token. /client/auth/me is wél geauthenticeerd en mag dus refreshen.
   const isPublicAuthEndpoint =
     endpoint.startsWith('/client/auth/') && endpoint !== '/client/auth/me';
 
@@ -100,8 +103,13 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
     }
     const newToken = await refreshPromise;
     if (newToken) {
-      response = await fetch(url, { ...options, headers: buildHeaders(newToken) });
+      response = await fetch(url, {
+        ...options,
+        headers: buildHeaders(newToken),
+        credentials: 'include',
+      });
     } else {
+      clearTokens();
       throw new ApiClientError({ message: 'Sessie verlopen. Log opnieuw in.', statusCode: 401 });
     }
   }

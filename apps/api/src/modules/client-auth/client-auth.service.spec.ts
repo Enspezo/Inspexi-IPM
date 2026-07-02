@@ -3,6 +3,7 @@ import { BadRequestException, ForbiddenException, UnauthorizedException } from '
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcrypt';
+import { createHash } from 'crypto';
 import { ClientAuthService } from './client-auth.service';
 import { PrismaService } from '@/prisma';
 import { EmailService } from '@/common/services/email.service';
@@ -17,6 +18,12 @@ describe('ClientAuthService (2e auth-realm, org-scoped)', () => {
     clientUser: { findUnique: jest.fn(), update: jest.fn(), create: jest.fn() },
     clientAccess: { findFirst: jest.fn(), findMany: jest.fn(), upsert: jest.fn() },
     clientMagicLink: { findUnique: jest.fn(), update: jest.fn(), create: jest.fn() },
+    clientRefreshToken: {
+      create: jest.fn().mockResolvedValue({ id: 'rt-new' }),
+      findFirst: jest.fn(),
+      delete: jest.fn().mockResolvedValue({ id: 'rt-old' }),
+      updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+    },
     inspectionPlan: { findFirst: jest.fn() },
     inspectionClientAccess: { upsert: jest.fn() },
     $transaction: jest.fn((ops: Promise<unknown>[]) => Promise.all(ops)),
@@ -120,20 +127,70 @@ describe('ClientAuthService (2e auth-realm, org-scoped)', () => {
     });
   });
 
-  describe('refresh (rotatie)', () => {
-    it('roteert tokens voor een geldig client-refresh-token met org-toegang', async () => {
-      mockJwt.verifyAsync.mockResolvedValue({ sub: 'cu-1', email: 'k@klant.nl', type: 'client' });
-      mockPrisma.clientUser.findUnique.mockResolvedValue(activeUser);
+  describe('refresh (stateful rotatie)', () => {
+    it('roteert een geldig, gehasht refresh-token met org-toegang (oude verwijderd, nieuw uitgegeven)', async () => {
+      mockPrisma.clientRefreshToken.findFirst.mockResolvedValue({
+        id: 'rt-old',
+        clientUser: activeUser,
+        ipAddress: '1.2.3.4',
+        userAgent: 'jest',
+      });
       mockPrisma.clientAccess.findFirst.mockResolvedValue({ id: 'access-1' });
 
-      const res = await service.refresh('refresh-token', 'org-A');
+      const res = await service.refresh('raw-refresh-token', 'org-A');
       expect(res.accessToken).toBe('token');
-      expect(res.refreshToken).toBe('token');
+      // Rotatie: het gebruikte token is hard verwijderd en een nieuw token aangemaakt.
+      expect(mockPrisma.clientRefreshToken.delete).toHaveBeenCalledWith({ where: { id: 'rt-old' } });
+      expect(mockPrisma.clientRefreshToken.create).toHaveBeenCalled();
+      // Het rauwe refresh-token is een nieuwe, willekeurige waarde (geen JWT/geen echo).
+      expect(typeof res.refreshToken).toBe('string');
+      expect(res.refreshToken).not.toBe('raw-refresh-token');
     });
 
-    it('gooit Unauthorized wanneer het token-type niet "client" is', async () => {
-      mockJwt.verifyAsync.mockResolvedValue({ sub: 'cu-1', email: 'x', type: 'staff' });
+    it('zoekt op de SHA-256-hash van het rauwe token, nooit op de rauwe waarde', async () => {
+      const raw = 'raw-refresh-token';
+      const expectedHash = createHash('sha256').update(raw).digest('hex');
+      mockPrisma.clientRefreshToken.findFirst.mockResolvedValue({
+        id: 'rt-old',
+        clientUser: activeUser,
+        ipAddress: null,
+        userAgent: null,
+      });
+      mockPrisma.clientAccess.findFirst.mockResolvedValue({ id: 'access-1' });
+
+      await service.refresh(raw, 'org-A');
+      expect(mockPrisma.clientRefreshToken.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ tokenHash: expectedHash, revokedAt: null }),
+        }),
+      );
+    });
+
+    it('gooit Unauthorized voor een onbekend/ingetrokken/verlopen token', async () => {
+      mockPrisma.clientRefreshToken.findFirst.mockResolvedValue(null);
       await expect(service.refresh('t', 'org-A')).rejects.toThrow(UnauthorizedException);
+      expect(mockPrisma.clientRefreshToken.delete).not.toHaveBeenCalled();
+    });
+
+    it('gooit BadRequest zonder org-subdomein', async () => {
+      await expect(service.refresh('t', null)).rejects.toThrow(BadRequestException);
+    });
+  });
+
+  describe('logout (intrekken)', () => {
+    it('trekt het meegegeven refresh-token in via zijn hash', async () => {
+      const raw = 'raw-refresh-token';
+      const expectedHash = createHash('sha256').update(raw).digest('hex');
+      await service.logout(raw);
+      expect(mockPrisma.clientRefreshToken.updateMany).toHaveBeenCalledWith({
+        where: { tokenHash: expectedHash, revokedAt: null },
+        data: { revokedAt: expect.any(Date) },
+      });
+    });
+
+    it('is een no-op zonder token', async () => {
+      await service.logout('');
+      expect(mockPrisma.clientRefreshToken.updateMany).not.toHaveBeenCalled();
     });
   });
 });

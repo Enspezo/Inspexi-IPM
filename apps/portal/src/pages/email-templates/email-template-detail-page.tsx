@@ -6,6 +6,7 @@ import { z } from 'zod';
 import type { Editor } from '@tiptap/react';
 import { ActionMenu, Button, Card, ErrorBox, InfoField, Spinner, Input, RichTextEditor, useConfirm } from '@/components/ui';
 import { formatFileSize } from '@/lib/format';
+import { sanitizeHtml } from '@/lib/sanitize-html';
 import { DetailPageLayout } from '@/components/layout/detail-page-layout';
 import { AuditHistory } from '@/components/audit-history/audit-history';
 import { useToast } from '@/components/ui';
@@ -462,7 +463,7 @@ export default function EmailTemplateDetailPage() {
                 </div>
                 <div className="rounded-lg border border-gray-200 bg-white p-6">
                   <div
-                    dangerouslySetInnerHTML={{ __html: previewMutation.data.html }}
+                    dangerouslySetInnerHTML={{ __html: sanitizeHtml(previewMutation.data.html) }}
                     className="prose prose-sm max-w-none"
                   />
                 </div>

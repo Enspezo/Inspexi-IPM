@@ -47,9 +47,9 @@ export interface ClientMe extends ClientUser {
   access: ClientAccessEntry[];
 }
 
+// Het refresh-token loopt als httpOnly-cookie (server-side); alleen het access-token bereikt de client.
 export interface AuthTokens {
   accessToken: string;
-  refreshToken: string;
   expiresIn: number;
 }
 

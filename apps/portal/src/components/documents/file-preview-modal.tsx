@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef, type ReactNode } from 'react';
 import { Spinner } from '@/components/ui';
 import { getAccessToken } from '@/lib/api-client';
+import { sanitizeHtml } from '@/lib/sanitize-html';
 import { renderAsync as renderDocx } from 'docx-preview';
 import * as XLSX from 'xlsx';
 
@@ -241,7 +242,8 @@ function XlsxPreview({ url }: { url: string }) {
         const workbook = XLSX.read(arrayBuffer, { type: 'array' });
         const parsed = workbook.SheetNames.map((name) => {
           const sheet = workbook.Sheets[name];
-          const html = XLSX.utils.sheet_to_html(sheet, { editable: false });
+          // XLSX-inhoud is attacker-controlled → saniteer de gegenereerde HTML vóór opslag/render.
+          const html = sanitizeHtml(XLSX.utils.sheet_to_html(sheet, { editable: false }));
           return { name, html };
         });
         setSheets(parsed);

@@ -31,9 +31,3 @@ export class ClientResetPasswordDto {
   @ApiProperty() @IsString() token: string;
   @ApiProperty() @IsString() @MinLength(8) password: string;
 }
-
-export class ClientRefreshDto {
-  @ApiProperty({ description: 'Refresh-token (client-realm)' })
-  @IsString()
-  refreshToken: string;
-}

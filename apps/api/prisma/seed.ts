@@ -516,6 +516,7 @@ async function main() {
   await prisma.inspectionClientAccess.deleteMany();
   await prisma.clientAccess.deleteMany();
   await prisma.clientRequest.deleteMany();
+  await prisma.clientRefreshToken.deleteMany();
   await prisma.clientUser.deleteMany();
   // sync & devices
   await prisma.syncQueue.deleteMany();

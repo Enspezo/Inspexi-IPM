@@ -3873,12 +3873,34 @@ model ClientUser {
 
   clientAccess       ClientAccess[]
   magicLinks         ClientMagicLink[]
+  refreshTokens      ClientRefreshToken[]
   inspectionAccess   InspectionClientAccess[]
   messages           InspectionMessage[]      @relation("MessageClientUser")
   findingResolutions FindingResolution[]
   clientRequests     ClientRequest[]
 
   @@map("imp_client_users")
+}
+
+/// Stateful refresh-token voor de client-realm (spiegelt RefreshToken van de staf-realm):
+/// SHA-256-gehasht opgeslagen, roteerbaar bij refresh en intrekbaar bij logout. Cascade op
+/// ClientUser zodat het verwijderen van een klantaccount de tokens meeneemt.
+model ClientRefreshToken {
+  id           String    @id @default(uuid()) @db.Uuid
+  clientUserId String    @map("client_user_id") @db.Uuid
+  tokenHash    String    @map("token_hash")
+  expiresAt    DateTime  @map("expires_at")
+  revokedAt    DateTime? @map("revoked_at")
+  ipAddress    String?   @map("ip_address")
+  userAgent    String?   @map("user_agent")
+  createdAt    DateTime  @default(now()) @map("created_at")
+
+  clientUser ClientUser @relation(fields: [clientUserId], references: [id], onDelete: Cascade)
+
+  @@index([clientUserId])
+  @@index([expiresAt])
+  @@index([tokenHash])
+  @@map("imp_client_refresh_tokens")
 }
 
 /// Koppeling ClientUser → Contact (opdrachtgever). Was: → Client.

@@ -22,7 +22,16 @@ import { NumberingService } from '../numbering/numbering.service';
 
 type OpResult =
   | { entityType: string; entityId: string; status: 'success' }
-  | { entityType: string; entityId: string; status: 'conflict'; clientData: SyncRecordData; serverData: unknown }
+  | {
+      entityType: string;
+      entityId: string;
+      status: 'conflict';
+      // ISO `updatedAt` van de serverstaat; de PWA leest dit als losse base-versie
+      // (naast conflictData.serverVersion, dat DB-intern blijft). Zie "Gedeeld contract".
+      serverVersion: string;
+      clientData: SyncRecordData;
+      serverData: unknown;
+    }
   | { entityType: string; entityId: string; status: 'failed'; error: string };
 
 /** Bestaande db-rij zoals de sync die leest (alleen `updatedAt` wordt expliciet gebruikt). */
@@ -42,7 +51,11 @@ interface SyncDelegate {
   findUnique(args: { where: { id: string }; select: { orgId: true } }): Promise<{ orgId: string } | null>;
   findMany(args: { where: { id: { in: string[] }; orgId: string }; select: { id: true } }): Promise<Array<{ id: string }>>;
   create(args: { data: Record<string, unknown> }): Promise<unknown>;
-  update(args: { where: { id: string }; data: Record<string, unknown> }): Promise<unknown>;
+  update(args: {
+    where: { id: string };
+    data: Record<string, unknown>;
+    select?: Record<string, unknown>;
+  }): Promise<{ updatedAt: Date }>;
 }
 
 /** JSON-kolom (conflictData/payload) veilig als object lezen; niet-objecten → leeg record. */
@@ -467,16 +480,36 @@ export class SyncService {
       // existing bevat Date/Decimal-velden die niet rauw in de Json-kolom mogen;
       // normaliseer naar plain JSON vóór opslag/teruggave.
       const serverData: unknown = JSON.parse(JSON.stringify(existing));
-      await this.prisma.syncQueue.create({
-        data: {
-          deviceId, userId: user.id, entityType: cfg.singular, entityId: id,
-          operation: 'update', payload: data as Prisma.InputJsonValue, status: SyncStatus.conflict,
-          conflictData: {
-            serverData, clientData: data, serverVersion: existing.updatedAt.toISOString(),
-          } as Prisma.InputJsonValue,
-        },
+      const serverVersion = existing.updatedAt.toISOString();
+      const conflictData = {
+        serverData, clientData: data, serverVersion,
+      } as Prisma.InputJsonValue;
+
+      // Dedup: hooguit één open conflict per record. Herhaalde pushes van hetzelfde
+      // conflict updaten de bestaande rij i.p.v. stapelen; `resolve()` pakt (orderBy
+      // createdAt desc) eenduidig dat item. Geen unieke DB-constraint → find-then-write.
+      const openConflict = await this.prisma.syncQueue.findFirst({
+        where: { entityType: cfg.singular, entityId: id, status: SyncStatus.conflict },
+        select: { id: true },
       });
-      return { ...ref, status: 'conflict', clientData: data, serverData };
+      if (openConflict) {
+        await this.prisma.syncQueue.update({
+          where: { id: openConflict.id },
+          data: {
+            deviceId, userId: user.id, operation: 'update',
+            payload: data as Prisma.InputJsonValue, conflictData,
+          },
+        });
+      } else {
+        await this.prisma.syncQueue.create({
+          data: {
+            deviceId, userId: user.id, entityType: cfg.singular, entityId: id,
+            operation: 'update', payload: data as Prisma.InputJsonValue, status: SyncStatus.conflict,
+            conflictData,
+          },
+        });
+      }
+      return { ...ref, status: 'conflict', serverVersion, clientData: data, serverData };
     }
 
     const updateData: Record<string, unknown> = { ...fields, syncedAt: new Date() };
@@ -511,6 +544,9 @@ export class SyncService {
   async resolve(user: User, dto: ResolveDto) {
     requireOrg(user);
     let resolved = 0;
+    // Per opgelost record de nieuwe base-versie (ISO updatedAt) terug — de PWA zet
+    // hier lokaal `syncedAt = result.serverVersion`. Zie "Gedeeld contract".
+    const results: Array<{ entityType: string; entityId: string; serverVersion: string }> = [];
     const errors: Array<{ entityType: string; entityId: string; error: string }> = [];
 
     for (const r of dto.resolutions) {
@@ -529,25 +565,33 @@ export class SyncService {
           : (r.mergedData ?? {});
 
         const delegate = this.delegateFor(SYNC_ENTITIES[key].model);
+        // Org-gescoped ophalen: een gebruiker mag nooit een conflict van een andere
+        // org oplossen (cross-tenant guard) → anders 'Record niet gevonden' → errors[].
         const existing = await delegate.findFirst({
           where: { id: r.entityId, ...orgScope(user) },
         });
         if (!existing) throw new BadRequestException('Record niet gevonden');
 
-        await delegate.update({
+        const updated = await delegate.update({
           where: { id: r.entityId },
           data: { ...toDbData(key, chosen), syncedAt: new Date() },
+          select: { updatedAt: true },
         });
         await this.prisma.syncQueue.update({
           where: { id: queueItem.id },
           data: { status: SyncStatus.completed, resolvedAt: new Date(), resolvedBy: user.id },
+        });
+        results.push({
+          entityType: r.entityType,
+          entityId: r.entityId,
+          serverVersion: updated.updatedAt.toISOString(),
         });
         resolved++;
       } catch (e: any) {
         errors.push({ entityType: r.entityType, entityId: r.entityId, error: e?.message ?? 'Onbekende fout' });
       }
     }
-    return { resolved, errors };
+    return { resolved, results, errors };
   }
 
   private singularToKey(singular: string): SyncEntityKey {

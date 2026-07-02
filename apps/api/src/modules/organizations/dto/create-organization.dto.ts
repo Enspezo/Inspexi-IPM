@@ -1,4 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { ContactDisplayMode, Role } from '@prisma/client';
 import {
   IsString,
   MinLength,
@@ -9,6 +10,8 @@ import {
   Max,
   IsInt,
   IsEmail,
+  IsEnum,
+  ValidateIf,
 } from 'class-validator';
 
 export class CreateOrganizationDto {
@@ -70,4 +73,57 @@ export class CreateOrganizationDto {
   @Min(1)
   @Max(24)
   workdayEnd?: number;
+
+  // ─── Zichtbaarheid inspecteur-contactgegevens in klantportaal (per kanaal) ───
+
+  @ApiPropertyOptional({
+    enum: ContactDisplayMode,
+    description: 'Weergavemodus telefoonnummer inspecteur in klantportaal',
+  })
+  @IsOptional()
+  @IsEnum(ContactDisplayMode)
+  inspectorPhoneDisplay?: ContactDisplayMode;
+
+  @ApiPropertyOptional({
+    enum: ContactDisplayMode,
+    description: 'Weergavemodus e-mailadres inspecteur in klantportaal',
+  })
+  @IsOptional()
+  @IsEnum(ContactDisplayMode)
+  inspectorEmailDisplay?: ContactDisplayMode;
+
+  @ApiPropertyOptional({ example: '+31 20 123 4567', nullable: true })
+  @IsOptional()
+  @ValidateIf((o) => o.inspectorStaticPhone !== null)
+  @IsString()
+  inspectorStaticPhone?: string | null;
+
+  @ApiPropertyOptional({ example: 'klantcontact@mijnbedrijf.nl', nullable: true })
+  @IsOptional()
+  @ValidateIf((o) => o.inspectorStaticEmail !== null && o.inspectorStaticEmail !== '')
+  @IsEmail()
+  inspectorStaticEmail?: string | null;
+
+  // ─── Offerte-goedkeuring drempel (REQ5) ───
+
+  @ApiPropertyOptional({
+    example: 10000,
+    nullable: true,
+    description: 'Bedragdrempel; offertes strikt boven dit bedrag vereisen goedkeuring (null = geen drempel)',
+  })
+  @IsOptional()
+  @ValidateIf((o) => o.quoteApprovalThreshold !== null)
+  @IsNumber()
+  @Min(0)
+  quoteApprovalThreshold?: number | null;
+
+  @ApiPropertyOptional({
+    enum: Role,
+    nullable: true,
+    description: 'Vereiste rol/functie die offertes boven de drempel moet goedkeuren',
+  })
+  @IsOptional()
+  @ValidateIf((o) => o.quoteApprovalRequiredRole !== null)
+  @IsEnum(Role)
+  quoteApprovalRequiredRole?: Role | null;
 }

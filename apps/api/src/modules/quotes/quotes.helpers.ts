@@ -1,8 +1,83 @@
-import { ForbiddenException } from '@nestjs/common';
-import { Role, User, QuoteStatus } from '@prisma/client';
+import { BadRequestException, ForbiddenException } from '@nestjs/common';
+import { Role, User, QuoteStatus, QuoteTemplate } from '@prisma/client';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '@/prisma';
 import { assertFound } from '@/common';
+
+/**
+ * The subset of template fields that gets applied onto a quote when a template
+ * is linked. For a `BLOCKS` template this includes the cover/content/closing
+ * blocks; for a `DOCX` template only the metadata is applicable (the document
+ * is rendered from the uploaded .docx, so blocks do not apply).
+ */
+export interface ResolvedTemplateData {
+  coverBlocks?: QuoteTemplate['coverBlocks'];
+  contentBlocks?: QuoteTemplate['contentBlocks'];
+  closingBlocks?: QuoteTemplate['closingBlocks'];
+  defaultValidityDays?: number;
+  requiresApproval?: boolean;
+}
+
+/**
+ * Resolve which template fields apply to a quote, branching on template type.
+ * Shared by `create()` (initial application) and `update()` (template switch)
+ * so the DOCX-vs-BLOCKS rule lives in exactly one place.
+ *
+ * - `DOCX` → only metadata (`defaultValidityDays`, `requiresApproval`); no blocks.
+ * - `BLOCKS` (default) → blocks + metadata.
+ */
+export function resolveTemplateData(template: QuoteTemplate): ResolvedTemplateData {
+  if (template.templateType === 'DOCX') {
+    // DOCX templates only contribute metadata — block content is not applicable
+    return {
+      defaultValidityDays: template.defaultValidityDays,
+      requiresApproval: template.requiresApproval,
+    };
+  }
+  return {
+    coverBlocks: template.coverBlocks,
+    contentBlocks: template.contentBlocks,
+    closingBlocks: template.closingBlocks,
+    defaultValidityDays: template.defaultValidityDays,
+    requiresApproval: template.requiresApproval,
+  };
+}
+
+/**
+ * Guard that a quote has a template linked before it may leave the CONCEPT
+ * status. Call on every path that transitions a CONCEPT quote forward
+ * (status change, send, submit-for-approval).
+ */
+export function assertTemplateLinked(quote: { templateId: string | null }): void {
+  if (!quote.templateId) {
+    throw new BadRequestException(
+      'Koppel eerst een offertesjabloon voordat u de status van concept wijzigt.',
+    );
+  }
+}
+
+/**
+ * Whether a quote may not be sent without an approved *mandatory* approval (REQ5).
+ *
+ * Two independent triggers, OR-combined:
+ *  - **Org threshold** — both `quoteApprovalThreshold` and `quoteApprovalRequiredRole`
+ *    are configured AND the quote total is *strictly* above the threshold.
+ *  - **Template** — the quote's linked template set `requiresApproval`.
+ *
+ * Voluntary (advisory) approval requests never affect this — they neither set it
+ * nor clear it.
+ */
+export function isQuoteApprovalRequired(
+  org: { quoteApprovalThreshold: unknown | null; quoteApprovalRequiredRole: Role | null },
+  quote: { total: unknown; requiresApproval: boolean },
+): boolean {
+  const thresholdActive =
+    org.quoteApprovalThreshold !== null &&
+    org.quoteApprovalThreshold !== undefined &&
+    org.quoteApprovalRequiredRole !== null &&
+    Number(quote.total) > Number(org.quoteApprovalThreshold);
+  return thresholdActive || quote.requiresApproval;
+}
 
 export const VALID_TRANSITIONS: Record<QuoteStatus, QuoteStatus[]> = {
   [QuoteStatus.CONCEPT]: [QuoteStatus.TER_GOEDKEURING, QuoteStatus.GOEDGEKEURD, QuoteStatus.VERLOPEN],

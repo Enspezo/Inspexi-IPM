@@ -3,6 +3,38 @@
 Multi-tenant inspectie-managementplatform (CRM, leads, offertes, taken, documenten).
 Monorepo met **NestJS API** + **React Portal**, Turbo + pnpm workspaces.
 
+## Actuele status (laatst bijgewerkt: juni 2026) — lees dit eerst
+
+> De secties verderop beschrijven deels de **pre-integratie kern** (genoemd als "29 modellen / 2 apps / 15 modules"). Sinds de integratie van het oude **Inspexi-App** inspectiedomein geldt de stand hieronder.
+
+**4 apps in de monorepo:**
+- `apps/api` — NestJS, ~60 modules, **148 Prisma-modellen** (API :3000, Swagger `/api/docs`)
+- `apps/portal` — staf-backoffice (:5173, Tailwind v4)
+- `apps/client-portal` — extern klantportaal, 2e auth-realm `ClientUser` (:5174)
+- `apps/convert-api` — losse NestJS-microservice voor DOCX⇄PDF (libreoffice-convert)
+- PostgreSQL :5433 (`docker compose up -d`). De **PWA inspecteur-app blijft een aparte repo** (`../Inspexi-App`) en praat via het `/sync` **v2-contract** met deze backend.
+
+**Integratie-fasen — allemaal afgerond** (zie `docs/INTEGRATIE-INSPEXI-APP.md` + `docs/fase1..6/`): schema-fundament, API kern-inspectiedomein, sync v2 (server + PWA-cutover), document-generatie (Puppeteer-PDF/Word/ondertekenen), portal beheer-GUI's, client-portal + client-realm, voice. PWA v2-sync-cutover zit in de `Inspexi-App`-repo (branch `feat/pwa-v2-sync-contract`, Dexie v9).
+
+**Unified AssetNode-boom (branch `feat/unified-asset-node-tree`):** de losse `Asset`- en `InspectionLocation`-modellen zijn opgegaan in één recursief **`AssetNode`**-model (`nodeType` `LOCATION` | `ASSET`) met een PostgreSQL **ltree** `path`/`depth` die door DB-**triggers** wordt onderhouden (de service zet pad/diepte nooit zelf; insert parents vóór kinderen). De boom-wortel is een LOCATION-node met `rootLocationId` (1:1 → CRM-`Location`); een inspectieplan koppelt zijn **hoofdlocatie** via `InspectionPlan.locationId` en zijn scope-deellocaties via **`InspectionPlanLocation`**. Nieuwe module **`asset-nodes`** levert de tree-CRUD; de oude **`assets`**- en **`inspection-locations`**-endpoints zijn nu **compat-wrappers** op `AssetNodesService` (verdwijnen ná de PWA-cutover, zie `docs/fase3/PWA-CUTOVER-ASSET-NODE.md`). Uitvoeringsrecords (Finding/VisualInspection/MeasurementRecord/MeasurementSheetRecord) refereren `assetNodeId` + `inspectionPlanId`; de `/sync`-push is op **contract v3** (AssetNode-boom). Elke node krijgt een **server-toegekend, uniek-per-org `nodeNumber`** (`@@unique([orgId, nodeNumber])`) via de bestaande nummering-engine: twee onafhankelijke `NumberingModel`-waarden **`LOCATION_NODE`** (default `LOC-####`) en **`ASSET_NODE`** (default `[typecode]-####`), gekozen op `nodeType`. De nieuwe placeholder **`[typecode]`** lost op naar de `shortCode` van het asset-/locatietype (`AssetTypeDefinition`/`LocationTypeDefinition`). `nodeNumber` is read-only voor de client (zoals `orgId`): toegekend in `AssetNodesService.create`/`createRoot` én in de `/sync` assetNodes-push.
+
+**Inspectiedomein — waar te vinden in de portal:**
+- **Organisatie → Inspectie-config** (org-admin): inspectie-templates (block-editor document-builder), checklists (+items/categorieën), constateringen (finding-templates), asset-types, locatie-types, lookups, voice-prompts.
+- **Organisatie → Inspectie-systeem** (SUPERUSER-only, op `mijn.localhost`): classificatiemodellen, normtypes, meetstaat-templates, voice base-prompts.
+- **Inspecties** (uitvoering): detail-tabs Overzicht / Assets (+findings, +meetstaat-records) / Plattegrond (Konva floor-plan) / Documenten (genereren/preview/PDF/Word/ondertekenen). Veel uitvoeringsdata ontstaat normaal in de PWA.
+- **Client-portal** (`:5174`): magic-link login, inspecties inzien, constatering oplossen + foto, document ondertekenen, verzoeken indienen.
+
+**Operationele gotchas (belangrijk voor browser-/dev-werk):**
+- `pnpm db:seed` **wist en herseed't de hele DB incl. users** → daarna opnieuw inloggen. Soms houdt de API daarna een **stale tenant-cache** (5 min) → een org geeft dan "niet gevonden"; **herstart de API** om de cache te legen.
+- Seed-wachtwoorden: `Password123!`. Staf-login op `inspexidemo.localhost:5173` (`admin@inspexi-demo.nl`); SUPERUSER op `mijn.localhost:5173` (`superuser@inspexi.nl`).
+- Demo-klant voor de client-portal (uit de seed): `http://inspexidemo.localhost:5174/magic/demo-klant-magic` → logt **direct in zonder wachtwoord** (vaste magic-link op het demo-inspectieplan).
+- Het demo-inspectieplan hangt op de unified AssetNode-boom: hoofdlocatie (= CRM-Locatie "Kantoorpand Zuidas") → deellocatie "Verdieping 1" (scope) → 2 assets + findings + 1 plattegrond (LocationImage op de wortel-node) + markers + 2 meetstaat-records + een gegenereerd (ondertekenbaar) document.
+- Voice `/voice/parse-measurement` vereist een `ANTHROPIC_API_KEY` in `apps/api/.env`. Document-generatie vereist Chromium voor Puppeteer in de API-image bij deploy.
+
+**Teststatus:** Streams A–E + G + PWA-sync zijn end-to-end gevalideerd (unit/e2e/build groen + browser-smoketests). Enig open punt: voice `/voice/parse-measurement` (wacht op Anthropic-key). Gevonden+opgeloste bugs: refresh/deeplink→dashboard-race, cross-tenant read 403→404, assets niet zichtbaar op staf-inspectie, ontbrekende staf-documenten-UI, meetstaat-records niet zichtbaar op staf.
+
+---
+
 ## Taal & Stijl
 
 - Code, commits, branchnamen en technische docs: **Engels**
@@ -139,6 +171,8 @@ interface TenantContext {
 ### Modules (15)
 
 auth, organizations, users, contacts, customer-groups, products, price-tables, requests, quote-templates, quotes, notifications, audit-log, tasks, documents, common
+
+> Dit is de **pre-integratie kern**. Het inspectiedomein voegt ~45 modules toe (config + templates + uitvoering). Voor de **unified AssetNode-boom** (zie "Actuele status"): de tree-CRUD zit in module **`asset-nodes`** (`AssetNodesService` + `TreeService`); de modules **`assets`** en **`inspection-locations`** zijn nu **compat-wrappers** die op `AssetNodesService` mappen (oude `assets`/`inspection-locations`-endpoints blijven werken tot de PWA-cutover). Uitvoeringsmodules (findings, visual-inspections, measurement-records, measurement-sheet-records, standalone-measurements, location-images) zijn op `assetNodeId` + `inspectionPlanId` herbedraad.
 
 ### Typische Module Structuur
 
@@ -548,6 +582,13 @@ contactCustomerGroup → customerGroup → contactPerson → contactEmail → co
 auditLog → invitation → refreshToken → user → organization
 ```
 
+**AssetNode-boom (let op de RESTRICT-FK's):** uitvoeringsrecords cascaden op `assetNodeId`, maar twee referrers RESTRICTen op de node-FK en moeten **vóór** `assetNode` opgeruimd worden: **`inspectionPlanLocation`** (scope-rijen) en **`standaloneMeasurement`** (+ `standaloneMeasurementValue` ervoor). `AssetNode.parentId` is `SET NULL`, dus één `assetNode.deleteMany()` ruimt de hele (zelf-refererende) boom op — geen kinderen-vóór-ouders-loop nodig. `LocationImage` heeft `nodeId` (Cascade) en `LocationImageMarker.assetNodeId` (SetNull). Volgorde, kinderen eerst:
+```
+locationImageMarker → standaloneMeasurementValue → standaloneMeasurement → locationImage
+finding → measurementRecord → visualInspection → measurementSheetRecord
+inspectionPlanLocation → assetNode → inspectionPlan
+```
+
 ## Veelvoorkomende Taken
 
 ### Nieuw API Module Toevoegen
@@ -633,6 +674,9 @@ Commits volgen het patroon: `feat: implement PRD-{nr} — {beschrijving}`
 - **NOOIT `prisma db push` gebruiken** — altijd `npx prisma migrate dev --name <naam>`. `db push` wijzigt de database zonder migratiebestand; de migratieketen herspeelt dan niet meer op een lege/shadow-database (P3006) en elke volgende `migrate dev` blokkeert. Dit is in juni 2026 eenmalig hersteld met een repair-migratie (`20260612230000_repair_db_push_drift`) — niet opnieuw laten ontstaan
 - **Dev server port conflict**: bij herstarten altijd eerst `lsof -ti:3001 -ti:5173 | xargs kill -9`
 - **NestJS route volgorde**: specifieke routes (`GET :id/users`) moeten vóór parameterized routes (`GET :id`) in de controller staan
+- **AssetNode = persistent & plan-ontkoppeld**: assets/locaties leven nu in de unified **`AssetNode`**-boom, **niet meer onder een inspectieplan**. Een asset hoort bij een CRM-Locatie-boom (via de wortel-node) en is herbruikbaar over plannen heen; een plan refereert ernaar via `InspectionPlan.locationId` (hoofdlocatie) + `InspectionPlanLocation` (scope). Een asset/finding "vanuit een inspectie" aanmaken vereist daarom dat het plan een `locationId` heeft én dat de node in díe boom zit (`rootLocationId === plan.locationId`, zie `assertNodeInPlanTree`) → anders 400/404. Uitvoeringsrecords krijgen `inspectionPlanId` **in de body** (niet meer afgeleid van de asset).
+- **AssetNode `path`/`depth` komen van DB-triggers**: nooit zelf zetten; bij raw inserts (seed/tests) **parents vóór kinderen** aanmaken zodat de trigger het pad kan vullen. `move` doet een rauwe `parent_id`-UPDATE en laat de triggers het subtree-pad herschrijven.
+- **sync-mapper op contract v3**: de `/sync`-push voor het inspectiedomein is herbedraad op de AssetNode-boom (`assetNodes` + execution-entities met `assetNodeId`/`inspectionPlanId`). De **PWA** (`../Inspexi-App`) moet hier nog op cutoveren — tot die tijd is het v2-contract niet langer geldig voor assets/locaties (zie `docs/fase3/PWA-CUTOVER-ASSET-NODE.md`).
 - **Audit middleware recursie**: `writeAuditLog()` gebruikt `$executeRaw` i.p.v. Prisma client om oneindige middleware-loop te voorkomen
 - **SUPERUSER heeft geen orgId**: queries die `orgId` filteren moeten `null` toestaan voor SUPERUSER (zie `audit-log.service.ts`)
 - **Build commando**: altijd `npx turbo run build` vanuit de root — dit bouwt beide packages en controleert TypeScript errors

@@ -1,6 +1,5 @@
 import { useRef, useEffect } from 'react';
 import type { PlanningItem, PlanningSession } from '@/types';
-import { PlanningStatus } from '@/types';
 
 // ─── Calendar Event ───────────────────────────────────────────────────────────
 
@@ -18,6 +17,12 @@ export interface CalendarEvent {
   status: string;
   inspectors: Array<{ isPrimary: boolean; user?: { color?: string; initials?: string } | null }>;
 }
+
+/**
+ * Click handler for a calendar event. `background` (⌘/Ctrl- or middle-click)
+ * signals "open without switching to it" — the page maps this to an in-window tab.
+ */
+export type CalendarItemClick = (id: string, opts?: { background?: boolean }) => void;
 
 /** Flatten PlanningItems (including multi-day sessions) into CalendarEvents */
 export function flattenToCalendarEvents(items: PlanningItem[]): CalendarEvent[] {
@@ -124,24 +129,6 @@ export function getEventColor(event: CalendarEvent): string {
   return primary?.user?.color ?? '#6B7280';
 }
 
-/** Legacy overload for PlanningItem (used by external code). */
-export function getItemColor(item: PlanningItem): string {
-  const primary = item.inspectors?.find((i) => i.isPrimary) ?? item.inspectors?.[0];
-  return primary?.user?.color ?? '#6B7280';
-}
-
-/** Short status badge label */
-function _statusLabel(status: PlanningStatus): string {
-  const map: Record<string, string> = {
-    [PlanningStatus.NOG_TE_PLANNEN]: 'N/B',
-    [PlanningStatus.CONCEPT]: 'Concept',
-    [PlanningStatus.GEPLAND]: 'Gepland',
-    [PlanningStatus.AFGEROND]: '✓',
-    [PlanningStatus.VERVALLEN]: '✕',
-  };
-  return map[status] ?? status;
-}
-
 // ─── EventChip (month view) ──────────────────────────────────────────────────
 
 function EventChip({
@@ -149,7 +136,7 @@ function EventChip({
   onNavigate,
 }: {
   event: CalendarEvent;
-  onNavigate: (id: string) => void;
+  onNavigate: CalendarItemClick;
 }) {
   const color = getEventColor(event);
   const label = event.isMultiDay && event.sessionNumber && event.totalSessions
@@ -159,7 +146,14 @@ function EventChip({
     <button
       onClick={(e) => {
         e.stopPropagation();
-        onNavigate(event.planningItemId);
+        onNavigate(event.planningItemId, { background: e.metaKey || e.ctrlKey });
+      }}
+      onMouseDown={(e) => {
+        if (e.button === 1) {
+          e.preventDefault();
+          e.stopPropagation();
+          onNavigate(event.planningItemId, { background: true });
+        }
       }}
       className="w-full truncate rounded px-1.5 py-[2px] text-left text-xs font-medium text-white hover:opacity-80 transition-opacity leading-tight"
       style={{
@@ -185,7 +179,7 @@ function MonthView({
   events: CalendarEvent[];
   currentDate: Date;
   onDayClick: (date: Date) => void;
-  onItemClick: (id: string) => void;
+  onItemClick: CalendarItemClick;
   onWeekClick: (date: Date) => void;
 }) {
   const year = currentDate.getFullYear();
@@ -292,7 +286,7 @@ function TimeGrid({
 }: {
   days: Date[];
   events: CalendarEvent[];
-  onItemClick: (id: string) => void;
+  onItemClick: CalendarItemClick;
   /** If provided, day header cells become clickable buttons. */
   onDayHeaderClick?: (date: Date) => void;
   dayStart: number;
@@ -422,7 +416,13 @@ function TimeGrid({
                 return (
                   <button
                     key={event.eventId}
-                    onClick={() => onItemClick(event.planningItemId)}
+                    onClick={(e) => onItemClick(event.planningItemId, { background: e.metaKey || e.ctrlKey })}
+                    onMouseDown={(e) => {
+                      if (e.button === 1) {
+                        e.preventDefault();
+                        onItemClick(event.planningItemId, { background: true });
+                      }
+                    }}
                     className="absolute left-0.5 right-0.5 overflow-hidden rounded px-1.5 py-1 text-left text-white hover:opacity-90 transition-opacity shadow-sm"
                     style={{
                       top,
@@ -465,7 +465,7 @@ function WeekView({
 }: {
   events: CalendarEvent[];
   currentDate: Date;
-  onItemClick: (id: string) => void;
+  onItemClick: CalendarItemClick;
   onDayClick: (date: Date) => void;
   dayStart: number;
   dayEnd: number;
@@ -495,7 +495,7 @@ function DayView({
 }: {
   events: CalendarEvent[];
   currentDate: Date;
-  onItemClick: (id: string) => void;
+  onItemClick: CalendarItemClick;
   dayStart: number;
   dayEnd: number;
 }) {
@@ -523,7 +523,7 @@ interface PlanningCalendarViewProps {
   /** Week number clicked in month view → switch to week view */
   onWeekClick: (date: Date) => void;
   /** Planning item clicked → navigate to detail */
-  onItemClick: (id: string) => void;
+  onItemClick: CalendarItemClick;
   /** Start of the visible time window (hour, 0–23). Default: 8 */
   dayStart?: number;
   /** End of the visible time window (hour, 1–24). Default: 17 */

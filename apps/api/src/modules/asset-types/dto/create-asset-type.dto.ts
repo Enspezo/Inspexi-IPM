@@ -13,6 +13,14 @@ export class CreateAssetTypeDto {
   @IsString()
   code: string;
 
+  @ApiPropertyOptional({
+    example: 'VERD',
+    description: 'Shortcode voor de [typecode]-placeholder in de asset-nummering',
+  })
+  @IsOptional()
+  @IsString()
+  shortCode?: string;
+
   @ApiProperty({ example: 'Verdeelinrichting' })
   @IsString()
   name: string;

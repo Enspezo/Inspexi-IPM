@@ -16,6 +16,7 @@ import {
 } from '@/common';
 import { LookupService } from '../lookups/lookup.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { AssetNodesService } from '../asset-nodes/asset-nodes.service';
 
 describe('InspectionPlansService', () => {
   let service: InspectionPlansService;
@@ -30,10 +31,18 @@ describe('InspectionPlansService', () => {
     },
     contact: { findUnique: jest.fn() },
     project: { findUnique: jest.fn() },
+    location: { findUnique: jest.fn() },
     user: { findUnique: jest.fn() },
     contactPerson: { findUnique: jest.fn() },
     inspectionTemplate: { findUnique: jest.fn() },
     normTypeDefinition: { findUnique: jest.fn() },
+    inspectionPlanLocation: {
+      findMany: jest.fn(),
+      deleteMany: jest.fn(),
+      create: jest.fn(),
+      count: jest.fn(),
+      upsert: jest.fn(),
+    },
   };
 
   const mockLookupService = {
@@ -42,6 +51,13 @@ describe('InspectionPlansService', () => {
 
   const mockNotificationsService = {
     dispatch: jest.fn(),
+  };
+
+  const mockAssetNodesService = {
+    ensureRootNode: jest.fn().mockResolvedValue({ id: 'root-1' }),
+    assertValidScopeLocation: jest.fn(),
+    resolveDefaultParentForPlan: jest.fn(),
+    create: jest.fn(),
   };
 
   const mockUser = {
@@ -61,12 +77,15 @@ describe('InspectionPlansService', () => {
   beforeEach(async () => {
     jest.clearAllMocks();
 
+    mockAssetNodesService.ensureRootNode.mockResolvedValue({ id: 'root-1' });
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         InspectionPlansService,
         { provide: PrismaService, useValue: mockPrismaService },
         { provide: LookupService, useValue: mockLookupService },
         { provide: NotificationsService, useValue: mockNotificationsService },
+        { provide: AssetNodesService, useValue: mockAssetNodesService },
       ],
     }).compile();
 
@@ -78,6 +97,7 @@ describe('InspectionPlansService', () => {
     // Default FK-ownership checks resolve to the same org as mockUser
     mockPrismaService.contact.findUnique.mockResolvedValue({ orgId: 'org-1' });
     mockPrismaService.project.findUnique.mockResolvedValue({ orgId: 'org-1' });
+    mockPrismaService.location.findUnique.mockResolvedValue({ orgId: 'org-1' });
     mockPrismaService.user.findUnique.mockResolvedValue({ orgId: 'org-1' });
     mockPrismaService.contactPerson.findUnique.mockResolvedValue({
       orgId: 'org-1',

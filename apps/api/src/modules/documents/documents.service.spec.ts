@@ -18,11 +18,18 @@ describe('DocumentsService', () => {
       update: jest.fn(),
     },
     contact: { findMany: jest.fn(), findUnique: jest.fn() },
-    request: { findMany: jest.fn() },
-    quote: { findMany: jest.fn() },
-    product: { findMany: jest.fn() },
-    task: { findMany: jest.fn() },
-    planningItem: { findMany: jest.fn() },
+    location: { findMany: jest.fn(), findUnique: jest.fn() },
+    request: { findMany: jest.fn(), findUnique: jest.fn() },
+    quote: { findMany: jest.fn(), findUnique: jest.fn() },
+    product: { findMany: jest.fn(), findUnique: jest.fn() },
+    task: { findMany: jest.fn(), findUnique: jest.fn() },
+    planningItem: { findMany: jest.fn(), findUnique: jest.fn() },
+    project: { findMany: jest.fn(), findUnique: jest.fn() },
+    workOrder: { findMany: jest.fn(), findUnique: jest.fn() },
+    user: { findMany: jest.fn(), findUnique: jest.fn() },
+    documentTag: { findMany: jest.fn() },
+    documentTagAssignment: { deleteMany: jest.fn(), createMany: jest.fn() },
+    $transaction: jest.fn((ops: unknown[]) => Promise.all(ops as Promise<unknown>[])),
   };
 
   const mockNotificationsService = {
@@ -66,11 +73,22 @@ describe('DocumentsService', () => {
 
     // Default: enrichWithEntityNames returns empty
     mockPrismaService.contact.findMany.mockResolvedValue([]);
+    mockPrismaService.location.findMany.mockResolvedValue([]);
     mockPrismaService.request.findMany.mockResolvedValue([]);
     mockPrismaService.quote.findMany.mockResolvedValue([]);
     mockPrismaService.product.findMany.mockResolvedValue([]);
     mockPrismaService.task.findMany.mockResolvedValue([]);
     mockPrismaService.planningItem.findMany.mockResolvedValue([]);
+    mockPrismaService.project.findMany.mockResolvedValue([]);
+    mockPrismaService.workOrder.findMany.mockResolvedValue([]);
+    mockPrismaService.user.findMany.mockResolvedValue([]);
+
+    // Default: org-scope validation (assertSameOrg) finds an in-org entity
+    mockPrismaService.contact.findUnique.mockResolvedValue({ orgId: 'org-1' });
+    mockPrismaService.location.findUnique.mockResolvedValue({ orgId: 'org-1' });
+
+    // Default: no tags involved
+    mockPrismaService.documentTag.findMany.mockResolvedValue([]);
   });
 
   describe('upload', () => {
@@ -105,7 +123,7 @@ describe('DocumentsService', () => {
 
       mockPrismaService.document.create.mockResolvedValue(mockDocument);
       // Notification recipient resolution
-      mockPrismaService.contact.findUnique.mockResolvedValue({ ownerId: 'user-2' });
+      mockPrismaService.contact.findUnique.mockResolvedValue({ orgId: 'org-1', ownerId: 'user-2' });
 
       const result = await service.upload(mockFile, mockDto, mockUser);
 
@@ -130,7 +148,7 @@ describe('DocumentsService', () => {
       };
 
       mockPrismaService.document.create.mockResolvedValue(mockDocument);
-      mockPrismaService.contact.findUnique.mockResolvedValue({ ownerId: 'user-2' });
+      mockPrismaService.contact.findUnique.mockResolvedValue({ orgId: 'org-1', ownerId: 'user-2' });
 
       await service.upload(mockFile, mockDto, mockUser);
 
@@ -222,6 +240,21 @@ describe('DocumentsService', () => {
         expect.objectContaining({
           where: expect.objectContaining({
             originalName: { contains: 'test', mode: 'insensitive' },
+          }),
+        }),
+      );
+    });
+
+    it('should filter by tagId (only non-deleted tag assignments)', async () => {
+      mockPrismaService.document.findMany.mockResolvedValue([]);
+      mockPrismaService.document.count.mockResolvedValue(0);
+
+      await service.findAll(mockUser, { tagId: 'tag-1', page: 1, limit: 20 } as any);
+
+      expect(mockPrismaService.document.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            tags: { some: { documentTagId: 'tag-1', documentTag: { isDeleted: false } } },
           }),
         }),
       );
@@ -367,6 +400,44 @@ describe('DocumentsService', () => {
         service.update('doc-1', { description: 'hack' }, mockUser),
       ).rejects.toThrow(ForbiddenException);
     });
+
+    it('should replace the tag-set when tagIds is provided', async () => {
+      const existing = { id: 'doc-1', orgId: 'org-1', isDeleted: false, description: 'd' };
+      mockPrismaService.document.findUnique.mockResolvedValue(existing);
+      // assertAllSameOrg + active-tag check both query documentTag.findMany
+      mockPrismaService.documentTag.findMany.mockResolvedValue([{ id: 'tag-1' }]);
+      mockPrismaService.document.update.mockResolvedValue({
+        ...existing,
+        entityType: DocumentEntityType.CONTACT,
+        entityId: 'c-1',
+        tags: [{ documentTag: { id: 'tag-1', name: 'Contract', color: '#3B82F6' } }],
+        uploadedBy: { id: 'user-1', firstName: 'A', lastName: 'B', email: 'a@b.nl' },
+      });
+
+      const result = await service.update('doc-1', { tagIds: ['tag-1'] }, mockUser);
+
+      expect(mockPrismaService.documentTagAssignment.deleteMany).toHaveBeenCalledWith({
+        where: { documentId: 'doc-1' },
+      });
+      expect(mockPrismaService.documentTagAssignment.createMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: [{ documentId: 'doc-1', documentTagId: 'tag-1', orgId: 'org-1' }],
+        }),
+      );
+      expect(result.tags).toEqual([{ id: 'tag-1', name: 'Contract', color: '#3B82F6' }]);
+    });
+
+    it('should reject tagIds from another org (cross-tenant)', async () => {
+      const existing = { id: 'doc-1', orgId: 'org-1', isDeleted: false, description: 'd' };
+      mockPrismaService.document.findUnique.mockResolvedValue(existing);
+      // assertAllSameOrg: the foreign tag is not found within org-1
+      mockPrismaService.documentTag.findMany.mockResolvedValue([]);
+
+      await expect(
+        service.update('doc-1', { tagIds: ['foreign-tag'] }, mockUser),
+      ).rejects.toThrow(ForbiddenException);
+      expect(mockPrismaService.document.update).not.toHaveBeenCalled();
+    });
   });
 
   describe('remove', () => {
@@ -404,6 +475,82 @@ describe('DocumentsService', () => {
       await expect(service.remove('doc-1', mockUser)).rejects.toThrow(
         ForbiddenException,
       );
+    });
+  });
+
+  describe('LOCATION entity linking', () => {
+    const locationFile = {
+      originalname: 'plattegrond.pdf',
+      mimetype: 'application/pdf',
+      buffer: Buffer.from('pdf'),
+      size: 512,
+    } as Express.Multer.File;
+
+    const locationDto = {
+      entityType: DocumentEntityType.LOCATION,
+      entityId: 'loc-1',
+      description: 'Plattegrond',
+    };
+
+    it('should resolve a location name in enrichWithEntityNames', async () => {
+      mockPrismaService.document.findUnique.mockResolvedValue({
+        id: 'doc-1',
+        orgId: 'org-1',
+        isDeleted: false,
+        entityType: DocumentEntityType.LOCATION,
+        entityId: 'loc-1',
+        uploadedBy: { id: 'user-1', firstName: 'A', lastName: 'B', email: 'a@b.nl' },
+      });
+      mockPrismaService.location.findMany.mockResolvedValue([
+        { id: 'loc-1', name: 'Magazijn Noord' },
+      ]);
+
+      const result = await service.findOne('doc-1', mockUser);
+
+      expect(result.entityName).toBe('Magazijn Noord');
+    });
+
+    it('should upload a document linked to an in-org location', async () => {
+      mockPrismaService.location.findUnique.mockResolvedValue({ orgId: 'org-1' });
+      mockPrismaService.document.create.mockResolvedValue({
+        id: 'doc-1',
+        orgId: 'org-1',
+        entityType: DocumentEntityType.LOCATION,
+        entityId: 'loc-1',
+        originalName: 'plattegrond.pdf',
+        uploadedById: 'user-1',
+        uploadedBy: { id: 'user-1', firstName: 'A', lastName: 'B', email: 'a@b.nl' },
+      });
+      mockPrismaService.location.findMany.mockResolvedValue([
+        { id: 'loc-1', name: 'Magazijn Noord' },
+      ]);
+
+      const result = await service.upload(locationFile, locationDto, mockUser);
+
+      expect(mockPrismaService.location.findUnique).toHaveBeenCalledWith({
+        where: { id: 'loc-1' },
+        select: { orgId: true },
+      });
+      expect(mockPrismaService.document.create).toHaveBeenCalled();
+      expect(result.entityName).toBe('Magazijn Noord');
+    });
+
+    it('should reject upload when the location belongs to another org', async () => {
+      mockPrismaService.location.findUnique.mockResolvedValue({ orgId: 'other-org' });
+
+      await expect(
+        service.upload(locationFile, locationDto, mockUser),
+      ).rejects.toThrow(ForbiddenException);
+      expect(mockPrismaService.document.create).not.toHaveBeenCalled();
+    });
+
+    it('should reject upload when the location does not exist', async () => {
+      mockPrismaService.location.findUnique.mockResolvedValue(null);
+
+      await expect(
+        service.upload(locationFile, locationDto, mockUser),
+      ).rejects.toThrow(NotFoundException);
+      expect(mockPrismaService.document.create).not.toHaveBeenCalled();
     });
   });
 });

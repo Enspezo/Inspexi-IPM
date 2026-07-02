@@ -53,6 +53,7 @@ const FK_TARGETS: Map<string, Map<string, string>> = (() => {
  */
 const FALLBACK_FIELD_MODEL: Readonly<Record<string, string>> = {
   createdBy: 'User',
+  createdById: 'User',
   ownerId: 'User',
   assignedTo: 'User',
   reviewerId: 'User',
@@ -62,6 +63,9 @@ const FALLBACK_FIELD_MODEL: Readonly<Record<string, string>> = {
   editedBy: 'User',
   generatedBy: 'User',
   handledBy: 'User',
+  // NB: OrganizationFeature.updatedById heeft sinds de FK-migratie een echte
+  // Prisma-relatie en wordt dus al door FK_TARGETS (DMMF) afgehandeld — geen
+  // fallback meer nodig.
 };
 
 /**

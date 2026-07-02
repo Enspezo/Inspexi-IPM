@@ -60,10 +60,12 @@ describe('formatCurrency', () => {
 });
 
 describe('formatFileSize', () => {
-  it('formats bytes, KB and MB', () => {
+  it('formats bytes, KB, MB, GB and TB', () => {
     expect(formatFileSize(512)).toBe('512 B');
     expect(formatFileSize(2048)).toBe('2.0 KB');
     expect(formatFileSize(3 * 1024 * 1024)).toBe('3.0 MB');
+    expect(formatFileSize(3 * 1024 * 1024 * 1024)).toBe('3.0 GB');
+    expect(formatFileSize(2 * 1024 ** 4)).toBe('2.0 TB');
   });
 
   it('returns em dash for null/undefined', () => {

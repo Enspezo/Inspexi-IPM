@@ -5,7 +5,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Role, TaskEntityType, DocumentEntityType, TaskStatus } from '@/types';
 import type { User } from '@/types';
-import { ActionMenu, Button, Card, ErrorBox, InfoField, Input, Spinner, Badge, Tabs, useToast } from '@/components/ui';
+import { ActionMenu, Button, Card, Checkbox, ErrorBox, InfoField, Input, Spinner, Badge, Tabs, useToast } from '@/components/ui';
 import { formatDate } from '@/lib/format';
 import { DetailPageLayout, SidebarSection } from '@/components/layout/detail-page-layout';
 import { AuditHistory } from '@/components/audit-history/audit-history';
@@ -21,8 +21,9 @@ import { DocumentsSidebarSection } from '@/components/layout/sidebar-sections';
 import { AddressSearchInput } from '@/components/ui';
 import type { ParsedAddress } from '@/lib/geocoding';
 import { getErrorMessage } from '@/lib/api-client';
+import { InspectorCertificatesSection } from '@/components/inspector-certificates';
 
-type Tab = 'overzicht' | 'instellingen';
+type Tab = 'overzicht' | 'certificering' | 'instellingen';
 
 const canWrite = [Role.SUPERUSER, Role.ORG_ADMIN];
 
@@ -40,6 +41,12 @@ const userSchema = z.object({
   homeHouseNumber: z.string().optional().nullable(),
   homePostalCode: z.string().max(10).optional().nullable(),
   homeCity: z.string().optional().nullable(),
+  contactPhone: z.string().optional(),
+  contactEmail: z
+    .union([z.string().email('Voer een geldig e-mailadres in'), z.literal('')])
+    .optional(),
+  sharePhoneWithClients: z.boolean(),
+  shareEmailWithClients: z.boolean(),
 });
 
 type UserFormData = z.infer<typeof userSchema>;
@@ -96,11 +103,28 @@ export default function UserDetailPage() {
         homeHouseNumber: userRecord.homeHouseNumber ?? '',
         homePostalCode: userRecord.homePostalCode ?? '',
         homeCity: userRecord.homeCity ?? '',
+        contactPhone: userRecord.contactPhone ?? '',
+        contactEmail: userRecord.contactEmail ?? '',
+        sharePhoneWithClients: userRecord.sharePhoneWithClients ?? false,
+        shareEmailWithClients: userRecord.shareEmailWithClients ?? false,
       });
       setHomeLat(userRecord.homeLat ?? null);
       setHomeLng(userRecord.homeLng ?? null);
     }
   }, [userRecord, resetForm]);
+
+  // Klantportaal-contactgegevens: toestemming kan alleen aan met een ingevulde waarde.
+  const contactPhoneValue = watch('contactPhone');
+  const contactEmailValue = watch('contactEmail');
+  const hasContactPhone = Boolean(contactPhoneValue && contactPhoneValue.trim());
+  const hasContactEmail = Boolean(contactEmailValue && contactEmailValue.trim());
+
+  useEffect(() => {
+    if (!hasContactPhone) setValue('sharePhoneWithClients', false);
+  }, [hasContactPhone, setValue]);
+  useEffect(() => {
+    if (!hasContactEmail) setValue('shareEmailWithClients', false);
+  }, [hasContactEmail, setValue]);
 
   if (isLoading) {
     return (
@@ -128,6 +152,10 @@ export default function UserDetailPage() {
           homeCity: data.homeCity || null,
           homeLat,
           homeLng,
+          contactPhone: data.contactPhone?.trim() || '',
+          contactEmail: data.contactEmail?.trim() || '',
+          sharePhoneWithClients: hasContactPhone ? data.sharePhoneWithClients : false,
+          shareEmailWithClients: hasContactEmail ? data.shareEmailWithClients : false,
         },
       });
       showToast('Gebruiker bijgewerkt', 'success');
@@ -185,8 +213,11 @@ export default function UserDetailPage() {
     ? `${currentStreet} ${currentHouseNumber}, ${currentPostalCode} ${currentCity}`
     : undefined;
 
+  // De certificering-tab is alleen relevant voor inspecteurs (PRD-11).
+  const isInspector = userRecord.roles.includes(Role.INSPECTEUR);
   const tabs: { key: Tab; label: string }[] = [
     { key: 'overzicht', label: 'Overzicht' },
+    ...(isInspector ? [{ key: 'certificering' as Tab, label: 'Certificering' }] : []),
     { key: 'instellingen', label: 'Instellingen' },
   ];
 
@@ -415,6 +446,57 @@ export default function UserDetailPage() {
                     </div>
                   </div>
 
+                  {/* Klantportaal-contactgegevens */}
+                  <div className="space-y-3 border-t border-gray-200 pt-4">
+                    <p className="text-sm font-medium text-gray-700">Contactgegevens in klantportaal</p>
+                    <p className="text-xs text-gray-500">
+                      Aparte gegevens, los van het login-e-mailadres. Worden alleen aan klanten getoond
+                      als de organisatie dit per kanaal op &ldquo;inspecteur&rdquo; zet én de toestemming
+                      hieronder aanstaat.
+                    </p>
+
+                    <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
+                      <div className="space-y-3">
+                        <Input
+                          label="Telefoonnummer (klantportaal)"
+                          placeholder="Bijv. 06 12345678"
+                          error={errors.contactPhone?.message}
+                          {...register('contactPhone')}
+                        />
+                        <Checkbox
+                          label="Toon telefoonnummer in het klantportaal"
+                          disabled={!hasContactPhone}
+                          {...register('sharePhoneWithClients')}
+                        />
+                        {!hasContactPhone && (
+                          <p className="text-xs text-gray-400">
+                            Vul eerst een telefoonnummer in om dit aan te kunnen zetten.
+                          </p>
+                        )}
+                      </div>
+
+                      <div className="space-y-3">
+                        <Input
+                          label="E-mailadres (klantportaal)"
+                          type="email"
+                          placeholder="Bijv. inspecteur@mijnbedrijf.nl"
+                          error={errors.contactEmail?.message}
+                          {...register('contactEmail')}
+                        />
+                        <Checkbox
+                          label="Toon e-mailadres in het klantportaal"
+                          disabled={!hasContactEmail}
+                          {...register('shareEmailWithClients')}
+                        />
+                        {!hasContactEmail && (
+                          <p className="text-xs text-gray-400">
+                            Vul eerst een e-mailadres in om dit aan te kunnen zetten.
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
                   <div className="flex justify-end gap-3 pt-2">
                     <Button
                       type="button"
@@ -474,6 +556,29 @@ export default function UserDetailPage() {
               </Card>
             )}
 
+            {/* Klantportaal-contactgegevens (read-only when not editing) */}
+            {!isEditing && (
+              <Card>
+                <h3 className="mb-4 text-sm font-semibold text-gray-900">Contactgegevens in klantportaal</h3>
+                <dl className="grid grid-cols-2 gap-x-6 gap-y-4">
+                  <InfoField label="Telefoonnummer" value={userRecord.contactPhone} />
+                  <InfoField label="E-mailadres" value={userRecord.contactEmail} />
+                  <InfoField
+                    label="Telefoon tonen aan klant"
+                    value={userRecord.sharePhoneWithClients ? 'Ja' : 'Nee'}
+                  />
+                  <InfoField
+                    label="E-mail tonen aan klant"
+                    value={userRecord.shareEmailWithClients ? 'Ja' : 'Nee'}
+                  />
+                </dl>
+                <p className="mt-4 text-xs text-gray-400">
+                  Of deze gegevens daadwerkelijk zichtbaar zijn, hangt ook af van de modus in
+                  Organisatie → Instellingen (algemeen vast nummer vs. inspecteur).
+                </p>
+              </Card>
+            )}
+
             <div className="flex items-center justify-between border-t border-gray-200 pt-6">
               <p className="text-xs text-gray-400">
                 Aangemaakt op {new Date(userRecord.createdAt).toLocaleString('nl-NL', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
@@ -485,6 +590,10 @@ export default function UserDetailPage() {
               )}
             </div>
           </div>
+        )}
+
+        {activeTab === 'certificering' && (
+          <InspectorCertificatesSection userId={userRecord.id} canEdit />
         )}
 
         {activeTab === 'instellingen' && (

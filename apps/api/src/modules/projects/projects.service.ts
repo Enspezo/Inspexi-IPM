@@ -2,12 +2,12 @@ import {
   Injectable,
   Logger,
   NotFoundException,
-  ForbiddenException,
   BadRequestException,
 } from '@nestjs/common';
-import { Role, ProjectStatus } from '@prisma/client';
+import { ProjectStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
-import { paginate, buildOrderBy, orgScope, assertFound } from '@/common';
+import { paginate, buildOrderBy, orgScope, assertFound, assertSameOrg, assertOrgAccess } from '@/common';
+import { NumberingService } from '@/modules/numbering/numbering.service';
 import { NotificationsService } from '@/modules/notifications/notifications.service';
 import {
   CreateProjectDto,
@@ -44,32 +44,32 @@ export class ProjectsService {
   constructor(
     private prisma: PrismaService,
     private notifications: NotificationsService,
+    private numbering: NumberingService,
   ) {}
 
   // ─── Helpers ──────────────────────────────────────────────
 
-  private checkOrgAccess(user: User, orgId: string): void {
-    if (!user.roles.includes(Role.SUPERUSER) && user.orgId !== orgId) {
-      throw new ForbiddenException();
-    }
-  }
-
-  private async generateProjectNumber(orgId: string, tx?: any): Promise<string> {
-    const client = tx || this.prisma;
-    const year = new Date().getFullYear();
-    const prefix = `P-${year}-`;
-    const latest = await client.project.findFirst({
-      where: { orgId, projectNumber: { startsWith: prefix } },
-      orderBy: { projectNumber: 'desc' },
-      select: { projectNumber: true },
-    });
-    let seq = 1;
-    if (latest) {
-      const parts = latest.projectNumber.split('-');
-      const lastSeq = parseInt(parts[2], 10);
-      if (!isNaN(lastSeq)) seq = lastSeq + 1;
-    }
-    return `${prefix}${String(seq).padStart(4, '0')}`;
+  /** Build numbering placeholder context (contact name + location postcode) for a project. */
+  private async numberingContext(contactId: string, locationId?: string | null) {
+    const [contact, location] = await Promise.all([
+      this.prisma.contact.findUnique({
+        where: { id: contactId },
+        select: { companyName: true, firstName: true, lastName: true },
+      }),
+      locationId
+        ? this.prisma.location.findUnique({
+            where: { id: locationId },
+            select: { postalCode: true },
+          })
+        : Promise.resolve(null),
+    ]);
+    return {
+      contact: contact
+        ? contact.companyName ||
+          [contact.firstName, contact.lastName].filter(Boolean).join(' ')
+        : undefined,
+      postcode: location?.postalCode,
+    };
   }
 
   // ─── CRUD ─────────────────────────────────────────────────
@@ -110,16 +110,31 @@ export class ProjectsService {
       include: PROJECT_INCLUDE,
     });
     if (!project || project.isDeleted) throw new NotFoundException('Project niet gevonden');
-    this.checkOrgAccess(user, project.orgId);
+    assertOrgAccess(user, project.orgId);
     return project;
   }
 
   async create(dto: CreateProjectDto, user: User) {
     const orgId = user.orgId!;
 
-    return this.prisma.$transaction(async (tx) => {
-      const projectNumber = await this.generateProjectNumber(orgId, tx);
+    // Cross-tenant guard: every supplied FK must belong to the caller's org so a
+    // tenant cannot link a project to (or hijack) another tenant's records.
+    await Promise.all([
+      assertSameOrg(this.prisma.contact, dto.contactId, orgId, 'Relatie'),
+      assertSameOrg(this.prisma.location, dto.locationId, orgId, 'Locatie'),
+      assertSameOrg(this.prisma.user, dto.projectManagerId, orgId, 'Projectmanager'),
+      assertSameOrg(this.prisma.request, dto.requestId, orgId, 'Aanvraag'),
+      assertSameOrg(this.prisma.quote, dto.quoteId, orgId, 'Offerte'),
+    ]);
 
+    return this.numbering.runWithGeneratedNumber(
+      'PROJECT',
+      orgId,
+      {
+        manual: dto.projectNumber,
+        loadContext: () => this.numberingContext(dto.contactId, dto.locationId),
+      },
+      async (tx, projectNumber) => {
       const project = await tx.project.create({
         data: {
           orgId,
@@ -136,16 +151,17 @@ export class ProjectsService {
         include: PROJECT_INCLUDE,
       });
 
-      // Optionally link request/quote at creation
+      // Optionally link request/quote at creation. Scoped by orgId (validated
+      // above) so the write can never reach another tenant's row.
       if (dto.requestId) {
-        await tx.request.update({
-          where: { id: dto.requestId },
+        await tx.request.updateMany({
+          where: { id: dto.requestId, orgId },
           data: { projectId: project.id },
         });
       }
       if (dto.quoteId) {
-        await tx.quote.update({
-          where: { id: dto.quoteId },
+        await tx.quote.updateMany({
+          where: { id: dto.quoteId, orgId },
           data: { projectId: project.id },
         });
       }
@@ -165,14 +181,27 @@ export class ProjectsService {
       });
 
       return project;
-    });
+      },
+    );
   }
 
   async update(id: string, dto: UpdateProjectDto, user: User) {
     const existing = await this.findOne(id, user);
     const oldStatus = existing.status;
 
+    // Cross-tenant guard on re-pointed FKs.
+    await Promise.all([
+      assertSameOrg(this.prisma.contact, dto.contactId, user.orgId, 'Relatie'),
+      assertSameOrg(this.prisma.location, dto.locationId, user.orgId, 'Locatie'),
+      assertSameOrg(this.prisma.user, dto.projectManagerId, user.orgId, 'Projectmanager'),
+    ]);
+
     const data: any = {};
+    if (dto.projectNumber !== undefined && dto.projectNumber.trim() !== existing.projectNumber) {
+      data.projectNumber = await this.numbering.validateManualNumber(
+        existing.orgId, 'PROJECT', dto.projectNumber, existing.id,
+      );
+    }
     if (dto.title !== undefined) data.title = dto.title;
     if (dto.description !== undefined) data.description = dto.description;
     if (dto.status !== undefined) data.status = dto.status;
@@ -465,9 +494,11 @@ export class ProjectsService {
       `${contact?.firstName ?? ''} ${contact?.lastName ?? ''}`.trim() ||
       'Klant';
 
-    return this.prisma.$transaction(async (tx) => {
-      const projectNumber = await this.generateProjectNumber(quote.orgId, tx);
-
+    return this.numbering.runWithGeneratedNumber(
+      'PROJECT',
+      quote.orgId,
+      { loadContext: () => this.numberingContext(quote.contactId, quote.locationId) },
+      async (tx, projectNumber) => {
       const project = await tx.project.create({
         data: {
           orgId: quote.orgId,
@@ -496,7 +527,8 @@ export class ProjectsService {
 
       this.logger.log(`Project ${projectNumber} auto-created for quote ${quote.quoteNumber}`);
       return project.id;
-    });
+      },
+    );
   }
 
   // ─── Auto-creation from request ───────────────────────────
@@ -511,16 +543,18 @@ export class ProjectsService {
       }),
       'Aanvraag',
     );
-    this.checkOrgAccess(user, request.orgId);
+    assertOrgAccess(user, request.orgId);
     if (request.projectId) throw new BadRequestException('Aanvraag is al gekoppeld aan een project');
 
     const contactName = request.contact?.companyName ||
       `${request.contact?.firstName ?? ''} ${request.contact?.lastName ?? ''}`.trim() ||
       'Klant';
 
-    return this.prisma.$transaction(async (tx) => {
-      const projectNumber = await this.generateProjectNumber(request.orgId, tx);
-
+    return this.numbering.runWithGeneratedNumber(
+      'PROJECT',
+      request.orgId,
+      { loadContext: () => this.numberingContext(request.contactId, request.locationId) },
+      async (tx, projectNumber) => {
       const project = await tx.project.create({
         data: {
           orgId: request.orgId,
@@ -544,7 +578,8 @@ export class ProjectsService {
       await this.cascadeProjectIdDown(project.id, tx);
 
       return project;
-    });
+      },
+    );
   }
 
   // ─── Follower cascade to planning ─────────────────────────

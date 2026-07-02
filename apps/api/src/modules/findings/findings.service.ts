@@ -14,8 +14,9 @@ import {
 } from '@nestjs/common';
 import { User, Prisma } from '@prisma/client';
 import { PrismaService } from '@/prisma';
-import { orgScope, assertFound, STATUS_OPEN, STATUS_RESOLVED } from '@/common';
+import { orgScope, assertFound, requireOrg, STATUS_OPEN, STATUS_RESOLVED } from '@/common';
 import { LookupService, LOOKUP_KIND } from '../lookups/lookup.service';
+import { AssetNodesService } from '../asset-nodes/asset-nodes.service';
 import { CreateFindingDto, UpdateFindingDto } from './dto';
 
 @Injectable()
@@ -23,12 +24,8 @@ export class FindingsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly lookups: LookupService,
+    private readonly assetNodes: AssetNodesService,
   ) {}
-
-  private requireOrg(user: User): string {
-    if (!user.orgId) throw new BadRequestException('Selecteer eerst een organisatie');
-    return user.orgId;
-  }
 
   private async assertStatus(code: string | undefined, orgId: string): Promise<void> {
     if (!code) return;
@@ -36,21 +33,24 @@ export class FindingsService {
     if (!row) throw new BadRequestException(`Onbekende constatering-status: ${code}`);
   }
 
-  private async getAssetInOrg(assetId: string, user: User) {
+  /** Org-scope de asset-node; cross-tenant of onbekend → 404. */
+  private async getAssetNodeInOrg(assetNodeId: string, user: User) {
     return assertFound(
-      await this.prisma.asset.findFirst({ where: { id: assetId, ...orgScope(user), deletedAt: null } }),
-      'Asset',
+      await this.prisma.assetNode.findFirst({
+        where: { id: assetNodeId, ...orgScope(user), deletedAt: null },
+      }),
+      'Asset-node',
     );
   }
 
-  async findAllByAsset(assetId: string, user: User) {
-    await this.getAssetInOrg(assetId, user);
+  async findAllByAsset(assetNodeId: string, user: User) {
+    await this.getAssetNodeInOrg(assetNodeId, user);
 
     const findings = await this.prisma.finding.findMany({
-      where: { assetId, deletedAt: null },
+      where: { assetNodeId, deletedAt: null },
       orderBy: { createdAt: 'desc' },
       select: {
-        id: true, assetId: true, inspectionType: true, findingTemplateId: true,
+        id: true, assetNodeId: true, inspectionPlanId: true, inspectionType: true, findingTemplateId: true,
         shortDescription: true, longDescription: true, classificationValues: true,
         locationDescription: true, recommendation: true, recommendationCustom: true,
         normReference: true, statusCode: true, resolvedAt: true, resolutionNotes: true,
@@ -102,7 +102,7 @@ export class FindingsService {
       await this.prisma.finding.findFirst({
         where: { id, ...orgScope(user), deletedAt: null },
         include: {
-          asset: { select: { id: true, name: true, assetType: true } },
+          assetNode: { select: { id: true, name: true, typeCode: true } },
           findingTemplate: {
             select: {
               id: true, code: true, shortDescription: true, longDescription: true,
@@ -131,27 +131,36 @@ export class FindingsService {
     return { ...finding, createdByUser, resolvedByUser };
   }
 
-  async create(assetId: string, user: User, dto: CreateFindingDto, deviceId?: string) {
-    this.requireOrg(user);
-    const asset = await this.getAssetInOrg(assetId, user);
+  async create(assetNodeId: string, user: User, dto: CreateFindingDto, deviceId?: string) {
+    const orgId = requireOrg(user);
 
-    // FK's binnen dezelfde asset / org
+    // Plan binnen de org + de asset-node binnen de boom van dit plan (rootLocationId === plan.locationId).
+    const plan = assertFound(
+      await this.prisma.inspectionPlan.findFirst({
+        where: { id: dto.inspectionPlanId, ...orgScope(user), deletedAt: null },
+        select: { id: true, orgId: true, locationId: true },
+      }),
+      'Inspectieplan',
+    );
+    await this.assetNodes.assertNodeInPlanTree(assetNodeId, plan);
+
+    // FK's binnen dezelfde asset-node / org
     if (dto.visualInspectionId) {
       assertFound(
-        await this.prisma.visualInspection.findFirst({ where: { id: dto.visualInspectionId, assetId } }),
+        await this.prisma.visualInspection.findFirst({ where: { id: dto.visualInspectionId, assetNodeId } }),
         'Visuele inspectie',
       );
     }
     if (dto.measurementRecordId) {
       assertFound(
-        await this.prisma.measurementRecord.findFirst({ where: { id: dto.measurementRecordId, assetId } }),
+        await this.prisma.measurementRecord.findFirst({ where: { id: dto.measurementRecordId, assetNodeId } }),
         'Meting',
       );
     }
     if (dto.findingTemplateId) {
       assertFound(
         await this.prisma.findingTemplate.findFirst({
-          where: { id: dto.findingTemplateId, OR: [{ orgId: asset.orgId }, { orgId: null, isSystem: true }] },
+          where: { id: dto.findingTemplateId, OR: [{ orgId }, { orgId: null, isSystem: true }] },
         }),
         'Constatering-template',
       );
@@ -159,8 +168,9 @@ export class FindingsService {
 
     return this.prisma.finding.create({
       data: {
-        orgId: asset.orgId,
-        assetId,
+        orgId,
+        assetNodeId,
+        inspectionPlanId: plan.id,
         inspectionType: dto.inspectionType,
         visualInspectionId: dto.visualInspectionId,
         measurementRecordId: dto.measurementRecordId,
@@ -182,7 +192,7 @@ export class FindingsService {
   }
 
   async update(id: string, user: User, dto: UpdateFindingDto) {
-    const orgId = this.requireOrg(user);
+    const orgId = requireOrg(user);
     const finding = assertFound(
       await this.prisma.finding.findFirst({ where: { id, ...orgScope(user), deletedAt: null } }),
       'Constatering',
@@ -214,7 +224,7 @@ export class FindingsService {
   }
 
   async delete(id: string, user: User) {
-    this.requireOrg(user);
+    requireOrg(user);
     const finding = assertFound(
       await this.prisma.finding.findFirst({ where: { id, ...orgScope(user), deletedAt: null } }),
       'Constatering',

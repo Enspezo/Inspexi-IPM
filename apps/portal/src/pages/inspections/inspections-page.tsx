@@ -4,15 +4,19 @@
 // dynamisch uit useLookups. Dit patroon herhaalt voor alle inspectie-overzichten.
 
 import { useState, useCallback, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import type { InspectionPlan } from '@/types';
-import { ErrorBox, Spinner, Table, Input, Select, Button } from '@/components/ui';
+import { Role, type InspectionPlan } from '@/types';
+import { ErrorBox, Spinner, Table, Input, Select, Button, ActionMenu } from '@/components/ui';
 import { LookupBadge } from '@/components/ui/lookup-badge';
 import { DetailPageLayout } from '@/components/layout/detail-page-layout';
 import { PageHeader } from '@/components/layout/page-header';
 import { TableConfigSidebar, useTableConfig, type ColumnDef } from '@/components/table-config';
 import { useLookups } from '@/lib/lookups';
+import { useAuth } from '@/providers/auth-provider';
+import { useWindowTabs } from '@/providers/window-tabs';
 import { useInspectionPlans } from './hooks/use-inspections';
+import { CreateInspectionModal } from './components/create-inspection-modal';
+
+const canWriteRoles = [Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE, Role.WERKVOORBEREIDER];
 
 function contactName(plan: InspectionPlan): string {
   const c = plan.contact;
@@ -21,10 +25,14 @@ function contactName(plan: InspectionPlan): string {
 }
 
 export default function InspectionsPage() {
-  const navigate = useNavigate();
+  const { openTab } = useWindowTabs();
+  const { user } = useAuth();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [page, setPage] = useState(1);
+  const [isCreateOpen, setIsCreateOpen] = useState(false);
+
+  const userCanWrite = !!user && user.roles.some((r) => canWriteRoles.includes(r));
 
   // Filteropties dynamisch uit de plan-status lookup (systeemdefaults + org-overrides)
   const { data: planStatuses } = useLookups('plan-status-types');
@@ -43,7 +51,19 @@ export default function InspectionsPage() {
       key: 'projectName', header: 'Project', pinned: true, sortable: true, sortKey: 'projectName',
       render: (p) => (
         <button
-          onClick={() => navigate(`/inspections/${p.id}`)}
+          // Opens the inspectie as an in-window tab. ⌘/Ctrl- or middle-click
+          // opens it in the background without switching away from the list.
+          onClick={(e) =>
+            openTab('inspection', p.id, p.projectName, {
+              background: e.metaKey || e.ctrlKey,
+            })
+          }
+          onMouseDown={(e) => {
+            if (e.button === 1) {
+              e.preventDefault();
+              openTab('inspection', p.id, p.projectName, { background: true });
+            }
+          }}
           className="font-medium text-primary-600 hover:text-primary-800 hover:underline"
         >
           {p.projectName}
@@ -118,7 +138,27 @@ export default function InspectionsPage() {
       }
     >
       <div className="space-y-6">
-        <PageHeader title="Inspecties" description="Inspectieplannen volgen en beoordelen" />
+        <PageHeader
+          title="Inspecties"
+          description="Inspectieplannen volgen en beoordelen"
+          actions={
+            userCanWrite ? (
+              <ActionMenu
+                secondaryActions={[
+                  {
+                    label: 'Inspectie aanmaken',
+                    icon: (
+                      <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                      </svg>
+                    ),
+                    onClick: () => setIsCreateOpen(true),
+                  },
+                ]}
+              />
+            ) : undefined
+          }
+        />
 
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
           <div className="flex-1">
@@ -155,6 +195,10 @@ export default function InspectionsPage() {
           <p className="text-sm text-gray-500">{total} {total !== 1 ? 'inspecties' : 'inspectie'}</p>
         )}
       </div>
+
+      {isCreateOpen && (
+        <CreateInspectionModal isOpen={isCreateOpen} onClose={() => setIsCreateOpen(false)} />
+      )}
     </DetailPageLayout>
   );
 }

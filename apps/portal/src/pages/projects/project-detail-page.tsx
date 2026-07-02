@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import {
   TaskEntityType,
@@ -10,8 +10,11 @@ import {
 import { ActionMenu, Button, Spinner, StatusBadge, Modal, Tabs } from '@/components/ui';
 import { PROJECT_STATUS } from '@/lib/status';
 import { DetailPageLayout, SidebarSection } from '@/components/layout/detail-page-layout';
+import { FavoriteStar } from '@/components/favorites/favorite-star';
+import { StartChatButton } from '@/components/chat';
 import { NotesSidebarSection, HistorySidebarSection, DocumentsSidebarSection } from '@/components/layout/sidebar-sections';
 import { useAuth } from '@/providers/auth-provider';
+import { useWindowTabSync } from '@/providers/window-tabs';
 import { useToast } from '@/components/ui';
 import {
   useProject,
@@ -36,8 +39,8 @@ import { OverviewTab } from './components/project-overview-tab';
 import { LinkedEntitiesTab } from './components/project-linked-entities-tab';
 import { FollowersTab } from './components/project-followers-tab';
 import { AddFollowerModal } from './components/add-follower-modal';
-import { apiClient, getErrorMessage } from '@/lib/api-client';
-import { useEffect } from 'react';
+import { getErrorMessage } from '@/lib/api-client';
+import { useUsers } from '@/pages/users/hooks/use-users';
 
 // ─── Constants ─────────────────────────────────────────────
 
@@ -84,6 +87,12 @@ export default function ProjectDetailPage() {
   const updateMutation = useUpdateProject(id!);
   const deleteMutation = useDeleteProject(id!);
 
+  // Keep this record's in-window tab title fresh, and flag it if the record 404s.
+  useWindowTabSync('project', id, {
+    title: project?.projectNumber,
+    notFound: !isLoading && (!!error || !project),
+  });
+
   const { data: requests } = useProjectRequests(id!);
   const { data: quotes } = useProjectQuotes(id!);
   const { data: planning } = useProjectPlanning(id!);
@@ -100,22 +109,16 @@ export default function ProjectDetailPage() {
   const updateFollowerMutation = useUpdateProjectFollower(id!);
   const removeFollowerMutation = useRemoveProjectFollower(id!);
 
-  // Users for PM dropdown
-  const [users, setUsers] = useState<{ value: string; label: string }[]>([]);
-  useEffect(() => {
-    apiClient
-      .get<any[]>('/users')
-      .then((res) => {
-        const list = Array.isArray(res) ? res : (res as any).data ?? [];
-        setUsers(
-          list.map((u: any) => ({
-            value: u.id,
-            label: `${u.firstName} ${u.lastName}`,
-          })),
-        );
-      })
-      .catch(() => {});
-  }, []);
+  // Users for PM dropdown — shared TanStack cache (deduped across components)
+  const { data: allUsers } = useUsers();
+  const users = useMemo(
+    () =>
+      (allUsers ?? []).map((u) => ({
+        value: u.id,
+        label: `${u.firstName} ${u.lastName}`,
+      })),
+    [allUsers],
+  );
 
   const userCanWrite = user?.roles.some((r) => canWrite.includes(r));
   const tasks = tasksData?.data || [];
@@ -301,6 +304,7 @@ export default function ProjectDetailPage() {
                 <span className="text-sm text-gray-400">/</span>
               </div>
               <div className="flex items-center gap-3">
+                <FavoriteStar entityType="Project" entityId={project.id} />
                 <h1 className="text-2xl font-bold text-gray-900">
                   {project.projectNumber}
                 </h1>
@@ -308,7 +312,9 @@ export default function ProjectDetailPage() {
               </div>
               <p className="mt-1 text-gray-600">{project.title}</p>
             </div>
-            {userCanWrite && (
+            <div className="flex items-center gap-2">
+              <StartChatButton entityType="Project" entityId={project.id} label={project.title} />
+              {userCanWrite && (
               <ActionMenu
                 primaryActions={[
                   {
@@ -325,7 +331,8 @@ export default function ProjectDetailPage() {
                   },
                 ]}
               />
-            )}
+              )}
+            </div>
           </div>
 
           {/* Tabs */}

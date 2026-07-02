@@ -11,61 +11,37 @@ import {
   type ColumnDef,
 } from '@/components/table-config';
 import {
+  NOTIFICATION_MODELS,
+  getNotificationRoute,
+  getTypeLabel,
+  getTypesForModel,
+  type NotificationModel,
+} from '@/lib/notifications';
+import {
   useNotifications,
   useMarkRead,
   useMarkAllRead,
   useUnreadCount,
 } from './hooks/use-notifications';
 
-const typeLabels: Record<string, string> = {
-  [NotificationType.OFFERTE_TER_GOEDKEURING]: 'Offerte ter goedkeuring',
-  [NotificationType.OFFERTE_GOEDGEKEURD]: 'Offerte goedgekeurd',
-  [NotificationType.OFFERTE_AFGEWEZEN]: 'Offerte afgewezen',
-  [NotificationType.OFFERTE_VERSTUURD]: 'Offerte verstuurd',
-  [NotificationType.OFFERTE_BEKEKEN]: 'Offerte bekeken',
-  [NotificationType.OFFERTE_ONDERTEKEND]: 'Offerte ondertekend',
-  [NotificationType.OFFERTE_VERLOPEN]: 'Offerte verlopen',
-  [NotificationType.NIEUWE_VRAAG_KLANT]: 'Nieuwe vraag klant',
-  [NotificationType.ANTWOORD_OP_VRAAG]: 'Antwoord op vraag',
-  [NotificationType.AANVRAAG_TOEGEWEZEN]: 'Aanvraag toegewezen',
-  [NotificationType.AANVRAAG_STATUS_GEWIJZIGD]: 'Aanvraag status gewijzigd',
-  [NotificationType.TAAK_TOEGEWEZEN]: 'Taak toegewezen',
-  [NotificationType.TAAK_STATUS_GEWIJZIGD]: 'Taakstatus gewijzigd',
-  [NotificationType.DOCUMENT_GEUPLOAD]: 'Document geüpload',
-  // Planning
-  [NotificationType.AFSPRAAK_ACCEPTATIE_VERZOEK]: 'Afspraak: acceptatieverzoek',
-  [NotificationType.AFSPRAAK_GEACCEPTEERD]: 'Afspraak geaccepteerd',
-  [NotificationType.AFSPRAAK_GEWEIGERD]: 'Afspraak geweigerd',
-  [NotificationType.AFSPRAAK_VERPLAATST]: 'Afspraak verplaatst',
-  [NotificationType.AFSPRAAK_VERZETTEN_VERZOEK]: 'Afspraak: verzetten verzoek',
-  [NotificationType.AFSPRAAK_BEVESTIGING_VERSTUURD]: 'Afspraak bevestigd',
-};
-
-const typeFilterOptions = [
-  { value: '', label: 'Alle types' },
-  ...Object.values(NotificationType).map((t) => ({
-    value: t,
-    label: typeLabels[t] || t,
-  })),
+const modelFilterOptions = [
+  { value: '', label: 'Alle modellen' },
+  ...NOTIFICATION_MODELS.map((m) => ({ value: m.key, label: m.label })),
 ];
+
+const allTypeFilterOptions = Object.values(NotificationType).map((t) => ({
+  value: t,
+  label: getTypeLabel(t),
+}));
 
 const readFilterOptions = [
   { value: '', label: 'Alle notificaties' },
   { value: 'true', label: 'Alleen ongelezen' },
 ];
 
-function getEntityRoute(notif: Notification): string | null {
-  if (!notif.entityType || !notif.entityId) return null;
-  if (notif.entityType === 'quote') return `/quotes/${notif.entityId}`;
-  if (notif.entityType === 'request') return `/requests/${notif.entityId}`;
-  if (notif.entityType === 'task') return `/tasks/${notif.entityId}`;
-  if (notif.entityType === 'document') return `/documents`;
-  if (notif.entityType === 'planningItem') return `/planning/${notif.entityId}`;
-  return null;
-}
-
 export default function NotificationsPage() {
   const navigate = useNavigate();
+  const [modelFilter, setModelFilter] = useState('');
   const [typeFilter, setTypeFilter] = useState('');
   const [unreadFilter, setUnreadFilter] = useState('');
   const [page, setPage] = useState(1);
@@ -74,7 +50,19 @@ export default function NotificationsPage() {
   const markRead = useMarkRead();
   const markAllRead = useMarkAllRead();
 
+  // Type-opties hangen af van het gekozen model (cascade).
+  const typeFilterOptions = [
+    { value: '', label: 'Alle types' },
+    ...(modelFilter
+      ? getTypesForModel(modelFilter as NotificationModel).map((t) => ({
+          value: t,
+          label: getTypeLabel(t),
+        }))
+      : allTypeFilterOptions),
+  ];
+
   const { data, isLoading, error } = useNotifications({
+    model: (modelFilter as NotificationModel) || undefined,
     type: (typeFilter as NotificationType) || undefined,
     unread: unreadFilter === 'true' ? true : undefined,
     page,
@@ -86,7 +74,7 @@ export default function NotificationsPage() {
       if (!notif.isRead) {
         markRead.mutate(notif.id);
       }
-      const route = getEntityRoute(notif);
+      const route = getNotificationRoute(notif);
       if (route) navigate(route);
     },
     [markRead, navigate],
@@ -111,12 +99,12 @@ export default function NotificationsPage() {
       header: 'Type',
       filterable: true,
       filterType: 'select',
-      filterOptions: typeFilterOptions.filter((o) => o.value !== ''),
+      filterOptions: allTypeFilterOptions,
       groupable: true,
       getFilterValue: (notif) => notif.type,
       render: (notif) => (
         <span className="text-xs text-gray-500">
-          {typeLabels[notif.type] || notif.type}
+          {getTypeLabel(notif.type)}
         </span>
       ),
     },
@@ -252,8 +240,19 @@ export default function NotificationsPage() {
         }
       />
 
-      {/* Filters */}
+      {/* Cascaderende filter: model → type */}
       <div className="flex flex-col gap-4 sm:flex-row">
+        <div className="w-64">
+          <Select
+            options={modelFilterOptions}
+            value={modelFilter}
+            onChange={(e) => {
+              setModelFilter(e.target.value);
+              setTypeFilter(''); // reset type bij modelwissel
+              setPage(1);
+            }}
+          />
+        </div>
         <div className="w-64">
           <Select
             options={typeFilterOptions}

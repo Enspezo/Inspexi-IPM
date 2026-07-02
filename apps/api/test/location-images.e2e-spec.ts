@@ -8,6 +8,11 @@ import bcrypt from 'bcrypt';
 
 // NB: deze suite vereist STORAGE_DRIVER=local (default LocalStorageProvider →
 // schrijft naar ./uploads). Dat werkt in de testomgeving.
+//
+// AssetNode-boom: de `:locationId` padparameter is een LOCATION-node-id (een
+// AssetNode met nodeType LOCATION), niet meer een CRM-Location. LocationImage
+// hangt 1:1 onder die node (LocationImage.nodeId @unique); markers verwijzen via
+// LocationImageMarker.assetNodeId / findingId.
 describe('LocationImages (e2e)', () => {
   let app: INestApplication;
   let prisma: PrismaService;
@@ -19,8 +24,9 @@ describe('LocationImages (e2e)', () => {
   let testPlanId: string;
   let testAssetTypeId: string;
   let testLocationTypeId: string;
-  let testLocationId: string;
-  let testAssetId: string;
+  let testCrmLocationId: string;
+  let testLocationNodeId: string; // LOCATION-node = `:locationId` padparameter
+  let testAssetId: string; // ASSET-node onder de LOCATION-node (voor markers)
   let accessToken: string;
 
   let imageId: string;
@@ -85,10 +91,25 @@ describe('LocationImages (e2e)', () => {
     });
     testNormTypeId = normType.id;
 
+    // CRM-Locatie = hoofdlocatie / boom-wortel van de AssetNode-boom.
+    const crmLocation = await prisma.location.create({
+      data: {
+        orgId: org.id,
+        contactId: contact.id,
+        name: 'E2E LocImg Locatie',
+        street: 'Teststraat',
+        houseNumber: '1',
+        postalCode: '1000AA',
+        city: 'Teststad',
+      },
+    });
+    testCrmLocationId = crmLocation.id;
+
     const plan = await prisma.inspectionPlan.create({
       data: {
         orgId: org.id,
         contactId: contact.id,
+        locationId: crmLocation.id,
         projectName: 'E2E LocImg Plan',
         normTypeCode: 'e2elinorm',
         createdBy: user.id,
@@ -106,23 +127,39 @@ describe('LocationImages (e2e)', () => {
     });
     testLocationTypeId = locationType.id;
 
-    const location = await prisma.inspectionLocation.create({
+    // Wortel-LOCATION-node (1:1 met de CRM-Locatie). Dit is de `:locationId` die
+    // de image- en marker-endpoints verwachten. PARENT BEFORE CHILD.
+    const locationNode = await prisma.assetNode.create({
       data: {
         orgId: org.id,
-        inspectionPlanId: plan.id,
-        locationType: 'e2eliruimte',
+        nodeType: 'LOCATION',
+        rootLocationId: crmLocation.id,
+        typeCode: 'e2eliruimte',
         name: 'Meterkast',
         createdBy: user.id,
       },
     });
-    testLocationId = location.id;
+    testLocationNodeId = locationNode.id;
 
-    // Seed an asset (for quick-finding which needs an existing assetId).
-    const asset = await prisma.asset.create({
+    // De LOCATION-node in scope van het plan brengen, zodat snelacties
+    // (quick-asset/-finding/-measurement) een plan-id kunnen resolven.
+    await prisma.inspectionPlanLocation.create({
       data: {
         orgId: org.id,
         inspectionPlanId: plan.id,
-        assetType: 'e2elikast',
+        assetNodeId: locationNode.id,
+        isPrimary: true,
+      },
+    });
+
+    // ASSET-node onder de LOCATION-node (voor quick-finding die een bestaande
+    // assetId nodig heeft).
+    const asset = await prisma.assetNode.create({
+      data: {
+        orgId: org.id,
+        nodeType: 'ASSET',
+        parentId: locationNode.id,
+        typeCode: 'e2elikast',
         name: 'Bestaande kast',
         createdBy: user.id,
       },
@@ -141,18 +178,24 @@ describe('LocationImages (e2e)', () => {
       if (imageId) {
         await prisma.locationImageMarker.deleteMany({ where: { locationImageId: imageId } });
       }
-      await prisma.locationImage.deleteMany({ where: { locationId: testLocationId } });
+      await prisma.locationImage.deleteMany({ where: { nodeId: testLocationNodeId } });
       await prisma.standaloneMeasurement.deleteMany({
         where: { id: { in: createdMeasurementIds } },
       });
       await prisma.finding.deleteMany({ where: { id: { in: createdFindingIds } } });
-      await prisma.asset.deleteMany({ where: { id: { in: [...createdAssetIds, testAssetId] } } });
-      await prisma.inspectionLocation.deleteMany({ where: { id: testLocationId } });
+      // AssetNode.parentId is SET NULL, dus een enkele deleteMany ruimt de hele
+      // boom op (wortel-LOCATION + ASSET-nodes, incl. quick-created assets).
+      await prisma.inspectionPlanLocation.deleteMany({ where: { orgId: testOrgId } });
+      await prisma.assetNode.deleteMany({ where: { orgId: testOrgId } });
       await prisma.locationTypeDefinition.deleteMany({ where: { id: testLocationTypeId } });
       await prisma.assetTypeDefinition.deleteMany({ where: { id: testAssetTypeId } });
       await prisma.inspectionPlan.deleteMany({ where: { id: testPlanId } });
       await prisma.normTypeDefinition.deleteMany({ where: { id: testNormTypeId } });
+      await prisma.location.deleteMany({ where: { id: testCrmLocationId } });
       await prisma.contact.deleteMany({ where: { id: testContactId } });
+      // Node-create auto-provisioneert numbering-schemas (+counters) voor de org.
+      await prisma.numberingCounter.deleteMany({ where: { scheme: { orgId: testOrgId } } });
+      await prisma.numberingScheme.deleteMany({ where: { orgId: testOrgId } });
       await prisma.auditLog.deleteMany({ where: { userId: testUserId } });
       await prisma.refreshToken.deleteMany({ where: { userId: testUserId } });
       await prisma.user.deleteMany({ where: { id: testUserId } });
@@ -165,28 +208,28 @@ describe('LocationImages (e2e)', () => {
   describe('POST /api/v1/locations/:locationId/image', () => {
     it('uploads an image for the location', async () => {
       const res = await request(app.getHttpServer())
-        .post(`/api/v1/locations/${testLocationId}/image`)
+        .post(`/api/v1/locations/${testLocationNodeId}/image`)
         .set('Authorization', `Bearer ${accessToken}`)
         .attach('file', pngBuffer, { filename: 'plan.png', contentType: 'image/png' })
         .expect(201);
 
       expect(res.body.success).toBe(true);
       expect(res.body.data.id).toBeDefined();
-      expect(res.body.data.locationId).toBe(testLocationId);
+      expect(res.body.data.nodeId).toBe(testLocationNodeId);
       expect(res.body.data.storagePath).toMatch(new RegExp(`^${testOrgId}/`));
       imageId = res.body.data.id;
     });
 
     it('returns 401 without authentication', async () => {
       await request(app.getHttpServer())
-        .post(`/api/v1/locations/${testLocationId}/image`)
+        .post(`/api/v1/locations/${testLocationNodeId}/image`)
         .attach('file', pngBuffer, { filename: 'plan.png', contentType: 'image/png' })
         .expect(401);
     });
 
     it('rejects a non-image file (422)', async () => {
       await request(app.getHttpServer())
-        .post(`/api/v1/locations/${testLocationId}/image`)
+        .post(`/api/v1/locations/${testLocationNodeId}/image`)
         .set('Authorization', `Bearer ${accessToken}`)
         .attach('file', Buffer.from('not an image'), {
           filename: 'note.txt',
@@ -207,7 +250,7 @@ describe('LocationImages (e2e)', () => {
   describe('GET /api/v1/locations/:locationId/image', () => {
     it('returns the image with markers', async () => {
       const res = await request(app.getHttpServer())
-        .get(`/api/v1/locations/${testLocationId}/image`)
+        .get(`/api/v1/locations/${testLocationNodeId}/image`)
         .set('Authorization', `Bearer ${accessToken}`)
         .expect(200);
 
@@ -220,7 +263,7 @@ describe('LocationImages (e2e)', () => {
   describe('GET /api/v1/locations/:locationId/image/file', () => {
     it('streams the raw image bytes inline', async () => {
       const res = await request(app.getHttpServer())
-        .get(`/api/v1/locations/${testLocationId}/image/file`)
+        .get(`/api/v1/locations/${testLocationNodeId}/image/file`)
         .set('Authorization', `Bearer ${accessToken}`)
         .expect(200);
 
@@ -246,7 +289,7 @@ describe('LocationImages (e2e)', () => {
 
       expect(res.body.success).toBe(true);
       expect(res.body.data.markerType).toBe('ASSET');
-      expect(res.body.data.assetId).toBe(testAssetId);
+      expect(res.body.data.assetNodeId).toBe(testAssetId);
       createdMarkerIds.push(res.body.data.id);
     });
 
@@ -284,7 +327,7 @@ describe('LocationImages (e2e)', () => {
       expect(res.body.success).toBe(true);
       expect(res.body.data.asset.id).toBeDefined();
       expect(res.body.data.marker.markerType).toBe('ASSET');
-      expect(res.body.data.marker.assetId).toBe(res.body.data.asset.id);
+      expect(res.body.data.marker.assetNodeId).toBe(res.body.data.asset.id);
       createdAssetIds.push(res.body.data.asset.id);
       createdMarkerIds.push(res.body.data.marker.id);
     });
@@ -356,7 +399,7 @@ describe('LocationImages (e2e)', () => {
   describe('DELETE /api/v1/locations/:locationId/image', () => {
     it('deletes the image (markers cascade) and then GET returns 404', async () => {
       await request(app.getHttpServer())
-        .delete(`/api/v1/locations/${testLocationId}/image`)
+        .delete(`/api/v1/locations/${testLocationNodeId}/image`)
         .set('Authorization', `Bearer ${accessToken}`)
         .expect(200);
 
@@ -365,7 +408,7 @@ describe('LocationImages (e2e)', () => {
       imageId = '';
 
       await request(app.getHttpServer())
-        .get(`/api/v1/locations/${testLocationId}/image`)
+        .get(`/api/v1/locations/${testLocationNodeId}/image`)
         .set('Authorization', `Bearer ${accessToken}`)
         .expect(404);
     });

@@ -10,8 +10,9 @@ import {
   Query,
   ParseUUIDPipe,
 } from '@nestjs/common';
+import { RequiresFeature } from '@/common/decorators/requires-feature.decorator';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
-import { User } from '@prisma/client';
+import { User, LocationTypeScope } from '@prisma/client';
 import { Roles, CurrentUser } from '@/common/decorators';
 import { ALL_STAFF, ORG_ADMINS } from '@/common/auth/roles';
 import { LocationTypesService } from './location-types.service';
@@ -28,8 +29,16 @@ import {
 const READ_ROLES = ALL_STAFF;
 const WRITE_ROLES = ORG_ADMINS;
 
+/** Parse de optionele `scope` query-param naar een geldige enum-waarde (anders undefined). */
+function parseScope(scope?: string): LocationTypeScope | undefined {
+  return scope && scope in LocationTypeScope
+    ? (scope as LocationTypeScope)
+    : undefined;
+}
+
 @ApiTags('location-types')
 @ApiBearerAuth()
+@RequiresFeature('BASIS_INSPECTIES')
 @Controller('location-types')
 export class LocationTypesController {
   constructor(private readonly service: LocationTypesService) {}
@@ -37,15 +46,29 @@ export class LocationTypesController {
   @Get()
   @Roles(...READ_ROLES)
   @ApiOperation({ summary: 'Locatie-types (systeem + org)' })
-  async findAll(@CurrentUser() user: User, @Query('normType') normType?: string) {
-    return { success: true, data: await this.service.findAll(user, { normType }) };
+  async findAll(
+    @CurrentUser() user: User,
+    @Query('normType') normType?: string,
+    @Query('scope') scope?: string,
+  ) {
+    return {
+      success: true,
+      data: await this.service.findAll(user, { normType, scope: parseScope(scope) }),
+    };
   }
 
   @Get('merged')
   @Roles(...READ_ROLES)
   @ApiOperation({ summary: 'Gemergede locatie-types (org overschrijft systeem op code)' })
-  async getMerged(@CurrentUser() user: User, @Query('normType') normType?: string) {
-    return { success: true, data: await this.service.getMergedLocationTypes(user, normType) };
+  async getMerged(
+    @CurrentUser() user: User,
+    @Query('normType') normType?: string,
+    @Query('scope') scope?: string,
+  ) {
+    return {
+      success: true,
+      data: await this.service.getMergedLocationTypes(user, normType, parseScope(scope)),
+    };
   }
 
   @Get('code/:code')

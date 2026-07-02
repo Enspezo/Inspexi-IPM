@@ -3,6 +3,7 @@ import { NotFoundException, ForbiddenException, BadRequestException } from '@nes
 import { Role, InspectionExecStatus } from '@prisma/client';
 import { VisualInspectionsService } from './visual-inspections.service';
 import { PrismaService } from '@/prisma';
+import { AssetNodesService } from '../asset-nodes/asset-nodes.service';
 
 describe('VisualInspectionsService', () => {
   let service: VisualInspectionsService;
@@ -15,8 +16,13 @@ describe('VisualInspectionsService', () => {
       update: jest.fn(),
       delete: jest.fn(),
     },
-    asset: { findFirst: jest.fn() },
+    assetNode: { findFirst: jest.fn() },
+    inspectionPlan: { findFirst: jest.fn() },
     user: { findUnique: jest.fn(), findMany: jest.fn() },
+  };
+
+  const mockAssetNodesService = {
+    assertNodeInPlanTree: jest.fn(),
   };
 
   const mockUser = {
@@ -26,6 +32,9 @@ describe('VisualInspectionsService', () => {
     roles: [Role.ORG_ADMIN],
   } as any;
 
+  const createDto = (overrides: Record<string, unknown> = {}) =>
+    ({ inspectionPlanId: 'plan-1', ...overrides }) as any;
+
   beforeEach(async () => {
     jest.clearAllMocks();
 
@@ -33,42 +42,53 @@ describe('VisualInspectionsService', () => {
       providers: [
         VisualInspectionsService,
         { provide: PrismaService, useValue: mockPrismaService },
+        { provide: AssetNodesService, useValue: mockAssetNodesService },
       ],
     }).compile();
 
     service = module.get<VisualInspectionsService>(VisualInspectionsService);
+
+    mockAssetNodesService.assertNodeInPlanTree.mockResolvedValue({
+      id: 'node-1',
+      orgId: 'org-1',
+      nodeType: 'ASSET',
+    });
+    mockPrismaService.inspectionPlan.findFirst.mockResolvedValue({
+      id: 'plan-1',
+      orgId: 'org-1',
+      locationId: 'loc-1',
+    });
   });
 
-  describe('getAssetInOrg (via findAllByAsset)', () => {
-    it('should throw NotFoundException with NL message when asset not in org', async () => {
-      mockPrismaService.asset.findFirst.mockResolvedValue(null);
+  describe('getAssetNodeInOrg (via findAllByAsset)', () => {
+    it('should throw NotFoundException with NL message when asset-node not in org', async () => {
+      mockPrismaService.assetNode.findFirst.mockResolvedValue(null);
 
-      await expect(service.findAllByAsset('asset-x', mockUser)).rejects.toThrow(
+      await expect(service.findAllByAsset('node-x', mockUser)).rejects.toThrow(
         NotFoundException,
       );
-      await expect(service.findAllByAsset('asset-x', mockUser)).rejects.toThrow(
-        'Asset niet gevonden',
+      await expect(service.findAllByAsset('node-x', mockUser)).rejects.toThrow(
+        'Asset-node niet gevonden',
       );
     });
 
-    it('should org-scope the asset lookup', async () => {
-      mockPrismaService.asset.findFirst.mockResolvedValue({ id: 'asset-1', orgId: 'org-1' });
+    it('should org-scope the asset-node lookup', async () => {
+      mockPrismaService.assetNode.findFirst.mockResolvedValue({ id: 'node-1', orgId: 'org-1' });
       mockPrismaService.visualInspection.findMany.mockResolvedValue([]);
 
-      await service.findAllByAsset('asset-1', mockUser);
+      await service.findAllByAsset('node-1', mockUser);
 
-      expect(mockPrismaService.asset.findFirst).toHaveBeenCalledWith({
-        where: { id: 'asset-1', orgId: 'org-1', deletedAt: null },
+      expect(mockPrismaService.assetNode.findFirst).toHaveBeenCalledWith({
+        where: { id: 'node-1', orgId: 'org-1', deletedAt: null },
       });
       expect(mockPrismaService.visualInspection.findMany).toHaveBeenCalledWith(
-        expect.objectContaining({ where: { assetId: 'asset-1' } }),
+        expect.objectContaining({ where: { assetNodeId: 'node-1' } }),
       );
     });
   });
 
   describe('create', () => {
-    it('should take orgId from the asset, default status not_started, and capture deviceId', async () => {
-      mockPrismaService.asset.findFirst.mockResolvedValue({ id: 'asset-1', orgId: 'org-1' });
+    it('should take orgId from the user, default status not_started, and capture deviceId', async () => {
       mockPrismaService.visualInspection.create.mockResolvedValue({
         id: 'vi-new',
         status: InspectionExecStatus.not_started,
@@ -76,14 +96,19 @@ describe('VisualInspectionsService', () => {
         createdAt: new Date(),
       });
 
-      const result = await service.create('asset-1', mockUser, {}, 'device-abc');
+      const result = await service.create('node-1', mockUser, createDto(), 'device-abc');
 
       expect(result.status).toBe(InspectionExecStatus.not_started);
+      expect(mockAssetNodesService.assertNodeInPlanTree).toHaveBeenCalledWith(
+        'node-1',
+        expect.objectContaining({ id: 'plan-1' }),
+      );
       expect(mockPrismaService.visualInspection.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
             orgId: 'org-1',
-            assetId: 'asset-1',
+            assetNodeId: 'node-1',
+            inspectionPlanId: 'plan-1',
             status: InspectionExecStatus.not_started,
             checklistResults: [],
             deviceId: 'device-abc',
@@ -92,10 +117,10 @@ describe('VisualInspectionsService', () => {
       );
     });
 
-    it('should throw NotFoundException when asset not in org', async () => {
-      mockPrismaService.asset.findFirst.mockResolvedValue(null);
+    it('should throw NotFoundException when the plan is not in org', async () => {
+      mockPrismaService.inspectionPlan.findFirst.mockResolvedValue(null);
 
-      await expect(service.create('asset-x', mockUser, {})).rejects.toThrow(
+      await expect(service.create('node-1', mockUser, createDto())).rejects.toThrow(
         NotFoundException,
       );
       expect(mockPrismaService.visualInspection.create).not.toHaveBeenCalled();
@@ -104,17 +129,16 @@ describe('VisualInspectionsService', () => {
     it('should throw BadRequestException when user has no org', async () => {
       const superuser = { id: 'su', orgId: null, roles: [Role.SUPERUSER] } as any;
 
-      await expect(service.create('asset-1', superuser, {})).rejects.toThrow(
+      await expect(service.create('node-1', superuser, createDto())).rejects.toThrow(
         BadRequestException,
       );
     });
 
     it('should pass inspectorId through assertSameOrg (same org → ok)', async () => {
-      mockPrismaService.asset.findFirst.mockResolvedValue({ id: 'asset-1', orgId: 'org-1' });
       mockPrismaService.user.findUnique.mockResolvedValue({ orgId: 'org-1' });
       mockPrismaService.visualInspection.create.mockResolvedValue({ id: 'vi-1' });
 
-      await service.create('asset-1', mockUser, { inspectorId: 'inspector-1' });
+      await service.create('node-1', mockUser, createDto({ inspectorId: 'inspector-1' }));
 
       expect(mockPrismaService.user.findUnique).toHaveBeenCalledWith({
         where: { id: 'inspector-1' },
@@ -124,21 +148,19 @@ describe('VisualInspectionsService', () => {
     });
 
     it('should throw ForbiddenException when inspectorId belongs to another org', async () => {
-      mockPrismaService.asset.findFirst.mockResolvedValue({ id: 'asset-1', orgId: 'org-1' });
       mockPrismaService.user.findUnique.mockResolvedValue({ orgId: 'org-2' });
 
       await expect(
-        service.create('asset-1', mockUser, { inspectorId: 'inspector-x' }),
+        service.create('node-1', mockUser, createDto({ inspectorId: 'inspector-x' })),
       ).rejects.toThrow(ForbiddenException);
       expect(mockPrismaService.visualInspection.create).not.toHaveBeenCalled();
     });
 
     it('should throw NotFoundException when inspectorId does not exist', async () => {
-      mockPrismaService.asset.findFirst.mockResolvedValue({ id: 'asset-1', orgId: 'org-1' });
       mockPrismaService.user.findUnique.mockResolvedValue(null);
 
       await expect(
-        service.create('asset-1', mockUser, { inspectorId: 'ghost' }),
+        service.create('node-1', mockUser, createDto({ inspectorId: 'ghost' })),
       ).rejects.toThrow(NotFoundException);
     });
   });

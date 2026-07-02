@@ -9,6 +9,7 @@ import {
   ParseUUIDPipe,
   BadRequestException,
 } from '@nestjs/common';
+import { RequiresFeature } from '@/common/decorators/requires-feature.decorator';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiParam } from '@nestjs/swagger';
 import { User } from '@prisma/client';
 import { ALL_STAFF, ORG_ADMINS } from '@/common/auth/roles';
@@ -18,6 +19,7 @@ import { CreateLookupDto, UpdateLookupDto } from './dto';
 
 @ApiTags('Lookups')
 @ApiBearerAuth()
+@RequiresFeature('BASIS_INSPECTIES')
 @Controller('lookups')
 export class LookupController {
   constructor(private readonly lookups: LookupService) {}
@@ -27,6 +29,16 @@ export class LookupController {
       throw new BadRequestException(`Onbekende lookup-soort: ${kind}`);
     }
     return kind as LookupKind;
+  }
+
+  @Get()
+  @Roles(...ALL_STAFF)
+  @ApiOperation({
+    summary: 'Alle lookup-categorieën gegroepeerd (collectie voor de inspecteur-PWA)',
+  })
+  async listAll(@CurrentUser() user: User) {
+    const data = await this.lookups.listAllGrouped(user);
+    return { success: true, data };
   }
 
   @Get(':kind')

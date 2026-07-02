@@ -12,7 +12,7 @@ describe('LocationImagesService', () => {
   let service: LocationImagesService;
 
   const mockPrisma = {
-    inspectionLocation: { findFirst: jest.fn() },
+    assetNode: { findFirst: jest.fn(), findUnique: jest.fn(), update: jest.fn() },
     locationImage: {
       findUnique: jest.fn(),
       findFirst: jest.fn(),
@@ -26,7 +26,6 @@ describe('LocationImagesService', () => {
       update: jest.fn(),
       delete: jest.fn(),
     },
-    asset: { findUnique: jest.fn(), update: jest.fn() },
     finding: { findUnique: jest.fn() },
     standaloneMeasurement: { findUnique: jest.fn() },
   };
@@ -49,15 +48,19 @@ describe('LocationImagesService', () => {
     roles: [Role.ORG_ADMIN],
   } as any;
 
-  // A location belonging to org-1 with a plan.
-  const location = { id: 'loc-1', orgId: 'org-1', inspectionPlanId: 'plan-1', deletedAt: null };
-  // An image whose parent location is in org-1.
+  // A LOCATION node belonging to org-1.
+  const location = { id: 'loc-1', orgId: 'org-1', nodeType: 'LOCATION', deletedAt: null };
+  // An image whose parent LOCATION node is in org-1 and scoped to plan-1.
   const imageWithLocation = {
     id: 'img-1',
     orgId: 'org-1',
     storagePath: 'org-1/old.png',
     thumbnailPath: null,
-    location: { id: 'loc-1', inspectionPlanId: 'plan-1', orgId: 'org-1' },
+    node: {
+      id: 'loc-1',
+      orgId: 'org-1',
+      planScopes: [{ inspectionPlanId: 'plan-1', isPrimary: true }],
+    },
   };
 
   beforeEach(async () => {
@@ -93,7 +96,7 @@ describe('LocationImagesService', () => {
     } as Express.Multer.File;
 
     it('uploads with the org-scoped key pattern and upserts (no existing image)', async () => {
-      mockPrisma.inspectionLocation.findFirst.mockResolvedValue(location);
+      mockPrisma.assetNode.findFirst.mockResolvedValue(location);
       mockPrisma.locationImage.findUnique.mockResolvedValue(null);
       mockPrisma.locationImage.upsert.mockImplementation(({ create }: any) => ({
         id: 'img-1',
@@ -111,7 +114,7 @@ describe('LocationImagesService', () => {
 
       // upsert with denormalised orgId + deviceId + storagePath === uploaded key
       const upsertArg = mockPrisma.locationImage.upsert.mock.calls[0][0];
-      expect(upsertArg.where).toEqual({ locationId: 'loc-1' });
+      expect(upsertArg.where).toEqual({ nodeId: 'loc-1' });
       expect(upsertArg.create.orgId).toBe('org-1');
       expect(upsertArg.create.deviceId).toBe('device-9');
       expect(upsertArg.create.storagePath).toBe(key);
@@ -119,7 +122,7 @@ describe('LocationImagesService', () => {
     });
 
     it('deletes the previous file from storage before re-uploading', async () => {
-      mockPrisma.inspectionLocation.findFirst.mockResolvedValue(location);
+      mockPrisma.assetNode.findFirst.mockResolvedValue(location);
       mockPrisma.locationImage.findUnique.mockResolvedValue({
         id: 'img-1',
         storagePath: 'org-1/old.png',
@@ -135,7 +138,7 @@ describe('LocationImagesService', () => {
     });
 
     it('throws 404 when the location is not in the org', async () => {
-      mockPrisma.inspectionLocation.findFirst.mockResolvedValue(null);
+      mockPrisma.assetNode.findFirst.mockResolvedValue(null);
 
       await expect(service.uploadImage('loc-x', user, file)).rejects.toThrow(NotFoundException);
       expect(mockStorage.upload).not.toHaveBeenCalled();
@@ -145,13 +148,13 @@ describe('LocationImagesService', () => {
   // ── getImageByLocation / getLocationInOrg ──
   describe('getImageByLocation', () => {
     it('throws 404 (Locatie) when the location is not in the org', async () => {
-      mockPrisma.inspectionLocation.findFirst.mockResolvedValue(null);
+      mockPrisma.assetNode.findFirst.mockResolvedValue(null);
 
       await expect(service.getImageByLocation('loc-x', user)).rejects.toThrow(NotFoundException);
     });
 
     it('returns the image with markers when present', async () => {
-      mockPrisma.inspectionLocation.findFirst.mockResolvedValue(location);
+      mockPrisma.assetNode.findFirst.mockResolvedValue(location);
       mockPrisma.locationImage.findUnique.mockResolvedValue({ id: 'img-1', markers: [] });
 
       const result = await service.getImageByLocation('loc-1', user);
@@ -162,7 +165,7 @@ describe('LocationImagesService', () => {
   // ── deleteImage ──
   describe('deleteImage', () => {
     it('deletes storage file then the db record', async () => {
-      mockPrisma.inspectionLocation.findFirst.mockResolvedValue(location);
+      mockPrisma.assetNode.findFirst.mockResolvedValue(location);
       mockPrisma.locationImage.findUnique.mockResolvedValue({
         id: 'img-1',
         storagePath: 'org-1/x.png',
@@ -174,7 +177,7 @@ describe('LocationImagesService', () => {
 
       expect(mockStorage.delete).toHaveBeenCalledWith('org-1/x.png');
       expect(mockPrisma.locationImage.delete).toHaveBeenCalledWith({
-        where: { locationId: 'loc-1' },
+        where: { nodeId: 'loc-1' },
       });
       expect(result).toEqual({ deleted: true });
     });
@@ -191,7 +194,7 @@ describe('LocationImagesService', () => {
     });
 
     it('creates an ASSET marker after asserting the asset is in the same org', async () => {
-      mockPrisma.asset.findUnique.mockResolvedValue({ orgId: 'org-1' });
+      mockPrisma.assetNode.findUnique.mockResolvedValue({ orgId: 'org-1' });
 
       const result = await service.createMarker(
         'img-1',
@@ -200,20 +203,20 @@ describe('LocationImagesService', () => {
         'device-1',
       );
 
-      expect(mockPrisma.asset.findUnique).toHaveBeenCalledWith({
+      expect(mockPrisma.assetNode.findUnique).toHaveBeenCalledWith({
         where: { id: 'asset-1' },
         select: { orgId: true },
       });
       const data = mockPrisma.locationImageMarker.create.mock.calls[0][0].data;
       expect(data.orgId).toBe('org-1');
       expect(data.markerType).toBe(MarkerType.ASSET);
-      expect(data.assetId).toBe('asset-1');
+      expect(data.assetNodeId).toBe('asset-1');
       expect(data.deviceId).toBe('device-1');
       expect(result.id).toBe('marker-1');
     });
 
     it('throws 403 when the asset belongs to another org', async () => {
-      mockPrisma.asset.findUnique.mockResolvedValue({ orgId: 'org-2' });
+      mockPrisma.assetNode.findUnique.mockResolvedValue({ orgId: 'org-2' });
 
       await expect(
         service.createMarker('img-1', user, {
@@ -267,7 +270,7 @@ describe('LocationImagesService', () => {
     it('creates an asset via AssetsService, links the location, and creates an ASSET marker', async () => {
       mockPrisma.locationImage.findFirst.mockResolvedValue(imageWithLocation);
       mockAssets.create.mockResolvedValue({ id: 'asset-new' });
-      mockPrisma.asset.update.mockResolvedValue({});
+      mockPrisma.assetNode.update.mockResolvedValue({});
       mockPrisma.locationImageMarker.create.mockImplementation(({ data }: any) => ({
         id: 'marker-2',
         ...data,
@@ -287,14 +290,14 @@ describe('LocationImagesService', () => {
         expect.objectContaining({ assetType: 'verdeler', name: 'V1' }),
         'device-2',
       );
-      // location linked after create
-      expect(mockPrisma.asset.update).toHaveBeenCalledWith({
+      // node attached under the LOCATION node after create
+      expect(mockPrisma.assetNode.update).toHaveBeenCalledWith({
         where: { id: 'asset-new' },
-        data: { locationId: 'loc-1' },
+        data: { parentId: 'loc-1' },
       });
       const markerData = mockPrisma.locationImageMarker.create.mock.calls[0][0].data;
       expect(markerData.markerType).toBe(MarkerType.ASSET);
-      expect(markerData.assetId).toBe('asset-new');
+      expect(markerData.assetNodeId).toBe('asset-new');
       expect(markerData.orgId).toBe('org-1');
       expect(result.asset.id).toBe('asset-new');
       expect(result.marker.id).toBe('marker-2');
@@ -334,7 +337,7 @@ describe('LocationImagesService', () => {
   describe('quickCreateFinding', () => {
     it('asserts the asset org, creates a finding via FindingsService, and a FINDING marker', async () => {
       mockPrisma.locationImage.findFirst.mockResolvedValue(imageWithLocation);
-      mockPrisma.asset.findUnique.mockResolvedValue({ orgId: 'org-1' });
+      mockPrisma.assetNode.findUnique.mockResolvedValue({ orgId: 'org-1' });
       mockFindings.create.mockResolvedValue({ id: 'finding-new' });
       mockPrisma.locationImageMarker.create.mockImplementation(({ data }: any) => ({
         id: 'marker-4',
@@ -354,7 +357,7 @@ describe('LocationImagesService', () => {
         'device-4',
       );
 
-      expect(mockPrisma.asset.findUnique).toHaveBeenCalledWith({
+      expect(mockPrisma.assetNode.findUnique).toHaveBeenCalledWith({
         where: { id: 'asset-1' },
         select: { orgId: true },
       });
@@ -376,7 +379,7 @@ describe('LocationImagesService', () => {
 
     it('throws 403 (and does not create a finding) when the asset is in another org', async () => {
       mockPrisma.locationImage.findFirst.mockResolvedValue(imageWithLocation);
-      mockPrisma.asset.findUnique.mockResolvedValue({ orgId: 'org-2' });
+      mockPrisma.assetNode.findUnique.mockResolvedValue({ orgId: 'org-2' });
 
       await expect(
         service.quickCreateFinding('img-1', user, {

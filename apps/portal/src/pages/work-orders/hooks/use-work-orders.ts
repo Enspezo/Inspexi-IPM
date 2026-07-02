@@ -9,6 +9,7 @@ interface WorkOrdersParams {
   inspectorId?: string;
   page?: number;
   limit?: number;
+  enabled?: boolean;
 }
 
 interface PaginatedWorkOrders {
@@ -31,6 +32,7 @@ export function useWorkOrders(params?: WorkOrdersParams) {
   return useQuery<PaginatedWorkOrders>({
     queryKey: ['work-orders', params],
     queryFn: () => apiClient.get<PaginatedWorkOrders>(`/work-orders${qs ? `?${qs}` : ''}`),
+    enabled: params?.enabled,
   });
 }
 
@@ -58,6 +60,7 @@ export function useCreateWorkOrder() {
   return useMutation({
     mutationFn: (data: {
       planningItemId?: string;
+      workOrderNumber?: string;
       internalNotes?: string;
       startTime?: string;
       endTime?: string;

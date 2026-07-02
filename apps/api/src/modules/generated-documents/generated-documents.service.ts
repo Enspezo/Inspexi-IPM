@@ -20,10 +20,12 @@ import {
   DocumentType,
   GeneratedDocumentStatus,
   SignatureStatus,
+  AssetNodeType,
   Prisma,
 } from '@prisma/client';
 import { PrismaService } from '@/prisma';
-import { orgScope, assertFound, assertSameOrg } from '@/common';
+import { orgScope, assertFound, assertSameOrg, requireOrg } from '@/common';
+import { AssetNodesService } from '../asset-nodes/asset-nodes.service';
 import { STORAGE_PROVIDER } from '@/common/services/storage/storage.interface';
 import type { StorageProvider } from '@/common/services/storage/storage.interface';
 import { EmailService } from '@/common/services/email.service';
@@ -43,6 +45,7 @@ import type {
   FindingData,
   PhotoData,
   MeasurementSheetData,
+  UsedInstrumentData,
   FindingSummary,
   PdfOptions,
 } from '../document-generation/types';
@@ -68,20 +71,30 @@ const PLAN_INCLUDE = {
       classificationModel: { include: { characteristics: { include: { options: true } } } },
     },
   },
-  assets: {
-    where: { deletedAt: null },
-    orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
-    include: {
-      findings: { where: { deletedAt: null } },
-      measurementSheetRecords: { include: { template: true } },
-    },
-  },
-  measurementSheetRecords: { include: { template: true, asset: true } },
+  measurementSheetRecords: { include: { template: true, assetNode: true } },
 } satisfies Prisma.InspectionPlanInclude;
 
 type PlanWithRelations = Prisma.InspectionPlanGetPayload<{ include: typeof PLAN_INCLUDE }>;
-type AssetWithRelations = PlanWithRelations['assets'][number];
-type FindingRow = AssetWithRelations['findings'][number];
+type FindingRow = Prisma.FindingGetPayload<true>;
+type SheetRecordRow = Prisma.MeasurementSheetRecordGetPayload<{ include: { template: true } }>;
+
+/**
+ * Geassembleerde asset (oude `plan.assets`-vorm) — de losse Asset-tabel is opgegaan
+ * in de AssetNode-boom (Fase 2b). We bouwen deze vorm in `buildContext` op uit de
+ * ASSET-nodes van de boom + de findings/meetstaten die `inspectionPlanId` dragen.
+ */
+interface AssetWithRelations {
+  id: string;
+  name: string;
+  assetType: string;
+  identifier: string | null;
+  locationDescription: string | null;
+  statusCode: string;
+  parentAssetId: string | null;
+  technicalData: Prisma.JsonValue;
+  findings: FindingRow[];
+  measurementSheetRecords: SheetRecordRow[];
+}
 type ClassificationModelLite = {
   characteristics: Array<{ code: string; options: Array<{ code: string; name: string; color: string }> }>;
 } | null;
@@ -99,16 +112,12 @@ export class GeneratedDocumentsService {
     private readonly email: EmailService,
     private readonly config: ConfigService,
     private readonly lookups: LookupService,
+    private readonly assetNodes: AssetNodesService,
   ) {}
-
-  private requireOrg(user: User): string {
-    if (!user.orgId) throw new BadRequestException('Selecteer eerst een organisatie');
-    return user.orgId;
-  }
 
   // ── Lifecycle ──────────────────────────────────────────
   async generateDocument(planId: string, type: DocumentType, user: User) {
-    const orgId = this.requireOrg(user);
+    const orgId = requireOrg(user);
     await assertSameOrg(this.prisma.inspectionPlan, planId, orgId, 'Inspectieplan');
 
     const plan = assertFound(
@@ -509,11 +518,62 @@ export class GeneratedDocumentsService {
     }).format(new Date(date));
   }
 
+  /**
+   * Assembleert de oude `plan.assets`-vorm uit de AssetNode-boom (Fase 2b): alle
+   * ASSET-nodes onder `plan.locationId`, met de findings/meetstaten die
+   * `inspectionPlanId = plan.id` dragen eronder gegroepeerd.
+   */
+  private async assemblePlanAssets(plan: PlanWithRelations): Promise<AssetWithRelations[]> {
+    const nodes = plan.locationId
+      ? await this.assetNodes.listLocationNodesByOrg(
+          plan.locationId,
+          plan.orgId,
+          AssetNodeType.ASSET,
+        )
+      : [];
+    if (!nodes.length) return [];
+
+    const [findings, sheetRecords] = await Promise.all([
+      this.prisma.finding.findMany({
+        where: { inspectionPlanId: plan.id, deletedAt: null },
+        orderBy: { createdAt: 'asc' },
+      }),
+      this.prisma.measurementSheetRecord.findMany({
+        where: { inspectionPlanId: plan.id },
+        include: { template: true },
+      }),
+    ]);
+
+    const findingsByNode = new Map<string, FindingRow[]>();
+    for (const f of findings) {
+      (findingsByNode.get(f.assetNodeId) ?? findingsByNode.set(f.assetNodeId, []).get(f.assetNodeId)!).push(f);
+    }
+    const sheetsByNode = new Map<string, SheetRecordRow[]>();
+    for (const r of sheetRecords) {
+      (sheetsByNode.get(r.assetNodeId) ?? sheetsByNode.set(r.assetNodeId, []).get(r.assetNodeId)!).push(r);
+    }
+
+    return nodes.map((n) => ({
+      id: n.id,
+      name: n.name,
+      assetType: n.typeCode,
+      identifier: n.identifier,
+      locationDescription: n.description,
+      statusCode: n.statusCode,
+      parentAssetId: n.parentId,
+      technicalData: n.technicalData,
+      findings: findingsByNode.get(n.id) ?? [],
+      measurementSheetRecords: sheetsByNode.get(n.id) ?? [],
+    }));
+  }
+
   // ── DocumentContext-opbouw (geport uit App-bron, aangepast aan Beheer-schema) ──
   private async buildContext(plan: PlanWithRelations): Promise<DocumentData> {
+    const planAssets = await this.assemblePlanAssets(plan);
+
     // Foto's voor assets + findings ophalen en per entiteit groeperen.
-    const assetIds = plan.assets.map((a) => a.id);
-    const findingIds = plan.assets.flatMap((a) => a.findings.map((f) => f.id));
+    const assetIds = planAssets.map((a) => a.id);
+    const findingIds = planAssets.flatMap((a) => a.findings.map((f) => f.id));
     const photos = await this.prisma.photo.findMany({
       where: {
         deletedAt: null,
@@ -602,21 +662,60 @@ export class GeneratedDocumentsService {
 
     const classificationModel = (plan.inspectionTemplate?.classificationModel ??
       null) as ClassificationModelLite;
-    const assets = this.buildAssetTree(plan.assets, photosByEntity, classificationModel);
-    const findings = plan.assets.flatMap((asset) =>
+    const assets = this.buildAssetTree(planAssets, photosByEntity, classificationModel);
+    const findings = planAssets.flatMap((asset) =>
       asset.findings.map((f) => this.mapFinding(f, asset, photosByEntity, classificationModel)),
     );
     const findingsSummary = this.buildFindingsSummary(findings);
+
+    // Gebruikte meetmiddelen: snapshot-first (historische juistheid); val terug op
+    // één batch-query op de live meetmiddelen voor records zonder snapshot.
+    const fallbackIds = [
+      ...new Set(
+        plan.measurementSheetRecords
+          .filter((r) => !this.readInstrumentSnapshot(r.data))
+          .flatMap((r) => r.usedInstrumentIds ?? []),
+      ),
+    ];
+    const liveInstruments = fallbackIds.length
+      ? await this.prisma.measurementInstrument.findMany({
+          where: { id: { in: fallbackIds }, orgId: plan.orgId },
+          select: {
+            id: true,
+            code: true,
+            brand: true,
+            type: true,
+            serialNumber: true,
+            lastCalibrationDate: true,
+            nextCalibrationDue: true,
+          },
+        })
+      : [];
+    const liveById = new Map(liveInstruments.map((i) => [i.id, i]));
 
     const measurementSheets: MeasurementSheetData[] = plan.measurementSheetRecords.map((record) => ({
       id: record.id,
       name: record.template.name,
       templateCode: record.template.code,
-      assetId: record.assetId || undefined,
-      assetName: record.asset?.name || undefined,
+      assetId: record.assetNodeId || undefined,
+      assetName: record.assetNode?.name || undefined,
       date: record.completedAt || record.createdAt,
       inspector: inspector.name,
       sections: this.parseMeasurementData(record.data as Record<string, unknown>),
+      usedInstruments:
+        this.readInstrumentSnapshot(record.data) ??
+        (record.usedInstrumentIds ?? [])
+          .map((id) => liveById.get(id))
+          .filter((i): i is NonNullable<typeof i> => Boolean(i))
+          .map((i) => ({
+            id: i.id,
+            code: i.code,
+            brand: i.brand,
+            type: i.type,
+            serialNumber: i.serialNumber,
+            lastCalibrationDate: i.lastCalibrationDate,
+            nextCalibrationDue: i.nextCalibrationDue,
+          })),
     }));
 
     const now = new Date();
@@ -737,6 +836,12 @@ export class GeneratedDocumentsService {
       if (formData) Object.assign(result, formData);
     }
     return result;
+  }
+
+  /** Leest het ingebakken meetmiddel-snapshot uit record.data (of null). */
+  private readInstrumentSnapshot(data: unknown): UsedInstrumentData[] | null {
+    const snap = (data as Record<string, unknown> | null)?.__usedInstrumentsSnapshot;
+    return Array.isArray(snap) ? (snap as UsedInstrumentData[]) : null;
   }
 
   private parseMeasurementData(

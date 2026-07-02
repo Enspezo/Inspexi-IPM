@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useMemo } from 'react';
 import { Button, Input, Select, Modal, Checkbox } from '@/components/ui';
 import type { AddProjectFollowerData } from '../hooks/use-project-followers';
-import { apiClient } from '@/lib/api-client';
+import { useUsers } from '@/pages/users/hooks/use-users';
 
 // ─── Add Follower Modal ─────────────────────────────────────
 
@@ -20,7 +20,6 @@ export function AddFollowerModal({
   const [userId, setUserId] = useState('');
   const [email, setEmail] = useState('');
   const [name, setName] = useState('');
-  const [users, setUsers] = useState<{ value: string; label: string }[]>([]);
 
   // Permission defaults for external followers
   const [canViewGeneral, setCanViewGeneral] = useState(true);
@@ -29,20 +28,16 @@ export function AddFollowerModal({
   const [canViewPlanning, setCanViewPlanning] = useState(true);
   const [canViewDocuments, setCanViewDocuments] = useState(false);
 
-  useEffect(() => {
-    apiClient
-      .get<any[]>('/users')
-      .then((res) => {
-        const list = Array.isArray(res) ? res : (res as any).data ?? [];
-        setUsers(
-          list.map((u: any) => ({
-            value: u.id,
-            label: `${u.firstName} ${u.lastName}`,
-          })),
-        );
-      })
-      .catch(() => {});
-  }, []);
+  // Shared TanStack cache — reuses the parent's already-fetched users (no refetch)
+  const { data: allUsers } = useUsers();
+  const users = useMemo(
+    () =>
+      (allUsers ?? []).map((u) => ({
+        value: u.id,
+        label: `${u.firstName} ${u.lastName}`,
+      })),
+    [allUsers],
+  );
 
   const handleSubmit = () => {
     if (mode === 'user' && userId) {

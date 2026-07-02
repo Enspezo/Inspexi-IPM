@@ -9,6 +9,7 @@ import {
   Query,
   ParseUUIDPipe,
 } from '@nestjs/common';
+import { RequiresFeature } from '@/common/decorators/requires-feature.decorator';
 import {
   ApiTags,
   ApiOperation,
@@ -37,11 +38,14 @@ import {
   ListLocationsQueryDto,
   CreateLocationContactPersonDto,
   UpdateLocationContactPersonDto,
+  CreateContactPersonLocationDto,
+  PdokRefreshDto,
 } from './dto';
 import { Roles, CurrentUser } from '@/common/decorators';
 
 @ApiTags('Contacts')
 @ApiBearerAuth()
+@RequiresFeature('BASIS_CRM')
 @Controller('contacts')
 export class ContactsController {
   constructor(
@@ -240,6 +244,19 @@ export class ContactsController {
     return { success: true, data: links };
   }
 
+  @Post('contact-persons/:personId/locations')
+  @Roles(...OFFICE_ROLES)
+  @ApiOperation({ summary: 'Locatie koppelen aan contactpersoon' })
+  @ApiResponse({ status: 201, description: 'Locatie gekoppeld' })
+  async addContactPersonLocation(
+    @Param('personId', ParseUUIDPipe) personId: string,
+    @Body() dto: CreateContactPersonLocationDto,
+    @CurrentUser() user: User,
+  ) {
+    const link = await this.contactPersonsService.addContactPersonLocation(personId, dto, user);
+    return { success: true, data: link };
+  }
+
   @Get('contact-persons/:personId')
   @Roles(...CRM_ROLES)
   @ApiOperation({ summary: 'Contactpersoon detail ophalen' })
@@ -367,6 +384,30 @@ export class ContactsController {
   ) {
     const location = await this.locationsService.updateLocation(locationId, dto, user);
     return { success: true, data: location };
+  }
+
+  @Post('locations/:locationId/pdok-refresh')
+  @Roles(...OFFICE_ROLES)
+  @ApiOperation({
+    summary: 'PDOK/BAG-gegevens van een locatie ophalen of verversen',
+    description:
+      'Haalt verse PDOK/BAG-data op. Bij een afwijking t.o.v. de opgeslagen ' +
+      'gegevens en `confirm` niet `true` worden de wijzigingen geretourneerd ' +
+      'zonder op te slaan; met `confirm: true` (of als er nog geen data was) ' +
+      'wordt opgeslagen.',
+  })
+  @ApiResponse({ status: 200, description: 'Diff of bijgewerkte locatie' })
+  async refreshLocationPdok(
+    @Param('locationId', ParseUUIDPipe) locationId: string,
+    @Body() dto: PdokRefreshDto,
+    @CurrentUser() user: User,
+  ) {
+    const result = await this.locationsService.pdokRefresh(
+      locationId,
+      dto.confirm === true,
+      user,
+    );
+    return { success: true, data: result };
   }
 
   @Delete('locations/:locationId')

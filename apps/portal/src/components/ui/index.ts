@@ -1,9 +1,18 @@
-export { ActionMenu, type ActionMenuItem } from './action-menu';
+export { ActionMenu, DropdownMenu, type ActionMenuItem, type DropdownMenuProps } from './action-menu';
 export { StatusBadge } from './status-badge';
+export { TagPill, readableTextColor } from './tag-pill';
+export { TagSelect } from './tag-select';
+export { ColorPicker } from './color-picker';
 export { LookupBadge } from './lookup-badge';
 export { ErrorBox } from './error-box';
 export { InfoField } from './info-field';
 export { Tabs, type TabDef } from './tabs';
+export {
+  Accordion,
+  AccordionSection,
+  type AccordionProps,
+  type AccordionSectionProps,
+} from './accordion';
 export { ConfirmProvider, useConfirm, type ConfirmOptions } from './confirm-dialog';
 export { Button } from './button';
 export { Input } from './input';

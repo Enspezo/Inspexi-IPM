@@ -14,7 +14,7 @@ import {
 } from '@nestjs/common';
 import { SignatureStatus } from '@prisma/client';
 import { PrismaService } from '@/prisma';
-import { STATUS_OPEN, STATUS_RESOLVED } from '@/common';
+import { STATUS_OPEN, STATUS_RESOLVED, resolveInspectorContact } from '@/common';
 import type { CurrentClientUserData } from '@/common/decorators/current-client-user.decorator';
 
 @Injectable()
@@ -119,22 +119,31 @@ export class ClientInspectionsService {
       where: { id, orgId: org, deletedAt: null },
       include: {
         contact: { select: { id: true, companyName: true, firstName: true, lastName: true } },
-        assignedUser: { select: { id: true, firstName: true, lastName: true } },
+        // Rauwe inspecteur-contactvelden + consent worden alleen geselecteerd om ze server-side
+        // te resolven; ze worden hieronder NIET in de response opgenomen (zie leak-strip).
+        assignedUser: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            contactPhone: true,
+            contactEmail: true,
+            sharePhoneWithClients: true,
+            shareEmailWithClients: true,
+          },
+        },
+        // reviewer is bewust GEEN klant-facing inspecteur → geen contactgegevens.
         reviewer: { select: { id: true, firstName: true, lastName: true } },
         installationResponsible: {
           select: { id: true, firstName: true, lastName: true, phone: true, email: true },
         },
-        assets: {
-          where: { deletedAt: null },
+        // Org-modus + statische waarden, enkel voor de resolutie (worden niet teruggegeven).
+        organization: {
           select: {
-            id: true,
-            name: true,
-            assetType: true,
-            statusCode: true,
-            findings: {
-              where: { deletedAt: null },
-              select: { id: true, statusCode: true, shortDescription: true, classificationValues: true },
-            },
+            inspectorPhoneDisplay: true,
+            inspectorEmailDisplay: true,
+            inspectorStaticPhone: true,
+            inspectorStaticEmail: true,
           },
         },
         generatedDocuments: {
@@ -160,13 +169,63 @@ export class ClientInspectionsService {
     });
     if (!plan) throw new NotFoundException('Inspectie niet gevonden');
 
-    const allFindings = plan.assets.flatMap((a) => a.findings);
+    // Asset-boom: de findings dragen sinds de unified-tree zelf assetNodeId + inspectionPlanId.
+    // We halen de findings van dit plan op en groeperen ze onder hun asset-node, zodat de klant
+    // exact de assets ziet die constateringen hebben (de vorige plan.assets-relatie bestaat niet meer).
+    const findings = await this.prisma.finding.findMany({
+      where: { inspectionPlanId: id, orgId: org, deletedAt: null },
+      select: {
+        id: true,
+        assetNodeId: true,
+        statusCode: true,
+        shortDescription: true,
+        classificationValues: true,
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    const assetNodeIds = [...new Set(findings.map((f) => f.assetNodeId))];
+    const assetNodes = assetNodeIds.length
+      ? await this.prisma.assetNode.findMany({
+          where: { id: { in: assetNodeIds }, orgId: org, deletedAt: null },
+          select: { id: true, name: true, typeCode: true, statusCode: true },
+          orderBy: { sortOrder: 'asc' },
+        })
+      : [];
+
+    const assets = assetNodes.map((node) => ({
+      id: node.id,
+      name: node.name,
+      assetType: node.typeCode,
+      statusCode: node.statusCode,
+      findings: findings
+        .filter((f) => f.assetNodeId === node.id)
+        .map((f) => ({
+          id: f.id,
+          statusCode: f.statusCode,
+          shortDescription: f.shortDescription,
+          classificationValues: f.classificationValues,
+        })),
+    }));
+
+    // Leak-strip: verwijder de org-modus en de rauwe inspecteur-velden uit de response en vervang
+    // de inspecteur-ref door uitsluitend het server-side geresolveerde telefoon/e-mail (of null).
+    const { organization, assignedUser, ...planRest } = plan;
+    const assignedInspector = assignedUser
+      ? {
+          id: assignedUser.id,
+          firstName: assignedUser.firstName,
+          lastName: assignedUser.lastName,
+          ...resolveInspectorContact(organization, assignedUser),
+        }
+      : null;
+
     const findingCounts = {
-      total: allFindings.length,
-      open: allFindings.filter((f) => f.statusCode === STATUS_OPEN).length,
-      resolved: allFindings.filter((f) => f.statusCode === STATUS_RESOLVED).length,
+      total: findings.length,
+      open: findings.filter((f) => f.statusCode === STATUS_OPEN).length,
+      resolved: findings.filter((f) => f.statusCode === STATUS_RESOLVED).length,
     };
-    return { ...plan, findingCounts };
+    return { ...planRest, assets, assignedUser: assignedInspector, findingCounts };
   }
 
   /** Documenten van een inspectie (klant). */
@@ -204,9 +263,9 @@ export class ClientInspectionsService {
     await this.assertInspectionAccess(user.id, org, planId);
 
     return this.prisma.finding.findMany({
-      where: { orgId: org, deletedAt: null, asset: { inspectionPlanId: planId, deletedAt: null } },
+      where: { orgId: org, deletedAt: null, inspectionPlanId: planId },
       include: {
-        asset: { select: { id: true, name: true, locationDescription: true } },
+        assetNode: { select: { id: true, name: true, description: true } },
         resolutions: {
           orderBy: { resolvedAt: 'desc' },
           take: 1,
@@ -281,7 +340,7 @@ export class ClientInspectionsService {
             where: {
               statusCode: STATUS_OPEN,
               deletedAt: null,
-              asset: { inspectionPlanId: { in: allPlanIds }, deletedAt: null },
+              inspectionPlanId: { in: allPlanIds },
             },
           })
         : Promise.resolve(0),

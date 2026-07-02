@@ -11,11 +11,14 @@ import { Role } from '@/types';
 import { hasRole } from '@/lib/has-role';
 import type { User } from '@/types';
 import { InspectorCard } from './components/inspector-card';
+import { ClientContactCard } from './components/client-contact-card';
 import { NotificationPrefsCard } from './components/notification-prefs-card';
 import { SessionsCard } from './components/sessions-card';
 import { AvatarCard } from './components/avatar-card';
 import { SignatureCard } from './components/signature-card';
 import { HomeAddressCard } from './components/home-address-card';
+import { ApprovalDefaultsCard } from './components/approval-defaults-card';
+import { MyDefaultInstrumentsSection } from '@/pages/meetmiddelen/components/my-default-instruments-section';
 import { ActivityTab } from './components/activity-tab';
 
 const profileSchema = z.object({
@@ -121,8 +124,21 @@ export default function ProfilePage() {
           {/* Inspector color + iCal (only for inspectors) */}
           {user && hasRole(user, Role.INSPECTEUR) && <InspectorCard />}
 
+          {/* Contactgegevens klantportaal (only for inspectors) */}
+          {user && hasRole(user, Role.INSPECTEUR) && <ClientContactCard />}
+
+          {/* Standaard meetmiddelen — niveau 1 (only for inspectors) */}
+          {user && hasRole(user, Role.INSPECTEUR) && (
+            <Card title="Standaard meetmiddelen">
+              <MyDefaultInstrumentsSection />
+            </Card>
+          )}
+
           {/* Signature */}
           <SignatureCard />
+
+          {/* Standaard goedkeurder (vrijwillige persoon-goedkeuring) */}
+          <ApprovalDefaultsCard />
 
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
             {/* Edit form */}

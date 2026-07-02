@@ -113,6 +113,17 @@ export interface MeasurementSectionData {
 }
 
 /** Measurement sheet data for document placeholders */
+/** Gebruikt meetmiddel op een meetstaat (snapshot of live opgelost). */
+export interface UsedInstrumentData {
+  id: string;
+  code: string;
+  brand: string;
+  type: string;
+  serialNumber?: string | null;
+  lastCalibrationDate?: Date | string | null;
+  nextCalibrationDue?: Date | string | null;
+}
+
 export interface MeasurementSheetData {
   id: string;
   name: string;
@@ -122,6 +133,7 @@ export interface MeasurementSheetData {
   date: Date;
   inspector: string;
   sections: MeasurementSectionData[];
+  usedInstruments: UsedInstrumentData[];
 }
 
 /** Finding summary by classification */

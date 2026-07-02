@@ -10,6 +10,7 @@ import {
   Query,
   ParseUUIDPipe,
 } from '@nestjs/common';
+import { RequiresFeature } from '@/common/decorators/requires-feature.decorator';
 import {
   ApiTags,
   ApiOperation,
@@ -29,6 +30,7 @@ import { Roles, CurrentUser } from '@/common/decorators';
 
 @ApiTags('Price Tables')
 @ApiBearerAuth()
+@RequiresFeature('CRM_COMPLEET')
 @Controller('price-tables')
 export class PriceTablesController {
   constructor(private priceTablesService: PriceTablesService) {}

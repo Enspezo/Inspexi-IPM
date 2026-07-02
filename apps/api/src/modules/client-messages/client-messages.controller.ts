@@ -2,6 +2,7 @@
 // Berichten hangen onder een inspectie: /client/inspections/:id/messages.
 
 import { Controller, Get, Post, Param, Body, UseGuards, ParseUUIDPipe } from '@nestjs/common';
+import { RequiresFeature } from '@/common/decorators/requires-feature.decorator';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { Public, CurrentTenant } from '@/common/decorators';
 import { ClientJwtAuthGuard } from '@/common/guards/client-jwt-auth.guard';
@@ -15,6 +16,7 @@ import { SendMessageDto } from './dto';
 @ApiTags('Client Messages')
 @Public()
 @UseGuards(ClientJwtAuthGuard)
+@RequiresFeature('BASIS_INSPECTIES')
 @Controller('client/inspections')
 export class ClientMessagesController {
   constructor(private readonly service: ClientMessagesService) {}

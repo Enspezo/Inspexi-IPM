@@ -4,7 +4,7 @@ import {
   ForbiddenException,
   BadRequestException,
 } from '@nestjs/common';
-import { Role, User, QuoteStatus, RequestStatus } from '@prisma/client';
+import { Prisma, Role, User, QuoteStatus, RequestStatus } from '@prisma/client';
 import { ConfigService } from '@nestjs/config';
 import { QuotesService } from './quotes.service';
 import { PrismaService } from '@/prisma';
@@ -13,6 +13,7 @@ import { EmailService } from '@/common/services/email.service';
 import { STORAGE_PROVIDER } from '@/common/services/storage/storage.interface';
 import { CustomFieldsValidator } from '@/modules/custom-fields/custom-fields.validator';
 import { EmailTemplatesService } from '@/modules/email-templates/email-templates.service';
+import { NumberingService } from '@/modules/numbering/numbering.service';
 import { PdfService } from './pdf.service';
 import { QuotePdfService } from './quote-pdf.service';
 
@@ -236,6 +237,16 @@ describe('QuotesService', () => {
     ),
   };
 
+  // Invokes the create callback with the transaction mock + a deterministic
+  // generated number so the service's create path runs exactly as in production
+  // (minus the real numbering engine and its own $transaction wrapper).
+  const mockNumberingService = {
+    runWithGeneratedNumber: jest.fn(async (_model, _orgId, _opts, create) =>
+      create(mockTx, 'OFF-2026-0001'),
+    ),
+    validateManualNumber: jest.fn(async (_o, _m, value: string) => value.trim()),
+  };
+
   beforeEach(async () => {
     jest.clearAllMocks();
 
@@ -271,6 +282,7 @@ describe('QuotesService', () => {
         { provide: PdfService, useValue: {} },
         { provide: QuotePdfService, useValue: {} },
         { provide: EmailTemplatesService, useValue: {} },
+        { provide: NumberingService, useValue: mockNumberingService },
       ],
     }).compile();
 
@@ -381,6 +393,59 @@ describe('QuotesService', () => {
       const call = mockPrismaService.quote.findMany.mock.calls[0][0];
       expect(call.where.orgId).toBeUndefined();
     });
+
+    it('should filter by templateId', async () => {
+      mockPrismaService.quote.findMany.mockResolvedValue([]);
+      mockPrismaService.quote.count.mockResolvedValue(0);
+
+      await service.findAll(mockUser, {
+        templateId: 'template-1',
+        page: 1,
+        limit: 20,
+      });
+
+      expect(mockPrismaService.quote.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            templateId: 'template-1',
+          }),
+        }),
+      );
+    });
+
+    it("should filter quotes without a template when templateId is 'none'", async () => {
+      mockPrismaService.quote.findMany.mockResolvedValue([]);
+      mockPrismaService.quote.count.mockResolvedValue(0);
+
+      await service.findAll(mockUser, {
+        templateId: 'none',
+        page: 1,
+        limit: 20,
+      });
+
+      expect(mockPrismaService.quote.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            templateId: null,
+          }),
+        }),
+      );
+    });
+
+    it('should include the template (id + name) in list results', async () => {
+      mockPrismaService.quote.findMany.mockResolvedValue([]);
+      mockPrismaService.quote.count.mockResolvedValue(0);
+
+      await service.findAll(mockUser, { page: 1, limit: 20 });
+
+      expect(mockPrismaService.quote.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          include: expect.objectContaining({
+            template: { select: { id: true, name: true } },
+          }),
+        }),
+      );
+    });
   });
 
   // ─── findOne ─────────────────────────────────────────────────────────
@@ -448,17 +513,17 @@ describe('QuotesService', () => {
       });
       const createdQuote = {
         ...mockQuote,
-        quoteNumber: `OFF-${year}-0006`,
+        quoteNumber: `OFF-${year}-0001`,
       };
       mockTx.quote.create.mockResolvedValue(createdQuote);
 
       const result = await service.create(createDto, mockUser);
 
-      expect(result.quoteNumber).toBe(`OFF-${year}-0006`);
+      expect(result.quoteNumber).toBe(`OFF-${year}-0001`);
       expect(mockTx.quote.create).toHaveBeenCalledWith({
         data: expect.objectContaining({
           orgId: 'org-1',
-          quoteNumber: `OFF-${year}-0006`,
+          quoteNumber: `OFF-${year}-0001`,
           contactId: 'contact-1',
           subject: 'NEN1010 inspectie kantoorpand',
           createdBy: 'user-1',
@@ -577,6 +642,160 @@ describe('QuotesService', () => {
           internalNotes: 'Notitie',
         },
       });
+    });
+
+    // ─── template switch (REQ26) ──────────────────────────────────────
+
+    it('should switch to a BLOCKS template: re-apply blocks + requiresApproval + templateId', async () => {
+      mockPrismaService.quote.findUnique.mockResolvedValue(mockQuoteWithIncludes);
+      mockPrismaService.quoteTemplate.findUnique.mockResolvedValue({
+        ...mockTemplate,
+        templateType: 'BLOCKS',
+      });
+      mockPrismaService.quote.update.mockResolvedValue(mockQuote);
+
+      await service.update('quote-1', { templateId: 'template-1' }, mockUser);
+
+      expect(mockPrismaService.quote.update).toHaveBeenCalledWith({
+        where: { id: 'quote-1' },
+        data: {
+          templateId: 'template-1',
+          coverBlocks: mockTemplate.coverBlocks,
+          contentBlocks: mockTemplate.contentBlocks,
+          closingBlocks: mockTemplate.closingBlocks,
+          requiresApproval: true,
+        },
+      });
+    });
+
+    it('should switch to a DOCX template: clear blocks + apply requiresApproval', async () => {
+      mockPrismaService.quote.findUnique.mockResolvedValue(mockQuoteWithIncludes);
+      mockPrismaService.quoteTemplate.findUnique.mockResolvedValue({
+        ...mockTemplate,
+        templateType: 'DOCX',
+        requiresApproval: false,
+      });
+      mockPrismaService.quote.update.mockResolvedValue(mockQuote);
+
+      await service.update('quote-1', { templateId: 'template-1' }, mockUser);
+
+      expect(mockPrismaService.quote.update).toHaveBeenCalledWith({
+        where: { id: 'quote-1' },
+        data: {
+          templateId: 'template-1',
+          coverBlocks: Prisma.DbNull,
+          contentBlocks: Prisma.DbNull,
+          closingBlocks: Prisma.DbNull,
+          requiresApproval: false,
+        },
+      });
+    });
+
+    it('should unlink the template (templateId null) without touching blocks', async () => {
+      mockPrismaService.quote.findUnique.mockResolvedValue({
+        ...mockQuoteWithIncludes,
+        templateId: 'template-1',
+      });
+      mockPrismaService.quote.update.mockResolvedValue(mockQuote);
+
+      await service.update('quote-1', { templateId: null }, mockUser);
+
+      expect(mockPrismaService.quote.update).toHaveBeenCalledWith({
+        where: { id: 'quote-1' },
+        data: { templateId: null, requiresApproval: false },
+      });
+      // No template lookup needed when unlinking
+      expect(mockPrismaService.quoteTemplate.findUnique).not.toHaveBeenCalled();
+    });
+
+    it('should be a no-op when templateId is unchanged', async () => {
+      mockPrismaService.quote.findUnique.mockResolvedValue({
+        ...mockQuoteWithIncludes,
+        templateId: 'template-1',
+      });
+      mockPrismaService.quote.update.mockResolvedValue(mockQuote);
+
+      await service.update('quote-1', { templateId: 'template-1', subject: 'X' }, mockUser);
+
+      expect(mockPrismaService.quoteTemplate.findUnique).not.toHaveBeenCalled();
+      expect(mockPrismaService.quote.update).toHaveBeenCalledWith({
+        where: { id: 'quote-1' },
+        data: { subject: 'X' },
+      });
+    });
+
+    it('should reject a cross-org template (Forbidden)', async () => {
+      mockPrismaService.quote.findUnique.mockResolvedValue(mockQuoteWithIncludes);
+      mockPrismaService.quoteTemplate.findUnique.mockResolvedValue({
+        ...mockTemplate,
+        orgId: 'org-2',
+        templateType: 'BLOCKS',
+      });
+
+      await expect(
+        service.update('quote-1', { templateId: 'template-1' }, mockUser),
+      ).rejects.toThrow(ForbiddenException);
+      expect(mockPrismaService.quote.update).not.toHaveBeenCalled();
+    });
+
+    it('should reject an inactive/missing template (NotFound)', async () => {
+      mockPrismaService.quote.findUnique.mockResolvedValue(mockQuoteWithIncludes);
+      mockPrismaService.quoteTemplate.findUnique.mockResolvedValue({
+        ...mockTemplate,
+        isActive: false,
+      });
+
+      await expect(
+        service.update('quote-1', { templateId: 'template-1' }, mockUser),
+      ).rejects.toThrow(NotFoundException);
+      expect(mockPrismaService.quote.update).not.toHaveBeenCalled();
+    });
+
+    it('should not allow switching templates outside CONCEPT', async () => {
+      mockPrismaService.quote.findUnique.mockResolvedValue({
+        ...mockQuoteWithIncludes,
+        status: QuoteStatus.GOEDGEKEURD,
+      });
+
+      await expect(
+        service.update('quote-1', { templateId: 'template-1' }, mockUser),
+      ).rejects.toThrow(BadRequestException);
+      expect(mockPrismaService.quoteTemplate.findUnique).not.toHaveBeenCalled();
+    });
+  });
+
+  // ─── updateStatus (REQ26 guard) ───────────────────────────────────────
+
+  describe('updateStatus()', () => {
+    it('should block leaving CONCEPT without a linked template', async () => {
+      mockPrismaService.quote.findUnique.mockResolvedValue({
+        ...mockQuoteWithIncludes,
+        templateId: null,
+        status: QuoteStatus.CONCEPT,
+      });
+
+      await expect(
+        service.updateStatus('quote-1', QuoteStatus.GOEDGEKEURD, mockUser),
+      ).rejects.toThrow('Koppel eerst een offertesjabloon');
+      expect(mockPrismaService.quote.update).not.toHaveBeenCalled();
+    });
+
+    it('should allow leaving CONCEPT when a template is linked', async () => {
+      mockPrismaService.quote.findUnique.mockResolvedValue({
+        ...mockQuoteWithIncludes,
+        templateId: 'template-1',
+        status: QuoteStatus.CONCEPT,
+      });
+      mockPrismaService.quote.update.mockResolvedValue({
+        ...mockQuote,
+        templateId: 'template-1',
+        status: QuoteStatus.GOEDGEKEURD,
+      });
+
+      const result = await service.updateStatus('quote-1', QuoteStatus.GOEDGEKEURD, mockUser);
+
+      expect(result.status).toBe(QuoteStatus.GOEDGEKEURD);
+      expect(mockPrismaService.quote.update).toHaveBeenCalled();
     });
   });
 

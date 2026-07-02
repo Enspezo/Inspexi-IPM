@@ -49,16 +49,21 @@ describe('audited-entities registry', () => {
 
 describe('FK target resolution (per entityType, field)', () => {
   it('disambiguates locationId by owning entity', () => {
-    // Inspection domain → InspectionLocation (the bug the old global map had)
-    expect(resolveFkTargetModel('Asset', 'locationId')).toBe('InspectionLocation');
-    expect(resolveFkTargetModel('LocationImage', 'locationId')).toBe('InspectionLocation');
-    expect(resolveFkTargetModel('StandaloneMeasurement', 'locationId')).toBe(
-      'InspectionLocation',
-    );
-    // Beheer domain → Location
+    // Beheer (CRM) domain → Location
     expect(resolveFkTargetModel('Request', 'locationId')).toBe('Location');
     expect(resolveFkTargetModel('Quote', 'locationId')).toBe('Location');
     expect(resolveFkTargetModel('Project', 'locationId')).toBe('Location');
+  });
+
+  it('resolves the unified AssetNode-tree foreign keys', () => {
+    // Fase 2b: Asset/InspectionLocation zijn opgegaan in AssetNode (ltree-boom).
+    expect(resolveFkTargetModel('AssetNode', 'parentId')).toBe('AssetNode');
+    expect(resolveFkTargetModel('AssetNode', 'rootLocationId')).toBe('Location');
+    expect(resolveFkTargetModel('Finding', 'assetNodeId')).toBe('AssetNode');
+    expect(resolveFkTargetModel('LocationImage', 'nodeId')).toBe('AssetNode');
+    expect(resolveFkTargetModel('StandaloneMeasurement', 'locationNodeId')).toBe('AssetNode');
+    expect(resolveFkTargetModel('StandaloneMeasurement', 'linkedAssetNodeId')).toBe('AssetNode');
+    expect(resolveFkTargetModel('InspectionPlanLocation', 'assetNodeId')).toBe('AssetNode');
   });
 
   it('disambiguates templateId by owning entity', () => {
@@ -75,11 +80,15 @@ describe('FK target resolution (per entityType, field)', () => {
     // bare String columns without a Prisma relation fall back by convention
     expect(resolveFkTargetModel('NormTypeDefinition', 'createdBy')).toBe('User');
     expect(resolveFkTargetModel('GeneratedDocument', 'generatedBy')).toBe('User');
+    // OrganizationFeature.updatedById now has a real FK relation → resolved via DMMF.
+    expect(resolveFkTargetModel('OrganizationFeature', 'updatedById')).toBe('User');
+    // InspectorCertificate.userId is a real relation → resolved via DMMF (PRD-11).
+    expect(resolveFkTargetModel('InspectorCertificate', 'userId')).toBe('User');
   });
 
   it('resolves inspection-domain FKs the old global map missed', () => {
     expect(resolveFkTargetModel('Finding', 'findingTemplateId')).toBe('FindingTemplate');
-    expect(resolveFkTargetModel('Asset', 'inspectionPlanId')).toBe('InspectionPlan');
+    expect(resolveFkTargetModel('Finding', 'inspectionPlanId')).toBe('InspectionPlan');
     expect(resolveFkTargetModel('FindingTemplate', 'categoryId')).toBe('Category');
     expect(resolveFkTargetModel('GeneratedDocument', 'documentTemplateId')).toBe(
       'DocumentTemplate',
@@ -89,7 +98,7 @@ describe('FK target resolution (per entityType, field)', () => {
 
   it('returns undefined for non-foreign-key fields', () => {
     expect(resolveFkTargetModel('Contact', 'companyName')).toBeUndefined();
-    expect(resolveFkTargetModel('Asset', 'name')).toBeUndefined();
+    expect(resolveFkTargetModel('AssetNode', 'name')).toBeUndefined();
   });
 });
 
@@ -100,7 +109,7 @@ describe('reference display rendering', () => {
     );
     expect(displayReference('Contact', { companyName: 'ACME' })).toBe('ACME');
     expect(
-      displayReference('InspectionLocation', { name: 'Hal 3', identifier: 'L-3' }),
+      displayReference('AssetNode', { name: 'Hal 3', identifier: 'L-3' }),
     ).toBe('Hal 3');
     // non-audited lookup target
     expect(displayReference('LostReason', { label: 'Te duur', code: 'PRICE' })).toBe(
@@ -116,7 +125,7 @@ describe('reference display rendering', () => {
 
 describe('delegateFor', () => {
   it('converts a model name to its Prisma client delegate', () => {
-    expect(delegateFor('InspectionLocation')).toBe('inspectionLocation');
+    expect(delegateFor('AssetNode')).toBe('assetNode');
     expect(delegateFor('User')).toBe('user');
   });
 });

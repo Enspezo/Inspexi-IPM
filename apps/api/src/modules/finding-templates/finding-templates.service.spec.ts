@@ -85,6 +85,34 @@ describe('FindingTemplatesService', () => {
     });
   });
 
+  describe('findAllActive', () => {
+    it('should return active org + system templates without a pagination envelope', async () => {
+      mockPrismaService.findingTemplate.findMany.mockResolvedValue([{ id: 't-1' }]);
+
+      const result = await service.findAllActive(mockUser);
+
+      // Flat array, not the { data, total, page, limit } shape
+      expect(result).toEqual([{ id: 't-1' }]);
+      expect(mockPrismaService.findingTemplate.count).not.toHaveBeenCalled();
+
+      const call = mockPrismaService.findingTemplate.findMany.mock.calls[0][0];
+      expect(call.where.AND[0]).toEqual({ isActive: true });
+      expect(call.where.AND[1]).toEqual({
+        OR: [{ orgId: 'org-1' }, { orgId: null, isSystem: true }],
+      });
+    });
+
+    it('should not org-scope for SUPERUSER but still filter on active', async () => {
+      mockPrismaService.findingTemplate.findMany.mockResolvedValue([]);
+
+      await service.findAllActive(mockSuperuser);
+
+      const call = mockPrismaService.findingTemplate.findMany.mock.calls[0][0];
+      expect(call.where.AND[0]).toEqual({ isActive: true });
+      expect(call.where.AND[1]).toEqual({});
+    });
+  });
+
   describe('getUsedCategories', () => {
     it('should return distinct, sorted, non-null categories', async () => {
       mockPrismaService.findingTemplate.findMany.mockResolvedValue([

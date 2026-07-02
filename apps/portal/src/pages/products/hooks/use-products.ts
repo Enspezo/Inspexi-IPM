@@ -18,6 +18,7 @@ interface ListProductsParams {
   limit?: number;
   sortBy?: string;
   sortOrder?: 'asc' | 'desc';
+  enabled?: boolean;
 }
 
 export function useProducts(params: ListProductsParams = {}) {
@@ -36,11 +37,13 @@ export function useProducts(params: ListProductsParams = {}) {
   return useQuery<PaginatedResponse<Product>>({
     queryKey: ['products', params],
     queryFn: () => apiClient.get<PaginatedResponse<Product>>(endpoint),
+    enabled: params.enabled,
   });
 }
 
 interface CreateProductDto {
   name: string;
+  productCode?: string;
   unit: string;
   description?: string;
   defaultVat?: number;

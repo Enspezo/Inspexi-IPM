@@ -6,11 +6,12 @@ import {
   BadRequestException,
   Inject,
 } from '@nestjs/common';
-import { User, Role, Prisma, QuoteStatus, RequestStatus, NotificationType, TaskType, TaskEntityType, TaskStatus, FollowUpAssigneeType } from '@prisma/client';
+import { User, Role, Prisma, QuoteStatus, QuoteTemplate, RequestStatus, NotificationType, TaskType, TaskEntityType, TaskStatus, FollowUpAssigneeType, ApprovalKind, ApprovalStatus } from '@prisma/client';
 import { ConfigService } from '@nestjs/config';
 import { randomUUID } from 'crypto';
 import { PrismaService } from '@/prisma';
-import { paginate, buildOrderBy, orgScope, assertFound } from '@/common';
+import { paginate, buildOrderBy, orgScope, assertFound, assertSameOrg } from '@/common';
+import { NumberingService } from '@/modules/numbering/numbering.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { EmailService } from '@/common/services/email.service';
 import { StorageProvider, STORAGE_PROVIDER } from '@/common/services/storage/storage.interface';
@@ -25,7 +26,7 @@ import {
   ListQuotesQueryDto,
   SendQuoteDto,
 } from './dto';
-import { VALID_TRANSITIONS, calculateLineTotal, findQuoteForUser, getPublicUrl, serializeQuote } from './quotes.helpers';
+import { VALID_TRANSITIONS, assertTemplateLinked, calculateLineTotal, findQuoteForUser, getPublicUrl, isQuoteApprovalRequired, resolveTemplateData, serializeQuote } from './quotes.helpers';
 
 @Injectable()
 export class QuotesService {
@@ -41,16 +42,18 @@ export class QuotesService {
     private pdfService: PdfService,
     private quotePdfService: QuotePdfService,
     private emailTemplatesService: EmailTemplatesService,
+    private numbering: NumberingService,
   ) {}
 
   async findAll(user: User, query: ListQuotesQueryDto) {
-    const { search, status, contactId, createdBy, page = 1, limit = 20, sortBy, sortOrder = 'desc' } = query;
+    const { search, status, contactId, createdBy, templateId, page = 1, limit = 20, sortBy, sortOrder = 'desc' } = query;
     const ALLOWED_SORT_FIELDS = ['quoteNumber', 'subject', 'status', 'total', 'validUntil', 'createdAt'];
     const orderBy = buildOrderBy(sortBy, sortOrder, ALLOWED_SORT_FIELDS);
     const where: Prisma.QuoteWhereInput = { ...orgScope(user) };
     if (status) where.status = status;
     if (contactId) where.contactId = contactId;
     if (createdBy) where.createdBy = createdBy;
+    if (templateId) where.templateId = templateId === 'none' ? null : templateId;
     if (search) {
       where.OR = [
         { subject: { contains: search, mode: 'insensitive' } },
@@ -62,6 +65,7 @@ export class QuotesService {
       where,
       include: {
         contact: { select: { id: true, type: true, companyName: true, firstName: true, lastName: true, email: true } },
+        template: { select: { id: true, name: true } },
         createdByUser: { select: { id: true, firstName: true, lastName: true, email: true } },
       },
       orderBy,
@@ -86,17 +90,12 @@ export class QuotesService {
       const location = assertFound(await this.prisma.location.findUnique({ where: { id: dto.locationId } }), 'Locatie');
       if (location.contactId !== dto.contactId) throw new ForbiddenException('Locatie behoort niet tot deze relatie');
     }
-    let templateData: { coverBlocks?: any; contentBlocks?: any; closingBlocks?: any; defaultValidityDays?: number; requiresApproval?: boolean } = {};
+    // Linked request must belong to the same org (cross-tenant guard)
+    await assertSameOrg(this.prisma.request, dto.requestId, orgId, 'Aanvraag');
+    let templateData: ReturnType<typeof resolveTemplateData> = {};
     if (dto.templateId) {
-      const template = await this.prisma.quoteTemplate.findUnique({ where: { id: dto.templateId } });
-      if (!template || !template.isActive) throw new NotFoundException('Template niet gevonden');
-      if (!user.roles.includes(Role.SUPERUSER) && template.orgId !== orgId) throw new ForbiddenException('Template behoort niet tot uw organisatie');
-      if (template.templateType === 'DOCX') {
-        // DOCX templates only contribute metadata — block content is not applicable
-        templateData = { defaultValidityDays: template.defaultValidityDays, requiresApproval: template.requiresApproval };
-      } else {
-        templateData = { coverBlocks: template.coverBlocks, contentBlocks: template.contentBlocks, closingBlocks: template.closingBlocks, defaultValidityDays: template.defaultValidityDays, requiresApproval: template.requiresApproval };
-      }
+      const template = await this.loadActiveTemplate(dto.templateId, orgId, user);
+      templateData = resolveTemplateData(template);
     }
     let validUntil: Date | undefined;
     if (dto.validUntil) {
@@ -111,34 +110,69 @@ export class QuotesService {
       ? await this.customFieldsValidator.validateAndSanitize(orgId!, 'QUOTE', dto.customFields)
       : null;
 
-    return this.prisma.$transaction(async (tx) => {
-      const quoteNumber = await this.generateQuoteNumber(orgId!, tx);
-      return serializeQuote(await tx.quote.create({
-        data: {
-          orgId: orgId!,
-          quoteNumber,
-          templateId: dto.templateId || undefined,
-          requestId: dto.requestId || undefined,
-          contactId: dto.contactId,
-          locationId: dto.locationId || undefined,
-          subject: dto.subject,
-          coverBlocks: templateData.coverBlocks ?? undefined,
-          contentBlocks: dto.contentBlocks ?? templateData.contentBlocks ?? undefined,
-          closingBlocks: templateData.closingBlocks ?? undefined,
-          validUntil,
-          requiresApproval: templateData.requiresApproval ?? false,
-          internalNotes: dto.internalNotes || undefined,
-          createdBy: user.id,
-          publicToken: randomUUID(),
-          customFields: customFields as any,
-        },
-      }));
-    });
+    return this.numbering.runWithGeneratedNumber(
+      'QUOTE',
+      orgId!,
+      {
+        manual: dto.quoteNumber,
+        loadContext: () => this.numberingContext(contact, dto.locationId),
+      },
+      async (tx, quoteNumber) =>
+        serializeQuote(
+          await tx.quote.create({
+            data: {
+              orgId: orgId!,
+              quoteNumber,
+              templateId: dto.templateId || undefined,
+              requestId: dto.requestId || undefined,
+              contactId: dto.contactId,
+              locationId: dto.locationId || undefined,
+              subject: dto.subject,
+              coverBlocks: templateData.coverBlocks ?? undefined,
+              contentBlocks: dto.contentBlocks ?? templateData.contentBlocks ?? undefined,
+              closingBlocks: templateData.closingBlocks ?? undefined,
+              validUntil,
+              requiresApproval: templateData.requiresApproval ?? false,
+              internalNotes: dto.internalNotes || undefined,
+              createdBy: user.id,
+              publicToken: randomUUID(),
+              customFields: customFields as any,
+            },
+          }),
+        ),
+    );
+  }
+
+  /** Build numbering placeholder context (contact name + location postcode) for a quote. */
+  private async numberingContext(
+    contact: { companyName: string | null; firstName: string | null; lastName: string | null },
+    locationId?: string | null,
+  ) {
+    const postcode = locationId
+      ? (
+          await this.prisma.location.findUnique({
+            where: { id: locationId },
+            select: { postalCode: true },
+          })
+        )?.postalCode
+      : undefined;
+    return {
+      contact:
+        contact.companyName ||
+        [contact.firstName, contact.lastName].filter(Boolean).join(' '),
+      postcode,
+    };
   }
 
   async update(id: string, dto: UpdateQuoteDto, user: User) {
     const quote = await this.findOne(id, user);
     if (quote.status !== QuoteStatus.CONCEPT) throw new BadRequestException('Alleen offertes met status CONCEPT kunnen bewerkt worden');
+
+    // Cross-tenant guard on re-pointed FKs.
+    await Promise.all([
+      assertSameOrg(this.prisma.contact, dto.contactId, user.orgId, 'Relatie'),
+      assertSameOrg(this.prisma.location, dto.locationId, user.orgId, 'Locatie'),
+    ]);
 
     let customFieldsData: any = undefined;
     if (dto.customFields !== undefined) {
@@ -151,9 +185,22 @@ export class QuotesService {
       );
     }
 
+    // Template switch — only reachable while CONCEPT (guarded above). Re-applies
+    // the new template's blocks just like create(); offerteregels are never touched.
+    const templateSwitchData = await this.resolveTemplateSwitch(quote, dto, user);
+
+    // Manual renumber — gated on the scheme's allowManualEntry + uniqueness check.
+    let manualNumber: string | undefined;
+    if (dto.quoteNumber !== undefined && dto.quoteNumber.trim() !== quote.quoteNumber) {
+      manualNumber = await this.numbering.validateManualNumber(
+        quote.orgId, 'QUOTE', dto.quoteNumber, quote.id,
+      );
+    }
+
     return serializeQuote(await this.prisma.quote.update({
       where: { id: quote.id },
       data: {
+        ...(manualNumber !== undefined && { quoteNumber: manualNumber }),
         ...(dto.subject !== undefined && { subject: dto.subject }),
         ...(dto.contactId !== undefined && { contactId: dto.contactId }),
         ...(dto.locationId !== undefined && { locationId: dto.locationId }),
@@ -163,8 +210,55 @@ export class QuotesService {
         ...(dto.contentBlocks !== undefined && { contentBlocks: dto.contentBlocks }),
         ...(dto.closingBlocks !== undefined && { closingBlocks: dto.closingBlocks }),
         ...(customFieldsData !== undefined && { customFields: customFieldsData as any }),
+        // Applied last so a template switch wins over any blocks in the same payload.
+        ...templateSwitchData,
       },
     }));
+  }
+
+  /**
+   * Load an active quote template scoped to the user's org. Shared by create()
+   * and the update() template switch so the existence/active/org checks live in
+   * one place. Returns the validated template.
+   */
+  private async loadActiveTemplate(templateId: string, orgId: string | null, user: User): Promise<QuoteTemplate> {
+    const template = await this.prisma.quoteTemplate.findUnique({ where: { id: templateId } });
+    if (!template || !template.isActive) throw new NotFoundException('Template niet gevonden');
+    if (!user.roles.includes(Role.SUPERUSER) && template.orgId !== orgId) throw new ForbiddenException('Template behoort niet tot uw organisatie');
+    return template;
+  }
+
+  /**
+   * Compute the Prisma update fields for a template switch on a CONCEPT quote.
+   * - `templateId` absent or unchanged → `{}` (no-op).
+   * - `templateId` null/empty → unlink template, leave blocks untouched.
+   * - new template → validate, then re-apply blocks (BLOCKS) or clear them (DOCX)
+   *   plus `requiresApproval`, exactly like create().
+   * `validUntil` is intentionally left untouched (may have been set manually).
+   */
+  private async resolveTemplateSwitch(
+    quote: { templateId: string | null; orgId: string },
+    dto: UpdateQuoteDto,
+    user: User,
+  ): Promise<Prisma.QuoteUncheckedUpdateInput> {
+    if (dto.templateId === undefined || dto.templateId === quote.templateId) return {};
+
+    // Unlink: clear the template (blocks stay as-is). Reset requiresApproval —
+    // without a template there is no approval policy to enforce.
+    if (!dto.templateId) return { templateId: null, requiresApproval: false };
+
+    const template = await this.loadActiveTemplate(dto.templateId, quote.orgId, user);
+    const templateData = resolveTemplateData(template);
+    // BLOCKS → re-apply template blocks; DOCX → clear blocks (rendered from .docx).
+    const toBlockField = (value: QuoteTemplate['coverBlocks'] | undefined) =>
+      value == null ? Prisma.DbNull : (value as Prisma.InputJsonValue);
+    return {
+      templateId: template.id,
+      coverBlocks: toBlockField(templateData.coverBlocks),
+      contentBlocks: toBlockField(templateData.contentBlocks),
+      closingBlocks: toBlockField(templateData.closingBlocks),
+      requiresApproval: templateData.requiresApproval ?? false,
+    };
   }
 
   async setLines(id: string, dto: SetQuoteLinesDto, user: User) {
@@ -189,10 +283,41 @@ export class QuotesService {
     });
   }
 
+  /**
+   * Verplichte goedkeuringsgate (REQ5). Gooit een BadRequestException wanneer de
+   * offerte goedkeuring vereist (bedrag boven de org-drempel óf template-
+   * `requiresApproval`) en er nog géén GOEDGEKEURD verplicht (THRESHOLD) verzoek is.
+   * Centraal punt voor álle paden die een offerte goedkeuren/versturen.
+   */
+  private async assertApprovalSatisfied(quote: { id: string; orgId: string; total: unknown; requiresApproval: boolean }) {
+    const org = await this.prisma.organization.findUnique({
+      where: { id: quote.orgId },
+      select: { quoteApprovalThreshold: true, quoteApprovalRequiredRole: true },
+    });
+    if (org && isQuoteApprovalRequired(org, quote)) {
+      const approved = await this.prisma.quoteApprovalRequest.findFirst({
+        where: { quoteId: quote.id, kind: ApprovalKind.THRESHOLD, status: ApprovalStatus.APPROVED },
+      });
+      if (!approved) {
+        throw new BadRequestException(
+          'Deze offerte vereist goedkeuring (bedrag boven de goedkeuringsgrens of sjabloon vereist het) en kan pas verstuurd worden nadat een bevoegde collega de offerte heeft goedgekeurd.',
+        );
+      }
+    }
+  }
+
   async updateStatus(id: string, status: QuoteStatus, user: User) {
     const quote = await this.findOne(id, user);
     const validTargets = VALID_TRANSITIONS[quote.status];
     if (!validTargets.includes(status)) throw new BadRequestException(`Statusovergang van ${quote.status} naar ${status} is niet toegestaan`);
+    // A CONCEPT quote may not move forward without a template linked.
+    if (quote.status === QuoteStatus.CONCEPT && status !== QuoteStatus.CONCEPT) assertTemplateLinked(quote);
+    // Verplichte goedkeuringsgate (REQ5): markeer een offerte niet als goedgekeurd/verstuurd
+    // zonder een GOEDGEKEURD verplicht (THRESHOLD) verzoek. Dit sluit de bypass via
+    // handmatige statuswijziging (de mandatory flow loopt via approve()).
+    if (status === QuoteStatus.GOEDGEKEURD || status === QuoteStatus.VERSTUURD) {
+      await this.assertApprovalSatisfied(quote);
+    }
     const updated = await this.prisma.quote.update({ where: { id: quote.id }, data: { status } });
     if (status === QuoteStatus.VERSTUURD) {
       this.notifications.dispatch({ type: NotificationType.OFFERTE_VERSTUURD, orgId: quote.orgId, recipientUserIds: [quote.createdBy], title: 'Offerte verstuurd', body: `Offerte ${quote.quoteNumber} is naar de klant verstuurd.`, entityType: 'quote', entityId: quote.id });
@@ -205,7 +330,14 @@ export class QuotesService {
     if (quote.status !== QuoteStatus.GOEDGEKEURD && quote.status !== QuoteStatus.CONCEPT) {
       throw new BadRequestException('Alleen offertes met status CONCEPT of GOEDGEKEURD kunnen verstuurd worden');
     }
+    // Sending a CONCEPT quote moves it forward — a template must be linked.
+    if (quote.status === QuoteStatus.CONCEPT) assertTemplateLinked(quote);
     const org = await this.prisma.organization.findUnique({ where: { id: quote.orgId }, select: { name: true, senderName: true, senderEmail: true } });
+
+    // Verplichte goedkeuringsgate (REQ5): boven de org-drempel (of bij template-`requiresApproval`)
+    // mag niet verstuurd worden zonder een GOEDGEKEURD verplicht (THRESHOLD) verzoek.
+    // Vrijwillige (VOLUNTARY_*) verzoeken tellen hier nooit mee.
+    await this.assertApprovalSatisfied(quote);
     let token = quote.publicToken;
     if (!token) {
       token = randomUUID();
@@ -385,18 +517,33 @@ export class QuotesService {
     const request = await this.prisma.request.findUnique({ where: { id: requestId } });
     if (!request || request.isDeleted) throw new NotFoundException('Aanvraag niet gevonden');
     if (!user.roles.includes(Role.SUPERUSER) && request.orgId !== user.orgId) throw new ForbiddenException();
-    return this.prisma.$transaction(async (tx) => {
-      const quoteNumber = await this.generateQuoteNumber(request.orgId, tx);
-      const org = await tx.organization.findUnique({ where: { id: request.orgId } });
-      const validUntil = new Date();
-      validUntil.setDate(validUntil.getDate() + (org?.defaultValidityDays ?? 30));
-      const quote = await tx.quote.create({
-        data: { orgId: request.orgId, quoteNumber, requestId: request.id, contactId: request.contactId, locationId: request.locationId || undefined, subject: request.title, validUntil, createdBy: user.id, publicToken: randomUUID() },
-      });
-      await tx.request.update({ where: { id: request.id }, data: { status: RequestStatus.OFFERTE_GEMAAKT } });
-      await tx.requestStatusHistory.create({ data: { requestId: request.id, fromStatus: request.status, toStatus: RequestStatus.OFFERTE_GEMAAKT, changedBy: user.id, note: `Offerte ${quoteNumber} aangemaakt` } });
-      return serializeQuote(quote);
-    });
+    const org = await this.prisma.organization.findUnique({ where: { id: request.orgId } });
+    const validUntil = new Date();
+    validUntil.setDate(validUntil.getDate() + (org?.defaultValidityDays ?? 30));
+    return this.numbering.runWithGeneratedNumber(
+      'QUOTE',
+      request.orgId,
+      {
+        loadContext: async () => {
+          const contact = await this.prisma.contact.findUnique({
+            where: { id: request.contactId },
+            select: { companyName: true, firstName: true, lastName: true },
+          });
+          return this.numberingContext(
+            contact ?? { companyName: null, firstName: null, lastName: null },
+            request.locationId,
+          );
+        },
+      },
+      async (tx, quoteNumber) => {
+        const quote = await tx.quote.create({
+          data: { orgId: request.orgId, quoteNumber, requestId: request.id, contactId: request.contactId, locationId: request.locationId || undefined, subject: request.title, validUntil, createdBy: user.id, publicToken: randomUUID() },
+        });
+        await tx.request.update({ where: { id: request.id }, data: { status: RequestStatus.OFFERTE_GEMAAKT } });
+        await tx.requestStatusHistory.create({ data: { requestId: request.id, fromStatus: request.status, toStatus: RequestStatus.OFFERTE_GEMAAKT, changedBy: user.id, note: `Offerte ${quoteNumber} aangemaakt` } });
+        return serializeQuote(quote);
+      },
+    );
   }
 
   // ─── Template attachment helpers ────────────────────
@@ -461,18 +608,5 @@ export class QuotesService {
     }
 
     return attachments;
-  }
-
-  private async generateQuoteNumber(orgId: string, tx: Prisma.TransactionClient): Promise<string> {
-    const year = new Date().getFullYear();
-    const prefix = `OFF-${year}-`;
-    const latestQuote = await tx.quote.findFirst({ where: { orgId, quoteNumber: { startsWith: prefix } }, orderBy: { quoteNumber: 'desc' }, select: { quoteNumber: true } });
-    let sequence = 1;
-    if (latestQuote) {
-      const parts = latestQuote.quoteNumber.split('-');
-      const lastSeq = parseInt(parts[2], 10);
-      if (!isNaN(lastSeq)) sequence = lastSeq + 1;
-    }
-    return `${prefix}${String(sequence).padStart(4, '0')}`;
   }
 }

@@ -30,29 +30,39 @@ Alle responses in Beheer-envelope `{ success, data }`. Auth = **interne user-JWT
   "findings":        [ /* ... statusCode, classificationValues, shortDescription ... */ ],
   "photos":   [ { "id","entityType":"asset|finding|inspectionPlan","entityId","url","thumbnailUrl" } ],
   "contacts": [ { "id","orgId","name" } ],            // read-only referentie (naamweergave)
-  "deletedIds": { "inspectionPlans":[], "assets":[], "findings":[] },  // tombstones (deletedAt > since)
+  // ── Additief (REQ1 interne chat) — membership-scoped (DIRECT: deelnemer, TEAM: rol) ──
+  "chatThreads":  [ { "id","type":"DIRECT|TEAM","teamRole","subject","status","referenceEntityType","referenceEntityId","createdById","createdAt","updatedAt" } ],
+  "chatMessages": [ { "id","threadId","senderId","content","mentionedUserIds","referenceEntityType","referenceEntityId","createdAt","updatedAt" } ],
+  "users":        [ { "id","firstName","lastName","initials","availability","availabilityNote","lastSeenAt" } ],  // presence
+  "deletedIds": { "inspectionPlans":[], "assets":[], "findings":[], "chatThreads":[], "chatMessages":[] },  // tombstones (deletedAt > since); chat-keys additief
   "serverTime": "ISO"
 } }
 ```
 `since` leeg → alles (eerste sync). Alleen records van de eigen org (superuser ziet alles).
+
+> **REQ1 — interne chat (additief, contract niet gebroken).** Bestaande keys/typen zijn ongewijzigd; `chatThreads`/`chatMessages`/`users` en de twee chat-keys in `deletedIds` zijn nieuw — een oude PWA negeert onbekende keys. Chat in pull is **read-only** en strikt **membership-scoped** (een inspecteur ziet alleen eigen DIRECT-threads + zijn rol-teamkanalen; nooit DIRECT-threads van anderen). Presence (`users`) is de hele org-staf.
 
 ### POST /api/v1/sync/push
 ```jsonc
 { "deviceId":"...", "clientTime":"ISO", "changes": {
   "inspectionPlans": [ { "operation":"create|update|delete", "data": { /* volledig record, incl. id (client-UUID) */ } } ],
   "assets":   [ ... ],
-  "findings": [ ... ]
+  "findings": [ ... ],
+  // ── Additief (REQ1) — chat-berichten van de PWA-inspecteur ──
+  "chatMessages": [ { "operation":"create|delete", "data": { "id":"client-UUID","threadId","content","mentionedUserIds?","referenceEntityType?","referenceEntityId?","deviceId?" } } ]
 } }
 ```
 Response:
 ```jsonc
 { "success": true, "data": {
-  "processed": { "inspectionPlans": N, "assets": N, "findings": N },
+  "processed": { "inspectionPlans": N, "assets": N, "findings": N, "chatMessages": N },  // chatMessages additief
   "conflicts": [ { "entityType":"inspectionPlan|asset|finding", "entityId","clientData","serverData" } ],
   "errors":    [ { "entityType","entityId","error" } ],
   "serverTime": "ISO"
 } }
 ```
+
+> **Chat-push (REQ1).** `chatMessages` lopen **niet** via de generieke mutator maar via `ChatService.sendMessage`, zodat membership-autorisatie (alleen posten in eigen threads), notificatie-dispatch (@mentions + nieuw-bericht, gededupliceerd) en read-state identiek aan de REST-flow blijven. **Idempotent** op het client-`id` (replay-veilig). `delete` doet een soft-delete van een **eigen** bericht (verschijnt als tombstone in de volgende pull). Threads worden **niet** via push aangemaakt — die worden server-side (portal) geprovisioneerd; de PWA antwoordt in bestaande threads.
 
 ### POST /api/v1/sync/resolve
 ```jsonc
@@ -162,3 +172,28 @@ Aparte PR in de PWA-repo.
 - **Classificatie** is de zwaarste PWA-wijziging (enum → model) — plan die apart.
 - **vi/mr/signatures-sync** is bewust nog niet meegenomen; bevestig met het PWA-team of/wanneer die via push moeten.
 - **Thumbnails + signed URLs** blijven Fase 4 (nu: download-route, thumbnailPath = origineel).
+
+## 8. v3 — unified AssetNode tree (update)
+
+> §1–§7 hierboven beschrijven het oorspronkelijke **v2**-contract. Sinds de unificatie van
+> `assets`+`locations` tot één recursieve **AssetNode-boom** serveert de Beheer-API
+> **v3** (`contractVersion: 3` in elke pull). Breaking changes t.o.v. v2:
+>
+> - **`assets` → `assetNodes`** (body + `deletedIds`): één boom met `nodeType`
+>   `LOCATION|ASSET`. `org` is overal **self** (eigen `orgId`-kolom); cross-tenant FK's
+>   (`parentId`/`assetNodeId`/`inspectionPlanId`/…) worden geweigerd via `assertSameOrg`.
+> - **Node-velden hernoemd:** `parentAssetId`→`parentId`, `assetType`→`typeCode`,
+>   `locationDescription`→`description`. **Geen** `inspectionPlanId`/`locationId` meer op de
+>   node; ltree `path`/`depth` zitten **niet** in het contract (DB-trigger).
+> - **`inspectionPlans.locationId`** (hoofdlocatie) toegevoegd aan de whitelist.
+> - **`findings`:** `assetId`→`assetNodeId` + verplichte `inspectionPlanId`.
+> - **Vier nieuwe uitvoerings-entiteiten** (create/update/delete + tombstones):
+>   `visualInspections`, `measurementRecords`, `measurementSheetRecords`,
+>   `standaloneMeasurements`. Hiervoor kregen VisualInspection/MeasurementRecord/
+>   MeasurementSheetRecord een `deletedAt`-kolom (migratie
+>   `20260629140000_add_soft_delete_execution_records`). `StandaloneMeasurementValue`
+>   reist **genest** mee (`values[]`, replace-on-write).
+>
+> **PWA-cutover (aparte repo):** zie **`docs/fase3/PWA-CUTOVER-ASSET-NODE.md`** — nieuw
+> contract, Dexie v9→v10 (merge assets+locations → `assetNodes`), offline aanmaken zonder
+> plan-link, en de cutover-volgorde met rollback.

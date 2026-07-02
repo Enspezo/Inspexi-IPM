@@ -10,8 +10,11 @@ import {
 import { ActionMenu, Button, ErrorBox, Spinner, StatusBadge, Tabs, useConfirm, useToast } from '@/components/ui';
 import { PRIORITY, REQUEST_STATUS } from '@/lib/status';
 import { DetailPageLayout, SidebarSection } from '@/components/layout/detail-page-layout';
+import { FavoriteStar } from '@/components/favorites/favorite-star';
+import { StartChatButton } from '@/components/chat';
 import { NotesSidebarSection, HistorySidebarSection, DocumentsSidebarSection } from '@/components/layout/sidebar-sections';
 import { useAuth } from '@/providers/auth-provider';
+import { useWindowTabSync } from '@/providers/window-tabs';
 import {
   useRequest,
   useUpdateRequest,
@@ -64,6 +67,12 @@ export default function RequestDetailPage() {
   const [isEditing, setIsEditing] = useState(false);
   const [isTaskOpen, setIsTaskOpen] = useState(false);
   const [isLogOpen, setIsLogOpen] = useState(false);
+
+  // Keep this record's in-window tab title fresh, and flag it if the record 404s.
+  useWindowTabSync('request', id, {
+    title: request?.title,
+    notFound: !isLoading && (!!error || !request),
+  });
 
   const userCanWrite = user && user.roles.some(r => canWrite.includes(r));
 
@@ -175,6 +184,10 @@ export default function RequestDetailPage() {
           </button>
           <div>
             <div className="flex items-center gap-3">
+              <FavoriteStar entityType="Request" entityId={request.id} />
+              {request.requestNumber && (
+                <span className="font-mono text-sm text-gray-500">{request.requestNumber}</span>
+              )}
               <h2 className="text-2xl font-bold text-gray-900">{request.title}</h2>
               <StatusBadge status={request.status} map={REQUEST_STATUS} />
               <StatusBadge status={request.priority} map={PRIORITY} />
@@ -192,7 +205,9 @@ export default function RequestDetailPage() {
             )}
           </div>
         </div>
-        {userCanWrite && (
+        <div className="flex items-center gap-2">
+          <StartChatButton entityType="Request" entityId={request.id} label={request.title} />
+          {userCanWrite && (
           <ActionMenu
             primaryActions={[
               {
@@ -229,7 +244,8 @@ export default function RequestDetailPage() {
               },
             ]}
           />
-        )}
+          )}
+        </div>
       </div>
 
       {/* Tabs */}

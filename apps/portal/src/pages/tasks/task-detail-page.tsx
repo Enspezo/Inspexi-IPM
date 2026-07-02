@@ -8,6 +8,7 @@ import { ActionMenu, Button, Card, ErrorBox, Input, Spinner, StatusBadge, Select
 import { formatDate } from '@/lib/format';
 import { ENTITY_TYPE_LABELS, TASK_STATUS, TASK_TYPE } from '@/lib/status';
 import { DetailPageLayout } from '@/components/layout/detail-page-layout';
+import { FavoriteStar } from '@/components/favorites/favorite-star';
 import { HistorySidebarSection } from '@/components/layout/sidebar-sections';
 import { useAuth } from '@/providers/auth-provider';
 import { useUsers } from '@/pages/users/hooks/use-users';
@@ -199,6 +200,7 @@ export default function TaskDetailPage() {
             <span className="text-sm text-gray-400">/</span>
           </div>
           <div className="flex items-center gap-3">
+            <FavoriteStar entityType="Task" entityId={task.id} />
             <h2 className="text-2xl font-bold text-gray-900">{task.title}</h2>
             <StatusBadge status={task.status} map={TASK_STATUS} />
           </div>

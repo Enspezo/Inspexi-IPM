@@ -1,5 +1,5 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsBoolean, IsOptional, IsString } from 'class-validator';
+import { IsArray, IsBoolean, IsOptional, IsString, IsUUID } from 'class-validator';
 
 export class UpdateDocumentDto {
   @ApiPropertyOptional({ example: 'Bijgewerkte beschrijving' })
@@ -11,4 +11,13 @@ export class UpdateDocumentDto {
   @IsOptional()
   @IsBoolean()
   isSharedWithClient?: boolean;
+
+  @ApiPropertyOptional({
+    type: [String],
+    description: 'Vervangt de volledige tag-set van het document',
+  })
+  @IsOptional()
+  @IsArray()
+  @IsUUID('all', { each: true })
+  tagIds?: string[];
 }

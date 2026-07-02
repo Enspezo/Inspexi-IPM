@@ -3,7 +3,7 @@
 // Polymorf: entityType wire 'inspectionPlan' → enum 'inspection_plan'.
 
 import { Injectable, Inject, BadRequestException, Logger } from '@nestjs/common';
-import { User, PhotoEntityType, Prisma } from '@prisma/client';
+import { User, PhotoEntityType, AssetNodeType, Prisma } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import { PrismaService } from '@/prisma';
 import { orgScope, assertFound } from '@/common';
@@ -41,12 +41,23 @@ export class PhotosService {
     entityId: string,
     user: User,
   ): Promise<string> {
+    if (entityType === 'asset') {
+      const entity = assertFound(
+        await this.prisma.assetNode.findFirst({
+          where: { id: entityId, ...orgScope(user), nodeType: AssetNodeType.ASSET },
+          select: { orgId: true },
+        }),
+        'Entiteit',
+      );
+      return entity.orgId;
+    }
     const where = { id: entityId, ...orgScope(user) };
-    const model =
-      entityType === 'asset' ? this.prisma.asset
-      : entityType === 'finding' ? this.prisma.finding
-      : this.prisma.inspectionPlan;
-    const entity = assertFound(await (model as any).findFirst({ where, select: { orgId: true } }), 'Entiteit');
+    const entity = assertFound(
+      entityType === 'finding'
+        ? await this.prisma.finding.findFirst({ where, select: { orgId: true } })
+        : await this.prisma.inspectionPlan.findFirst({ where, select: { orgId: true } }),
+      'Entiteit',
+    );
     return entity.orgId;
   }
 

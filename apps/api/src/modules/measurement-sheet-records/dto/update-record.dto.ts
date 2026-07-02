@@ -1,5 +1,5 @@
-import { ApiProperty } from '@nestjs/swagger';
-import { IsObject } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { ArrayUnique, IsArray, IsObject, IsOptional, IsUUID } from 'class-validator';
 
 export class UpdateMeasurementSheetRecordDto {
   @ApiProperty({
@@ -11,4 +11,11 @@ export class UpdateMeasurementSheetRecordDto {
     string,
     Record<string, Record<string, { value: unknown; passFail?: string | null }>>
   >;
+
+  @ApiPropertyOptional({ type: [String], description: 'Gebruikte meetmiddelen (instrument-UUIDs)' })
+  @IsOptional()
+  @IsArray()
+  @ArrayUnique()
+  @IsUUID(undefined, { each: true, message: 'Ongeldig meetmiddel-id' })
+  usedInstrumentIds?: string[];
 }

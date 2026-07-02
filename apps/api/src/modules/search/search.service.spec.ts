@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { Role, TaskEntityType, DocumentEntityType } from '@prisma/client';
 import { SearchService } from './search.service';
 import { SearchEntityType } from './dto/search-query.dto';
+import { FavoritesService } from '../favorites/favorites.service';
 import { PrismaService } from '@/prisma';
 
 describe('SearchService', () => {
@@ -17,6 +18,10 @@ describe('SearchService', () => {
     product: { findMany: jest.fn(), count: jest.fn() },
     location: { findMany: jest.fn(), count: jest.fn() },
     planningItem: { findMany: jest.fn(), count: jest.fn() },
+  };
+
+  const mockFavoritesService = {
+    getFavoriteRefSet: jest.fn(),
   };
 
   const mockUser = {
@@ -44,6 +49,7 @@ describe('SearchService', () => {
       providers: [
         SearchService,
         { provide: PrismaService, useValue: mockPrismaService },
+        { provide: FavoritesService, useValue: mockFavoritesService },
       ],
     }).compile();
 
@@ -55,6 +61,9 @@ describe('SearchService', () => {
       if (model.findMany) model.findMany.mockResolvedValue([]);
       if (model.count) model.count.mockResolvedValue(0);
     }
+
+    // Default: no favorites.
+    mockFavoritesService.getFavoriteRefSet.mockResolvedValue(new Set<string>());
   });
 
   describe('search — all types', () => {
@@ -203,6 +212,35 @@ describe('SearchService', () => {
 
       const contactCall = mockPrismaService.contact.findMany.mock.calls[0][0];
       expect(contactCall.where.orgId).toBe('org-1');
+    });
+  });
+
+  describe('favorites ordering', () => {
+    it('marks favorited hits and sorts them first within their group', async () => {
+      mockPrismaService.contact.findMany.mockResolvedValue([
+        { id: 'c-1', companyName: 'Not favorited' },
+        { id: 'c-2', companyName: 'Favorited' },
+      ]);
+      mockPrismaService.contact.count.mockResolvedValue(2);
+      mockFavoritesService.getFavoriteRefSet.mockResolvedValue(
+        new Set<string>(['Contact:c-2']),
+      );
+
+      const result = await service.search(mockUser, {
+        q: 'test',
+        type: SearchEntityType.CONTACT,
+        limit: 4,
+        page: 1,
+      } as any);
+
+      const contactGroup = result.groups.find(
+        (g: any) => g.type === SearchEntityType.CONTACT,
+      );
+      const items = contactGroup!.items as Array<{ id: string; isFavorited: boolean }>;
+      expect(items[0].id).toBe('c-2');
+      expect(items[0].isFavorited).toBe(true);
+      expect(items[1].id).toBe('c-1');
+      expect(items[1].isFavorited).toBe(false);
     });
   });
 });

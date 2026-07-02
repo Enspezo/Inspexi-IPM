@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { User, Prisma } from '@prisma/client';
 import { PrismaService } from '@/prisma';
+import { assertSystemRowManageable } from '@/common';
 import {
   CreateAssetTypeDto,
   UpdateAssetTypeDto,
@@ -122,6 +123,7 @@ export class AssetTypesService {
       data: {
         orgId: isSystem ? null : orgId,
         code: dto.code,
+        shortCode: dto.shortCode?.trim() || null,
         name: dto.name,
         description: dto.description,
         icon: dto.icon,
@@ -143,6 +145,8 @@ export class AssetTypesService {
       where: { id },
       data: {
         name: dto.name,
+        shortCode:
+          dto.shortCode === undefined ? undefined : dto.shortCode.trim() || null,
         description: dto.description,
         icon: dto.icon,
         color: dto.color,
@@ -185,6 +189,7 @@ export class AssetTypesService {
       data: {
         orgId,
         code: source.code,
+        shortCode: source.shortCode,
         name: source.name,
         description: source.description,
         icon: source.icon,
@@ -430,12 +435,9 @@ export class AssetTypesService {
     at: { isSystem: boolean; orgId: string | null },
     user: User,
   ): void {
-    if (at.isSystem) {
-      if (user.orgId !== null) {
-        throw new ForbiddenException('Systeem-asset-types zijn alleen-lezen. Dupliceer eerst.');
-      }
-    } else if (at.orgId !== user.orgId) {
-      throw new ForbiddenException('Dit asset-type hoort niet bij uw organisatie');
-    }
+    assertSystemRowManageable(at, user, {
+      system: 'Systeem-asset-types zijn alleen-lezen. Dupliceer eerst.',
+      org: 'Dit asset-type hoort niet bij uw organisatie',
+    });
   }
 }

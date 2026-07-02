@@ -45,7 +45,7 @@ export class ContactsService {
   }
 
   async findAll(user: User, query: ListContactsQueryDto) {
-    const { search, type, onlyMine, page = 1, limit = 20, sortBy, sortOrder = 'desc' } = query;
+    const { search, type, onlyMine, supplierOnly, page = 1, limit = 20, sortBy, sortOrder = 'desc' } = query;
     const ALLOWED_SORT_FIELDS = ['type', 'email', 'phone', 'createdAt'];
     const orderBy = buildOrderBy(sortBy, sortOrder, ALLOWED_SORT_FIELDS);
 
@@ -62,6 +62,11 @@ export class ContactsService {
     // "Mijn relaties" filter
     if (onlyMine === 'true') {
       where.ownerId = user.id;
+    }
+
+    // "Alleen leveranciers" filter
+    if (supplierOnly === 'true') {
+      where.isSupplier = true;
     }
 
     if (search && search.length >= 3) {
@@ -110,7 +115,11 @@ export class ContactsService {
             customerGroup: { select: { id: true, name: true } },
           },
         },
-        locations: true,
+        locations: {
+          include: {
+            locationType: { select: { id: true, code: true, name: true, color: true, icon: true } },
+          },
+        },
         logs: {
           include: { user: { select: { firstName: true, lastName: true } } },
           orderBy: { loggedAt: 'desc' },
@@ -172,6 +181,10 @@ export class ContactsService {
         vatNumber: dto.vatNumber,
         vatValidation: (dto.vatValidation ?? null) as any,
         cocNumber: dto.cocNumber,
+        isSupplier: dto.isSupplier ?? false,
+        supplierCustomerNumber: dto.supplierCustomerNumber,
+        purchaseConditions: dto.purchaseConditions,
+        supplierRating: dto.supplierRating,
         notes: dto.notes,
         ownerId: dto.ownerId ?? user.id,
         customFields: customFields as any,
@@ -214,6 +227,10 @@ export class ContactsService {
         ...(dto.vatNumber !== undefined && { vatNumber: dto.vatNumber }),
         ...(dto.vatValidation !== undefined && { vatValidation: dto.vatValidation as any }),
         ...(dto.cocNumber !== undefined && { cocNumber: dto.cocNumber }),
+        ...(dto.isSupplier !== undefined && { isSupplier: dto.isSupplier }),
+        ...(dto.supplierCustomerNumber !== undefined && { supplierCustomerNumber: dto.supplierCustomerNumber }),
+        ...(dto.purchaseConditions !== undefined && { purchaseConditions: dto.purchaseConditions }),
+        ...(dto.supplierRating !== undefined && { supplierRating: dto.supplierRating }),
         ...(dto.notes !== undefined && { notes: dto.notes }),
         ...(dto.ownerId !== undefined && { ownerId: dto.ownerId || null }),
         ...(customFieldsData !== undefined && { customFields: customFieldsData as any }),

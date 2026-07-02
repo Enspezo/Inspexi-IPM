@@ -27,6 +27,7 @@ interface ListRequestsParams {
   limit?: number;
   sortBy?: string;
   sortOrder?: 'asc' | 'desc';
+  enabled?: boolean;
 }
 
 export function useRequests(params: ListRequestsParams = {}) {
@@ -46,6 +47,7 @@ export function useRequests(params: ListRequestsParams = {}) {
   return useQuery<PaginatedResponse<Request>>({
     queryKey: ['requests', params],
     queryFn: () => apiClient.get<PaginatedResponse<Request>>(endpoint),
+    enabled: params.enabled,
   });
 }
 
@@ -59,6 +61,7 @@ export function useRequest(id: string) {
 
 interface CreateRequestDto {
   contactId: string;
+  requestNumber?: string;
   locationId?: string;
   assignedTo?: string;
   source: string;

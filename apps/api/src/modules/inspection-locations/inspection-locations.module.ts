@@ -1,10 +1,10 @@
 import { Module } from '@nestjs/common';
-import { LocationTypesModule } from '../location-types/location-types.module';
+import { AssetNodesModule } from '../asset-nodes/asset-nodes.module';
 import { InspectionLocationsController } from './inspection-locations.controller';
 import { InspectionLocationsService } from './inspection-locations.service';
 
 @Module({
-  imports: [LocationTypesModule],
+  imports: [AssetNodesModule],
   controllers: [InspectionLocationsController],
   providers: [InspectionLocationsService],
   exports: [InspectionLocationsService],

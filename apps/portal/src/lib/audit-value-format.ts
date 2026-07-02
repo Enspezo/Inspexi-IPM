@@ -111,6 +111,38 @@ const enumLabels: Record<string, string> = {
   REQUEST: 'Aanvraag',
   QUOTE: 'Offerte',
   PRODUCT: 'Product',
+
+  // ContactDisplayMode (inspecteur-contactgegevens klantportaal)
+  NONE: 'Geen',
+  STATIC: 'Statisch',
+  INSPECTOR: 'Inspecteur (met statische terugval)',
+
+  // SaaS feature-keys (PRD-09) — voor PlanFeature/OrganizationFeature.featureKey
+  BASIS_CRM: 'Basis CRM',
+  CRM_COMPLEET: 'CRM Compleet',
+  BASIS_UITVOERING: 'Basis Uitvoering',
+  UITVOERING_COMPLEET: 'Uitvoering Compleet',
+  BASIS_INSPECTIES: 'Basis Inspecties',
+  BASIS_WORKFLOW: 'Basis Workflow',
+  WORKFLOW_COMPLEET: 'Workflow Compleet',
+  WEBHOOKS: 'Webhooks (add-on)',
+  CUSTOM_FIELDS: 'Aangepaste velden (add-on)',
+
+  // SupportTicket (PRD-10) — NIEUW/IN_BEHANDELING/WACHT_OP_KLANT al hierboven
+  OPGELOST: 'Opgelost',
+  GESLOTEN: 'Gesloten',
+  // SupportTicketPriority
+  LAAG: 'Laag',
+  NORMAAL: 'Normaal',
+  HOOG: 'Hoog',
+  URGENT: 'Urgent',
+  // SupportTicketCategory
+  VRAAG: 'Vraag',
+  PROBLEEM: 'Probleem',
+  BUG: 'Bug',
+  FEATURE_REQUEST: 'Wens',
+  FACTUUR: 'Factuur',
+  OVERIG: 'Overig',
 };
 
 /** Currency fields that should be formatted as EUR */
@@ -166,6 +198,8 @@ const FK_FIELDS = new Set([
   'workOrderId',
   'lostReasonId',
   'roleId',
+  'planId',
+  'updatedById',
 ]);
 
 const currencyFormatter = new Intl.NumberFormat('nl-NL', {

@@ -3,7 +3,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useAuth } from '@/providers/auth-provider';
-import { Card, Input, Button, Spinner, Tabs, useToast } from '@/components/ui';
+import { Card, Input, Button, Select, Spinner, Tabs, Checkbox, useToast } from '@/components/ui';
 import {
   useOrganization,
   useUpdateOrganization,
@@ -12,13 +12,23 @@ import {
   getLogoUrl,
 } from './hooks/use-organization';
 import { CustomFieldsManagement } from './components/custom-fields-management';
+import { DocumentTagsManagement } from './components/document-tags-management';
+import { NumberingSchemesManagement } from './components/numbering-schemes-management';
 import QuotaTab from './components/quota-tab';
+import { SupportAccessSection } from './components/support-access-section';
 import {
   useGroupNotificationPrefs,
   useSaveGroupNotificationPrefs,
 } from '@/pages/notifications/hooks/use-notifications';
-import { NotificationType, Role } from '@/types';
+import { ContactDisplayMode, NotificationType, Role } from '@/types';
+import { getTypeLabel } from '@/lib/notifications';
 import { getErrorMessage } from '@/lib/api-client';
+
+const CONTACT_DISPLAY_OPTIONS = [
+  { value: ContactDisplayMode.NONE, label: 'Geen' },
+  { value: ContactDisplayMode.STATIC, label: 'Statisch' },
+  { value: ContactDisplayMode.INSPECTOR, label: 'Inspecteur (met statische terugval)' },
+];
 
 const orgSchema = z.object({
   name: z.string().min(1, 'Organisatienaam is verplicht'),
@@ -38,39 +48,27 @@ const orgSchema = z.object({
     .optional(),
   workdayStart: z.coerce.number().int().min(0).max(23),
   workdayEnd: z.coerce.number().int().min(1).max(24),
+  inspectorPhoneDisplay: z.nativeEnum(ContactDisplayMode),
+  inspectorEmailDisplay: z.nativeEnum(ContactDisplayMode),
+  inspectorStaticPhone: z.string().optional(),
+  inspectorStaticEmail: z
+    .union([z.string().email('Voer een geldig e-mailadres in'), z.literal('')])
+    .optional(),
+  quoteApprovalThreshold: z
+    .union([z.coerce.number().min(0, 'Bedrag moet minimaal 0 zijn'), z.literal('')])
+    .optional(),
+  quoteApprovalRequiredRole: z.union([z.nativeEnum(Role), z.literal('')]).optional(),
+  chatEnabled: z.boolean(),
 }).refine((d) => d.workdayEnd > d.workdayStart, {
   message: 'Eindtijd moet na begintijd liggen',
   path: ['workdayEnd'],
-});
+}).refine(
+  (d) => d.quoteApprovalThreshold === '' || d.quoteApprovalThreshold === undefined || !!d.quoteApprovalRequiredRole,
+  { message: 'Kies een vereiste rol wanneer u een goedkeuringsgrens instelt', path: ['quoteApprovalRequiredRole'] },
+);
 
 type OrgFormData = z.infer<typeof orgSchema>;
 
-// ─── Notification Type Labels ────────────────────────────
-
-const notifTypeLabels: Record<string, string> = {
-  [NotificationType.OFFERTE_TER_GOEDKEURING]: 'Offerte ter goedkeuring',
-  [NotificationType.OFFERTE_GOEDGEKEURD]: 'Offerte goedgekeurd',
-  [NotificationType.OFFERTE_AFGEWEZEN]: 'Offerte afgewezen',
-  [NotificationType.OFFERTE_VERSTUURD]: 'Offerte verstuurd',
-  [NotificationType.OFFERTE_BEKEKEN]: 'Offerte bekeken',
-  [NotificationType.OFFERTE_ONDERTEKEND]: 'Offerte ondertekend',
-  [NotificationType.OFFERTE_VERLOPEN]: 'Offerte verlopen',
-  [NotificationType.NIEUWE_VRAAG_KLANT]: 'Nieuwe vraag klant',
-  [NotificationType.ANTWOORD_OP_VRAAG]: 'Antwoord op vraag',
-  [NotificationType.AANVRAAG_TOEGEWEZEN]: 'Aanvraag toegewezen',
-  [NotificationType.AANVRAAG_STATUS_GEWIJZIGD]: 'Aanvraag status gewijzigd',
-  [NotificationType.TAAK_TOEGEWEZEN]: 'Taak toegewezen',
-  [NotificationType.TAAK_STATUS_GEWIJZIGD]: 'Taak status gewijzigd',
-  [NotificationType.DOCUMENT_GEUPLOAD]: 'Document geüpload',
-  [NotificationType.AFSPRAAK_ACCEPTATIE_VERZOEK]: 'Afspraak acceptatieverzoek',
-  [NotificationType.AFSPRAAK_GEACCEPTEERD]: 'Afspraak geaccepteerd',
-  [NotificationType.AFSPRAAK_GEWEIGERD]: 'Afspraak geweigerd',
-  [NotificationType.AFSPRAAK_VERPLAATST]: 'Afspraak verplaatst',
-  [NotificationType.AFSPRAAK_VERZETTEN_VERZOEK]: 'Afspraak verzetverzoek',
-  [NotificationType.AFSPRAAK_BEVESTIGING_VERSTUURD]: 'Afspraak bevestiging verstuurd',
-  [NotificationType.PROJECT_AANGEMAAKT]: 'Project aangemaakt',
-  [NotificationType.PROJECT_STATUS_GEWIJZIGD]: 'Project status gewijzigd',
-};
 
 const roleLabels: Record<string, string> = {
   [Role.ORG_ADMIN]: 'Org Admin',
@@ -219,7 +217,7 @@ function GroupNotificationPrefsCard() {
                 className="border-b border-gray-100 last:border-0"
               >
                 <td className="py-2.5 pr-4 text-gray-700">
-                  {notifTypeLabels[row.type] || row.type}
+                  {getTypeLabel(row.type)}
                 </td>
                 <td className="px-4 py-2.5 text-center">
                   <input
@@ -267,7 +265,7 @@ export default function OrganizationSettingsPage() {
   const deleteLogoMutation = useDeleteLogo(user?.orgId);
 
   // Tab state
-  const [activeTab, setActiveTab] = useState<'huisstijl' | 'financieel' | 'communicatie' | 'notificaties' | 'eigen-velden' | 'quota'>('huisstijl');
+  const [activeTab, setActiveTab] = useState<'huisstijl' | 'financieel' | 'communicatie' | 'inspecteur-portal' | 'notificaties' | 'eigen-velden' | 'document-tags' | 'nummering' | 'quota' | 'support'>('huisstijl');
 
   // Logo preview state
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
@@ -280,10 +278,14 @@ export default function OrganizationSettingsPage() {
     register,
     handleSubmit,
     reset,
+    watch,
     formState: { errors, isDirty },
   } = useForm<OrgFormData>({
     resolver: zodResolver(orgSchema),
   });
+
+  const phoneDisplayMode = watch('inspectorPhoneDisplay');
+  const emailDisplayMode = watch('inspectorEmailDisplay');
 
   useEffect(() => {
     if (organization) {
@@ -297,6 +299,13 @@ export default function OrganizationSettingsPage() {
         senderEmail: organization.senderEmail ?? '',
         workdayStart: organization.workdayStart ?? 8,
         workdayEnd: organization.workdayEnd ?? 17,
+        inspectorPhoneDisplay: organization.inspectorPhoneDisplay ?? ContactDisplayMode.NONE,
+        inspectorEmailDisplay: organization.inspectorEmailDisplay ?? ContactDisplayMode.NONE,
+        inspectorStaticPhone: organization.inspectorStaticPhone ?? '',
+        inspectorStaticEmail: organization.inspectorStaticEmail ?? '',
+        quoteApprovalThreshold: organization.quoteApprovalThreshold ?? '',
+        quoteApprovalRequiredRole: organization.quoteApprovalRequiredRole ?? '',
+        chatEnabled: organization.chatEnabled ?? true,
       });
     }
   }, [organization, reset]);
@@ -312,6 +321,16 @@ export default function OrganizationSettingsPage() {
         senderEmail: data.senderEmail || null,
         workdayStart: data.workdayStart,
         workdayEnd: data.workdayEnd,
+        inspectorPhoneDisplay: data.inspectorPhoneDisplay,
+        inspectorEmailDisplay: data.inspectorEmailDisplay,
+        inspectorStaticPhone: data.inspectorStaticPhone?.trim() || null,
+        inspectorStaticEmail: data.inspectorStaticEmail?.trim() || null,
+        quoteApprovalThreshold:
+          data.quoteApprovalThreshold === '' || data.quoteApprovalThreshold === undefined
+            ? null
+            : Number(data.quoteApprovalThreshold),
+        quoteApprovalRequiredRole: data.quoteApprovalRequiredRole || null,
+        chatEnabled: data.chatEnabled,
       });
       showToast('Organisatie-instellingen opgeslagen', 'success');
     } catch (err) {
@@ -396,9 +415,13 @@ export default function OrganizationSettingsPage() {
     { key: 'huisstijl', label: 'Huisstijl' },
     { key: 'financieel', label: 'Financieel' },
     { key: 'communicatie', label: 'Communicatie' },
+    { key: 'inspecteur-portal', label: 'Inspecteur klantportaal' },
     { key: 'notificaties', label: 'Notificaties' },
     { key: 'eigen-velden', label: 'Eigen velden' },
+    { key: 'document-tags', label: 'Document-tags' },
+    { key: 'nummering', label: 'Nummering' },
     { key: 'quota', label: 'Quota' },
+    { key: 'support', label: 'Support-toegang' },
   ];
 
   return (
@@ -417,9 +440,17 @@ export default function OrganizationSettingsPage() {
 
       {activeTab === 'eigen-velden' && <CustomFieldsManagement />}
 
+      {activeTab === 'document-tags' && <DocumentTagsManagement />}
+
+      {activeTab === 'nummering' && <NumberingSchemesManagement />}
+
       {activeTab === 'notificaties' && <GroupNotificationPrefsCard />}
 
       {activeTab === 'quota' && <QuotaTab />}
+
+      {activeTab === 'support' && user?.orgId && (
+        <SupportAccessSection orgId={user.orgId} />
+      )}
 
       {activeTab === 'huisstijl' && (
       <>
@@ -606,6 +637,35 @@ export default function OrganizationSettingsPage() {
             />
           </div>
 
+          <div className="border-t border-gray-200 pt-6">
+            <h3 className="text-sm font-semibold text-gray-900">Offerte-goedkeuring</h3>
+            <p className="mt-1 text-sm text-gray-500">
+              Offertes met een totaal <strong>boven</strong> deze grens kunnen pas verstuurd worden
+              nadat iemand met de vereiste rol ze heeft goedgekeurd. Laat de grens leeg om geen
+              verplichte goedkeuring af te dwingen.
+            </p>
+            <div className="mt-4 grid grid-cols-1 gap-6 sm:grid-cols-2">
+              <Input
+                label="Goedkeuringsgrens (€)"
+                type="number"
+                step="0.01"
+                min="0"
+                placeholder="Geen grens"
+                error={errors.quoteApprovalThreshold?.message}
+                {...register('quoteApprovalThreshold')}
+              />
+              <Select
+                label="Vereiste goedkeur-rol"
+                error={errors.quoteApprovalRequiredRole?.message}
+                options={[
+                  { value: '', label: 'Geen' },
+                  ...assignableRoles.map((role) => ({ value: role, label: roleLabels[role] })),
+                ]}
+                {...register('quoteApprovalRequiredRole')}
+              />
+            </div>
+          </div>
+
           <div className="flex justify-end border-t border-gray-200 pt-4">
             <Button
               type="submit"
@@ -697,6 +757,94 @@ export default function OrganizationSettingsPage() {
                 <p className="text-xs text-red-600">{errors.workdayEnd.message}</p>
               )}
             </div>
+          </div>
+
+          <div>
+            <h3 className="text-base font-semibold text-gray-900">Interne chat</h3>
+            <p className="mt-1 text-sm text-gray-500">
+              De interne chat tussen medewerkers (en richting de inspecteur-app) voor deze organisatie. Uitschakelen verbergt de chat overal; bestaande gesprekken blijven bewaard en komen terug bij heractiveren.
+            </p>
+            <div className="mt-3">
+              <Checkbox label="Interne chat inschakelen" {...register('chatEnabled')} />
+            </div>
+          </div>
+
+          <div className="flex justify-end border-t border-gray-200 pt-4">
+            <Button
+              type="submit"
+              isLoading={updateMutation.isPending}
+              disabled={!isDirty}
+            >
+              Opslaan
+            </Button>
+          </div>
+        </form>
+      </Card>
+      )}
+
+      {activeTab === 'inspecteur-portal' && (
+      <Card>
+        <form onSubmit={handleSubmit(onSubmit)} className="space-y-8">
+          <div>
+            <h3 className="text-base font-semibold text-gray-900">
+              Contactgegevens inspecteur in klantportaal
+            </h3>
+            <p className="mt-1 text-sm text-gray-500">
+              Bepaal per kanaal of en hoe de contactgegevens van de inspecteur aan klanten worden getoond in het klantportaal.
+            </p>
+          </div>
+
+          {/* Telefoon */}
+          <div className="space-y-3">
+            <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
+              <Select
+                label="Telefoon weergave"
+                options={CONTACT_DISPLAY_OPTIONS}
+                error={errors.inspectorPhoneDisplay?.message}
+                {...register('inspectorPhoneDisplay')}
+              />
+              {(phoneDisplayMode === ContactDisplayMode.STATIC ||
+                phoneDisplayMode === ContactDisplayMode.INSPECTOR) && (
+                <Input
+                  label="Statisch telefoonnummer"
+                  placeholder="Bijv. 088 123 4567"
+                  error={errors.inspectorStaticPhone?.message}
+                  {...register('inspectorStaticPhone')}
+                />
+              )}
+            </div>
+            <p className="text-xs text-gray-500">
+              <strong>Geen</strong>: telefoonnummer niet tonen.{' '}
+              <strong>Statisch</strong>: toon altijd het ingevoerde vaste nummer.{' '}
+              <strong>Inspecteur</strong>: toon het nummer van de inspecteur zelf, met terugval op het statische nummer als de inspecteur niets heeft ingevuld of geen toestemming geeft.
+            </p>
+          </div>
+
+          {/* E-mail */}
+          <div className="space-y-3">
+            <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
+              <Select
+                label="E-mail weergave"
+                options={CONTACT_DISPLAY_OPTIONS}
+                error={errors.inspectorEmailDisplay?.message}
+                {...register('inspectorEmailDisplay')}
+              />
+              {(emailDisplayMode === ContactDisplayMode.STATIC ||
+                emailDisplayMode === ContactDisplayMode.INSPECTOR) && (
+                <Input
+                  label="Statisch e-mailadres"
+                  type="email"
+                  placeholder="Bijv. inspecteur@mijnbedrijf.nl"
+                  error={errors.inspectorStaticEmail?.message}
+                  {...register('inspectorStaticEmail')}
+                />
+              )}
+            </div>
+            <p className="text-xs text-gray-500">
+              <strong>Geen</strong>: e-mailadres niet tonen.{' '}
+              <strong>Statisch</strong>: toon altijd het ingevoerde vaste e-mailadres.{' '}
+              <strong>Inspecteur</strong>: toon het e-mailadres van de inspecteur zelf, met terugval op het statische e-mailadres als de inspecteur niets heeft ingevuld of geen toestemming geeft.
+            </p>
           </div>
 
           <div className="flex justify-end border-t border-gray-200 pt-4">

@@ -12,6 +12,7 @@ describe('ClientInspectionsService (tenant + ClientAccess scoping)', () => {
     inspectionClientAccess: { findMany: jest.fn() },
     inspectionPlan: { findFirst: jest.fn(), findMany: jest.fn() },
     finding: { findMany: jest.fn(), count: jest.fn() },
+    assetNode: { findMany: jest.fn() },
     generatedDocument: { findMany: jest.fn() },
     documentSignature: { findMany: jest.fn() },
   };
@@ -108,13 +109,64 @@ describe('ClientInspectionsService (tenant + ClientAccess scoping)', () => {
       mockPrisma.inspectionClientAccess.findMany.mockResolvedValue([]);
       mockPrisma.inspectionPlan.findFirst
         .mockResolvedValueOnce({ id: 'plan-1' }) // access-check
-        .mockResolvedValueOnce({
-          id: 'plan-1',
-          assets: [{ findings: [{ statusCode: STATUS_OPEN }, { statusCode: STATUS_RESOLVED }] }],
-        }); // detail
+        .mockResolvedValueOnce({ id: 'plan-1' }); // detail
+      // Findings dragen sinds de unified-tree zelf assetNodeId + inspectionPlanId.
+      mockPrisma.finding.findMany.mockResolvedValue([
+        { id: 'f1', assetNodeId: 'an-1', statusCode: STATUS_OPEN, shortDescription: 'a', classificationValues: {} },
+        { id: 'f2', assetNodeId: 'an-1', statusCode: STATUS_RESOLVED, shortDescription: 'b', classificationValues: {} },
+      ]);
+      mockPrisma.assetNode.findMany.mockResolvedValue([
+        { id: 'an-1', name: 'Asset 1', typeCode: 'switchboard', statusCode: 'ok' },
+      ]);
 
       const res = await service.detail(user, 'org-A', 'plan-1');
       expect(res.findingCounts).toEqual({ total: 2, open: 1, resolved: 1 });
+    });
+
+    it('resolvet inspecteur-contact server-side en stript rauwe velden + org-modus', async () => {
+      mockPrisma.clientAccess.findMany.mockResolvedValue([{ contactId: 'contact-A' }]);
+      mockPrisma.inspectionClientAccess.findMany.mockResolvedValue([]);
+      mockPrisma.inspectionPlan.findFirst
+        .mockResolvedValueOnce({ id: 'plan-1' }) // access-check
+        .mockResolvedValueOnce({
+          id: 'plan-1',
+          // org-modus: telefoon mét consent → inspecteur; e-mail zónder consent → statische terugval
+          organization: {
+            inspectorPhoneDisplay: 'INSPECTOR',
+            inspectorEmailDisplay: 'INSPECTOR',
+            inspectorStaticPhone: '+31 20 000 0000',
+            inspectorStaticEmail: 'static@org.nl',
+          },
+          assignedUser: {
+            id: 'insp-1',
+            firstName: 'In',
+            lastName: 'Spector',
+            contactPhone: '+31 6 11111111',
+            contactEmail: 'prive@insp.nl',
+            sharePhoneWithClients: true,
+            shareEmailWithClients: false,
+          },
+          reviewer: { id: 'insp-1', firstName: 'In', lastName: 'Spector' },
+        });
+      mockPrisma.finding.findMany.mockResolvedValue([]);
+
+      const res = await service.detail(user, 'org-A', 'plan-1');
+
+      // Telefoon = inspecteur (consent), e-mail = statische terugval (geen consent).
+      expect(res.assignedUser).toEqual({
+        id: 'insp-1',
+        firstName: 'In',
+        lastName: 'Spector',
+        phone: '+31 6 11111111',
+        email: 'static@org.nl',
+      });
+      // Org-modus en rauwe velden zijn uit de response gestript.
+      expect((res as { organization?: unknown }).organization).toBeUndefined();
+      const raw = JSON.stringify(res);
+      expect(raw).not.toContain('sharePhoneWithClients');
+      expect(raw).not.toContain('prive@insp.nl');
+      // Reviewer blijft naam-only, ook al is het dezelfde gebruiker.
+      expect(res.reviewer).toEqual({ id: 'insp-1', firstName: 'In', lastName: 'Spector' });
     });
   });
 

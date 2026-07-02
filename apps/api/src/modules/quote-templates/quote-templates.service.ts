@@ -10,7 +10,7 @@ import { User, Role, Prisma } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import * as mammoth from 'mammoth';
 import { PrismaService } from '@/prisma';
-import { paginate, buildOrderBy, orgScope, assertFound } from '@/common';
+import { paginate, buildOrderBy, orgScope, assertFound, sanitizeStorageFilename } from '@/common';
 import {
   STORAGE_PROVIDER,
   StorageProvider,
@@ -285,7 +285,7 @@ export class QuoteTemplatesService {
     }
 
     // Upload new file to storage
-    const storageKey = `${template.orgId}/qt/${template.id}/docx/${randomUUID()}-${file.originalname}`;
+    const storageKey = `${template.orgId}/qt/${template.id}/docx/${randomUUID()}-${sanitizeStorageFilename(file.originalname)}`;
     await this.storage.upload(storageKey, file.buffer, file.mimetype);
 
     // Update template with new DOCX metadata
@@ -381,7 +381,7 @@ export class QuoteTemplatesService {
       );
     }
 
-    const storageKey = `${template.orgId}/qt/${template.id}/img/${randomUUID()}-${file.originalname}`;
+    const storageKey = `${template.orgId}/qt/${template.id}/img/${randomUUID()}-${sanitizeStorageFilename(file.originalname)}`;
     await this.storage.upload(storageKey, file.buffer, file.mimetype);
 
     return { storageKey, fileName: file.originalname };
@@ -423,7 +423,7 @@ export class QuoteTemplatesService {
       );
     }
 
-    const storageKey = `${template.orgId}/qt/${template.id}/att/${randomUUID()}-${file.originalname}`;
+    const storageKey = `${template.orgId}/qt/${template.id}/att/${randomUUID()}-${sanitizeStorageFilename(file.originalname)}`;
     await this.storage.upload(storageKey, file.buffer, file.mimetype);
 
     const maxOrder = await this.prisma.quoteTemplateAttachment.aggregate({

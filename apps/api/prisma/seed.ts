@@ -1,11 +1,14 @@
-import { PrismaClient, Role, ContactType, LogType, PriceType, RequestSource, RequestStatus, Priority, QuoteStatus, NotificationType, PlanningStatus, AcceptanceStatus, ProjectStatus, AssetFieldType, ChecklistStatus, TemplateStatus, MeasurementSheetTemplateStatus, MeasurementSheetFieldType, FindingInspectionType, DocumentType, TemplateMode, SectionType, ClientUserStatus, ClientAccessRole, GeneratedDocumentStatus, SignatureStatus, MarkerType, MeasurementSheetRecordStatus, PassFailOperator } from '@prisma/client';
+import { PrismaClient, Role, ContactType, LogType, PriceType, RequestSource, RequestStatus, Priority, QuoteStatus, NotificationType, PlanningStatus, AcceptanceStatus, ProjectStatus, AssetFieldType, ChecklistStatus, TemplateStatus, MeasurementSheetTemplateStatus, MeasurementSheetFieldType, FindingInspectionType, DocumentType, DocumentEntityType, TemplateMode, SectionType, ClientUserStatus, ClientAccessRole, GeneratedDocumentStatus, SignatureStatus, MarkerType, MeasurementSheetRecordStatus, InspectionExecStatus, PassFailOperator, LocationTypeScope, Availability, ChatThreadType, ChatThreadStatus, ContactDisplayMode } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { randomUUID } from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as zlib from 'zlib';
 import { seedLookups } from './seed-lookups';
+import { backfillNumbering } from './backfill-numbering';
 import { DEFAULT_VOICE_BASE_PROMPT } from '../src/modules/voice/default-base-prompt';
+import { FEATURE_KEYS } from '@inspexi/entitlements';
+import { addMonths } from '@inspexi/calibration';
 
 const prisma = new PrismaClient();
 
@@ -85,6 +88,35 @@ function makeFloorPlanPng(width = 800, height = 600): Buffer {
 }
 
 /**
+ * Bouwt een minimale, geldige één-pagina PDF (A4) met een titelregel — gebruikt om
+ * een demo-inspecteurcertificaat met een écht downloadbaar document te seeden.
+ */
+function makeCertificatePdf(title: string): Buffer {
+  const stream = `BT /F1 22 Tf 72 760 Td (${title.replace(/[()\\]/g, ' ')}) Tj ET`;
+  const objects = [
+    '<< /Type /Catalog /Pages 2 0 R >>',
+    '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>',
+    `<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`,
+    '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',
+  ];
+
+  let pdf = '%PDF-1.4\n';
+  const offsets: number[] = [];
+  objects.forEach((obj, i) => {
+    offsets.push(Buffer.byteLength(pdf, 'latin1'));
+    pdf += `${i + 1} 0 obj\n${obj}\nendobj\n`;
+  });
+  const xrefStart = Buffer.byteLength(pdf, 'latin1');
+  pdf += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
+  offsets.forEach((off) => {
+    pdf += `${off.toString().padStart(10, '0')} 00000 n \n`;
+  });
+  pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefStart}\n%%EOF`;
+  return Buffer.from(pdf, 'latin1');
+}
+
+/**
  * Bevriest een meetstaat-template (+secties+velden) tot een snapshot, identiek
  * aan MeasurementSheetRecordsService.createTemplateSnapshot (Decimals → string).
  */
@@ -140,6 +172,340 @@ function buildMeasurementSnapshot(t: any) {
   };
 }
 
+// ─── SaaS-varianten (PRD-09 §7.1) — herbruikbare org-keten ──────────────────
+
+/** Gedeelde (globale) referenties die elke variant-org hergebruikt. */
+interface VariantOrgRefs {
+  passwordHash: string;
+  /** Globale inspectie-template (NEN 1010) — orgId-loos, gedeeld. */
+  inspTemplateId: string;
+  /** Globale document-template (PLAN) — gekoppeld aan de inspectie-template. */
+  planDocTemplateId: string;
+  /** Globaal CRM-locatietype (orgId null) voor de relatie-locatie. */
+  crmLocationTypeId: string;
+}
+
+/** Per-variant configuratie. */
+interface VariantOrgConfig {
+  name: string;
+  slug: string;
+  planId: string;
+  /** E-maildomein voor de users + klant (zonder @). */
+  emailDomain: string;
+  /** Vaste, voorspelbare magic-link-token voor de klantportaal-smoketest. */
+  magicToken: string;
+}
+
+/**
+ * Seedt één SaaS-variant-org met een volledige, afrondbare basis-keten
+ * (PRD-09 §7.1): ORG_ADMIN + INSPECTEUR, één relatie + locatie, één project,
+ * één inspectieplan met asset + findings, plus de klantportaal-keten
+ * (ClientUser → toegang → magic-link → ondertekenbaar PLAN-document).
+ *
+ * Alle inspectie-config (template, checklist, classificatie, asset-/locatietypes)
+ * is globaal en wordt hergebruikt; per-org afwijkingen lopen via OrganizationFeature.
+ * De FeatureGuard zit op de HTTP-laag, dus seeden via Prisma negeert het plan —
+ * de gating wordt pas via de API/portal afgedwongen.
+ */
+async function seedVariantOrg(
+  prisma: PrismaClient,
+  cfg: VariantOrgConfig,
+  refs: VariantOrgRefs,
+) {
+  const org = await prisma.organization.create({
+    data: {
+      name: cfg.name,
+      slug: cfg.slug,
+      planId: cfg.planId,
+      primaryColor: '#1E40AF',
+      defaultVat: 21,
+      defaultValidityDays: 30,
+      // Klantportaal inspecteur-contact: telefoon = inspecteur zelf, e-mail = statische terugval.
+      inspectorPhoneDisplay: ContactDisplayMode.INSPECTOR,
+      inspectorEmailDisplay: ContactDisplayMode.STATIC,
+      inspectorStaticEmail: `klantcontact@${cfg.emailDomain}`,
+    },
+  });
+
+  // Twee gebruikers: ORG_ADMIN + INSPECTEUR (wachtwoord Password123!).
+  const admin = await prisma.user.create({
+    data: {
+      email: `admin@${cfg.emailDomain}`,
+      passwordHash: refs.passwordHash,
+      firstName: 'Admin',
+      lastName: cfg.name,
+      roles: [Role.ORG_ADMIN],
+      orgId: org.id,
+      emailVerifiedAt: new Date(),
+    },
+  });
+  const inspecteur = await prisma.user.create({
+    data: {
+      email: `inspecteur@${cfg.emailDomain}`,
+      passwordHash: refs.passwordHash,
+      firstName: 'Inspecteur',
+      lastName: cfg.name,
+      roles: [Role.INSPECTEUR],
+      orgId: org.id,
+      emailVerifiedAt: new Date(),
+      contactPhone: '+31 6 00 11 22 33',
+      sharePhoneWithClients: true,
+      shareEmailWithClients: false,
+    },
+  });
+
+  // Relatie + adres + locatie (Basis CRM).
+  const contact = await prisma.contact.create({
+    data: {
+      orgId: org.id,
+      type: ContactType.COMPANY,
+      companyName: `Klant ${cfg.name} BV`,
+      email: `info@${cfg.emailDomain}`,
+      phone: '+31 20 111 2222',
+      notes: 'Demo-relatie voor de SaaS-variant-keten.',
+    },
+  });
+  await prisma.contactAddress.create({
+    data: {
+      contactId: contact.id,
+      label: 'Hoofdkantoor',
+      street: 'Voorbeeldstraat',
+      houseNumber: '1',
+      postalCode: '1000 AA',
+      city: 'Amsterdam',
+      country: 'NL',
+      isPrimary: true,
+    },
+  });
+  const location = await prisma.location.create({
+    data: {
+      contactId: contact.id,
+      orgId: org.id,
+      name: 'Hoofdvestiging',
+      street: 'Voorbeeldstraat',
+      houseNumber: '1',
+      postalCode: '1000 AA',
+      city: 'Amsterdam',
+      locationTypeId: refs.crmLocationTypeId,
+    },
+  });
+
+  // Project (Basis Uitvoering).
+  const project = await prisma.project.create({
+    data: {
+      orgId: org.id,
+      projectNumber: 'P-2026-0001', // per-org uniek → mag herhalen tussen orgs
+      title: `Inspectieproject ${cfg.name}`,
+      description: 'Demo-project voor de afrondbare basis-keten.',
+      status: ProjectStatus.ACTIEF,
+      contactId: contact.id,
+      locationId: location.id,
+      projectManagerId: admin.id,
+      startDate: new Date('2026-06-01'),
+      createdBy: admin.id,
+    },
+  });
+
+  // Inspectieplan met hoofdlocatie (= CRM-Locatie / boom-wortel) (Basis Inspecties).
+  const plan = await prisma.inspectionPlan.create({
+    data: {
+      orgId: org.id,
+      contactId: contact.id,
+      projectId: project.id,
+      locationId: location.id,
+      projectName: `NEN 1010 inspectie ${cfg.name}`,
+      description: 'Periodieke veiligheidsinspectie van de elektrische installatie.',
+      referenceNumber: 'INSP-2026-0001',
+      normTypeCode: 'NEN1010',
+      inspectionTypeCode: 'initial',
+      statusCode: 'draft',
+      inspectionTemplateId: refs.inspTemplateId,
+      assignedTo: inspecteur.id,
+      addressStreet: 'Voorbeeldstraat',
+      addressHouseNumber: '1',
+      addressPostalCode: '1000 AA',
+      addressCity: 'Amsterdam',
+      plannedDate: new Date('2026-07-01'),
+      createdBy: admin.id,
+    },
+  });
+
+  // AssetNode-boom: wortel-LOCATION (1:1 aan de CRM-Locatie) → deellocatie → asset.
+  // path/depth worden door de DB-trigger gevuld → parent vóór kind inserten.
+  const rootNode = await prisma.assetNode.create({
+    data: {
+      orgId: org.id,
+      nodeType: 'LOCATION',
+      rootLocationId: location.id,
+      typeCode: 'distribution_room',
+      name: location.name,
+      createdBy: inspecteur.id,
+    },
+  });
+  const roomNode = await prisma.assetNode.create({
+    data: {
+      orgId: org.id,
+      nodeType: 'LOCATION',
+      parentId: rootNode.id,
+      typeCode: 'distribution_room',
+      name: 'Verdeelruimte',
+      identifier: 'VR-01',
+      createdBy: inspecteur.id,
+    },
+  });
+  const asset = await prisma.assetNode.create({
+    data: {
+      orgId: org.id,
+      nodeType: 'ASSET',
+      parentId: roomNode.id,
+      typeCode: 'electrical_installation',
+      name: 'Hoofdverdeler HVK',
+      identifier: 'HVK-01',
+      statusCode: 'new',
+      createdBy: inspecteur.id,
+    },
+  });
+
+  // Scope-deellocatie: de verdeelruimte als (primaire) scope van het plan.
+  await prisma.inspectionPlanLocation.create({
+    data: {
+      orgId: org.id,
+      inspectionPlanId: plan.id,
+      assetNodeId: roomNode.id,
+      isPrimary: true,
+    },
+  });
+
+  // Eén open bevinding (om op te lossen via klantportaal) + één geclassificeerde (C2)
+  // bevinding zodat het ondertekenbare document een classificatie toont.
+  await prisma.finding.create({
+    data: {
+      orgId: org.id,
+      assetNodeId: asset.id,
+      inspectionPlanId: plan.id,
+      inspectionType: FindingInspectionType.visual,
+      shortDescription: 'Ontbrekende afdekking op verdeelinrichting',
+      longDescription: 'De afdekking ontbreekt; aanraakgevaar voor spanningvoerende delen.',
+      normReference: 'NEN 1010 art. 412',
+      statusCode: 'open',
+      createdBy: inspecteur.id,
+    },
+  });
+  await prisma.finding.create({
+    data: {
+      orgId: org.id,
+      assetNodeId: asset.id,
+      inspectionPlanId: plan.id,
+      inspectionType: FindingInspectionType.visual,
+      shortDescription: 'Beschadigde mantel op hoofdvoedingskabel',
+      longDescription: 'De mantel is plaatselijk beschadigd; de isolatie is zichtbaar aangetast.',
+      classificationValues: { SEVERITY: 'C2' },
+      normReference: 'NEN 1010 art. 526',
+      statusCode: 'open',
+      createdBy: inspecteur.id,
+    },
+  });
+
+  // Klantportaal-keten: klant + relatie-toegang + plan-toegang (inzien + ondertekenen)
+  // + vaste magic-link (directe login). Het klantportaal draait volledig op
+  // BASIS_INSPECTIES — ook een Basis-org doorloopt deze keten dus volledig.
+  const client = await prisma.clientUser.create({
+    data: {
+      email: `klant@${cfg.emailDomain}`,
+      firstName: 'Demo',
+      lastName: 'Klant',
+      function: 'Facilitair manager',
+      emailVerified: true,
+      status: ClientUserStatus.ACTIVE,
+      passwordHash: refs.passwordHash,
+    },
+  });
+  await prisma.clientAccess.create({
+    data: {
+      clientUserId: client.id,
+      contactId: contact.id,
+      role: ClientAccessRole.VIEWER,
+      grantedBy: admin.id,
+    },
+  });
+  await prisma.inspectionClientAccess.create({
+    data: {
+      inspectionPlanId: plan.id,
+      clientUserId: client.id,
+      canView: true,
+      canSign: true,
+      invitedBy: admin.id,
+    },
+  });
+  // Vaste wachtwoordloze magic-link: alleen achter SEED_DEMO=1 en met korte
+  // expiry (30 dagen), net als de demo-org (zie K3-hardening).
+  if (process.env.SEED_DEMO === '1') {
+    await prisma.clientMagicLink.create({
+      data: {
+        clientUserId: client.id,
+        email: client.email,
+        token: cfg.magicToken,
+        inspectionPlanId: plan.id,
+        expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+        usedAt: null,
+        createdBy: admin.id,
+      },
+    });
+  }
+
+  // Ondertekenbaar PLAN-document: inspecteur al getekend, klant PENDING.
+  const docHtml = [
+    `<h1>Inspectieplan — NEN 1010 (${cfg.name})</h1>`,
+    '<table>',
+    `<tr><th>Referentie</th><td>${plan.referenceNumber}</td></tr>`,
+    `<tr><th>Project</th><td>${plan.projectName}</td></tr>`,
+    `<tr><th>Opdrachtgever</th><td>${contact.companyName}</td></tr>`,
+    '</table>',
+    '<h2>Bevindingen</h2>',
+    '<ul>',
+    '<li>Ontbrekende afdekking op verdeelinrichting — <em>open</em></li>',
+    '<li>Beschadigde mantel op hoofdvoedingskabel — <strong>C2</strong></li>',
+    '</ul>',
+    '<h2>Ondertekening</h2>',
+    '<p>Inspecteur: getekend</p>',
+    '<p>Opdrachtgever: in afwachting</p>',
+  ].join('\n');
+  await prisma.generatedDocument.create({
+    data: {
+      orgId: org.id,
+      documentTemplateId: refs.planDocTemplateId,
+      inspectionPlanId: plan.id,
+      documentType: DocumentType.PLAN,
+      htmlContent: docHtml,
+      status: GeneratedDocumentStatus.PENDING_SIGNATURES,
+      generatedBy: admin.id,
+      signatures: {
+        create: [
+          {
+            signerRoleCode: 'INSPECTOR',
+            signerName: 'Inspecteur',
+            signerFunction: 'Inspecteur',
+            status: SignatureStatus.SIGNED,
+            signedAt: new Date('2026-06-15T10:00:00Z'),
+            signatureImage: 'data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=',
+          },
+          {
+            signerRoleCode: 'CLIENT',
+            signerName: 'Demo Klant',
+            signerFunction: 'Facilitair manager',
+            status: SignatureStatus.PENDING,
+          },
+        ],
+      },
+    },
+  });
+
+  console.log(
+    `  ✓ Variant-org: ${cfg.name} (${cfg.slug}) → plan + keten (relatie/project/inspectieplan/asset/2 findings + klantportaal)`,
+  );
+  return { org, admin, inspecteur, contact, project, plan, client };
+}
+
 async function main() {
   console.log('🌱 Seeding database...');
 
@@ -168,11 +534,17 @@ async function main() {
   await prisma.documentSection.deleteMany();
   await prisma.documentTemplateDocxRevision.deleteMany();
   await prisma.documentTemplate.deleteMany();
-  // location images & standalone measurements
+  // location images & standalone measurements. StandaloneMeasurement RESTRICTs on
+  // its location-node FK → it must go before the AssetNode tree (below).
   await prisma.locationImageMarker.deleteMany();
   await prisma.standaloneMeasurementValue.deleteMany();
   await prisma.standaloneMeasurement.deleteMany();
   await prisma.locationImage.deleteMany();
+  // meetmiddelen (children first; before user/org/inspectionPlan deletes)
+  await prisma.inspectionPlanDefaultInstrument.deleteMany();
+  await prisma.userDefaultInstrument.deleteMany();
+  await prisma.calibration.deleteMany();
+  await prisma.measurementInstrument.deleteMany();
   // measurement sheets
   await prisma.measurementSheetRecord.deleteMany();
   await prisma.measurementSheetVersionHistory.deleteMany();
@@ -190,8 +562,12 @@ async function main() {
   await prisma.photo.deleteMany();
   await prisma.signature.deleteMany();
   await prisma.report.deleteMany();
-  await prisma.asset.deleteMany();
-  await prisma.inspectionLocation.deleteMany();
+  // Unified AssetNode tree (Fase 1-3). The execution records above cascade on
+  // assetNodeId, but the two RESTRICT referrers must be cleared first:
+  // InspectionPlanLocation (scope rows) and StandaloneMeasurement (deleted above).
+  // AssetNode.parentId is SET NULL, so a single deleteMany handles the whole tree.
+  await prisma.inspectionPlanLocation.deleteMany();
+  await prisma.assetNode.deleteMany();
   await prisma.inspectionPlan.deleteMany();
   // checklists
   await prisma.checklistVersionHistory.deleteMany();
@@ -274,37 +650,107 @@ async function main() {
   await prisma.contactPerson.deleteMany();
   await prisma.contactEmail.deleteMany();
   await prisma.contactLog.deleteMany();
+  await prisma.pdokApiLog.deleteMany();
   await prisma.location.deleteMany();
   await prisma.contactAddress.deleteMany();
   await prisma.contact.deleteMany();
   // Lookup tables (requests & contact persons that referenced them are already deleted above)
   await prisma.lostReason.deleteMany();
   await prisma.contactPersonRoleOption.deleteMany();
+  // Interne chat (children first: message → participant → thread)
+  await prisma.chatMessage.deleteMany();
+  await prisma.chatParticipant.deleteMany();
+  await prisma.chatThread.deleteMany();
+  // Favorites (leaf — FK to users/organizations only)
+  await prisma.favorite.deleteMany();
+  // Helpsysteem (PRD-10) — kinderen eerst; help* hebben FK's naar user én organization
+  await prisma.supportTicketMessage.deleteMany();
+  await prisma.supportTicket.deleteMany();
+  await prisma.supportAccessLog.deleteMany();
+  await prisma.helpArticle.deleteMany();
+  await prisma.helpCategory.deleteMany();
   // Tasks, Documents & Notes (dependent on users)
+  await prisma.documentTagAssignment.deleteMany();
   await prisma.note.deleteMany();
   await prisma.document.deleteMany();
+  await prisma.documentTag.deleteMany();
   await prisma.task.deleteMany();
+  // Inspecteur-certificaten (PRD-11, FK → user + organization)
+  await prisma.inspectorCertificate.deleteMany();
   // Custom fields & email templates
+  await prisma.numberingCounter.deleteMany();
+  await prisma.numberingScheme.deleteMany();
   await prisma.customFieldDefinition.deleteMany();
   await prisma.emailTemplateAttachment.deleteMany();
   await prisma.emailTemplate.deleteMany();
   // Error reports (dependent on users/organizations)
   await prisma.errorReport.deleteMany();
+  // SaaS-abonnementen (entitlements, PRD-09): org-overrides + plan-features vóór
+  // de org/plan zelf; het plan ná de organization (Organization.planId → Plan).
+  await prisma.organizationFeature.deleteMany();
+  await prisma.planFeature.deleteMany();
   // Auth/org tables
   await prisma.auditLog.deleteMany();
   await prisma.invitation.deleteMany();
   await prisma.refreshToken.deleteMany();
   await prisma.user.deleteMany();
   await prisma.organization.deleteMany();
+  await prisma.plan.deleteMany();
+
+  // ─── SaaS-abonnementen: plannen (templates, PRD-09 §7.2) ──
+  // "Basis" = 4 basisfeatures; "Compleet" = alle 9 keys incl. add-ons
+  // (WEBHOOKS + CUSTOM_FIELDS). De catalogus (FEATURE_KEYS) is bron-van-waarheid;
+  // de DB verwijst alleen naar de keys. Per-org afwijkingen gaan via
+  // OrganizationFeature (hier nog niet geseed — beide demo-orgs draaien puur op
+  // hun plan).
+  const basisPlan = await prisma.plan.create({
+    data: {
+      name: 'Basis',
+      slug: 'basis',
+      description: 'Basis-pakket: CRM, uitvoering, inspecties en workflow.',
+      sortOrder: 1,
+      features: {
+        create: [
+          { featureKey: 'BASIS_CRM' },
+          { featureKey: 'BASIS_UITVOERING' },
+          { featureKey: 'BASIS_INSPECTIES' },
+          { featureKey: 'BASIS_WORKFLOW' },
+        ],
+      },
+    },
+  });
+  const compleetPlan = await prisma.plan.create({
+    data: {
+      name: 'Compleet',
+      slug: 'compleet',
+      description:
+        'Compleet-pakket: alle functies incl. add-ons (webhooks, aangepaste velden).',
+      sortOrder: 2,
+      features: { create: FEATURE_KEYS.map((featureKey) => ({ featureKey })) },
+    },
+  });
+  console.log(
+    `  ✓ Plannen: ${basisPlan.name} (4 features) + ${compleetPlan.name} (${FEATURE_KEYS.length} features)`,
+  );
 
   // ─── Organizations ─────────────────────────────────────
   const org1 = await prisma.organization.create({
     data: {
       name: 'InspeXi Demo',
       slug: 'inspexidemo',
+      planId: compleetPlan.id, // SaaS-abonnement: Compleet (alle features)
       primaryColor: '#1E40AF',
       defaultVat: 21,
       defaultValidityDays: 30,
+      // Klantportaal inspecteur-contact: telefoon toont de inspecteur zelf (mét toestemming),
+      // e-mail valt terug op de statische waarde omdat de inspecteur géén e-mail-toestemming geeft.
+      inspectorPhoneDisplay: 'INSPECTOR',
+      inspectorEmailDisplay: 'INSPECTOR',
+      inspectorStaticPhone: '+31 20 123 4567',
+      inspectorStaticEmail: 'klantcontact@inspexi-demo.nl',
+      // Offerte-goedkeuring (REQ5): offertes boven € 10.000 vereisen goedkeuring door een MANAGER.
+      quoteApprovalThreshold: 10000,
+      quoteApprovalRequiredRole: Role.MANAGER,
     },
   });
   console.log(`  ✓ Organization: ${org1.name} (${org1.slug})`);
@@ -313,6 +759,7 @@ async function main() {
     data: {
       name: 'Test Bedrijf',
       slug: 'testbedrijf',
+      planId: basisPlan.id, // SaaS-abonnement: Basis (4 basisfeatures + core)
       primaryColor: '#059669',
       defaultVat: 21,
       defaultValidityDays: 14,
@@ -397,11 +844,23 @@ async function main() {
 
   // Org 1 users
   const org1Users = [
-    { email: 'admin@inspexi-demo.nl', firstName: 'Jan', lastName: 'de Vries', roles: [Role.ORG_ADMIN] },
-    { email: 'manager@inspexi-demo.nl', firstName: 'Pieter', lastName: 'Bakker', roles: [Role.MANAGER] },
-    { email: 'backoffice@inspexi-demo.nl', firstName: 'Maria', lastName: 'Jansen', roles: [Role.BACKOFFICE] },
-    { email: 'werkvoorbereider@inspexi-demo.nl', firstName: 'Kees', lastName: 'Smit', roles: [Role.WERKVOORBEREIDER] },
-    { email: 'inspecteur@inspexi-demo.nl', firstName: 'Tom', lastName: 'Visser', roles: [Role.INSPECTEUR] },
+    { email: 'admin@inspexi-demo.nl', firstName: 'Jan', lastName: 'de Vries', roles: [Role.ORG_ADMIN], availability: Availability.BESCHIKBAAR },
+    { email: 'manager@inspexi-demo.nl', firstName: 'Pieter', lastName: 'Bakker', roles: [Role.MANAGER], availability: Availability.BEZIG, availabilityNote: 'In bespreking tot 15:00' },
+    { email: 'backoffice@inspexi-demo.nl', firstName: 'Maria', lastName: 'Jansen', roles: [Role.BACKOFFICE], availability: Availability.BESCHIKBAAR },
+    { email: 'werkvoorbereider@inspexi-demo.nl', firstName: 'Kees', lastName: 'Smit', roles: [Role.WERKVOORBEREIDER], availability: Availability.AFWEZIG },
+    {
+      email: 'inspecteur@inspexi-demo.nl',
+      firstName: 'Tom',
+      lastName: 'Visser',
+      roles: [Role.INSPECTEUR],
+      availability: Availability.BESCHIKBAAR,
+      // Eigen contactgegevens + per-kanaal toestemming voor het klantportaal.
+      // Telefoon gedeeld (→ getoond), e-mail niet gedeeld (→ statische terugval).
+      contactPhone: '+31 6 12 34 56 78',
+      contactEmail: 'tom.visser@inspexi-demo.nl',
+      sharePhoneWithClients: true,
+      shareEmailWithClients: false,
+    },
   ];
 
   const createdOrg1Users: Record<string, string> = {};
@@ -412,6 +871,55 @@ async function main() {
     createdOrg1Users[u.roles[0]] = created.id;
     console.log(`  ✓ User: ${u.email} (${u.roles[0]})`);
   }
+
+  // Demo: backoffice heeft de manager als standaard vrijwillige goedkeurder (REQ5).
+  if (createdOrg1Users[Role.BACKOFFICE] && createdOrg1Users[Role.MANAGER]) {
+    await prisma.user.update({
+      where: { id: createdOrg1Users[Role.BACKOFFICE] },
+      data: { defaultApprovalPersonId: createdOrg1Users[Role.MANAGER] },
+    });
+  }
+
+  // ─── Inspecteur-certificaten / diploma's (PRD-11) ───
+  // Twee demo-certificaten voor de inspecteur: één geldig (mét echt downloadbaar
+  // document) en één dat binnen 30 dagen verloopt (zonder document).
+  const certInspecteurId = createdOrg1Users[Role.INSPECTEUR];
+  const DAY_MS = 1000 * 60 * 60 * 24;
+  const certFilename = 'vca-vol-diploma-demo.pdf';
+  const certKey = `${org1.id}/inspector-certificates/${certInspecteurId}/${randomUUID()}-${certFilename}`;
+  const certBytes = makeCertificatePdf('VCA-VOL diploma - InspeXi Demo');
+  const certFullPath = path.join(process.env.UPLOAD_DIR || './uploads', certKey);
+  fs.mkdirSync(path.dirname(certFullPath), { recursive: true });
+  fs.writeFileSync(certFullPath, certBytes);
+
+  await prisma.inspectorCertificate.create({
+    data: {
+      orgId: org1.id,
+      userId: certInspecteurId,
+      type: 'VCA-VOL',
+      number: 'NL-VCA-2024-00123',
+      issueDate: new Date('2024-02-01'),
+      validUntil: new Date(Date.now() + DAY_MS * 365 * 3), // ~3 jaar geldig
+      issuer: 'VCA Examenbureau',
+      storageKey: certKey,
+      fileName: certFilename,
+      originalName: certFilename,
+      mimeType: 'application/pdf',
+      size: certBytes.length,
+    },
+  });
+
+  await prisma.inspectorCertificate.create({
+    data: {
+      orgId: org1.id,
+      userId: certInspecteurId,
+      type: 'NEN 3140 Vakbekwaam Persoon',
+      issueDate: new Date('2021-09-15'),
+      validUntil: new Date(Date.now() + DAY_MS * 20), // verloopt over ~20 dagen
+      issuer: 'Hoogspanning Opleidingen B.V.',
+    },
+  });
+  console.log('  ✓ 2 inspecteur-certificaten (1 geldig mét document, 1 verloopt binnen 30 dagen)');
 
   // Org 2 users
   const org2Users = [
@@ -453,6 +961,10 @@ async function main() {
       website: 'https://devries-bouw.nl',
       vatNumber: 'NL123456789B01',
       cocNumber: '12345678',
+      isSupplier: true,
+      supplierCustomerNumber: 'KL-2024-IX',
+      purchaseConditions: 'Betaling binnen 30 dagen. Levering franco huis. Retour binnen 14 dagen.',
+      supplierRating: true,
       notes: 'Vaste klant sinds 2020. Hoofdzakelijk kantoorpanden.',
     },
   });
@@ -484,6 +996,30 @@ async function main() {
     ],
   });
 
+  // Systeem CRM-locatie-types (objecttype van relatie-locaties): globaal (orgId null),
+  // gedeeld door alle organisaties. Kleuren = voormalige Tailwind-pills uit de portal.
+  const crmLocationTypeData = [
+    { code: 'woning', name: 'Woning', color: '#3B82F6' },
+    { code: 'kantoor', name: 'Kantoor', color: '#A855F7' },
+    { code: 'industrieel', name: 'Industrieel', color: '#F97316' },
+    { code: 'winkel', name: 'Winkel', color: '#22C55E' },
+    { code: 'overig', name: 'Overig', color: '#6B7280' },
+  ];
+  const crmLocationTypes: Record<string, string> = {};
+  for (const [i, t] of crmLocationTypeData.entries()) {
+    const created = await prisma.locationTypeDefinition.create({
+      data: {
+        code: t.code,
+        name: t.name,
+        color: t.color,
+        scope: LocationTypeScope.CRM,
+        isSystem: true,
+        sortOrder: i,
+      },
+    });
+    crmLocationTypes[t.code] = created.id;
+  }
+
   // Locaties
   const loc1Kantoor = await prisma.location.create({
     data: {
@@ -494,8 +1030,15 @@ async function main() {
       houseNumber: '10',
       postalCode: '1082 PP',
       city: 'Amsterdam',
-      objectType: 'kantoor',
+      locationTypeId: crmLocationTypes.kantoor,
       notes: 'Grote kantoorvloer, 3 verdiepingen',
+      // Voorbeeld van PDOK/BAG-verrijking (zoals de refresh-knop oplevert)
+      lat: 52.3376,
+      lng: 4.8728,
+      gebruiksfunctie: 'kantoorfunctie',
+      bouwjaar: 2004,
+      oppervlakte: 12500,
+      bagId: '0363100012168433',
     },
   });
   await prisma.location.create({
@@ -507,7 +1050,7 @@ async function main() {
       houseNumber: '88',
       postalCode: '1185 SE',
       city: 'Amstelveen',
-      objectType: 'woning',
+      locationTypeId: crmLocationTypes.woning,
     },
   });
   const loc1Bedrijfshal = await prisma.location.create({
@@ -519,7 +1062,7 @@ async function main() {
       houseNumber: '200',
       postalCode: '1171 PK',
       city: 'Badhoevedorp',
-      objectType: 'industrieel',
+      locationTypeId: crmLocationTypes.industrieel,
       notes: 'Toegang via poort B',
     },
   });
@@ -607,7 +1150,7 @@ async function main() {
       houseNumber: '15',
       postalCode: '3512 AB',
       city: 'Utrecht',
-      objectType: 'woning',
+      locationTypeId: crmLocationTypes.woning,
     },
   });
 
@@ -662,7 +1205,7 @@ async function main() {
       houseNumber: '50',
       postalCode: '3062 DB',
       city: 'Rotterdam',
-      objectType: 'woning',
+      locationTypeId: crmLocationTypes.woning,
       notes: '24 appartementen',
     },
   });
@@ -675,7 +1218,7 @@ async function main() {
       houseNumber: '1',
       postalCode: '3068 NC',
       city: 'Rotterdam',
-      objectType: 'kantoor',
+      locationTypeId: crmLocationTypes.winkel,
     },
   });
 
@@ -716,11 +1259,47 @@ async function main() {
       houseNumber: '30',
       postalCode: '3430 AA',
       city: 'Nieuwegein',
-      objectType: 'industrieel',
+      locationTypeId: crmLocationTypes.industrieel,
     },
   });
 
   console.log('    → 1 adres, 1 locatie');
+
+  // ─── Document tags (org1) ────────────────────────────
+  console.log('\n🏷️  Seeding document tags...');
+  const docTagContract = await prisma.documentTag.create({
+    data: { orgId: org1.id, name: 'Contract', color: '#3B82F6', sortOrder: 0 },
+  });
+  const docTagKeuring = await prisma.documentTag.create({
+    data: { orgId: org1.id, name: 'Keuringsrapport', color: '#10B981', sortOrder: 1 },
+  });
+  await prisma.documentTag.create({
+    data: { orgId: org1.id, name: 'Archief', color: '#6B7280', sortOrder: 2 },
+  });
+
+  // Demo-document op contact1 met twee tags, zodat de gekleurde pills meteen
+  // zichtbaar zijn in de documentenlijst (het bestand zelf is een placeholder).
+  const demoDocument = await prisma.document.create({
+    data: {
+      orgId: org1.id,
+      entityType: DocumentEntityType.CONTACT,
+      entityId: contact1.id,
+      fileName: 'samenwerkingsovereenkomst.pdf',
+      originalName: 'Samenwerkingsovereenkomst De Vries.pdf',
+      mimeType: 'application/pdf',
+      size: 12_345,
+      storageKey: `${org1.id}/seed-samenwerkingsovereenkomst.pdf`,
+      description: 'Demo-document met tags',
+      uploadedById: createdOrg1Users[Role.ORG_ADMIN],
+    },
+  });
+  await prisma.documentTagAssignment.createMany({
+    data: [
+      { documentId: demoDocument.id, documentTagId: docTagContract.id, orgId: org1.id },
+      { documentId: demoDocument.id, documentTagId: docTagKeuring.id, orgId: org1.id },
+    ],
+  });
+  console.log('  ✓ Document tags (3) + 1 demo-document met 2 tags');
 
   // ─── PRD-04: Products & Price Tables ─────────────────
   console.log('\n📦 Seeding Products & Price Tables...');
@@ -1379,6 +1958,75 @@ async function main() {
   });
   console.log('  ✓ 3 sample notificaties');
 
+  // ─── REQ1: Interne chat ────────────────────────────────
+  console.log('\n💬 Seeding interne chat...');
+
+  const chatBackofficeId = createdOrg1Users[Role.BACKOFFICE];
+  const chatInspecteurId = createdOrg1Users[Role.INSPECTEUR];
+
+  // 1-op-1 chat (backoffice ↔ inspecteur) gekoppeld aan een aanvraag, met @-mention.
+  const directKey = [chatBackofficeId, chatInspecteurId].sort().join(':');
+  await prisma.chatThread.create({
+    data: {
+      orgId: org1.id,
+      type: ChatThreadType.DIRECT,
+      directKey,
+      status: ChatThreadStatus.OPEN,
+      referenceEntityType: 'Request',
+      referenceEntityId: req1.id,
+      createdById: chatBackofficeId,
+      participants: {
+        create: [
+          { userId: chatBackofficeId, lastReadAt: new Date('2026-06-22T09:10:00Z') },
+          { userId: chatInspecteurId },
+        ],
+      },
+      messages: {
+        create: [
+          {
+            orgId: org1.id,
+            senderId: chatBackofficeId,
+            content: `Hoi Tom, kun je deze aanvraag "${req1.title}" oppakken?`,
+            mentionedUserIds: [chatInspecteurId],
+            createdAt: new Date('2026-06-22T09:00:00Z'),
+          },
+          {
+            orgId: org1.id,
+            senderId: chatInspecteurId,
+            content: 'Ja, ik kijk er vanmiddag naar.',
+            createdAt: new Date('2026-06-22T09:05:00Z'),
+          },
+        ],
+      },
+    },
+  });
+
+  // Team-chat voor backoffice.
+  await prisma.chatThread.create({
+    data: {
+      orgId: org1.id,
+      type: ChatThreadType.TEAM,
+      teamRole: Role.BACKOFFICE,
+      status: ChatThreadStatus.OPEN,
+      createdById: chatBackofficeId,
+      participants: {
+        create: [{ userId: chatBackofficeId, lastReadAt: new Date('2026-06-22T08:35:00Z') }],
+      },
+      messages: {
+        create: [
+          {
+            orgId: org1.id,
+            senderId: chatBackofficeId,
+            content: 'Team, let op de deadline van vrijdag.',
+            createdAt: new Date('2026-06-22T08:30:00Z'),
+          },
+        ],
+      },
+    },
+  });
+
+  console.log('  ✓ 1 directe chat (met referentie + mention) + 1 team-chat');
+
   // ─── PRD-07: Planning ──────────────────────────────────
   console.log('\n📅 Seeding Planning items...');
 
@@ -1498,6 +2146,160 @@ async function main() {
   console.log(`  ✓ Project: ${project2.projectNumber}`);
   void project2;
 
+  // ─── REQ36: Favorieten (sterretjes) ────────────────────
+  // Een paar demo-favorieten voor de ORG_ADMIN, verspreid over de modellen
+  // zodat de favorieten-pagina meteen meerdere groepen toont.
+  const demoFavoriteUserId = createdOrg1Users[Role.ORG_ADMIN];
+  const demoFavorites: Array<{ entityType: string; entityId: string }> = [
+    { entityType: 'Contact', entityId: contact1.id },
+    { entityType: 'Request', entityId: req1.id },
+    { entityType: 'Quote', entityId: quote1.id },
+    { entityType: 'Project', entityId: project1.id },
+    { entityType: 'Product', entityId: meerwerkProduct1.id },
+  ];
+  for (const fav of demoFavorites) {
+    await prisma.favorite.create({
+      data: {
+        userId: demoFavoriteUserId,
+        orgId: org1.id,
+        entityType: fav.entityType,
+        entityId: fav.entityId,
+      },
+    });
+  }
+  console.log(`  ✓ Favorites: ${demoFavorites.length} (admin@inspexi-demo.nl)`);
+
+  // ─── PRD-10 Fase 1: Helpsysteem ────────────────────────
+  console.log('\n📚 Seeding help system...');
+
+  const demoOrg = await prisma.organization.findUnique({ where: { slug: 'inspexidemo' } });
+  const superUser = await prisma.user.findFirst({ where: { email: 'superuser@inspexi.nl' } });
+  const demoAdmin = await prisma.user.findFirst({ where: { email: 'admin@inspexi-demo.nl' } });
+  const demoUser = await prisma.user.findFirst({ where: { email: 'backoffice@inspexi-demo.nl' } });
+
+  // Globale KB-categorieën (org_id = null) + artikelen
+  const helpCategories = [
+    { slug: 'aan-de-slag', name: 'Aan de slag', icon: 'rocket', order: 1, moduleKeys: ['dashboard', 'general'] },
+    { slug: 'relaties', name: 'Relaties', icon: 'users', order: 2, moduleKeys: ['contacts'] },
+    { slug: 'offertes', name: 'Offertes', icon: 'file-text', order: 3, moduleKeys: ['quotes'] },
+    { slug: 'aanvragen', name: 'Aanvragen', icon: 'inbox', order: 4, moduleKeys: ['requests'] },
+    { slug: 'planning', name: 'Planning', icon: 'calendar', order: 5, moduleKeys: ['planning'] },
+    { slug: 'inspecties', name: 'Inspecties', icon: 'clipboard', order: 6, moduleKeys: ['inspections'] },
+  ];
+
+  for (const cat of helpCategories) {
+    const category = await prisma.helpCategory.create({
+      data: { orgId: null, slug: cat.slug, name: cat.name, icon: cat.icon, order: cat.order, isPublished: true },
+    });
+
+    // 2 voorbeeldartikelen per categorie
+    for (let i = 1; i <= 2; i++) {
+      await prisma.helpArticle.create({
+        data: {
+          orgId: null,
+          categoryId: category.id,
+          slug: `${cat.slug}-artikel-${i}`,
+          title: `${cat.name}: voorbeeldartikel ${i}`,
+          excerpt: `Korte uitleg over ${cat.name.toLowerCase()} (${i}).`,
+          body: `# ${cat.name} ${i}\n\nDit is een voorbeeldartikel voor de knowledge base.\n\n1. Stap één\n2. Stap twee\n3. Stap drie`,
+          status: 'PUBLISHED',
+          publishedAt: new Date(),
+          moduleKeys: cat.moduleKeys,
+          tags: [cat.slug],
+          order: i,
+          authorId: superUser?.id ?? null,
+        },
+      });
+    }
+  }
+
+  // Eén org-specifiek artikel (alleen zichtbaar voor de demo-org)
+  if (demoOrg) {
+    const offertesCat = await prisma.helpCategory.findFirst({ where: { orgId: null, slug: 'offertes' } });
+    if (offertesCat) {
+      await prisma.helpArticle.create({
+        data: {
+          orgId: demoOrg.id,
+          categoryId: offertesCat.id,
+          slug: 'interne-offerte-werkwijze',
+          title: 'Interne werkwijze offertes (alleen InspeXi Demo)',
+          excerpt: 'Org-specifieke afspraken rond offertes.',
+          body: '# Interne werkwijze\n\nDit artikel is alleen zichtbaar binnen InspeXi Demo.',
+          status: 'PUBLISHED',
+          publishedAt: new Date(),
+          moduleKeys: ['quotes'],
+          tags: ['intern'],
+          authorId: demoAdmin?.id ?? null,
+        },
+      });
+    }
+  }
+
+  // Demo-tickets op de demo-org (verschillende statussen)
+  if (demoOrg && demoUser) {
+    const demoTickets = [
+      { n: 1, subject: 'Hoe maak ik een offerte op?', status: 'NIEUW', priority: 'NORMAAL', category: 'VRAAG' },
+      { n: 2, subject: 'PDF-export lukt niet', status: 'IN_BEHANDELING', priority: 'HOOG', category: 'PROBLEEM' },
+      { n: 3, subject: 'Verzoek: extra rapportveld', status: 'OPGELOST', priority: 'LAAG', category: 'FEATURE_REQUEST' },
+    ] as const;
+
+    for (const t of demoTickets) {
+      await prisma.supportTicket.create({
+        data: {
+          orgId: demoOrg.id,
+          ticketNumber: t.n,
+          subject: t.subject,
+          description: `Demo-ticket: ${t.subject}`,
+          status: t.status,
+          priority: t.priority,
+          category: t.category,
+          contextModule: 'quotes',
+          createdById: demoUser.id,
+          assignedToId: t.status === 'NIEUW' ? null : (superUser?.id ?? null),
+          lastMessageAt: new Date(),
+          resolvedAt: t.status === 'OPGELOST' ? new Date() : null,
+          messages: {
+            create: [
+              { orgId: demoOrg.id, authorId: demoUser.id, authorType: 'USER', body: `Vraag: ${t.subject}` },
+              ...(t.status !== 'NIEUW'
+                ? [
+                    {
+                      orgId: demoOrg.id,
+                      authorId: superUser?.id ?? null,
+                      authorType: 'SUPPORT' as const,
+                      body: 'Bedankt voor je melding, we kijken ernaar.',
+                    },
+                  ]
+                : []),
+            ],
+          },
+        },
+      });
+    }
+  }
+
+  // Support-toegang: demo-org staat AAN met een log-spoor
+  if (demoOrg && demoAdmin) {
+    await prisma.organization.update({
+      where: { id: demoOrg.id },
+      data: {
+        supportAccessEnabled: true,
+        supportAccessExpiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000), // 24u
+      },
+    });
+    await prisma.supportAccessLog.create({
+      data: {
+        orgId: demoOrg.id,
+        action: 'ENABLED',
+        performedById: demoAdmin.id,
+        performedByRole: 'ORG_ADMIN',
+        ip: '127.0.0.1',
+        note: 'Support-toegang geactiveerd (seed).',
+      },
+    });
+  }
+  console.log('  ✓ Help: 6 globale categorieën (12 artikelen) + 1 org-artikel, 3 tickets, support-toegang aan');
+
   // ─── Inspectiedomein (Fase 1) ──────────────────────────
   console.log('\n🔍 Seeding inspection domain...');
 
@@ -1576,6 +2378,7 @@ async function main() {
   await prisma.assetTypeDefinition.create({
     data: {
       code: 'electrical_installation',
+      shortCode: 'EI', // [typecode] in de ASSET_NODE-nummering → bv. EI-0001
       name: 'Elektrische installatie',
       description: 'Laagspanningsinstallatie',
       icon: 'zap',
@@ -1594,6 +2397,7 @@ async function main() {
   await prisma.assetTypeDefinition.create({
     data: {
       code: 'pv_installation',
+      shortCode: 'PV', // [typecode] in de ASSET_NODE-nummering → bv. PV-0001
       name: 'Zonnestroominstallatie',
       description: 'PV-installatie',
       icon: 'sun',
@@ -1611,6 +2415,7 @@ async function main() {
   await prisma.locationTypeDefinition.create({
     data: {
       code: 'distribution_room',
+      shortCode: 'VR', // [typecode] beschikbaar als de LOCATION_NODE-nummering het gebruikt
       name: 'Verdeelruimte',
       description: 'Ruimte met verdeelinrichting',
       icon: 'door-open',
@@ -1779,10 +2584,29 @@ async function main() {
             ].join('\n'),
           },
           {
+            code: 'meetmiddelen',
+            title: 'Gebruikte meetmiddelen',
+            sectionType: SectionType.STATIC,
+            sortOrder: 2,
+            contentHtml: [
+              '{{#each measurementSheets}}',
+              '{{#if this.usedInstruments.length}}',
+              '<h3>{{this.name}}</h3>',
+              '<table>',
+              '<tr><th>Nummer</th><th>Merk</th><th>Type</th><th>Serienr.</th><th>Laatste kalibratie</th><th>Verloopt</th></tr>',
+              '{{#each this.usedInstruments}}',
+              '<tr><td>{{this.code}}</td><td>{{this.brand}}</td><td>{{this.type}}</td><td>{{this.serialNumber}}</td><td>{{formatDate this.lastCalibrationDate "DD-MM-YYYY"}}</td><td>{{formatDate this.nextCalibrationDue "DD-MM-YYYY"}}</td></tr>',
+              '{{/each}}',
+              '</table>',
+              '{{/if}}',
+              '{{/each}}',
+            ].join('\n'),
+          },
+          {
             code: 'ondertekening',
             title: 'Ondertekening',
             sectionType: SectionType.SIGNATURE_BLOCK,
-            sortOrder: 2,
+            sortOrder: 3,
           },
         ],
       },
@@ -1790,11 +2614,15 @@ async function main() {
   });
   console.log('  ✓ Document template (PLAN) (1)');
 
-  // 8. Demo-inspectieplan (org1, contact1, inspecteur) met assets + findings
+  // 8. Demo-inspectieplan (org1, contact1, inspecteur) op de unified AssetNode-boom.
+  // De hoofdlocatie (locationId) = CRM-Locatie "Kantoorpand Zuidas" = boom-wortel.
+  const inspecteurId = createdOrg1Users[Role.INSPECTEUR];
+
   const demoPlan = await prisma.inspectionPlan.create({
     data: {
       orgId: org1.id,
       contactId: contact1.id,
+      locationId: loc1Kantoor.id,
       projectName: 'NEN 1010 inspectie hoofdkantoor De Vries',
       description: 'Periodieke veiligheidsinspectie van de elektrische installatie',
       referenceNumber: 'INSP-2026-0001',
@@ -1812,33 +2640,74 @@ async function main() {
     },
   });
 
-  const asset1 = await prisma.asset.create({
+  // AssetNode-boom: wortel-LOCATION (1:1 aan de CRM-Locatie) → deellocatie
+  // "Verdieping 1" → 2 assets. path/depth worden door de DB-trigger gevuld, dus
+  // parents vóór kinderen inserten.
+  const rootNode = await prisma.assetNode.create({
     data: {
       orgId: org1.id,
-      inspectionPlanId: demoPlan.id,
-      assetType: 'electrical_installation',
+      nodeType: 'LOCATION',
+      rootLocationId: loc1Kantoor.id,
+      typeCode: 'distribution_room',
+      name: 'Hoofdkantoor',
+      identifier: 'LOC-HK',
+      createdBy: inspecteurId,
+    },
+  });
+  const floorNode = await prisma.assetNode.create({
+    data: {
+      orgId: org1.id,
+      nodeType: 'LOCATION',
+      parentId: rootNode.id,
+      typeCode: 'distribution_room',
+      name: 'Verdieping 1',
+      identifier: 'LOC-V1',
+      createdBy: inspecteurId,
+    },
+  });
+
+  const asset1 = await prisma.assetNode.create({
+    data: {
+      orgId: org1.id,
+      nodeType: 'ASSET',
+      parentId: floorNode.id,
+      typeCode: 'electrical_installation',
       name: 'Hoofdverdeler HVK',
       identifier: 'HVK-01',
       statusCode: 'new',
       sortOrder: 0,
+      createdBy: inspecteurId,
     },
   });
-  const asset2 = await prisma.asset.create({
+  const asset2 = await prisma.assetNode.create({
     data: {
       orgId: org1.id,
-      inspectionPlanId: demoPlan.id,
-      assetType: 'electrical_installation',
+      nodeType: 'ASSET',
+      parentId: floorNode.id,
+      typeCode: 'electrical_installation',
       name: 'Onderverdeler kantoor',
       identifier: 'OVK-02',
       statusCode: 'new',
       sortOrder: 1,
+      createdBy: inspecteurId,
+    },
+  });
+
+  // Scope-deellocatie: "Verdieping 1" als (primaire) scope van het plan.
+  await prisma.inspectionPlanLocation.create({
+    data: {
+      orgId: org1.id,
+      inspectionPlanId: demoPlan.id,
+      assetNodeId: floorNode.id,
+      isPrimary: true,
     },
   });
 
   const finding1 = await prisma.finding.create({
     data: {
       orgId: org1.id,
-      assetId: asset1.id,
+      assetNodeId: asset1.id,
+      inspectionPlanId: demoPlan.id,
       inspectionType: FindingInspectionType.visual,
       shortDescription: 'Ontbrekende afdekking op verdeelinrichting',
       longDescription: 'De afdekking van de hoofdverdeler ontbreekt, aanraakgevaar voor spanningvoerende delen.',
@@ -1849,7 +2718,8 @@ async function main() {
   await prisma.finding.create({
     data: {
       orgId: org1.id,
-      assetId: asset2.id,
+      assetNodeId: asset2.id,
+      inspectionPlanId: demoPlan.id,
       inspectionType: FindingInspectionType.measurement,
       shortDescription: 'Isolatieweerstand onder norm op groep 3',
       longDescription: 'Gemeten isolatieweerstand 0,3 MΩ, onder de minimumwaarde van 1 MΩ.',
@@ -1857,43 +2727,50 @@ async function main() {
       statusCode: 'open',
     },
   });
-  console.log('  ✓ Demo inspection plan + 2 assets + 2 findings');
+  console.log(
+    '  ✓ Demo AssetNode-boom: hoofdlocatie → Verdieping 1 (scope) → 2 assets + 2 findings',
+  );
 
-  // ─── Locaties, plattegrond & meetstaten (inspectiedomein) ───────────────
-  // Additief op het bestaande demo-plan. treePath blijft leeg (de
-  // inspection-locations.service bouwt de boom via parentLocationId, niet via treePath).
-  const inspecteurId = createdOrg1Users[Role.INSPECTEUR];
-
-  const rootLocation = await prisma.inspectionLocation.create({
+  // Visuele inspectie op asset1 (completed). VisualInspection heeft GEEN createdBy-kolom.
+  await prisma.visualInspection.create({
     data: {
       orgId: org1.id,
+      assetNodeId: asset1.id,
       inspectionPlanId: demoPlan.id,
-      locationType: 'distribution_room',
-      name: 'Hoofdkantoor',
-      identifier: 'LOC-HK',
-      sortOrder: 0,
-      createdBy: inspecteurId,
-    },
-  });
-  const floorLocation = await prisma.inspectionLocation.create({
-    data: {
-      orgId: org1.id,
-      inspectionPlanId: demoPlan.id,
-      parentLocationId: rootLocation.id,
-      locationType: 'distribution_room',
-      name: 'Verdieping 1',
-      identifier: 'LOC-V1',
-      sortOrder: 0,
-      createdBy: inspecteurId,
+      status: InspectionExecStatus.completed,
+      checklistResults: [
+        { itemCode: 'cover-present', label: 'Afdekking aanwezig', result: 'fail' },
+        { itemCode: 'labeling', label: 'Bekabeling gelabeld', result: 'pass' },
+        { itemCode: 'earthing', label: 'Aarding aanwezig', result: 'pass' },
+      ] as any,
+      inspectorId: inspecteurId,
+      startedAt: new Date('2026-06-15T10:30:00Z'),
+      completedAt: new Date('2026-06-15T10:45:00Z'),
+      deviceId: 'demo-device-001',
     },
   });
 
-  // Assets aan de verdieping koppelen (Asset.locationId / relation "AssetLocation").
-  await prisma.asset.updateMany({
-    where: { id: { in: [asset1.id, asset2.id] } },
-    data: { locationId: floorLocation.id },
+  // Standalone-meting geworteld op een LOCATION-node (Verdieping 1), gekoppeld aan asset1.
+  await prisma.standaloneMeasurement.create({
+    data: {
+      orgId: org1.id,
+      inspectionPlanId: demoPlan.id,
+      locationNodeId: floorNode.id,
+      measurementType: 'isolatieweerstand',
+      description: 'Steekproef isolatieweerstand op verdieping 1',
+      linkedAssetNodeId: asset1.id,
+      createdBy: inspecteurId,
+      deviceId: 'demo-device-001',
+      values: {
+        create: [
+          { fieldName: 'R_iso', fieldType: 'number', value: '210', unit: 'MΩ', passFailCode: 'pass' },
+          { fieldName: 'U_test', fieldType: 'number', value: '500', unit: 'V' },
+          { fieldName: 'Opmerking', fieldType: 'text', value: 'Meting binnen norm' },
+        ],
+      },
+    },
   });
-  console.log('  ✓ Locatieboom (2 niveaus: Hoofdkantoor → Verdieping 1) + assets gekoppeld');
+  console.log('  ✓ Visuele inspectie (asset1) + standalone-meting (Verdieping 1 → asset1, 3 waarden)');
 
   // Plattegrond op de root-locatie: genereer een echte 800x600 PNG en schrijf 'm naar
   // de lokale storage (UPLOAD_DIR), zodat de afbeelding in het portal daadwerkelijk
@@ -1910,7 +2787,7 @@ async function main() {
   const floorPlanImage = await prisma.locationImage.create({
     data: {
       orgId: org1.id,
-      locationId: rootLocation.id,
+      nodeId: rootNode.id,
       storagePath: floorPlanKey,
       originalFilename: floorPlanFilename,
       fileSize: floorPlanBytes.length,
@@ -1931,7 +2808,7 @@ async function main() {
         positionX: 27,
         positionY: 30,
         markerType: MarkerType.ASSET,
-        assetId: asset1.id,
+        assetNodeId: asset1.id,
         label: 'Hoofdverdeler HVK',
         createdBy: inspecteurId,
       },
@@ -1941,7 +2818,7 @@ async function main() {
         positionX: 73,
         positionY: 64,
         markerType: MarkerType.ASSET,
-        assetId: asset2.id,
+        assetNodeId: asset2.id,
         label: 'Onderverdeler kantoor',
         createdBy: inspecteurId,
       },
@@ -1977,7 +2854,7 @@ async function main() {
     data: {
       orgId: org1.id,
       templateId: measSheet.id,
-      assetId: asset1.id,
+      assetNodeId: asset1.id,
       inspectionPlanId: demoPlan.id,
       templateVersion: measSheet.version,
       templateSnapshot: measSnapshot as any,
@@ -2000,7 +2877,7 @@ async function main() {
     data: {
       orgId: org1.id,
       templateId: measSheet.id,
-      assetId: asset2.id,
+      assetNodeId: asset2.id,
       inspectionPlanId: demoPlan.id,
       templateVersion: measSheet.version,
       templateSnapshot: measSnapshot as any,
@@ -2030,7 +2907,147 @@ async function main() {
     },
   });
   console.log('  ✓ Meetstaat-records (2: asset1 geslaagd, asset2 afgekeurd op groep 3)');
-  console.log('  → Demo-inspectie compleet: + 2 locaties, 1 plattegrond + 3 markers, 2 meetstaat-records');
+  console.log('  → Demo-inspectie compleet: + 2 locaties, 1 plattegrond + 3 markers, 2 meetstaat-records, 1 visuele inspectie, 1 standalone-meting');
+
+  // ─── Meetmiddelen + kalibraties (demo) ─────────────────
+  // Drie meetmiddelen met afgeleide statussen: binnenkort verlopend, verlopen en geldig.
+  // De afgeleide cache (lastCalibrationDate/nextCalibrationDue) wordt hier expliciet
+  // gezet (de recompute draait normaal in de service, niet bij een rauwe prisma.create).
+  console.log('\n📏 Seeding meetmiddelen + kalibraties...');
+  const mmDay = 1000 * 60 * 60 * 24;
+  const mmNow = Date.now();
+  const mmAdminId = createdOrg1Users[Role.ORG_ADMIN];
+
+  async function seedInstrument(opts: {
+    code: string;
+    brand: string;
+    type: string;
+    serialNumber: string;
+    intervalMonths: number;
+    assignedToUserId: string | null;
+    calibrations: Array<{
+      daysAgo: number;
+      performedBy: string;
+      certificateNumber?: string;
+      withDocument?: boolean;
+    }>;
+  }) {
+    const instrument = await prisma.measurementInstrument.create({
+      data: {
+        orgId: org1.id,
+        code: opts.code,
+        brand: opts.brand,
+        type: opts.type,
+        serialNumber: opts.serialNumber,
+        calibrationIntervalMonths: opts.intervalMonths,
+        assignedToUserId: opts.assignedToUserId,
+        createdById: mmAdminId,
+      },
+    });
+
+    let latest: Date | null = null;
+    for (const c of opts.calibrations) {
+      const calDate = new Date(mmNow - c.daysAgo * mmDay);
+      if (!latest || calDate > latest) latest = calDate;
+
+      let fileFields: Record<string, unknown> = {};
+      if (c.withDocument) {
+        const filename = `kalibratiecertificaat-${opts.code}.pdf`;
+        const key = `${org1.id}/measurement-instruments/${instrument.id}/calibrations/${randomUUID()}-${filename}`;
+        const bytes = makeCertificatePdf(
+          `Kalibratiecertificaat ${opts.code} — ${opts.brand} ${opts.type}`,
+        );
+        const full = path.join(process.env.UPLOAD_DIR || './uploads', key);
+        fs.mkdirSync(path.dirname(full), { recursive: true });
+        fs.writeFileSync(full, bytes);
+        fileFields = {
+          storageKey: key,
+          fileName: filename,
+          originalName: filename,
+          mimeType: 'application/pdf',
+          size: bytes.length,
+        };
+      }
+
+      await prisma.calibration.create({
+        data: {
+          orgId: org1.id,
+          instrumentId: instrument.id,
+          calibrationDate: calDate,
+          performedBy: c.performedBy,
+          certificateNumber: c.certificateNumber ?? null,
+          createdById: mmAdminId,
+          ...fileFields,
+        },
+      });
+    }
+
+    await prisma.measurementInstrument.update({
+      where: { id: instrument.id },
+      data: {
+        lastCalibrationDate: latest,
+        nextCalibrationDue: latest ? addMonths(latest, opts.intervalMonths) : null,
+      },
+    });
+    return instrument;
+  }
+
+  // BINNENKORT — laatste kalibratie ~340 dagen geleden, interval 12 mnd → verloopt over ~3-4 weken
+  const mi1 = await seedInstrument({
+    code: 'MM-001',
+    brand: 'Fluke',
+    type: '1587 FC',
+    serialNumber: 'SN-FLK-1587-001',
+    intervalMonths: 12,
+    assignedToUserId: inspecteurId,
+    calibrations: [
+      { daysAgo: 400, performedBy: 'KalibratieLab BV', certificateNumber: 'CAL-2025-0412' },
+      { daysAgo: 340, performedBy: 'KalibratieLab BV', certificateNumber: 'CAL-2025-0588', withDocument: true },
+    ],
+  });
+
+  // VERLOPEN — laatste kalibratie ~395 dagen geleden, interval 12 mnd → ~1 maand verlopen
+  const mi2 = await seedInstrument({
+    code: 'MM-002',
+    brand: 'Megger',
+    type: 'MIT430/2',
+    serialNumber: 'SN-MGR-430-002',
+    intervalMonths: 12,
+    assignedToUserId: null, // op voorraad
+    calibrations: [
+      { daysAgo: 395, performedBy: 'IJkmeester Nederland', certificateNumber: 'IJK-2025-1180', withDocument: true },
+    ],
+  });
+
+  // GELDIG — recent gekalibreerd, interval 24 mnd
+  const mi3 = await seedInstrument({
+    code: 'MM-003',
+    brand: 'Gossen Metrawatt',
+    type: 'PROFITEST',
+    serialNumber: 'SN-GMC-PT-003',
+    intervalMonths: 24,
+    assignedToUserId: inspecteurId,
+    calibrations: [
+      { daysAgo: 60, performedBy: 'KalibratieLab BV', certificateNumber: 'CAL-2026-0042', withDocument: true },
+    ],
+  });
+
+  // Niveau 1 — globale standaard-meetmiddelen voor de demo-inspecteur
+  await prisma.userDefaultInstrument.createMany({
+    data: [
+      { orgId: org1.id, userId: inspecteurId, instrumentId: mi1.id },
+      { orgId: org1.id, userId: inspecteurId, instrumentId: mi3.id },
+    ],
+  });
+
+  // Gebruikte meetmiddelen op het geslaagde demo-meetstaat-record (asset1)
+  await prisma.measurementSheetRecord.updateMany({
+    where: { assetNodeId: asset1.id, templateId: measSheet.id },
+    data: { usedInstrumentIds: [mi1.id, mi3.id] },
+  });
+
+  console.log('  ✓ 3 meetmiddelen (binnenkort/verlopen/geldig) + kalibraties + 3 certificaten');
+  console.log('  ✓ Niveau-1 standaard-meetmiddelen voor de demo-inspecteur + usedInstrumentIds op meetstaat');
 
   // ─── Client-portal demo (Fase 6) ───────────────────────
   // Onboarded demo-klant met een vaste, niet-gebruikte magic-link op het bestaande
@@ -2047,7 +3064,8 @@ async function main() {
   await prisma.finding.create({
     data: {
       orgId: org1.id,
-      assetId: asset1.id,
+      assetNodeId: asset1.id,
+      inspectionPlanId: demoPlan.id,
       inspectionType: FindingInspectionType.visual,
       shortDescription: 'Beschadigde mantel op hoofdvoedingskabel',
       longDescription: 'De mantel van de hoofdvoedingskabel is plaatselijk beschadigd; de isolatie is zichtbaar aangetast.',
@@ -2148,20 +3166,88 @@ async function main() {
   });
   console.log(`  ✓ ClientAccess (VIEWER → ${contact1.companyName}) + InspectionClientAccess (canView/canSign)`);
 
-  // 6. Vaste, niet-gebruikte magic-link (ver in de toekomst verlopend) → directe login.
+  // 6. Vaste, niet-gebruikte magic-link → directe login ZONDER wachtwoord.
+  //    Dit is een gevaarlijke gemaks-shortcut en wordt daarom ALLEEN aangemaakt
+  //    achter de expliciete vlag SEED_DEMO=1 (zie .env.example). Standaard-seed
+  //    laat 'm weg. Korte expiry (30 dagen) i.p.v. "ver in de toekomst".
   //    validateMagicLink markeert 'm bij eerste gebruik als usedAt; re-seed maakt 'm opnieuw.
-  await prisma.clientMagicLink.create({
+  if (process.env.SEED_DEMO === '1') {
+    await prisma.clientMagicLink.create({
+      data: {
+        clientUserId: demoClient.id,
+        email: 'klant@inspexi-demo.nl',
+        token: 'demo-klant-magic',
+        inspectionPlanId: demoPlan.id,
+        expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+        usedAt: null,
+        createdBy: orgAdminId,
+      },
+    });
+    console.log('  ✓ ClientMagicLink: token "demo-klant-magic" (SEED_DEMO=1, verloopt over 30 dagen)');
+  } else {
+    console.log('  ⏭️  ClientMagicLink "demo-klant-magic" overgeslagen (zet SEED_DEMO=1 om aan te maken)');
+  }
+
+  // ─── SaaS-varianten (PRD-09 §7.1) — testmatrix-orgs ─────────────────────
+  // Drie extra orgs, los van de rijke demo-org, om de §7.3-testmatrix per
+  // variant af te lopen: Basis blokkeert Compleet-functies, Compleet is overal
+  // toegankelijk, en een per-org override schakelt één Compleet-functie bij.
+  // Slugs zonder hyphens (regex ^[a-z0-9]+$).
+  console.log('\n🧪 Seeding SaaS-variant-orgs (PRD-09 §7.1)...');
+  const variantRefs = {
+    passwordHash,
+    inspTemplateId: inspTemplate.id,
+    planDocTemplateId: planDocTemplate.id,
+    crmLocationTypeId: crmLocationTypes.kantoor,
+  };
+
+  await seedVariantOrg(
+    prisma,
+    { name: 'InspeXi Basis', slug: 'inspexibasis', planId: basisPlan.id, emailDomain: 'inspexibasis.nl', magicToken: 'basis-klant-magic' },
+    variantRefs,
+  );
+  await seedVariantOrg(
+    prisma,
+    { name: 'InspeXi Compleet', slug: 'inspexicompleet', planId: compleetPlan.id, emailDomain: 'inspexicompleet.nl', magicToken: 'compleet-klant-magic' },
+    variantRefs,
+  );
+
+  // Mix-org: Basis-plan + per-org override WORKFLOW_COMPLEET=true → /documents
+  // toegankelijk terwijl de overige Compleet-functies (offertes etc.) geblokkeerd
+  // blijven. Test van "bijschakelen bovenop het plan".
+  const mix = await seedVariantOrg(
+    prisma,
+    { name: 'InspeXi Mix', slug: 'inspeximix', planId: basisPlan.id, emailDomain: 'inspeximix.nl', magicToken: 'mix-klant-magic' },
+    variantRefs,
+  );
+  await prisma.organizationFeature.create({
     data: {
-      clientUserId: demoClient.id,
-      email: 'klant@inspexi-demo.nl',
-      token: 'demo-klant-magic',
-      inspectionPlanId: demoPlan.id,
-      expiresAt: new Date('2099-12-31T00:00:00Z'),
-      usedAt: null,
-      createdBy: orgAdminId,
+      orgId: mix.org.id,
+      featureKey: 'WORKFLOW_COMPLEET',
+      enabled: true,
+      updatedById: mix.admin.id,
     },
   });
-  console.log('  ✓ ClientMagicLink: token "demo-klant-magic" (verloopt 2099-12-31, ongebruikt)');
+  // Eén DMS-document zodat /documents bij de mix-org daadwerkelijk content toont.
+  await prisma.document.create({
+    data: {
+      orgId: mix.org.id,
+      entityType: DocumentEntityType.CONTACT,
+      entityId: mix.contact.id,
+      fileName: 'welkomstbrief.pdf',
+      originalName: 'Welkomstbrief InspeXi Mix.pdf',
+      mimeType: 'application/pdf',
+      size: 8_192,
+      storageKey: `${mix.org.id}/seed-welkomstbrief.pdf`,
+      description: 'Demo-document (DMS) — zichtbaar dankzij de WORKFLOW_COMPLEET-override',
+      uploadedById: mix.admin.id,
+    },
+  });
+  console.log('  ✓ Mix-org override: WORKFLOW_COMPLEET=true (bijgeschakeld) + 1 DMS-document');
+
+  // ─── Nummering: default schemes + numbers + counters-after-max ──────────
+  await backfillNumbering(prisma);
+  console.log('  ✓ Nummering: standaard-schemas, nummers en tellers geseed (per org, per model)');
 
   console.log('\n✅ Seed completed successfully!');
   console.log('\n📋 Login credentials (all use Password123!):');
@@ -2170,8 +3256,19 @@ async function main() {
   console.log('   manager@inspexi-demo.nl   → MANAGER (InspeXi Demo)');
   console.log('   backoffice@inspexi-demo.nl → BACKOFFICE (InspeXi Demo)');
   console.log('   admin@testbedrijf.nl      → ORG_ADMIN (Test Bedrijf)');
-  console.log('\n🔗 Demo-klant (client-portal) — directe login via magic-link:');
-  console.log('   http://inspexidemo.localhost:5174/magic/demo-klant-magic');
+  console.log('\n🧪 SaaS-variant-orgs (PRD-09 §7.1, wachtwoord Password123!):');
+  console.log('   admin@inspexibasis.nl     → ORG_ADMIN (InspeXi Basis — plan Basis)');
+  console.log('   admin@inspexicompleet.nl  → ORG_ADMIN (InspeXi Compleet — plan Compleet)');
+  console.log('   admin@inspeximix.nl       → ORG_ADMIN (InspeXi Mix — Basis + WORKFLOW_COMPLEET)');
+  if (process.env.SEED_DEMO === '1') {
+    console.log('\n🔗 Klant-portaal (client-portal) — directe login via magic-link (SEED_DEMO=1):');
+    console.log('   http://inspexidemo.localhost:5174/magic/demo-klant-magic');
+    console.log('   http://inspexibasis.localhost:5174/magic/basis-klant-magic');
+    console.log('   http://inspexicompleet.localhost:5174/magic/compleet-klant-magic');
+    console.log('   http://inspeximix.localhost:5174/magic/mix-klant-magic');
+  } else {
+    console.log('\n🔗 Klant-portaal magic-links overgeslagen (zet SEED_DEMO=1 om ze aan te maken).');
+  }
 }
 
 main()

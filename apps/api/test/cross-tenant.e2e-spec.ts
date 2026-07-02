@@ -28,6 +28,8 @@ describe('Cross-tenant FK isolation (e2e)', () => {
   let userAId: string;
   let contactAId: string;
   let groupAId: string;
+  let locationAId: string;
+  let contactPersonAId: string;
   let tokenA: string;
 
   // Org B (victim)
@@ -35,6 +37,7 @@ describe('Cross-tenant FK isolation (e2e)', () => {
   let userBId: string;
   let contactBId: string;
   let locationBId: string;
+  let locationTypeBId: string;
   let quoteBId: string;
   let productBId: string;
   let contactPersonBId: string;
@@ -43,6 +46,8 @@ describe('Cross-tenant FK isolation (e2e)', () => {
   let planBId: string;
   let assetBId: string;
   let categoryBId: string;
+  let ticketBId: string; // org B support-ticket (victim) — read/mutate isolation
+  let certBId: string; // org B inspector-certificate (victim) — read/create isolation
   let cmBId: string;
   // Stream B — extra org-B fixtures (read-isolatie + body-FK aanvallen)
   let findingBId: string;
@@ -55,8 +60,16 @@ describe('Cross-tenant FK isolation (e2e)', () => {
   let findingAId: string;
   let findingTemplateAId: string;
 
+  // PR-2 (cross-tenant FK) extra fixtures
+  let requestBId: string; // org B request (victim) — projects/quotes requestId attack
+  let requestAId: string; // org A request (own) — requests update attack target
+  let quoteAId: string; // org A CONCEPT quote (own) — quotes update attack target
+  let projectAId: string; // org A project (own) — projects update attack target
+
   const createdPlanningIds: string[] = [];
   const createdTaskIds: string[] = [];
+  // NB: rows created by PR-2 positive controls are swept by the orgId-bulk
+  // deletes in afterAll, so no per-id tracking arrays are needed.
 
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
@@ -114,6 +127,30 @@ describe('Cross-tenant FK isolation (e2e)', () => {
     });
     groupAId = groupA.id;
 
+    // Org A's eigen locatie (PATCH-doelwit voor de cross-tenant locationType-aanval).
+    const locationA = await prisma.location.create({
+      data: {
+        orgId: orgA.id,
+        contactId: contactA.id,
+        name: 'Locatie A',
+        street: 'Teststraat',
+        houseNumber: '1',
+        postalCode: '1000AA',
+        city: 'Teststad',
+      },
+    });
+    locationAId = locationA.id;
+
+    const contactPersonA = await prisma.contactPerson.create({
+      data: {
+        orgId: orgA.id,
+        contactId: contactA.id,
+        firstName: 'Persoon',
+        lastName: 'A',
+      },
+    });
+    contactPersonAId = contactPersonA.id;
+
     // ─── Org B (victim) ─────────────────────────────────
     const orgB = await prisma.organization.create({
       data: { name: 'E2E XTenant Org B', slug: 'e2extenantb' },
@@ -156,6 +193,18 @@ describe('Cross-tenant FK isolation (e2e)', () => {
       },
     });
     locationBId = locationB.id;
+
+    // Org B's eigen CRM-locatietype (body-FK aanval: org A probeert dit te koppelen).
+    const locationTypeB = await prisma.locationTypeDefinition.create({
+      data: {
+        orgId: orgB.id,
+        code: 'e2extlocb',
+        name: 'XTenant LocationType B',
+        scope: 'CRM',
+        isSystem: false,
+      },
+    });
+    locationTypeBId = locationTypeB.id;
 
     const productB = await prisma.product.create({
       data: { orgId: orgB.id, name: 'Product B', unit: 'stuk' },
@@ -220,11 +269,11 @@ describe('Cross-tenant FK isolation (e2e)', () => {
       },
     });
     planBId = planB.id;
-    const assetB = await prisma.asset.create({
+    const assetB = await prisma.assetNode.create({
       data: {
         orgId: orgB.id,
-        inspectionPlanId: planB.id,
-        assetType: 'kast',
+        nodeType: 'ASSET',
+        typeCode: 'kast',
         name: 'Asset B',
         createdBy: userB.id,
       },
@@ -237,11 +286,12 @@ describe('Cross-tenant FK isolation (e2e)', () => {
     categoryBId = categoryB.id;
 
     // ─── Stream B: extra org B-fixtures ─────────────────
-    // Constatering op org B's asset (read-isolatie GET /findings/:id → 404).
+    // Constatering op org B's asset-node (read-isolatie GET /findings/:id → 404).
     const findingB = await prisma.finding.create({
       data: {
         orgId: orgB.id,
-        assetId: assetB.id,
+        assetNodeId: assetB.id,
+        inspectionPlanId: planB.id,
         inspectionType: 'visual',
         shortDescription: 'Finding B',
         createdBy: userB.id,
@@ -271,21 +321,37 @@ describe('Cross-tenant FK isolation (e2e)', () => {
       data: { orgId: orgA.id, code: 'e2extata', name: 'XTenant AssetType A', isSystem: false },
     });
     assetTypeAId = assetTypeA.id;
+    // Plan A heeft een hoofdlocatie (locationA = boom-wortel), zodat asset A in de
+    // boom van het plan zit en de positieve execution-controles (finding op asset A
+    // onder plan A) kunnen slagen. Uitvoeringsrecords valideren nu node-in-plan-tree.
     const planA = await prisma.inspectionPlan.create({
       data: {
         orgId: orgA.id,
         contactId: contactA.id,
+        locationId: locationAId,
         projectName: 'Plan A',
         normTypeCode: 'e2extnorm',
         createdBy: userA.id,
       },
     });
     planAId = planA.id;
-    const assetA = await prisma.asset.create({
+    // Wortel-LOCATION-node (1:1 aan de CRM-Locatie) → asset A eronder.
+    const rootNodeA = await prisma.assetNode.create({
       data: {
         orgId: orgA.id,
-        inspectionPlanId: planA.id,
-        assetType: 'e2extata',
+        nodeType: 'LOCATION',
+        rootLocationId: locationAId,
+        typeCode: 'locatie',
+        name: 'Wortel A',
+        createdBy: userA.id,
+      },
+    });
+    const assetA = await prisma.assetNode.create({
+      data: {
+        orgId: orgA.id,
+        nodeType: 'ASSET',
+        parentId: rootNodeA.id,
+        typeCode: 'e2extata',
         name: 'Asset A',
         createdBy: userA.id,
       },
@@ -305,13 +371,60 @@ describe('Cross-tenant FK isolation (e2e)', () => {
     const findingA = await prisma.finding.create({
       data: {
         orgId: orgA.id,
-        assetId: assetA.id,
+        assetNodeId: assetA.id,
+        inspectionPlanId: planA.id,
         inspectionType: 'visual',
         shortDescription: 'Finding A',
         createdBy: userA.id,
       },
     });
     findingAId = findingA.id;
+
+    // ─── PR-2: cross-tenant FK fixtures ─────────────────
+    const requestB = await prisma.request.create({
+      data: { orgId: orgB.id, contactId: contactB.id, source: 'MANUAL', title: 'Aanvraag B', createdBy: userB.id },
+    });
+    requestBId = requestB.id;
+    const requestA = await prisma.request.create({
+      data: { orgId: orgA.id, contactId: contactA.id, source: 'MANUAL', title: 'Aanvraag A', createdBy: userA.id },
+    });
+    requestAId = requestA.id;
+    const quoteA = await prisma.quote.create({
+      data: { orgId: orgA.id, quoteNumber: 'E2E-XTENANT-A-001', contactId: contactA.id, subject: 'Offerte A', status: 'CONCEPT', createdBy: userA.id },
+    });
+    quoteAId = quoteA.id;
+    const projectA = await prisma.project.create({
+      data: { orgId: orgA.id, projectNumber: 'E2E-XT-A-P001', title: 'Project A', contactId: contactA.id, projectManagerId: userA.id, createdBy: userA.id },
+    });
+    projectAId = projectA.id;
+
+    // Support-ticket van org B (slachtoffer) — org A mag dit niet zien/muteren.
+    const ticketB = await prisma.supportTicket.create({
+      data: {
+        orgId: orgB.id,
+        ticketNumber: 1,
+        subject: 'Ticket B',
+        description: 'Vertrouwelijk voor org B',
+        createdById: userB.id,
+        lastMessageAt: new Date(),
+        messages: {
+          create: [{ orgId: orgB.id, authorId: userB.id, authorType: 'USER', body: 'Vertrouwelijk voor org B' }],
+        },
+      },
+    });
+    ticketBId = ticketB.id;
+
+    // Inspecteur-certificaat van org B (slachtoffer) — org A mag dit niet zien/maken (PRD-11).
+    const certB = await prisma.inspectorCertificate.create({
+      data: {
+        orgId: orgB.id,
+        userId: userB.id,
+        type: 'VCA-VOL',
+        issueDate: new Date('2024-01-01'),
+        issuer: 'Examenbureau B',
+      },
+    });
+    certBId = certB.id;
 
     // Login as org A's admin
     const loginRes = await request(app.getHttpServer())
@@ -338,9 +451,12 @@ describe('Cross-tenant FK isolation (e2e)', () => {
         where: { id: { in: createdPlanningIds } },
       });
       await prisma.task.deleteMany({ where: { id: { in: createdTaskIds } } });
-      // Inspectiedomein (kinderen eerst): finding → asset → plan → template → cm → norm
+      // Inspectiedomein (kinderen eerst): finding → scope/standalone (RESTRICT op de
+      // node-FK) → asset-node → plan → template → cm → norm.
       await prisma.finding.deleteMany({ where: { orgId: { in: orgIds } } });
-      await prisma.asset.deleteMany({ where: { orgId: { in: orgIds } } });
+      await prisma.inspectionPlanLocation.deleteMany({ where: { orgId: { in: orgIds } } });
+      await prisma.standaloneMeasurement.deleteMany({ where: { orgId: { in: orgIds } } });
+      await prisma.assetNode.deleteMany({ where: { orgId: { in: orgIds } } });
       await prisma.inspectionPlan.deleteMany({ where: { orgId: { in: orgIds } } });
       await prisma.findingTemplate.deleteMany({ where: { orgId: { in: orgIds } } });
       await prisma.inspectionTemplate.deleteMany({ where: { orgId: { in: orgIds } } });
@@ -352,13 +468,33 @@ describe('Cross-tenant FK isolation (e2e)', () => {
         where: { contactId: { in: [contactAId, contactBId] } },
       });
       await prisma.customerGroup.deleteMany({ where: { orgId: { in: orgIds } } });
+      await prisma.locationContactPerson.deleteMany({ where: { orgId: { in: orgIds } } });
       await prisma.contactPerson.deleteMany({ where: { orgId: { in: orgIds } } });
+      await prisma.pdokApiLog.deleteMany({ where: { orgId: { in: orgIds } } });
       await prisma.location.deleteMany({ where: { orgId: { in: orgIds } } });
+      // Org-eigen locatietypes (systeem-types met orgId null worden niet geraakt).
+      await prisma.locationTypeDefinition.deleteMany({ where: { orgId: { in: orgIds } } });
       await prisma.quote.deleteMany({ where: { orgId: { in: orgIds } } });
+      // PR-2 fixtures: requestStatusHistory → request → project (children first);
+      // quote is already gone above (quote.requestId → request).
+      await prisma.requestStatusHistory.deleteMany({ where: { request: { orgId: { in: orgIds } } } });
+      await prisma.request.deleteMany({ where: { orgId: { in: orgIds } } });
+      await prisma.project.deleteMany({ where: { orgId: { in: orgIds } } });
+      await prisma.note.deleteMany({ where: { orgId: { in: orgIds }, parentId: { not: null } } });
+      await prisma.note.deleteMany({ where: { orgId: { in: orgIds } } });
       await prisma.product.deleteMany({ where: { orgId: { in: orgIds } } });
       await prisma.contact.deleteMany({ where: { orgId: { in: orgIds } } });
+      // Support-tickets (berichten cascaden, maar expliciet voor de zekerheid).
+      await prisma.supportTicketMessage.deleteMany({ where: { orgId: { in: orgIds } } });
+      await prisma.supportTicket.deleteMany({ where: { orgId: { in: orgIds } } });
       await prisma.notification.deleteMany({ where: { orgId: { in: orgIds } } });
       await prisma.syncQueue.deleteMany({ where: { userId: { in: userIds } } });
+      // Numbering schemes are auto-provisioned when requests/quotes/projects/products
+      // are created, so drop counters + schemes before the orgs they reference.
+      await prisma.numberingCounter.deleteMany({ where: { scheme: { orgId: { in: orgIds } } } });
+      await prisma.numberingScheme.deleteMany({ where: { orgId: { in: orgIds } } });
+      // Inspecteur-certificaten (PRD-11) vóór de users/orgs waar ze naar verwijzen.
+      await prisma.inspectorCertificate.deleteMany({ where: { orgId: { in: orgIds } } });
       await prisma.auditLog.deleteMany({ where: { orgId: { in: orgIds } } });
       await prisma.refreshToken.deleteMany({ where: { userId: { in: userIds } } });
       await prisma.user.deleteMany({ where: { id: { in: userIds } } });
@@ -535,6 +671,102 @@ describe('Cross-tenant FK isolation (e2e)', () => {
     });
   });
 
+  // ─── Contact locations: cross-tenant locationTypeId (body FK → 403) ───
+  // assertLocationTypeUsable weigert een locatietype van een andere org (403),
+  // maar staat gezaaide systeem CRM-types (orgId null) toe als positieve controle.
+  describe('contact locations — cross-tenant locationTypeId', () => {
+    it("rejects creating a location with another org's locationTypeId (403)", async () => {
+      await request(app.getHttpServer())
+        .post(`/api/v1/contacts/${contactAId}/locations`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({
+          name: 'Sneaky',
+          street: 'Teststraat',
+          houseNumber: '2',
+          postalCode: '1000AB',
+          city: 'Teststad',
+          locationTypeId: locationTypeBId,
+        })
+        .expect(403);
+    });
+
+    it("rejects patching a location to another org's locationTypeId (403)", async () => {
+      await request(app.getHttpServer())
+        .patch(`/api/v1/contacts/locations/${locationAId}`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({ locationTypeId: locationTypeBId })
+        .expect(403);
+    });
+
+    it("rejects PDOK-refreshing another org's location (403)", async () => {
+      // Org-ownership wordt vóór elke PDOK-call gecontroleerd, dus dit raakt
+      // nooit het externe PDOK en schrijft geen PdokApiLog-rij.
+      await request(app.getHttpServer())
+        .post(`/api/v1/contacts/locations/${locationBId}/pdok-refresh`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({ confirm: false })
+        .expect(403);
+
+      const logs = await prisma.pdokApiLog.count({ where: { locationId: locationBId } });
+      expect(logs).toBe(0);
+    });
+
+    it('allows a location with a system CRM locationType (positive control)', async () => {
+      const systemType = await prisma.locationTypeDefinition.findFirst({
+        where: { code: 'woning', orgId: null, scope: 'CRM' },
+      });
+      expect(systemType).toBeTruthy();
+
+      const res = await request(app.getHttpServer())
+        .post(`/api/v1/contacts/${contactAId}/locations`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({
+          name: 'Legitieme woning',
+          street: 'Teststraat',
+          houseNumber: '3',
+          postalCode: '1000AC',
+          city: 'Teststad',
+          locationTypeId: systemType!.id,
+        })
+        .expect(201);
+
+      expect(res.body.data.locationTypeId).toBe(systemType!.id);
+      expect(res.body.data.locationType).toMatchObject({ code: 'woning' });
+    });
+  });
+
+  // ─── Contactpersoon → locatie koppeling (body FK → 403) ───
+  // addContactPersonLocation weigert een locatie van een andere org (403) en
+  // weigert een contactpersoon van een andere org (404/403 via findContactPerson).
+  describe('POST /api/v1/contacts/contact-persons/:personId/locations — cross-tenant', () => {
+    it("rejects linking another org's location to an own contact person (403)", async () => {
+      await request(app.getHttpServer())
+        .post(`/api/v1/contacts/contact-persons/${contactPersonAId}/locations`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({ locationId: locationBId })
+        .expect(403);
+    });
+
+    it("rejects linking a location to another org's contact person (403)", async () => {
+      await request(app.getHttpServer())
+        .post(`/api/v1/contacts/contact-persons/${contactPersonBId}/locations`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({ locationId: locationAId })
+        .expect(403);
+    });
+
+    it('allows linking an own location to an own contact person (positive control)', async () => {
+      const res = await request(app.getHttpServer())
+        .post(`/api/v1/contacts/contact-persons/${contactPersonAId}/locations`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({ locationId: locationAId, notes: 'Koppeling A' })
+        .expect(201);
+
+      expect(res.body.data.location).toMatchObject({ id: locationAId });
+      expect(res.body.data.notes).toBe('Koppeling A');
+    });
+  });
+
   // ─── Inspection plans: create ─────────────────────────
   describe('POST /api/v1/inspection-plans — cross-tenant FK in create', () => {
     const base = { projectName: 'XTenant Plan', normTypeCode: 'e2extnorm' };
@@ -632,10 +864,12 @@ describe('Cross-tenant FK isolation (e2e)', () => {
     });
 
     it('rejects creating a finding on a cross-tenant asset (404)', async () => {
+      // Own plan + cross-tenant asset-node: the node is loaded org-scoped inside the
+      // plan tree (assertNodeInPlanTree) → org B's node is not found → 404 (no leak).
       await request(app.getHttpServer())
         .post(`/api/v1/assets/${assetBId}/findings`)
         .set('Authorization', `Bearer ${tokenA}`)
-        .send({ inspectionType: 'visual', shortDescription: 'Sneaky' })
+        .send({ inspectionPlanId: planAId, inspectionType: 'visual', shortDescription: 'Sneaky' })
         .expect(404);
     });
 
@@ -651,7 +885,7 @@ describe('Cross-tenant FK isolation (e2e)', () => {
       await request(app.getHttpServer())
         .post(`/api/v1/assets/${assetBId}/visual-inspections`)
         .set('Authorization', `Bearer ${tokenA}`)
-        .send({})
+        .send({ inspectionPlanId: planAId })
         .expect(404);
     });
 
@@ -659,7 +893,7 @@ describe('Cross-tenant FK isolation (e2e)', () => {
       await request(app.getHttpServer())
         .post(`/api/v1/assets/${assetBId}/measurement-records`)
         .set('Authorization', `Bearer ${tokenA}`)
-        .send({})
+        .send({ inspectionPlanId: planAId })
         .expect(404);
     });
 
@@ -691,15 +925,19 @@ describe('Cross-tenant FK isolation (e2e)', () => {
 
   // ─── Body-FK isolation (assertSameOrg → 403) ──────────
   describe('cross-tenant body FKs (inspection execution + config)', () => {
-    it('rejects a measurement-sheet-record with a cross-tenant assetId (403)', async () => {
+    it('rejects a measurement-sheet-record with a cross-tenant assetNodeId (404)', async () => {
+      // assetNodeId is validated inside the plan tree (assertNodeInPlanTree), so a
+      // cross-tenant node under an own plan is simply not found → 404 (no leak),
+      // mirroring the finding/visual/measurement path-scoped checks above.
       await request(app.getHttpServer())
         .post('/api/v1/measurement-sheet-records')
         .set('Authorization', `Bearer ${tokenA}`)
         .send({
-          assetId: assetBId,
+          assetNodeId: assetBId,
+          inspectionPlanId: planAId,
           templateId: '00000000-0000-0000-0000-000000000000',
         })
-        .expect(403);
+        .expect(404);
     });
 
     it('rejects a finding-template with a cross-tenant categoryId (403)', async () => {
@@ -717,16 +955,17 @@ describe('Cross-tenant FK isolation (e2e)', () => {
   });
 
   // ─── B1: asset/finding body-FK hardening + positieve controles ──────
-  // De asset-/finding-create FK's worden org-scoped geladen met assertFound
-  // (ouder binnen hetzelfde plan; template binnen org-of-systeem), dus een
-  // vreemde-org id wordt niet gevonden → 404 (geen leak), niet 403.
+  // Op de unified boom is parentAssetId een body-FK die met assertSameOrg wordt
+  // gevalideerd → een vreemde-org ouder geeft 403 (consistent met de overige
+  // body-FK assertSameOrg-checks). De finding-template-FK wordt org-of-systeem
+  // geladen met assertFound → een vreemde-org id wordt niet gevonden → 404.
   describe('B1 — assets/findings body-FK isolation', () => {
-    it('rejects an asset whose parentAssetId belongs to another org (404)', async () => {
+    it('rejects an asset whose parentAssetId belongs to another org (403)', async () => {
       await request(app.getHttpServer())
         .post(`/api/v1/inspection-plans/${planAId}/assets`)
         .set('Authorization', `Bearer ${tokenA}`)
         .send({ assetType: 'e2extata', name: 'Sneaky child', parentAssetId: assetBId })
-        .expect(404);
+        .expect(403);
     });
 
     it('allows an asset with an own-org parent (positive control)', async () => {
@@ -758,6 +997,7 @@ describe('Cross-tenant FK isolation (e2e)', () => {
         .post(`/api/v1/assets/${assetAId}/findings`)
         .set('Authorization', `Bearer ${tokenA}`)
         .send({
+          inspectionPlanId: planAId,
           inspectionType: 'visual',
           shortDescription: 'Sneaky',
           findingTemplateId: findingTemplateBId,
@@ -770,6 +1010,7 @@ describe('Cross-tenant FK isolation (e2e)', () => {
         .post(`/api/v1/assets/${assetAId}/findings`)
         .set('Authorization', `Bearer ${tokenA}`)
         .send({
+          inspectionPlanId: planAId,
           inspectionType: 'visual',
           shortDescription: 'Legit',
           findingTemplateId: findingTemplateAId,
@@ -805,17 +1046,60 @@ describe('Cross-tenant FK isolation (e2e)', () => {
     });
   });
 
+  // ─── AssetNode tree — directe endpoints, cross-tenant body/scope FKs ──
+  // De asset-nodes-CRUD valideert node-/locatie-FK's in de body met assertSameOrg
+  // → een vreemde-org id geeft 403. Scope-deellocaties laden de node org-scoped in
+  // de boom van het plan (assertValidScopeLocation) → een vreemde-org node wordt
+  // niet gevonden → 404 (geen leak), consistent met de overige path-scoped checks.
+  describe('AssetNode tree — cross-tenant FK injection', () => {
+    it("rejects a child node under another org's parent (403)", async () => {
+      await request(app.getHttpServer())
+        .post('/api/v1/asset-nodes')
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({ parentId: assetBId, nodeType: 'ASSET', typeCode: 'e2extata', name: 'Hack' })
+        .expect(403);
+    });
+
+    it("rejects a root node bound to another org's CRM location (403)", async () => {
+      await request(app.getHttpServer())
+        .post('/api/v1/asset-nodes')
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({
+          rootLocationId: locationBId,
+          nodeType: 'LOCATION',
+          typeCode: 'locatie',
+          name: 'Hack root',
+        })
+        .expect(403);
+    });
+
+    it("rejects moving an own node under another org's parent (403)", async () => {
+      await request(app.getHttpServer())
+        .post(`/api/v1/asset-nodes/${assetAId}/move`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({ newParentId: assetBId })
+        .expect(403);
+    });
+
+    it("rejects adding another org's node as a plan scope-deellocatie (404, no leak)", async () => {
+      await request(app.getHttpServer())
+        .post(`/api/v1/inspection-plans/${planAId}/scope-locations/${assetBId}`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .expect(404);
+    });
+  });
+
   // ─── B2: cross-tenant read-isolatie (detail-reads) ─────────────────
-  // assets/findings laden met orgScope() → niet gevonden → 404. Een
-  // inspectieplan wordt zonder org-scope geladen en daarna expliciet op
-  // eigenaarschap gecontroleerd (plan.orgId !== user.orgId) → 403. Beide
-  // zijn lek-vrij; de statuscodes volgen de bestaande service-conventies.
+  // assets/findings/inspectieplannen laden allemaal met orgScope() → een id van
+  // een andere org valt buiten het filter → 404 (identiek aan een onbekend id),
+  // zodat we het bestaan van andermans data niet prijsgeven. Statuscodes volgen
+  // de bestaande service-conventies (zie inspection-plans.service.findOne).
   describe('B2 — cross-tenant read isolation', () => {
-    it("inspection-plan detail of another org → 403", async () => {
+    it('inspection-plan detail of another org → 404', async () => {
       await request(app.getHttpServer())
         .get(`/api/v1/inspection-plans/${planBId}`)
         .set('Authorization', `Bearer ${tokenA}`)
-        .expect(403);
+        .expect(404);
     });
 
     it('asset detail of another org → 404', async () => {
@@ -850,12 +1134,12 @@ describe('Cross-tenant FK isolation (e2e)', () => {
 
   // ─── Sync push: cross-tenant parent FKs ───────────────
   // Org A pushes records whose parent FK belongs to org B. The sync service
-  // injects orgId from the parent hierarchy and validates it with
-  // assertSameOrg, so the parent is "not the caller's" → the change is
-  // reported in `errors` and NEVER written. Plan/asset of org B reuse the
+  // validates every incoming FK with assertSameOrg (v3: orgId is taken from the
+  // caller's own org, so a cross-tenant FK is "not the caller's") → the change is
+  // reported in `errors` and NEVER written. Plan/asset-node of org B reuse the
   // suite's existing planBId/assetBId fixtures.
   describe('Sync push cross-tenant', () => {
-    it('rejects an asset create referencing org B\'s plan (error, never written)', async () => {
+    it('rejects an asset-node create whose parentId is org B\'s node (error, never written)', async () => {
       const clientAssetId = randomUUID();
 
       const res = await request(app.getHttpServer())
@@ -864,13 +1148,14 @@ describe('Cross-tenant FK isolation (e2e)', () => {
         .send({
           deviceId: 'dev-xtenant-a',
           changes: {
-            assets: [
+            assetNodes: [
               {
                 operation: 'create',
                 data: {
                   id: clientAssetId,
-                  inspectionPlanId: planBId,
-                  assetType: 'electrical_installation',
+                  parentId: assetBId, // org B's node → cross-tenant
+                  nodeType: 'ASSET',
+                  typeCode: 'electrical_installation',
                   name: 'Hack',
                 },
               },
@@ -884,9 +1169,9 @@ describe('Cross-tenant FK isolation (e2e)', () => {
       expect(
         res.body.data.errors.map((e: { entityId: string }) => e.entityId),
       ).toContain(clientAssetId);
-      expect(res.body.data.processed.assets).toBe(0);
+      expect(res.body.data.processed.assetNodes).toBe(0);
 
-      const written = await prisma.asset.findUnique({ where: { id: clientAssetId } });
+      const written = await prisma.assetNode.findUnique({ where: { id: clientAssetId } });
       expect(written).toBeNull();
     });
 
@@ -914,7 +1199,7 @@ describe('Cross-tenant FK isolation (e2e)', () => {
       expect(after?.projectName).not.toBe('Hacked');
     });
 
-    it('rejects a finding create referencing org B\'s asset (error, never written)', async () => {
+    it('rejects a finding create referencing org B\'s asset-node (error, never written)', async () => {
       const clientFindingId = randomUUID();
 
       const res = await request(app.getHttpServer())
@@ -928,7 +1213,8 @@ describe('Cross-tenant FK isolation (e2e)', () => {
                 operation: 'create',
                 data: {
                   id: clientFindingId,
-                  assetId: assetBId,
+                  assetNodeId: assetBId, // org B's node → cross-tenant
+                  inspectionPlanId: planAId,
                   inspectionType: 'visual',
                   shortDescription: 'x',
                 },
@@ -944,6 +1230,244 @@ describe('Cross-tenant FK isolation (e2e)', () => {
 
       const written = await prisma.finding.findUnique({ where: { id: clientFindingId } });
       expect(written).toBeNull();
+    });
+  });
+
+  // ─── Projects create (PR-2) ───────────────────────────
+  describe('POST /api/v1/projects — cross-tenant FK in create', () => {
+    const base = { title: 'Project X' };
+
+    it('rejects a cross-tenant contactId', async () => {
+      await request(app.getHttpServer())
+        .post('/api/v1/projects')
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({ ...base, contactId: contactBId })
+        .expect(403);
+    });
+
+    it('rejects a cross-tenant locationId', async () => {
+      await request(app.getHttpServer())
+        .post('/api/v1/projects')
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({ ...base, contactId: contactAId, locationId: locationBId })
+        .expect(403);
+    });
+
+    it('rejects a cross-tenant projectManagerId', async () => {
+      await request(app.getHttpServer())
+        .post('/api/v1/projects')
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({ ...base, contactId: contactAId, projectManagerId: userBId })
+        .expect(403);
+    });
+
+    it("rejects hijacking another org's request via requestId", async () => {
+      await request(app.getHttpServer())
+        .post('/api/v1/projects')
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({ ...base, contactId: contactAId, requestId: requestBId })
+        .expect(403);
+      // The victim's request must stay unlinked (no cross-tenant write).
+      const req = await prisma.request.findUnique({ where: { id: requestBId } });
+      expect(req?.projectId).toBeNull();
+    });
+
+    it("rejects hijacking another org's quote via quoteId", async () => {
+      await request(app.getHttpServer())
+        .post('/api/v1/projects')
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({ ...base, contactId: contactAId, quoteId: quoteBId })
+        .expect(403);
+      const q = await prisma.quote.findUnique({ where: { id: quoteBId } });
+      expect(q?.projectId).toBeNull();
+    });
+
+    it('allows an all-same-org project (positive control)', async () => {
+      const res = await request(app.getHttpServer())
+        .post('/api/v1/projects')
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({ ...base, contactId: contactAId })
+        .expect(201);
+      // NB: the projects controller returns the entity unwrapped (no {success,data}
+      // envelope), unlike notes/requests/quotes — pre-existing inconsistency.
+      expect(res.body.id).toBeTruthy();
+    });
+  });
+
+  // ─── Projects update (PR-2) ───────────────────────────
+  describe('PATCH /api/v1/projects/:id — cross-tenant FK in update', () => {
+    it('rejects reassigning to a cross-tenant projectManagerId', async () => {
+      await request(app.getHttpServer())
+        .patch(`/api/v1/projects/${projectAId}`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({ projectManagerId: userBId })
+        .expect(403);
+    });
+
+    it('allows reassigning to a same-org user (positive control)', async () => {
+      await request(app.getHttpServer())
+        .patch(`/api/v1/projects/${projectAId}`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({ projectManagerId: userAId })
+        .expect(200);
+    });
+  });
+
+  // ─── Notes create (PR-2) ──────────────────────────────
+  describe('POST /api/v1/notes — cross-tenant entity', () => {
+    it("rejects a note on another org's contact", async () => {
+      await request(app.getHttpServer())
+        .post('/api/v1/notes')
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({ entityType: 'CONTACT', entityId: contactBId, content: 'x' })
+        .expect(403);
+    });
+
+    it("rejects a note on another org's quote", async () => {
+      await request(app.getHttpServer())
+        .post('/api/v1/notes')
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({ entityType: 'QUOTE', entityId: quoteBId, content: 'x' })
+        .expect(403);
+    });
+
+    it("rejects a note referencing another org's user", async () => {
+      await request(app.getHttpServer())
+        .post('/api/v1/notes')
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({ entityType: 'USER', entityId: userBId, content: 'x' })
+        .expect(403);
+    });
+
+    it('allows a note on an own contact (positive control)', async () => {
+      const res = await request(app.getHttpServer())
+        .post('/api/v1/notes')
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({ entityType: 'CONTACT', entityId: contactAId, content: 'x' })
+        .expect(201);
+      expect(res.body.success).toBe(true);
+    });
+  });
+
+  // ─── Requests create/update (PR-2) ────────────────────
+  describe('POST/PATCH /api/v1/requests — cross-tenant assignee', () => {
+    it('rejects a request assigned to a cross-tenant user', async () => {
+      await request(app.getHttpServer())
+        .post('/api/v1/requests')
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({ contactId: contactAId, source: 'MANUAL', title: 'Aanvraag X', assignedTo: userBId })
+        .expect(403);
+    });
+
+    it('rejects reassigning a request to a cross-tenant user', async () => {
+      await request(app.getHttpServer())
+        .patch(`/api/v1/requests/${requestAId}`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({ assignedTo: userBId })
+        .expect(403);
+    });
+
+    it('allows a same-org request with own assignee (positive control)', async () => {
+      const res = await request(app.getHttpServer())
+        .post('/api/v1/requests')
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({ contactId: contactAId, source: 'MANUAL', title: 'Aanvraag OK', assignedTo: userAId })
+        .expect(201);
+      expect(res.body.success).toBe(true);
+    });
+  });
+
+  // ─── Quotes create/update (PR-2) ──────────────────────
+  describe('POST/PATCH /api/v1/quotes — cross-tenant FK', () => {
+    it("rejects a quote citing another org's request", async () => {
+      await request(app.getHttpServer())
+        .post('/api/v1/quotes')
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({ contactId: contactAId, subject: 'Offerte X', requestId: requestBId })
+        .expect(403);
+    });
+
+    it('rejects repointing a CONCEPT quote to a cross-tenant contact', async () => {
+      await request(app.getHttpServer())
+        .patch(`/api/v1/quotes/${quoteAId}`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({ contactId: contactBId })
+        .expect(403);
+    });
+
+    it('rejects repointing a CONCEPT quote to a cross-tenant location', async () => {
+      await request(app.getHttpServer())
+        .patch(`/api/v1/quotes/${quoteAId}`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({ locationId: locationBId })
+        .expect(403);
+    });
+  });
+
+  // ─── Support-tickets — cross-tenant read/mutate isolatie ─────────────
+  describe('Support tickets — cross-tenant isolatie', () => {
+    it('rejects reading another org\'s ticket (403)', async () => {
+      await request(app.getHttpServer())
+        .get(`/api/v1/support-tickets/${ticketBId}`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .expect(403);
+    });
+
+    it('does not leak another org\'s ticket in the org list', async () => {
+      const res = await request(app.getHttpServer())
+        .get('/api/v1/support-tickets?scope=org')
+        .set('Authorization', `Bearer ${tokenA}`)
+        .expect(200);
+      const ids = res.body.data.data.map((t: { id: string }) => t.id);
+      expect(ids).not.toContain(ticketBId);
+    });
+
+    it('rejects posting a message to another org\'s ticket (403)', async () => {
+      await request(app.getHttpServer())
+        .post(`/api/v1/support-tickets/${ticketBId}/messages`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({ body: 'inject' })
+        .expect(403);
+    });
+
+    it('rejects mutating another org\'s ticket (403)', async () => {
+      await request(app.getHttpServer())
+        .patch(`/api/v1/support-tickets/${ticketBId}`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({ status: 'OPGELOST' })
+        .expect(403);
+    });
+  });
+
+  // ─── Inspecteur-certificaten — cross-tenant isolatie (PRD-11) ────────
+  // Een GET op andermans certificaat wordt org-scoped geladen → 404 (geen leak);
+  // aanmaken voor een inspecteur uit een andere org → 403 (assertSameOrg-stijl).
+  describe('Inspector certificates — cross-tenant isolatie', () => {
+    it("rejects reading another org's certificate (404)", async () => {
+      await request(app.getHttpServer())
+        .get(`/api/v1/inspector-certificates/${certBId}`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .expect(404);
+    });
+
+    it("does not leak another org's certificate when querying its userId", async () => {
+      const res = await request(app.getHttpServer())
+        .get('/api/v1/inspector-certificates')
+        .query({ userId: userBId })
+        .set('Authorization', `Bearer ${tokenA}`)
+        .expect(200);
+      expect(res.body.data.data).toHaveLength(0);
+    });
+
+    it("rejects creating a certificate for another org's inspector (403)", async () => {
+      await request(app.getHttpServer())
+        .post('/api/v1/inspector-certificates')
+        .set('Authorization', `Bearer ${tokenA}`)
+        .field('userId', userBId)
+        .field('type', 'Sneaky')
+        .field('issueDate', '2024-01-01')
+        .field('issuer', 'X')
+        .expect(403);
     });
   });
 });

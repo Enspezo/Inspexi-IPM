@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { Role } from '@/types';
+import { Role, AssetNodeType } from '@/types';
 import {
   Button,
   Card,
@@ -21,6 +21,7 @@ import { DetailPageLayout } from '@/components/layout/detail-page-layout';
 import { HistorySidebarSection } from '@/components/layout/sidebar-sections';
 import { PageHeader } from '@/components/layout/page-header';
 import { useAuth } from '@/providers/auth-provider';
+import { useWindowTabSync } from '@/providers/window-tabs';
 import { useLookups } from '@/lib/lookups';
 import { getErrorMessage } from '@/lib/api-client';
 import type { InspectionPlan } from '@/types';
@@ -31,7 +32,9 @@ import {
   useSubmitInspectionPlan,
   useDeleteInspectionPlan,
 } from './hooks/use-inspections';
-import { useInspectionAssets } from './hooks/use-location-images';
+import { usePlanTree } from './hooks/use-asset-nodes';
+import { countByType, normalizeTree } from '@/components/asset-tree';
+import { PlanDefaultInstrumentsSection } from '@/pages/meetmiddelen/components/plan-default-instruments-section';
 import { AssetsTab } from './components/assets-tab';
 import { DocumentsTab } from './components/documents-tab';
 
@@ -76,7 +79,8 @@ export default function InspectionDetailPage() {
   const confirm = useConfirm();
 
   const { data: plan, isLoading, error } = useInspectionPlan(id!);
-  const { data: assets = [], isLoading: assetsLoading } = useInspectionAssets(id);
+  const { data: planTree } = usePlanTree(id);
+  const assetCount = countByType(normalizeTree(planTree), AssetNodeType.ASSET);
   const updateMutation = useUpdateInspectionPlan();
   const reviewMutation = useReviewInspectionPlan();
   const submitMutation = useSubmitInspectionPlan();
@@ -84,6 +88,12 @@ export default function InspectionDetailPage() {
 
   const { data: planStatuses } = useLookups('plan-status-types');
   const { data: inspectionTypes } = useLookups('inspection-types');
+
+  // Keep this record's in-window tab title fresh, and flag it if the record 404s.
+  useWindowTabSync('inspection', id, {
+    title: plan?.projectName,
+    notFound: !isLoading && (!!error || !plan),
+  });
 
   const [activeTab, setActiveTab] = useState<Tab>('overzicht');
   const [isEditing, setIsEditing] = useState(false);
@@ -189,7 +199,7 @@ export default function InspectionDetailPage() {
 
   const tabs = [
     { key: 'overzicht' as const, label: 'Overzicht' },
-    { key: 'assets' as const, label: 'Assets', count: assets.length },
+    { key: 'assets' as const, label: 'Assets', count: assetCount },
     { key: 'plattegrond' as const, label: 'Plattegrond' },
     { key: 'documenten' as const, label: 'Documenten' },
     { key: 'instellingen' as const, label: 'Instellingen' },
@@ -301,10 +311,14 @@ export default function InspectionDetailPage() {
                 </dl>
               )}
             </Card>
+
+            <Card title="Standaard meetmiddelen">
+              <PlanDefaultInstrumentsSection planId={id!} canEdit={userCanWrite} />
+            </Card>
           </div>
         )}
 
-        {activeTab === 'assets' && <AssetsTab assets={assets} isLoading={assetsLoading} />}
+        {activeTab === 'assets' && <AssetsTab planId={id!} canWrite={userCanWrite} />}
 
         {activeTab === 'plattegrond' && (
           <Suspense

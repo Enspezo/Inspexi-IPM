@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { Spinner } from '@/components/ui';
 import { formatFileSize } from '@/lib/format';
-import type { PlanningItem, CrmDocument, PlanningSession } from '@/types';
+import type { PlanningItem, CrmDocument, PlanningSession, UserSummary } from '@/types';
 import { PlanningStatus, AcceptanceStatus, SessionStatus } from '@/types';
 
 const API_BASE = '/api/v1';
@@ -37,6 +37,33 @@ function getContactName(contact?: { companyName?: string | null; firstName?: str
   if (!contact) return '';
   if (contact.companyName) return contact.companyName;
   return [contact.firstName, contact.lastName].filter(Boolean).join(' ') || '';
+}
+
+/**
+ * Toont de server-resolved client-veilige contactgegevens van een inspecteur
+ * (telefoon als tel:-link, e-mail als mailto:-link). `phone`/`email` komen van
+ * het publieke planning-endpoint en zijn al per kanaal afgehandeld door de
+ * backend — toon niets wanneer beide ontbreken.
+ */
+function InspectorContactLinks({ user }: { user?: UserSummary | null }) {
+  const phone = user?.phone?.trim();
+  const email = user?.email?.trim();
+  if (!phone && !email) return null;
+
+  return (
+    <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-gray-500">
+      {phone && (
+        <a href={`tel:${phone}`} className="text-primary-600 hover:underline">
+          {phone}
+        </a>
+      )}
+      {email && (
+        <a href={`mailto:${email}`} className="text-primary-600 hover:underline">
+          {email}
+        </a>
+      )}
+    </div>
+  );
 }
 
 function StatusBadge({ status }: { status: PlanningStatus }) {
@@ -106,7 +133,7 @@ function SessionPublicCard({
       </div>
 
       {acceptedInspectors.length > 0 && (
-        <div className="mt-3 flex flex-wrap gap-2">
+        <div className="mt-3 flex flex-wrap gap-x-4 gap-y-2">
           {acceptedInspectors.map((si) => (
             <div key={si.id} className="flex items-center gap-1.5">
               <div
@@ -115,10 +142,13 @@ function SessionPublicCard({
               >
                 {si.user?.initials || si.user?.firstName?.[0] || '?'}
               </div>
-              <span className="text-xs text-gray-600">
-                {si.user?.firstName} {si.user?.lastName}
-                {si.isPrimary && <span className="ml-1 text-gray-400">(Hoofd)</span>}
-              </span>
+              <div className="min-w-0">
+                <span className="text-xs text-gray-600">
+                  {si.user?.firstName} {si.user?.lastName}
+                  {si.isPrimary && <span className="ml-1 text-gray-400">(Hoofd)</span>}
+                </span>
+                <InspectorContactLinks user={si.user} />
+              </div>
             </div>
           ))}
         </div>
@@ -421,9 +451,7 @@ export default function PlanningPublicPage() {
                         <span className="ml-2 text-xs text-gray-400">(Hoofdinspecteur)</span>
                       )}
                     </p>
-                    {inspector.user?.email && (
-                      <p className="text-xs text-gray-500">{inspector.user.email}</p>
-                    )}
+                    <InspectorContactLinks user={inspector.user} />
                   </div>
                 </div>
               ))}

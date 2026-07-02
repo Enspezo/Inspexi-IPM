@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api-client';
-import type { Organization } from '@/types';
+import type { ContactDisplayMode, Organization, Role } from '@/types';
 
 export function useOrganization(orgId: string | null | undefined) {
   return useQuery<Organization>({
@@ -20,6 +20,13 @@ interface UpdateOrganizationDto {
   senderEmail?: string | null;
   workdayStart?: number;
   workdayEnd?: number;
+  inspectorPhoneDisplay?: ContactDisplayMode;
+  inspectorEmailDisplay?: ContactDisplayMode;
+  inspectorStaticPhone?: string | null;
+  inspectorStaticEmail?: string | null;
+  quoteApprovalThreshold?: number | null;
+  quoteApprovalRequiredRole?: Role | null;
+  chatEnabled?: boolean;
 }
 
 export function useUpdateOrganization(orgId: string | null | undefined) {
@@ -30,6 +37,9 @@ export function useUpdateOrganization(orgId: string | null | undefined) {
       apiClient.patch<Organization>(`/organizations/${orgId}`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['organization', orgId] });
+      // Branding (incl. chatEnabled) is cached app-wide by TenantProvider — refresh
+      // it so toggling e.g. the chat on/off reflects immediately for the admin.
+      queryClient.invalidateQueries({ queryKey: ['org-branding'] });
     },
   });
 }

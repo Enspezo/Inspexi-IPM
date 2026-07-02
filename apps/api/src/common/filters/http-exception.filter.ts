@@ -20,6 +20,9 @@ export class AllExceptionsFilter implements ExceptionFilter {
 
     let status = HttpStatus.INTERNAL_SERVER_ERROR;
     let message: string | string[] = 'Internal server error';
+    // Optionele machine-leesbare foutcode (bv. FEATURE_NOT_IN_PLAN uit de
+    // FeatureGuard) die een exception in zijn response-payload meegeeft.
+    let code: string | undefined;
 
     if (exception instanceof HttpException) {
       status = exception.getStatus();
@@ -28,6 +31,13 @@ export class AllExceptionsFilter implements ExceptionFilter {
         typeof exceptionResponse === 'string'
           ? exceptionResponse
           : (exceptionResponse as any).message || exception.message;
+      if (
+        typeof exceptionResponse === 'object' &&
+        exceptionResponse !== null &&
+        typeof (exceptionResponse as any).code === 'string'
+      ) {
+        code = (exceptionResponse as any).code;
+      }
     } else if (exception instanceof Prisma.PrismaClientKnownRequestError) {
       switch (exception.code) {
         case 'P2002':
@@ -66,6 +76,8 @@ export class AllExceptionsFilter implements ExceptionFilter {
       message: Array.isArray(message) ? message[0] : message,
       // Class-validator kan meerdere veldfouten geven; geef ze allemaal door
       ...(Array.isArray(message) && message.length > 1 ? { errors: message } : {}),
+      // Machine-leesbare foutcode (bv. FEATURE_NOT_IN_PLAN), indien meegegeven
+      ...(code ? { code } : {}),
       // Alleen 500's krijgen het requestId mee — koppelbaar aan serverlogs
       ...(isServerError && requestId ? { requestId } : {}),
       statusCode: status,

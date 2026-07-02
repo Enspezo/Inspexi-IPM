@@ -8,6 +8,7 @@ import {
   Body,
   Query,
 } from '@nestjs/common';
+import { RequiresFeature } from '@/common/decorators/requires-feature.decorator';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { Role, User } from '@prisma/client';
 import { Roles } from '@/common/decorators/roles.decorator';
@@ -26,6 +27,7 @@ import {
 const WRITE_ROLES = CRM_ROLES;
 
 @ApiTags('projects')
+@RequiresFeature('BASIS_UITVOERING')
 @Controller('projects')
 export class ProjectsController {
   constructor(private readonly projectsService: ProjectsService) {}

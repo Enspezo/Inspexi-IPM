@@ -136,6 +136,7 @@ describe('AuthService', () => {
         email: mockUser.email,
         roles: mockUser.roles,
         orgId: mockUser.orgId,
+        type: 'access',
       });
       expect(mockPrismaService.refreshToken.create).toHaveBeenCalledWith({
         data: expect.objectContaining({
@@ -150,6 +151,36 @@ describe('AuthService', () => {
           userId: mockUser.id,
         }),
       });
+    });
+
+    it('persists a 30-day remember-me token by default', async () => {
+      mockPrismaService.user.findUnique.mockResolvedValue(mockUser);
+      (bcrypt.compare as jest.Mock).mockResolvedValue(true);
+      mockPrismaService.refreshToken.create.mockResolvedValue({ id: 'rt-1' });
+
+      const result = await service.login(loginDto);
+
+      expect(result.remember).toBe(true);
+      const { data } = mockPrismaService.refreshToken.create.mock.calls[0][0];
+      expect(data.rememberMe).toBe(true);
+      // ~30 days out (allow a little slack for test runtime)
+      const ms = data.expiresAt.getTime() - Date.now();
+      expect(ms).toBeGreaterThan(29 * 24 * 60 * 60 * 1000);
+    });
+
+    it('issues a short-lived session token when remember is false', async () => {
+      mockPrismaService.user.findUnique.mockResolvedValue(mockUser);
+      (bcrypt.compare as jest.Mock).mockResolvedValue(true);
+      mockPrismaService.refreshToken.create.mockResolvedValue({ id: 'rt-1' });
+
+      const result = await service.login({ ...loginDto, remember: false });
+
+      expect(result.remember).toBe(false);
+      const { data } = mockPrismaService.refreshToken.create.mock.calls[0][0];
+      expect(data.rememberMe).toBe(false);
+      // 12h short session — well under a day
+      const ms = data.expiresAt.getTime() - Date.now();
+      expect(ms).toBeLessThan(24 * 60 * 60 * 1000);
     });
 
     it('should throw UnauthorizedException for invalid email', async () => {
@@ -290,6 +321,94 @@ describe('AuthService', () => {
       await expect(service.getMe('non-existent')).rejects.toThrow(
         'Gebruiker niet gevonden',
       );
+    });
+  });
+
+  describe('access token scoping', () => {
+    it('tags issued access tokens with type: "access"', async () => {
+      mockPrismaService.user.findUnique.mockResolvedValue(mockUser);
+      (bcrypt.compare as jest.Mock).mockResolvedValue(true);
+      mockPrismaService.refreshToken.create.mockResolvedValue({ id: 'rt-1' });
+
+      await service.login({ email: mockUser.email, password: 'Password123!' });
+
+      expect(mockJwtService.sign).toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'access' }),
+      );
+    });
+  });
+
+  describe('forgotPassword() / resetPassword()', () => {
+    it('binds the reset token to the current password state (pwStamp)', async () => {
+      const changedAt = new Date('2026-01-01T00:00:00Z');
+      mockPrismaService.user.findUnique.mockResolvedValue({
+        ...mockUser,
+        passwordChangedAt: changedAt,
+      });
+
+      await service.forgotPassword({ email: mockUser.email });
+
+      expect(mockJwtService.sign).toHaveBeenCalledWith(
+        expect.objectContaining({
+          sub: mockUser.id,
+          email: mockUser.email,
+          purpose: 'password-reset',
+          pwStamp: changedAt.toISOString(),
+        }),
+        expect.objectContaining({ expiresIn: '1h' }),
+      );
+      // A reset token must NOT be usable as an access token.
+      const [[payload]] = mockJwtService.sign.mock.calls;
+      expect(payload).not.toHaveProperty('type', 'access');
+    });
+
+    it('accepts a reset token whose pwStamp matches and rotates the stamp', async () => {
+      mockJwtService.verify.mockReturnValue({
+        sub: mockUser.id,
+        email: mockUser.email,
+        purpose: 'password-reset',
+        pwStamp: null,
+      });
+      mockPrismaService.user.findUnique.mockResolvedValue({
+        id: mockUser.id,
+        email: mockUser.email,
+        passwordChangedAt: null,
+      });
+      (bcrypt.hash as jest.Mock).mockResolvedValue('new-hash');
+      mockPrismaService.user.update.mockResolvedValue({});
+
+      await service.resetPassword({ token: 'reset-token', newPassword: 'NewPass123!' });
+
+      // Password is updated AND passwordChangedAt is bumped → the token's stamp is
+      // now stale, making the same token single-use.
+      expect(mockPrismaService.user.update).toHaveBeenCalledWith({
+        where: { id: mockUser.id },
+        data: expect.objectContaining({
+          passwordHash: 'new-hash',
+          passwordChangedAt: expect.any(Date),
+        }),
+      });
+    });
+
+    it('rejects a reused reset token after the password already changed', async () => {
+      // Token was minted when passwordChangedAt was null...
+      mockJwtService.verify.mockReturnValue({
+        sub: mockUser.id,
+        email: mockUser.email,
+        purpose: 'password-reset',
+        pwStamp: null,
+      });
+      // ...but the account has since changed its password (stamp advanced).
+      mockPrismaService.user.findUnique.mockResolvedValue({
+        id: mockUser.id,
+        email: mockUser.email,
+        passwordChangedAt: new Date('2026-06-01T00:00:00Z'),
+      });
+
+      await expect(
+        service.resetPassword({ token: 'reset-token', newPassword: 'NewPass123!' }),
+      ).rejects.toThrow('Ongeldige of verlopen reset token');
+      expect(mockPrismaService.user.update).not.toHaveBeenCalled();
     });
   });
 });

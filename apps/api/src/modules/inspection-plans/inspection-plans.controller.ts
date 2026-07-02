@@ -7,10 +7,12 @@ import {
   Param,
   Body,
   Query,
+  Headers,
   ParseUUIDPipe,
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
+import { RequiresFeature } from '@/common/decorators/requires-feature.decorator';
 import {
   ApiTags,
   ApiOperation,
@@ -21,6 +23,7 @@ import { User, Role } from '@prisma/client';
 import { Roles, CurrentUser } from '@/common/decorators';
 import { ALL_STAFF, CRM_ROLES } from '@/common/auth/roles';
 import { InspectionPlansService } from './inspection-plans.service';
+import { CreateAssetNodeDto } from '../asset-nodes/dto';
 import {
   CreateInspectionPlanDto,
   UpdateInspectionPlanDto,
@@ -42,6 +45,7 @@ const REVIEW_ROLES = [
 
 @ApiTags('inspection-plans')
 @ApiBearerAuth()
+@RequiresFeature('BASIS_INSPECTIES')
 @Controller('inspection-plans')
 export class InspectionPlansController {
   constructor(private readonly service: InspectionPlansService) {}
@@ -79,6 +83,57 @@ export class InspectionPlansController {
     @CurrentUser() user: User,
   ) {
     return { success: true, data: await this.service.review(id, dto, user) };
+  }
+
+  // ── Scope-deellocaties + vanuit-inspectie asset-nodes ──
+  @Get(':id/scope-locations')
+  @Roles(...ALL_ROLES)
+  @ApiOperation({ summary: 'Scope-deellocaties van een inspectieplan' })
+  async listScopeLocations(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: User,
+  ) {
+    return { success: true, data: await this.service.listScopeLocations(id, user) };
+  }
+
+  @Post(':id/scope-locations/:assetNodeId')
+  @HttpCode(HttpStatus.OK)
+  @Roles(...WRITE_ROLES)
+  @ApiOperation({ summary: 'Deellocatie aan de scope toevoegen' })
+  async addScopeLocation(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('assetNodeId', ParseUUIDPipe) assetNodeId: string,
+    @CurrentUser() user: User,
+  ) {
+    return { success: true, data: await this.service.addScopeLocation(id, assetNodeId, user) };
+  }
+
+  @Delete(':id/scope-locations/:assetNodeId')
+  @Roles(...WRITE_ROLES)
+  @ApiOperation({ summary: 'Deellocatie uit de scope verwijderen' })
+  async removeScopeLocation(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('assetNodeId', ParseUUIDPipe) assetNodeId: string,
+    @CurrentUser() user: User,
+  ) {
+    return { success: true, data: await this.service.removeScopeLocation(id, assetNodeId, user) };
+  }
+
+  @Post(':id/asset-nodes')
+  @Roles(...ALL_ROLES)
+  @ApiOperation({
+    summary: 'Asset-node aanmaken vanuit een inspectie (parent defaultet naar scope/wortel)',
+  })
+  async createAssetNode(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: CreateAssetNodeDto,
+    @CurrentUser() user: User,
+    @Headers('x-device-id') deviceId?: string,
+  ) {
+    return {
+      success: true,
+      data: await this.service.createAssetNodeFromPlan(id, user, dto, deviceId),
+    };
   }
 
   @Get(':id')

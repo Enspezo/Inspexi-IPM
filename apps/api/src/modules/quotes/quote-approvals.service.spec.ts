@@ -1,300 +1,421 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { BadRequestException } from '@nestjs/common';
-import { Role, QuoteStatus } from '@prisma/client';
+import { BadRequestException, ForbiddenException } from '@nestjs/common';
+import {
+  Role,
+  QuoteStatus,
+  ApprovalKind,
+  ApprovalStatus,
+  NotificationType,
+} from '@prisma/client';
 import { QuoteApprovalsService } from './quote-approvals.service';
 import { PrismaService } from '@/prisma';
 import { NotificationsService } from '@/modules/notifications/notifications.service';
 
 describe('QuoteApprovalsService', () => {
   let service: QuoteApprovalsService;
+  let notifications: { dispatch: jest.Mock };
 
-  const mockUser = {
-    id: 'user-1',
-    orgId: 'org-1',
-    email: 'admin@test.com',
-    passwordHash: '$2b$10$hashedpassword',
-    firstName: 'Admin',
-    lastName: 'User',
-    roles: [Role.ORG_ADMIN],
-    isActive: true,
-    emailVerifiedAt: new Date('2025-01-01'),
-    createdAt: new Date('2025-01-01'),
-  } as any;
+  const makeUser = (roles: Role[], id = 'user-1') =>
+    ({
+      id,
+      orgId: 'org-1',
+      email: `${id}@test.com`,
+      firstName: 'Test',
+      lastName: 'User',
+      roles,
+      isActive: true,
+    } as any);
+
+  const adminUser = makeUser([Role.ORG_ADMIN], 'user-1');
+  const managerUser = makeUser([Role.MANAGER], 'manager-1');
+  const backofficeUser = makeUser([Role.BACKOFFICE], 'backoffice-1');
 
   const year = new Date().getFullYear();
 
-  const mockQuote = {
+  const baseQuote = {
     id: 'quote-1',
     orgId: 'org-1',
     quoteNumber: `OFF-${year}-0001`,
-    templateId: null,
-    requestId: null,
-    contactId: 'contact-1',
-    locationId: null,
+    templateId: null as string | null,
     status: QuoteStatus.CONCEPT,
-    subject: 'NEN1010 inspectie kantoorpand',
-    coverBlocks: null,
-    contentBlocks: null,
-    closingBlocks: null,
-    subtotal: 0,
-    discountTotal: 0,
-    vatTotal: 0,
-    total: 0,
-    validUntil: new Date('2025-02-01'),
+    subject: 'NEN1010 inspectie',
+    total: 5000,
     requiresApproval: false,
-    internalNotes: null,
     createdBy: 'user-1',
-    sentAt: null,
-    viewedAt: null,
-    signedAt: null,
-    clientSignature: null,
-    clientIp: null,
-    clientUserAgent: null,
-    managerSignature: null,
-    publicToken: null,
-    createdAt: new Date('2025-01-01'),
-    updatedAt: new Date('2025-01-01'),
   };
 
-  const mockQuoteWithIncludes = {
-    ...mockQuote,
-    contact: {
-      id: 'contact-1',
-      type: 'COMPANY',
-      companyName: 'Acme B.V.',
-      firstName: 'Jan',
-      lastName: 'Jansen',
-      email: 'jan@acme.nl',
-    },
+  const quoteWithIncludes = (overrides: Record<string, unknown> = {}) => ({
+    ...baseQuote,
+    contact: { id: 'contact-1', companyName: 'Acme B.V.' },
     location: null,
     request: null,
     template: null,
-    createdByUser: {
-      id: 'user-1',
-      firstName: 'Admin',
-      lastName: 'User',
-      email: 'admin@test.com',
-    },
+    createdByUser: { id: 'user-1', firstName: 'Test', lastName: 'User', email: 'u@test.com' },
     lines: [],
     approvalRequests: [],
-  };
+    ...overrides,
+  });
 
-  // Transaction mock: executes the callback with a mock tx object
   const mockTx = {
-    quote: {
-      create: jest.fn(),
-      update: jest.fn(),
-      findFirst: jest.fn(),
-      delete: jest.fn(),
-    },
-    quoteApprovalRequest: {
-      create: jest.fn(),
-      findFirst: jest.fn(),
-      update: jest.fn(),
-    },
+    quote: { update: jest.fn() },
+    quoteApprovalRequest: { create: jest.fn(), update: jest.fn() },
   };
 
   const mockPrismaService = {
-    quote: {
-      findMany: jest.fn(),
+    quote: { findUnique: jest.fn(), update: jest.fn() },
+    organization: { findUnique: jest.fn() },
+    user: { findMany: jest.fn(), findUnique: jest.fn() },
+    quoteApprovalRequest: {
+      findFirst: jest.fn(),
       findUnique: jest.fn(),
       create: jest.fn(),
       update: jest.fn(),
-      delete: jest.fn(),
-      count: jest.fn(),
     },
-    user: {
-      findMany: jest.fn().mockResolvedValue([]),
-    },
-    $transaction: jest.fn((cb: (tx: typeof mockTx) => Promise<unknown>) =>
-      cb(mockTx),
-    ),
+    $transaction: jest.fn((cb: (tx: typeof mockTx) => Promise<unknown>) => cb(mockTx)),
   };
 
   beforeEach(async () => {
     jest.clearAllMocks();
     mockPrismaService.user.findMany.mockResolvedValue([]);
+    mockPrismaService.organization.findUnique.mockResolvedValue({
+      quoteApprovalThreshold: 10000,
+      quoteApprovalRequiredRole: Role.MANAGER,
+    });
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         QuoteApprovalsService,
         { provide: PrismaService, useValue: mockPrismaService },
-        {
-          provide: NotificationsService,
-          useValue: { dispatch: jest.fn() },
-        },
+        { provide: NotificationsService, useValue: { dispatch: jest.fn() } },
       ],
     }).compile();
 
     service = module.get<QuoteApprovalsService>(QuoteApprovalsService);
+    notifications = module.get(NotificationsService);
   });
 
-  // ─── submitForApproval ───────────────────────────────────────────────
+  // ─── submitForApproval (mandatory) ───────────────────────────────────
 
   describe('submitForApproval()', () => {
-    it('should set TER_GOEDKEURING status and create QuoteApprovalRequest', async () => {
-      const conceptQuoteRequiringApproval = {
-        ...mockQuoteWithIncludes,
-        requiresApproval: true,
-      };
+    it('creates a THRESHOLD request with the org required role and sets TER_GOEDKEURING', async () => {
       mockPrismaService.quote.findUnique.mockResolvedValue(
-        conceptQuoteRequiringApproval,
+        quoteWithIncludes({ templateId: 'template-1', total: 20000 }),
       );
       mockTx.quoteApprovalRequest.create.mockResolvedValue({});
-      const updatedQuote = {
-        ...mockQuote,
-        status: QuoteStatus.TER_GOEDKEURING,
-      };
-      mockTx.quote.update.mockResolvedValue(updatedQuote);
+      mockTx.quote.update.mockResolvedValue({ ...baseQuote, status: QuoteStatus.TER_GOEDKEURING });
 
-      const result = await service.submitForApproval(
-        'quote-1',
-        { note: 'Graag beoordelen' },
-        mockUser,
-      );
+      const result = await service.submitForApproval('quote-1', { note: 'Beoordeel' }, adminUser);
 
       expect(result.status).toBe(QuoteStatus.TER_GOEDKEURING);
       expect(mockTx.quoteApprovalRequest.create).toHaveBeenCalledWith({
         data: {
           quoteId: 'quote-1',
           requestedBy: 'user-1',
-          note: 'Graag beoordelen',
+          kind: ApprovalKind.THRESHOLD,
+          approverRole: Role.MANAGER,
+          note: 'Beoordeel',
         },
       });
-      expect(mockTx.quote.update).toHaveBeenCalledWith({
-        where: { id: 'quote-1' },
-        data: { status: QuoteStatus.TER_GOEDKEURING },
+      expect(notifications.dispatch).toHaveBeenCalledWith(
+        expect.objectContaining({ type: NotificationType.OFFERTE_TER_GOEDKEURING }),
+      );
+    });
+
+    it('allows submit when below threshold but template requiresApproval', async () => {
+      mockPrismaService.organization.findUnique.mockResolvedValue({
+        quoteApprovalThreshold: null,
+        quoteApprovalRequiredRole: null,
+      });
+      mockPrismaService.quote.findUnique.mockResolvedValue(
+        quoteWithIncludes({ templateId: 'template-1', requiresApproval: true, total: 100 }),
+      );
+      mockTx.quoteApprovalRequest.create.mockResolvedValue({});
+      mockTx.quote.update.mockResolvedValue({ ...baseQuote, status: QuoteStatus.TER_GOEDKEURING });
+
+      await service.submitForApproval('quote-1', {}, adminUser);
+
+      // No configured role → approverRole null (fallback MANAGER/ORG_ADMIN at notify/approve)
+      expect(mockTx.quoteApprovalRequest.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({ kind: ApprovalKind.THRESHOLD, approverRole: null }),
       });
     });
 
-    it('should throw BadRequestException when quote does not require approval', async () => {
-      // mockQuoteWithIncludes has requiresApproval: false
+    it('throws when approval is not required (below threshold, no requiresApproval)', async () => {
       mockPrismaService.quote.findUnique.mockResolvedValue(
-        mockQuoteWithIncludes,
+        quoteWithIncludes({ templateId: 'template-1', total: 100 }),
       );
 
-      await expect(
-        service.submitForApproval('quote-1', {}, mockUser),
-      ).rejects.toThrow(BadRequestException);
-      await expect(
-        service.submitForApproval('quote-1', {}, mockUser),
-      ).rejects.toThrow('Deze offerte vereist geen goedkeuring');
+      await expect(service.submitForApproval('quote-1', {}, adminUser)).rejects.toThrow(
+        'Deze offerte vereist geen goedkeuring',
+      );
+      expect(mockTx.quote.update).not.toHaveBeenCalled();
+    });
+
+    it('blocks submit without a linked template (REQ26 guard)', async () => {
+      mockPrismaService.quote.findUnique.mockResolvedValue(
+        quoteWithIncludes({ requiresApproval: true }),
+      );
+      await expect(service.submitForApproval('quote-1', {}, adminUser)).rejects.toThrow(
+        'Koppel eerst een offertesjabloon',
+      );
     });
   });
 
-  // ─── approve / reject ────────────────────────────────────────────────
+  // ─── approve / reject (mandatory, role-enforced) ─────────────────────
 
   describe('approve()', () => {
-    it('should set GOEDGEKEURD status and update pending approval request', async () => {
-      const terGoedkeuringQuote = {
-        ...mockQuoteWithIncludes,
-        status: QuoteStatus.TER_GOEDKEURING,
-      };
-      mockPrismaService.quote.findUnique.mockResolvedValue(
-        terGoedkeuringQuote,
-      );
-      const pendingApproval = {
-        id: 'approval-1',
-        quoteId: 'quote-1',
-        status: 'PENDING',
-        note: null,
-      };
-      mockTx.quoteApprovalRequest.findFirst.mockResolvedValue(
-        pendingApproval,
-      );
-      mockTx.quoteApprovalRequest.update.mockResolvedValue({});
-      const approvedQuote = {
-        ...mockQuote,
-        status: QuoteStatus.GOEDGEKEURD,
-      };
-      mockTx.quote.update.mockResolvedValue(approvedQuote);
+    const pending = {
+      id: 'approval-1',
+      quoteId: 'quote-1',
+      kind: ApprovalKind.THRESHOLD,
+      approverRole: Role.MANAGER,
+      approverUserId: null,
+      status: ApprovalStatus.PENDING,
+      note: null,
+    };
 
-      const result = await service.approve('quote-1', {}, mockUser);
+    it('approves and sets GOEDGEKEURD when approver has the required role', async () => {
+      mockPrismaService.quote.findUnique.mockResolvedValue(
+        quoteWithIncludes({ status: QuoteStatus.TER_GOEDKEURING }),
+      );
+      mockPrismaService.quoteApprovalRequest.findFirst.mockResolvedValue(pending);
+      mockTx.quoteApprovalRequest.update.mockResolvedValue({});
+      mockTx.quote.update.mockResolvedValue({ ...baseQuote, status: QuoteStatus.GOEDGEKEURD });
+
+      const result = await service.approve('quote-1', {}, managerUser);
 
       expect(result.status).toBe(QuoteStatus.GOEDGEKEURD);
       expect(mockTx.quoteApprovalRequest.update).toHaveBeenCalledWith({
         where: { id: 'approval-1' },
-        data: expect.objectContaining({
-          status: 'APPROVED',
-          reviewedBy: 'user-1',
-        }),
+        data: expect.objectContaining({ status: ApprovalStatus.APPROVED, reviewedBy: 'manager-1' }),
       });
+    });
+
+    it('rejects approval by a user lacking the required role', async () => {
+      mockPrismaService.quote.findUnique.mockResolvedValue(
+        quoteWithIncludes({ status: QuoteStatus.TER_GOEDKEURING }),
+      );
+      mockPrismaService.quoteApprovalRequest.findFirst.mockResolvedValue(pending);
+
+      await expect(service.approve('quote-1', {}, backofficeUser)).rejects.toThrow(
+        ForbiddenException,
+      );
+      expect(mockTx.quote.update).not.toHaveBeenCalled();
     });
   });
 
   describe('reject()', () => {
-    it('should set CONCEPT status back and update pending approval request', async () => {
-      const terGoedkeuringQuote = {
-        ...mockQuoteWithIncludes,
-        status: QuoteStatus.TER_GOEDKEURING,
-      };
+    it('sets CONCEPT back and records rejection (with required role)', async () => {
       mockPrismaService.quote.findUnique.mockResolvedValue(
-        terGoedkeuringQuote,
+        quoteWithIncludes({ status: QuoteStatus.TER_GOEDKEURING }),
       );
-      const pendingApproval = {
+      mockPrismaService.quoteApprovalRequest.findFirst.mockResolvedValue({
         id: 'approval-1',
         quoteId: 'quote-1',
-        status: 'PENDING',
+        kind: ApprovalKind.THRESHOLD,
+        approverRole: Role.MANAGER,
+        approverUserId: null,
+        status: ApprovalStatus.PENDING,
         note: null,
-      };
-      mockTx.quoteApprovalRequest.findFirst.mockResolvedValue(
-        pendingApproval,
-      );
+      });
       mockTx.quoteApprovalRequest.update.mockResolvedValue({});
-      const rejectedQuote = {
-        ...mockQuote,
-        status: QuoteStatus.CONCEPT,
-      };
-      mockTx.quote.update.mockResolvedValue(rejectedQuote);
+      mockTx.quote.update.mockResolvedValue({ ...baseQuote, status: QuoteStatus.CONCEPT });
 
-      const result = await service.reject(
-        'quote-1',
-        { note: 'Prijs te hoog' },
-        mockUser,
-      );
+      const result = await service.reject('quote-1', { note: 'Prijs te hoog' }, managerUser);
 
       expect(result.status).toBe(QuoteStatus.CONCEPT);
       expect(mockTx.quoteApprovalRequest.update).toHaveBeenCalledWith({
         where: { id: 'approval-1' },
+        data: expect.objectContaining({ status: ApprovalStatus.REJECTED, note: 'Prijs te hoog' }),
+      });
+    });
+  });
+
+  // ─── Voluntary team ──────────────────────────────────────────────────
+
+  describe('requestTeamApproval()', () => {
+    it('creates a VOLUNTARY_TEAM request for the requester own (single) role, no status change', async () => {
+      mockPrismaService.quote.findUnique.mockResolvedValue(quoteWithIncludes());
+      mockPrismaService.quoteApprovalRequest.create.mockResolvedValue({ id: 'req-1' });
+
+      await service.requestTeamApproval('quote-1', {}, backofficeUser);
+
+      expect(mockPrismaService.quoteApprovalRequest.create).toHaveBeenCalledWith({
         data: expect.objectContaining({
-          status: 'REJECTED',
-          reviewedBy: 'user-1',
-          note: 'Prijs te hoog',
+          kind: ApprovalKind.VOLUNTARY_TEAM,
+          approverRole: Role.BACKOFFICE,
         }),
+      });
+      // never touches quote status
+      expect(mockPrismaService.quote.update).not.toHaveBeenCalled();
+      expect(notifications.dispatch).toHaveBeenCalledWith(
+        expect.objectContaining({ type: NotificationType.OFFERTE_GOEDKEURING_GEVRAAGD_TEAM }),
+      );
+    });
+
+    it('requires an explicit role when the requester has multiple roles', async () => {
+      mockPrismaService.quote.findUnique.mockResolvedValue(quoteWithIncludes());
+      const multi = makeUser([Role.MANAGER, Role.BACKOFFICE], 'multi-1');
+
+      await expect(service.requestTeamApproval('quote-1', {}, multi)).rejects.toThrow(
+        'Kies expliciet een team',
+      );
+    });
+
+    it('rejects requesting approval from a team the requester is not part of', async () => {
+      mockPrismaService.quote.findUnique.mockResolvedValue(quoteWithIncludes());
+
+      await expect(
+        service.requestTeamApproval('quote-1', { role: Role.MANAGER }, backofficeUser),
+      ).rejects.toThrow('eigen team');
+    });
+  });
+
+  // ─── Voluntary person ────────────────────────────────────────────────
+
+  describe('requestPersonApproval()', () => {
+    it('creates a VOLUNTARY_PERSON request for an org-mate', async () => {
+      mockPrismaService.quote.findUnique.mockResolvedValue(quoteWithIncludes());
+      mockPrismaService.user.findUnique.mockResolvedValue({ orgId: 'org-1' }); // assertSameOrg
+      mockPrismaService.quoteApprovalRequest.create.mockResolvedValue({ id: 'req-1' });
+
+      await service.requestPersonApproval('quote-1', { approverUserId: 'manager-1' }, backofficeUser);
+
+      expect(mockPrismaService.quoteApprovalRequest.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          kind: ApprovalKind.VOLUNTARY_PERSON,
+          approverUserId: 'manager-1',
+        }),
+      });
+      expect(notifications.dispatch).toHaveBeenCalledWith(
+        expect.objectContaining({ type: NotificationType.OFFERTE_GOEDKEURING_GEVRAAGD_PERSOON }),
+      );
+    });
+
+    it('rejects a person from another org (cross-tenant)', async () => {
+      mockPrismaService.quote.findUnique.mockResolvedValue(quoteWithIncludes());
+      mockPrismaService.user.findUnique.mockResolvedValue({ orgId: 'org-2' });
+
+      await expect(
+        service.requestPersonApproval('quote-1', { approverUserId: 'foreign-1' }, backofficeUser),
+      ).rejects.toThrow(ForbiddenException);
+      expect(mockPrismaService.quoteApprovalRequest.create).not.toHaveBeenCalled();
+    });
+
+    it('rejects asking yourself', async () => {
+      mockPrismaService.quote.findUnique.mockResolvedValue(quoteWithIncludes());
+
+      await expect(
+        service.requestPersonApproval('quote-1', { approverUserId: 'backoffice-1' }, backofficeUser),
+      ).rejects.toThrow('uzelf');
+    });
+  });
+
+  // ─── Voluntary review / cancel ───────────────────────────────────────
+
+  describe('reviewVoluntary()', () => {
+    it('lets the targeted person approve without changing quote status', async () => {
+      mockPrismaService.quote.findUnique.mockResolvedValue(quoteWithIncludes());
+      mockPrismaService.quoteApprovalRequest.findUnique.mockResolvedValue({
+        id: 'req-1',
+        quoteId: 'quote-1',
+        kind: ApprovalKind.VOLUNTARY_PERSON,
+        approverRole: null,
+        approverUserId: 'manager-1',
+        requestedBy: 'backoffice-1',
+        status: ApprovalStatus.PENDING,
+        note: null,
+      });
+      mockPrismaService.quoteApprovalRequest.update.mockResolvedValue({ id: 'req-1' });
+
+      await service.reviewVoluntary('quote-1', 'req-1', true, {}, managerUser);
+
+      expect(mockPrismaService.quoteApprovalRequest.update).toHaveBeenCalledWith({
+        where: { id: 'req-1' },
+        data: expect.objectContaining({ status: ApprovalStatus.APPROVED }),
+      });
+      expect(mockPrismaService.quote.update).not.toHaveBeenCalled();
+      expect(notifications.dispatch).toHaveBeenCalledWith(
+        expect.objectContaining({ type: NotificationType.OFFERTE_GOEDKEURING_AFGEHANDELD }),
+      );
+    });
+
+    it('forbids a non-targeted user from reviewing a person request', async () => {
+      mockPrismaService.quote.findUnique.mockResolvedValue(quoteWithIncludes());
+      mockPrismaService.quoteApprovalRequest.findUnique.mockResolvedValue({
+        id: 'req-1',
+        quoteId: 'quote-1',
+        kind: ApprovalKind.VOLUNTARY_PERSON,
+        approverRole: null,
+        approverUserId: 'manager-1',
+        requestedBy: 'backoffice-1',
+        status: ApprovalStatus.PENDING,
+        note: null,
+      });
+
+      await expect(
+        service.reviewVoluntary('quote-1', 'req-1', true, {}, backofficeUser),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('refuses to review a mandatory (THRESHOLD) request via the voluntary route', async () => {
+      mockPrismaService.quote.findUnique.mockResolvedValue(quoteWithIncludes());
+      mockPrismaService.quoteApprovalRequest.findUnique.mockResolvedValue({
+        id: 'req-1',
+        quoteId: 'quote-1',
+        kind: ApprovalKind.THRESHOLD,
+        approverRole: Role.MANAGER,
+        approverUserId: null,
+        requestedBy: 'backoffice-1',
+        status: ApprovalStatus.PENDING,
+        note: null,
+      });
+
+      await expect(
+        service.reviewVoluntary('quote-1', 'req-1', true, {}, managerUser),
+      ).rejects.toThrow('Verplichte goedkeuringsverzoeken');
+    });
+  });
+
+  describe('cancelVoluntary()', () => {
+    it('lets the requester cancel a pending voluntary request', async () => {
+      mockPrismaService.quote.findUnique.mockResolvedValue(quoteWithIncludes());
+      mockPrismaService.quoteApprovalRequest.findUnique.mockResolvedValue({
+        id: 'req-1',
+        quoteId: 'quote-1',
+        kind: ApprovalKind.VOLUNTARY_TEAM,
+        approverRole: Role.BACKOFFICE,
+        approverUserId: null,
+        requestedBy: 'backoffice-1',
+        status: ApprovalStatus.PENDING,
+        note: null,
+      });
+      mockPrismaService.quoteApprovalRequest.update.mockResolvedValue({});
+
+      await service.cancelVoluntary('quote-1', 'req-1', backofficeUser);
+
+      expect(mockPrismaService.quoteApprovalRequest.update).toHaveBeenCalledWith({
+        where: { id: 'req-1' },
+        data: { status: ApprovalStatus.CANCELLED },
       });
     });
 
-    it('should require note for rejection (dto.note is used)', async () => {
-      const terGoedkeuringQuote = {
-        ...mockQuoteWithIncludes,
-        status: QuoteStatus.TER_GOEDKEURING,
-      };
-      mockPrismaService.quote.findUnique.mockResolvedValue(
-        terGoedkeuringQuote,
-      );
-      const pendingApproval = {
-        id: 'approval-1',
+    it('forbids cancelling someone else\'s request', async () => {
+      mockPrismaService.quote.findUnique.mockResolvedValue(quoteWithIncludes());
+      mockPrismaService.quoteApprovalRequest.findUnique.mockResolvedValue({
+        id: 'req-1',
         quoteId: 'quote-1',
-        status: 'PENDING',
+        kind: ApprovalKind.VOLUNTARY_TEAM,
+        approverRole: Role.BACKOFFICE,
+        approverUserId: null,
+        requestedBy: 'someone-else',
+        status: ApprovalStatus.PENDING,
         note: null,
-      };
-      mockTx.quoteApprovalRequest.findFirst.mockResolvedValue(
-        pendingApproval,
-      );
-      mockTx.quoteApprovalRequest.update.mockResolvedValue({});
-      mockTx.quote.update.mockResolvedValue({
-        ...mockQuote,
-        status: QuoteStatus.CONCEPT,
       });
 
-      await service.reject('quote-1', { note: 'Reden van afwijzing' }, mockUser);
-
-      expect(mockTx.quoteApprovalRequest.update).toHaveBeenCalledWith({
-        where: { id: 'approval-1' },
-        data: expect.objectContaining({
-          note: 'Reden van afwijzing',
-        }),
-      });
+      await expect(
+        service.cancelVoluntary('quote-1', 'req-1', backofficeUser),
+      ).rejects.toThrow(ForbiddenException);
     });
   });
 });

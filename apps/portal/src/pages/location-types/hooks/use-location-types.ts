@@ -7,6 +7,7 @@ import type { LocationTypeDefinition, LocationTypeField, LocationTypeConstraint 
 
 export interface UseLocationTypesParams {
   normType?: string;
+  scope?: 'INSPECTION' | 'CRM';
 }
 
 // ---------------------------------------------------------------------------
@@ -16,6 +17,7 @@ export interface UseLocationTypesParams {
 export function useLocationTypes(params: UseLocationTypesParams = {}) {
   const query = new URLSearchParams();
   if (params.normType) query.set('normType', params.normType);
+  if (params.scope) query.set('scope', params.scope);
   const qs = query.toString();
 
   return useQuery<LocationTypeDefinition[]>({

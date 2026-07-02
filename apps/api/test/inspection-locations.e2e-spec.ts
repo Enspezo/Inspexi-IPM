@@ -14,6 +14,7 @@ describe('InspectionLocations (e2e)', () => {
   let testContactId: string;
   let testNormCode: string;
   let testLocationTypeCode: string;
+  let testCrmLocationId: string;
   let testPlanId: string;
   let accessToken: string;
   let rootLocationId: string;
@@ -71,6 +72,22 @@ describe('InspectionLocations (e2e)', () => {
     });
     testContactId = contact.id;
 
+    // CRM-Locatie = hoofdlocatie / boom-wortel van de AssetNode-boom. De compat
+    // inspection-locations-endpoints hangen nieuwe locaties onder de (lazily
+    // aangemaakte) wortel-LOCATION-node van plan.locationId.
+    const crmLocation = await prisma.location.create({
+      data: {
+        orgId: org.id,
+        contactId: contact.id,
+        name: 'E2E Locations CRM-Locatie',
+        street: 'Teststraat',
+        houseNumber: '1',
+        postalCode: '1000AA',
+        city: 'Teststad',
+      },
+    });
+    testCrmLocationId = crmLocation.id;
+
     // Global norm-type definition
     testNormCode = 'e2enormloc';
     await prisma.normTypeDefinition.create({
@@ -83,11 +100,12 @@ describe('InspectionLocations (e2e)', () => {
       },
     });
 
-    // Inspection plan
+    // Inspection plan (met hoofdlocatie zodat de boom-wortel kan ontstaan)
     const plan = await prisma.inspectionPlan.create({
       data: {
         orgId: org.id,
         contactId: contact.id,
+        locationId: crmLocation.id,
         projectName: 'E2E Locations Plan',
         normTypeCode: testNormCode,
         createdBy: user.id,
@@ -115,14 +133,19 @@ describe('InspectionLocations (e2e)', () => {
 
   afterAll(async () => {
     try {
-      // Children first, then the rest in FK order
-      await prisma.inspectionLocation.deleteMany({ where: { inspectionPlanId: testPlanId } });
+      // Children first, then the rest in FK order. AssetNode.parentId is SET NULL,
+      // so a single deleteMany clears the whole LOCATION tree (incl. the root node).
+      await prisma.assetNode.deleteMany({ where: { orgId: testOrgId } });
       await prisma.inspectionPlan.deleteMany({ where: { id: testPlanId } });
       await prisma.normTypeDefinition.deleteMany({ where: { code: testNormCode } });
       await prisma.locationTypeDefinition.deleteMany({
         where: { orgId: testOrgId, code: testLocationTypeCode },
       });
+      await prisma.location.deleteMany({ where: { id: testCrmLocationId } });
       await prisma.contact.deleteMany({ where: { id: testContactId } });
+      // Node-create auto-provisioneert numbering-schemas (+counters) voor de org.
+      await prisma.numberingCounter.deleteMany({ where: { scheme: { orgId: testOrgId } } });
+      await prisma.numberingScheme.deleteMany({ where: { orgId: testOrgId } });
       await prisma.auditLog.deleteMany({ where: { userId: testUserId } });
       await prisma.refreshToken.deleteMany({ where: { userId: testUserId } });
       await prisma.user.deleteMany({ where: { id: testUserId } });
@@ -229,15 +252,24 @@ describe('InspectionLocations (e2e)', () => {
       childLocationId = res.body.data.id;
     });
 
-    it('should move the child to root', async () => {
+    it('should move the child up under the root LOCATION node', async () => {
+      // Locations live in the unified tree; moving "to root" now means re-parenting
+      // onto the plan's root LOCATION node (the 1:1 node for plan.locationId), not
+      // a null parent (a LOCATION must always hang under another LOCATION).
+      const rootNode = await prisma.assetNode.findUnique({
+        where: { rootLocationId: testCrmLocationId },
+        select: { id: true },
+      });
+      expect(rootNode).toBeTruthy();
+
       const res = await request(app.getHttpServer())
         .post(`/api/v1/locations/${childLocationId}/move`)
         .set('Authorization', `Bearer ${accessToken}`)
-        .send({ newParentId: null })
+        .send({ newParentId: rootNode!.id })
         .expect(201);
 
       expect(res.body.success).toBe(true);
-      expect(res.body.data.parentLocationId).toBeNull();
+      expect(res.body.data.parentLocationId).toBe(rootNode!.id);
     });
 
     it('should reorder locations within the plan', async () => {

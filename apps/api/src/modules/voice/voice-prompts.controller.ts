@@ -3,6 +3,7 @@
 import {
   Controller, Get, Put, Delete, Param, Body, Query, ParseUUIDPipe, BadRequestException,
 } from '@nestjs/common';
+import { RequiresFeature } from '@/common/decorators/requires-feature.decorator';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { User } from '@prisma/client';
 import { Roles, CurrentUser } from '@/common/decorators';
@@ -14,6 +15,7 @@ const VOICE_USERS = ALL_STAFF;
 
 @ApiTags('Voice Prompts')
 @ApiBearerAuth()
+@RequiresFeature('BASIS_INSPECTIES')
 @Controller('voice-prompts')
 export class VoicePromptsController {
   constructor(private readonly prompts: VoicePromptService) {}

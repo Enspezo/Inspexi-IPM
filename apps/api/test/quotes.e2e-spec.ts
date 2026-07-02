@@ -36,6 +36,7 @@ describe('Quotes API (e2e)', () => {
   // IDs of resources created during tests (for cleanup)
   const createdQuoteIds: string[] = [];
   const createdApprovalRequestIds: string[] = [];
+  const createdTemplateIds: string[] = [];
 
   /** Helper: login and return { accessToken, cookies } */
   async function login(email: string, password = 'Password123!') {
@@ -97,6 +98,11 @@ describe('Quotes API (e2e)', () => {
         where: { id: { in: createdQuoteIds } },
       });
     }
+    if (createdTemplateIds.length > 0) {
+      await prisma.quoteTemplate.deleteMany({
+        where: { id: { in: createdTemplateIds } },
+      });
+    }
 
     await app.close();
   });
@@ -133,6 +139,36 @@ describe('Quotes API (e2e)', () => {
       expect(res.body.data.data.length).toBeGreaterThanOrEqual(1);
       for (const q of res.body.data.data) {
         expect(q.status).toBe('CONCEPT');
+      }
+    });
+
+    it("filter by templateId='none' returns only quotes without a template", async () => {
+      const res = await request(app.getHttpServer())
+        .get('/api/v1/quotes')
+        .query({ templateId: 'none' })
+        .set('Authorization', `Bearer ${org1AdminToken}`)
+        .expect(200);
+
+      expect(res.body.success).toBe(true);
+      for (const q of res.body.data.data) {
+        expect(q.templateId).toBeNull();
+      }
+    });
+
+    it('list results include template (id + name)', async () => {
+      const res = await request(app.getHttpServer())
+        .get('/api/v1/quotes')
+        .set('Authorization', `Bearer ${org1AdminToken}`)
+        .expect(200);
+
+      expect(res.body.success).toBe(true);
+      // Every quote exposes the template relation key (null or {id, name})
+      for (const q of res.body.data.data) {
+        expect(q).toHaveProperty('template');
+        if (q.template) {
+          expect(q.template).toHaveProperty('id');
+          expect(q.template).toHaveProperty('name');
+        }
       }
     });
 
@@ -336,6 +372,168 @@ describe('Quotes API (e2e)', () => {
     });
   });
 
+  // ─── REQ26: template switch + status guard ────────────
+
+  describe('Template switch & status validation (REQ26)', () => {
+    let org1ContactId: string;
+    let blocksTemplateId: string; // requiresApproval = false (Standaard)
+    let approvalTemplateId: string; // requiresApproval = true (Groot Project)
+
+    beforeAll(async () => {
+      const contactRes = await request(app.getHttpServer())
+        .get('/api/v1/contacts')
+        .set('Authorization', `Bearer ${org1AdminToken}`)
+        .expect(200);
+      org1ContactId = contactRes.body.data.data[0].id;
+
+      const templatesRes = await request(app.getHttpServer())
+        .get('/api/v1/quote-templates')
+        .set('Authorization', `Bearer ${org1AdminToken}`)
+        .expect(200);
+      const templates = templatesRes.body.data.data as any[];
+      approvalTemplateId = templates.find((t) => t.requiresApproval === true).id;
+      blocksTemplateId = templates.find((t) => t.requiresApproval === false).id;
+    });
+
+    /** Create a fresh CONCEPT quote without a template and track it for cleanup. */
+    async function createConceptQuote(subject: string): Promise<any> {
+      const res = await request(app.getHttpServer())
+        .post('/api/v1/quotes')
+        .set('Authorization', `Bearer ${org1AdminToken}`)
+        .send({ contactId: org1ContactId, subject })
+        .expect(201);
+      createdQuoteIds.push(res.body.data.id);
+      return res.body.data;
+    }
+
+    it('switches template on a CONCEPT quote: applies blocks + requiresApproval + templateId', async () => {
+      const quote = await createConceptQuote('REQ26 switch test');
+      expect(quote.templateId).toBeNull();
+
+      const res = await request(app.getHttpServer())
+        .patch(`/api/v1/quotes/${quote.id}`)
+        .set('Authorization', `Bearer ${org1AdminToken}`)
+        .send({ templateId: approvalTemplateId })
+        .expect(200);
+
+      expect(res.body.data.templateId).toBe(approvalTemplateId);
+      expect(res.body.data.requiresApproval).toBe(true);
+      expect(res.body.data.contentBlocks).toBeTruthy();
+    });
+
+    it('records the template switch in the audit log (Sjabloon van→naar)', async () => {
+      const quote = await createConceptQuote('REQ26 audit test');
+
+      await request(app.getHttpServer())
+        .patch(`/api/v1/quotes/${quote.id}`)
+        .set('Authorization', `Bearer ${org1AdminToken}`)
+        .send({ templateId: blocksTemplateId })
+        .expect(200);
+
+      // Audit is fire-and-forget — poll briefly for the UPDATE row.
+      let auditLog: any = null;
+      for (let i = 0; i < 20 && !auditLog; i++) {
+        const logs = await prisma.auditLog.findMany({
+          where: { entityType: 'Quote', entityId: quote.id, action: 'UPDATE' },
+          orderBy: { createdAt: 'desc' },
+        });
+        auditLog = logs.find((l) => {
+          const changes = (l.changes as Record<string, unknown>) ?? {};
+          return 'templateId' in changes;
+        });
+        if (!auditLog) await new Promise((r) => setTimeout(r, 100));
+      }
+
+      expect(auditLog).toBeTruthy();
+      const change = (auditLog.changes as any).templateId;
+      expect(change.from ?? change.old ?? null).toBeNull();
+      expect(change.to ?? change.new).toBe(blocksTemplateId);
+    });
+
+    it('unlinks the template (templateId null) while CONCEPT', async () => {
+      const quote = await createConceptQuote('REQ26 unlink test');
+      await request(app.getHttpServer())
+        .patch(`/api/v1/quotes/${quote.id}`)
+        .set('Authorization', `Bearer ${org1AdminToken}`)
+        .send({ templateId: blocksTemplateId })
+        .expect(200);
+
+      const res = await request(app.getHttpServer())
+        .patch(`/api/v1/quotes/${quote.id}`)
+        .set('Authorization', `Bearer ${org1AdminToken}`)
+        .send({ templateId: null })
+        .expect(200);
+
+      expect(res.body.data.templateId).toBeNull();
+    });
+
+    it('rejects switching to another org\'s template (cross-tenant)', async () => {
+      const quote = await createConceptQuote('REQ26 cross-tenant test');
+
+      // Create a template owned by org2 directly.
+      const org2 = await prisma.organization.findFirst({ where: { slug: 'testbedrijf' } });
+      const org2Template = await prisma.quoteTemplate.create({
+        data: { orgId: org2!.id, name: 'REQ26 org2 template' },
+      });
+      createdTemplateIds.push(org2Template.id);
+
+      await request(app.getHttpServer())
+        .patch(`/api/v1/quotes/${quote.id}`)
+        .set('Authorization', `Bearer ${org1AdminToken}`)
+        .send({ templateId: org2Template.id })
+        .expect(403);
+    });
+
+    it('blocks leaving CONCEPT (status → GOEDGEKEURD) without a linked template', async () => {
+      const quote = await createConceptQuote('REQ26 guard test');
+
+      await request(app.getHttpServer())
+        .patch(`/api/v1/quotes/${quote.id}/status`)
+        .set('Authorization', `Bearer ${org1AdminToken}`)
+        .send({ status: 'GOEDGEKEURD' })
+        .expect(400);
+    });
+
+    it('allows leaving CONCEPT once a (non-approval) template is linked', async () => {
+      const quote = await createConceptQuote('REQ26 guard ok test');
+
+      await request(app.getHttpServer())
+        .patch(`/api/v1/quotes/${quote.id}`)
+        .set('Authorization', `Bearer ${org1AdminToken}`)
+        .send({ templateId: blocksTemplateId })
+        .expect(200);
+
+      const res = await request(app.getHttpServer())
+        .patch(`/api/v1/quotes/${quote.id}/status`)
+        .set('Authorization', `Bearer ${org1AdminToken}`)
+        .send({ status: 'GOEDGEKEURD' })
+        .expect(200);
+
+      expect(res.body.data.status).toBe('GOEDGEKEURD');
+    });
+
+    it('does not allow switching templates outside CONCEPT', async () => {
+      const quote = await createConceptQuote('REQ26 non-concept switch test');
+      await request(app.getHttpServer())
+        .patch(`/api/v1/quotes/${quote.id}`)
+        .set('Authorization', `Bearer ${org1AdminToken}`)
+        .send({ templateId: blocksTemplateId })
+        .expect(200);
+      await request(app.getHttpServer())
+        .patch(`/api/v1/quotes/${quote.id}/status`)
+        .set('Authorization', `Bearer ${org1AdminToken}`)
+        .send({ status: 'GOEDGEKEURD' })
+        .expect(200);
+
+      // Now GOEDGEKEURD → switching template must fail (update only in CONCEPT)
+      await request(app.getHttpServer())
+        .patch(`/api/v1/quotes/${quote.id}`)
+        .set('Authorization', `Bearer ${org1AdminToken}`)
+        .send({ templateId: approvalTemplateId })
+        .expect(400);
+    });
+  });
+
   // ─── PUT /quotes/:id/lines ───────────────────────────
 
   describe('PUT /api/v1/quotes/:id/lines', () => {
@@ -481,6 +679,180 @@ describe('Quotes API (e2e)', () => {
 
       expect(res.body.success).toBe(true);
       expect(res.body.data.status).toBe('GOEDGEKEURD');
+    });
+  });
+
+  // ─── Approval mechanisms (REQ5) ──────────────────────
+
+  describe('Approval mechanisms (REQ5)', () => {
+    let contactId: string;
+    let blocksTemplateId: string; // requiresApproval = false
+    let bigQuoteId: string; // total above the org threshold (€10.000)
+    let smallQuoteId: string; // total below threshold, no requiresApproval
+
+    beforeAll(async () => {
+      const contactRes = await request(app.getHttpServer())
+        .get('/api/v1/contacts')
+        .set('Authorization', `Bearer ${org1AdminToken}`)
+        .expect(200);
+      contactId = contactRes.body.data.data[0].id;
+
+      const templatesRes = await request(app.getHttpServer())
+        .get('/api/v1/quote-templates')
+        .set('Authorization', `Bearer ${org1AdminToken}`)
+        .expect(200);
+      blocksTemplateId = templatesRes.body.data.data.find(
+        (t: any) => t.requiresApproval === false,
+      ).id;
+
+      // Big quote: linked template (so it may leave CONCEPT) + lines above threshold.
+      const bigRes = await request(app.getHttpServer())
+        .post('/api/v1/quotes')
+        .set('Authorization', `Bearer ${org1AdminToken}`)
+        .send({ contactId, subject: 'REQ5 boven drempel', templateId: blocksTemplateId })
+        .expect(201);
+      bigQuoteId = bigRes.body.data.id;
+      createdQuoteIds.push(bigQuoteId);
+      await request(app.getHttpServer())
+        .put(`/api/v1/quotes/${bigQuoteId}/lines`)
+        .set('Authorization', `Bearer ${org1AdminToken}`)
+        .send({ lines: [{ description: 'Groot project', quantity: 1, unit: 'stuks', unitPrice: 25000, vatRate: 21, discountPct: 0 }] })
+        .expect(200);
+
+      const smallRes = await request(app.getHttpServer())
+        .post('/api/v1/quotes')
+        .set('Authorization', `Bearer ${org1AdminToken}`)
+        .send({ contactId, subject: 'REQ5 onder drempel', templateId: blocksTemplateId })
+        .expect(201);
+      smallQuoteId = smallRes.body.data.id;
+      createdQuoteIds.push(smallQuoteId);
+      await request(app.getHttpServer())
+        .put(`/api/v1/quotes/${smallQuoteId}/lines`)
+        .set('Authorization', `Bearer ${org1AdminToken}`)
+        .send({ lines: [{ description: 'Klein klusje', quantity: 1, unit: 'stuks', unitPrice: 500, vatRate: 21, discountPct: 0 }] })
+        .expect(200);
+    });
+
+    it('blocks sending a quote above the threshold without approval', async () => {
+      const res = await request(app.getHttpServer())
+        .post(`/api/v1/quotes/${bigQuoteId}/send`)
+        .set('Authorization', `Bearer ${org1AdminToken}`)
+        .send({ to: 'klant@example.com', subject: 'Offerte', bodyText: 'Zie bijlage' })
+        .expect(400);
+      expect(res.body.message).toContain('goedkeuring');
+    });
+
+    it('allows submit-for-approval above the threshold and targets the required role', async () => {
+      const res = await request(app.getHttpServer())
+        .post(`/api/v1/quotes/${bigQuoteId}/submit-approval`)
+        .set('Authorization', `Bearer ${org1AdminToken}`)
+        .send({ note: 'Boven de grens' })
+        .expect(201);
+      expect(res.body.data.status).toBe('TER_GOEDKEURING');
+
+      const detail = await request(app.getHttpServer())
+        .get(`/api/v1/quotes/${bigQuoteId}`)
+        .set('Authorization', `Bearer ${org1AdminToken}`)
+        .expect(200);
+      const latest = detail.body.data.approvalRequests[0];
+      expect(latest.kind).toBe('THRESHOLD');
+      expect(latest.approverRole).toBe('MANAGER');
+    });
+
+    it('forbids approval by a user without the required role (service-level role check)', async () => {
+      // ORG_ADMIN passes the controller guard (MANAGEMENT_ROLES) but is not the required MANAGER role.
+      await request(app.getHttpServer())
+        .post(`/api/v1/quotes/${bigQuoteId}/approve`)
+        .set('Authorization', `Bearer ${org1AdminToken}`)
+        .send({})
+        .expect(403);
+    });
+
+    it('blocks the manual-status bypass (PATCH /status → GOEDGEKEURD) above threshold without approval', async () => {
+      // bigQuoteId is in TER_GOEDKEURING; TER_GOEDKEURING→GOEDGEKEURD is a valid transition,
+      // but the approval gate must still block it (no APPROVED THRESHOLD request yet).
+      const res = await request(app.getHttpServer())
+        .patch(`/api/v1/quotes/${bigQuoteId}/status`)
+        .set('Authorization', `Bearer ${org1AdminToken}`)
+        .send({ status: 'GOEDGEKEURD' })
+        .expect(400);
+      expect(res.body.message).toContain('goedkeuring');
+    });
+
+    it('lets the required role approve, unblocking sending', async () => {
+      const res = await request(app.getHttpServer())
+        .post(`/api/v1/quotes/${bigQuoteId}/approve`)
+        .set('Authorization', `Bearer ${org1ManagerToken}`)
+        .send({ note: 'Akkoord' })
+        .expect(201);
+      expect(res.body.data.status).toBe('GOEDGEKEURD');
+    });
+
+    it('voluntary person request is advisory: keeps CONCEPT and does not block', async () => {
+      // Find a manager to target via the selectable list.
+      const usersRes = await request(app.getHttpServer())
+        .get('/api/v1/users/selectable?role=MANAGER')
+        .set('Authorization', `Bearer ${org1AdminToken}`)
+        .expect(200);
+      const managerId = usersRes.body.data[0].id;
+
+      const reqRes = await request(app.getHttpServer())
+        .post(`/api/v1/quotes/${smallQuoteId}/voluntary-approval/person`)
+        .set('Authorization', `Bearer ${org1AdminToken}`)
+        .send({ approverUserId: managerId, note: 'Even meekijken?' })
+        .expect(201);
+      expect(reqRes.body.data.kind).toBe('VOLUNTARY_PERSON');
+
+      const detail = await request(app.getHttpServer())
+        .get(`/api/v1/quotes/${smallQuoteId}`)
+        .set('Authorization', `Bearer ${org1AdminToken}`)
+        .expect(200);
+      expect(detail.body.data.status).toBe('CONCEPT'); // unchanged
+
+      // Targeted manager approves → still CONCEPT (advisory only).
+      const reqId = detail.body.data.approvalRequests.find((r: any) => r.kind === 'VOLUNTARY_PERSON').id;
+      const review = await request(app.getHttpServer())
+        .post(`/api/v1/quotes/${smallQuoteId}/approval-requests/${reqId}/approve`)
+        .set('Authorization', `Bearer ${org1ManagerToken}`)
+        .send({})
+        .expect(201);
+      expect(review.body.data.status).toBe('APPROVED');
+
+      const after = await request(app.getHttpServer())
+        .get(`/api/v1/quotes/${smallQuoteId}`)
+        .set('Authorization', `Bearer ${org1AdminToken}`)
+        .expect(200);
+      expect(after.body.data.status).toBe('CONCEPT');
+    });
+
+    it('voluntary team request can be cancelled by the requester', async () => {
+      const reqRes = await request(app.getHttpServer())
+        .post(`/api/v1/quotes/${smallQuoteId}/voluntary-approval/team`)
+        .set('Authorization', `Bearer ${org1AdminToken}`)
+        .send({ note: 'Team check' })
+        .expect(201);
+      expect(reqRes.body.data.kind).toBe('VOLUNTARY_TEAM');
+      const reqId = reqRes.body.data.id;
+
+      const cancel = await request(app.getHttpServer())
+        .post(`/api/v1/quotes/${smallQuoteId}/approval-requests/${reqId}/cancel`)
+        .set('Authorization', `Bearer ${org1AdminToken}`)
+        .expect(201);
+      expect(cancel.body.data.status).toBe('CANCELLED');
+    });
+
+    it('rejects a voluntary person request targeting another org user (cross-tenant)', async () => {
+      const org2Users = await request(app.getHttpServer())
+        .get('/api/v1/users/selectable')
+        .set('Authorization', `Bearer ${org2AdminToken}`)
+        .expect(200);
+      const foreignId = org2Users.body.data[0].id;
+
+      await request(app.getHttpServer())
+        .post(`/api/v1/quotes/${smallQuoteId}/voluntary-approval/person`)
+        .set('Authorization', `Bearer ${org1AdminToken}`)
+        .send({ approverUserId: foreignId })
+        .expect(403);
     });
   });
 

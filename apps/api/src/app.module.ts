@@ -10,11 +10,15 @@ import { PrismaModule } from './prisma';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { RolesGuard } from './common/guards/roles.guard';
 import { TenantGuard } from './common/guards/tenant.guard';
+import { FeatureGuard } from './common/guards/feature.guard';
 import { AppThrottlerGuard } from './common/guards/app-throttler.guard';
 import { AllExceptionsFilter } from './common/filters';
 import { AuditContextInterceptor } from './common/interceptors/audit-context.interceptor';
+import { SupportAccessInterceptor } from './common/interceptors/support-access.interceptor';
 import { EmailModule } from './common/services/email.module';
 import { TenantCacheModule } from './common/services/tenant-cache.module';
+import { EnumerationGuardModule } from './common/services/enumeration-guard.module';
+import { EntitlementsModule } from './modules/entitlements/entitlements.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { OrganizationsModule } from './modules/organizations/organizations.module';
 import { UsersModule } from './modules/users/users.module';
@@ -31,22 +35,31 @@ import { AuditLogModule } from './modules/audit-log/audit-log.module';
 import { TasksModule } from './modules/tasks/tasks.module';
 import { StorageModule } from './common/services/storage/storage.module';
 import { DocumentsModule } from './modules/documents/documents.module';
+import { DocumentTagsModule } from './modules/document-tags/document-tags.module';
+import { InspectorCertificatesModule } from './modules/inspector-certificates/inspector-certificates.module';
+import { MeasurementInstrumentsModule } from './modules/measurement-instruments/measurement-instruments.module';
 import { WebhooksModule } from './modules/webhooks/webhooks.module';
 import { PlanningModule } from './modules/planning/planning.module';
 import { SearchModule } from './modules/search/search.module';
 import { GeocodingModule } from './modules/geocoding/geocoding.module';
 import { CustomFieldsModule } from './modules/custom-fields/custom-fields.module';
+import { NumberingModule } from './modules/numbering/numbering.module';
 import { EmailTemplatesModule } from './modules/email-templates/email-templates.module';
 import { ProjectsModule } from './modules/projects/projects.module';
 import { KvkModule } from './modules/kvk/kvk.module';
 import { VatModule } from './modules/vat/vat.module';
 import { ErrorReportsModule } from './modules/error-reports/error-reports.module';
+import { HelpModule } from './modules/help/help.module';
+import { SupportTicketsModule } from './modules/support-tickets/support-tickets.module';
 import { NotesModule } from './modules/notes/notes.module';
+import { ChatModule } from './modules/chat/chat.module';
+import { FavoritesModule } from './modules/favorites/favorites.module';
 import { WorkOrdersModule } from './modules/work-orders/work-orders.module';
 import { LookupModule } from './modules/lookups/lookup.module';
 import { InspectionPlansModule } from './modules/inspection-plans/inspection-plans.module';
 import { AssetTypesModule } from './modules/asset-types/asset-types.module';
 import { AssetsModule } from './modules/assets/assets.module';
+import { AssetNodesModule } from './modules/asset-nodes/asset-nodes.module';
 import { FindingsModule } from './modules/findings/findings.module';
 import { NormTypesModule } from './modules/norm-types/norm-types.module';
 import { ClassificationModelsModule } from './modules/classification-models/classification-models.module';
@@ -88,6 +101,11 @@ import { VoiceModule } from './modules/voice/voice.module';
     ThrottlerModule.forRoot([{ name: 'default', ttl: 60000, limit: 120 }]),
     PrismaModule,
     TenantCacheModule,
+    // Per-IP throttle op mislukte org-subdomein-lookups (anti-enumeratie).
+    EnumerationGuardModule,
+    // SaaS-abonnementen & feature-entitlements (PRD-09, Fase 0 — resolver only,
+    // nog geen enforcement). @Global: levert EntitlementsService app-breed.
+    EntitlementsModule,
     EmailModule,
     NotificationsModule,
     AuthModule,
@@ -105,23 +123,32 @@ import { VoiceModule } from './modules/voice/voice.module';
     TasksModule,
     StorageModule,
     DocumentsModule,
+    DocumentTagsModule,
+    InspectorCertificatesModule,
+    MeasurementInstrumentsModule,
     WebhooksModule,
     PlanningModule,
     SearchModule,
     GeocodingModule,
     CustomFieldsModule,
+    NumberingModule,
     EmailTemplatesModule,
     ProjectsModule,
     KvkModule,
     VatModule,
     ErrorReportsModule,
+    HelpModule,
+    SupportTicketsModule,
     NotesModule,
+    ChatModule,
+    FavoritesModule,
     WorkOrdersModule,
     LookupModule,
     // Inspectiedomein Fase 2 — uitvoering + config
     InspectionPlansModule,
     AssetTypesModule,
     AssetsModule,
+    AssetNodesModule,
     FindingsModule,
     NormTypesModule,
     ClassificationModelsModule,
@@ -165,6 +192,12 @@ import { VoiceModule } from './modules/voice/voice.module';
       provide: APP_INTERCEPTOR,
       useClass: AuditContextInterceptor,
     },
+    // IMP_PRD-10 Fase 5 — logt ACCESSED wanneer een SUPERUSER een org-subdomein
+    // bekijkt terwijl support-toegang aanstaat (org-status uit de tenant-cache).
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: SupportAccessInterceptor,
+    },
     {
       provide: APP_GUARD,
       useClass: AppThrottlerGuard,
@@ -180,6 +213,12 @@ import { VoiceModule } from './modules/voice/voice.module';
     {
       provide: APP_GUARD,
       useClass: TenantGuard,
+    },
+    // Feature-entitlements (PRD-09 §5.1) — ná TenantGuard. Werkt alleen op routes
+    // met @RequiresFeature(...); core/platform-routes blijven ongemoeid.
+    {
+      provide: APP_GUARD,
+      useClass: FeatureGuard,
     },
   ],
 })

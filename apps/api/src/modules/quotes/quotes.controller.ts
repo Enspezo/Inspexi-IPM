@@ -16,11 +16,12 @@ import {
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
+import { RequiresFeature } from '@/common/decorators/requires-feature.decorator';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiTags, ApiOperation, ApiConsumes } from '@nestjs/swagger';
 import { Response, Request } from 'express';
 import { User, QuoteStatus } from '@prisma/client';
-import { CRM_ROLES, MANAGEMENT_ROLES, OFFICE_ROLES } from '@/common/auth/roles';
+import { ALL_STAFF, CRM_ROLES, MANAGEMENT_ROLES, OFFICE_ROLES } from '@/common/auth/roles';
 import { Roles } from '@/common/decorators/roles.decorator';
 import { CurrentUser } from '@/common/decorators/current-user.decorator';
 import { Public } from '@/common/decorators/public.decorator';
@@ -38,12 +39,16 @@ import {
   SubmitApprovalDto,
   ApproveQuoteDto,
   RejectQuoteDto,
+  RequestTeamApprovalDto,
+  RequestPersonApprovalDto,
+  ReviewVoluntaryApprovalDto,
   SendQuoteDto,
   AddQuestionDto,
   SignQuoteDto,
 } from './dto';
 
 @ApiTags('quotes')
+@RequiresFeature('CRM_COMPLEET')
 @Controller('quotes')
 export class QuotesController {
   constructor(
@@ -149,6 +154,47 @@ export class QuotesController {
   @Roles(...MANAGEMENT_ROLES)
   async reject(@CurrentUser() user: User, @Param('id', ParseUUIDPipe) id: string, @Body() dto: RejectQuoteDto) {
     const data = await this.approvalsService.reject(id, dto, user);
+    return { success: true, data };
+  }
+
+  // ─── Vrijwillige goedkeuring (adviserend; blokkeert versturen niet) ─────
+  @Post(':id/voluntary-approval/team')
+  @ApiOperation({ summary: 'Vrijwillig goedkeuring vragen aan eigen team' })
+  @Roles(...OFFICE_ROLES)
+  async requestTeamApproval(@CurrentUser() user: User, @Param('id', ParseUUIDPipe) id: string, @Body() dto: RequestTeamApprovalDto) {
+    const data = await this.approvalsService.requestTeamApproval(id, dto, user);
+    return { success: true, data };
+  }
+
+  @Post(':id/voluntary-approval/person')
+  @ApiOperation({ summary: 'Vrijwillig goedkeuring vragen aan een specifieke persoon' })
+  @Roles(...OFFICE_ROLES)
+  async requestPersonApproval(@CurrentUser() user: User, @Param('id', ParseUUIDPipe) id: string, @Body() dto: RequestPersonApprovalDto) {
+    const data = await this.approvalsService.requestPersonApproval(id, dto, user);
+    return { success: true, data };
+  }
+
+  @Post(':id/approval-requests/:requestId/approve')
+  @ApiOperation({ summary: 'Vrijwillig goedkeuringsverzoek goedkeuren (geen statuswijziging)' })
+  @Roles(...ALL_STAFF)
+  async approveVoluntary(@CurrentUser() user: User, @Param('id', ParseUUIDPipe) id: string, @Param('requestId', ParseUUIDPipe) requestId: string, @Body() dto: ReviewVoluntaryApprovalDto) {
+    const data = await this.approvalsService.reviewVoluntary(id, requestId, true, dto, user);
+    return { success: true, data };
+  }
+
+  @Post(':id/approval-requests/:requestId/reject')
+  @ApiOperation({ summary: 'Vrijwillig goedkeuringsverzoek afwijzen (geen statuswijziging)' })
+  @Roles(...ALL_STAFF)
+  async rejectVoluntary(@CurrentUser() user: User, @Param('id', ParseUUIDPipe) id: string, @Param('requestId', ParseUUIDPipe) requestId: string, @Body() dto: ReviewVoluntaryApprovalDto) {
+    const data = await this.approvalsService.reviewVoluntary(id, requestId, false, dto, user);
+    return { success: true, data };
+  }
+
+  @Post(':id/approval-requests/:requestId/cancel')
+  @ApiOperation({ summary: 'Eigen vrijwillig goedkeuringsverzoek intrekken' })
+  @Roles(...ALL_STAFF)
+  async cancelVoluntary(@CurrentUser() user: User, @Param('id', ParseUUIDPipe) id: string, @Param('requestId', ParseUUIDPipe) requestId: string) {
+    const data = await this.approvalsService.cancelVoluntary(id, requestId, user);
     return { success: true, data };
   }
 
@@ -279,6 +325,7 @@ export class QuotesController {
 // ─── Public controller (geen auth vereist) ─────────────
 
 @ApiTags('public-quotes')
+@RequiresFeature('CRM_COMPLEET')
 @Controller('public/quotes')
 export class PublicQuotesController {
   constructor(

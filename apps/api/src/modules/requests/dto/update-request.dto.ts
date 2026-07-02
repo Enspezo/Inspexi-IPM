@@ -5,10 +5,17 @@ import {
   IsUUID,
   IsEnum,
   IsObject,
+  MaxLength,
 } from 'class-validator';
 import { Priority, RequestSource } from '@prisma/client';
 
 export class UpdateRequestDto {
+  @ApiPropertyOptional({ description: 'Handmatig aanvraagnummer (alleen als handmatige nummering aanstaat)' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(60)
+  requestNumber?: string;
+
   @ApiPropertyOptional({ example: 'Bijgewerkte titel' })
   @IsOptional()
   @IsString()

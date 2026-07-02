@@ -15,10 +15,10 @@ import {
   Inject,
   BadRequestException,
 } from '@nestjs/common';
-import { User, Prisma, MarkerType } from '@prisma/client';
+import { User, Prisma, MarkerType, AssetNodeType } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import { PrismaService } from '@/prisma';
-import { orgScope, assertFound, assertSameOrg } from '@/common';
+import { orgScope, assertFound, assertSameOrg, requireOrg, sanitizeStorageFilename } from '@/common';
 import {
   STORAGE_PROVIDER,
   type StorageProvider,
@@ -35,7 +35,7 @@ import {
 } from './dto';
 
 const markerInclude = {
-  asset: { select: { id: true, name: true, assetType: true, statusCode: true } },
+  assetNode: { select: { id: true, name: true, typeCode: true, statusCode: true } },
   finding: {
     select: { id: true, shortDescription: true, statusCode: true, classificationValues: true },
   },
@@ -54,34 +54,56 @@ export class LocationImagesService {
     private readonly measurements: StandaloneMeasurementsService,
   ) {}
 
-  private requireOrg(user: User): string {
-    if (!user.orgId) throw new BadRequestException('Selecteer eerst een organisatie');
-    return user.orgId;
-  }
-
-  /** Locatie binnen de organisatie (soft-delete-scoped). Bron van orgId + planId. */
+  /** LOCATION-node binnen de organisatie (soft-delete-scoped). Bron van orgId. */
   private async getLocationInOrg(locationId: string, user: User) {
     return assertFound(
-      await this.prisma.inspectionLocation.findFirst({
-        where: { id: locationId, ...orgScope(user), deletedAt: null },
+      await this.prisma.assetNode.findFirst({
+        where: {
+          id: locationId,
+          nodeType: AssetNodeType.LOCATION,
+          ...orgScope(user),
+          deletedAt: null,
+        },
       }),
       'Locatie',
     );
   }
 
-  /** Afbeelding via de ouder-locatie scopen. Geeft image + bijbehorende locatie terug. */
+  /** Afbeelding via de ouder-LOCATION-node scopen. Geeft image + bijbehorende node terug. */
   private async getImageInOrg(imageId: string, user: User) {
     const image = assertFound(
       await this.prisma.locationImage.findFirst({
         where: {
           id: imageId,
-          location: { ...orgScope(user), deletedAt: null },
+          node: { nodeType: AssetNodeType.LOCATION, ...orgScope(user), deletedAt: null },
         },
-        include: { location: { select: { id: true, inspectionPlanId: true, orgId: true } } },
+        include: {
+          node: {
+            select: {
+              id: true,
+              orgId: true,
+              planScopes: {
+                select: { inspectionPlanId: true, isPrimary: true },
+                orderBy: { isPrimary: 'desc' },
+              },
+            },
+          },
+        },
       }),
       'Locatie-afbeelding',
     );
     return image;
+  }
+
+  /** Het (primaire) inspectieplan waarin de LOCATION-node valt — voor snelacties. */
+  private resolvePlanId(node: { planScopes: { inspectionPlanId: string }[] }): string {
+    const planId = node.planScopes[0]?.inspectionPlanId;
+    if (!planId) {
+      throw new BadRequestException(
+        'Locatie is aan geen enkele inspectie gekoppeld; snelactie niet mogelijk',
+      );
+    }
+    return planId;
   }
 
   // ── Afbeelding ──
@@ -91,7 +113,7 @@ export class LocationImagesService {
 
     return assertFound(
       await this.prisma.locationImage.findUnique({
-        where: { locationId },
+        where: { nodeId: locationId },
         include: { markers: { include: markerInclude, orderBy: { createdAt: 'asc' } } },
       }),
       'Locatie-afbeelding',
@@ -103,7 +125,7 @@ export class LocationImagesService {
     await this.getLocationInOrg(locationId, user);
 
     const image = assertFound(
-      await this.prisma.locationImage.findUnique({ where: { locationId } }),
+      await this.prisma.locationImage.findUnique({ where: { nodeId: locationId } }),
       'Locatie-afbeelding',
     );
 
@@ -121,7 +143,7 @@ export class LocationImagesService {
     const orgId = location.orgId;
 
     // Bestaande afbeelding? Oud bestand uit opslag verwijderen.
-    const existing = await this.prisma.locationImage.findUnique({ where: { locationId } });
+    const existing = await this.prisma.locationImage.findUnique({ where: { nodeId: locationId } });
     if (existing) {
       await this.storage.delete(existing.storagePath).catch(() => undefined);
       if (existing.thumbnailPath) {
@@ -129,7 +151,7 @@ export class LocationImagesService {
       }
     }
 
-    const storagePath = `${orgId}/${randomUUID()}-${file.originalname}`;
+    const storagePath = `${orgId}/${randomUUID()}-${sanitizeStorageFilename(file.originalname)}`;
     await this.storage.upload(storagePath, file.buffer, file.mimetype);
 
     const data = {
@@ -143,8 +165,8 @@ export class LocationImagesService {
     };
 
     return this.prisma.locationImage.upsert({
-      where: { locationId },
-      create: { locationId, ...data },
+      where: { nodeId: locationId },
+      create: { nodeId: locationId, ...data },
       update: data,
     });
   }
@@ -153,7 +175,7 @@ export class LocationImagesService {
     await this.getLocationInOrg(locationId, user);
 
     const image = assertFound(
-      await this.prisma.locationImage.findUnique({ where: { locationId } }),
+      await this.prisma.locationImage.findUnique({ where: { nodeId: locationId } }),
       'Locatie-afbeelding',
     );
 
@@ -163,7 +185,7 @@ export class LocationImagesService {
     }
 
     // Record verwijderen (markers cascaden mee).
-    await this.prisma.locationImage.delete({ where: { locationId } });
+    await this.prisma.locationImage.delete({ where: { nodeId: locationId } });
     return { deleted: true };
   }
 
@@ -180,12 +202,12 @@ export class LocationImagesService {
   }
 
   async createMarker(imageId: string, user: User, dto: CreateMarkerDto, deviceId?: string) {
-    const orgId = this.requireOrg(user);
+    const orgId = requireOrg(user);
     const image = await this.getImageInOrg(imageId, user);
 
     // FK-vorm valideren tegen markerType + cross-tenant-isolatie.
     this.validateMarkerForeignKeys(dto);
-    await assertSameOrg(this.prisma.asset, dto.assetId, orgId, 'Asset');
+    await assertSameOrg(this.prisma.assetNode, dto.assetId, orgId, 'Asset');
     await assertSameOrg(this.prisma.finding, dto.findingId, orgId, 'Constatering');
     await assertSameOrg(
       this.prisma.standaloneMeasurement,
@@ -196,12 +218,12 @@ export class LocationImagesService {
 
     return this.prisma.locationImageMarker.create({
       data: {
-        orgId: image.location.orgId,
+        orgId: image.node.orgId,
         locationImageId: imageId,
         positionX: dto.positionX,
         positionY: dto.positionY,
         markerType: dto.markerType,
-        assetId: dto.assetId,
+        assetNodeId: dto.assetId,
         findingId: dto.findingId,
         standaloneMeasurementId: dto.standaloneMeasurementId,
         annotation: (dto.annotation ?? undefined) as Prisma.InputJsonValue | undefined,
@@ -240,12 +262,12 @@ export class LocationImagesService {
   // ── Snelacties ──
 
   async quickCreateAsset(imageId: string, user: User, dto: QuickCreateAssetDto, deviceId?: string) {
-    this.requireOrg(user);
+    requireOrg(user);
     const image = await this.getImageInOrg(imageId, user);
 
     // Asset via AssetsService (valideert type-constraints e.d.).
     const asset = await this.assets.create(
-      image.location.inspectionPlanId,
+      this.resolvePlanId(image.node),
       user,
       {
         assetType: dto.assetType,
@@ -258,20 +280,20 @@ export class LocationImagesService {
       deviceId,
     );
 
-    // AssetsService.create zet geen locationId → koppel hem hier alsnog.
-    await this.prisma.asset.update({
+    // AssetsService.create hangt de asset niet onder de LOCATION-node → koppel hem hier alsnog.
+    await this.prisma.assetNode.update({
       where: { id: asset.id },
-      data: { locationId: image.location.id },
+      data: { parentId: image.node.id },
     });
 
     const marker = await this.prisma.locationImageMarker.create({
       data: {
-        orgId: image.location.orgId,
+        orgId: image.node.orgId,
         locationImageId: imageId,
         positionX: dto.positionX,
         positionY: dto.positionY,
         markerType: MarkerType.ASSET,
-        assetId: asset.id,
+        assetNodeId: asset.id,
         label: dto.label,
         createdBy: user.id,
         deviceId,
@@ -287,15 +309,15 @@ export class LocationImagesService {
     dto: QuickCreateMeasurementDto,
     deviceId?: string,
   ) {
-    this.requireOrg(user);
+    requireOrg(user);
     const image = await this.getImageInOrg(imageId, user);
 
     // Meting via StandaloneMeasurementsService (valideert locatie binnen org).
     const measurement = await this.measurements.create(
-      image.location.inspectionPlanId,
+      this.resolvePlanId(image.node),
       user,
       {
-        locationId: image.location.id,
+        locationId: image.node.id,
         measurementType: dto.measurementType,
         description: dto.description,
       },
@@ -304,7 +326,7 @@ export class LocationImagesService {
 
     const marker = await this.prisma.locationImageMarker.create({
       data: {
-        orgId: image.location.orgId,
+        orgId: image.node.orgId,
         locationImageId: imageId,
         positionX: dto.positionX,
         positionY: dto.positionY,
@@ -325,17 +347,18 @@ export class LocationImagesService {
     dto: QuickCreateFindingDto,
     deviceId?: string,
   ) {
-    const orgId = this.requireOrg(user);
+    const orgId = requireOrg(user);
     const image = await this.getImageInOrg(imageId, user);
 
     // Asset moet binnen dezelfde org vallen (cross-tenant-isolatie); FindingsService
     // valideert daarnaast nog op zijn eigen org-scope.
-    await assertSameOrg(this.prisma.asset, dto.assetId, orgId, 'Asset');
+    await assertSameOrg(this.prisma.assetNode, dto.assetId, orgId, 'Asset');
 
     const finding = await this.findings.create(
       dto.assetId,
       user,
       {
+        inspectionPlanId: this.resolvePlanId(image.node),
         inspectionType: dto.inspectionType,
         shortDescription: dto.shortDescription,
         longDescription: dto.longDescription,
@@ -349,7 +372,7 @@ export class LocationImagesService {
 
     const marker = await this.prisma.locationImageMarker.create({
       data: {
-        orgId: image.location.orgId,
+        orgId: image.node.orgId,
         locationImageId: imageId,
         positionX: dto.positionX,
         positionY: dto.positionY,

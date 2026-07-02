@@ -11,6 +11,7 @@ import {
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
+import { RequiresFeature } from '@/common/decorators/requires-feature.decorator';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { User, Role } from '@prisma/client';
 import { ALL_STAFF, CRM_ROLES } from '@/common/auth/roles';
@@ -37,6 +38,7 @@ import {
 
 @ApiTags('Planning')
 @ApiBearerAuth()
+@RequiresFeature('UITVOERING_COMPLEET')
 @Controller('planning')
 export class PlanningController {
   constructor(

@@ -5,17 +5,20 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Role } from '@/types';
 import type { User } from '@/types';
-import { Button, Card, ErrorBox, Input, Spinner, Badge, Tabs, useToast } from '@/components/ui';
+import { Button, Card, Checkbox, ErrorBox, Input, Spinner, Badge, Tabs, useToast } from '@/components/ui';
 import { formatDate, formatDateTime } from '@/lib/format';
 import { DetailPageLayout } from '@/components/layout/detail-page-layout';
 import { AuditHistory } from '@/components/audit-history/audit-history';
+import { useAuth } from '@/providers/auth-provider';
+import { hasRole } from '@/lib/has-role';
 import {
   useOrganization,
   useOrganizationUsers,
   useUpdateOrganization,
 } from './hooks/use-organizations';
+import { OrganizationEntitlementsTab } from './components/organization-entitlements-tab';
 
-type Tab = 'algemeen' | 'gebruikers' | 'instellingen';
+type Tab = 'algemeen' | 'gebruikers' | 'abonnement' | 'instellingen';
 
 const settingsSchema = z.object({
   name: z.string().min(1, 'Organisatienaam is verplicht'),
@@ -29,6 +32,7 @@ const settingsSchema = z.object({
     .number()
     .int('Moet een geheel getal zijn')
     .min(1, 'Minimaal 1 dag'),
+  chatEnabled: z.boolean(),
 });
 
 type SettingsFormData = z.infer<typeof settingsSchema>;
@@ -45,6 +49,8 @@ export default function OrganizationDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { showToast } = useToast();
+  const { user } = useAuth();
+  const isSuperuser = hasRole(user, Role.SUPERUSER);
   const { data: org, isLoading, error } = useOrganization(id!);
   const { data: users, isLoading: usersLoading } = useOrganizationUsers(id!);
   const updateMutation = useUpdateOrganization(id!);
@@ -68,6 +74,7 @@ export default function OrganizationDetailPage() {
         primaryColor: org.primaryColor,
         defaultVat: org.defaultVat,
         defaultValidityDays: org.defaultValidityDays,
+        chatEnabled: org.chatEnabled ?? true,
       });
     }
   }, [org, reset]);
@@ -79,6 +86,7 @@ export default function OrganizationDetailPage() {
         primaryColor: data.primaryColor,
         defaultVat: data.defaultVat,
         defaultValidityDays: data.defaultValidityDays,
+        chatEnabled: data.chatEnabled,
       });
       showToast('Organisatie-instellingen opgeslagen', 'success');
     } catch (err) {
@@ -106,6 +114,10 @@ export default function OrganizationDetailPage() {
   const tabs: { key: Tab; label: string }[] = [
     { key: 'algemeen', label: 'Algemeen' },
     { key: 'gebruikers', label: `Gebruikers (${org._count?.users ?? 0})` },
+    // Abonnement-beheer is SUPERUSER-only (platform); de endpoints weigeren anders.
+    ...(isSuperuser
+      ? [{ key: 'abonnement' as Tab, label: 'Abonnement' }]
+      : []),
     { key: 'instellingen', label: 'Instellingen' },
   ];
 
@@ -322,6 +334,11 @@ export default function OrganizationDetailPage() {
           </Card>
         )}
 
+        {/* Tab: Abonnement (SUPERUSER) */}
+        {activeTab === 'abonnement' && isSuperuser && (
+          <OrganizationEntitlementsTab orgId={id!} />
+        )}
+
         {/* Tab: Instellingen */}
         {activeTab === 'instellingen' && (
           <Card>
@@ -365,6 +382,13 @@ export default function OrganizationDetailPage() {
                   error={errors.defaultValidityDays?.message}
                   {...register('defaultValidityDays')}
                 />
+              </div>
+
+              <div className="border-t border-gray-200 pt-4">
+                <Checkbox label="Interne chat inschakelen" {...register('chatEnabled')} />
+                <p className="mt-1 text-xs text-gray-500">
+                  Schakelt de interne chat (incl. inspecteur-app) voor deze organisatie in of uit. Bestaande gesprekken blijven bewaard.
+                </p>
               </div>
 
               <div className="flex justify-end border-t border-gray-200 pt-4">

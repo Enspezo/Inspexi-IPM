@@ -205,6 +205,21 @@ describe('Contacts API (e2e)', () => {
       }
     });
 
+    it('can filter by supplierOnly=true', async () => {
+      const res = await request(app.getHttpServer())
+        .get('/api/v1/contacts')
+        .query({ supplierOnly: 'true' })
+        .set('Authorization', `Bearer ${org1AdminToken}`)
+        .expect(200);
+
+      expect(res.body.success).toBe(true);
+      // Seed marks Bouwbedrijf De Vries BV as a supplier
+      expect(res.body.data.data.length).toBeGreaterThanOrEqual(1);
+      for (const contact of res.body.data.data) {
+        expect(contact.isSupplier).toBe(true);
+      }
+    });
+
     it('WERKVOORBEREIDER can list contacts (read access)', async () => {
       const res = await request(app.getHttpServer())
         .get('/api/v1/contacts')
@@ -488,6 +503,12 @@ describe('Contacts API (e2e)', () => {
     // ─── Locations ────────────────────────────────────
 
     it('POST /contacts/:id/locations adds a location', async () => {
+      // Gebruik een gezaaid systeem CRM-locatietype (orgId null, gedeeld).
+      const systemType = await prisma.locationTypeDefinition.findFirst({
+        where: { code: 'kantoor', orgId: null, scope: 'CRM' },
+      });
+      expect(systemType).toBeTruthy();
+
       const res = await request(app.getHttpServer())
         .post(`/api/v1/contacts/${nestedContactId}/locations`)
         .set('Authorization', `Bearer ${org1AdminToken}`)
@@ -497,7 +518,7 @@ describe('Contacts API (e2e)', () => {
           houseNumber: '200',
           postalCode: '1016 BS',
           city: 'Amsterdam',
-          objectType: 'kantoor',
+          locationTypeId: systemType!.id,
           notes: 'E2E test locatie',
         })
         .expect(201);
@@ -505,7 +526,8 @@ describe('Contacts API (e2e)', () => {
       expect(res.body.success).toBe(true);
       expect(res.body.data.name).toBe('Testlocatie Amsterdam');
       expect(res.body.data.street).toBe('Herengracht');
-      expect(res.body.data.objectType).toBe('kantoor');
+      expect(res.body.data.locationTypeId).toBe(systemType!.id);
+      expect(res.body.data.locationType).toMatchObject({ code: 'kantoor' });
       expect(res.body.data.id).toBeDefined();
 
       createdLocationIds.push(res.body.data.id);

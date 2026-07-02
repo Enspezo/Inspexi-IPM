@@ -2,6 +2,7 @@
 // Statische routes (reinspection/new-assignment) vóór de param-route (:id).
 
 import { Controller, Get, Post, Param, Body, UseGuards, ParseUUIDPipe } from '@nestjs/common';
+import { RequiresFeature } from '@/common/decorators/requires-feature.decorator';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { Public, CurrentTenant } from '@/common/decorators';
 import { ClientJwtAuthGuard } from '@/common/guards/client-jwt-auth.guard';
@@ -15,6 +16,7 @@ import { ReinspectionRequestDto, NewAssignmentRequestDto } from './dto';
 @ApiTags('Client Requests')
 @Public()
 @UseGuards(ClientJwtAuthGuard)
+@RequiresFeature('BASIS_INSPECTIES')
 @Controller('client/requests')
 export class ClientRequestsController {
   constructor(private readonly service: ClientRequestsService) {}

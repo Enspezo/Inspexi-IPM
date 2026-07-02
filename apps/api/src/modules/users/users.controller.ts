@@ -6,6 +6,7 @@ import {
   Patch,
   Param,
   Body,
+  Query,
   ParseUUIDPipe,
   ForbiddenException,
   NotFoundException,
@@ -24,7 +25,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { Response } from 'express';
 import { User, Role } from '@prisma/client';
-import { ORG_ADMINS } from '@/common/auth/roles';
+import { ORG_ADMINS, ALL_STAFF } from '@/common/auth/roles';
 import { UsersService } from './users.service';
 import {
   InviteUserDto,
@@ -36,6 +37,8 @@ import {
   UpdateSignatureDto,
   UpdateColorDto,
   DeleteUserDto,
+  ListSelectableUsersQueryDto,
+  UpdatePresenceDto,
 } from './dto';
 import { Throttle } from '@nestjs/throttler';
 import { Roles, CurrentUser, Public } from '@/common/decorators';
@@ -53,6 +56,19 @@ export class UsersController {
   @ApiResponse({ status: 200, description: 'Lijst van gebruikers' })
   async findAll(@CurrentUser() user: User) {
     const users = await this.usersService.findAllByOrg(user.orgId, user.roles.includes(Role.SUPERUSER));
+    return { success: true, data: users };
+  }
+
+  // ─── Selectable users (lichte lijst voor pickers; brede toegang) ──
+  @Get('selectable')
+  @Roles(...ALL_STAFF)
+  @ApiOperation({ summary: 'Lichte gebruikerslijst voor persoon-/team-pickers (optioneel op rol gefilterd)' })
+  @ApiResponse({ status: 200, description: 'Lijst van selecteerbare gebruikers' })
+  async findSelectable(
+    @CurrentUser() user: User,
+    @Query() query: ListSelectableUsersQueryDto,
+  ) {
+    const users = await this.usersService.findSelectable(user.orgId, query.role);
     return { success: true, data: users };
   }
 
@@ -167,6 +183,26 @@ export class UsersController {
   @ApiResponse({ status: 201, description: 'Nieuw token gegenereerd' })
   async rotateIcalToken(@CurrentUser() user: User) {
     const data = await this.usersService.rotateIcalToken(user.id);
+    return { success: true, data };
+  }
+
+  @Get('me/presence')
+  @ApiOperation({ summary: 'Eigen beschikbaarheidsstatus ophalen (interne chat)' })
+  @ApiResponse({ status: 200, description: 'Presence' })
+  async getPresence(@CurrentUser() user: User) {
+    const data = await this.usersService.getPresence(user.id);
+    return { success: true, data };
+  }
+
+  @Patch('me/presence')
+  @ApiOperation({ summary: 'Eigen beschikbaarheidsstatus instellen (interne chat)' })
+  @ApiResponse({ status: 200, description: 'Presence bijgewerkt' })
+  async updatePresence(@Body() dto: UpdatePresenceDto, @CurrentUser() user: User) {
+    const data = await this.usersService.updatePresence(
+      user.id,
+      dto.availability,
+      dto.availabilityNote ?? null,
+    );
     return { success: true, data };
   }
 

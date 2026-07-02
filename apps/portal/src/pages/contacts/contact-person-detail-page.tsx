@@ -6,6 +6,8 @@ import { z } from 'zod';
 import { ContactType, Role } from '@/types';
 import { Button, Card, ErrorBox, InfoField, Input, Select, Spinner, useConfirm, useToast } from '@/components/ui';
 import { DetailPageLayout } from '@/components/layout/detail-page-layout';
+import { FavoriteStar } from '@/components/favorites/favorite-star';
+import { LocationTypeBadge } from '@/components/location-type-badge';
 import { useAuth } from '@/providers/auth-provider';
 import {
   useContactPerson,
@@ -13,18 +15,13 @@ import {
   useDeleteContactPerson,
   useContactPersonLocations,
   useContactPersonRoles,
+  useUnlinkLocationFromContactPerson,
+  useUpdateContactPersonLocationNotes,
 } from './hooks/use-contacts';
+import { LinkLocationModal } from './components/link-location-modal';
 import { roleColors } from '@/lib/contact-person-role';
 import { AuditHistory } from '@/components/audit-history/audit-history';
 import { getErrorMessage } from '@/lib/api-client';
-
-const objectTypeColors: Record<string, string> = {
-  woning: 'bg-blue-100 text-blue-800',
-  kantoor: 'bg-purple-100 text-purple-800',
-  industrieel: 'bg-orange-100 text-orange-800',
-  winkel: 'bg-green-100 text-green-800',
-  overig: 'bg-gray-100 text-gray-800',
-};
 
 const canWrite = [Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE];
 
@@ -51,7 +48,11 @@ export default function ContactPersonDetailPage() {
   const deleteMutation = useDeleteContactPerson();
   const { data: roles } = useContactPersonRoles();
   const roleOptions = (roles ?? []).map((r) => ({ value: r.id, label: r.label }));
+  const unlinkLocationMutation = useUnlinkLocationFromContactPerson(personId!);
+  const updateLocationNotesMutation = useUpdateContactPersonLocationNotes(personId!);
   const [isEditing, setIsEditing] = useState(false);
+  const [isLinkLocationOpen, setIsLinkLocationOpen] = useState(false);
+  const [editingNotes, setEditingNotes] = useState<{ linkId: string; notes: string } | null>(null);
 
   const userCanWrite = user && user.roles.some(r => canWrite.includes(r));
 
@@ -118,6 +119,35 @@ export default function ContactPersonDetailPage() {
     }
   };
 
+  const handleUnlinkLocation = async (linkId: string) => {
+    const confirmed = await confirm({
+      title: 'Locatie ontkoppelen',
+      message: 'Locatie ontkoppelen van deze contactpersoon?',
+      confirmLabel: 'Ontkoppelen',
+    });
+    if (!confirmed) return;
+    try {
+      await unlinkLocationMutation.mutateAsync(linkId);
+      showToast('Locatie ontkoppeld', 'success');
+    } catch (err) {
+      showToast(getErrorMessage(err, 'Ontkoppelen mislukt'), 'error');
+    }
+  };
+
+  const handleSaveNotes = async () => {
+    if (!editingNotes) return;
+    try {
+      await updateLocationNotesMutation.mutateAsync({
+        linkId: editingNotes.linkId,
+        notes: editingNotes.notes || undefined,
+      });
+      showToast('Opmerking opgeslagen', 'success');
+      setEditingNotes(null);
+    } catch (err) {
+      showToast(getErrorMessage(err, 'Opslaan mislukt'), 'error');
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="flex h-64 items-center justify-center">
@@ -154,6 +184,7 @@ export default function ContactPersonDetailPage() {
           </button>
           <div>
             <div className="flex items-center gap-3">
+              <FavoriteStar entityType="ContactPerson" entityId={person.id} />
               <h2 className="text-2xl font-bold text-gray-900">
                 {person.firstName} {person.lastName}
               </h2>
@@ -271,6 +302,14 @@ export default function ContactPersonDetailPage() {
               </span>
             )}
           </h3>
+          {userCanWrite && (
+            <Button variant="secondary" size="sm" onClick={() => setIsLinkLocationOpen(true)}>
+              <svg className="mr-1.5 h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+              Locatie koppelen
+            </Button>
+          )}
         </div>
 
         {locationLinks.length === 0 ? (
@@ -289,6 +328,8 @@ export default function ContactPersonDetailPage() {
                   : [loc.contact.firstName, loc.contact.lastName].filter(Boolean).join(' ')
                 : null;
 
+              const isEditingThis = editingNotes?.linkId === link.id;
+
               return (
                 <li key={link.id} className="py-3">
                   <div className="flex items-start justify-between gap-3">
@@ -300,10 +341,8 @@ export default function ContactPersonDetailPage() {
                         >
                           {loc.name}
                         </button>
-                        {loc.objectType && (
-                          <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${objectTypeColors[loc.objectType] || 'bg-gray-100 text-gray-800'}`}>
-                            {loc.objectType.charAt(0).toUpperCase() + loc.objectType.slice(1)}
-                          </span>
+                        {loc.locationType && (
+                          <LocationTypeBadge locationType={loc.locationType} />
                         )}
                         {isExternal && (
                           <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
@@ -320,10 +359,53 @@ export default function ContactPersonDetailPage() {
                           <span className="ml-1 text-gray-400">· {locContactName}</span>
                         )}
                       </p>
-                      {link.notes && (
+
+                      {/* Notes per link */}
+                      {isEditingThis ? (
+                        <div className="mt-3 space-y-2">
+                          <textarea
+                            value={editingNotes.notes}
+                            onChange={(e) => setEditingNotes({ linkId: link.id, notes: e.target.value })}
+                            rows={2}
+                            placeholder="Opmerkingen..."
+                            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                          />
+                          <div className="flex gap-2">
+                            <Button size="sm" variant="primary" onClick={handleSaveNotes} isLoading={updateLocationNotesMutation.isPending}>
+                              Opslaan
+                            </Button>
+                            <Button size="sm" variant="ghost" onClick={() => setEditingNotes(null)}>
+                              Annuleren
+                            </Button>
+                          </div>
+                        </div>
+                      ) : link.notes ? (
                         <p className="mt-1 text-xs italic text-gray-400">"{link.notes}"</p>
-                      )}
+                      ) : null}
                     </div>
+
+                    {userCanWrite && (
+                      <div className="flex shrink-0 items-center gap-1">
+                        <button
+                          onClick={() => setEditingNotes({ linkId: link.id, notes: link.notes || '' })}
+                          className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+                          title="Opmerkingen bewerken"
+                        >
+                          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                          </svg>
+                        </button>
+                        <button
+                          onClick={() => handleUnlinkLocation(link.id)}
+                          className="rounded p-1 text-gray-400 hover:bg-danger-50 hover:text-danger-600"
+                          title="Ontkoppelen"
+                        >
+                          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        </button>
+                      </div>
+                    )}
                   </div>
                 </li>
               );
@@ -341,6 +423,14 @@ export default function ContactPersonDetailPage() {
         </div>
       )}
     </div>
+
+    <LinkLocationModal
+      isOpen={isLinkLocationOpen}
+      onClose={() => setIsLinkLocationOpen(false)}
+      personId={personId!}
+      personContactId={person.contactId}
+      alreadyLinkedIds={locationLinks.map((l) => l.location?.id).filter((id): id is string => !!id)}
+    />
     </DetailPageLayout>
   );
 }

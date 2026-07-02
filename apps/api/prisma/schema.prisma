@@ -1,10 +1,13 @@
 generator client {
-  provider = "prisma-client-js"
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  // pg_trgm levert de gin_trgm_ops operator-class voor de typo-tolerante KB-zoek.
+  extensions = [pg_trgm]
 }
 
 // ─── Enums ───────────────────────────────────────────────
@@ -21,6 +24,14 @@ enum Role {
 enum ContactType {
   COMPANY
   INDIVIDUAL
+}
+
+// Weergavemodus voor inspecteur-contactgegevens in het klantportaal (per kanaal: telefoon/e-mail).
+// INSPECTOR impliceert altijd een statische terugval wanneer de inspecteur-waarde ontbreekt of zonder toestemming is.
+enum ContactDisplayMode {
+  NONE
+  STATIC
+  INSPECTOR
 }
 
 enum LogType {
@@ -72,6 +83,17 @@ enum ApprovalStatus {
   PENDING
   APPROVED
   REJECTED
+  CANCELLED
+}
+
+// Soort goedkeuringsverzoek (REQ5):
+// - THRESHOLD       = verplicht (org-bedragdrempel of template-`requiresApproval`); blokkeert versturen.
+// - VOLUNTARY_TEAM  = vrijwillig, gericht aan een rol/team; adviserend, blokkeert niet.
+// - VOLUNTARY_PERSON = vrijwillig, gericht aan één persoon; adviserend, blokkeert niet.
+enum ApprovalKind {
+  THRESHOLD
+  VOLUNTARY_TEAM
+  VOLUNTARY_PERSON
 }
 
 enum NotificationType {
@@ -102,6 +124,17 @@ enum NotificationType {
   INSPECTIEPLAN_TER_REVIEW
   INSPECTIEPLAN_GOEDGEKEURD
   INSPECTIEPLAN_AFGEKEURD
+  OFFERTE_GOEDKEURING_GEVRAAGD_TEAM
+  OFFERTE_GOEDKEURING_GEVRAAGD_PERSOON
+  OFFERTE_GOEDKEURING_AFGEHANDELD
+  CHAT_BERICHT
+  CHAT_TEAM_BERICHT
+  CHAT_MENTION
+  SUPPORT_TICKET_AANGEMAAKT
+  SUPPORT_TICKET_REACTIE
+  SUPPORT_TICKET_STATUS
+  MEETMIDDEL_KALIBRATIE_BINNENKORT
+  MEETMIDDEL_KALIBRATIE_VERLOPEN
 }
 
 enum AuditAction {
@@ -152,6 +185,7 @@ enum FollowUpAssigneeType {
 
 enum DocumentEntityType {
   CONTACT
+  LOCATION
   REQUEST
   QUOTE
   PRODUCT
@@ -160,6 +194,7 @@ enum DocumentEntityType {
   PROJECT
   USER
   WORK_ORDER
+  SUPPORT_TICKET
 }
 
 enum NoteEntityType {
@@ -255,6 +290,72 @@ enum CustomFieldEntityType {
   PRODUCT
 }
 
+enum NumberingModel {
+  REQUEST
+  QUOTE
+  PROJECT
+  PRODUCT
+  WORK_ORDER
+  LOCATION_NODE
+  ASSET_NODE
+}
+
+enum NumberingMode {
+  SEQUENTIAL
+  RANDOM
+}
+
+enum NumberingReset {
+  CONTINUOUS
+  PER_YEAR
+  PER_MONTH
+}
+
+// ─── PRD-10: Helpsysteem ─────────────────────────────────
+
+enum HelpArticleStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+enum SupportTicketStatus {
+  NIEUW
+  IN_BEHANDELING
+  WACHT_OP_KLANT
+  OPGELOST
+  GESLOTEN
+}
+
+enum SupportTicketPriority {
+  LAAG
+  NORMAAL
+  HOOG
+  URGENT
+}
+
+enum SupportTicketCategory {
+  VRAAG
+  PROBLEEM
+  BUG
+  FEATURE_REQUEST
+  FACTUUR
+  OVERIG
+}
+
+enum SupportMessageAuthorType {
+  USER
+  SUPPORT
+  SYSTEM
+}
+
+enum SupportAccessAction {
+  ENABLED
+  DISABLED
+  EXPIRED
+  ACCESSED
+}
+
 // ─── PRD-01: Foundation Models ───────────────────────────
 
 model Organization {
@@ -271,7 +372,29 @@ model Organization {
   workdayStart        Int      @default(8) @map("workday_start")
   workdayEnd          Int      @default(17) @map("workday_end")
   isActive            Boolean  @default(true) @map("is_active")
+  // Interne chat per organisatie aan/uit (REQ1) — te schakelen door SUPERUSER/ORG_ADMIN.
+  chatEnabled         Boolean  @default(true) @map("chat_enabled")
+  // SaaS-abonnement (entitlements, PRD-09): template-plan voor deze org. Nullable —
+  // een org zonder plan heeft (buiten core) geen gegate functies.
+  planId              String?  @map("plan_id") @db.Uuid
   createdAt           DateTime @default(now()) @map("created_at")
+
+  // Zichtbaarheid inspecteur-contactgegevens in klantportaal (per kanaal onafhankelijk).
+  // De getoonde waarde wordt altijd server-side geresolved (zie resolveInspectorContact).
+  inspectorPhoneDisplay ContactDisplayMode @default(NONE) @map("inspector_phone_display")
+  inspectorEmailDisplay ContactDisplayMode @default(NONE) @map("inspector_email_display")
+  inspectorStaticPhone  String?            @map("inspector_static_phone")
+  inspectorStaticEmail  String?            @map("inspector_static_email")
+
+  // Offerte-goedkeuring drempel (REQ5): offertes met `total` strikt boven dit bedrag
+  // mogen niet verstuurd worden zonder goedkeuring door iemand met `quoteApprovalRequiredRole`.
+  // Beide null → geen verplichte drempel (val terug op template-`requiresApproval`).
+  quoteApprovalThreshold    Decimal? @map("quote_approval_threshold") @db.Decimal(12, 2)
+  quoteApprovalRequiredRole Role?    @map("quote_approval_required_role")
+
+  // Support-toegang (PRD-10): expliciete, geauditeerde consent voor InspeXi-support.
+  supportAccessEnabled   Boolean   @default(false) @map("support_access_enabled")
+  supportAccessExpiresAt DateTime? @map("support_access_expires_at")
 
   users                    User[]
   invitations              Invitation[]
@@ -289,9 +412,12 @@ model Organization {
   notificationGroupPrefs   NotificationGroupPref[]
   tasks                    Task[]
   documents                Document[]
+  documentTags             DocumentTag[]
   notes                    Note[]
+  favorites                Favorite[]
   planningItems            PlanningItem[]
   customFieldDefinitions   CustomFieldDefinition[]
+  numberingSchemes         NumberingScheme[]
   emailTemplates           EmailTemplate[]
   emailTemplateAttachments EmailTemplateAttachment[]
   projects                 Project[]
@@ -304,14 +430,14 @@ model Organization {
   // Inspectiedomein (Fase 1)
   normConfigurations       NormConfiguration[]
   inspectionPlans          InspectionPlan[]
-  assets                   Asset[]
+  assetNodes               AssetNode[]
+  inspectionPlanLocations  InspectionPlanLocation[]
   visualInspections        VisualInspection[]
   measurementRecords       MeasurementRecord[]
   findings                 Finding[]
   inspectionPhotos         Photo[]
   inspectionSignatures     Signature[]
   reports                  Report[]
-  inspectionLocations      InspectionLocation[]
   checklistItems           ChecklistItem[]
   checklists               Checklist[]
   categories               Category[]
@@ -339,8 +465,80 @@ model Organization {
   resolutionStatusTypes    ResolutionStatusType[]
   clientRequestTypeOptions ClientRequestTypeOption[]
   clientRequestStatusTypes ClientRequestStatusType[]
+  pdokApiLogs              PdokApiLog[]
+
+  // Interne chat (REQ1)
+  chatThreads  ChatThread[]
+  chatMessages ChatMessage[]
+
+  // SaaS-abonnement (entitlements, PRD-09)
+  plan     Plan?                 @relation(fields: [planId], references: [id])
+  features OrganizationFeature[]
+
+  // Helpsysteem (PRD-10)
+  helpCategories    HelpCategory[]
+  helpArticles      HelpArticle[]
+  supportTickets    SupportTicket[]
+  supportAccessLogs SupportAccessLog[]
+
+  // Inspecteur-certificaten (PRD-11)
+  inspectorCertificates InspectorCertificate[]
+
+  // Meetmiddelen
+  measurementInstruments           MeasurementInstrument[]
+  calibrations                     Calibration[]
+  userDefaultInstruments           UserDefaultInstrument[]
+  inspectionPlanDefaultInstruments InspectionPlanDefaultInstrument[]
 
   @@map("imp_organizations")
+}
+
+// ─── SaaS-abonnementen & feature-entitlements (PRD-09) ───
+// De feature-catalogus (keys/labels/afhankelijkheden) leeft in code
+// (packages/entitlements — @inspexi/entitlements). Deze tabellen slaan alleen
+// plannen (templates) en per-org-afwijkingen op die naar feature-keys verwijzen.
+
+model Plan {
+  id          String   @id @default(uuid()) @db.Uuid
+  name        String // "Basis", "Compleet"
+  slug        String   @unique // regex ^[a-z0-9]+$ (geen hyphens!)
+  description String?
+  isActive    Boolean  @default(true) @map("is_active")
+  sortOrder   Int      @default(0) @map("sort_order")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  features      PlanFeature[]
+  organizations Organization[]
+
+  @@map("imp_plans")
+}
+
+model PlanFeature {
+  id         String @id @default(uuid()) @db.Uuid
+  planId     String @map("plan_id") @db.Uuid
+  featureKey String @map("feature_key") // verwijst naar FEATURE_CATALOG
+
+  plan Plan @relation(fields: [planId], references: [id], onDelete: Cascade)
+
+  @@unique([planId, featureKey])
+  @@map("imp_plan_features")
+}
+
+// Per-org delta t.o.v. het plan (alleen afwijkingen worden opgeslagen).
+model OrganizationFeature {
+  id          String   @id @default(uuid()) @db.Uuid
+  orgId       String   @map("org_id") @db.Uuid
+  featureKey  String   @map("feature_key")
+  enabled     Boolean // true = bijschakelen, false = afschakelen
+  updatedById String?  @map("updated_by_id") @db.Uuid
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  updatedBy    User?        @relation("OrgFeatureUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+
+  @@unique([orgId, featureKey])
+  @@map("imp_organization_features")
 }
 
 model User {
@@ -348,6 +546,10 @@ model User {
   orgId           String?        @map("org_id") @db.Uuid
   email           String         @unique
   passwordHash    String         @map("password_hash")
+  // Wijzigingsmoment van het wachtwoord — bindt reset-tokens aan de huidige
+  // wachtwoordstaat zodat een reset-link éénmalig bruikbaar is en na een
+  // wachtwoordwijziging (of hergebruik) ongeldig wordt.
+  passwordChangedAt DateTime?    @map("password_changed_at")
   firstName       String         @map("first_name")
   lastName        String         @map("last_name")
   roles           Role[]         @default([])
@@ -369,6 +571,22 @@ model User {
   icalToken       String         @unique @default(uuid()) @map("ical_token")
   createdAt       DateTime       @default(now()) @map("created_at")
 
+  // Standaard vrijwillige goedkeurder (persoon) — voorvult het persoon-verzoek (REQ5).
+  defaultApprovalPersonId String? @map("default_approval_person_id") @db.Uuid
+
+  // Klantportaal-contactgegevens (los van login-`email`; nooit automatisch met klanten gedeeld).
+  // Worden alleen getoond bij org-modus INSPECTOR én expliciete toestemming per kanaal.
+  contactPhone          String? @map("contact_phone")
+  contactEmail          String? @map("contact_email")
+  sharePhoneWithClients Boolean @default(false) @map("share_phone_with_clients")
+  shareEmailWithClients Boolean @default(false) @map("share_email_with_clients")
+
+  // Interne chat — beschikbaarheidsstatus (REQ1). `lastSeenAt` wordt bijgewerkt op
+  // chat-activiteit via raw SQL (bewust buiten de audit-middleware om ruis te voorkomen).
+  availability     Availability @default(BESCHIKBAAR)
+  availabilityNote String?      @map("availability_note")
+  lastSeenAt       DateTime?    @map("last_seen_at")
+
   organization  Organization?  @relation(fields: [orgId], references: [id])
   refreshTokens RefreshToken[]
   ownedContacts Contact[]      @relation("ContactOwner")
@@ -382,11 +600,20 @@ model User {
   createdQuotes      Quote[]                @relation("QuoteCreatedByUser")
   requestedApprovals QuoteApprovalRequest[] @relation("ApprovalRequestedByUser")
   reviewedApprovals  QuoteApprovalRequest[] @relation("ApprovalReviewedByUser")
+  targetedApprovals  QuoteApprovalRequest[] @relation("ApprovalApproverUser")
   quoteQuestions     QuoteQuestion[]        @relation("QuoteQuestionUser")
+
+  // Self-relatie: standaard vrijwillige goedkeurder.
+  defaultApprovalPerson User?  @relation("UserDefaultApprover", fields: [defaultApprovalPersonId], references: [id], onDelete: SetNull)
+  defaultApproverFor    User[] @relation("UserDefaultApprover")
 
   notifications     Notification[]
   notificationPrefs NotificationPref[]
   auditLogs         AuditLog[]
+  favorites         Favorite[]
+
+  // Per-org feature-overrides die deze gebruiker heeft gezet (PRD-09 entitlements).
+  orgFeatureUpdates OrganizationFeature[] @relation("OrgFeatureUpdatedBy")
 
   assignedTasks       Task[]                  @relation("TaskAssignee")
   createdTasks        Task[]                  @relation("TaskCreatedBy")
@@ -409,27 +636,46 @@ model User {
   createdWorkOrders WorkOrder[]                 @relation("WorkOrderCreatedByUser")
 
   // Inspectiedomein (Fase 1)
-  assignedInspectionPlans    InspectionPlan[]               @relation("InspectionPlanAssignee")
-  reviewingInspectionPlans   InspectionPlan[]               @relation("InspectionPlanReviewer")
-  createdInspectionPlans     InspectionPlan[]               @relation("InspectionPlanCreatedBy")
-  modifiedInspectionPlans    InspectionPlan[]               @relation("InspectionPlanModifiedBy")
-  createdAssets              Asset[]                        @relation("AssetCreatedBy")
-  visualInspections          VisualInspection[]             @relation("VisualInspectionInspector")
-  measurementRecords         MeasurementRecord[]            @relation("MeasurementRecordInspector")
-  createdFindings            Finding[]                      @relation("FindingCreatedBy")
-  resolvedFindings           Finding[]                      @relation("FindingResolvedBy")
-  uploadedInspectionPhotos   Photo[]                        @relation("PhotoUploadedBy")
-  inspectionSignatures       Signature[]                    @relation("SignatoryUser")
-  approvedReports            Report[]                       @relation("ReportApprovedBy")
-  createdReports             Report[]                       @relation("ReportCreatedBy")
-  createdInspectionLocations InspectionLocation[]           @relation("InspectionLocationCreatedBy")
-  syncQueueItems             SyncQueue[]                    @relation("SyncQueueUser")
-  resolvedSyncItems          SyncQueue[]                    @relation("SyncResolvedBy")
-  deviceRegistrations        DeviceRegistration[]
-  inspectionMessages         InspectionMessage[]            @relation("MessageUser")
-  voiceUserPrompts           VoiceUserPrompt[]              @relation("VoiceUserPromptUser")
-  uploadedInspectionDocx     DocumentTemplateDocxRevision[] @relation("InspectionDocxRevisionUploadedBy")
+  assignedInspectionPlans  InspectionPlan[]               @relation("InspectionPlanAssignee")
+  reviewingInspectionPlans InspectionPlan[]               @relation("InspectionPlanReviewer")
+  createdInspectionPlans   InspectionPlan[]               @relation("InspectionPlanCreatedBy")
+  modifiedInspectionPlans  InspectionPlan[]               @relation("InspectionPlanModifiedBy")
+  createdAssetNodes        AssetNode[]                    @relation("AssetNodeCreatedBy")
+  visualInspections        VisualInspection[]             @relation("VisualInspectionInspector")
+  measurementRecords       MeasurementRecord[]            @relation("MeasurementRecordInspector")
+  createdFindings          Finding[]                      @relation("FindingCreatedBy")
+  resolvedFindings         Finding[]                      @relation("FindingResolvedBy")
+  uploadedInspectionPhotos Photo[]                        @relation("PhotoUploadedBy")
+  inspectionSignatures     Signature[]                    @relation("SignatoryUser")
+  approvedReports          Report[]                       @relation("ReportApprovedBy")
+  createdReports           Report[]                       @relation("ReportCreatedBy")
+  syncQueueItems           SyncQueue[]                    @relation("SyncQueueUser")
+  resolvedSyncItems        SyncQueue[]                    @relation("SyncResolvedBy")
+  deviceRegistrations      DeviceRegistration[]
+  inspectionMessages       InspectionMessage[]            @relation("MessageUser")
+  voiceUserPrompts         VoiceUserPrompt[]              @relation("VoiceUserPromptUser")
+  uploadedInspectionDocx   DocumentTemplateDocxRevision[] @relation("InspectionDocxRevisionUploadedBy")
 
+  // Interne chat (REQ1)
+  createdChatThreads ChatThread[]      @relation("ChatThreadCreatedBy")
+  chatParticipations ChatParticipant[] @relation("ChatParticipantUser")
+  sentChatMessages   ChatMessage[]     @relation("ChatMessageSender")
+
+  // Helpsysteem (PRD-10)
+  helpArticles           HelpArticle[]          @relation("HelpArticleAuthor")
+  createdSupportTickets  SupportTicket[]        @relation("SupportTicketCreatedBy")
+  assignedSupportTickets SupportTicket[]        @relation("SupportTicketAssignedTo")
+  supportTicketMessages  SupportTicketMessage[] @relation("SupportTicketMessageAuthor")
+  supportAccessLogs      SupportAccessLog[]     @relation("SupportAccessLogPerformedBy")
+
+  // Inspecteur-certificaten / diploma's (PRD-11)
+  inspectorCertificates InspectorCertificate[] @relation("InspectorCertificates")
+
+  // Meetmiddelen
+  assignedInstruments MeasurementInstrument[] @relation("MeasurementInstrumentAssignee")
+  defaultInstruments  UserDefaultInstrument[]
+
+  @@index([orgId, isDeleted])
   @@map("imp_users")
 }
 
@@ -441,12 +687,14 @@ model RefreshToken {
   revokedAt DateTime? @map("revoked_at")
   ipAddress String?   @map("ip_address")
   userAgent String?   @map("user_agent")
+  rememberMe Boolean  @default(true) @map("remember_me")
   createdAt DateTime  @default(now()) @map("created_at")
 
   user User @relation(fields: [userId], references: [id])
 
   @@index([userId])
   @@index([expiresAt])
+  @@index([tokenHash])
   @@map("imp_refresh_tokens")
 }
 
@@ -481,13 +729,20 @@ model Contact {
   vatNumber     String?     @map("vat_number")
   vatValidation Json?       @map("vat_validation")
   cocNumber     String?     @map("coc_number")
-  notes         String?
-  priceTableId  String?     @map("price_table_id") @db.Uuid
-  ownerId       String?     @map("owner_id") @db.Uuid
-  customFields  Json?       @map("custom_fields")
-  isDeleted     Boolean     @default(false) @map("is_deleted")
-  createdAt     DateTime    @default(now()) @map("created_at")
-  updatedAt     DateTime    @updatedAt @map("updated_at")
+
+  // Leverancier / inkoop
+  isSupplier             Boolean  @default(false) @map("is_supplier")
+  supplierCustomerNumber String?  @map("supplier_customer_number")
+  purchaseConditions     String?  @map("purchase_conditions")
+  supplierRating         Boolean? @map("supplier_rating")
+
+  notes        String?
+  priceTableId String?  @map("price_table_id") @db.Uuid
+  ownerId      String?  @map("owner_id") @db.Uuid
+  customFields Json?    @map("custom_fields")
+  isDeleted    Boolean  @default(false) @map("is_deleted")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
 
   organization       Organization           @relation(fields: [orgId], references: [id])
   owner              User?                  @relation("ContactOwner", fields: [ownerId], references: [id])
@@ -510,6 +765,7 @@ model Contact {
 
   @@index([orgId])
   @@index([ownerId])
+  @@index([orgId, isSupplier])
   @@map("imp_contacts")
 }
 
@@ -588,32 +844,41 @@ model ContactPerson {
 }
 
 model Location {
-  id           String   @id @default(uuid()) @db.Uuid
-  contactId    String   @map("contact_id") @db.Uuid
-  orgId        String   @map("org_id") @db.Uuid
-  name         String
-  street       String
-  houseNumber  String   @map("house_number")
-  postalCode   String   @map("postal_code")
-  city         String
-  objectType   String?  @map("object_type")
-  notes        String?
-  pdokData     Json?    @map("pdok_data")
-  lat          Float?
-  lng          Float?
-  customFields Json?    @map("custom_fields")
-  createdAt    DateTime @default(now()) @map("created_at")
-  updatedAt    DateTime @updatedAt @map("updated_at")
+  id              String   @id @default(uuid()) @db.Uuid
+  contactId       String   @map("contact_id") @db.Uuid
+  orgId           String   @map("org_id") @db.Uuid
+  name            String
+  street          String
+  houseNumber     String   @map("house_number")
+  postalCode      String   @map("postal_code")
+  city            String
+  locationTypeId  String?  @map("location_type_id") @db.Uuid
+  notes           String?
+  pdokData        Json?    @map("pdok_data")
+  lat             Float?
+  lng             Float?
+  // BAG-bouwgegevens (verrijkt via PDOK BAG OGC API)
+  gebruiksfunctie String?  @map("gebruiksfunctie")
+  bouwjaar        Int?     @map("bouwjaar")
+  oppervlakte     Float?   @map("oppervlakte")
+  bagId           String?  @map("bag_id")
+  customFields    Json?    @map("custom_fields")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
 
   contact                Contact                 @relation(fields: [contactId], references: [id])
   organization           Organization            @relation(fields: [orgId], references: [id])
+  locationType           LocationTypeDefinition? @relation(fields: [locationTypeId], references: [id], onDelete: SetNull)
   requests               Request[]
   quotes                 Quote[]
   planningItems          PlanningItem[]
   projects               Project[]
   locationContactPersons LocationContactPerson[]
+  inspectionPlans        InspectionPlan[]
+  assetNodeRoot          AssetNode?              @relation("AssetNodeRoot") // 1:1; de wortel van de inspectie-boom voor deze locatie
 
   @@index([contactId])
+  @@index([locationTypeId])
   @@map("imp_locations")
 }
 
@@ -631,6 +896,30 @@ model LocationContactPerson {
 
   @@unique([locationId, contactPersonId])
   @@map("imp_location_contact_persons")
+}
+
+/// Operationele log van betekenisvolle PDOK API-calls (lookup / BAG-enrich /
+/// refresh). Geen audit-trail — puur queryable observability. Geen FK-relatie
+/// naar User/Location zodat rijen bewaard blijven na verwijdering daarvan.
+model PdokApiLog {
+  id            String   @id @default(uuid()) @db.Uuid
+  orgId         String   @map("org_id") @db.Uuid
+  userId        String?  @map("user_id") @db.Uuid
+  locationId    String?  @map("location_id") @db.Uuid
+  operation     String
+  endpoint      String
+  requestParams Json?    @map("request_params")
+  httpStatus    Int?     @map("http_status")
+  success       Boolean
+  durationMs    Int?     @map("duration_ms")
+  errorMessage  String?  @map("error_message")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  organization Organization @relation(fields: [orgId], references: [id])
+
+  @@index([orgId, createdAt])
+  @@index([locationId])
+  @@map("imp_pdok_api_logs")
 }
 
 model ContactLog {
@@ -730,6 +1019,7 @@ model Product {
   orgId          String   @map("org_id") @db.Uuid
   productGroupId String?  @map("product_group_id") @db.Uuid
   name           String
+  productCode    String?  @map("product_code")
   description    String?
   unit           String
   defaultVat     Float    @default(21) @map("default_vat")
@@ -743,6 +1033,7 @@ model Product {
   quoteLines      QuoteLine[]
   workOrderLines  WorkOrderLine[]
 
+  @@unique([orgId, productCode])
   @@map("imp_products")
 }
 
@@ -805,23 +1096,24 @@ model ContactPriceTable {
 // ─── PRD-03: Requests (Leads & Aanvragen) ────────────────
 
 model Request {
-  id           String        @id @default(uuid()) @db.Uuid
-  orgId        String        @map("org_id") @db.Uuid
-  contactId    String        @map("contact_id") @db.Uuid
-  locationId   String?       @map("location_id") @db.Uuid
-  assignedTo   String?       @map("assigned_to") @db.Uuid
-  source       RequestSource
-  status       RequestStatus @default(NIEUW)
-  lostReasonId String?       @map("lost_reason_id") @db.Uuid
-  lostNote     String?       @map("lost_note")
-  title        String
-  description  String?
-  priority     Priority      @default(NORMAL)
-  customFields Json?         @map("custom_fields")
-  createdBy    String        @map("created_by") @db.Uuid
-  isDeleted    Boolean       @default(false) @map("is_deleted")
-  createdAt    DateTime      @default(now()) @map("created_at")
-  updatedAt    DateTime      @updatedAt @map("updated_at")
+  id            String        @id @default(uuid()) @db.Uuid
+  orgId         String        @map("org_id") @db.Uuid
+  requestNumber String?       @map("request_number")
+  contactId     String        @map("contact_id") @db.Uuid
+  locationId    String?       @map("location_id") @db.Uuid
+  assignedTo    String?       @map("assigned_to") @db.Uuid
+  source        RequestSource
+  status        RequestStatus @default(NIEUW)
+  lostReasonId  String?       @map("lost_reason_id") @db.Uuid
+  lostNote      String?       @map("lost_note")
+  title         String
+  description   String?
+  priority      Priority      @default(NORMAL)
+  customFields  Json?         @map("custom_fields")
+  createdBy     String        @map("created_by") @db.Uuid
+  isDeleted     Boolean       @default(false) @map("is_deleted")
+  createdAt     DateTime      @default(now()) @map("created_at")
+  updatedAt     DateTime      @updatedAt @map("updated_at")
 
   projectId String? @map("project_id") @db.Uuid
 
@@ -835,6 +1127,7 @@ model Request {
   statusHistory RequestStatusHistory[]
   quotes        Quote[]
 
+  @@unique([orgId, requestNumber])
   @@index([orgId, status])
   @@index([contactId])
   @@index([assignedTo])
@@ -1008,6 +1301,7 @@ model Quote {
   @@index([contactId])
   @@index([requestId])
   @@index([projectId])
+  @@index([orgId, createdBy])
   @@map("imp_quotes")
 }
 
@@ -1073,9 +1367,17 @@ model QuoteApprovalRequest {
   requestedAt DateTime       @default(now()) @map("requested_at")
   reviewedAt  DateTime?      @map("reviewed_at")
 
+  // Gericht goedkeuringsverzoek (REQ5).
+  kind           ApprovalKind @default(THRESHOLD)
+  // Doelrol: voor THRESHOLD de org-vereiste rol; voor VOLUNTARY_TEAM de rol/team van de aanvrager.
+  approverRole   Role?        @map("approver_role")
+  // Doelpersoon: alleen voor VOLUNTARY_PERSON.
+  approverUserId String?      @map("approver_user_id") @db.Uuid
+
   quote           Quote @relation(fields: [quoteId], references: [id], onDelete: Cascade)
   requestedByUser User  @relation("ApprovalRequestedByUser", fields: [requestedBy], references: [id])
   reviewedByUser  User? @relation("ApprovalReviewedByUser", fields: [reviewedBy], references: [id])
+  approverUser    User? @relation("ApprovalApproverUser", fields: [approverUserId], references: [id])
 
   @@index([quoteId])
   @@map("imp_quote_approval_requests")
@@ -1147,7 +1449,7 @@ model AuditLog {
 
   user User @relation(fields: [userId], references: [id])
 
-  @@index([entityType, entityId])
+  @@index([entityType, entityId, createdAt])
   @@index([orgId, createdAt])
   @@index([userId])
   @@map("imp_audit_logs")
@@ -1200,12 +1502,47 @@ model Document {
   isSharedWithClient Boolean            @default(false) @map("is_shared_with_client")
   createdAt          DateTime           @default(now()) @map("created_at")
 
-  organization Organization @relation(fields: [orgId], references: [id])
-  uploadedBy   User         @relation("DocumentUploadedBy", fields: [uploadedById], references: [id])
+  organization Organization            @relation(fields: [orgId], references: [id])
+  uploadedBy   User                    @relation("DocumentUploadedBy", fields: [uploadedById], references: [id])
+  tags         DocumentTagAssignment[]
 
   @@index([orgId, entityType, entityId])
   @@index([uploadedById])
   @@map("imp_documents")
+}
+
+// ─── Document Tags ──────────────────────────────────────
+
+model DocumentTag {
+  id        String   @id @default(uuid()) @db.Uuid
+  orgId     String   @map("org_id") @db.Uuid
+  name      String
+  color     String
+  sortOrder Int      @default(0) @map("sort_order")
+  isActive  Boolean  @default(true) @map("is_active")
+  isDeleted Boolean  @default(false) @map("is_deleted")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  organization Organization            @relation(fields: [orgId], references: [id])
+  documents    DocumentTagAssignment[]
+
+  @@unique([orgId, name])
+  @@map("imp_document_tags")
+}
+
+model DocumentTagAssignment {
+  documentId    String   @map("document_id") @db.Uuid
+  documentTagId String   @map("document_tag_id") @db.Uuid
+  orgId         String   @map("org_id") @db.Uuid
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  document    Document    @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  documentTag DocumentTag @relation(fields: [documentTagId], references: [id], onDelete: Cascade)
+
+  @@id([documentId, documentTagId])
+  @@index([orgId])
+  @@index([documentTagId])
+  @@map("imp_document_tag_assignments")
 }
 
 // ─── PRD-07: Planning & Afspraken ───────────────────────
@@ -1464,6 +1801,46 @@ model CustomFieldDefinition {
   @@map("imp_custom_field_definitions")
 }
 
+// ─── Configurable record numbering (per org, per model) ──
+
+model NumberingScheme {
+  id               String         @id @default(uuid()) @db.Uuid
+  orgId            String         @map("org_id") @db.Uuid
+  model            NumberingModel
+  prefix           String         @default("")
+  suffix           String         @default("")
+  mode             NumberingMode  @default(SEQUENTIAL)
+  start            Int            @default(1)
+  interval         Int            @default(1)
+  digits           Int            @default(4)
+  resetPolicy      NumberingReset @default(CONTINUOUS) @map("reset_policy")
+  allowManualEntry Boolean        @default(false) @map("allow_manual_entry")
+  isActive         Boolean        @default(true) @map("is_active")
+  createdAt        DateTime       @default(now()) @map("created_at")
+  updatedAt        DateTime       @updatedAt @map("updated_at")
+
+  organization Organization       @relation(fields: [orgId], references: [id])
+  counters     NumberingCounter[]
+
+  @@unique([orgId, model])
+  @@map("imp_numbering_schemes")
+}
+
+// Atomic per-period counter — incremented in a single ON CONFLICT statement so
+// number generation never relies on a racy max+1 scan. `value` = last issued value.
+model NumberingCounter {
+  id        String   @id @default(uuid()) @db.Uuid
+  schemeId  String   @map("scheme_id") @db.Uuid
+  periodKey String   @map("period_key")
+  value     Int      @default(0)
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  scheme NumberingScheme @relation(fields: [schemeId], references: [id], onDelete: Cascade)
+
+  @@unique([schemeId, periodKey])
+  @@map("imp_numbering_counters")
+}
+
 // ─── Email Templates ────────────────────────────────────
 
 model EmailTemplate {
@@ -1555,6 +1932,29 @@ model Note {
   @@index([parentId])
   @@index([createdById])
   @@map("imp_notes")
+}
+
+/// Per-user favorites ("sterretjes") for records across a fixed allow-list of
+/// favoritable models (REQ36). `entityType` holds the canonical Prisma model name
+/// (e.g. "Contact", "Quote") so it lines up with the audit entity registry and the
+/// frontend ENTITY_TYPE_LABELS / getEntityLink helpers. `entityId` is NOT a real
+/// FK (it points at one of several tables), so cross-tenant ownership is validated
+/// in the service via assertSameOrg before a favorite is written.
+model Favorite {
+  id         String   @id @default(uuid()) @db.Uuid
+  userId     String   @map("user_id") @db.Uuid
+  orgId      String   @map("org_id") @db.Uuid
+  entityType String   @map("entity_type")
+  entityId   String   @map("entity_id") @db.Uuid
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [orgId], references: [id])
+
+  @@unique([userId, entityType, entityId])
+  @@index([userId])
+  @@index([orgId])
+  @@map("imp_favorites")
 }
 
 // ─── Work Orders (Werkbonnen) ─────────────────────────────
@@ -2097,10 +2497,11 @@ model ClassificationOption {
 // ─── Inspectieplan (kern) ────────────────────────────────
 
 model InspectionPlan {
-  id        String  @id @default(uuid()) @db.Uuid
-  orgId     String  @map("org_id") @db.Uuid
-  contactId String  @map("contact_id") @db.Uuid // was clientId → Beheer Contact
-  projectId String? @map("project_id") @db.Uuid // Beheer Project
+  id         String  @id @default(uuid()) @db.Uuid
+  orgId      String  @map("org_id") @db.Uuid
+  contactId  String  @map("contact_id") @db.Uuid // was clientId → Beheer Contact
+  projectId  String? @map("project_id") @db.Uuid // Beheer Project
+  locationId String? @map("location_id") @db.Uuid // CRM-Location = hoofdlocatie / boom-wortel
 
   inspectionTemplateId String? @map("inspection_template_id") @db.Uuid
 
@@ -2149,6 +2550,7 @@ model InspectionPlan {
   organization            Organization        @relation(fields: [orgId], references: [id])
   contact                 Contact             @relation(fields: [contactId], references: [id])
   project                 Project?            @relation(fields: [projectId], references: [id])
+  location                Location?           @relation(fields: [locationId], references: [id])
   assignedUser            User?               @relation("InspectionPlanAssignee", fields: [assignedTo], references: [id])
   reviewer                User?               @relation("InspectionPlanReviewer", fields: [reviewerId], references: [id])
   installationResponsible ContactPerson?      @relation("PlanInstallationResponsible", fields: [installationResponsibleId], references: [id])
@@ -2156,8 +2558,10 @@ model InspectionPlan {
   lastModifiedByUser      User?               @relation("InspectionPlanModifiedBy", fields: [lastModifiedBy], references: [id])
   inspectionTemplate      InspectionTemplate? @relation(fields: [inspectionTemplateId], references: [id])
 
-  assets                  Asset[]
-  locations               InspectionLocation[]
+  scopeLocations          InspectionPlanLocation[]
+  visualInspections       VisualInspection[]
+  measurementRecords      MeasurementRecord[]
+  findings                Finding[]
   signatures              Signature[]
   reports                 Report[]
   measurementSheetRecords MeasurementSheetRecord[]
@@ -2165,34 +2569,52 @@ model InspectionPlan {
   clientAccess            InspectionClientAccess[]
   magicLinks              ClientMagicLink[]
   inspectionMessages      InspectionMessage[]
-  clientRequests          ClientRequest[]          @relation("RelatedInspectionPlan")
+  clientRequests          ClientRequest[]                   @relation("RelatedInspectionPlan")
   standaloneMeasurements  StandaloneMeasurement[]
+  instrumentDefaults      InspectionPlanDefaultInstrument[]
 
   @@index([orgId, statusCode])
   @@index([contactId])
   @@index([projectId])
+  @@index([locationId])
   @@index([assignedTo])
+  @@index([orgId, updatedAt])
   @@map("imp_inspection_plans")
 }
 
-model Asset {
-  id               String  @id @default(uuid()) @db.Uuid
-  orgId            String  @map("org_id") @db.Uuid // denormaliseerd voor tenant-scope
-  inspectionPlanId String  @map("inspection_plan_id") @db.Uuid
-  parentAssetId    String? @map("parent_asset_id") @db.Uuid
-  locationId       String? @map("location_id") @db.Uuid
+enum AssetNodeType {
+  LOCATION
+  ASSET
+}
 
-  assetType           String  @map("asset_type")
-  name                String
-  identifier          String?
-  locationDescription String? @map("location_description")
+model AssetNode {
+  id    String @id @default(uuid()) @db.Uuid
+  orgId String @map("org_id") @db.Uuid // gedenormaliseerd voor tenant-scope + sync-org
 
-  sortOrder     Int     @default(0) @map("sort_order")
-  treePath      String? @map("tree_path")
-  statusCode    String  @default("new") @map("status") // → imp_asset_status_types.code
-  technicalData Json    @default("{}") @map("technical_data")
+  nodeType AssetNodeType @map("node_type")
+
+  // Boomstructuur
+  parentId       String? @map("parent_id") @db.Uuid // NULL = wortel (altijd een LOCATION)
+  rootLocationId String? @unique @map("root_location_id") @db.Uuid // alleen op de wortel: 1:1 FK → CRM-Location; NULL op niet-root
+
+  // Identiteit & type (code-string, net als nu)
+  typeCode   String  @map("type_code") // → AssetTypeDefinition.code (ASSET) of LocationTypeDefinition.code (LOCATION)
+  nodeNumber String? @map("node_number") // server-toegekend, uniek per org (NumberingModel LOCATION_NODE/ASSET_NODE)
+  name       String
+  identifier String?
+
+  // Inhoud
+  description   String? // locatie-omschrijving / asset-locationDescription
+  technicalData Json    @default("{}") @map("technical_data") // custom velden per type-definitie
+  statusCode    String  @default("new") @map("status") // → imp_asset_status_types.code (vnl. voor ASSET)
   notes         String?
 
+  // Materialised path (PostgreSQL ltree)
+  sortOrder Int                   @default(0) @map("sort_order")
+  path      Unsupported("ltree")? // labels = hyphen-stripped UUIDs; gevuld via DB-trigger
+  depth     Int                   @default(0)
+
+  // Audit/sync
   createdAt DateTime  @default(now()) @map("created_at")
   updatedAt DateTime  @updatedAt @map("updated_at")
   syncedAt  DateTime? @map("synced_at")
@@ -2200,28 +2622,54 @@ model Asset {
   deviceId  String?   @map("device_id")
   deletedAt DateTime? @map("deleted_at")
 
-  organization            Organization             @relation(fields: [orgId], references: [id])
-  inspectionPlan          InspectionPlan           @relation(fields: [inspectionPlanId], references: [id], onDelete: Cascade)
-  parentAsset             Asset?                   @relation("AssetHierarchy", fields: [parentAssetId], references: [id])
-  childAssets             Asset[]                  @relation("AssetHierarchy")
-  location                InspectionLocation?      @relation("AssetLocation", fields: [locationId], references: [id])
-  createdByUser           User?                    @relation("AssetCreatedBy", fields: [createdBy], references: [id])
+  organization  Organization @relation(fields: [orgId], references: [id])
+  rootLocation  Location?    @relation("AssetNodeRoot", fields: [rootLocationId], references: [id]) // alleen op de wortel
+  parent        AssetNode?   @relation("AssetNodeHierarchy", fields: [parentId], references: [id])
+  children      AssetNode[]  @relation("AssetNodeHierarchy")
+  createdByUser User?        @relation("AssetNodeCreatedBy", fields: [createdBy], references: [id])
+
+  // Uitvoerings-back-relations (alleen relevant voor ASSET-nodes, m.u.v. image op LOCATION-nodes)
   visualInspections       VisualInspection[]
   measurementRecords      MeasurementRecord[]
   findings                Finding[]
   measurementSheetRecords MeasurementSheetRecord[]
   markers                 LocationImageMarker[]
   linkedMeasurements      StandaloneMeasurement[]  @relation("LinkedAsset")
+  image                   LocationImage? // floor-plan op een LOCATION-node
+  standaloneMeasurements  StandaloneMeasurement[]  @relation("NodeStandalone")
+  planScopes              InspectionPlanLocation[] // inspecties waarvoor deze LOCATION-node in scope is
 
+  @@unique([orgId, nodeNumber])
   @@index([orgId])
-  @@index([inspectionPlanId])
-  @@map("imp_assets")
+  @@index([parentId])
+  @@index([orgId, updatedAt])
+  // rootLocationId is al geïndexeerd via @unique
+  // GiST-index op `path` kan Prisma niet uitdrukken voor een Unsupported-veld → handmatig in de migratie:
+  //   CREATE INDEX imp_asset_nodes_path_gist ON imp_asset_nodes USING GIST (path);
+  @@map("imp_asset_nodes")
+}
+
+model InspectionPlanLocation {
+  id               String  @id @default(uuid()) @db.Uuid
+  orgId            String  @map("org_id") @db.Uuid
+  inspectionPlanId String  @map("inspection_plan_id") @db.Uuid
+  assetNodeId      String  @map("asset_node_id") @db.Uuid // moet nodeType = LOCATION zijn
+  isPrimary        Boolean @default(false) @map("is_primary")
+
+  organization   Organization   @relation(fields: [orgId], references: [id])
+  inspectionPlan InspectionPlan @relation(fields: [inspectionPlanId], references: [id], onDelete: Cascade)
+  assetNode      AssetNode      @relation(fields: [assetNodeId], references: [id])
+
+  @@unique([inspectionPlanId, assetNodeId])
+  @@index([assetNodeId])
+  @@map("imp_inspection_plan_locations")
 }
 
 model VisualInspection {
-  id      String @id @default(uuid()) @db.Uuid
-  orgId   String @map("org_id") @db.Uuid
-  assetId String @map("asset_id") @db.Uuid
+  id               String @id @default(uuid()) @db.Uuid
+  orgId            String @map("org_id") @db.Uuid
+  assetNodeId      String @map("asset_node_id") @db.Uuid
+  inspectionPlanId String @map("inspection_plan_id") @db.Uuid
 
   status           InspectionExecStatus @default(not_started)
   checklistResults Json                 @default("[]") @map("checklist_results")
@@ -2234,21 +2682,25 @@ model VisualInspection {
   updatedAt DateTime  @updatedAt @map("updated_at")
   syncedAt  DateTime? @map("synced_at")
   deviceId  String?   @map("device_id")
+  deletedAt DateTime? @map("deleted_at") // sync tombstone (PWA v2-contract)
 
-  organization Organization @relation(fields: [orgId], references: [id])
-  asset        Asset        @relation(fields: [assetId], references: [id], onDelete: Cascade)
-  inspector    User?        @relation("VisualInspectionInspector", fields: [inspectorId], references: [id])
-  findings     Finding[]
+  organization   Organization   @relation(fields: [orgId], references: [id])
+  assetNode      AssetNode      @relation(fields: [assetNodeId], references: [id], onDelete: Cascade)
+  inspectionPlan InspectionPlan @relation(fields: [inspectionPlanId], references: [id], onDelete: Cascade)
+  inspector      User?          @relation("VisualInspectionInspector", fields: [inspectorId], references: [id])
+  findings       Finding[]
 
   @@index([orgId])
-  @@index([assetId])
+  @@index([assetNodeId])
+  @@index([inspectionPlanId])
   @@map("imp_visual_inspections")
 }
 
 model MeasurementRecord {
-  id      String @id @default(uuid()) @db.Uuid
-  orgId   String @map("org_id") @db.Uuid
-  assetId String @map("asset_id") @db.Uuid
+  id               String @id @default(uuid()) @db.Uuid
+  orgId            String @map("org_id") @db.Uuid
+  assetNodeId      String @map("asset_node_id") @db.Uuid
+  inspectionPlanId String @map("inspection_plan_id") @db.Uuid
 
   status       InspectionExecStatus @default(not_started)
   measurements Json                 @default("[]")
@@ -2265,21 +2717,25 @@ model MeasurementRecord {
   updatedAt DateTime  @updatedAt @map("updated_at")
   syncedAt  DateTime? @map("synced_at")
   deviceId  String?   @map("device_id")
+  deletedAt DateTime? @map("deleted_at") // sync tombstone (PWA v2-contract)
 
-  organization Organization @relation(fields: [orgId], references: [id])
-  asset        Asset        @relation(fields: [assetId], references: [id], onDelete: Cascade)
-  inspector    User?        @relation("MeasurementRecordInspector", fields: [inspectorId], references: [id])
-  findings     Finding[]
+  organization   Organization   @relation(fields: [orgId], references: [id])
+  assetNode      AssetNode      @relation(fields: [assetNodeId], references: [id], onDelete: Cascade)
+  inspectionPlan InspectionPlan @relation(fields: [inspectionPlanId], references: [id], onDelete: Cascade)
+  inspector      User?          @relation("MeasurementRecordInspector", fields: [inspectorId], references: [id])
+  findings       Finding[]
 
   @@index([orgId])
-  @@index([assetId])
+  @@index([assetNodeId])
+  @@index([inspectionPlanId])
   @@map("imp_measurement_records")
 }
 
 model Finding {
   id                  String  @id @default(uuid()) @db.Uuid
   orgId               String  @map("org_id") @db.Uuid
-  assetId             String  @map("asset_id") @db.Uuid
+  assetNodeId         String  @map("asset_node_id") @db.Uuid
+  inspectionPlanId    String  @map("inspection_plan_id") @db.Uuid
   visualInspectionId  String? @map("visual_inspection_id") @db.Uuid
   measurementRecordId String? @map("measurement_record_id") @db.Uuid
   findingTemplateId   String? @map("finding_template_id") @db.Uuid
@@ -2311,7 +2767,8 @@ model Finding {
   deletedAt DateTime? @map("deleted_at")
 
   organization      Organization          @relation(fields: [orgId], references: [id])
-  asset             Asset                 @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  assetNode         AssetNode             @relation(fields: [assetNodeId], references: [id], onDelete: Cascade)
+  inspectionPlan    InspectionPlan        @relation(fields: [inspectionPlanId], references: [id], onDelete: Cascade)
   visualInspection  VisualInspection?     @relation(fields: [visualInspectionId], references: [id])
   measurementRecord MeasurementRecord?    @relation(fields: [measurementRecordId], references: [id])
   findingTemplate   FindingTemplate?      @relation(fields: [findingTemplateId], references: [id])
@@ -2321,8 +2778,10 @@ model Finding {
   markers           LocationImageMarker[]
 
   @@index([orgId])
-  @@index([assetId])
+  @@index([assetNodeId])
+  @@index([inspectionPlanId])
   @@index([findingTemplateId])
+  @@index([orgId, statusCode])
   @@map("imp_findings")
 }
 
@@ -2360,6 +2819,7 @@ model Photo {
 
   @@index([orgId])
   @@index([entityType, entityId])
+  @@index([orgId, createdAt])
   @@map("imp_photos")
 }
 
@@ -2433,44 +2893,6 @@ model Report {
   @@index([orgId])
   @@index([inspectionPlanId])
   @@map("imp_reports")
-}
-
-// ─── Inspectie-locaties (hernoemd t.o.v. Beheer's Location) ──
-
-model InspectionLocation {
-  id               String  @id @default(uuid()) @db.Uuid
-  orgId            String  @map("org_id") @db.Uuid
-  inspectionPlanId String  @map("inspection_plan_id") @db.Uuid
-  parentLocationId String? @map("parent_location_id") @db.Uuid
-
-  locationType  String  @map("location_type")
-  name          String
-  identifier    String?
-  description   String?
-  sortOrder     Int     @default(0) @map("sort_order")
-  treePath      String? @map("tree_path")
-  technicalData Json    @default("{}") @map("technical_data")
-  notes         String?
-
-  createdAt DateTime  @default(now()) @map("created_at")
-  updatedAt DateTime  @updatedAt @map("updated_at")
-  syncedAt  DateTime? @map("synced_at")
-  createdBy String?   @map("created_by") @db.Uuid
-  deviceId  String?   @map("device_id")
-  deletedAt DateTime? @map("deleted_at")
-
-  organization           Organization            @relation(fields: [orgId], references: [id])
-  inspectionPlan         InspectionPlan          @relation(fields: [inspectionPlanId], references: [id], onDelete: Cascade)
-  parentLocation         InspectionLocation?     @relation("InspectionLocationHierarchy", fields: [parentLocationId], references: [id])
-  childLocations         InspectionLocation[]    @relation("InspectionLocationHierarchy")
-  createdByUser          User?                   @relation("InspectionLocationCreatedBy", fields: [createdBy], references: [id])
-  assets                 Asset[]                 @relation("AssetLocation")
-  image                  LocationImage?
-  standaloneMeasurements StandaloneMeasurement[]
-
-  @@index([orgId])
-  @@index([inspectionPlanId])
-  @@map("imp_inspection_locations")
 }
 
 // ─── Checklistbeheer ─────────────────────────────────────
@@ -2705,6 +3127,7 @@ model AssetTypeDefinition {
   orgId String? @map("org_id") @db.Uuid
 
   code        String
+  shortCode   String? @map("short_code") // shortcode voor [typecode] in AssetNode-nummering
   name        String
   description String?
   icon        String?
@@ -2725,6 +3148,7 @@ model AssetTypeDefinition {
   measurementConfigs AssetTypeMeasurementConfig[]
 
   @@unique([orgId, code])
+  @@unique([orgId, shortCode])
   @@map("imp_asset_type_definitions")
 }
 
@@ -2787,19 +3211,28 @@ model AssetTypeMeasurementConfig {
   @@map("imp_asset_type_measurement_configs")
 }
 
+/// Onderscheidt inspectie-locatie-types (boom-hiërarchie) van CRM-locatie-types
+/// (objecttype van een relatie-locatie). Houdt de selectors gescheiden.
+enum LocationTypeScope {
+  INSPECTION
+  CRM
+}
+
 model LocationTypeDefinition {
   id    String  @id @default(uuid()) @db.Uuid
   orgId String? @map("org_id") @db.Uuid
 
   code        String
+  shortCode   String? @map("short_code") // shortcode voor [typecode] in AssetNode-nummering
   name        String
   description String?
   icon        String?
   color       String?
-  normTypes   Json    @default("[]") @map("norm_types")
-  isActive    Boolean @default(true) @map("is_active")
-  isSystem    Boolean @default(false) @map("is_system")
-  sortOrder   Int     @default(0) @map("sort_order")
+  scope       LocationTypeScope @default(INSPECTION)
+  normTypes   Json              @default("[]") @map("norm_types")
+  isActive    Boolean           @default(true) @map("is_active")
+  isSystem    Boolean           @default(false) @map("is_system")
+  sortOrder   Int               @default(0) @map("sort_order")
 
   createdAt DateTime  @default(now()) @map("created_at")
   updatedAt DateTime  @updatedAt @map("updated_at")
@@ -2809,8 +3242,11 @@ model LocationTypeDefinition {
   fields             LocationTypeField[]
   parentConstraints  LocationTypeConstraint[] @relation("ConstraintLocationType")
   allowedParentTypes LocationTypeConstraint[] @relation("ConstraintLocationAllowedParent")
+  locations          Location[]
 
   @@unique([orgId, code])
+  @@unique([orgId, shortCode])
+  @@index([scope])
   @@map("imp_location_type_definitions")
 }
 
@@ -3205,16 +3641,18 @@ model MeasurementSheetVersionHistory {
 }
 
 model MeasurementSheetRecord {
-  id               String  @id @default(uuid()) @db.Uuid
-  orgId            String  @map("org_id") @db.Uuid
-  templateId       String  @map("template_id") @db.Uuid
-  assetId          String  @map("asset_id") @db.Uuid
-  inspectionPlanId String? @map("inspection_plan_id") @db.Uuid
+  id               String @id @default(uuid()) @db.Uuid
+  orgId            String @map("org_id") @db.Uuid
+  templateId       String @map("template_id") @db.Uuid
+  assetNodeId      String @map("asset_node_id") @db.Uuid
+  inspectionPlanId String @map("inspection_plan_id") @db.Uuid
 
-  templateVersion  String                       @map("template_version")
-  templateSnapshot Json                         @map("template_snapshot")
-  status           MeasurementSheetRecordStatus @default(IN_PROGRESS)
-  data             Json                         @default("{}")
+  templateVersion   String                       @map("template_version")
+  templateSnapshot  Json                         @map("template_snapshot")
+  status            MeasurementSheetRecordStatus @default(IN_PROGRESS)
+  data              Json                         @default("{}")
+  // Gebruikte meetmiddelen (instrument-UUID's); bron van waarheid, reist mee via REST.
+  usedInstrumentIds String[]                     @default([]) @map("used_instrument_ids") @db.Uuid
 
   finalCheckExecuted Boolean  @default(false) @map("final_check_executed")
   finalCheckPassed   Boolean? @map("final_check_passed")
@@ -3225,16 +3663,17 @@ model MeasurementSheetRecord {
   createdAt   DateTime  @default(now()) @map("created_at")
   updatedAt   DateTime  @updatedAt @map("updated_at")
   completedAt DateTime? @map("completed_at")
+  deletedAt   DateTime? @map("deleted_at") // sync tombstone (PWA v2-contract)
   createdBy   String    @map("created_by") @db.Uuid
 
   organization   Organization             @relation(fields: [orgId], references: [id])
   template       MeasurementSheetTemplate @relation(fields: [templateId], references: [id])
-  asset          Asset                    @relation(fields: [assetId], references: [id], onDelete: Cascade)
-  inspectionPlan InspectionPlan?          @relation(fields: [inspectionPlanId], references: [id])
+  assetNode      AssetNode                @relation(fields: [assetNodeId], references: [id], onDelete: Cascade)
+  inspectionPlan InspectionPlan           @relation(fields: [inspectionPlanId], references: [id])
 
   @@index([orgId])
   @@index([templateId])
-  @@index([assetId])
+  @@index([assetNodeId])
   @@index([inspectionPlanId])
   @@index([status])
   @@map("imp_measurement_sheet_records")
@@ -3243,9 +3682,9 @@ model MeasurementSheetRecord {
 // ─── Location images & standalone measurements ───────────
 
 model LocationImage {
-  id         String @id @default(uuid()) @db.Uuid
-  orgId      String @map("org_id") @db.Uuid
-  locationId String @unique @map("location_id") @db.Uuid
+  id     String @id @default(uuid()) @db.Uuid
+  orgId  String @map("org_id") @db.Uuid
+  nodeId String @unique @map("node_id") @db.Uuid // LOCATION-node (1:1)
 
   storagePath      String  @map("storage_path")
   thumbnailPath    String? @map("thumbnail_path")
@@ -3262,11 +3701,11 @@ model LocationImage {
   deviceId  String?   @map("device_id")
 
   organization Organization          @relation(fields: [orgId], references: [id])
-  location     InspectionLocation    @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  node         AssetNode             @relation(fields: [nodeId], references: [id], onDelete: Cascade)
   markers      LocationImageMarker[]
 
   @@index([orgId])
-  @@index([locationId])
+  @@index([nodeId])
   @@map("imp_location_images")
 }
 
@@ -3279,7 +3718,7 @@ model LocationImageMarker {
   positionY  Float      @map("position_y")
   markerType MarkerType @map("marker_type")
 
-  assetId                 String? @map("asset_id") @db.Uuid
+  assetNodeId             String? @map("asset_node_id") @db.Uuid
   findingId               String? @map("finding_id") @db.Uuid
   standaloneMeasurementId String? @map("standalone_measurement_id") @db.Uuid
 
@@ -3296,13 +3735,13 @@ model LocationImageMarker {
 
   organization          Organization           @relation(fields: [orgId], references: [id])
   locationImage         LocationImage          @relation(fields: [locationImageId], references: [id], onDelete: Cascade)
-  asset                 Asset?                 @relation(fields: [assetId], references: [id], onDelete: SetNull)
+  assetNode             AssetNode?             @relation(fields: [assetNodeId], references: [id], onDelete: SetNull)
   finding               Finding?               @relation(fields: [findingId], references: [id], onDelete: SetNull)
   standaloneMeasurement StandaloneMeasurement? @relation(fields: [standaloneMeasurementId], references: [id], onDelete: SetNull)
 
   @@index([orgId])
   @@index([locationImageId])
-  @@index([assetId])
+  @@index([assetNodeId])
   @@index([findingId])
   @@index([standaloneMeasurementId])
   @@map("imp_location_image_markers")
@@ -3312,12 +3751,12 @@ model StandaloneMeasurement {
   id               String @id @default(uuid()) @db.Uuid
   orgId            String @map("org_id") @db.Uuid
   inspectionPlanId String @map("inspection_plan_id") @db.Uuid
-  locationId       String @map("location_id") @db.Uuid
+  locationNodeId   String @map("location_node_id") @db.Uuid // LOCATION-node
 
-  measurementType String  @map("measurement_type")
-  description     String?
-  linkedAssetId   String? @map("linked_asset_id") @db.Uuid
-  sampleId        String? @map("sample_id") @db.Uuid
+  measurementType   String  @map("measurement_type")
+  description       String?
+  linkedAssetNodeId String? @map("linked_asset_node_id") @db.Uuid
+  sampleId          String? @map("sample_id") @db.Uuid
 
   createdAt DateTime  @default(now()) @map("created_at")
   updatedAt DateTime  @updatedAt @map("updated_at")
@@ -3326,17 +3765,17 @@ model StandaloneMeasurement {
   deviceId  String?   @map("device_id")
   deletedAt DateTime? @map("deleted_at")
 
-  organization   Organization                 @relation(fields: [orgId], references: [id])
-  inspectionPlan InspectionPlan               @relation(fields: [inspectionPlanId], references: [id], onDelete: Cascade)
-  location       InspectionLocation           @relation(fields: [locationId], references: [id])
-  linkedAsset    Asset?                       @relation("LinkedAsset", fields: [linkedAssetId], references: [id])
-  values         StandaloneMeasurementValue[]
-  markers        LocationImageMarker[]
+  organization    Organization                 @relation(fields: [orgId], references: [id])
+  inspectionPlan  InspectionPlan               @relation(fields: [inspectionPlanId], references: [id], onDelete: Cascade)
+  locationNode    AssetNode                    @relation("NodeStandalone", fields: [locationNodeId], references: [id])
+  linkedAssetNode AssetNode?                   @relation("LinkedAsset", fields: [linkedAssetNodeId], references: [id])
+  values          StandaloneMeasurementValue[]
+  markers         LocationImageMarker[]
 
   @@index([orgId])
   @@index([inspectionPlanId])
-  @@index([locationId])
-  @@index([linkedAssetId])
+  @@index([locationNodeId])
+  @@index([linkedAssetNodeId])
   @@map("imp_standalone_measurements")
 }
 
@@ -3436,7 +3875,6 @@ model ClientUser {
   findingResolutions FindingResolution[]
   clientRequests     ClientRequest[]
 
-  @@index([email])
   @@map("imp_client_users")
 }
 
@@ -3471,7 +3909,6 @@ model ClientMagicLink {
   clientUser     ClientUser?     @relation(fields: [clientUserId], references: [id], onDelete: Cascade)
   inspectionPlan InspectionPlan? @relation(fields: [inspectionPlanId], references: [id])
 
-  @@index([token])
   @@index([email])
   @@map("imp_client_magic_links")
 }
@@ -3492,6 +3929,7 @@ model InspectionClientAccess {
 
   @@unique([inspectionPlanId, clientUserId])
   @@unique([inspectionPlanId, invitedEmail])
+  @@index([clientUserId])
   @@map("imp_inspection_client_access")
 }
 
@@ -3635,4 +4073,394 @@ model VoiceUserPrompt {
   @@index([userId])
   @@index([templateId])
   @@map("imp_voice_user_prompts")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Interne chat (REQ1) — 1-op-1 (DIRECT) en team-chats (TEAM), polling-MVP.
+// `deletedAt` + `syncedAt` + `deviceId` staan alvast klaar voor de additieve
+// /sync-uitbreiding (PR2), zodat de PWA-inspecteur poll-based kan meedoen zonder
+// een tweede migratie op dezelfde tabellen.
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum Availability {
+  BESCHIKBAAR
+  BEZIG
+  AFWEZIG
+  OFFLINE
+}
+
+enum ChatThreadType {
+  DIRECT
+  TEAM
+}
+
+enum ChatThreadStatus {
+  OPEN
+  AFGEROND
+}
+
+model ChatThread {
+  id    String         @id @default(uuid()) @db.Uuid
+  orgId String         @map("org_id") @db.Uuid
+  type  ChatThreadType
+
+  // TEAM: precies één thread per (org, rol) — afgedwongen via @@unique([orgId, teamRole]).
+  // DIRECT: teamRole = null.
+  teamRole  Role?   @map("team_role")
+  // DIRECT: deterministische sleutel "userIdA:userIdB" (gesorteerd) voor race-vrije dedup
+  // via @@unique([orgId, directKey]). TEAM: null.
+  directKey String? @map("direct_key")
+
+  subject String?
+
+  // Optionele koppeling naar het huidige record (PascalCase modelnaam, bv. "Request").
+  referenceEntityType String? @map("reference_entity_type")
+  referenceEntityId   String? @map("reference_entity_id") @db.Uuid
+
+  status   ChatThreadStatus @default(OPEN)
+  closedAt DateTime?        @map("closed_at")
+  // Notitie die bij afronden op het gerefereerde record is aangemaakt (transcript).
+  noteId   String?          @map("note_id") @db.Uuid
+
+  createdById String  @map("created_by_id") @db.Uuid
+  deviceId    String? @map("device_id")
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  syncedAt  DateTime? @map("synced_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  organization Organization      @relation(fields: [orgId], references: [id])
+  createdBy    User              @relation("ChatThreadCreatedBy", fields: [createdById], references: [id])
+  participants ChatParticipant[]
+  messages     ChatMessage[]
+
+  @@unique([orgId, teamRole])
+  @@unique([orgId, directKey])
+  @@index([orgId, type])
+  @@index([orgId, deletedAt])
+  @@index([referenceEntityType, referenceEntityId])
+  @@map("imp_chat_threads")
+}
+
+model ChatParticipant {
+  id         String    @id @default(uuid()) @db.Uuid
+  threadId   String    @map("thread_id") @db.Uuid
+  userId     String    @map("user_id") @db.Uuid
+  lastReadAt DateTime? @map("last_read_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+
+  thread ChatThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  user   User       @relation("ChatParticipantUser", fields: [userId], references: [id])
+
+  @@unique([threadId, userId])
+  @@index([userId])
+  @@map("imp_chat_participants")
+}
+
+model ChatMessage {
+  id       String @id @default(uuid()) @db.Uuid
+  threadId String @map("thread_id") @db.Uuid
+  orgId    String @map("org_id") @db.Uuid
+  senderId String @map("sender_id") @db.Uuid
+  content  String @db.Text
+
+  mentionedUserIds String[] @default([]) @map("mentioned_user_ids") @db.Uuid
+
+  // Optionele record-referentie via "/" in de composer (PascalCase modelnaam).
+  referenceEntityType String? @map("reference_entity_type")
+  referenceEntityId   String? @map("reference_entity_id") @db.Uuid
+
+  deviceId String? @map("device_id")
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  syncedAt  DateTime? @map("synced_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  thread       ChatThread   @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [orgId], references: [id])
+  sender       User         @relation("ChatMessageSender", fields: [senderId], references: [id])
+
+  @@index([threadId, createdAt])
+  @@index([orgId, deletedAt])
+  @@map("imp_chat_messages")
+}
+
+// ─── PRD-10: Helpsysteem ─────────────────────────────────
+
+// Knowledge base (hybride: org_id null = globaal, gezet = org-specifiek)
+
+model HelpCategory {
+  id          String   @id @default(uuid()) @db.Uuid
+  orgId       String?  @map("org_id") @db.Uuid // null = globaal; gezet = org-specifiek
+  slug        String
+  name        String
+  description String?
+  icon        String?
+  order       Int      @default(0)
+  parentId    String?  @map("parent_id") @db.Uuid
+  isPublished Boolean  @default(true) @map("is_published")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  organization Organization?  @relation(fields: [orgId], references: [id])
+  parent       HelpCategory?  @relation("HelpCategoryTree", fields: [parentId], references: [id])
+  children     HelpCategory[] @relation("HelpCategoryTree")
+  articles     HelpArticle[]
+
+  @@unique([orgId, slug])
+  @@index([parentId, order])
+  @@map("imp_help_categories")
+}
+
+model HelpArticle {
+  id          String            @id @default(uuid()) @db.Uuid
+  orgId       String?           @map("org_id") @db.Uuid // null = globaal; gezet = org-specifiek
+  categoryId  String            @map("category_id") @db.Uuid
+  slug        String
+  title       String
+  excerpt     String?
+  body        String            @db.Text
+  status      HelpArticleStatus @default(DRAFT)
+  tags        String[]          @default([])
+  moduleKeys  String[]          @default([]) @map("module_keys")
+  order       Int               @default(0)
+  viewCount   Int               @default(0) @map("view_count")
+  helpfulYes  Int               @default(0) @map("helpful_yes")
+  helpfulNo   Int               @default(0) @map("helpful_no")
+  authorId    String?           @map("author_id") @db.Uuid
+  publishedAt DateTime?         @map("published_at")
+  createdAt   DateTime          @default(now()) @map("created_at")
+  updatedAt   DateTime          @updatedAt @map("updated_at")
+
+  organization Organization? @relation(fields: [orgId], references: [id])
+  category     HelpCategory  @relation(fields: [categoryId], references: [id])
+  author       User?         @relation("HelpArticleAuthor", fields: [authorId], references: [id])
+
+  @@unique([orgId, slug])
+  @@index([orgId, status])
+  @@index([categoryId, order])
+  // pg_trgm/GIN-indexen voor typo-tolerante KB-zoek (oorspronkelijk via raw SQL in
+  // 20260623214008_help_trigram_search). Hier in het schema gemodelleerd met de
+  // bestaande indexnamen (map:) zodat `migrate dev` ze herkent i.p.v. te willen droppen.
+  @@index([title(ops: raw("gin_trgm_ops"))], type: Gin, map: "idx_help_articles_title_trgm")
+  @@index([excerpt(ops: raw("gin_trgm_ops"))], type: Gin, map: "idx_help_articles_excerpt_trgm")
+  @@index([moduleKeys], type: Gin, map: "idx_help_articles_module_keys")
+  @@map("imp_help_articles")
+}
+
+// Support tickets (org-scoped)
+
+model SupportTicket {
+  id              String                @id @default(uuid()) @db.Uuid
+  orgId           String                @map("org_id") @db.Uuid
+  ticketNumber    Int                   @map("ticket_number")
+  subject         String
+  description     String                @db.Text
+  status          SupportTicketStatus   @default(NIEUW)
+  priority        SupportTicketPriority @default(NORMAAL)
+  category        SupportTicketCategory @default(VRAAG)
+  contextModule   String?               @map("context_module")
+  contextUrl      String?               @map("context_url")
+  createdById     String                @map("created_by_id") @db.Uuid
+  assignedToId    String?               @map("assigned_to_id") @db.Uuid
+  firstResponseAt DateTime?             @map("first_response_at")
+  resolvedAt      DateTime?             @map("resolved_at")
+  closedAt        DateTime?             @map("closed_at")
+  lastMessageAt   DateTime?             @map("last_message_at")
+  isDeleted       Boolean               @default(false) @map("is_deleted")
+  createdAt       DateTime              @default(now()) @map("created_at")
+  updatedAt       DateTime              @updatedAt @map("updated_at")
+
+  organization Organization           @relation(fields: [orgId], references: [id])
+  createdBy    User                   @relation("SupportTicketCreatedBy", fields: [createdById], references: [id])
+  assignedTo   User?                  @relation("SupportTicketAssignedTo", fields: [assignedToId], references: [id])
+  messages     SupportTicketMessage[]
+
+  @@unique([orgId, ticketNumber])
+  @@index([orgId, status])
+  @@index([createdById])
+  @@index([assignedToId])
+  @@map("imp_support_tickets")
+}
+
+model SupportTicketMessage {
+  id         String                   @id @default(uuid()) @db.Uuid
+  ticketId   String                   @map("ticket_id") @db.Uuid
+  orgId      String                   @map("org_id") @db.Uuid
+  authorId   String?                  @map("author_id") @db.Uuid
+  authorType SupportMessageAuthorType @default(USER) @map("author_type")
+  body       String                   @db.Text
+  isInternal Boolean                  @default(false) @map("is_internal")
+  createdAt  DateTime                 @default(now()) @map("created_at")
+
+  ticket SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  author User?         @relation("SupportTicketMessageAuthor", fields: [authorId], references: [id])
+
+  @@index([ticketId, createdAt])
+  @@map("imp_support_ticket_messages")
+}
+
+// Support-toegang log (org-scoped)
+
+model SupportAccessLog {
+  id              String              @id @default(uuid()) @db.Uuid
+  orgId           String              @map("org_id") @db.Uuid
+  action          SupportAccessAction
+  performedById   String?             @map("performed_by_id") @db.Uuid
+  performedByRole Role?               @map("performed_by_role")
+  ip              String?
+  userAgent       String?             @map("user_agent")
+  note            String?
+  createdAt       DateTime            @default(now()) @map("created_at")
+
+  organization Organization @relation(fields: [orgId], references: [id])
+  performedBy  User?        @relation("SupportAccessLogPerformedBy", fields: [performedById], references: [id])
+
+  @@index([orgId, createdAt])
+  @@map("imp_support_access_logs")
+}
+
+// ─── Inspecteur-certificaten / diploma's (PRD-11) ───
+// Rol-specifieke datalaag voor INSPECTEUR-gebruikers: diploma's en certificaten
+// met een optioneel privé-document. Bewust een op zichzelf staande module (géén
+// generiek polymorf framework) en LOS van het generieke /documents DMS — het
+// certificaatbestand mag nooit via /documents zichtbaar of downloadbaar zijn.
+
+model InspectorCertificate {
+  id           String    @id @default(uuid()) @db.Uuid
+  orgId        String    @map("org_id") @db.Uuid
+  userId       String    @map("user_id") @db.Uuid
+  type         String // Soort certificaat/diploma (vrije tekst, autocomplete)
+  number       String? // Certificaatnummer (optioneel)
+  issueDate    DateTime  @map("issue_date") @db.Date // Datum van afgifte
+  validUntil   DateTime? @map("valid_until") @db.Date // Geldig tot (optioneel)
+  issuer       String // Uitgevende instantie (vrije tekst, autocomplete)
+  // Privé-bestand (optioneel) — opgeslagen via de StorageProvider.
+  storageKey   String?   @map("storage_key")
+  fileName     String?   @map("file_name")
+  originalName String?   @map("original_name")
+  mimeType     String?   @map("mime_type")
+  size         Int?
+  isDeleted    Boolean   @default(false) @map("is_deleted")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [orgId], references: [id])
+  user         User         @relation("InspectorCertificates", fields: [userId], references: [id])
+
+  @@index([orgId, userId])
+  @@index([userId])
+  @@map("imp_inspector_certificates")
+}
+
+// ─── Meetmiddelen (measurement instruments) + Kalibraties ────────────────────
+
+enum MeasurementInstrumentStatus {
+  ACTIEF
+  BUITEN_GEBRUIK
+  AFGEKEURD
+}
+
+/// Meetmiddel — apparatuur van een organisatie, optioneel toegewezen aan één inspecteur.
+/// `assignedToUserId == null` ⇒ "op voorraad". Verloopdatum is afgeleid: laatste
+/// kalibratiedatum + interval (gedenormaliseerd gecachet in lastCalibrationDate/nextCalibrationDue).
+model MeasurementInstrument {
+  id                        String                      @id @default(uuid()) @db.Uuid
+  orgId                     String                      @map("org_id") @db.Uuid
+  code                      String // Uniek nummer (uniek per org)
+  brand                     String // Merk
+  type                      String // Type
+  serialNumber              String?                     @map("serial_number") // Serienummer (optioneel)
+  calibrationIntervalMonths Int                         @map("calibration_interval_months") // Kalibratie-interval in maanden
+  status                    MeasurementInstrumentStatus @default(ACTIEF)
+  assignedToUserId          String?                     @map("assigned_to_user_id") @db.Uuid // Huidige houder; null = op voorraad
+  notes                     String?
+  // Gedenormaliseerde cache (herberekend bij elke kalibratie-mutatie)
+  lastCalibrationDate       DateTime?                   @map("last_calibration_date")
+  nextCalibrationDue        DateTime?                   @map("next_calibration_due")
+  // Dedupe voor verloop-notificaties (stage: "30d" | "expired")
+  lastExpiryNotifiedStage   String?                     @map("last_expiry_notified_stage")
+  lastExpiryNotifiedAt      DateTime?                   @map("last_expiry_notified_at")
+  isDeleted                 Boolean                     @default(false) @map("is_deleted")
+  createdById               String?                     @map("created_by_id") @db.Uuid
+  createdAt                 DateTime                    @default(now()) @map("created_at")
+  updatedAt                 DateTime                    @updatedAt @map("updated_at")
+
+  organization       Organization                      @relation(fields: [orgId], references: [id])
+  assignedTo         User?                             @relation("MeasurementInstrumentAssignee", fields: [assignedToUserId], references: [id], onDelete: SetNull)
+  calibrations       Calibration[]
+  userDefaults       UserDefaultInstrument[]
+  inspectionDefaults InspectionPlanDefaultInstrument[]
+
+  @@unique([orgId, code])
+  @@index([orgId, nextCalibrationDue])
+  @@index([orgId, assignedToUserId])
+  @@index([orgId, updatedAt])
+  @@map("imp_measurement_instruments")
+}
+
+/// Kalibratie — één kalibratie-gebeurtenis van een meetmiddel, met optioneel
+/// kalibratiecertificaat (embedded storage-metadata zoals InspectorCertificate).
+model Calibration {
+  id                String   @id @default(uuid()) @db.Uuid
+  orgId             String   @map("org_id") @db.Uuid
+  instrumentId      String   @map("instrument_id") @db.Uuid
+  calibrationDate   DateTime @map("calibration_date")
+  performedBy       String   @map("performed_by") // Uitvoerende instantie
+  certificateNumber String?  @map("certificate_number")
+  notes             String?
+  // Kalibratiecertificaat (optioneel) — opgeslagen via de StorageProvider.
+  storageKey        String?  @map("storage_key")
+  fileName          String?  @map("file_name")
+  originalName      String?  @map("original_name")
+  mimeType          String?  @map("mime_type")
+  size              Int?
+  isDeleted         Boolean  @default(false) @map("is_deleted")
+  createdById       String?  @map("created_by_id") @db.Uuid
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  organization Organization          @relation(fields: [orgId], references: [id])
+  instrument   MeasurementInstrument @relation(fields: [instrumentId], references: [id], onDelete: Cascade)
+
+  @@index([orgId, instrumentId])
+  @@map("imp_measurement_instrument_calibrations")
+}
+
+/// Voorkeur niveau 1 — globale set favoriete meetmiddelen per inspecteur.
+model UserDefaultInstrument {
+  id           String   @id @default(uuid()) @db.Uuid
+  orgId        String   @map("org_id") @db.Uuid
+  userId       String   @map("user_id") @db.Uuid
+  instrumentId String   @map("instrument_id") @db.Uuid
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  organization Organization          @relation(fields: [orgId], references: [id])
+  user         User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  instrument   MeasurementInstrument @relation(fields: [instrumentId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, instrumentId])
+  @@index([orgId])
+  @@index([instrumentId])
+  @@map("imp_user_default_instruments")
+}
+
+/// Voorkeur niveau 2 — override-set meetmiddelen per inspectie.
+model InspectionPlanDefaultInstrument {
+  id               String   @id @default(uuid()) @db.Uuid
+  orgId            String   @map("org_id") @db.Uuid
+  inspectionPlanId String   @map("inspection_plan_id") @db.Uuid
+  instrumentId     String   @map("instrument_id") @db.Uuid
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  organization   Organization          @relation(fields: [orgId], references: [id])
+  inspectionPlan InspectionPlan        @relation(fields: [inspectionPlanId], references: [id], onDelete: Cascade)
+  instrument     MeasurementInstrument @relation(fields: [instrumentId], references: [id], onDelete: Cascade)
+
+  @@unique([inspectionPlanId, instrumentId])
+  @@index([orgId])
+  @@index([instrumentId])
+  @@map("imp_inspection_plan_default_instruments")
 }

@@ -5,20 +5,17 @@ import { clsx } from 'clsx';
 import { useAuth } from '@/providers/auth-provider';
 import { useTenant } from '@/providers/tenant-provider';
 import { OrgSwitcher } from './org-switcher';
+import { SidebarBottomBar } from './sidebar-bottom-bar';
+import { ADMIN_ROLES as adminRoles, CRM_ROLES as crmRoles } from '@/lib/roles';
+import { useFeatures } from '@/providers/feature-provider';
+import type { FeatureKey } from '@/lib/features';
 import { Role } from '@/types';
-
-const adminRoles: Role[] = [Role.SUPERUSER, Role.ORG_ADMIN];
-const crmRoles: Role[] = [
-  Role.SUPERUSER,
-  Role.ORG_ADMIN,
-  Role.MANAGER,
-  Role.BACKOFFICE,
-  Role.WERKVOORBEREIDER,
-];
 
 interface NavChild {
   to: string;
   label: string;
+  /** SaaS-feature die dit item vereist; ontbreekt = core (altijd zichtbaar). */
+  feature?: FeatureKey;
 }
 
 interface NavItem {
@@ -26,10 +23,13 @@ interface NavItem {
   label: string;
   icon: React.ReactNode;
   roles?: Role[];
+  /** SaaS-feature die dit item vereist; ontbreekt = core (altijd zichtbaar). */
+  feature?: FeatureKey;
   children?: NavChild[];
 }
 
 interface NavSection {
+  id?: string; // stable key + anchor (e.g. the header-less 'personal' section)
   label: string | null; // null = no section header (e.g. Dashboard)
   items: NavItem[];
 }
@@ -39,7 +39,7 @@ const SECTIONS_STORAGE_KEY = 'sidebar-sections';
 
 type CollapsedSections = Record<string, boolean>;
 
-const mainSections: NavSection[] = [
+export const mainSections: NavSection[] = [
   {
     label: 'Backoffice',
     items: [
@@ -47,6 +47,7 @@ const mainSections: NavSection[] = [
         to: '/contacts',
         label: 'Relaties',
         roles: crmRoles,
+        feature: 'BASIS_CRM',
         icon: (
           <svg className="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
@@ -56,13 +57,14 @@ const mainSections: NavSection[] = [
           { to: '/contacts', label: 'Overzicht' },
           { to: '/contacts/persons', label: 'Contactpersonen' },
           { to: '/contacts/locations', label: 'Locaties' },
-          { to: '/contacts/groups', label: 'Klantgroepen' },
+          { to: '/contacts/groups', label: 'Klantgroepen', feature: 'CRM_COMPLEET' },
         ],
       },
       {
         to: '/requests',
         label: 'Aanvragen',
         roles: crmRoles,
+        feature: 'CRM_COMPLEET',
         icon: (
           <svg className="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
@@ -73,6 +75,7 @@ const mainSections: NavSection[] = [
         to: '/quotes',
         label: 'Offertes',
         roles: crmRoles,
+        feature: 'CRM_COMPLEET',
         icon: (
           <svg className="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
@@ -84,6 +87,7 @@ const mainSections: NavSection[] = [
         to: '/documents',
         label: 'Documenten',
         roles: crmRoles,
+        feature: 'WORKFLOW_COMPLEET',
         icon: (
           <svg className="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
@@ -99,6 +103,7 @@ const mainSections: NavSection[] = [
         to: '/projects',
         label: 'Projecten',
         roles: crmRoles,
+        feature: 'BASIS_UITVOERING',
         icon: (
           <svg className="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
@@ -109,6 +114,7 @@ const mainSections: NavSection[] = [
         to: '/planning',
         label: 'Planning',
         roles: crmRoles,
+        feature: 'UITVOERING_COMPLEET',
         icon: (
           <svg className="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
@@ -128,6 +134,7 @@ const mainSections: NavSection[] = [
         to: '/inspections',
         label: 'Inspecties',
         roles: [...crmRoles, Role.INSPECTEUR],
+        feature: 'BASIS_INSPECTIES',
         icon: (
           <svg className="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
@@ -138,46 +145,45 @@ const mainSections: NavSection[] = [
         to: '/assets',
         label: 'Assets',
         roles: [...crmRoles, Role.INSPECTEUR],
+        feature: 'BASIS_INSPECTIES',
         icon: (
           <svg className="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
           </svg>
         ),
       },
+      {
+        to: '/meetmiddelen',
+        label: 'Meetmiddelen',
+        roles: [...crmRoles, Role.INSPECTEUR],
+        feature: 'BASIS_INSPECTIES',
+        icon: (
+          <svg className="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.24-.438.613-.431.992a6.759 6.759 0 010 .255c-.007.378.138.75.43.99l1.005.828c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.992a6.932 6.932 0 010-.255c.007-.378-.138-.75-.43-.99l-1.004-.828a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.077-.124.072-.044.146-.087.22-.128.331-.183.581-.495.644-.869l.213-1.281z" />
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+          </svg>
+        ),
+      },
+      {
+        to: '/inspectors',
+        label: 'Inspecteurs',
+        roles: [Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.INSPECTEUR],
+        feature: 'BASIS_INSPECTIES',
+        icon: (
+          <svg className="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 6a3 3 0 11-6 0 3 3 0 016 0zM17 6a3 3 0 11-6 0 3 3 0 016 0zM12.93 17c.046-.327.07-.66.07-1a6.97 6.97 0 00-1.5-4.33A5 5 0 0119 16v1h-6.07zM6 11a5 5 0 015 5v1H1v-1a5 5 0 015-5z" />
+          </svg>
+        ),
+      },
     ],
   },
   {
-    label: 'Persoonlijk',
+    // Header-less section pinned below the icon bar's models. The four personal
+    // models (Favorieten/Notificaties/Taken/Notities) live in <SidebarBottomBar>;
+    // only Profiel stays a regular menu item here.
+    id: 'personal',
+    label: null,
     items: [
-      {
-        to: '/tasks',
-        label: 'Taken',
-        roles: crmRoles,
-        icon: (
-          <svg className="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
-          </svg>
-        ),
-      },
-      {
-        to: '/notities',
-        label: 'Notities',
-        roles: crmRoles,
-        icon: (
-          <svg className="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z" />
-          </svg>
-        ),
-      },
-      {
-        to: '/notifications',
-        label: 'Notificaties',
-        icon: (
-          <svg className="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
-          </svg>
-        ),
-      },
       {
         to: '/profile',
         label: 'Profiel',
@@ -187,12 +193,26 @@ const mainSections: NavSection[] = [
           </svg>
         ),
       },
+      {
+        // Zichtbaar voor iedereen (geen roles).
+        to: '/help',
+        label: 'Help & support',
+        icon: (
+          <svg className="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+        ),
+        children: [
+          { to: '/help', label: 'Helpcentrum' },
+          { to: '/help/tickets', label: 'Mijn tickets' },
+        ],
+      },
     ],
   },
 ];
 
 // Items in het Organisatie-submenu — vervangt het hoofdmenu (Atera-stijl)
-const organisatieSections: NavSection[] = [
+export const organisatieSections: NavSection[] = [
   {
     label: 'Beheer',
     items: [
@@ -214,6 +234,7 @@ const organisatieSections: NavSection[] = [
         to: '/products',
         label: 'Producten',
         roles: adminRoles,
+        feature: 'CRM_COMPLEET',
         icon: (
           <svg className="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
@@ -235,14 +256,25 @@ const organisatieSections: NavSection[] = [
           </svg>
         ),
         children: [
-          { to: '/quote-templates', label: 'Offertesjablonen' },
+          { to: '/quote-templates', label: 'Offertesjablonen', feature: 'CRM_COMPLEET' },
           { to: '/email-templates', label: 'E-mailsjablonen' },
         ],
+      },
+      {
+        to: '/help/admin',
+        label: 'Knowledge base',
+        roles: adminRoles,
+        icon: (
+          <svg className="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+          </svg>
+        ),
       },
       {
         to: '/inspection-templates',
         label: 'Inspectie-config',
         roles: adminRoles,
+        feature: 'BASIS_INSPECTIES',
         icon: (
           <svg className="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
@@ -287,6 +319,16 @@ const organisatieSections: NavSection[] = [
         ),
       },
       {
+        to: '/plans',
+        label: 'Abonnementen',
+        roles: [Role.SUPERUSER],
+        icon: (
+          <svg className="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
+          </svg>
+        ),
+      },
+      {
         to: '/error-reports',
         label: 'Foutmeldingen',
         roles: [Role.SUPERUSER],
@@ -312,14 +354,35 @@ const organisatieIcon = (
   </svg>
 );
 
-function filterSections(sections: NavSection[], user: { roles: Role[] } | null) {
+/**
+ * Filtert nav-secties op rol én SaaS-feature (PRD-09 §5.2). Een item/child zonder
+ * `feature` is core en altijd zichtbaar; met `feature` alleen als `hasFeature` true
+ * geeft. Een parent met children verdwijnt zodra al zijn children wegvallen, en een
+ * sectie zonder zichtbare items verdwijnt (behalve de header-loze 'personal'-sectie).
+ * Geëxporteerd voor de unit-test.
+ */
+export function filterSections(
+  sections: NavSection[],
+  user: { roles: Role[] } | null,
+  hasFeature: (key: FeatureKey) => boolean,
+) {
+  const roleOk = (roles?: Role[]) =>
+    !roles || (!!user && user.roles.some((r) => roles.includes(r)));
+
   return sections
     .map((section) => ({
       ...section,
-      items: section.items.filter((item) => {
-        if (!item.roles) return true;
-        return user && user.roles.some((r) => item.roles!.includes(r));
-      }),
+      items: section.items
+        .filter((item) => roleOk(item.roles))
+        .filter((item) => !item.feature || hasFeature(item.feature))
+        .map((item) => ({
+          ...item,
+          children: item.children?.filter(
+            (child) => !child.feature || hasFeature(child.feature),
+          ),
+        }))
+        // verberg een parent met children zodra al zijn children wegvallen
+        .filter((item) => !item.children || item.children.length > 0),
     }))
     .filter((section) => section.label !== null || section.items.length > 0);
 }
@@ -327,6 +390,7 @@ function filterSections(sections: NavSection[], user: { roles: Role[] } | null) 
 export function Sidebar() {
   const { user } = useAuth();
   const { orgBranding } = useTenant();
+  const { hasFeature } = useFeatures();
   const location = useLocation();
 
   // 'main' = hoofdmenu, 'organisatie' = submenu dat het hoofdmenu vervangt (Atera-stijl)
@@ -384,10 +448,12 @@ export function Sidebar() {
 
   const brandName = orgBranding?.name ?? 'InspeXi';
 
-  // Filter sections: remove items the user can't see, then remove empty sections
+  // Filter sections: remove items the user can't see (rol + SaaS-feature), then
+  // remove empty sections
   const visibleSections = filterSections(
     menuView === 'organisatie' ? organisatieSections : mainSections,
     user,
+    hasFeature,
   );
   const hasOrgAccess = !!user && user.roles.some((r) => adminRoles.includes(r));
   const orgMenuActive = organisatieRoutePrefixes.some((prefix) =>
@@ -470,9 +536,9 @@ export function Sidebar() {
           const sectionIsCollapsed = !!(section.label && collapsedSections[section.label]);
 
           return (
-            <div key={section.label ?? 'top'} className={sectionIdx > 0 ? 'mt-3' : ''}>
+            <div key={section.id ?? section.label ?? 'top'} className={sectionIdx > 0 ? 'mt-3' : ''}>
               {/* Organisatie-trigger: opent het submenu dat het hoofdmenu vervangt */}
-              {menuView === 'main' && section.label === 'Persoonlijk' && hasOrgAccess && (
+              {menuView === 'main' && section.id === 'personal' && hasOrgAccess && (
                 <div className="mb-3">
                   {collapsed ? (
                     <div className="mx-2 my-2 border-t border-gray-700" />
@@ -598,6 +664,8 @@ export function Sidebar() {
         })}
       </nav>
 
+      {/* Persoonlijke modellen — vastgezette icon-balk onderaan (Basis Workflow) */}
+      {hasFeature('BASIS_WORKFLOW') && <SidebarBottomBar collapsed={collapsed} />}
     </aside>
   );
 }

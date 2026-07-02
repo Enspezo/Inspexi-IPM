@@ -9,7 +9,12 @@ import {
   AcceptanceStatus,
   ApprovalStatus,
   AuditAction,
+  Availability,
+  ChatThreadStatus,
   ContactType,
+  HelpArticleStatus,
+  SupportTicketStatus,
+  SupportTicketPriority,
   LogType,
   PlanningStatus,
   Priority,
@@ -83,6 +88,7 @@ export const APPROVAL_STATUS: StatusMap = {
   [ApprovalStatus.PENDING]: { label: 'In afwachting', classes: 'bg-yellow-100 text-yellow-800' },
   [ApprovalStatus.APPROVED]: { label: 'Goedgekeurd', classes: 'bg-green-100 text-green-800' },
   [ApprovalStatus.REJECTED]: { label: 'Afgewezen', classes: 'bg-red-100 text-red-800' },
+  [ApprovalStatus.CANCELLED]: { label: 'Ingetrokken', classes: 'bg-gray-100 text-gray-600' },
 };
 
 export const PLANNING_STATUS: StatusMap = {
@@ -206,4 +212,99 @@ export const SIGNATURE_STATUS: StatusMap = {
   SIGNED: { label: 'Ondertekend', classes: 'bg-green-100 text-green-800' },
   DECLINED: { label: 'Geweigerd', classes: 'bg-red-100 text-red-800' },
   EXPIRED: { label: 'Verlopen', classes: 'bg-red-100 text-red-800' },
+};
+
+// ─── Interne chat (REQ1) ──────────────────────────────────
+
+export const CHAT_PRESENCE: StatusMap = {
+  [Availability.BESCHIKBAAR]: { label: 'Beschikbaar', classes: 'bg-green-100 text-green-800' },
+  [Availability.BEZIG]: { label: 'Bezig', classes: 'bg-yellow-100 text-yellow-800' },
+  [Availability.AFWEZIG]: { label: 'Afwezig', classes: 'bg-orange-100 text-orange-800' },
+  [Availability.OFFLINE]: { label: 'Offline', classes: 'bg-gray-100 text-gray-600' },
+};
+
+/** Kleine kleurstip per presence-status (voor avatar-indicatoren). */
+export const CHAT_PRESENCE_DOT: Record<string, string> = {
+  [Availability.BESCHIKBAAR]: 'bg-green-500',
+  [Availability.BEZIG]: 'bg-yellow-500',
+  [Availability.AFWEZIG]: 'bg-orange-400',
+  [Availability.OFFLINE]: 'bg-gray-300',
+};
+
+export const CHAT_THREAD_STATUS: StatusMap = {
+  [ChatThreadStatus.OPEN]: { label: 'Open', classes: 'bg-blue-100 text-blue-800' },
+  [ChatThreadStatus.AFGEROND]: { label: 'Afgerond', classes: 'bg-gray-100 text-gray-600' },
+};
+
+export const HELP_ARTICLE_STATUS: StatusMap = {
+  [HelpArticleStatus.DRAFT]: { label: 'Concept', classes: 'bg-gray-100 text-gray-700' },
+  [HelpArticleStatus.PUBLISHED]: { label: 'Gepubliceerd', classes: 'bg-green-100 text-green-800' },
+  [HelpArticleStatus.ARCHIVED]: { label: 'Gearchiveerd', classes: 'bg-amber-100 text-amber-800' },
+};
+
+export const SUPPORT_TICKET_STATUS: StatusMap = {
+  [SupportTicketStatus.NIEUW]: { label: 'Nieuw', classes: 'bg-blue-100 text-blue-800' },
+  [SupportTicketStatus.IN_BEHANDELING]: { label: 'In behandeling', classes: 'bg-amber-100 text-amber-800' },
+  [SupportTicketStatus.WACHT_OP_KLANT]: { label: 'Wacht op klant', classes: 'bg-purple-100 text-purple-800' },
+  [SupportTicketStatus.OPGELOST]: { label: 'Opgelost', classes: 'bg-green-100 text-green-800' },
+  [SupportTicketStatus.GESLOTEN]: { label: 'Gesloten', classes: 'bg-gray-100 text-gray-700' },
+};
+
+export const SUPPORT_TICKET_PRIORITY: StatusMap = {
+  [SupportTicketPriority.LAAG]: { label: 'Laag', classes: 'bg-gray-100 text-gray-700' },
+  [SupportTicketPriority.NORMAAL]: { label: 'Normaal', classes: 'bg-blue-100 text-blue-800' },
+  [SupportTicketPriority.HOOG]: { label: 'Hoog', classes: 'bg-orange-100 text-orange-800' },
+  [SupportTicketPriority.URGENT]: { label: 'Urgent', classes: 'bg-red-100 text-red-800' },
+};
+
+/** IMP_PRD-10 Fase 5 — support-toegang logacties. */
+export const SUPPORT_ACCESS_ACTION: StatusMap = {
+  ENABLED: { label: 'Ingeschakeld', classes: 'bg-green-100 text-green-800' },
+  DISABLED: { label: 'Uitgeschakeld', classes: 'bg-gray-100 text-gray-700' },
+  EXPIRED: { label: 'Verlopen', classes: 'bg-amber-100 text-amber-800' },
+  ACCESSED: { label: 'Ingezien', classes: 'bg-blue-100 text-blue-800' },
+};
+
+// ─── PRD-11: Inspecteur-certificaten — geldigheidsstatus ──────────────────
+// Afgeleide status (geen enum): berekend uit `validUntil` via getCertificateValidityKey.
+
+export type CertificateValidityKey = 'verlopen' | 'binnenkort' | 'geldig' | 'geen-einddatum';
+
+export const CERTIFICATE_VALIDITY: StatusMap = {
+  verlopen: { label: 'Verlopen', classes: 'bg-red-100 text-red-800' },
+  binnenkort: { label: 'Verloopt binnenkort', classes: 'bg-orange-100 text-orange-800' },
+  geldig: { label: 'Geldig', classes: 'bg-green-100 text-green-800' },
+  'geen-einddatum': { label: 'Geen einddatum', classes: 'bg-gray-100 text-gray-600' },
+};
+
+/**
+ * Bepaalt de geldigheidsstatus van een certificaat o.b.v. `validUntil`:
+ * verlopen (verstreken), binnenkort (≤ 30 dagen), geldig, of geen-einddatum.
+ */
+export function getCertificateValidityKey(
+  validUntil: string | null | undefined,
+): CertificateValidityKey {
+  if (!validUntil) return 'geen-einddatum';
+  const end = new Date(validUntil);
+  if (Number.isNaN(end.getTime())) return 'geen-einddatum';
+  const days = Math.ceil((end.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+  if (days < 0) return 'verlopen';
+  if (days <= 30) return 'binnenkort';
+  return 'geldig';
+}
+
+// ─── Meetmiddelen — kalibratiestatus + levenscyclus ───────────────────────
+// De kalibratiestatus-sleutel komt uit @inspexi/calibration (computeCalibrationStatus).
+
+export const MEETMIDDEL_KALIBRATIE_STATUS: StatusMap = {
+  GELDIG: { label: 'Geldig', classes: 'bg-green-100 text-green-800' },
+  BINNENKORT: { label: 'Verloopt binnenkort', classes: 'bg-orange-100 text-orange-800' },
+  VERLOPEN: { label: 'Verlopen', classes: 'bg-red-100 text-red-800' },
+  GEEN_KALIBRATIE: { label: 'Geen kalibratie', classes: 'bg-gray-100 text-gray-600' },
+};
+
+export const MEETMIDDEL_STATUS: StatusMap = {
+  ACTIEF: { label: 'Actief', classes: 'bg-green-100 text-green-800' },
+  BUITEN_GEBRUIK: { label: 'Buiten gebruik', classes: 'bg-gray-100 text-gray-700' },
+  AFGEKEURD: { label: 'Afgekeurd', classes: 'bg-red-100 text-red-800' },
 };

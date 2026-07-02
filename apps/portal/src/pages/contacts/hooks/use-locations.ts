@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api-client';
-import type { Location, PaginatedResponse } from '@/types';
+import type { Location, PaginatedResponse, PdokRefreshResult } from '@/types';
 
 interface CreateLocationDto {
   name: string;
@@ -8,7 +8,7 @@ interface CreateLocationDto {
   houseNumber: string;
   postalCode: string;
   city: string;
-  objectType?: string;
+  locationTypeId?: string | null;
   notes?: string;
 }
 
@@ -96,21 +96,46 @@ export function useDeleteLocationById() {
   });
 }
 
+/**
+ * Ververs (of vul) de PDOK/BAG-gegevens van een locatie. Zonder `confirm`
+ * worden bij een afwijking de wijzigingen geretourneerd zonder opslaan; met
+ * `confirm: true` wordt opgeslagen. Invalidatie alleen bij daadwerkelijk
+ * opslaan (`applied`).
+ */
+export function useRefreshLocationPdok(locationId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (confirm: boolean) =>
+      apiClient.post<PdokRefreshResult>(
+        `/contacts/locations/${locationId}/pdok-refresh`,
+        { confirm },
+      ),
+    onSuccess: (result) => {
+      if (result.applied) {
+        queryClient.invalidateQueries({ queryKey: ['locations'] });
+        queryClient.invalidateQueries({ queryKey: ['locations', locationId] });
+      }
+    },
+  });
+}
+
 // ─── Locations (global list) ──────────────────────────
 
 interface ListLocationsParams {
   search?: string;
   contactId?: string;
-  objectType?: string;
+  locationTypeId?: string;
   page?: number;
   limit?: number;
+  enabled?: boolean;
 }
 
 export function useLocations(params: ListLocationsParams = {}) {
   const queryParams = new URLSearchParams();
   if (params.search) queryParams.set('search', params.search);
   if (params.contactId) queryParams.set('contactId', params.contactId);
-  if (params.objectType) queryParams.set('objectType', params.objectType);
+  if (params.locationTypeId) queryParams.set('locationTypeId', params.locationTypeId);
   if (params.page) queryParams.set('page', String(params.page));
   if (params.limit) queryParams.set('limit', String(params.limit));
 
@@ -120,6 +145,7 @@ export function useLocations(params: ListLocationsParams = {}) {
   return useQuery<PaginatedResponse<Location & { contact?: { id: string; type: string; companyName: string | null; firstName: string | null; lastName: string | null } }>>({
     queryKey: ['locations', params],
     queryFn: () => apiClient.get(endpoint),
+    enabled: params.enabled,
   });
 }
 

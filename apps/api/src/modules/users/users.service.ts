@@ -10,9 +10,9 @@ import {
 import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcrypt';
 import { randomUUID } from 'crypto';
-import { User, Role, TaskStatus } from '@prisma/client';
+import { User, Role, TaskStatus, Availability } from '@prisma/client';
 import { PrismaService } from '@/prisma';
-import { assertFound } from '@/common';
+import { assertFound, assertSameOrg, sanitizeStorageExtension } from '@/common';
 import { EmailService } from '@/common/services/email.service';
 import {
   STORAGE_PROVIDER,
@@ -55,6 +55,28 @@ export class UsersService {
       where: { orgId, isDeleted: false },
       include: { organization: true },
       orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  /**
+   * Lichte, org-scoped gebruikerslijst voor persoon-/team-pickers. Toegankelijk
+   * voor brede rollen; geeft alleen niet-gevoelige velden terug en kan op rol
+   * gefilterd worden (`roles hasSome [role]`). (REQ5)
+   */
+  async findSelectable(orgId: string | null, role?: Role) {
+    if (!orgId) {
+      // SUPERUSER zonder org-context heeft geen zinvolle org-scoped lijst.
+      return [];
+    }
+    return this.prisma.user.findMany({
+      where: {
+        orgId,
+        isDeleted: false,
+        isActive: true,
+        ...(role ? { roles: { hasSome: [role] } } : {}),
+      },
+      select: { id: true, firstName: true, lastName: true, email: true, roles: true },
+      orderBy: [{ firstName: 'asc' }, { lastName: 'asc' }],
     });
   }
 
@@ -136,6 +158,36 @@ export class UsersService {
     }
 
     return invitation;
+  }
+
+  /**
+   * Beschikbaarheidsstatus van de gebruiker bijwerken (interne chat — REQ1).
+   * Bewust via raw SQL zodat de audit-middleware (User is geaudit) niet bij elke
+   * statuswissel ruis logt; presence + lastSeenAt veranderen frequent.
+   */
+  async updatePresence(
+    userId: string,
+    availability: Availability,
+    availabilityNote?: string | null,
+  ) {
+    await this.prisma.$executeRaw`
+      UPDATE imp_users
+      SET availability = ${availability}::"Availability",
+          availability_note = ${availabilityNote ?? null},
+          last_seen_at = now()
+      WHERE id = ${userId}::uuid
+    `;
+    return this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, availability: true, availabilityNote: true, lastSeenAt: true },
+    });
+  }
+
+  async getPresence(userId: string) {
+    return this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, availability: true, availabilityNote: true, lastSeenAt: true },
+    });
   }
 
   async rotateIcalToken(userId: string) {
@@ -346,6 +398,30 @@ export class UsersService {
     if ('homeLat' in dto) data.homeLat = dto.homeLat ?? null;
     if ('homeLng' in dto) data.homeLng = dto.homeLng ?? null;
 
+    // Klantportaal-contactgegevens + per-kanaal toestemming.
+    if (dto.contactPhone !== undefined) data.contactPhone = (dto.contactPhone || '').trim() || null;
+    if (dto.contactEmail !== undefined) data.contactEmail = (dto.contactEmail || '').trim() || null;
+    if (dto.sharePhoneWithClients !== undefined) data.sharePhoneWithClients = dto.sharePhoneWithClients;
+    if (dto.shareEmailWithClients !== undefined) data.shareEmailWithClients = dto.shareEmailWithClients;
+    // Toestemming heeft alleen effect bij een ingevulde waarde: wordt de waarde in dit verzoek
+    // leeggemaakt, dan vervalt de bijbehorende toestemming automatisch (defensief; de resolutie
+    // dwingt dit ook al af).
+    if (dto.contactPhone !== undefined && !data.contactPhone) data.sharePhoneWithClients = false;
+    if (dto.contactEmail !== undefined && !data.contactEmail) data.shareEmailWithClients = false;
+
+    // Standaard vrijwillige goedkeurder (persoon): org-scoped valideren (REQ5).
+    if ('defaultApprovalPersonId' in dto) {
+      if (!dto.defaultApprovalPersonId) {
+        data.defaultApprovalPersonId = null;
+      } else if (dto.defaultApprovalPersonId === id) {
+        throw new BadRequestException('U kunt uzelf niet als standaard goedkeurder instellen');
+      } else {
+        const me = await this.prisma.user.findUnique({ where: { id }, select: { orgId: true } });
+        await assertSameOrg(this.prisma.user, dto.defaultApprovalPersonId, me?.orgId ?? null, 'Goedkeurder');
+        data.defaultApprovalPersonId = dto.defaultApprovalPersonId;
+      }
+    }
+
     return this.prisma.user.update({
       where: { id },
       data,
@@ -382,6 +458,16 @@ export class UsersService {
     if ('homeLat' in dto) data.homeLat = dto.homeLat ?? null;
     if ('homeLng' in dto) data.homeLng = dto.homeLng ?? null;
 
+    // Klantportaal-contactgegevens + per-kanaal toestemming (namens de inspecteur beheerd).
+    // Identieke normalisatie als in updateProfile.
+    if (dto.contactPhone !== undefined) data.contactPhone = (dto.contactPhone || '').trim() || null;
+    if (dto.contactEmail !== undefined) data.contactEmail = (dto.contactEmail || '').trim() || null;
+    if (dto.sharePhoneWithClients !== undefined) data.sharePhoneWithClients = dto.sharePhoneWithClients;
+    if (dto.shareEmailWithClients !== undefined) data.shareEmailWithClients = dto.shareEmailWithClients;
+    // Toestemming vervalt automatisch wanneer de bijbehorende waarde in dit verzoek leeg wordt gemaakt.
+    if (dto.contactPhone !== undefined && !data.contactPhone) data.sharePhoneWithClients = false;
+    if (dto.contactEmail !== undefined && !data.contactEmail) data.shareEmailWithClients = false;
+
     const updated = await this.prisma.user.update({
       where: { id },
       data,
@@ -408,7 +494,7 @@ export class UsersService {
       await this.storage.delete(user.avatarUrl).catch(() => {});
     }
 
-    const ext = file.originalname.split('.').pop() ?? 'png';
+    const ext = sanitizeStorageExtension(file.originalname, 'png');
     const storageKey = `avatars/${userId}/${randomUUID()}.${ext}`;
     await this.storage.upload(storageKey, file.buffer, file.mimetype);
 

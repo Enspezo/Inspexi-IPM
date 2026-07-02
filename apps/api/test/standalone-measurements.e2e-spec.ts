@@ -13,10 +13,10 @@ describe('Standalone Measurements (e2e)', () => {
   let testOrgId: string;
   let testContactId: string;
   let testNormCode: string;
-  let testLocationTypeCode: string;
   let testPlanId: string;
-  let testLocationId: string;
-  let testAssetId: string;
+  let testCrmLocationId: string;
+  let testLocationNodeId: string;
+  let testAssetNodeId: string;
   let accessToken: string;
   let measurementId: string;
 
@@ -84,11 +84,28 @@ describe('Standalone Measurements (e2e)', () => {
       },
     });
 
-    // Inspection plan
+    // CRM-Locatie = hoofdlocatie / boom-wortel van de AssetNode-boom. De plan
+    // krijgt locationId zodat de standalone-create de LOCATION-node binnen de boom
+    // van plan.locationId kan valideren.
+    const crmLocation = await prisma.location.create({
+      data: {
+        orgId: org.id,
+        contactId: contact.id,
+        name: 'E2E SM Locatie',
+        street: 'Teststraat',
+        houseNumber: '1',
+        postalCode: '1000AA',
+        city: 'Teststad',
+      },
+    });
+    testCrmLocationId = crmLocation.id;
+
+    // Inspection plan (met hoofdlocatie zodat de boom-wortel kan ontstaan)
     const plan = await prisma.inspectionPlan.create({
       data: {
         orgId: org.id,
         contactId: contact.id,
+        locationId: crmLocation.id,
         projectName: 'E2E SM Plan',
         normTypeCode: testNormCode,
         createdBy: user.id,
@@ -96,40 +113,32 @@ describe('Standalone Measurements (e2e)', () => {
     });
     testPlanId = plan.id;
 
-    // Location-type definition (org-scoped)
-    testLocationTypeCode = 'e2esmroom';
-    await prisma.locationTypeDefinition.create({
+    // Wortel-LOCATION-node (1:1 met de CRM-locatie) — doel voor de meting.
+    // PARENT VOOR CHILD: eerst de wortel, dan de asset-node eronder.
+    const rootNode = await prisma.assetNode.create({
       data: {
         orgId: org.id,
-        code: testLocationTypeCode,
-        name: 'Ruimte',
-        isSystem: false,
-      },
-    });
-
-    // Inspection location (target for the measurement)
-    const location = await prisma.inspectionLocation.create({
-      data: {
-        orgId: org.id,
-        inspectionPlanId: plan.id,
-        locationType: testLocationTypeCode,
-        name: 'Meterkast',
+        nodeType: 'LOCATION',
+        rootLocationId: crmLocation.id,
+        typeCode: 'locatie',
+        name: 'Wortel',
         createdBy: user.id,
       },
     });
-    testLocationId = location.id;
+    testLocationNodeId = rootNode.id;
 
-    // Asset (target for link-asset)
-    const asset = await prisma.asset.create({
+    // ASSET-node onder de wortel — doel voor link-asset.
+    const assetNode = await prisma.assetNode.create({
       data: {
         orgId: org.id,
-        inspectionPlanId: plan.id,
-        assetType: 'verdeler',
-        name: 'Hoofdverdeler',
+        nodeType: 'ASSET',
+        parentId: rootNode.id,
+        typeCode: 'kast',
+        name: 'Asset',
         createdBy: user.id,
       },
     });
-    testAssetId = asset.id;
+    testAssetNodeId = assetNode.id;
 
     // Login
     const loginRes = await request(app.getHttpServer())
@@ -140,18 +149,17 @@ describe('Standalone Measurements (e2e)', () => {
 
   afterAll(async () => {
     try {
-      // Children first, then the rest in FK order
+      // Children first, then the rest in FK order. StandaloneMeasurement RESTRICTs
+      // op de node-FK, dus die moet weg vóór assetNode. AssetNode.parentId is SET
+      // NULL, dus één deleteMany ruimt de hele boom (wortel + asset) op.
       await prisma.standaloneMeasurementValue.deleteMany({
         where: { standaloneMeasurement: { inspectionPlanId: testPlanId } },
       });
       await prisma.standaloneMeasurement.deleteMany({ where: { inspectionPlanId: testPlanId } });
-      await prisma.asset.deleteMany({ where: { inspectionPlanId: testPlanId } });
-      await prisma.inspectionLocation.deleteMany({ where: { inspectionPlanId: testPlanId } });
-      await prisma.locationTypeDefinition.deleteMany({
-        where: { orgId: testOrgId, code: testLocationTypeCode },
-      });
+      await prisma.assetNode.deleteMany({ where: { orgId: testOrgId } });
       await prisma.inspectionPlan.deleteMany({ where: { id: testPlanId } });
       await prisma.normTypeDefinition.deleteMany({ where: { code: testNormCode } });
+      await prisma.location.deleteMany({ where: { id: testCrmLocationId } });
       await prisma.contact.deleteMany({ where: { id: testContactId } });
       await prisma.auditLog.deleteMany({ where: { userId: testUserId } });
       await prisma.refreshToken.deleteMany({ where: { userId: testUserId } });
@@ -167,7 +175,7 @@ describe('Standalone Measurements (e2e)', () => {
       const res = await request(app.getHttpServer())
         .post(`/api/v1/inspection-plans/${testPlanId}/standalone-measurements`)
         .set('Authorization', `Bearer ${accessToken}`)
-        .send({ locationId: testLocationId, measurementType: 'isolatiemeting' })
+        .send({ locationId: testLocationNodeId, measurementType: 'isolatiemeting' })
         .expect(201);
 
       expect(res.body.success).toBe(true);
@@ -178,7 +186,7 @@ describe('Standalone Measurements (e2e)', () => {
     it('should return 401 without authentication', async () => {
       await request(app.getHttpServer())
         .post(`/api/v1/inspection-plans/${testPlanId}/standalone-measurements`)
-        .send({ locationId: testLocationId, measurementType: 'isolatiemeting' })
+        .send({ locationId: testLocationNodeId, measurementType: 'isolatiemeting' })
         .expect(401);
     });
 
@@ -203,16 +211,16 @@ describe('Standalone Measurements (e2e)', () => {
       expect(res.body.data.length).toBeGreaterThanOrEqual(1);
     });
 
-    it('should filter by locationId', async () => {
+    it('should filter by locationId (LOCATION-node)', async () => {
       const res = await request(app.getHttpServer())
         .get(
-          `/api/v1/inspection-plans/${testPlanId}/standalone-measurements?locationId=${testLocationId}`,
+          `/api/v1/inspection-plans/${testPlanId}/standalone-measurements?locationId=${testLocationNodeId}`,
         )
         .set('Authorization', `Bearer ${accessToken}`)
         .expect(200);
 
       expect(res.body.success).toBe(true);
-      expect(res.body.data.every((m: any) => m.locationId === testLocationId)).toBe(true);
+      expect(res.body.data.every((m: any) => m.locationNodeId === testLocationNodeId)).toBe(true);
     });
   });
 
@@ -254,11 +262,11 @@ describe('Standalone Measurements (e2e)', () => {
       const res = await request(app.getHttpServer())
         .post(`/api/v1/standalone-measurements/${measurementId}/link-asset`)
         .set('Authorization', `Bearer ${accessToken}`)
-        .send({ assetId: testAssetId })
+        .send({ assetId: testAssetNodeId })
         .expect(201);
 
       expect(res.body.success).toBe(true);
-      expect(res.body.data.linkedAssetId).toBe(testAssetId);
+      expect(res.body.data.linkedAssetNodeId).toBe(testAssetNodeId);
     });
   });
 

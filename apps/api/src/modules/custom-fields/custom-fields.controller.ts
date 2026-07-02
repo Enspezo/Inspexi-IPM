@@ -8,7 +8,9 @@ import {
   Body,
   ParseUUIDPipe,
   ParseEnumPipe,
+  BadRequestException,
 } from '@nestjs/common';
+import { RequiresFeature } from '@/common/decorators/requires-feature.decorator';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { User, CustomFieldEntityType } from '@prisma/client';
 import { ORG_ADMINS } from '@/common/auth/roles';
@@ -22,14 +24,30 @@ import { Roles, CurrentUser } from '@/common/decorators';
 
 @ApiTags('Custom Fields')
 @ApiBearerAuth()
+@RequiresFeature('CUSTOM_FIELDS')
 @Controller('custom-fields')
 export class CustomFieldsController {
   constructor(private readonly customFieldsService: CustomFieldsService) {}
 
+  /**
+   * Aangepaste velden zijn per-org. Een SUPERUSER (orgId = null) heeft geen
+   * org-context: lees-routes leveren dan een lege lijst, schrijf-routes een nette
+   * 400 — i.p.v. een onhandelbare 500 op een null-orgId-query.
+   */
+  private requireOrg(user: User): string {
+    if (!user.orgId) {
+      throw new BadRequestException(
+        'Aangepaste velden zijn alleen beschikbaar binnen een organisatie',
+      );
+    }
+    return user.orgId;
+  }
+
   @Get()
   @ApiOperation({ summary: 'Alle eigen velden voor de organisatie' })
   findAll(@CurrentUser() user: User) {
-    return this.customFieldsService.findAll(user.orgId!);
+    if (!user.orgId) return [];
+    return this.customFieldsService.findAll(user.orgId);
   }
 
   @Get(':entityType')
@@ -39,21 +57,22 @@ export class CustomFieldsController {
     entityType: CustomFieldEntityType,
     @CurrentUser() user: User,
   ) {
-    return this.customFieldsService.findByEntityType(user.orgId!, entityType);
+    if (!user.orgId) return [];
+    return this.customFieldsService.findByEntityType(user.orgId, entityType);
   }
 
   @Post()
   @Roles(...ORG_ADMINS)
   @ApiOperation({ summary: 'Nieuw eigen veld aanmaken' })
   create(@Body() dto: CreateCustomFieldDto, @CurrentUser() user: User) {
-    return this.customFieldsService.create(user.orgId!, dto);
+    return this.customFieldsService.create(this.requireOrg(user), dto);
   }
 
   @Patch('reorder')
   @Roles(...ORG_ADMINS)
   @ApiOperation({ summary: 'Volgorde eigen velden aanpassen' })
   reorder(@Body() dto: ReorderCustomFieldsDto, @CurrentUser() user: User) {
-    return this.customFieldsService.reorder(user.orgId!, dto.orderedIds);
+    return this.customFieldsService.reorder(this.requireOrg(user), dto.orderedIds);
   }
 
   @Patch(':id')
@@ -64,7 +83,7 @@ export class CustomFieldsController {
     @Body() dto: UpdateCustomFieldDto,
     @CurrentUser() user: User,
   ) {
-    return this.customFieldsService.update(id, user.orgId!, dto);
+    return this.customFieldsService.update(id, this.requireOrg(user), dto);
   }
 
   @Delete(':id')
@@ -74,6 +93,6 @@ export class CustomFieldsController {
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: User,
   ) {
-    return this.customFieldsService.remove(id, user.orgId!);
+    return this.customFieldsService.remove(id, this.requireOrg(user));
   }
 }

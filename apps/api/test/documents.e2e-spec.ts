@@ -12,6 +12,10 @@ describe('Documents (e2e)', () => {
   let testUserId: string;
   let testOrgId: string;
   let testContactId: string;
+  let testLocationId: string;
+  let foreignOrgId: string;
+  let foreignContactId: string;
+  let foreignLocationId: string;
   let accessToken: string;
   const createdDocumentIds: string[] = [];
 
@@ -67,6 +71,47 @@ describe('Documents (e2e)', () => {
     });
     testContactId = contact.id;
 
+    // Create test location (own org) for LOCATION document linking
+    const location = await prisma.location.create({
+      data: {
+        orgId: org.id,
+        contactId: contact.id,
+        name: 'E2E Magazijn Noord',
+        street: 'Teststraat',
+        houseNumber: '1',
+        postalCode: '1234AB',
+        city: 'Teststad',
+      },
+    });
+    testLocationId = location.id;
+
+    // Create a foreign org + location to assert cross-tenant isolation
+    const foreignOrg = await prisma.organization.create({
+      data: { name: 'E2E Documents Foreign Org', slug: 'e2edocforeign' },
+    });
+    foreignOrgId = foreignOrg.id;
+    const foreignContact = await prisma.contact.create({
+      data: {
+        orgId: foreignOrg.id,
+        type: 'COMPANY',
+        companyName: 'E2E Foreign Contact',
+        email: 'e2e-doc-foreign@test.nl',
+      },
+    });
+    foreignContactId = foreignContact.id;
+    const foreignLocation = await prisma.location.create({
+      data: {
+        orgId: foreignOrg.id,
+        contactId: foreignContact.id,
+        name: 'E2E Foreign Location',
+        street: 'Buitenweg',
+        houseNumber: '9',
+        postalCode: '9999ZZ',
+        city: 'Verweg',
+      },
+    });
+    foreignLocationId = foreignLocation.id;
+
     // Login to get access token
     const loginRes = await request(app.getHttpServer())
       .post('/api/v1/auth/login')
@@ -80,10 +125,17 @@ describe('Documents (e2e)', () => {
       where: { id: { in: createdDocumentIds } },
     });
     await prisma.auditLog.deleteMany({ where: { userId: testUserId } });
-    await prisma.contact.deleteMany({ where: { id: testContactId } });
+    await prisma.location.deleteMany({
+      where: { id: { in: [testLocationId, foreignLocationId] } },
+    });
+    await prisma.contact.deleteMany({
+      where: { id: { in: [testContactId, foreignContactId] } },
+    });
     await prisma.refreshToken.deleteMany({ where: { userId: testUserId } });
     await prisma.user.deleteMany({ where: { id: testUserId } });
-    await prisma.organization.deleteMany({ where: { id: testOrgId } });
+    await prisma.organization.deleteMany({
+      where: { id: { in: [testOrgId, foreignOrgId] } },
+    });
     await app.close();
   });
 
@@ -120,6 +172,52 @@ describe('Documents (e2e)', () => {
         .set('Authorization', `Bearer ${accessToken}`)
         .attach('file', Buffer.from('test'), 'test.pdf')
         .expect(400);
+    });
+
+    it('should upload a document linked to a LOCATION', async () => {
+      const res = await request(app.getHttpServer())
+        .post('/api/v1/documents')
+        .set('Authorization', `Bearer ${accessToken}`)
+        .field('entityType', 'LOCATION')
+        .field('entityId', testLocationId)
+        .field('description', 'Plattegrond')
+        .attach('file', Buffer.from('floorplan'), 'plattegrond.pdf')
+        .expect(201);
+
+      expect(res.body.success).toBe(true);
+      expect(res.body.data.entityType).toBe('LOCATION');
+      expect(res.body.data.entityId).toBe(testLocationId);
+      expect(res.body.data.entityName).toBe('E2E Magazijn Noord');
+      createdDocumentIds.push(res.body.data.id);
+    });
+
+    it('should reject linking a document to another org location (cross-tenant)', async () => {
+      await request(app.getHttpServer())
+        .post('/api/v1/documents')
+        .set('Authorization', `Bearer ${accessToken}`)
+        .field('entityType', 'LOCATION')
+        .field('entityId', foreignLocationId)
+        .attach('file', Buffer.from('hack'), 'hack.pdf')
+        .expect(403);
+    });
+  });
+
+  describe('GET /api/v1/documents (LOCATION)', () => {
+    it('should list LOCATION documents with the location name', async () => {
+      const res = await request(app.getHttpServer())
+        .get('/api/v1/documents')
+        .query({ entityType: 'LOCATION', entityId: testLocationId })
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(200);
+
+      expect(res.body.success).toBe(true);
+      const docs = res.body.data.data;
+      expect(docs.length).toBeGreaterThan(0);
+      for (const doc of docs) {
+        expect(doc.entityType).toBe('LOCATION');
+        expect(doc.entityId).toBe(testLocationId);
+        expect(doc.entityName).toBe('E2E Magazijn Noord');
+      }
     });
   });
 

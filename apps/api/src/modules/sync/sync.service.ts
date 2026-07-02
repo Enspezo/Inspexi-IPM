@@ -1,26 +1,29 @@
-// v2 sync — entiteit-gegroepeerd, aligned op Beheer-schema, tenant-veilig.
-// Contract: pull → {inspectionPlans, assets, findings, photos, contacts, deletedIds, serverTime}
-//           push → {deviceId, clientTime, changes:{inspectionPlans[],assets[],findings[]}}
+// v3 sync — entiteit-gegroepeerd, aligned op Beheer-schema (unified AssetNode tree), tenant-veilig.
+// Contract: pull → {inspectionPlans, assetNodes, findings, visualInspections, measurementRecords,
+//                    measurementSheetRecords, standaloneMeasurements, photos, contacts, deletedIds, serverTime}
+//           push → {deviceId, clientTime, changes:{<entityKey>[]...}}
 //           resolve → {deviceId, resolutions:[{entityType,entityId,resolution,mergedData?}]}
 //
 // Veiligheid: nooit blind data spreaden (whitelist via sync-mapper), orgId server-side
-// geïnjecteerd uit de hiërarchie, parent-FK met assertSameOrg gecontroleerd.
-// Conflict: optimistic — server.updatedAt > client.syncedAt op een update.
+// geïnjecteerd (elke entiteit heeft een eigen orgId-kolom), FK's met assertSameOrg
+// gecontroleerd (cross-tenant). Conflict: optimistic — server.updatedAt > client.syncedAt.
 
 import { Injectable, BadRequestException } from '@nestjs/common';
-import { User, Prisma, SyncStatus } from '@prisma/client';
+import { AssetNodeType, User, Prisma, NumberingModel, SyncStatus } from '@prisma/client';
 import { PrismaService } from '@/prisma';
-import { orgScope, assertSameOrg } from '@/common';
-import { PushDto, ResolveDto } from './dto';
-import { SYNC_ENTITIES, SyncEntityKey, SyncRecordData, toDbData, toWire } from './sync-mapper';
+import { orgScope, assertSameOrg, requireOrg } from '@/common';
+import { PushDto, ResolveDto, EntityChangeDto } from './dto';
+import {
+  SYNC_ENTITIES, SyncEntityKey, SyncModelName, FkCheckModel, SyncRecordData,
+  SYNC_CONTRACT_VERSION, toDbData, toChildRows, toWire,
+} from './sync-mapper';
+import { ChatService } from '../chat/chat.service';
+import { NumberingService } from '../numbering/numbering.service';
 
 type OpResult =
   | { entityType: string; entityId: string; status: 'success' }
   | { entityType: string; entityId: string; status: 'conflict'; clientData: SyncRecordData; serverData: unknown }
   | { entityType: string; entityId: string; status: 'failed'; error: string };
-
-/** Prisma-modelnamen die de sync aanraakt (eigen entiteiten + parent-modellen). */
-type SyncModelName = 'inspectionPlan' | 'asset' | 'finding';
 
 /** Bestaande db-rij zoals de sync die leest (alleen `updatedAt` wordt expliciet gebruikt). */
 interface SyncRow {
@@ -49,23 +52,104 @@ function asRecord(value: unknown): Record<string, unknown> {
     : {};
 }
 
+/**
+ * Sorteert een `assetNodes`-push-batch zó dat een ouder altijd vóór z'n kind verwerkt wordt.
+ * Nodig omdat een node-create de FK `parent_id` raakt én de BEFORE-trigger die de parent-`path`
+ * uitleest: een kind dat vóór z'n in dezelfde push aangemaakte ouder binnenkomt, zou anders falen.
+ * Stabiele topologische sort (DFS over de in-batch parent→kind-afhankelijkheid); cycli en
+ * id-loze records worden defensief afgehandeld (geen oneindige recursie, niets stilletjes weg).
+ */
+export function orderAssetNodesParentFirst(changes: EntityChangeDto[]): EntityChangeDto[] {
+  const byId = new Map<string, EntityChangeDto>();
+  for (const c of changes) {
+    const id = String(c.data.id ?? '');
+    if (id) byId.set(id, c);
+  }
+  const ordered: EntityChangeDto[] = [];
+  const placed = new Set<string>();
+  const visit = (c: EntityChangeDto, stack: Set<string>): void => {
+    const id = String(c.data.id ?? '');
+    if (id && placed.has(id)) return;
+    const parentId = typeof c.data.parentId === 'string' ? c.data.parentId : undefined;
+    // Volg alleen een parent die óók in deze batch wordt aangemaakt; `!stack.has` breekt cycli.
+    if (parentId && byId.has(parentId) && !stack.has(parentId)) {
+      visit(byId.get(parentId)!, new Set(stack).add(id));
+    }
+    if (!id) {
+      ordered.push(c); // id-loos: behoud volgorde, processChange faalt er netjes op
+    } else if (!placed.has(id)) {
+      placed.add(id);
+      ordered.push(c);
+    }
+  };
+  for (const c of changes) visit(c, new Set(c.data.id ? [String(c.data.id)] : []));
+  return ordered;
+}
+
 @Injectable()
 export class SyncService {
-  constructor(private readonly prisma: PrismaService) {}
-
-  private requireOrg(user: User): string {
-    if (!user.orgId) throw new BadRequestException('Selecteer eerst een organisatie');
-    return user.orgId;
-  }
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly chat: ChatService,
+    private readonly numbering: NumberingService,
+  ) {}
 
   /** Expliciete map model-naam → Prisma-delegate, i.p.v. een dynamische `this.prisma[name]`. */
   private delegateFor(model: SyncModelName): SyncDelegate {
     const delegates: Record<SyncModelName, unknown> = {
       inspectionPlan: this.prisma.inspectionPlan,
-      asset: this.prisma.asset,
+      assetNode: this.prisma.assetNode,
       finding: this.prisma.finding,
+      visualInspection: this.prisma.visualInspection,
+      measurementRecord: this.prisma.measurementRecord,
+      measurementSheetRecord: this.prisma.measurementSheetRecord,
+      standaloneMeasurement: this.prisma.standaloneMeasurement,
     };
     return delegates[model] as SyncDelegate;
+  }
+
+  /** Delegate voor de same-org FK-checks (cross-tenant guard op inkomende FK-waarden). */
+  private checkDelegate(model: FkCheckModel): SyncDelegate {
+    const delegates: Record<FkCheckModel, unknown> = {
+      assetNode: this.prisma.assetNode,
+      inspectionPlan: this.prisma.inspectionPlan,
+      location: this.prisma.location,
+    };
+    return delegates[model] as SyncDelegate;
+  }
+
+  /**
+   * Shortcode (`[typecode]`) van het type-def dat bij `typeCode` hoort, voor de
+   * server-toegekende nodeNumber-generatie. Org-specifiek wint van systeem/globaal
+   * (orgId null); `null` als er geen match/shortcode is (placeholder → '').
+   */
+  private async resolveTypeShortCode(
+    orgId: string,
+    nodeType: AssetNodeType,
+    typeCode: string,
+  ): Promise<string | null> {
+    if (!typeCode) return null;
+    if (nodeType === AssetNodeType.ASSET) {
+      const defs = await this.prisma.assetTypeDefinition.findMany({
+        where: { code: typeCode, OR: [{ orgId }, { orgId: null }], deletedAt: null },
+        select: { orgId: true, shortCode: true },
+      });
+      return (defs.find((d) => d.orgId === orgId) ?? defs[0])?.shortCode ?? null;
+    }
+    const defs = await this.prisma.locationTypeDefinition.findMany({
+      where: { code: typeCode, OR: [{ orgId }, { orgId: null }], deletedAt: null },
+      select: { orgId: true, shortCode: true },
+    });
+    return (defs.find((d) => d.orgId === orgId) ?? defs[0])?.shortCode ?? null;
+  }
+
+  /** Valideer dat alle aanwezige FK-waarden bij de eigen org horen (no-op voor superuser). */
+  private async assertFkChecks(key: SyncEntityKey, data: SyncRecordData, user: User): Promise<void> {
+    for (const chk of SYNC_ENTITIES[key].fkChecks ?? []) {
+      const fkId = data[chk.field] as string | undefined;
+      if (!fkId) continue;
+      await assertSameOrg(this.checkDelegate(chk.model), fkId, user.orgId, chk.label);
+    }
   }
 
   // ── PULL ───────────────────────────────────────────────
@@ -80,16 +164,28 @@ export class SyncService {
       OR: [{ createdAt: { gt: since } }, { updatedAt: { gt: since } }],
     };
 
-    const [plans, assets, findings] = await Promise.all([
-      this.prisma.inspectionPlan.findMany({ where: changedWhere }),
-      this.prisma.asset.findMany({ where: changedWhere }),
-      this.prisma.finding.findMany({ where: changedWhere }),
-    ]);
+    // Unified AssetNode tree: assetNodes draagt zowel LOCATION- als ASSET-nodes (de PWA
+    // smelt zijn assets- en locations-stores samen tot één assetNodes-store).
+    const [plans, assetNodes, findings, visualInspections, measurementRecords, measurementSheetRecords, standaloneMeasurements] =
+      await Promise.all([
+        this.prisma.inspectionPlan.findMany({ where: changedWhere }),
+        this.prisma.assetNode.findMany({ where: changedWhere }),
+        this.prisma.finding.findMany({ where: changedWhere }),
+        this.prisma.visualInspection.findMany({ where: changedWhere }),
+        this.prisma.measurementRecord.findMany({ where: changedWhere }),
+        this.prisma.measurementSheetRecord.findMany({ where: changedWhere }),
+        this.prisma.standaloneMeasurement.findMany({ where: changedWhere, include: { values: true } }),
+      ]);
 
-    const [delPlans, delAssets, delFindings] = await Promise.all([
-      this.prisma.inspectionPlan.findMany({ where: { ...scope, deletedAt: { gt: since } }, select: { id: true } }),
-      this.prisma.asset.findMany({ where: { ...scope, deletedAt: { gt: since } }, select: { id: true } }),
-      this.prisma.finding.findMany({ where: { ...scope, deletedAt: { gt: since } }, select: { id: true } }),
+    const deletedWhere = { ...scope, deletedAt: { gt: since } };
+    const [delPlans, delNodes, delFindings, delVi, delMr, delMsr, delSm] = await Promise.all([
+      this.prisma.inspectionPlan.findMany({ where: deletedWhere, select: { id: true } }),
+      this.prisma.assetNode.findMany({ where: deletedWhere, select: { id: true } }),
+      this.prisma.finding.findMany({ where: deletedWhere, select: { id: true } }),
+      this.prisma.visualInspection.findMany({ where: deletedWhere, select: { id: true } }),
+      this.prisma.measurementRecord.findMany({ where: deletedWhere, select: { id: true } }),
+      this.prisma.measurementSheetRecord.findMany({ where: deletedWhere, select: { id: true } }),
+      this.prisma.standaloneMeasurement.findMany({ where: deletedWhere, select: { id: true } }),
     ]);
 
     // Foto's (metadata + auth-download-route; PWA cachet de blob lokaal)
@@ -105,10 +201,68 @@ export class SyncService {
       select: { id: true, type: true, companyName: true, firstName: true, lastName: true, orgId: true },
     });
 
+    // Meetmiddelen — read-only referentie (pull-only, zoals contacts). Tombstones via
+    // isDeleted+updatedAt (dit model heeft geen deletedAt). Kalibraties syncen niet.
+    const [measurementInstruments, delInstruments, userDefaults, planDefaults] = await Promise.all([
+      this.prisma.measurementInstrument.findMany({
+        where: {
+          ...scope,
+          isDeleted: false,
+          OR: [{ createdAt: { gt: since } }, { updatedAt: { gt: since } }],
+        },
+        select: {
+          id: true,
+          orgId: true,
+          code: true,
+          brand: true,
+          type: true,
+          serialNumber: true,
+          status: true,
+          assignedToUserId: true,
+          calibrationIntervalMonths: true,
+          lastCalibrationDate: true,
+          nextCalibrationDue: true,
+        },
+      }),
+      this.prisma.measurementInstrument.findMany({
+        where: { ...scope, isDeleted: true, updatedAt: { gt: since } },
+        select: { id: true },
+      }),
+      this.prisma.userDefaultInstrument.findMany({
+        where: { userId: user.id },
+        select: { instrumentId: true },
+      }),
+      this.prisma.inspectionPlanDefaultInstrument.findMany({
+        where: { inspectionPlanId: { in: plans.map((p) => p.id) } },
+        select: { inspectionPlanId: true, instrumentId: true },
+      }),
+    ]);
+    const defaultsByPlan = new Map<string, string[]>();
+    for (const d of planDefaults) {
+      const arr = defaultsByPlan.get(d.inspectionPlanId) ?? [];
+      arr.push(d.instrumentId);
+      defaultsByPlan.set(d.inspectionPlanId, arr);
+    }
+
+    // Additieve chat-uitbreiding (REQ1 PR2): membership-scoped threads/messages +
+    // presence. Bestaande keys blijven ongewijzigd; een oude PWA negeert deze.
+    const chat = await this.chat.getSyncSnapshot(user, since);
+
     return {
-      inspectionPlans: plans.map(toWire),
-      assets: assets.map(toWire),
+      inspectionPlans: plans.map((p) => ({
+        ...toWire(p),
+        // Niveau-2 voorkeur per inspectie (additief; lege array als geen defaults).
+        defaultInstrumentIds: defaultsByPlan.get(p.id) ?? [],
+      })),
+      assetNodes: assetNodes.map(toWire),
       findings: findings.map(toWire),
+      visualInspections: visualInspections.map(toWire),
+      measurementRecords: measurementRecords.map(toWire),
+      measurementSheetRecords: measurementSheetRecords.map(toWire),
+      standaloneMeasurements: standaloneMeasurements.map(toWire),
+      // Meetmiddelen pull-only + globale (niveau-1) voorkeur van de device-gebruiker.
+      measurementInstruments,
+      userDefaultInstrumentIds: userDefaults.map((d) => d.instrumentId),
       photos: photos.map((p) => ({
         id: p.id,
         entityType: wirePhotoType[p.entityType] ?? p.entityType,
@@ -121,23 +275,44 @@ export class SyncService {
         orgId: c.orgId,
         name: c.companyName || [c.firstName, c.lastName].filter(Boolean).join(' ') || '—',
       })),
+      // Additief — chat:
+      chatThreads: chat.chatThreads,
+      chatMessages: chat.chatMessages,
+      users: chat.users,
       deletedIds: {
         inspectionPlans: delPlans.map((x) => x.id),
-        assets: delAssets.map((x) => x.id),
+        assetNodes: delNodes.map((x) => x.id),
         findings: delFindings.map((x) => x.id),
+        visualInspections: delVi.map((x) => x.id),
+        measurementRecords: delMr.map((x) => x.id),
+        measurementSheetRecords: delMsr.map((x) => x.id),
+        standaloneMeasurements: delSm.map((x) => x.id),
+        // Additief — meetmiddel-tombstones:
+        measurementInstruments: delInstruments.map((x) => x.id),
+        // Additief — chat tombstones:
+        chatThreads: chat.deletedThreadIds,
+        chatMessages: chat.deletedMessageIds,
       },
+      contractVersion: SYNC_CONTRACT_VERSION,
       serverTime: serverTime.toISOString(),
     };
   }
 
   // ── PUSH ───────────────────────────────────────────────
   async push(user: User, dto: PushDto) {
-    const orgId = this.requireOrg(user);
+    const orgId = requireOrg(user);
     const results: OpResult[] = [];
-    const processed: Record<string, number> = { inspectionPlans: 0, assets: 0, findings: 0 };
+    // Dynamisch over alle v3-entiteiten (incl. assetNodes); de chat-keys worden door
+    // de SYNC_ENTITIES-loop niet gedekt en seeden we expliciet zodat geen counter mist.
+    const processed: Record<string, number> = { chatThreads: 0, chatMessages: 0, presence: 0 };
+    for (const key of Object.keys(SYNC_ENTITIES)) processed[key] = 0;
 
     for (const key of Object.keys(SYNC_ENTITIES) as SyncEntityKey[]) {
-      const group = dto.changes[key] ?? [];
+      // assetNodes: ouder vóór kind verwerken binnen de batch (FK parent_id + path-trigger).
+      const group =
+        key === 'assetNodes'
+          ? orderAssetNodesParentFirst(dto.changes[key] ?? [])
+          : dto.changes[key] ?? [];
       for (const change of group) {
         try {
           const r = await this.processChange(key, change.operation, change.data, user, orgId, dto.deviceId);
@@ -151,6 +326,61 @@ export class SyncService {
             error: e?.message ?? 'Onbekende fout',
           });
         }
+      }
+    }
+
+    // Additief: chat-threads. Bewust NIET via de generieke mutator — ze vereisen
+    // membership-autorisatie + deterministische dedup — dus delegeren we naar
+    // ChatService (idempotent op client-UUID). Verwerk threads VÓÓR berichten,
+    // zodat een in dezelfde push aangemaakte thread bestaat als z'n berichten
+    // worden toegepast.
+    for (const change of dto.changes.chatThreads ?? []) {
+      try {
+        const r = await this.chat.applySyncThread(user, change.operation, change.data);
+        results.push({ entityType: 'chatThread', entityId: r.id, status: 'success' });
+        processed.chatThreads++;
+      } catch (e: any) {
+        results.push({
+          entityType: 'chatThread',
+          entityId: String(change.data.id ?? ''),
+          status: 'failed',
+          error: e?.message ?? 'Onbekende fout',
+        });
+      }
+    }
+
+    // Additief (REQ1 PR2): chat-berichten. Bewust NIET via de generieke mutator —
+    // ze vereisen membership-autorisatie + notificatie-dispatch — dus delegeren we
+    // naar ChatService (idempotent op client-id).
+    for (const change of dto.changes.chatMessages ?? []) {
+      try {
+        const r = await this.chat.applySyncMessage(user, change.operation, change.data);
+        results.push({ entityType: 'chatMessage', entityId: r.id, status: 'success' });
+        processed.chatMessages++;
+      } catch (e: any) {
+        results.push({
+          entityType: 'chatMessage',
+          entityId: String(change.data.id ?? ''),
+          status: 'failed',
+          error: e?.message ?? 'Onbekende fout',
+        });
+      }
+    }
+
+    // Additief: presence. De gebruiker komt uit de JWT; de payload bepaalt enkel
+    // status + notitie.
+    for (const change of dto.changes.presence ?? []) {
+      try {
+        const r = await this.chat.applySyncPresence(user, change.data);
+        results.push({ entityType: 'presence', entityId: r.id, status: 'success' });
+        processed.presence++;
+      } catch (e: any) {
+        results.push({
+          entityType: 'presence',
+          entityId: String(change.data.id ?? ''),
+          status: 'failed',
+          error: e?.message ?? 'Onbekende fout',
+        });
       }
     }
 
@@ -183,14 +413,47 @@ export class SyncService {
       return { ...ref, status: 'success' };
     }
 
-    // orgId server-side bepalen (nooit van de client)
+    // orgId server-side bepalen (nooit van de client) + cross-tenant FK-check op inkomende FK's
     const orgId = await this.resolveOrgId(key, data, userOrgId, user);
+    await this.assertFkChecks(key, data, user);
     const fields = toDbData(key, data);
 
+    // Geneste kind-rijen (bv. StandaloneMeasurementValue) reizen mee in dezelfde payload.
+    const childRows = cfg.nestedChild ? toChildRows(cfg.nestedChild, data) : null;
+
     if (operation === 'create') {
-      await model.create({
-        data: { ...fields, id, orgId, createdBy: data.createdBy ?? user.id },
-      });
+      const createData: Record<string, unknown> = { ...fields, id, orgId };
+      if (cfg.injectCreatedBy) createData.createdBy = data.createdBy ?? user.id;
+      if (cfg.nestedChild && childRows) createData[cfg.nestedChild.relation] = { create: childRows };
+
+      // AssetNode: nodeNumber is server-owned (zoals orgId) — nooit van de client
+      // (het zit niet in de allowed-whitelist). Ken het serverzijdig toe via de
+      // numbering-engine; LOCATION/ASSET kiezen elk hun eigen schema.
+      if (key === 'assetNodes') {
+        const nodeType =
+          String(data.nodeType) === AssetNodeType.LOCATION
+            ? AssetNodeType.LOCATION
+            : AssetNodeType.ASSET;
+        const typeCode = String(data.typeCode ?? '');
+        await this.numbering.runWithGeneratedNumber(
+          nodeType === AssetNodeType.LOCATION
+            ? NumberingModel.LOCATION_NODE
+            : NumberingModel.ASSET_NODE,
+          orgId,
+          {
+            loadContext: async () => ({
+              typeShortCode: await this.resolveTypeShortCode(orgId, nodeType, typeCode),
+            }),
+          },
+          (tx, nodeNumber) =>
+            tx.assetNode.create({
+              data: { ...createData, nodeNumber } as unknown as Prisma.AssetNodeUncheckedCreateInput,
+            }),
+        );
+        return { ...ref, status: 'success' };
+      }
+
+      await model.create({ data: createData });
       return { ...ref, status: 'success' };
     }
 
@@ -216,7 +479,12 @@ export class SyncService {
       return { ...ref, status: 'conflict', clientData: data, serverData };
     }
 
-    await model.update({ where: { id }, data: { ...fields, syncedAt: new Date() } });
+    const updateData: Record<string, unknown> = { ...fields, syncedAt: new Date() };
+    // replace-on-write: alleen als de client het kind-veld meestuurde.
+    if (cfg.nestedChild && childRows) {
+      updateData[cfg.nestedChild.relation] = { deleteMany: {}, create: childRows };
+    }
+    await model.update({ where: { id }, data: updateData });
     return { ...ref, status: 'success' };
   }
 
@@ -241,7 +509,7 @@ export class SyncService {
 
   // ── RESOLVE ────────────────────────────────────────────
   async resolve(user: User, dto: ResolveDto) {
-    this.requireOrg(user);
+    requireOrg(user);
     let resolved = 0;
     const errors: Array<{ entityType: string; entityId: string; error: string }> = [];
 

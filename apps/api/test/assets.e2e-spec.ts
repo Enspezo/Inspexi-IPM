@@ -14,6 +14,7 @@ describe('Assets (e2e)', () => {
   let testContactId: string;
   let testNormCode: string;
   let testAssetTypeCode: string;
+  let testLocationId: string;
   let testPlanId: string;
   let accessToken: string;
   let rootAssetId: string;
@@ -71,6 +72,22 @@ describe('Assets (e2e)', () => {
     });
     testContactId = contact.id;
 
+    // CRM-Locatie = hoofdlocatie / boom-wortel van de AssetNode-boom. De compat
+    // assets-endpoints hangen nieuwe assets onder de (lazily aangemaakte)
+    // wortel-LOCATION-node van plan.locationId.
+    const location = await prisma.location.create({
+      data: {
+        orgId: org.id,
+        contactId: contact.id,
+        name: 'E2E Assets Locatie',
+        street: 'Teststraat',
+        houseNumber: '1',
+        postalCode: '1000AA',
+        city: 'Teststad',
+      },
+    });
+    testLocationId = location.id;
+
     // Global norm-type definition
     testNormCode = 'e2enorm2';
     await prisma.normTypeDefinition.create({
@@ -83,11 +100,12 @@ describe('Assets (e2e)', () => {
       },
     });
 
-    // Inspection plan
+    // Inspection plan (met hoofdlocatie zodat de boom-wortel kan ontstaan)
     const plan = await prisma.inspectionPlan.create({
       data: {
         orgId: org.id,
         contactId: contact.id,
+        locationId: location.id,
         projectName: 'E2E Assets Plan',
         normTypeCode: testNormCode,
         createdBy: user.id,
@@ -115,14 +133,19 @@ describe('Assets (e2e)', () => {
 
   afterAll(async () => {
     try {
-      // Children first, then the rest in FK order
-      await prisma.asset.deleteMany({ where: { inspectionPlanId: testPlanId } });
+      // Children first, then the rest in FK order. AssetNode.parentId is SET NULL,
+      // so a single deleteMany clears the whole tree (root LOCATION + assets).
+      await prisma.assetNode.deleteMany({ where: { orgId: testOrgId } });
       await prisma.inspectionPlan.deleteMany({ where: { id: testPlanId } });
       await prisma.normTypeDefinition.deleteMany({ where: { code: testNormCode } });
       await prisma.assetTypeDefinition.deleteMany({
         where: { orgId: testOrgId, code: testAssetTypeCode },
       });
+      await prisma.location.deleteMany({ where: { id: testLocationId } });
       await prisma.contact.deleteMany({ where: { id: testContactId } });
+      // Node-create auto-provisioneert numbering-schemas (+counters) voor de org.
+      await prisma.numberingCounter.deleteMany({ where: { scheme: { orgId: testOrgId } } });
+      await prisma.numberingScheme.deleteMany({ where: { orgId: testOrgId } });
       await prisma.auditLog.deleteMany({ where: { userId: testUserId } });
       await prisma.refreshToken.deleteMany({ where: { userId: testUserId } });
       await prisma.user.deleteMany({ where: { id: testUserId } });
@@ -221,15 +244,24 @@ describe('Assets (e2e)', () => {
       childAssetId = res.body.data.id;
     });
 
-    it('should move the child to root', async () => {
+    it('should move the child up under the root LOCATION node', async () => {
+      // Assets are no longer plan-rooted; they hang under the unified tree. Moving
+      // "to root" now means re-parenting onto the plan's root LOCATION node (the
+      // lazily-created 1:1 node for plan.locationId), not a null parent.
+      const rootNode = await prisma.assetNode.findUnique({
+        where: { rootLocationId: testLocationId },
+        select: { id: true },
+      });
+      expect(rootNode).toBeTruthy();
+
       const res = await request(app.getHttpServer())
         .post(`/api/v1/assets/${childAssetId}/move`)
         .set('Authorization', `Bearer ${accessToken}`)
-        .send({ newParentId: null })
+        .send({ newParentId: rootNode!.id })
         .expect(201);
 
       expect(res.body.success).toBe(true);
-      expect(res.body.data.parentAssetId).toBeNull();
+      expect(res.body.data.parentAssetId).toBe(rootNode!.id);
     });
 
     it('should reorder assets within the plan', async () => {

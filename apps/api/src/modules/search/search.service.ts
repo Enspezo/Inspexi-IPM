@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { User, Role, TaskEntityType, DocumentEntityType } from '@prisma/client';
 import { PrismaService } from '@/prisma';
+import { FavoritesService } from '../favorites/favorites.service';
 import { SearchQueryDto, SearchEntityType } from './dto/search-query.dto';
 
 const userSelect = {
@@ -8,6 +9,21 @@ const userSelect = {
   firstName: true,
   lastName: true,
   email: true,
+};
+
+/**
+ * Maps a search entity type to its favoritable Prisma model name so search hits
+ * can be matched against the user's favorites. DOCUMENT is intentionally absent
+ * (documents are not favoritable).
+ */
+const SEARCH_TYPE_TO_MODEL: Partial<Record<SearchEntityType, string>> = {
+  [SearchEntityType.CONTACT]: 'Contact',
+  [SearchEntityType.CONTACT_PERSON]: 'ContactPerson',
+  [SearchEntityType.LOCATION]: 'Location',
+  [SearchEntityType.REQUEST]: 'Request',
+  [SearchEntityType.QUOTE]: 'Quote',
+  [SearchEntityType.TASK]: 'Task',
+  [SearchEntityType.PRODUCT]: 'Product',
 };
 
 export interface SearchGroup {
@@ -24,7 +40,10 @@ export interface SearchResult {
 export class SearchService {
   private readonly logger = new Logger(SearchService.name);
 
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private favoritesService: FavoritesService,
+  ) {}
 
   async search(user: User, query: SearchQueryDto): Promise<SearchResult> {
     const { q, type, limit = 4, page = 1 } = query;
@@ -95,6 +114,20 @@ export class SearchService {
     }
     if (productsResult) {
       groups.push({ type: SearchEntityType.PRODUCT, ...productsResult });
+    }
+
+    // Mark favorited hits and bubble them to the top of their group. Ordering is
+    // within-page only: favorites among the fetched page rise to the front, each
+    // method's existing createdAt/name order is preserved as the secondary key
+    // (Array.prototype.sort is stable).
+    const favSet = await this.favoritesService.getFavoriteRefSet(user);
+    for (const group of groups) {
+      const model = SEARCH_TYPE_TO_MODEL[group.type];
+      const items = group.items as Array<{ id: string; isFavorited?: boolean }>;
+      for (const item of items) {
+        item.isFavorited = model ? favSet.has(`${model}:${item.id}`) : false;
+      }
+      items.sort((a, b) => Number(b.isFavorited) - Number(a.isFavorited));
     }
 
     return { groups };
@@ -203,7 +236,7 @@ export class SearchService {
         { street: { contains: q, mode: 'insensitive' as const } },
         { city: { contains: q, mode: 'insensitive' as const } },
         { postalCode: { contains: q, mode: 'insensitive' as const } },
-        { objectType: { contains: q, mode: 'insensitive' as const } },
+        { locationType: { name: { contains: q, mode: 'insensitive' as const } } },
       ],
     };
 
@@ -218,7 +251,7 @@ export class SearchService {
           houseNumber: true,
           postalCode: true,
           city: true,
-          objectType: true,
+          locationType: { select: { id: true, code: true, name: true, color: true, icon: true } },
           contact: {
             select: {
               id: true,
@@ -474,8 +507,21 @@ export class SearchService {
     const taskIds = docs
       .filter((d) => d.entityType === DocumentEntityType.TASK)
       .map((d) => d.entityId);
+    const locationIds = docs
+      .filter((d) => d.entityType === DocumentEntityType.LOCATION)
+      .map((d) => d.entityId);
 
     await Promise.all([
+      locationIds.length > 0
+        ? this.prisma.location
+            .findMany({
+              where: { id: { in: locationIds } },
+              select: { id: true, name: true },
+            })
+            .then((locations) => {
+              for (const l of locations) nameMap.set(l.id, l.name);
+            })
+        : Promise.resolve(),
       contactIds.length > 0
         ? this.prisma.contact
             .findMany({

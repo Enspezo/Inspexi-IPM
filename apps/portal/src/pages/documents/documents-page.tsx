@@ -10,8 +10,17 @@ import {
   Input,
   Select,
   Button,
+  TagPill,
 } from '@/components/ui';
-import { ENTITY_TYPE_LABELS } from '@/lib/status';
+import { useDocumentTagsCompact } from '@/pages/organization/hooks/use-document-tags';
+import { useAuth } from '@/providers/auth-provider';
+import { hasRole } from '@/lib/has-role';
+import { Role } from '@/types';
+import {
+  DOCUMENT_ENTITY_LABELS,
+  DOCUMENT_ENTITY_LINK_TYPES,
+  DOCUMENT_ENTITY_ROUTES,
+} from '@/lib/document-entities';
 import { DetailPageLayout } from '@/components/layout/detail-page-layout';
 import { PageHeader } from '@/components/layout/page-header';
 import {
@@ -21,34 +30,16 @@ import {
 } from '@/components/table-config';
 import { useDocuments } from './hooks/use-documents';
 import { downloadFile } from '@/lib/download-file';
+import { formatFileSize } from '@/lib/format';
 import { DocumentPreviewModal, UploadDocumentModal } from '@/components/documents';
 
 const entityTypeFilterOptions = [
   { value: '', label: 'Alle types' },
-  { value: DocumentEntityType.CONTACT, label: 'Relatie' },
-  { value: DocumentEntityType.REQUEST, label: 'Aanvraag' },
-  { value: DocumentEntityType.QUOTE, label: 'Offerte' },
-  { value: DocumentEntityType.PRODUCT, label: 'Product' },
-  { value: DocumentEntityType.TASK, label: 'Taak' },
-  { value: DocumentEntityType.USER, label: 'Gebruiker' },
+  ...DOCUMENT_ENTITY_LINK_TYPES.map((type) => ({
+    value: type,
+    label: DOCUMENT_ENTITY_LABELS[type],
+  })),
 ];
-
-const entityTypeRoutes: Record<string, string> = {
-  [DocumentEntityType.CONTACT]: '/contacts',
-  [DocumentEntityType.REQUEST]: '/requests',
-  [DocumentEntityType.QUOTE]: '/quotes',
-  [DocumentEntityType.PRODUCT]: '/products',
-  [DocumentEntityType.TASK]: '/tasks',
-  [DocumentEntityType.USER]: '/users',
-};
-
-function formatBytes(bytes: number): string {
-  if (bytes === 0) return '0 B';
-  const k = 1024;
-  const sizes = ['B', 'KB', 'MB', 'GB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
-}
 
 function getMimeLabel(mimeType: string): string {
   if (mimeType === 'application/pdf') return 'PDF';
@@ -90,6 +81,14 @@ function EntityIcon({ type }: { type: DocumentEntityType }) {
       </svg>
     );
   }
+  if (type === DocumentEntityType.LOCATION) {
+    return (
+      <svg className="h-4 w-4 shrink-0 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+      </svg>
+    );
+  }
   // TASK
   return (
     <svg className="h-4 w-4 shrink-0 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -102,9 +101,25 @@ export default function DocumentsPage() {
   const [isUploadOpen, setIsUploadOpen] = useState(false);
   const [search, setSearch] = useState('');
   const [entityTypeFilter, setEntityTypeFilter] = useState('');
+  const [tagFilter, setTagFilter] = useState('');
   const [onlyMine, setOnlyMine] = useState(() => tenantStorage.getItem('filter-mine:documents') === 'true');
   const [page, setPage] = useState(1);
   const [previewDoc, setPreviewDoc] = useState<CrmDocument | null>(null);
+
+  const { user } = useAuth();
+  const canEditTags = hasRole(user, [
+    Role.SUPERUSER,
+    Role.ORG_ADMIN,
+    Role.MANAGER,
+    Role.BACKOFFICE,
+    Role.WERKVOORBEREIDER,
+  ]);
+
+  const { data: availableTags } = useDocumentTagsCompact();
+  const tagFilterOptions = [
+    { value: '', label: 'Alle tags' },
+    ...(availableTags ?? []).map((t) => ({ value: t.id, label: t.name })),
+  ];
 
   const handleDownload = async (doc: CrmDocument) => {
     try {
@@ -124,12 +139,21 @@ export default function DocumentsPage() {
       sortKey: 'originalName',
       getFilterValue: (doc) => doc.originalName,
       render: (doc) => (
-        <button
-          onClick={() => setPreviewDoc(doc)}
-          className="flex items-center gap-2 text-sm font-medium text-gray-900 hover:text-primary-600 hover:underline"
-        >
-          <span className="truncate max-w-xs">{doc.originalName}</span>
-        </button>
+        <div className="min-w-0">
+          <button
+            onClick={() => setPreviewDoc(doc)}
+            className="flex items-center gap-2 text-sm font-medium text-gray-900 hover:text-primary-600 hover:underline"
+          >
+            <span className="truncate max-w-xs">{doc.originalName}</span>
+          </button>
+          {doc.tags && doc.tags.length > 0 && (
+            <div className="mt-1 flex flex-wrap gap-1">
+              {doc.tags.map((tag) => (
+                <TagPill key={tag.id} tag={tag} />
+              ))}
+            </div>
+          )}
+        </div>
       ),
     },
     {
@@ -157,7 +181,7 @@ export default function DocumentsPage() {
       sortKey: 'size',
       render: (doc) => (
         <span className="whitespace-nowrap text-xs text-gray-500">
-          {formatBytes(doc.size)}
+          {formatFileSize(doc.size)}
         </span>
       ),
     },
@@ -172,7 +196,7 @@ export default function DocumentsPage() {
       sortKey: 'entityType',
       getFilterValue: (doc) => doc.entityType,
       render: (doc) => {
-        const route = entityTypeRoutes[doc.entityType];
+        const route = DOCUMENT_ENTITY_ROUTES[doc.entityType];
         return (
           <div className="flex items-center gap-1.5">
             <EntityIcon type={doc.entityType} />
@@ -185,7 +209,7 @@ export default function DocumentsPage() {
               </a>
             ) : (
               <span className="text-xs text-gray-500">
-                {ENTITY_TYPE_LABELS[doc.entityType] || doc.entityType}
+                {DOCUMENT_ENTITY_LABELS[doc.entityType] || doc.entityType}
               </span>
             )}
           </div>
@@ -279,6 +303,7 @@ export default function DocumentsPage() {
   const { data, isLoading, error } = useDocuments({
     search: search || undefined,
     entityType: (entityTypeFilter as DocumentEntityType) || undefined,
+    tagId: tagFilter || undefined,
     onlyMine: onlyMine || undefined,
     page,
     limit: 20,
@@ -366,6 +391,18 @@ export default function DocumentsPage() {
               }}
             />
           </div>
+          {availableTags && availableTags.length > 0 && (
+            <div className="w-44">
+              <Select
+                options={tagFilterOptions}
+                value={tagFilter}
+                onChange={(e) => {
+                  setTagFilter(e.target.value);
+                  setPage(1);
+                }}
+              />
+            </div>
+          )}
           <label className="inline-flex cursor-pointer items-center gap-2 whitespace-nowrap rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm transition-colors hover:border-gray-400">
             <input
               type="checkbox"
@@ -425,6 +462,7 @@ export default function DocumentsPage() {
         isOpen={!!previewDoc}
         onClose={() => setPreviewDoc(null)}
         document={previewDoc}
+        canEditTags={canEditTags}
       />
 
       {isUploadOpen && (

@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import { User, Prisma } from '@prisma/client';
 import { PrismaService } from '@/prisma';
-import { assertFound, paginate } from '@/common';
+import { assertFound, assertSystemRowManageable, paginate } from '@/common';
 import {
   CreateFindingTemplateDto,
   UpdateFindingTemplateDto,
@@ -77,6 +77,27 @@ export class FindingTemplatesService {
       orderBy: [{ category: { name: 'asc' } }, { shortDescription: 'asc' }],
       page,
       limit,
+    });
+  }
+
+  /**
+   * Alle ACTIEVE templates (eigen org + systeem) zonder paginatie — voor de inspecteur-PWA,
+   * die alle constatering-templates in één call offline cachet. Superuser (orgId null) ziet
+   * alles. Dezelfde org-scope en item-vorm als findAll, maar zonder limit/paginatie-envelope.
+   */
+  async findAllActive(user: User) {
+    const orgId = user.orgId;
+    const where: Prisma.FindingTemplateWhereInput = {
+      AND: [
+        { isActive: true },
+        orgId ? { OR: [{ orgId }, { orgId: null, isSystem: true }] } : {},
+      ],
+    };
+
+    return this.prisma.findingTemplate.findMany({
+      where,
+      include: TEMPLATE_INCLUDE,
+      orderBy: [{ category: { name: 'asc' } }, { shortDescription: 'asc' }],
     });
   }
 
@@ -411,14 +432,9 @@ export class FindingTemplatesService {
     template: { isSystem: boolean; orgId: string | null },
     user: User,
   ): void {
-    if (template.isSystem) {
-      if (user.orgId !== null) {
-        throw new ForbiddenException(
-          'Systeem-constateringssjablonen zijn alleen-lezen. Dupliceer eerst.',
-        );
-      }
-    } else if (template.orgId !== user.orgId) {
-      throw new ForbiddenException('Dit sjabloon hoort niet bij uw organisatie');
-    }
+    assertSystemRowManageable(template, user, {
+      system: 'Systeem-constateringssjablonen zijn alleen-lezen. Dupliceer eerst.',
+      org: 'Dit sjabloon hoort niet bij uw organisatie',
+    });
   }
 }

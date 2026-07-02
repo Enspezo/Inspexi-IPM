@@ -47,6 +47,26 @@ export class CreateContactDto {
   @IsString()
   cocNumber?: string;
 
+  @ApiPropertyOptional({ description: 'Relatie is een leverancier', example: false })
+  @IsOptional()
+  @IsBoolean()
+  isSupplier?: boolean;
+
+  @ApiPropertyOptional({ description: 'Ons klantnummer bij de leverancier' })
+  @IsOptional()
+  @IsString()
+  supplierCustomerNumber?: string;
+
+  @ApiPropertyOptional({ description: 'Inkoopvoorwaarden' })
+  @IsOptional()
+  @IsString()
+  purchaseConditions?: string;
+
+  @ApiPropertyOptional({ description: 'Leveranciersbeoordeling (ja/nee)', example: false })
+  @IsOptional()
+  @IsBoolean()
+  supplierRating?: boolean;
+
   @ApiPropertyOptional({ example: 'Vaste klant sinds 2020' })
   @IsOptional()
   @IsString()

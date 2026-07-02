@@ -1,174 +1,113 @@
-// Org-breed assetregister — PAGINATED overzichtspagina, gespiegeld op
-// pages/inspections/inspections-page.tsx (DetailPageLayout + TableConfigSidebar +
-// useTableConfig + ColumnDef + Table + PageHeader + server-paginatie).
-// Status is een LOOKUP → <LookupBadge>; filteropties dynamisch uit useLookups.
-// Overzicht-only: geen "Nieuw"-knop, geen detail-navigatie (naam = platte tekst).
+// Org-breed locatie- & assetoverzicht. Spiegelt de inspectie-objectboom van de
+// CRM-locatiedetailpagina: je kiest een CRM-locatie (object/site) en ziet daarvan de
+// volledige Locatie+Asset-boom via de gedeelde <TreeExplorer>. Assets zijn persistent
+// en plan-ontkoppeld; de boom hangt per CRM-locatie (zie docs/PLAN-ASSET-NODE-TREE.md).
 
-import { useState, useCallback, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import type { Asset } from '@/types';
-import { ErrorBox, Spinner, Table, Input, Select, Button } from '@/components/ui';
-import { LookupBadge } from '@/components/ui/lookup-badge';
-import { DetailPageLayout } from '@/components/layout/detail-page-layout';
+import { useState, useEffect, useMemo } from 'react';
+import { Card, Input, Spinner, ErrorBox } from '@/components/ui';
 import { PageHeader } from '@/components/layout/page-header';
-import { TableConfigSidebar, useTableConfig, type ColumnDef } from '@/components/table-config';
-import { useLookups } from '@/lib/lookups';
-import { useAssets } from './hooks/use-assets';
+import { useAuth } from '@/providers/auth-provider';
+import { CRM_ROLES } from '@/lib/roles';
+import { useLocations } from '@/pages/contacts/hooks/use-locations';
+import { useAssetTree } from '@/pages/inspections/hooks/use-asset-nodes';
+import { TreeExplorer } from '@/components/asset-tree';
 
 export default function AssetsPage() {
-  const navigate = useNavigate();
+  const { user } = useAuth();
+  const userCanWrite = !!user && user.roles.some((r) => CRM_ROLES.includes(r));
+
   const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState('');
-  const [page, setPage] = useState(1);
+  const [selectedLocationId, setSelectedLocationId] = useState<string | null>(null);
 
-  // Filteropties dynamisch uit de asset-status lookup (systeemdefaults + org-overrides)
-  const { data: assetStatuses } = useLookups('asset-status-types');
-  const statusFilterOptions = [
-    { value: '', label: 'Alle statussen' },
-    ...(assetStatuses ?? []).map((s) => ({ value: s.code, label: s.label })),
-  ];
-
-  const handleSearchChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    setSearch(e.target.value);
-    setPage(1);
-  }, []);
-
-  const columns: ColumnDef<Asset>[] = [
-    {
-      key: 'name',
-      header: 'Naam',
-      pinned: true,
-      sortable: true,
-      sortKey: 'name',
-      render: (a) => (
-        <button
-          onClick={() => navigate(`/assets/${a.id}`)}
-          className="text-left font-medium text-primary-600 hover:text-primary-700 hover:underline"
-        >
-          {a.name}
-        </button>
-      ),
-    },
-    {
-      key: 'identifier',
-      header: 'Kenmerk',
-      sortable: true,
-      sortKey: 'identifier',
-      getFilterValue: (a) => a.identifier ?? '',
-      render: (a) =>
-        a.identifier
-          ? <span className="text-gray-600">{a.identifier}</span>
-          : <span className="text-gray-400">—</span>,
-    },
-    {
-      key: 'assetType',
-      header: 'Type',
-      sortable: true,
-      sortKey: 'assetType',
-      groupable: true,
-      getFilterValue: (a) => a.assetType,
-      render: (a) => <span className="text-gray-600">{a.assetType}</span>,
-    },
-    {
-      key: 'statusCode',
-      header: 'Status',
-      filterable: true,
-      filterType: 'select',
-      filterOptions: statusFilterOptions.filter((o) => o.value !== ''),
-      groupable: true,
-      sortable: true,
-      sortKey: 'statusCode',
-      getFilterValue: (a) => a.statusCode,
-      render: (a) => <LookupBadge kind="asset-status-types" code={a.statusCode} />,
-    },
-    {
-      key: 'createdAt',
-      header: 'Aangemaakt',
-      filterable: true,
-      filterType: 'date',
-      sortable: true,
-      sortKey: 'createdAt',
-      getFilterValue: (a) => a.createdAt,
-      render: (a) => (
-        <span className="text-xs text-gray-500">{new Date(a.createdAt).toLocaleDateString('nl-NL')}</span>
-      ),
-    },
-  ];
-
-  const {
-    activeColumns, filteredData, pendingColumnConfig, setPendingColumnConfig,
-    pendingFilters, setPendingFilters, pendingGrouping, setPendingGrouping,
-    applyColumns, applyFilters, resetToDefaults, isColumnsDirty, isFiltersDirty,
-    allColumns, sort, toggleSort, apiSort,
-  } = useTableConfig({ pageKey: 'assets', columns });
-
-  useEffect(() => { setPage(1); }, [sort]);
-
-  const { data, isLoading, error } = useAssets({
+  const { data, isLoading, error } = useLocations({
     search: search || undefined,
-    statusCode: statusFilter || undefined,
-    page, limit: 20,
-    sortBy: apiSort?.sortBy, sortOrder: apiSort?.sortOrder,
+    limit: 200,
+    enabled: true,
   });
+  const locations = useMemo(() => data?.data ?? [], [data]);
 
-  if (isLoading) return <div className="flex h-64 items-center justify-center"><Spinner size="lg" /></div>;
-  if (error) return <ErrorBox>Fout bij het laden van assets: {(error as Error).message}</ErrorBox>;
+  // Auto-selecteer de eerste locatie zodra de lijst laadt en er nog niets gekozen is.
+  useEffect(() => {
+    if (!selectedLocationId && locations.length > 0) {
+      setSelectedLocationId(locations[0].id);
+    }
+  }, [locations, selectedLocationId]);
 
-  const assets = data?.data || [];
-  const total = data?.total || 0;
-  const totalPages = Math.ceil(total / 20);
+  const selectedLocation = locations.find((l) => l.id === selectedLocationId) ?? null;
+  const { data: treeData, isLoading: treeLoading } = useAssetTree(selectedLocationId ?? undefined);
 
   return (
-    <DetailPageLayout
-      sidebar={
-        <TableConfigSidebar
-          columns={allColumns}
-          pendingColumnConfig={pendingColumnConfig} onColumnConfigChange={setPendingColumnConfig}
-          pendingFilters={pendingFilters} onFiltersChange={setPendingFilters}
-          pendingGrouping={pendingGrouping} onGroupingChange={setPendingGrouping}
-          onApplyColumns={applyColumns} onApplyFilters={applyFilters} onReset={resetToDefaults}
-          isColumnsDirty={isColumnsDirty} isFiltersDirty={isFiltersDirty}
-        />
-      }
-    >
-      <div className="space-y-6">
-        <PageHeader title="Assets" description="Org-breed assetregister" />
+    <div className="space-y-6">
+      <PageHeader
+        title="Assets"
+        description="Locatie- en assetboom per object — kies een locatie om de boom te beheren"
+      />
 
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
-          <div className="flex-1">
-            <Input placeholder="Zoeken op naam / kenmerk..." value={search} onChange={handleSearchChange} />
-          </div>
-          <div className="w-48">
-            <Select
-              options={statusFilterOptions}
-              value={statusFilter}
-              onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[320px_1fr]">
+        {/* Locatie-selector */}
+        <Card className="self-start">
+          <div className="space-y-3">
+            <Input
+              placeholder="Locatie zoeken op naam / adres..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
             />
-          </div>
-        </div>
 
-        <Table
-          columns={activeColumns}
-          data={filteredData(assets)}
-          keyExtractor={(a) => a.id}
-          emptyMessage="Geen assets gevonden"
-          sort={sort}
-          onSort={toggleSort}
-        />
-
-        {totalPages > 1 ? (
-          <div className="flex items-center justify-between">
-            <p className="text-sm text-gray-500">{total} {total !== 1 ? 'assets' : 'asset'}</p>
-            <div className="flex gap-2">
-              <Button variant="secondary" size="sm" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1}>Vorige</Button>
-              <span className="flex items-center px-3 text-sm text-gray-600">{page} / {totalPages}</span>
-              <Button variant="secondary" size="sm" onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page === totalPages}>Volgende</Button>
-            </div>
+            {isLoading ? (
+              <div className="flex justify-center py-8"><Spinner /></div>
+            ) : error ? (
+              <ErrorBox>Fout bij het laden van locaties: {(error as Error).message}</ErrorBox>
+            ) : locations.length === 0 ? (
+              <p className="py-6 text-center text-sm text-gray-500">Geen locaties gevonden</p>
+            ) : (
+              <ul className="max-h-[60vh] divide-y divide-gray-100 overflow-y-auto">
+                {locations.map((loc) => {
+                  const isActive = loc.id === selectedLocationId;
+                  const contact = (loc as { contact?: { companyName: string | null; firstName: string | null; lastName: string | null } }).contact;
+                  const contactName =
+                    contact?.companyName || [contact?.firstName, contact?.lastName].filter(Boolean).join(' ') || null;
+                  return (
+                    <li key={loc.id}>
+                      <button
+                        onClick={() => setSelectedLocationId(loc.id)}
+                        className={`w-full rounded-md px-3 py-2 text-left transition-colors ${
+                          isActive ? 'bg-primary-50 text-primary-800' : 'hover:bg-gray-50'
+                        }`}
+                      >
+                        <span className="block text-sm font-medium">{loc.name}</span>
+                        <span className="block text-xs text-gray-500">
+                          {loc.street} {loc.houseNumber}, {loc.postalCode} {loc.city}
+                        </span>
+                        {contactName ? (
+                          <span className="block text-xs text-gray-400">{contactName}</span>
+                        ) : null}
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
           </div>
-        ) : (
-          <p className="text-sm text-gray-500">{total} {total !== 1 ? 'assets' : 'asset'}</p>
-        )}
+        </Card>
+
+        {/* Boom van de geselecteerde locatie */}
+        <Card
+          title={selectedLocation ? `Objectboom — ${selectedLocation.name}` : 'Objectboom'}
+        >
+          {!selectedLocationId ? (
+            <p className="py-10 text-center text-sm text-gray-500">
+              Kies links een locatie om de Locatie- en assetboom te bekijken.
+            </p>
+          ) : (
+            <TreeExplorer
+              nodes={treeData}
+              isLoading={treeLoading}
+              canWrite={userCanWrite}
+              emptyMessage="Nog geen objecten op deze locatie."
+            />
+          )}
+        </Card>
       </div>
-    </DetailPageLayout>
+    </div>
   );
 }

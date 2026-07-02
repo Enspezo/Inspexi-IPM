@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { User, Category, Prisma } from '@prisma/client';
 import { PrismaService } from '@/prisma';
+import { assertSystemRowManageable } from '@/common';
 import {
   CreateCategoryDto,
   UpdateCategoryDto,
@@ -243,13 +244,10 @@ export class CategoriesService {
     cat: { isSystem: boolean; orgId: string | null },
     user: User,
   ): void {
-    if (cat.isSystem) {
-      if (user.orgId !== null) {
-        throw new ForbiddenException('Systeemcategorieën zijn alleen-lezen');
-      }
-    } else if (cat.orgId !== user.orgId) {
-      throw new ForbiddenException('Deze categorie hoort niet bij uw organisatie');
-    }
+    assertSystemRowManageable(cat, user, {
+      system: 'Systeemcategorieën zijn alleen-lezen',
+      org: 'Deze categorie hoort niet bij uw organisatie',
+    });
   }
 
   /** Loopt de ouder-keten af om cycli bij verplaatsen te detecteren. */

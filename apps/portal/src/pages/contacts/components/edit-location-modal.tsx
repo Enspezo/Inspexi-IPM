@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { Modal, Input, Select, Button, useToast } from '@/components/ui';
 import { AddressSearchInput } from '@/components/ui/address-search-input';
 import { useUpdateLocation } from '../hooks/use-contacts';
+import { useLocationTypes } from '@/pages/location-types/hooks/use-location-types';
 import type { Location } from '@/types';
 import type { ParsedAddress } from '@/lib/geocoding';
 
@@ -14,20 +15,11 @@ const locationSchema = z.object({
   houseNumber: z.string().min(1, 'Huisnummer is verplicht'),
   postalCode: z.string().min(1, 'Postcode is verplicht'),
   city: z.string().min(1, 'Stad is verplicht'),
-  objectType: z.string().optional(),
+  locationTypeId: z.string().optional(),
   notes: z.string().optional(),
 });
 
 type LocationFormData = z.infer<typeof locationSchema>;
-
-const objectTypeOptions = [
-  { value: '', label: 'Selecteer type...' },
-  { value: 'woning', label: 'Woning' },
-  { value: 'kantoor', label: 'Kantoor' },
-  { value: 'industrieel', label: 'Industrieel' },
-  { value: 'winkel', label: 'Winkel' },
-  { value: 'overig', label: 'Overig' },
-];
 
 interface EditLocationModalProps {
   isOpen: boolean;
@@ -44,10 +36,16 @@ export function EditLocationModal({
 }: EditLocationModalProps) {
   const { showToast } = useToast();
   const updateMutation = useUpdateLocation(contactId);
+  const { data: locationTypes = [] } = useLocationTypes({ scope: 'CRM' });
   // Track pdokData separately; initialized from existing location data
   const [pdokData, setPdokData] = useState<Record<string, unknown> | null>(
     location.pdokData ?? null,
   );
+
+  const locationTypeOptions = [
+    { value: '', label: 'Geen type' },
+    ...locationTypes.map((t) => ({ value: t.id, label: t.name })),
+  ];
 
   const currentAddressLabel = `${location.street} ${location.houseNumber}, ${location.postalCode} ${location.city}`;
 
@@ -64,7 +62,7 @@ export function EditLocationModal({
       houseNumber: location.houseNumber,
       postalCode: location.postalCode,
       city: location.city,
-      objectType: location.objectType || '',
+      locationTypeId: location.locationTypeId || '',
       notes: location.notes || '',
     },
   });
@@ -81,7 +79,7 @@ export function EditLocationModal({
     try {
       const cleaned = {
         ...data,
-        objectType: data.objectType || undefined,
+        locationTypeId: data.locationTypeId || undefined,
         notes: data.notes || undefined,
         pdokData: pdokData ?? undefined,
       };
@@ -146,9 +144,9 @@ export function EditLocationModal({
         </div>
 
         <Select
-          label="Objecttype"
-          options={objectTypeOptions}
-          {...register('objectType')}
+          label="Locatietype"
+          options={locationTypeOptions}
+          {...register('locationTypeId')}
         />
 
         <div>

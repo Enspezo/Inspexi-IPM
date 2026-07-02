@@ -3,11 +3,13 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { ContactType, Role } from '@/types';
+import { ContactType, Role, DocumentEntityType } from '@/types';
 import { roleColors as contactPersonRoleColors } from '@/lib/contact-person-role';
 import { Button, Card, ErrorBox, InfoField, Input, Select, Spinner, useConfirm, useToast } from '@/components/ui';
 import { AddressSearchInput } from '@/components/ui/address-search-input';
 import { DetailPageLayout } from '@/components/layout/detail-page-layout';
+import { FavoriteStar } from '@/components/favorites/favorite-star';
+import { LocationTypeBadge } from '@/components/location-type-badge';
 import { useAuth } from '@/providers/auth-provider';
 import {
   useLocation,
@@ -17,29 +19,16 @@ import {
   useUpdateLocationContactPerson,
   useUnlinkContactPerson,
 } from './hooks/use-contacts';
+import { useLocationTypes } from '@/pages/location-types/hooks/use-location-types';
 import { LinkContactPersonModal } from './components/link-contact-person-modal';
+import { LocationPdokSection } from './components/location-pdok-section';
+import { LocationInspectionSection } from './components/location-inspection-section';
+import { DocumentsSection } from '@/components/documents/documents-section';
 import { AuditHistory } from '@/components/audit-history/audit-history';
 import type { ParsedAddress } from '@/lib/geocoding';
 import { getErrorMessage } from '@/lib/api-client';
 
 const canWrite = [Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE];
-
-const objectTypeOptions = [
-  { value: '', label: 'Selecteer type...' },
-  { value: 'woning', label: 'Woning' },
-  { value: 'kantoor', label: 'Kantoor' },
-  { value: 'industrieel', label: 'Industrieel' },
-  { value: 'winkel', label: 'Winkel' },
-  { value: 'overig', label: 'Overig' },
-];
-
-const objectTypeColors: Record<string, string> = {
-  woning: 'bg-blue-100 text-blue-800',
-  kantoor: 'bg-purple-100 text-purple-800',
-  industrieel: 'bg-orange-100 text-orange-800',
-  winkel: 'bg-green-100 text-green-800',
-  overig: 'bg-gray-100 text-gray-800',
-};
 
 const schema = z.object({
   name: z.string().min(1, 'Naam is verplicht'),
@@ -47,7 +36,7 @@ const schema = z.object({
   houseNumber: z.string().min(1, 'Huisnummer is verplicht'),
   postalCode: z.string().min(1, 'Postcode is verplicht'),
   city: z.string().min(1, 'Stad is verplicht'),
-  objectType: z.string().optional(),
+  locationTypeId: z.string().optional(),
   notes: z.string().optional(),
 });
 
@@ -60,7 +49,13 @@ export default function LocationDetailPage() {
   const { showToast } = useToast();
   const confirm = useConfirm();
   const { data: location, isLoading, error } = useLocation(locationId!);
+  const { data: locationTypes = [] } = useLocationTypes({ scope: 'CRM' });
   const { data: linkedPersons = [] } = useLocationContactPersons(locationId!);
+
+  const locationTypeOptions = [
+    { value: '', label: 'Geen type' },
+    ...locationTypes.map((t) => ({ value: t.id, label: t.name })),
+  ];
   const unlinkMutation = useUnlinkContactPerson(locationId!);
   const updateMutation = useUpdateLocationById();
   const deleteMutation = useDeleteLocationById();
@@ -89,7 +84,7 @@ export default function LocationDetailPage() {
         houseNumber: location.houseNumber || '',
         postalCode: location.postalCode || '',
         city: location.city || '',
-        objectType: location.objectType || '',
+        locationTypeId: location.locationTypeId || '',
         notes: location.notes || '',
       });
       setPdokData(location.pdokData ?? null);
@@ -111,7 +106,7 @@ export default function LocationDetailPage() {
         locationId: location.id,
         data: {
           ...data,
-          objectType: data.objectType || undefined,
+          locationTypeId: data.locationTypeId || undefined,
           notes: data.notes || undefined,
           pdokData: pdokData ?? undefined,
         },
@@ -131,7 +126,7 @@ export default function LocationDetailPage() {
         houseNumber: location.houseNumber || '',
         postalCode: location.postalCode || '',
         city: location.city || '',
-        objectType: location.objectType || '',
+        locationTypeId: location.locationTypeId || '',
         notes: location.notes || '',
       });
       setPdokData(location.pdokData ?? null);
@@ -194,15 +189,10 @@ export default function LocationDetailPage() {
           </button>
           <div>
             <div className="flex items-center gap-3">
+              <FavoriteStar entityType="Location" entityId={location.id} />
               <h2 className="text-2xl font-bold text-gray-900">{location.name}</h2>
-              {location.objectType && (
-                <span
-                  className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                    objectTypeColors[location.objectType] || 'bg-gray-100 text-gray-800'
-                  }`}
-                >
-                  {location.objectType.charAt(0).toUpperCase() + location.objectType.slice(1)}
-                </span>
+              {location.locationType && (
+                <LocationTypeBadge locationType={location.locationType} />
               )}
             </div>
             <p className="mt-0.5 text-sm text-gray-500">
@@ -267,9 +257,9 @@ export default function LocationDetailPage() {
                 </div>
 
                 <Select
-                  label="Objecttype"
-                  options={objectTypeOptions}
-                  {...register('objectType')}
+                  label="Locatietype"
+                  options={locationTypeOptions}
+                  {...register('locationTypeId')}
                 />
 
                 <div>
@@ -310,7 +300,12 @@ export default function LocationDetailPage() {
             </div>
             <div className="grid grid-cols-2 gap-6">
               <InfoField label="Naam" value={location.name} />
-              <InfoField label="Objecttype" value={location.objectType} />
+              <div>
+                <dt className="text-sm font-medium text-gray-500">Locatietype</dt>
+                <dd className="mt-1 text-sm text-gray-900">
+                  <LocationTypeBadge locationType={location.locationType} />
+                </dd>
+              </div>
               <InfoField
                 label="Adres"
                 value={`${location.street} ${location.houseNumber}`}
@@ -324,6 +319,12 @@ export default function LocationDetailPage() {
           </Card>
         )}
 
+        {/* PDOK-gegevens */}
+        <LocationPdokSection location={location} userCanWrite={!!userCanWrite} />
+
+        {/* Inspectie: uitgebreide velden + objectboom */}
+        <LocationInspectionSection locationId={locationId!} canWrite={!!userCanWrite} />
+
         {/* Contactpersonen */}
         <ContactPersonsSection
           locationId={locationId!}
@@ -335,6 +336,18 @@ export default function LocationDetailPage() {
           setEditingNotes={setEditingNotes}
           onOpenLinkModal={() => setIsLinkModalOpen(true)}
         />
+
+        {/* Documenten */}
+        <Card>
+          <div className="mb-4">
+            <h3 className="text-sm font-medium text-gray-900">Documenten</h3>
+          </div>
+          <DocumentsSection
+            entityType={DocumentEntityType.LOCATION}
+            entityId={locationId!}
+            canUpload={!!userCanWrite}
+          />
+        </Card>
 
         {/* Verwijderen */}
         {userCanWrite && (

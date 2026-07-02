@@ -1,7 +1,5 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ContactType } from '@/types';
-import type { Location } from '@/types';
 import {
   ActionMenu,
   ErrorBox,
@@ -9,43 +7,29 @@ import {
   Button,
   Input,
   Table,
-  Modal,
 } from '@/components/ui';
 import { DetailPageLayout } from '@/components/layout/detail-page-layout';
 import { PageHeader } from '@/components/layout/page-header';
+import { LocationTypeBadge } from '@/components/location-type-badge';
+import { SelectContactModal } from '@/components/contacts/select-contact-modal';
 import {
   TableConfigSidebar,
   useTableConfig,
   type ColumnDef,
 } from '@/components/table-config';
-import { useLocations, useContacts } from './hooks/use-contacts';
+import { useLocations } from './hooks/use-contacts';
+import { useLocationTypes } from '@/pages/location-types/hooks/use-location-types';
 import { AddLocationModal } from './components/add-location-modal';
+import { LocationsMap } from './components/locations-map';
+import type { LocationWithContact } from './components/location-popup';
+import { tenantStorage } from '@/lib/storage';
 
-const objectTypeOptions = [
-  { value: 'woning', label: 'Woning' },
-  { value: 'kantoor', label: 'Kantoor' },
-  { value: 'industrieel', label: 'Industrieel' },
-  { value: 'winkel', label: 'Winkel' },
-  { value: 'overig', label: 'Overig' },
-];
-
-const objectTypeColors: Record<string, string> = {
-  woning: 'bg-blue-100 text-blue-800',
-  kantoor: 'bg-purple-100 text-purple-800',
-  industrieel: 'bg-orange-100 text-orange-800',
-  winkel: 'bg-green-100 text-green-800',
-  overig: 'bg-gray-100 text-gray-800',
-};
-
-type LocationWithContact = Location & {
-  contact?: {
-    id: string;
-    type: string;
-    companyName: string | null;
-    firstName: string | null;
-    lastName: string | null;
-  };
-};
+// View toggle persisted per-tenant.
+const VIEW_STORAGE_KEY = 'locations-view';
+type LocationsView = 'list' | 'map';
+// Load up to this many locations for client-side filtering across both views.
+const LOAD_LIMIT = 1000;
+const PAGE_SIZE = 20;
 
 function getContactName(contact?: LocationWithContact['contact']): string {
   if (!contact) return '—';
@@ -60,23 +44,37 @@ function getLocationAddress(location: LocationWithContact): string {
 export default function LocationsPage() {
   const navigate = useNavigate();
   const [search, setSearch] = useState('');
-  const [page, setPage] = useState(1);
+  const [view, setView] = useState<LocationsView>(() =>
+    tenantStorage.getItem(VIEW_STORAGE_KEY) === 'map' ? 'map' : 'list',
+  );
+  const [listPage, setListPage] = useState(1);
   const [isSelectContactOpen, setIsSelectContactOpen] = useState(false);
   const [createContactId, setCreateContactId] = useState<string | null>(null);
 
+  // Single dataset for both views; filters in the sidebar apply to both.
   const { data, isLoading, error } = useLocations({
     search: search || undefined,
-    page,
-    limit: 20,
+    limit: LOAD_LIMIT,
   });
+  const { data: locationTypes = [] } = useLocationTypes({ scope: 'CRM' });
+
+  const setViewPersisted = useCallback((next: LocationsView) => {
+    setView(next);
+    tenantStorage.setItem(VIEW_STORAGE_KEY, next);
+  }, []);
 
   const handleSearchChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
       setSearch(e.target.value);
-      setPage(1);
+      setListPage(1);
     },
     [],
   );
+
+  // Build type filter options from the CRM types (fallback: distinct names in data).
+  const typeFilterOptions = locationTypes.length
+    ? locationTypes.map((t) => ({ value: t.name, label: t.name }))
+    : [];
 
   const columns: ColumnDef<LocationWithContact>[] = [
     {
@@ -123,26 +121,15 @@ export default function LocationsPage() {
       ),
     },
     {
-      key: 'objectType',
+      key: 'locationType',
       header: 'Type',
       sortable: true,
       filterable: true,
       filterType: 'select',
-      filterOptions: objectTypeOptions,
+      filterOptions: typeFilterOptions,
       groupable: true,
-      getFilterValue: (location) => location.objectType ?? '',
-      render: (location) =>
-        location.objectType ? (
-          <span
-            className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
-              objectTypeColors[location.objectType] || 'bg-gray-100 text-gray-800'
-            }`}
-          >
-            {location.objectType.charAt(0).toUpperCase() + location.objectType.slice(1)}
-          </span>
-        ) : (
-          <span className="text-gray-400">—</span>
-        ),
+      getFilterValue: (location) => location.locationType?.name ?? '',
+      render: (location) => <LocationTypeBadge locationType={location.locationType} />,
     },
     {
       key: 'contact',
@@ -200,9 +187,11 @@ export default function LocationsPage() {
     );
   }
 
-  const locations = (data?.data || []) as LocationWithContact[];
-  const total = data?.total || 0;
-  const totalPages = Math.ceil(total / 20);
+  const allLocations = (data?.data || []) as LocationWithContact[];
+  const serverTotal = data?.total || 0;
+  // Apply the sidebar filters/grouping/sort ONCE; both views render from this.
+  const filtered = filteredData(allLocations);
+  const truncated = serverTotal > allLocations.length;
 
   return (
     <>
@@ -229,19 +218,22 @@ export default function LocationsPage() {
             title="Locaties"
             description="Overzicht van alle locaties"
             actions={
-              <ActionMenu
-                secondaryActions={[
-                  {
-                    label: 'Nieuwe locatie',
-                    icon: (
-                      <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                      </svg>
-                    ),
-                    onClick: () => setIsSelectContactOpen(true),
-                  },
-                ]}
-              />
+              <div className="flex items-center gap-3">
+                <ViewToggle view={view} onChange={setViewPersisted} />
+                <ActionMenu
+                  secondaryActions={[
+                    {
+                      label: 'Nieuwe locatie',
+                      icon: (
+                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                        </svg>
+                      ),
+                      onClick: () => setIsSelectContactOpen(true),
+                    },
+                  ]}
+                />
+              </div>
             }
           />
 
@@ -254,42 +246,25 @@ export default function LocationsPage() {
             />
           </div>
 
-          <Table
-            columns={activeColumns}
-            data={filteredData(locations)}
-            keyExtractor={(l) => l.id}
-            emptyMessage="Geen locaties gevonden"
-            sort={sort}
-            onSort={toggleSort}
-          />
+          {truncated && (
+            <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">
+              Alleen de eerste {allLocations.length} locaties zijn geladen (van {serverTotal}).
+              Verfijn de zoekopdracht om specifieke locaties te vinden.
+            </p>
+          )}
 
-          {/* Pagination */}
-          {totalPages > 1 && (
-            <div className="flex items-center justify-between">
-              <p className="text-sm text-gray-500">
-                {total} locatie{total !== 1 ? 's' : ''} gevonden
-              </p>
-              <div className="flex gap-2">
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => setPage((p) => Math.max(1, p - 1))}
-                  disabled={page === 1}
-                >
-                  Vorige
-                </Button>
-                <span className="flex items-center px-3 text-sm text-gray-600">
-                  {page} / {totalPages}
-                </span>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                  disabled={page === totalPages}
-                >
-                  Volgende
-                </Button>
-              </div>
+          {view === 'list' ? (
+            <ListView
+              filtered={filtered}
+              page={listPage}
+              onPageChange={setListPage}
+              activeColumns={activeColumns}
+              sort={sort}
+              onSort={toggleSort}
+            />
+          ) : (
+            <div style={{ height: '70vh' }}>
+              <LocationsMap locations={filtered} />
             </div>
           )}
         </div>
@@ -316,60 +291,110 @@ export default function LocationsPage() {
   );
 }
 
-// ─── Modal: select a contact before adding a location ──
+// ─── View toggle (segmented control) ──────────────────────
 
-function SelectContactModal({
-  onSelect,
-  onClose,
+function ViewToggle({
+  view,
+  onChange,
 }: {
-  onSelect: (contactId: string) => void;
-  onClose: () => void;
+  view: LocationsView;
+  onChange: (v: LocationsView) => void;
 }) {
-  const [search, setSearch] = useState('');
-  const { data, isLoading } = useContacts({ search: search || undefined, limit: 10 });
-  const contacts = data?.data || [];
+  return (
+    <div className="inline-flex rounded-lg border border-gray-300 bg-white p-0.5 shadow-sm">
+      <button
+        type="button"
+        onClick={() => onChange('list')}
+        className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+          view === 'list'
+            ? 'bg-primary-600 text-white'
+            : 'text-gray-600 hover:bg-gray-50'
+        }`}
+      >
+        Lijst
+      </button>
+      <button
+        type="button"
+        onClick={() => onChange('map')}
+        className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+          view === 'map'
+            ? 'bg-primary-600 text-white'
+            : 'text-gray-600 hover:bg-gray-50'
+        }`}
+      >
+        Kaart
+      </button>
+    </div>
+  );
+}
+
+// ─── List view (client-side pagination over `filtered`) ──
+
+function ListView({
+  filtered,
+  page,
+  onPageChange,
+  activeColumns,
+  sort,
+  onSort,
+}: {
+  filtered: LocationWithContact[];
+  page: number;
+  onPageChange: (p: number) => void;
+  activeColumns: ColumnDef<LocationWithContact>[];
+  sort: ReturnType<typeof useTableConfig>['sort'];
+  onSort: ReturnType<typeof useTableConfig>['toggleSort'];
+}) {
+  const total = filtered.length;
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+
+  // Keep the page in range when the filtered set shrinks.
+  useEffect(() => {
+    if (page > totalPages) onPageChange(totalPages);
+  }, [page, totalPages, onPageChange]);
+
+  const start = (page - 1) * PAGE_SIZE;
+  const pageData = filtered.slice(start, start + PAGE_SIZE);
 
   return (
-    <Modal isOpen onClose={onClose} title="Selecteer een relatie">
-      <div className="space-y-4">
-        <Input
-          placeholder="Zoeken op naam..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          autoFocus
-        />
-        {isLoading ? (
-          <div className="flex justify-center py-4">
-            <Spinner size="sm" />
+    <>
+      <Table
+        columns={activeColumns}
+        data={pageData}
+        keyExtractor={(l) => l.id}
+        emptyMessage="Geen locaties gevonden"
+        sort={sort}
+        onSort={onSort}
+      />
+
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between">
+          <p className="text-sm text-gray-500">
+            {total} locatie{total !== 1 ? 's' : ''} gevonden
+          </p>
+          <div className="flex gap-2">
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => onPageChange(Math.max(1, page - 1))}
+              disabled={page === 1}
+            >
+              Vorige
+            </Button>
+            <span className="flex items-center px-3 text-sm text-gray-600">
+              {page} / {totalPages}
+            </span>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => onPageChange(Math.min(totalPages, page + 1))}
+              disabled={page === totalPages}
+            >
+              Volgende
+            </Button>
           </div>
-        ) : contacts.length === 0 ? (
-          <p className="py-4 text-center text-sm text-gray-500">Geen relaties gevonden</p>
-        ) : (
-          <ul className="divide-y divide-gray-100 rounded-lg border border-gray-200">
-            {contacts.map((contact) => {
-              const name =
-                contact.type === ContactType.COMPANY
-                  ? contact.companyName || '—'
-                  : [contact.firstName, contact.lastName].filter(Boolean).join(' ') || '—';
-              return (
-                <li key={contact.id}>
-                  <button
-                    className="w-full px-4 py-2.5 text-left text-sm hover:bg-gray-50"
-                    onClick={() => onSelect(contact.id)}
-                  >
-                    <span className="font-medium text-gray-900">{name}</span>
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
-        )}
-        <div className="flex justify-end">
-          <Button variant="secondary" onClick={onClose}>
-            Annuleren
-          </Button>
         </div>
-      </div>
-    </Modal>
+      )}
+    </>
   );
 }

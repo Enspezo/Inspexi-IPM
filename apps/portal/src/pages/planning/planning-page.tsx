@@ -12,6 +12,7 @@ import {
   type ColumnDef,
 } from '@/components/table-config';
 import { useAuth } from '@/providers/auth-provider';
+import { useWindowTabs } from '@/providers/window-tabs';
 import { usePlanningItems } from './hooks/use-planning';
 import { useOrganization } from '../organization/hooks/use-organization';
 import {
@@ -108,6 +109,7 @@ function getCalendarRange(view: ViewMode, date: Date): { dateFrom: string; dateT
 
 export default function PlanningPage() {
   const navigate = useNavigate();
+  const { openTab } = useWindowTabs();
   const { user } = useAuth();
   const { data: orgData } = useOrganization(user?.orgId);
   const dayStart = orgData?.workdayStart ?? 8;
@@ -158,6 +160,54 @@ export default function PlanningPage() {
   // ─── Table config (list view) ───────────────────────────────────────────────
   const columns: ColumnDef<PlanningItem>[] = [
     {
+      key: 'productName',
+      header: 'Dienst',
+      sidebarLabel: 'Dienst / product',
+      pinned: true,
+      filterable: true,
+      filterType: 'text',
+      sortable: true,
+      render: (item) => (
+        <div>
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <button
+              // Opens the planregel as an in-window tab. ⌘/Ctrl- or middle-click
+              // opens it in the background without switching away from the list.
+              onClick={(e) =>
+                openTab('planning', item.id, item.productName, {
+                  background: e.metaKey || e.ctrlKey,
+                })
+              }
+              onMouseDown={(e) => {
+                if (e.button === 1) {
+                  e.preventDefault();
+                  openTab('planning', item.id, item.productName, { background: true });
+                }
+              }}
+              className="font-medium text-primary-600 hover:text-primary-800 hover:underline text-left"
+            >
+              {item.productName}
+            </button>
+            {item.isMultiDay && (
+              <span className="inline-block rounded bg-indigo-100 px-1.5 py-0.5 text-xs text-indigo-700">Meerdaags</span>
+            )}
+          </div>
+          {item.labels.length > 0 && (
+            <div className="mt-0.5 flex flex-wrap gap-1">
+              {item.labels.map((l) => (
+                <span
+                  key={l}
+                  className="inline-block rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-600"
+                >
+                  {l}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      ),
+    },
+    {
       key: 'status',
       header: 'Status',
       sidebarLabel: 'Status',
@@ -167,7 +217,6 @@ export default function PlanningPage() {
         value: o.value,
         label: o.label,
       })),
-      pinned: true,
       sortable: true,
       sortKey: 'status',
       render: (item) => <StatusBadge status={item.status} map={PLANNING_STATUS} />,
@@ -214,41 +263,6 @@ export default function PlanningPage() {
           <span className="text-gray-400">Niet gepland</span>
         );
       },
-    },
-    {
-      key: 'productName',
-      header: 'Dienst',
-      sidebarLabel: 'Dienst / product',
-      filterable: true,
-      filterType: 'text',
-      sortable: true,
-      render: (item) => (
-        <div>
-          <div className="flex items-center gap-1.5 flex-wrap">
-            <button
-              onClick={() => navigate(`/planning/${item.id}`)}
-              className="font-medium text-primary-600 hover:text-primary-800 hover:underline text-left"
-            >
-              {item.productName}
-            </button>
-            {item.isMultiDay && (
-              <span className="inline-block rounded bg-indigo-100 px-1.5 py-0.5 text-xs text-indigo-700">Meerdaags</span>
-            )}
-          </div>
-          {item.labels.length > 0 && (
-            <div className="mt-0.5 flex flex-wrap gap-1">
-              {item.labels.map((l) => (
-                <span
-                  key={l}
-                  className="inline-block rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-600"
-                >
-                  {l}
-                </span>
-              ))}
-            </div>
-          )}
-        </div>
-      ),
     },
     {
       key: 'contact',
@@ -618,7 +632,10 @@ export default function PlanningPage() {
             currentDate={calendarDate}
             onDayClick={handleDayClick}
             onWeekClick={handleWeekClick}
-            onItemClick={(id) => navigate(`/planning/${id}`)}
+            onItemClick={(itemId, opts) => {
+              const found = allItems.find((i) => i.id === itemId);
+              openTab('planning', itemId, found?.productName ?? 'Planregel', opts);
+            }}
             dayStart={dayStart}
             dayEnd={dayEnd}
           />

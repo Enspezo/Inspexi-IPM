@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { User } from '@prisma/client';
+import { User, AssetNodeType } from '@prisma/client';
 import { PrismaService } from '@/prisma';
 import {
   orgScope,
@@ -62,53 +62,38 @@ export class PortalStatsService {
     startOfWeek.setDate(now.getDate() - now.getDay());
     startOfWeek.setHours(0, 0, 0, 0);
 
-    // Totaal aantal inspectieplannen deze maand
-    const totalThisMonth = await this.prisma.inspectionPlan.count({
-      where: {
-        ...scope,
-        deletedAt: null,
-        createdAt: { gte: startOfMonth },
-      },
-    });
-
-    // Wacht op review (statusCode = pending_review of reviewed)
-    const pendingReview = await this.prisma.inspectionPlan.count({
-      where: {
-        ...scope,
-        deletedAt: null,
-        statusCode: { in: [STATUS_PENDING_REVIEW, STATUS_REVIEWED] },
-      },
-    });
-
-    // Afgerond deze week (statusCode = completed of approved)
-    const completedThisWeek = await this.prisma.inspectionPlan.count({
-      where: {
-        ...scope,
-        deletedAt: null,
-        statusCode: { in: [STATUS_COMPLETED, STATUS_APPROVED] },
-        updatedAt: { gte: startOfWeek },
-      },
-    });
-
+    // All six KPI counts are independent — run them in one round-trip instead
+    // of six sequential awaits (this is the dashboard landing endpoint).
     // Kritieke bevindingen: classificatie staat in JSON (classificationValues),
     // Prisma kan daar niet betrouwbaar op filteren — tel daarom alle openstaande
     // bevindingen als indicator. (Identiek aan de App-implementatie.)
-    const criticalFindings = await this.prisma.finding.count({
-      where: {
-        ...scope,
-        deletedAt: null,
-        statusCode: STATUS_OPEN,
-      },
-    });
-
-    // Totaal aantal assets en locaties (org-scoped)
-    const totalAssets = await this.prisma.asset.count({
-      where: { ...scope, deletedAt: null },
-    });
-
-    const totalLocations = await this.prisma.inspectionLocation.count({
-      where: { ...scope, deletedAt: null },
-    });
+    const [
+      totalThisMonth,
+      pendingReview,
+      completedThisWeek,
+      criticalFindings,
+      totalAssets,
+      totalLocations,
+    ] = await Promise.all([
+      this.prisma.inspectionPlan.count({
+        where: { ...scope, deletedAt: null, createdAt: { gte: startOfMonth } },
+      }),
+      this.prisma.inspectionPlan.count({
+        where: { ...scope, deletedAt: null, statusCode: { in: [STATUS_PENDING_REVIEW, STATUS_REVIEWED] } },
+      }),
+      this.prisma.inspectionPlan.count({
+        where: { ...scope, deletedAt: null, statusCode: { in: [STATUS_COMPLETED, STATUS_APPROVED] }, updatedAt: { gte: startOfWeek } },
+      }),
+      this.prisma.finding.count({
+        where: { ...scope, deletedAt: null, statusCode: STATUS_OPEN },
+      }),
+      this.prisma.assetNode.count({
+        where: { ...scope, deletedAt: null, nodeType: AssetNodeType.ASSET },
+      }),
+      this.prisma.assetNode.count({
+        where: { ...scope, deletedAt: null, nodeType: AssetNodeType.LOCATION },
+      }),
+    ]);
 
     return {
       totalThisMonth,
@@ -127,8 +112,9 @@ export class PortalStatsService {
   async getInspectionsChart(user: User): Promise<ChartDataPoint[]> {
     const scope = orgScope(user);
     const now = new Date();
-    const weeks: ChartDataPoint[] = [];
 
+    // Build the 8 week ranges, then count them all in one round-trip.
+    const weekRanges: { weekStart: Date; weekEnd: Date }[] = [];
     for (let i = 7; i >= 0; i--) {
       const weekStart = new Date(now);
       weekStart.setDate(now.getDate() - now.getDay() - i * 7);
@@ -137,21 +123,21 @@ export class PortalStatsService {
       const weekEnd = new Date(weekStart);
       weekEnd.setDate(weekStart.getDate() + 7);
 
-      const count = await this.prisma.inspectionPlan.count({
-        where: {
-          ...scope,
-          deletedAt: null,
-          createdAt: { gte: weekStart, lt: weekEnd },
-        },
-      });
-
-      weeks.push({
-        week: `Week ${this.getWeekNumber(weekStart)}`,
-        count,
-      });
+      weekRanges.push({ weekStart, weekEnd });
     }
 
-    return weeks;
+    const counts = await Promise.all(
+      weekRanges.map(({ weekStart, weekEnd }) =>
+        this.prisma.inspectionPlan.count({
+          where: { ...scope, deletedAt: null, createdAt: { gte: weekStart, lt: weekEnd } },
+        }),
+      ),
+    );
+
+    return weekRanges.map(({ weekStart }, i) => ({
+      week: `Week ${this.getWeekNumber(weekStart)}`,
+      count: counts[i],
+    }));
   }
 
   /**
@@ -163,24 +149,38 @@ export class PortalStatsService {
     const scope = orgScope(user);
     const activities: ActivityItem[] = [];
 
-    // Recente inspectieplannen (ingediend/beoordeeld/goedgekeurd/afgerond)
-    const recentInspections = await this.prisma.inspectionPlan.findMany({
-      where: {
-        ...scope,
-        deletedAt: null,
-        statusCode: {
-          in: [STATUS_PENDING_REVIEW, STATUS_APPROVED, STATUS_REVIEWED, STATUS_COMPLETED],
+    // Recente inspectieplannen + contacten zijn onafhankelijk → parallel ophalen.
+    const [recentInspections, recentContacts] = await Promise.all([
+      this.prisma.inspectionPlan.findMany({
+        where: {
+          ...scope,
+          deletedAt: null,
+          statusCode: {
+            in: [STATUS_PENDING_REVIEW, STATUS_APPROVED, STATUS_REVIEWED, STATUS_COMPLETED],
+          },
         },
-      },
-      orderBy: { updatedAt: 'desc' },
-      take: 10,
-      include: {
-        assignedUser: { select: { firstName: true, lastName: true } },
-        contact: {
-          select: { companyName: true, firstName: true, lastName: true },
+        orderBy: { updatedAt: 'desc' },
+        take: 10,
+        include: {
+          assignedUser: { select: { firstName: true, lastName: true } },
+          contact: {
+            select: { companyName: true, firstName: true, lastName: true },
+          },
         },
-      },
-    });
+      }),
+      this.prisma.contact.findMany({
+        where: { ...scope, isDeleted: false },
+        orderBy: { createdAt: 'desc' },
+        take: 5,
+        select: {
+          id: true,
+          companyName: true,
+          firstName: true,
+          lastName: true,
+          createdAt: true,
+        },
+      }),
+    ]);
 
     for (const inspection of recentInspections) {
       let type: ActivityItem['type'];
@@ -217,20 +217,7 @@ export class PortalStatsService {
       });
     }
 
-    // Recente contacten (in de App: clients)
-    const recentContacts = await this.prisma.contact.findMany({
-      where: { ...scope, isDeleted: false },
-      orderBy: { createdAt: 'desc' },
-      take: 5,
-      select: {
-        id: true,
-        companyName: true,
-        firstName: true,
-        lastName: true,
-        createdAt: true,
-      },
-    });
-
+    // Recente contacten (in de App: clients) — opgehaald in de Promise.all hierboven.
     for (const contact of recentContacts) {
       activities.push({
         id: `contact-${contact.id}`,

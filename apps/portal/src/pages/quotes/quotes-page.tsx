@@ -23,7 +23,11 @@ import {
   type ColumnDef,
 } from '@/components/table-config';
 import { useAuth } from '@/providers/auth-provider';
+import { useWindowTabs } from '@/providers/window-tabs';
 import { useQuotes } from './hooks/use-quotes';
+import { useQuoteTemplates } from './hooks/use-quote-templates';
+
+const NO_TEMPLATE_LABEL = 'Geen template';
 
 const statusFilterOptions = [
   { value: '', label: 'Alle statussen' },
@@ -48,11 +52,29 @@ function getContactName(quote: Quote): string {
 export default function QuotesPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const { openTab } = useWindowTabs();
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const [templateFilter, setTemplateFilter] = useState('');
   const [onlyMine, setOnlyMine] = useState(() => tenantStorage.getItem('filter-mine:quotes') === 'true');
   const [page, setPage] = useState(1);
+
+  const { data: templatesData } = useQuoteTemplates({ limit: 200 });
+  const templates = templatesData?.data ?? [];
+
+  // Prominent filterbar Select: server-side via templateId param ('none' → no template)
+  const templateFilterOptions = [
+    { value: '', label: 'Alle templates' },
+    ...templates.map((t) => ({ value: t.id, label: t.name })),
+    { value: 'none', label: NO_TEMPLATE_LABEL },
+  ];
+
+  // Table column select-filter + grouping: matches on template name (or the "no template" label)
+  const templateColumnFilterOptions = [
+    ...templates.map((t) => ({ value: t.name, label: t.name })),
+    { value: NO_TEMPLATE_LABEL, label: NO_TEMPLATE_LABEL },
+  ];
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearch(search), 300);
@@ -78,7 +100,19 @@ export default function QuotesPage() {
       sortKey: 'quoteNumber',
       render: (quote) => (
         <button
-          onClick={() => navigate(`/quotes/${quote.id}`)}
+          // Opens the offerte as an in-window tab. ⌘/Ctrl- or middle-click
+          // opens it in the background without switching away from the list.
+          onClick={(e) =>
+            openTab('quote', quote.id, quote.quoteNumber, {
+              background: e.metaKey || e.ctrlKey,
+            })
+          }
+          onMouseDown={(e) => {
+            if (e.button === 1) {
+              e.preventDefault();
+              openTab('quote', quote.id, quote.quoteNumber, { background: true });
+            }
+          }}
           className="font-medium text-primary-600 hover:text-primary-800 hover:underline"
         >
           {quote.quoteNumber}
@@ -119,6 +153,18 @@ export default function QuotesPage() {
       groupable: true,
       getFilterValue: (quote) => quote.status,
       render: (quote) => <StatusBadge status={quote.status} map={QUOTE_STATUS} />,
+    },
+    {
+      key: 'template',
+      header: 'Template',
+      filterable: true,
+      filterType: 'select',
+      filterOptions: templateColumnFilterOptions,
+      groupable: true,
+      getFilterValue: (quote) => quote.template?.name ?? NO_TEMPLATE_LABEL,
+      render: (quote) => (
+        <span className="text-gray-600">{quote.template?.name ?? '—'}</span>
+      ),
     },
     {
       key: 'total',
@@ -190,6 +236,7 @@ export default function QuotesPage() {
   const { data, isLoading, error } = useQuotes({
     search: debouncedSearch.length >= 3 ? debouncedSearch : undefined,
     status: (statusFilter as QuoteStatus) || undefined,
+    templateId: templateFilter || undefined,
     createdBy: onlyMine ? user?.id : undefined,
     page,
     limit: 20,
@@ -270,6 +317,16 @@ export default function QuotesPage() {
             value={statusFilter}
             onChange={(e) => {
               setStatusFilter(e.target.value);
+              setPage(1);
+            }}
+          />
+        </div>
+        <div className="w-48">
+          <Select
+            options={templateFilterOptions}
+            value={templateFilter}
+            onChange={(e) => {
+              setTemplateFilter(e.target.value);
               setPage(1);
             }}
           />

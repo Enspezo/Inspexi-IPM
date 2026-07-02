@@ -3,6 +3,10 @@ import { IsString, IsUUID, IsOptional, IsEnum, IsObject } from 'class-validator'
 import { FindingInspectionType } from '@prisma/client';
 
 export class CreateFindingDto {
+  @ApiProperty({ description: 'Inspectieplan waaronder deze constatering valt' })
+  @IsUUID()
+  inspectionPlanId: string;
+
   @ApiProperty({ enum: FindingInspectionType })
   @IsEnum(FindingInspectionType)
   inspectionType: FindingInspectionType;

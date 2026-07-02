@@ -29,6 +29,7 @@ describe('Client Portal (e2e)', () => {
   let itId: string;
   let docTemplateId: string;
   let contactAId: string;
+  let crmLocationId: string;
   let planId: string;
   let assetId: string;
   let findingId: string;
@@ -110,10 +111,25 @@ describe('Client Portal (e2e)', () => {
     });
     contactAId = contactA.id;
 
+    // CRM-Locatie = boom-wortel van de AssetNode-boom; tevens hoofdlocatie van het plan.
+    const crmLocation = await prisma.location.create({
+      data: {
+        orgId: orgA.id,
+        contactId: contactA.id,
+        name: 'E2E Client Locatie',
+        street: 'Teststraat',
+        houseNumber: '1',
+        postalCode: '1000AA',
+        city: 'Teststad',
+      },
+    });
+    crmLocationId = crmLocation.id;
+
     const plan = await prisma.inspectionPlan.create({
       data: {
         orgId: orgA.id,
         contactId: contactA.id,
+        locationId: crmLocation.id,
         projectName: 'E2E Client inspectie',
         referenceNumber: 'E2E-CP-0001',
         normTypeCode: normCode,
@@ -128,13 +144,27 @@ describe('Client Portal (e2e)', () => {
     });
     planId = plan.id;
 
-    const asset = await prisma.asset.create({
+    // Wortel-LOCATION-node (1:1 aan de CRM-Locatie). PARENT VÓÓR CHILD.
+    const rootNode = await prisma.assetNode.create({
       data: {
         orgId: orgA.id,
-        inspectionPlanId: plan.id,
-        assetType: 'verdeelkast',
-        name: 'Hoofdverdeelkast',
+        nodeType: 'LOCATION',
+        rootLocationId: crmLocation.id,
+        typeCode: 'locatie',
+        name: 'Wortel',
+        createdBy: staffA.id,
+      },
+    });
+    // ASSET-node onder de wortel; vervangt het oude asset-id.
+    const asset = await prisma.assetNode.create({
+      data: {
+        orgId: orgA.id,
+        nodeType: 'ASSET',
+        parentId: rootNode.id,
+        typeCode: 'kast',
+        name: 'Asset',
         statusCode: 'completed',
+        createdBy: staffA.id,
       },
     });
     assetId = asset.id;
@@ -142,10 +172,12 @@ describe('Client Portal (e2e)', () => {
     const finding = await prisma.finding.create({
       data: {
         orgId: orgA.id,
-        assetId: asset.id,
+        assetNodeId: asset.id,
+        inspectionPlanId: plan.id,
         inspectionType: 'visual',
         shortDescription: 'Ontbrekende afdekking',
         statusCode: 'open',
+        createdBy: staffA.id,
       },
     });
     findingId = finding.id;
@@ -230,11 +262,13 @@ describe('Client Portal (e2e)', () => {
       await prisma.clientAccess.deleteMany({ where: { contact: { orgId: { in: orgIds } } } });
       await prisma.clientUser.deleteMany({ where: { email: { in: [clientEmail, newClientEmail] } } });
       await prisma.finding.deleteMany({ where: { orgId: { in: orgIds } } });
-      await prisma.asset.deleteMany({ where: { orgId: { in: orgIds } } });
+      // parentId is SET NULL → één deleteMany ruimt de hele boom (wortel + assets) op.
+      await prisma.assetNode.deleteMany({ where: { orgId: { in: orgIds } } });
       await prisma.inspectionPlan.deleteMany({ where: { orgId: { in: orgIds } } });
       await prisma.inspectionTemplate.deleteMany({ where: { id: itId } });
       await prisma.classificationModel.deleteMany({ where: { id: cmId } });
       await prisma.normTypeDefinition.deleteMany({ where: { code: normCode } });
+      await prisma.location.deleteMany({ where: { id: crmLocationId } });
       await prisma.contact.deleteMany({ where: { orgId: { in: orgIds } } });
       await prisma.auditLog.deleteMany({ where: { orgId: { in: orgIds } } });
       await prisma.refreshToken.deleteMany({ where: { user: { orgId: { in: orgIds } } } });

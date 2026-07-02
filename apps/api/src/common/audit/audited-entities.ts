@@ -58,7 +58,7 @@ export const AUDITED_ENTITIES: readonly AuditedEntity[] = [
     table: 'imp_locations',
     display: (r) => {
       const parts = [r.street, r.houseNumber, r.city].filter(Boolean);
-      return parts.length > 0 ? parts.join(' ') : r.name || r.objectType || r.id;
+      return parts.length > 0 ? parts.join(' ') : r.name || r.id;
     },
   },
   { model: 'CustomerGroup', table: 'imp_customer_groups', displayFields: ['name'] },
@@ -76,6 +76,7 @@ export const AUDITED_ENTITIES: readonly AuditedEntity[] = [
 
   // Overig (beheer)
   { model: 'Document', table: 'imp_documents', displayFields: ['originalName', 'fileName'] },
+  { model: 'DocumentTag', table: 'imp_document_tags', displayFields: ['name'] },
   { model: 'Task', table: 'imp_tasks', displayFields: ['title'] },
   { model: 'PlanningItem', table: 'imp_planning_items', displayFields: ['productName'] },
   {
@@ -83,6 +84,7 @@ export const AUDITED_ENTITIES: readonly AuditedEntity[] = [
     table: 'imp_custom_field_definitions',
     displayFields: ['label', 'fieldName'],
   },
+  { model: 'NumberingScheme', table: 'imp_numbering_schemes', displayFields: ['model'] },
   { model: 'EmailTemplate', table: 'imp_email_templates', displayFields: ['name', 'subject'] },
   { model: 'Project', table: 'imp_projects', displayFields: ['projectNumber', 'title'] },
   { model: 'WorkOrder', table: 'imp_work_orders', displayFields: ['workOrderNumber'] },
@@ -90,13 +92,8 @@ export const AUDITED_ENTITIES: readonly AuditedEntity[] = [
 
   // Inspectiedomein — configuratie & planning (Fase 1)
   { model: 'InspectionPlan', table: 'imp_inspection_plans', displayFields: ['projectName'] },
-  { model: 'Asset', table: 'imp_assets', displayFields: ['name', 'identifier'] },
+  { model: 'AssetNode', table: 'imp_asset_nodes', displayFields: ['name', 'identifier'] },
   { model: 'Finding', table: 'imp_findings', displayFields: ['shortDescription'] },
-  {
-    model: 'InspectionLocation',
-    table: 'imp_inspection_locations',
-    displayFields: ['name', 'identifier'],
-  },
   { model: 'Checklist', table: 'imp_checklists', displayFields: ['name', 'code'] },
   { model: 'ChecklistItem', table: 'imp_checklist_items', displayFields: ['question', 'code'] },
   { model: 'Category', table: 'imp_categories', displayFields: ['name'] },
@@ -165,6 +162,44 @@ export const AUDITED_ENTITIES: readonly AuditedEntity[] = [
   },
   { model: 'DocumentSignature', table: 'imp_document_signatures', displayFields: ['signerName'] },
   { model: 'ClientRequest', table: 'imp_client_requests', displayFields: ['subject'] },
+
+  // SaaS-abonnementen & feature-entitlements (PRD-09)
+  { model: 'Plan', table: 'imp_plans', displayFields: ['name', 'slug'] },
+  { model: 'PlanFeature', table: 'imp_plan_features', displayFields: ['featureKey'] },
+  {
+    model: 'OrganizationFeature',
+    table: 'imp_organization_features',
+    displayFields: ['featureKey'],
+  },
+
+  // Helpsysteem (PRD-10) — SupportTicketMessage/SupportAccessLog niet geaudit
+  // (de access-log is zélf het audit-spoor).
+  { model: 'HelpCategory', table: 'imp_help_categories', displayFields: ['name', 'slug'] },
+  { model: 'HelpArticle', table: 'imp_help_articles', displayFields: ['title'] },
+  {
+    model: 'SupportTicket',
+    table: 'imp_support_tickets',
+    display: (r) => `#${r.ticketNumber ?? ''} ${r.subject ?? ''}`.trim() || r.id,
+  },
+
+  // Inspecteur-certificaten / diploma's (PRD-11)
+  {
+    model: 'InspectorCertificate',
+    table: 'imp_inspector_certificates',
+    displayFields: ['type', 'issuer'],
+  },
+
+  // Meetmiddelen + kalibraties
+  {
+    model: 'MeasurementInstrument',
+    table: 'imp_measurement_instruments',
+    displayFields: ['code', 'brand'],
+  },
+  {
+    model: 'Calibration',
+    table: 'imp_measurement_instrument_calibrations',
+    display: (r) => `Kalibratie #${shortId(r)}`,
+  },
 ];
 
 /** Builds a display function from an entry's `display` / `displayFields`, falling back to id. */

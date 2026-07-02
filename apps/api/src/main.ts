@@ -5,6 +5,7 @@ import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import cookieParser from 'cookie-parser';
 import { AppModule } from './app.module';
 import { AllExceptionsFilter } from './common/filters';
+import { validateJwtSecrets } from './common/config/validate-jwt-secrets';
 
 const processLogger = new Logger('Process');
 
@@ -24,6 +25,10 @@ process.on('uncaughtException', (error) => {
 });
 
 async function bootstrap() {
+  // Fail-fast: weiger te starten met ontbrekende/default/gedeelde JWT-secrets
+  // (vóór het opzetten van de Nest-app, zodat een misconfiguratie meteen stopt).
+  validateJwtSecrets(process.env, process.env.NODE_ENV);
+
   // Enable rawBody so webhook controllers can verify signatures
   const app = await NestFactory.create<NestExpressApplication>(AppModule, { rawBody: true });
 

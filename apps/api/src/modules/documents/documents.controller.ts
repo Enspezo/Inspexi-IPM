@@ -17,6 +17,7 @@ import {
   FileValidator,
   UnprocessableEntityException,
 } from '@nestjs/common';
+import { RequiresFeature } from '@/common/decorators/requires-feature.decorator';
 import {
   ApiTags,
   ApiOperation,
@@ -60,6 +61,7 @@ class MimeTypeValidator extends FileValidator {
 
 @ApiTags('Documents')
 @ApiBearerAuth()
+@RequiresFeature('WORKFLOW_COMPLEET')
 @Controller('documents')
 export class DocumentsController {
   constructor(private documentsService: DocumentsService) {}

@@ -335,3 +335,24 @@ Concreet voor ons: bij elke wijziging aan sync/auth/referentie-endpoints **het c
 - `Inspexi-App/apps/portal`, `apps/client-portal`, `apps/inspectie-app`, `packages/shared`.
 - `Inspexi-App/*_BEHEER_SPEC.md`, `docs/*`.
 - `InspeXi-Beheer/CLAUDE.md` + `apps/api/prisma/schema.prisma` (1526 regels, 29+ modellen).
+
+---
+
+## Addendum — REQ1: interne chat additief over `/sync` v2 (PWA-brug)
+
+> Toegevoegd bij REQ1 (interne chat). De chat is gebouwd in twee PR's: PR1 = chat-kern + presence in de Beheer-portal; **PR2 = deze additieve `/sync`-uitbreiding** zodat de **PWA-inspecteur** poll-based kan meedoen (backoffice ↔ inspecteur). Het bestaande `/sync` v2-contract is **heilig**: er is **niets gewijzigd of verwijderd**, alleen toegevoegd.
+
+**Wat is additief toegevoegd** (zie `docs/fase3/FASE3-SYNC.md §1` voor het exacte contract):
+
+- **Pull** krijgt drie nieuwe top-level keys — `chatThreads`, `chatMessages`, `users` (presence) — en twee nieuwe keys binnen `deletedIds` (`chatThreads`, `chatMessages`, tombstones via `deletedAt`). Alle bestaande keys/typen ongewijzigd; een oude PWA negeert onbekende keys.
+- **Push** accepteert een nieuwe optionele `changes.chatMessages[]` (`create`/`delete`), en `processed` krijgt een `chatMessages`-teller.
+
+**Bewuste ontwerpkeuzes (afwijkend van het generieke `inspectionPlans/assets/findings`-patroon, met reden):**
+
+1. **Pull is read-only & membership-scoped.** De chat-snapshot levert alleen threads waar de gebruiker deelnemer (DIRECT) of rollid (TEAM) van is — exact dezelfde autorisatie als de REST-endpoints. Een inspecteur ziet dus nooit DIRECT-threads van anderen. `pull` schrijft geen rijen (team-threads worden in de portal geprovisioneerd, niet tijdens een pull).
+2. **Chat-push gaat NIET via de generieke mutator,** maar wordt gedelegeerd naar `ChatService.sendMessage`. De generieke mutator zou (a) de membership-check overslaan, (b) de notificatie-dispatch (@mentions + nieuw-bericht, gededupliceerd) en read-state overslaan, en (c) botsen op veldnaam `createdBy` (chat gebruikt `senderId`). Delegeren behoudt al deze garanties. Push is **idempotent** op het client-`id` (replay-veilig); `delete` is een soft-delete van een **eigen** bericht.
+3. **Threads worden niet via push aangemaakt.** De PWA antwoordt in bestaande, server-side geprovisioneerde threads. Interactief versturen kan ook via de bestaande REST `POST /chat/threads/:id/messages` (de PWA heeft de user-JWT); `/sync/push` dient de offline-queue-replay.
+
+**Schema-voorbereiding (al in PR1):** `ChatThread`/`ChatMessage` dragen `deletedAt` (tombstones), `syncedAt` en `deviceId`, zodat PR2 geen tweede migratie op dezelfde tabellen nodig had.
+
+**Auth:** interne user-JWT (`@Roles(ALL_STAFF)`) + `deviceId` in de push-body (zoals het bestaande contract). De PWA-implementatie zelf staat in de aparte `Inspexi-App`-repo en haakt aan op deze additieve keys.

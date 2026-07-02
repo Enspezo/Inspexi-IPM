@@ -6,7 +6,8 @@ import {
 } from '@nestjs/common';
 import { User, Role, Prisma, RequestStatus, NotificationType } from '@prisma/client';
 import { PrismaService } from '@/prisma';
-import { paginate, buildOrderBy, orgScope, assertFound } from '@/common';
+import { paginate, buildOrderBy, orgScope, assertFound, assertSameOrg } from '@/common';
+import { NumberingService } from '@/modules/numbering/numbering.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { CustomFieldsValidator } from '@/modules/custom-fields/custom-fields.validator';
 import {
@@ -26,11 +27,12 @@ export class RequestsService {
     private quotesService: QuotesService,
     private notifications: NotificationsService,
     private customFieldsValidator: CustomFieldsValidator,
+    private numbering: NumberingService,
   ) {}
 
   async findAll(user: User, query: ListRequestsQueryDto) {
     const { search, status, priority, assignedTo, page = 1, limit = 20, sortBy, sortOrder = 'desc' } = query;
-    const ALLOWED_SORT_FIELDS = ['title', 'status', 'priority', 'source', 'createdAt'];
+    const ALLOWED_SORT_FIELDS = ['requestNumber', 'title', 'status', 'priority', 'source', 'createdAt'];
     const orderBy = buildOrderBy(sortBy, sortOrder, ALLOWED_SORT_FIELDS);
 
     const where: Prisma.RequestWhereInput = {
@@ -52,6 +54,7 @@ export class RequestsService {
 
     if (search) {
       where.OR = [
+        { requestNumber: { contains: search, mode: 'insensitive' } },
         { title: { contains: search, mode: 'insensitive' } },
         {
           contact: {
@@ -207,38 +210,62 @@ export class RequestsService {
       }
     }
 
+    // Assignee must belong to the same org (cross-tenant guard)
+    await assertSameOrg(this.prisma.user, dto.assignedTo, orgId, 'Toegewezen gebruiker');
+
     const customFields = dto.customFields
       ? await this.customFieldsValidator.validateAndSanitize(orgId!, 'REQUEST', dto.customFields)
       : null;
 
-    return this.prisma.$transaction(async (tx) => {
-      const request = await tx.request.create({
-        data: {
-          orgId: orgId!,
-          contactId: dto.contactId,
-          locationId: dto.locationId,
-          assignedTo: dto.assignedTo,
-          source: dto.source,
-          title: dto.title,
-          description: dto.description,
-          priority: dto.priority ?? 'NORMAL',
-          createdBy: user.id,
-          customFields: customFields as any,
-        },
-      });
+    return this.numbering.runWithGeneratedNumber(
+      'REQUEST',
+      orgId!,
+      {
+        manual: dto.requestNumber,
+        loadContext: async () => ({
+          contact:
+            contact.companyName ||
+            [contact.firstName, contact.lastName].filter(Boolean).join(' '),
+          postcode: dto.locationId
+            ? (
+                await this.prisma.location.findUnique({
+                  where: { id: dto.locationId },
+                  select: { postalCode: true },
+                })
+              )?.postalCode
+            : undefined,
+        }),
+      },
+      async (tx, requestNumber) => {
+        const request = await tx.request.create({
+          data: {
+            orgId: orgId!,
+            requestNumber,
+            contactId: dto.contactId,
+            locationId: dto.locationId,
+            assignedTo: dto.assignedTo,
+            source: dto.source,
+            title: dto.title,
+            description: dto.description,
+            priority: dto.priority ?? 'NORMAL',
+            createdBy: user.id,
+            customFields: customFields as any,
+          },
+        });
 
-      // Create initial status history entry
-      await tx.requestStatusHistory.create({
-        data: {
-          requestId: request.id,
-          fromStatus: null,
-          toStatus: RequestStatus.NIEUW,
-          changedBy: user.id,
-        },
-      });
+        // Create initial status history entry
+        await tx.requestStatusHistory.create({
+          data: {
+            requestId: request.id,
+            fromStatus: null,
+            toStatus: RequestStatus.NIEUW,
+            changedBy: user.id,
+          },
+        });
 
-      return request;
-    });
+        return request;
+      },
+    );
   }
 
   async update(id: string, dto: UpdateRequestDto, user: User) {
@@ -274,6 +301,9 @@ export class RequestsService {
       }
     }
 
+    // Assignee must belong to the same org (cross-tenant guard)
+    await assertSameOrg(this.prisma.user, dto.assignedTo, user.orgId, 'Toegewezen gebruiker');
+
     // If contact changes and no new location is provided, clear the location
     const shouldClearLocation =
       dto.contactId && dto.contactId !== request.contactId && dto.locationId === undefined;
@@ -289,9 +319,18 @@ export class RequestsService {
       );
     }
 
+    // Manual renumber — gated on the scheme's allowManualEntry + uniqueness check.
+    let manualNumber: string | undefined;
+    if (dto.requestNumber !== undefined && dto.requestNumber.trim() !== (request.requestNumber ?? '')) {
+      manualNumber = await this.numbering.validateManualNumber(
+        request.orgId, 'REQUEST', dto.requestNumber, request.id,
+      );
+    }
+
     const updated = await this.prisma.request.update({
       where: { id: request.id },
       data: {
+        ...(manualNumber !== undefined && { requestNumber: manualNumber }),
         ...(dto.title !== undefined && { title: dto.title }),
         ...(dto.description !== undefined && { description: dto.description }),
         ...(dto.contactId !== undefined && { contactId: dto.contactId }),

@@ -202,6 +202,25 @@ describe('ContactsService', () => {
       );
     });
 
+    it('should filter by supplierOnly', async () => {
+      mockPrismaService.contact.findMany.mockResolvedValue([]);
+      mockPrismaService.contact.count.mockResolvedValue(0);
+
+      await service.findAll(mockUser, {
+        supplierOnly: 'true',
+        page: 1,
+        limit: 20,
+      });
+
+      expect(mockPrismaService.contact.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            isSupplier: true,
+          }),
+        }),
+      );
+    });
+
     it('should scope by orgId for non-SUPERUSER', async () => {
       mockPrismaService.contact.findMany.mockResolvedValue([]);
       mockPrismaService.contact.count.mockResolvedValue(0);
@@ -256,7 +275,13 @@ describe('ContactsService', () => {
           include: expect.objectContaining({
             addresses: true,
             owner: { select: { id: true, firstName: true, lastName: true } },
-            locations: true,
+            locations: {
+              include: {
+                locationType: {
+                  select: { id: true, code: true, name: true, color: true, icon: true },
+                },
+              },
+            },
             logs: {
               include: { user: { select: { firstName: true, lastName: true } } },
               orderBy: { loggedAt: 'desc' },

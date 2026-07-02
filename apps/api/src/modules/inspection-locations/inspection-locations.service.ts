@@ -1,29 +1,72 @@
+// COMPAT-WRAPPER (Fase 2b). De losse `InspectionLocation`-tabel is opgegaan in
+// de unified `AssetNode`-boom (nodeType = LOCATION). Deze service houdt de oude
+// `inspection-plans/:planId/locations`-endpoints in stand door te mappen op
+// AssetNodesService. Wordt verwijderd ná de PWA-cutover
+// (zie docs/fase3/PWA-CUTOVER-ASSET-NODE.md).
+//
+// Veld-mapping (oud → AssetNode): locationType → typeCode, parentLocationId →
+// parentId. `description` blijft `description`. Pad/diepte worden door de
+// DB-trigger onderhouden (AssetNodesService).
+
 import { Injectable, BadRequestException } from '@nestjs/common';
-import { User, Prisma } from '@prisma/client';
+import { AssetNodeType, Prisma, User } from '@prisma/client';
 import { PrismaService } from '@/prisma';
-import { orgScope, assertFound } from '@/common';
-import { LocationTypesService } from '../location-types/location-types.service';
+import { orgScope, assertFound, requireOrg } from '@/common';
+import { AssetNodesService } from '../asset-nodes/asset-nodes.service';
 import { CreateLocationDto, UpdateLocationDto, MoveLocationDto, ReorderLocationsDto } from './dto';
+
+/** AssetNode (raw of prisma) → oude InspectionLocation-vorm. */
+interface NodeLike {
+  id: string;
+  parentId: string | null;
+  typeCode: string;
+  name: string;
+  identifier: string | null;
+  description: string | null;
+  sortOrder: number;
+  technicalData: Prisma.JsonValue;
+  notes: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
 
 @Injectable()
 export class InspectionLocationsService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly locationTypes: LocationTypesService,
+    private readonly assetNodes: AssetNodesService,
   ) {}
 
-  private requireOrg(user: User): string {
-    if (!user.orgId) throw new BadRequestException('Selecteer eerst een organisatie');
-    return user.orgId;
+  private toLocation(node: NodeLike) {
+    return {
+      id: node.id,
+      parentLocationId: node.parentId,
+      locationType: node.typeCode,
+      name: node.name,
+      identifier: node.identifier,
+      description: node.description,
+      sortOrder: node.sortOrder,
+      technicalData: node.technicalData,
+      notes: node.notes,
+      createdAt: node.createdAt,
+      updatedAt: node.updatedAt,
+    };
   }
 
-  private async getPlanInOrg(planId: string, user: User) {
-    return assertFound(
+  /** Wortel-LOCATION-node van het plan (lazily aangemaakt); default-parent voor nieuwe locaties. */
+  private async getPlanRootNodeId(planId: string, user: User): Promise<string> {
+    const plan = assertFound(
       await this.prisma.inspectionPlan.findFirst({
         where: { id: planId, ...orgScope(user), deletedAt: null },
+        select: { locationId: true },
       }),
       'Inspectieplan',
     );
+    if (!plan.locationId) {
+      throw new BadRequestException('Het inspectieplan heeft geen hoofdlocatie (locationId)');
+    }
+    const root = await this.assetNodes.ensureRootNode(plan.locationId, user);
+    return root.id;
   }
 
   /** Locaties per inspectieplan (boom of plat). */
@@ -32,40 +75,33 @@ export class InspectionLocationsService {
     user: User,
     options?: { parentId?: string; flat?: boolean },
   ) {
-    await this.getPlanInOrg(planId, user);
+    const nodes = await this.assetNodes.listPlanNodes(planId, user, AssetNodeType.LOCATION);
+    const ids = nodes.map((n) => n.id);
 
-    const where: Prisma.InspectionLocationWhereInput = {
-      inspectionPlanId: planId,
-      deletedAt: null,
-    };
-    if (!options?.flat) where.parentLocationId = options?.parentId || null;
+    const childCountByNode = new Map<string, number>();
+    for (const n of nodes) {
+      if (n.parentId) childCountByNode.set(n.parentId, (childCountByNode.get(n.parentId) ?? 0) + 1);
+    }
+    const assetCounts = ids.length
+      ? await this.prisma.assetNode.groupBy({
+          by: ['parentId'],
+          where: { parentId: { in: ids }, nodeType: AssetNodeType.ASSET, deletedAt: null },
+          _count: { _all: true },
+        })
+      : [];
+    const assetCountByNode = new Map(
+      assetCounts.map((c) => [c.parentId as string, c._count._all]),
+    );
 
-    const locations = await this.prisma.inspectionLocation.findMany({
-      where,
-      orderBy: { sortOrder: 'asc' },
-      select: {
-        id: true,
-        parentLocationId: true,
-        locationType: true,
-        name: true,
-        identifier: true,
-        description: true,
-        sortOrder: true,
-        technicalData: true,
-        notes: true,
-        createdAt: true,
-        updatedAt: true,
-        _count: {
-          select: {
-            childLocations: { where: { deletedAt: null } },
-            assets: { where: { deletedAt: null } },
-          },
-        },
-      },
-    });
+    const mapped = nodes.map((n) => ({
+      ...this.toLocation(n),
+      childCount: childCountByNode.get(n.id) ?? 0,
+      assetCount: assetCountByNode.get(n.id) ?? 0,
+    }));
 
-    const mapped = locations.map((l) => this.mapLocation(l));
-    return options?.flat ? mapped : this.buildHierarchy(mapped);
+    if (options?.flat) return mapped;
+    const nodeIds = new Set(ids);
+    return this.buildHierarchy(mapped, options?.parentId ?? null, nodeIds);
   }
 
   /** Hiërarchische boom van locaties voor een plan. */
@@ -75,208 +111,124 @@ export class InspectionLocationsService {
 
   /** Aantal locaties voor een plan. */
   async getCountByPlan(planId: string, user: User): Promise<{ count: number }> {
-    await this.getPlanInOrg(planId, user);
-    const count = await this.prisma.inspectionLocation.count({
-      where: { inspectionPlanId: planId, deletedAt: null },
-    });
-    return { count };
+    const nodes = await this.assetNodes.listPlanNodes(planId, user, AssetNodeType.LOCATION);
+    return { count: nodes.length };
   }
 
   async findById(id: string, user: User) {
-    return assertFound(
-      await this.prisma.inspectionLocation.findFirst({
-        where: { id, ...orgScope(user), deletedAt: null },
+    const node = assertFound(
+      await this.prisma.assetNode.findFirst({
+        where: { id, ...orgScope(user), nodeType: AssetNodeType.LOCATION, deletedAt: null },
         include: {
-          parentLocation: { select: { id: true, name: true, locationType: true } },
-          childLocations: { where: { deletedAt: null }, orderBy: { sortOrder: 'asc' } },
-          assets: { where: { deletedAt: null }, orderBy: { sortOrder: 'asc' } },
+          parent: { select: { id: true, name: true, typeCode: true } },
+          children: { where: { deletedAt: null }, orderBy: { sortOrder: 'asc' } },
         },
       }),
       'Locatie',
     );
+
+    const childLocations = node.children.filter((c) => c.nodeType === AssetNodeType.LOCATION);
+    const assets = node.children.filter((c) => c.nodeType === AssetNodeType.ASSET);
+    return {
+      ...this.toLocation(node),
+      parentLocation: node.parent
+        ? { id: node.parent.id, name: node.parent.name, locationType: node.parent.typeCode }
+        : null,
+      childLocations: childLocations.map((c) => this.toLocation(c)),
+      assets: assets.map((c) => this.toLocation(c)),
+    };
   }
 
   async create(planId: string, user: User, dto: CreateLocationDto, deviceId?: string) {
-    this.requireOrg(user);
-    const plan = await this.getPlanInOrg(planId, user);
+    requireOrg(user);
+    const parentId = dto.parentLocationId ?? (await this.getPlanRootNodeId(planId, user));
 
-    // Parent moet binnen hetzelfde plan vallen; type-constraint valideren
-    let parentLocationTypeCode: string | null = null;
-    if (dto.parentLocationId) {
-      const parent = assertFound(
-        await this.prisma.inspectionLocation.findFirst({
-          where: { id: dto.parentLocationId, inspectionPlanId: planId, deletedAt: null },
-        }),
-        'Ouder-locatie',
-      );
-      parentLocationTypeCode = parent.locationType;
-    }
-    const ok = await this.locationTypes.validateParentConstraint(
-      dto.locationType,
-      parentLocationTypeCode,
+    const created = await this.assetNodes.create(
       user,
-    );
-    if (!ok.valid) throw new BadRequestException(ok.message || 'Ongeldig ouder-type');
-
-    const maxSort = await this.prisma.inspectionLocation.aggregate({
-      where: {
-        inspectionPlanId: planId,
-        parentLocationId: dto.parentLocationId || null,
-        deletedAt: null,
-      },
-      _max: { sortOrder: true },
-    });
-
-    return this.prisma.inspectionLocation.create({
-      data: {
-        orgId: plan.orgId,
-        inspectionPlanId: planId,
-        parentLocationId: dto.parentLocationId ?? null,
-        locationType: dto.locationType,
+      {
+        parentId,
+        nodeType: AssetNodeType.LOCATION,
+        typeCode: dto.locationType,
         name: dto.name,
         identifier: dto.identifier,
         description: dto.description,
-        sortOrder: dto.sortOrder ?? (maxSort._max.sortOrder ?? 0) + 1,
-        technicalData: (dto.technicalData ?? {}) as Prisma.InputJsonValue,
+        technicalData: dto.technicalData,
         notes: dto.notes,
-        createdBy: user.id,
-        deviceId,
+        sortOrder: dto.sortOrder,
       },
-      select: { id: true, createdAt: true },
-    });
+      deviceId,
+    );
+    return this.toLocation(created);
   }
 
   async update(id: string, user: User, dto: UpdateLocationDto) {
-    this.requireOrg(user);
-    const location = await this.findScoped(id, user);
-
-    return this.prisma.inspectionLocation.update({
-      where: { id: location.id },
-      data: {
-        name: dto.name,
-        identifier: dto.identifier,
-        description: dto.description,
-        sortOrder: dto.sortOrder,
-        technicalData: dto.technicalData as Prisma.InputJsonValue | undefined,
-        notes: dto.notes,
-      },
-      select: { id: true, updatedAt: true },
+    requireOrg(user);
+    await this.assertLocationNode(id, user);
+    const updated = await this.assetNodes.update(id, user, {
+      name: dto.name,
+      identifier: dto.identifier,
+      description: dto.description,
+      technicalData: dto.technicalData,
+      notes: dto.notes,
+      sortOrder: dto.sortOrder,
     });
+    return this.toLocation(updated);
   }
 
   async move(id: string, user: User, dto: MoveLocationDto) {
-    this.requireOrg(user);
-    const location = await this.findScoped(id, user);
-
-    let newParentTypeCode: string | null = null;
-    if (dto.newParentId) {
-      if (dto.newParentId === id) {
-        throw new BadRequestException('Een locatie kan niet naar zichzelf verplaatst worden');
-      }
-      const newParent = assertFound(
-        await this.prisma.inspectionLocation.findFirst({
-          where: {
-            id: dto.newParentId,
-            inspectionPlanId: location.inspectionPlanId,
-            deletedAt: null,
-          },
-        }),
-        'Nieuwe ouder-locatie',
-      );
-      if (await this.isDescendantOf(dto.newParentId, id)) {
-        throw new BadRequestException('Een locatie kan niet onder zijn eigen kind geplaatst worden');
-      }
-      newParentTypeCode = newParent.locationType;
+    requireOrg(user);
+    await this.assertLocationNode(id, user);
+    if (!dto.newParentId) {
+      throw new BadRequestException('Een locatie moet onder een andere locatie hangen');
     }
-
-    const ok = await this.locationTypes.validateParentConstraint(
-      location.locationType,
-      newParentTypeCode,
-      user,
-    );
-    if (!ok.valid) {
-      throw new BadRequestException(ok.message || 'Ongeldig ouder-type voor deze locatie');
-    }
-
-    return this.prisma.inspectionLocation.update({
-      where: { id: location.id },
-      data: { parentLocationId: dto.newParentId ?? null, sortOrder: dto.sortOrder },
-      select: { id: true, parentLocationId: true, sortOrder: true },
+    const moved = await this.assetNodes.move(id, user, {
+      newParentId: dto.newParentId,
+      sortOrder: dto.sortOrder,
     });
+    return this.toLocation(moved);
   }
 
   async reorder(planId: string, user: User, dto: ReorderLocationsDto) {
-    this.requireOrg(user);
-    await this.getPlanInOrg(planId, user);
+    requireOrg(user);
+    await this.assetNodes.listPlanNodes(planId, user, AssetNodeType.LOCATION);
     await this.prisma.$transaction(
       dto.locationIds.map((locationId, index) =>
-        this.prisma.inspectionLocation.update({
-          where: { id: locationId },
-          data: { sortOrder: index },
-        }),
+        this.prisma.assetNode.update({ where: { id: locationId }, data: { sortOrder: index } }),
       ),
     );
     return { reordered: true };
   }
 
   async delete(id: string, user: User) {
-    this.requireOrg(user);
-    const location = await this.findScoped(id, user);
-    const now = new Date();
-    // Soft-delete locatie + directe kind-locaties (tombstone voor sync)
-    await this.prisma.inspectionLocation.updateMany({
-      where: { OR: [{ id: location.id }, { parentLocationId: location.id }] },
-      data: { deletedAt: now },
-    });
-    // Soft-delete assets direct onder deze locatie
-    await this.prisma.asset.updateMany({
-      where: { locationId: location.id, deletedAt: null },
-      data: { deletedAt: now },
-    });
+    requireOrg(user);
+    await this.assertLocationNode(id, user);
+    // Soft-delete de hele subtree (locatie + onderliggende locaties én assets).
+    await this.assetNodes.delete(id, user);
     return { deleted: true };
   }
 
   // ── helpers ──
-  private async findScoped(id: string, user: User) {
+  private async assertLocationNode(id: string, user: User) {
     return assertFound(
-      await this.prisma.inspectionLocation.findFirst({
-        where: { id, ...orgScope(user), deletedAt: null },
+      await this.prisma.assetNode.findFirst({
+        where: { id, ...orgScope(user), nodeType: AssetNodeType.LOCATION, deletedAt: null },
+        select: { id: true },
       }),
       'Locatie',
     );
   }
 
-  private async isDescendantOf(locationId: string, ancestorId: string): Promise<boolean> {
-    const location = await this.prisma.inspectionLocation.findFirst({
-      where: { id: locationId, deletedAt: null },
-      select: { parentLocationId: true },
-    });
-    if (!location?.parentLocationId) return false;
-    if (location.parentLocationId === ancestorId) return true;
-    return this.isDescendantOf(location.parentLocationId, ancestorId);
-  }
-
-  private mapLocation(l: any) {
-    return {
-      id: l.id,
-      parentLocationId: l.parentLocationId,
-      locationType: l.locationType,
-      name: l.name,
-      identifier: l.identifier,
-      description: l.description,
-      sortOrder: l.sortOrder,
-      technicalData: l.technicalData,
-      notes: l.notes,
-      createdAt: l.createdAt,
-      updatedAt: l.updatedAt,
-      childCount: l._count?.childLocations ?? 0,
-      assetCount: l._count?.assets ?? 0,
-    };
-  }
-
-  private buildHierarchy(locations: any[], parentId: string | null = null): any[] {
+  private buildHierarchy(
+    locations: Array<ReturnType<InspectionLocationsService['toLocation']> & { childCount: number }>,
+    parentId: string | null,
+    nodeIds: Set<string>,
+  ): unknown[] {
     return locations
-      .filter((l) => l.parentLocationId === parentId)
-      .map((l) => ({ ...l, children: this.buildHierarchy(locations, l.id) }));
+      .filter((l) =>
+        parentId === null
+          ? l.parentLocationId === null || !nodeIds.has(l.parentLocationId)
+          : l.parentLocationId === parentId,
+      )
+      .map((l) => ({ ...l, children: this.buildHierarchy(locations, l.id, nodeIds) }));
   }
 }

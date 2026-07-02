@@ -1,7 +1,7 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
 import { User } from '@prisma/client';
 import { PrismaService } from '@/prisma';
-import { orgScope, assertFound, assertSameOrg } from '@/common';
+import { orgScope, assertFound, assertSameOrg, requireOrg } from '@/common';
 import { LookupService, LOOKUP_KIND } from '../lookups/lookup.service';
 import {
   CreateStandaloneMeasurementDto,
@@ -16,11 +16,6 @@ export class StandaloneMeasurementsService {
     private readonly prisma: PrismaService,
     private readonly lookups: LookupService,
   ) {}
-
-  private requireOrg(user: User): string {
-    if (!user.orgId) throw new BadRequestException('Selecteer eerst een organisatie');
-    return user.orgId;
-  }
 
   /** Valideert een optionele passFailCode tegen de pass-fail-status lookup. */
   private async assertPassFail(code: string | undefined, orgId: string): Promise<void> {
@@ -47,13 +42,13 @@ export class StandaloneMeasurementsService {
         inspectionPlanId: planId,
         ...orgScope(user),
         deletedAt: null,
-        ...(options?.locationId ? { locationId: options.locationId } : {}),
+        ...(options?.locationId ? { locationNodeId: options.locationId } : {}),
       },
       orderBy: { createdAt: 'desc' },
       include: {
         values: { orderBy: { fieldName: 'asc' } },
-        location: { select: { id: true, name: true, locationType: true } },
-        linkedAsset: { select: { id: true, name: true, assetType: true } },
+        locationNode: { select: { id: true, name: true, typeCode: true } },
+        linkedAssetNode: { select: { id: true, name: true, typeCode: true } },
       },
     });
   }
@@ -64,8 +59,8 @@ export class StandaloneMeasurementsService {
         where: { id, ...orgScope(user), deletedAt: null },
         include: {
           values: { orderBy: { fieldName: 'asc' } },
-          location: { select: { id: true, name: true, locationType: true } },
-          linkedAsset: { select: { id: true, name: true, assetType: true } },
+          locationNode: { select: { id: true, name: true, typeCode: true } },
+          linkedAssetNode: { select: { id: true, name: true, typeCode: true } },
         },
       }),
       'Meting',
@@ -78,11 +73,11 @@ export class StandaloneMeasurementsService {
     dto: CreateStandaloneMeasurementDto,
     deviceId?: string,
   ) {
-    const orgId = this.requireOrg(user);
+    const orgId = requireOrg(user);
     const plan = await this.getPlanInOrg(planId, user);
 
-    // Locatie moet binnen dezelfde organisatie vallen
-    await assertSameOrg(this.prisma.inspectionLocation, dto.locationId, orgId, 'Locatie');
+    // Locatie moet binnen dezelfde organisatie vallen (LOCATION-node)
+    await assertSameOrg(this.prisma.assetNode, dto.locationId, orgId, 'Locatie');
 
     // Optionele pass/fail-codes op de meegegeven waarden valideren (lookup)
     for (const v of dto.values ?? []) {
@@ -93,7 +88,7 @@ export class StandaloneMeasurementsService {
       data: {
         orgId: plan.orgId,
         inspectionPlanId: planId,
-        locationId: dto.locationId,
+        locationNodeId: dto.locationId,
         measurementType: dto.measurementType,
         description: dto.description,
         createdBy: user.id,
@@ -117,7 +112,7 @@ export class StandaloneMeasurementsService {
   }
 
   async update(id: string, user: User, dto: UpdateStandaloneMeasurementDto) {
-    this.requireOrg(user);
+    requireOrg(user);
     const measurement = await this.findScoped(id, user);
 
     return this.prisma.standaloneMeasurement.update({
@@ -130,7 +125,7 @@ export class StandaloneMeasurementsService {
   }
 
   async delete(id: string, user: User) {
-    this.requireOrg(user);
+    requireOrg(user);
     const measurement = await this.findScoped(id, user);
 
     await this.prisma.standaloneMeasurement.update({
@@ -142,7 +137,7 @@ export class StandaloneMeasurementsService {
   }
 
   async addValue(id: string, user: User, dto: AddValueDto) {
-    const orgId = this.requireOrg(user);
+    const orgId = requireOrg(user);
     const measurement = await this.findScoped(id, user);
     await this.assertPassFail(dto.passFailCode, orgId);
 
@@ -159,15 +154,15 @@ export class StandaloneMeasurementsService {
   }
 
   async linkAsset(id: string, user: User, dto: LinkAssetDto) {
-    const orgId = this.requireOrg(user);
+    const orgId = requireOrg(user);
     const measurement = await this.findScoped(id, user);
 
-    // Asset moet binnen dezelfde organisatie vallen
-    await assertSameOrg(this.prisma.asset, dto.assetId, orgId, 'Asset');
+    // Asset moet binnen dezelfde organisatie vallen (ASSET-node)
+    await assertSameOrg(this.prisma.assetNode, dto.assetId, orgId, 'Asset');
 
     return this.prisma.standaloneMeasurement.update({
       where: { id: measurement.id },
-      data: { linkedAssetId: dto.assetId },
+      data: { linkedAssetNodeId: dto.assetId },
     });
   }
 

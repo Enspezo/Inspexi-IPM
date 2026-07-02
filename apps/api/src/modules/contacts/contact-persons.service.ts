@@ -11,7 +11,27 @@ import {
   CreateContactPersonDto,
   UpdateContactPersonDto,
   ListContactPersonsQueryDto,
+  CreateContactPersonLocationDto,
 } from './dto';
+
+/** Gedeelde include voor de locatie-zijde van een LocationContactPerson-koppeling. */
+const LINK_LOCATION_INCLUDE = {
+  location: {
+    select: {
+      id: true,
+      name: true,
+      street: true,
+      houseNumber: true,
+      postalCode: true,
+      city: true,
+      locationType: { select: { id: true, code: true, name: true, color: true } },
+      contactId: true,
+      contact: {
+        select: { id: true, type: true, companyName: true, firstName: true, lastName: true },
+      },
+    },
+  },
+} as const;
 
 @Injectable()
 export class ContactPersonsService {
@@ -184,24 +204,38 @@ export class ContactPersonsService {
 
     return this.prisma.locationContactPerson.findMany({
       where: { contactPersonId: person.id },
-      include: {
-        location: {
-          select: {
-            id: true,
-            name: true,
-            street: true,
-            houseNumber: true,
-            postalCode: true,
-            city: true,
-            objectType: true,
-            contactId: true,
-            contact: {
-              select: { id: true, type: true, companyName: true, firstName: true, lastName: true },
-            },
-          },
-        },
-      },
+      include: LINK_LOCATION_INCLUDE,
       orderBy: { createdAt: 'asc' },
+    });
+  }
+
+  async addContactPersonLocation(
+    contactPersonId: string,
+    dto: CreateContactPersonLocationDto,
+    user: User,
+  ) {
+    const person = await this.findContactPerson(contactPersonId, user);
+
+    const location = await this.prisma.location.findUnique({
+      where: { id: dto.locationId },
+    });
+
+    if (!location) {
+      throw new NotFoundException('Locatie niet gevonden');
+    }
+
+    if (!user.roles.includes(Role.SUPERUSER) && location.orgId !== user.orgId) {
+      throw new ForbiddenException();
+    }
+
+    return this.prisma.locationContactPerson.create({
+      data: {
+        locationId: location.id,
+        contactPersonId: person.id,
+        orgId: person.orgId,
+        notes: dto.notes,
+      },
+      include: LINK_LOCATION_INCLUDE,
     });
   }
 }

@@ -31,6 +31,7 @@ import {
 import { PlanningAddFollowerModal } from './components/planning-add-follower-modal';
 import { CreatePlanningForm } from './components/create-planning-form';
 import { getErrorMessage } from '@/lib/api-client';
+import { useWindowTabSync } from '@/providers/window-tabs';
 
 type Tab = 'algemeen' | 'sessies' | 'klantportaal' | 'volgers' | 'status' | 'geschiedenis';
 
@@ -73,6 +74,13 @@ function PlanningDetailView({ id }: { id: string }) {
   const [newQuestion, setNewQuestion] = useState('');
 
   const { data: item, isLoading } = usePlanningItem(id);
+
+  // Keep this record's in-window tab title fresh, and flag it if the record 404s.
+  useWindowTabSync('planning', id, {
+    title: item?.productName,
+    notFound: !isLoading && !item,
+  });
+
   const { data: followers } = usePlanningFollowers(id);
   const { data: questions } = usePlanningQuestions(id);
   const { data: tasksData } = useTasks({ entityType: TaskEntityType.PLANNING, entityId: id });

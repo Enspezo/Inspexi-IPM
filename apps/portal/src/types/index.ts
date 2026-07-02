@@ -7,6 +7,20 @@ export enum Role {
   INSPECTEUR = 'INSPECTEUR',
 }
 
+/** Beschikbaarheidsstatus voor de interne chat (REQ1). */
+export enum Availability {
+  BESCHIKBAAR = 'BESCHIKBAAR',
+  BEZIG = 'BEZIG',
+  AFWEZIG = 'AFWEZIG',
+  OFFLINE = 'OFFLINE',
+}
+
+export enum ContactDisplayMode {
+  NONE = 'NONE',
+  STATIC = 'STATIC',
+  INSPECTOR = 'INSPECTOR',
+}
+
 export interface Organization {
   id: string;
   name: string;
@@ -19,7 +33,16 @@ export interface Organization {
   senderEmail: string | null;
   workdayStart: number;
   workdayEnd: number;
+  inspectorPhoneDisplay: ContactDisplayMode;
+  inspectorEmailDisplay: ContactDisplayMode;
+  inspectorStaticPhone: string | null;
+  inspectorStaticEmail: string | null;
+  quoteApprovalThreshold: number | null;
+  quoteApprovalRequiredRole: Role | null;
   isActive: boolean;
+  chatEnabled: boolean;
+  /** Toegewezen SaaS-abonnement (entitlements, PRD-09); null = geen plan. */
+  planId: string | null;
   createdAt: string;
   _count?: { users: number };
 }
@@ -58,6 +81,14 @@ export interface User {
   homeLat: number | null;
   homeLng: number | null;
   icalToken: string | null;
+  contactPhone: string | null;
+  contactEmail: string | null;
+  sharePhoneWithClients: boolean;
+  shareEmailWithClients: boolean;
+  defaultApprovalPersonId: string | null;
+  availability?: Availability;
+  availabilityNote?: string | null;
+  lastSeenAt?: string | null;
   createdAt: string;
   organization?: Organization;
 }
@@ -154,6 +185,10 @@ export interface Contact {
   vatNumber: string | null;
   vatValidation: Record<string, unknown> | null;
   cocNumber: string | null;
+  isSupplier: boolean;
+  supplierCustomerNumber?: string | null;
+  purchaseConditions?: string | null;
+  supplierRating?: boolean | null;
   notes: string | null;
   priceTableId: string | null;
   ownerId: string | null;
@@ -232,14 +267,51 @@ export interface Location {
   houseNumber: string;
   postalCode: string;
   city: string;
-  objectType: string | null;
+  locationTypeId: string | null;
+  locationType?: {
+    id: string;
+    code: string;
+    name: string;
+    color: string | null;
+    icon: string | null;
+  } | null;
   notes: string | null;
   pdokData: Record<string, unknown> | null;
   lat: number | null;
   lng: number | null;
+  // BAG-bouwgegevens (verrijkt via PDOK)
+  gebruiksfunctie: string | null;
+  bouwjaar: number | null;
+  oppervlakte: number | null;
+  bagId: string | null;
   customFields: Record<string, any> | null;
   createdAt: string;
   updatedAt: string;
+}
+
+/** Eén veldwijziging uit een PDOK-refresh-diff. */
+export interface PdokDiffChange {
+  field: string;
+  label: string;
+  oldValue: string | number | null;
+  newValue: string | number | null;
+}
+
+/** Resultaat van POST /contacts/locations/:id/pdok-refresh. */
+export interface PdokRefreshResult {
+  applied: boolean;
+  changes: PdokDiffChange[];
+  /** Aanwezig wanneer niet opgeslagen (applied=false): de gevonden waarden. */
+  fetched?: {
+    gebruiksfunctie: string | null;
+    bouwjaar: number | null;
+    oppervlakte: number | null;
+    bagId: string | null;
+    lat: number | null;
+    lng: number | null;
+  };
+  /** Aanwezig wanneer opgeslagen (applied=true): de bijgewerkte locatie. */
+  location?: Location;
 }
 
 export interface LocationContactPerson {
@@ -315,6 +387,7 @@ export interface Product {
   orgId: string;
   productGroupId: string | null;
   name: string;
+  productCode: string | null;
   description: string | null;
   unit: string;
   defaultVat: number;
@@ -392,7 +465,10 @@ export interface UserSummary {
   id: string;
   firstName: string;
   lastName: string;
+  // On the PUBLIC planning endpoint, `phone`/`email` are the server-resolved
+  // client-safe values (per-channel display mode), NOT the login email.
   email: string;
+  phone?: string | null;
   color?: string | null;
   initials?: string | null;
   homeLat?: number | null;
@@ -408,6 +484,7 @@ export interface LocationSummary {
 export interface Request {
   id: string;
   orgId: string;
+  requestNumber: string | null;
   contactId: string;
   locationId: string | null;
   assignedTo: string | null;
@@ -461,6 +538,13 @@ export enum ApprovalStatus {
   PENDING = 'PENDING',
   APPROVED = 'APPROVED',
   REJECTED = 'REJECTED',
+  CANCELLED = 'CANCELLED',
+}
+
+export enum ApprovalKind {
+  THRESHOLD = 'THRESHOLD',
+  VOLUNTARY_TEAM = 'VOLUNTARY_TEAM',
+  VOLUNTARY_PERSON = 'VOLUNTARY_PERSON',
 }
 
 // ── Block editor types ─────────────────────────────────────
@@ -601,7 +685,7 @@ export interface Quote {
   request?: { id: string; title: string };
   pdfStorageKey?: string | null;
   signedPdfStorageKey?: string | null;
-  template?: { id: string; name: string; templateType?: string };
+  template?: { id: string; name: string; templateType?: string } | null;
   createdByUser?: UserSummary;
   organization?: { id: string; name: string; logoUrl: string | null; primaryColor: string | null };
   lines?: QuoteLine[];
@@ -632,11 +716,15 @@ export interface QuoteApprovalRequest {
   requestedBy: string;
   reviewedBy: string | null;
   status: ApprovalStatus;
+  kind: ApprovalKind;
+  approverRole: Role | null;
+  approverUserId: string | null;
   note: string | null;
   requestedAt: string;
   reviewedAt: string | null;
   requestedByUser?: UserSummary;
   reviewedByUser?: UserSummary;
+  approverUser?: UserSummary;
 }
 
 export interface ResolvedPrice {
@@ -692,6 +780,22 @@ export enum NotificationType {
   AFSPRAAK_BEVESTIGING_VERSTUURD = 'AFSPRAAK_BEVESTIGING_VERSTUURD',
   PROJECT_AANGEMAAKT = 'PROJECT_AANGEMAAKT',
   PROJECT_STATUS_GEWIJZIGD = 'PROJECT_STATUS_GEWIJZIGD',
+  FOUTMELDING_INGEDIEND = 'FOUTMELDING_INGEDIEND',
+  INSPECTIEPLAN_TOEGEWEZEN = 'INSPECTIEPLAN_TOEGEWEZEN',
+  INSPECTIEPLAN_TER_REVIEW = 'INSPECTIEPLAN_TER_REVIEW',
+  INSPECTIEPLAN_GOEDGEKEURD = 'INSPECTIEPLAN_GOEDGEKEURD',
+  INSPECTIEPLAN_AFGEKEURD = 'INSPECTIEPLAN_AFGEKEURD',
+  OFFERTE_GOEDKEURING_GEVRAAGD_TEAM = 'OFFERTE_GOEDKEURING_GEVRAAGD_TEAM',
+  OFFERTE_GOEDKEURING_GEVRAAGD_PERSOON = 'OFFERTE_GOEDKEURING_GEVRAAGD_PERSOON',
+  OFFERTE_GOEDKEURING_AFGEHANDELD = 'OFFERTE_GOEDKEURING_AFGEHANDELD',
+  CHAT_BERICHT = 'CHAT_BERICHT',
+  CHAT_TEAM_BERICHT = 'CHAT_TEAM_BERICHT',
+  CHAT_MENTION = 'CHAT_MENTION',
+  SUPPORT_TICKET_AANGEMAAKT = 'SUPPORT_TICKET_AANGEMAAKT',
+  SUPPORT_TICKET_REACTIE = 'SUPPORT_TICKET_REACTIE',
+  SUPPORT_TICKET_STATUS = 'SUPPORT_TICKET_STATUS',
+  MEETMIDDEL_KALIBRATIE_BINNENKORT = 'MEETMIDDEL_KALIBRATIE_BINNENKORT',
+  MEETMIDDEL_KALIBRATIE_VERLOPEN = 'MEETMIDDEL_KALIBRATIE_VERLOPEN',
 }
 
 export interface Notification {
@@ -826,6 +930,7 @@ export interface Note {
 
 export enum DocumentEntityType {
   CONTACT = 'CONTACT',
+  LOCATION = 'LOCATION',
   REQUEST = 'REQUEST',
   QUOTE = 'QUOTE',
   PRODUCT = 'PRODUCT',
@@ -834,6 +939,55 @@ export enum DocumentEntityType {
   PROJECT = 'PROJECT',
   USER = 'USER',
   WORK_ORDER = 'WORK_ORDER',
+}
+
+/** Volledige document-tag (beheer onder organisatie-instellingen). */
+export interface DocumentTag {
+  id: string;
+  orgId: string;
+  name: string;
+  color: string;
+  sortOrder: number;
+  isActive: boolean;
+  isDeleted: boolean;
+  createdAt: string;
+  _count?: { documents: number };
+}
+
+// ─── Configureerbare nummering (per org, per model) ──────────────────────
+export type NumberingModel =
+  | 'REQUEST'
+  | 'QUOTE'
+  | 'PROJECT'
+  | 'PRODUCT'
+  | 'WORK_ORDER'
+  | 'LOCATION_NODE'
+  | 'ASSET_NODE';
+export type NumberingMode = 'SEQUENTIAL' | 'RANDOM';
+export type NumberingReset = 'CONTINUOUS' | 'PER_YEAR' | 'PER_MONTH';
+
+export interface NumberingScheme {
+  id: string;
+  orgId: string;
+  model: NumberingModel;
+  prefix: string;
+  suffix: string;
+  mode: NumberingMode;
+  start: number;
+  interval: number;
+  digits: number;
+  resetPolicy: NumberingReset;
+  allowManualEntry: boolean;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Compacte tag-weergave zoals meegestuurd op documenten / pickers. */
+export interface DocumentTagRef {
+  id: string;
+  name: string;
+  color: string;
 }
 
 export interface CrmDocument {
@@ -852,6 +1006,87 @@ export interface CrmDocument {
   isDeleted: boolean;
   createdAt: string;
   uploadedBy?: UserSummary;
+  tags?: DocumentTagRef[];
+}
+
+// ─── PRD-11: Inspecteur-certificaten / diploma's ────────
+
+export interface InspectorCertificate {
+  id: string;
+  orgId: string;
+  userId: string;
+  type: string;
+  number: string | null;
+  issueDate: string;
+  validUntil: string | null;
+  issuer: string;
+  // Bestand-metadata (storageKey wordt nooit naar de client gestuurd).
+  fileName: string | null;
+  originalName: string | null;
+  mimeType: string | null;
+  size: number | null;
+  hasDocument: boolean;
+  isDeleted: boolean;
+  createdAt: string;
+  updatedAt: string;
+  user?: UserSummary;
+}
+
+// ─── Meetmiddelen (measurement instruments) + Kalibraties ───────────────────
+
+export enum MeasurementInstrumentStatus {
+  ACTIEF = 'ACTIEF',
+  BUITEN_GEBRUIK = 'BUITEN_GEBRUIK',
+  AFGEKEURD = 'AFGEKEURD',
+}
+
+/** Afgeleide kalibratiestatus (geen DB-enum) — berekend uit laatste kalibratie + interval. */
+export type MeasurementCalibrationStatus =
+  | 'GEEN_KALIBRATIE'
+  | 'GELDIG'
+  | 'BINNENKORT'
+  | 'VERLOPEN';
+
+export interface MeasurementInstrument {
+  id: string;
+  orgId: string;
+  code: string;
+  brand: string;
+  type: string;
+  serialNumber: string | null;
+  calibrationIntervalMonths: number;
+  status: MeasurementInstrumentStatus;
+  assignedToUserId: string | null;
+  notes: string | null;
+  // Afgeleide cache (laatste kalibratie + verloopdatum).
+  lastCalibrationDate: string | null;
+  nextCalibrationDue: string | null;
+  isDeleted: boolean;
+  createdAt: string;
+  updatedAt: string;
+  // Door de API verrijkt:
+  calibrationStatus?: MeasurementCalibrationStatus;
+  assignedTo?: UserSummary | null;
+  calibrationCount?: number;
+}
+
+export interface Calibration {
+  id: string;
+  orgId: string;
+  instrumentId: string;
+  calibrationDate: string;
+  performedBy: string;
+  certificateNumber: string | null;
+  notes: string | null;
+  // Bestand-metadata (storageKey wordt nooit naar de client gestuurd).
+  fileName: string | null;
+  originalName: string | null;
+  mimeType: string | null;
+  size: number | null;
+  hasDocument: boolean;
+  isDeleted: boolean;
+  createdAt: string;
+  updatedAt: string;
 }
 
 // ─── PRD-07: Planning & Afspraken ───────────────────────
@@ -1169,6 +1404,7 @@ export type SearchEntityType =
   | 'product';
 
 export interface SearchContactResult {
+  isFavorited?: boolean;
   id: string;
   type: ContactType;
   companyName: string | null;
@@ -1180,6 +1416,7 @@ export interface SearchContactResult {
 }
 
 export interface SearchContactPersonResult {
+  isFavorited?: boolean;
   id: string;
   contactId: string;
   firstName: string;
@@ -1196,6 +1433,7 @@ export interface SearchContactPersonResult {
 }
 
 export interface SearchLocationResult {
+  isFavorited?: boolean;
   id: string;
   contactId: string;
   name: string;
@@ -1203,7 +1441,13 @@ export interface SearchLocationResult {
   houseNumber: string;
   postalCode: string;
   city: string;
-  objectType: string | null;
+  locationType?: {
+    id: string;
+    code: string;
+    name: string;
+    color: string | null;
+    icon: string | null;
+  } | null;
   contact: {
     id: string;
     companyName: string | null;
@@ -1213,6 +1457,7 @@ export interface SearchLocationResult {
 }
 
 export interface SearchRequestResult {
+  isFavorited?: boolean;
   id: string;
   title: string;
   status: RequestStatus;
@@ -1227,6 +1472,7 @@ export interface SearchRequestResult {
 }
 
 export interface SearchQuoteResult {
+  isFavorited?: boolean;
   id: string;
   quoteNumber: string;
   subject: string;
@@ -1242,6 +1488,7 @@ export interface SearchQuoteResult {
 }
 
 export interface SearchTaskResult {
+  isFavorited?: boolean;
   id: string;
   title: string;
   status: TaskStatus;
@@ -1253,6 +1500,7 @@ export interface SearchTaskResult {
 }
 
 export interface SearchDocumentResult {
+  isFavorited?: boolean;
   id: string;
   originalName: string;
   mimeType: string;
@@ -1264,6 +1512,7 @@ export interface SearchDocumentResult {
 }
 
 export interface SearchProductResult {
+  isFavorited?: boolean;
   id: string;
   name: string;
   unit: string;
@@ -1289,6 +1538,43 @@ export interface SearchGroup {
 
 export interface SearchResponse {
   groups: SearchGroup[];
+}
+
+// ─── Favorites (REQ36) ──────────────────────────────────
+
+/** Canonical Prisma model names that can be favorited (matches backend allow-list). */
+export type FavoritableEntityType =
+  | 'Contact'
+  | 'ContactPerson'
+  | 'Location'
+  | 'Request'
+  | 'Quote'
+  | 'Task'
+  | 'Project'
+  | 'Product';
+
+/** Lightweight key used to drive the star toggle state. */
+export interface FavoriteKey {
+  entityType: FavoritableEntityType;
+  entityId: string;
+}
+
+/** A favorite enriched with a human-readable name for the favorites overview. */
+export interface FavoriteItem {
+  id: string;
+  entityType: FavoritableEntityType;
+  entityId: string;
+  name: string;
+  createdAt: string;
+}
+
+export interface FavoriteGroup {
+  entityType: FavoritableEntityType;
+  items: FavoriteItem[];
+}
+
+export interface FavoritesResponse {
+  groups: FavoriteGroup[];
 }
 
 // ─── Custom Fields ──────────────────────────────────────
@@ -1660,6 +1946,7 @@ export interface InspectionPlan {
   contactId: string;
   projectId: string | null;
   inspectionTemplateId: string | null;
+  locationId: string | null;
   projectName: string;
   description: string | null;
   referenceNumber: string | null;
@@ -1698,48 +1985,116 @@ export interface InspectionPlan {
   assignedUser?: UserSummary | null;
   reviewer?: UserSummary | null;
   inspectionTemplate?: InspectionTemplate | null;
-  assets?: Asset[];
-  locations?: InspectionLocation[];
+  location?: LocationSummary | null;
+  scopeLocations?: InspectionPlanLocation[];
   signatures?: Signature[];
   reports?: Report[];
 }
 
-export interface Asset {
+/** Unified recursive node: één boom met LOCATION- en ASSET-knopen (MAIC-model). */
+export enum AssetNodeType {
+  LOCATION = 'LOCATION',
+  ASSET = 'ASSET',
+}
+
+export interface AssetNode {
   id: string;
   orgId: string;
-  inspectionPlanId: string;
-  parentAssetId: string | null;
-  locationId: string | null;
-  assetType: string;
+  nodeType: AssetNodeType;
+  parentId: string | null;
+  /** Alleen gevuld op de root-LOCATION-node (1:1 met een CRM-locatie). */
+  rootLocationId: string | null;
+  typeCode: string;
+  /** Server-toegekend, uniek-per-org nodenummer (read-only). */
+  nodeNumber: string | null;
   name: string;
   identifier: string | null;
-  locationDescription: string | null;
-  sortOrder: number;
-  treePath: string | null;
-  statusCode: string;
+  description: string | null;
   technicalData: Record<string, unknown>;
+  statusCode: string;
   notes: string | null;
+  sortOrder: number;
+  /** ltree materialized path (server-maintained); niet via Prisma Client schrijfbaar. */
+  path: string | null;
+  depth: number;
   createdAt: string;
   updatedAt: string;
   syncedAt: string | null;
   createdBy: string | null;
   deviceId: string | null;
   deletedAt: string | null;
-  parentAsset?: Asset | null;
-  childAssets?: Asset[];
-  location?: InspectionLocation | null;
+  // Relaties / include-projecties:
+  parent?: AssetNode | null;
+  children?: AssetNode[];
+  rootLocation?: LocationSummary | null;
   findings?: Finding[];
-  // Berekende projectie-velden uit de lijst-endpoints (GET /inspection-plans/:id/assets):
+  // Berekende projectie-velden uit de tree/lijst-endpoints:
   childCount?: number;
   findingCount?: number;
   visualInspectionStatus?: string;
   measurementStatus?: string;
+  /** Alleen in de planboom (GET /inspection-plans/:id/tree): valt deze LOCATION binnen de scope. */
+  inScope?: boolean;
+}
+
+/** Koppeling van een inspectieplan aan een deellocatie-node (scope). */
+export interface InspectionPlanLocation {
+  id: string;
+  orgId: string;
+  inspectionPlanId: string;
+  assetNodeId: string;
+  isPrimary: boolean;
+  assetNode?: AssetNode;
+}
+
+/**
+ * Legacy compat-shape van de assets-wrappers (GET /assets,
+ * GET /inspection-plans/:id/assets?flat=true). Deze endpoints mappen ASSET-nodes
+ * terug op het oude Asset-contract; de boom-UI gebruikt {@link AssetNode}.
+ */
+export interface Asset {
+  id: string;
+  parentAssetId: string | null;
+  assetType: string;
+  name: string;
+  identifier: string | null;
+  locationDescription: string | null;
+  sortOrder: number;
+  statusCode: string;
+  technicalData: Record<string, unknown>;
+  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
+  /** Alleen aanwezig op detail-/uitvoeringsprojecties. */
+  inspectionPlanId?: string | null;
+  findingCount?: number;
+  _count?: Record<string, number>;
+}
+
+/**
+ * Legacy compat-shape van de inspection-locations-wrapper
+ * (GET /inspection-plans/:id/locations?flat=true). Mapt LOCATION-nodes terug op
+ * het oude contract; de boom-UI gebruikt {@link AssetNode}.
+ */
+export interface InspectionLocation {
+  id: string;
+  parentLocationId: string | null;
+  locationType: string;
+  name: string;
+  identifier: string | null;
+  description: string | null;
+  sortOrder: number;
+  technicalData: Record<string, unknown>;
+  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface Finding {
   id: string;
   orgId: string;
-  assetId: string;
+  inspectionPlanId: string;
+  assetNodeId: string;
   visualInspectionId: string | null;
   measurementRecordId: string | null;
   findingTemplateId: string | null;
@@ -1763,40 +2118,16 @@ export interface Finding {
   createdBy: string | null;
   deviceId: string | null;
   deletedAt: string | null;
-  asset?: Asset;
+  assetNode?: AssetNode;
   findingTemplate?: FindingTemplate | null;
-}
-
-export interface InspectionLocation {
-  id: string;
-  orgId: string;
-  inspectionPlanId: string;
-  parentLocationId: string | null;
-  locationType: string;
-  name: string;
-  identifier: string | null;
-  description: string | null;
-  sortOrder: number;
-  treePath: string | null;
-  technicalData: Record<string, unknown>;
-  notes: string | null;
-  createdAt: string;
-  updatedAt: string;
-  syncedAt: string | null;
-  createdBy: string | null;
-  deviceId: string | null;
-  deletedAt: string | null;
-  parentLocation?: InspectionLocation | null;
-  childLocations?: InspectionLocation[];
-  assets?: Asset[];
 }
 
 export interface StandaloneMeasurement {
   id: string;
   orgId: string;
   inspectionPlanId: string;
-  locationId: string | null;
-  assetId: string | null;
+  locationNodeId: string | null;
+  linkedAssetNodeId: string | null;
   measurementType: string;
   description: string | null;
   createdAt: string;
@@ -1814,7 +2145,7 @@ export interface LocationImageMarker {
   positionX: number; // % 0-100
   positionY: number; // % 0-100
   markerType: MarkerType;
-  assetId: string | null;
+  assetNodeId: string | null;
   findingId: string | null;
   standaloneMeasurementId: string | null;
   annotation: Record<string, unknown> | null;
@@ -1827,7 +2158,7 @@ export interface LocationImageMarker {
   createdBy: string | null;
   deviceId: string | null;
   // Door de API meegestuurde (deels geselecteerde) relaties:
-  asset?: Pick<Asset, 'id' | 'name' | 'assetType' | 'statusCode'> | null;
+  assetNode?: Pick<AssetNode, 'id' | 'name' | 'typeCode' | 'nodeType' | 'statusCode'> | null;
   finding?: Pick<Finding, 'id' | 'shortDescription' | 'statusCode' | 'classificationValues'> | null;
   standaloneMeasurement?: Pick<StandaloneMeasurement, 'id' | 'measurementType' | 'description'> | null;
 }
@@ -1835,7 +2166,7 @@ export interface LocationImageMarker {
 export interface LocationImage {
   id: string;
   orgId: string;
-  locationId: string;
+  nodeId: string;
   storagePath: string;
   thumbnailPath: string | null;
   originalFilename: string | null;
@@ -2038,6 +2369,7 @@ export interface AssetTypeDefinition {
   id: string;
   orgId: string | null;
   code: string;
+  shortCode: string | null;
   name: string;
   description: string | null;
   icon: string | null;
@@ -2087,6 +2419,7 @@ export interface LocationTypeDefinition {
   id: string;
   orgId: string | null;
   code: string;
+  shortCode: string | null;
   name: string;
   description: string | null;
   icon: string | null;
@@ -2291,8 +2624,8 @@ export interface MeasurementSheetRecord {
   id: string;
   orgId: string;
   templateId: string;
-  assetId: string;
-  inspectionPlanId: string | null;
+  assetNodeId: string;
+  inspectionPlanId: string;
   templateVersion: string;
   templateSnapshot: MeasurementSheetTemplateSnapshot;
   status: MeasurementSheetRecordStatus;
@@ -2306,9 +2639,10 @@ export interface MeasurementSheetRecord {
   updatedAt: string;
   completedAt: string | null;
   createdBy: string;
+  usedInstrumentIds: string[];
   // Include-projecties uit de endpoints:
   template?: { id: string; code: string; name: string; version: string };
-  asset?: { id: string; name: string; assetType: string; inspectionPlanId?: string };
+  assetNode?: { id: string; name: string; typeCode: string; inspectionPlanId?: string };
 }
 
 // ─── Voice-prompts (3-lagen prompt-model voor spraakinvoer) ───
@@ -2335,4 +2669,193 @@ export interface VoiceTemplatePrompt {
   updatedAt: string;
   /** Meegestuurd door de API (include) — handig voor weergave. */
   template?: { id: string; name: string };
+}
+
+// ─── Interne chat (REQ1) ──────────────────────────────────
+
+export enum ChatThreadType {
+  DIRECT = 'DIRECT',
+  TEAM = 'TEAM',
+}
+
+export enum ChatThreadStatus {
+  OPEN = 'OPEN',
+  AFGEROND = 'AFGEROND',
+}
+
+/** Lichte gebruikersweergave incl. presence (van /chat/users en thread-counterpart). */
+export interface ChatUser {
+  id: string;
+  firstName: string;
+  lastName: string;
+  initials: string | null;
+  avatarUrl: string | null;
+  availability: Availability;
+  availabilityNote: string | null;
+  lastSeenAt: string | null;
+  roles?: Role[];
+}
+
+export interface ChatMessage {
+  id: string;
+  threadId: string;
+  senderId: string;
+  sender: {
+    id: string;
+    firstName: string;
+    lastName: string;
+    initials: string | null;
+    avatarUrl: string | null;
+  };
+  content: string;
+  mentionedUserIds: string[];
+  referenceEntityType: string | null;
+  referenceEntityId: string | null;
+  referenceName: string | null;
+  createdAt: string;
+}
+
+export interface ChatThread {
+  id: string;
+  type: ChatThreadType;
+  teamRole: Role | null;
+  subject: string | null;
+  status: ChatThreadStatus;
+  referenceEntityType: string | null;
+  referenceEntityId: string | null;
+  referenceName: string | null;
+  noteId: string | null;
+  closedAt: string | null;
+  unreadCount: number;
+  counterpart: ChatUser | null;
+  lastMessage: {
+    id: string;
+    content: string;
+    senderId: string;
+    senderName: string;
+    createdAt: string;
+  } | null;
+  lastActivityAt: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface UserPresence {
+  id: string;
+  availability: Availability;
+  availabilityNote: string | null;
+  lastSeenAt: string | null;
+}
+
+export interface ChatUnreadResponse {
+  count: number;
+}
+
+// ── Helpsysteem (IMP_PRD-10) ────────────────────────────────────────────────
+export enum HelpArticleStatus {
+  DRAFT = 'DRAFT',
+  PUBLISHED = 'PUBLISHED',
+  ARCHIVED = 'ARCHIVED',
+}
+
+export interface HelpCategory {
+  id: string;
+  orgId: string | null; // null = globaal
+  slug: string;
+  name: string;
+  description: string | null;
+  icon: string | null;
+  order: number;
+  parentId: string | null;
+  isPublished: boolean;
+  createdAt: string;
+  updatedAt: string;
+  articles?: HelpArticle[]; // bij categorie-detail
+}
+
+export interface HelpArticle {
+  id: string;
+  orgId: string | null; // null = globaal
+  categoryId: string;
+  slug: string;
+  title: string;
+  excerpt: string | null;
+  body: string;
+  status: HelpArticleStatus;
+  tags: string[];
+  moduleKeys: string[];
+  order: number;
+  viewCount: number;
+  helpfulYes: number;
+  helpfulNo: number;
+  authorId: string | null;
+  publishedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  category?: { id: string; name: string; slug: string } | null;
+}
+
+// ─── IMP_PRD-10 Fase 4: Support-tickets ─────────────────
+
+export enum SupportTicketStatus {
+  NIEUW = 'NIEUW',
+  IN_BEHANDELING = 'IN_BEHANDELING',
+  WACHT_OP_KLANT = 'WACHT_OP_KLANT',
+  OPGELOST = 'OPGELOST',
+  GESLOTEN = 'GESLOTEN',
+}
+
+export enum SupportTicketPriority {
+  LAAG = 'LAAG',
+  NORMAAL = 'NORMAAL',
+  HOOG = 'HOOG',
+  URGENT = 'URGENT',
+}
+
+export enum SupportTicketCategory {
+  VRAAG = 'VRAAG',
+  PROBLEEM = 'PROBLEEM',
+  BUG = 'BUG',
+  FEATURE_REQUEST = 'FEATURE_REQUEST',
+  FACTUUR = 'FACTUUR',
+  OVERIG = 'OVERIG',
+}
+
+export type SupportMessageAuthorType = 'USER' | 'SUPPORT' | 'SYSTEM';
+
+export interface SupportTicketMessage {
+  id: string;
+  ticketId: string;
+  orgId: string;
+  authorId: string | null;
+  authorType: SupportMessageAuthorType;
+  body: string;
+  isInternal: boolean;
+  createdAt: string;
+  author?: UserSummary;
+}
+
+export interface SupportTicket {
+  id: string;
+  orgId: string;
+  ticketNumber: number;
+  subject: string;
+  description: string;
+  status: SupportTicketStatus;
+  priority: SupportTicketPriority;
+  category: SupportTicketCategory;
+  contextModule: string | null;
+  contextUrl: string | null;
+  createdById: string;
+  assignedToId: string | null;
+  firstResponseAt: string | null;
+  resolvedAt: string | null;
+  closedAt: string | null;
+  lastMessageAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  createdBy?: UserSummary;
+  assignedTo?: UserSummary | null;
+  organization?: { id: string; name: string } | null;
+  messages?: SupportTicketMessage[];
 }

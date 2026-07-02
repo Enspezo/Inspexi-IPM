@@ -1,6 +1,5 @@
 import { tenantStorage } from '@/lib/storage';
 import { useState, useCallback, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
 import {
   RequestStatus,
   Priority,
@@ -26,6 +25,7 @@ import {
   type ColumnDef,
 } from '@/components/table-config';
 import { useAuth } from '@/providers/auth-provider';
+import { useWindowTabs } from '@/providers/window-tabs';
 import { useRequests } from './hooks/use-requests';
 import { CreateRequestModal } from './components/create-request-modal';
 import { RequestsKanban } from './components/requests-kanban';
@@ -89,7 +89,7 @@ function KanbanIcon() {
 
 export default function RequestsPage() {
   const { user } = useAuth();
-  const navigate = useNavigate();
+  const { openTab } = useWindowTabs();
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
@@ -123,6 +123,19 @@ export default function RequestsPage() {
 
   const columns: ColumnDef<Request>[] = [
     {
+      key: 'requestNumber',
+      header: 'Nummer',
+      pinned: true,
+      sortable: true,
+      sortKey: 'requestNumber',
+      filterable: true,
+      filterType: 'text',
+      getFilterValue: (req) => req.requestNumber ?? '',
+      render: (req) => (
+        <span className="font-mono text-sm text-gray-700">{req.requestNumber ?? '—'}</span>
+      ),
+    },
+    {
       key: 'title',
       header: 'Titel',
       pinned: true,
@@ -130,7 +143,19 @@ export default function RequestsPage() {
       sortKey: 'title',
       render: (req) => (
         <button
-          onClick={() => navigate(`/requests/${req.id}`)}
+          // Opens the aanvraag as an in-window tab. ⌘/Ctrl- or middle-click
+          // opens it in the background without switching away from the list.
+          onClick={(e) =>
+            openTab('request', req.id, req.title, {
+              background: e.metaKey || e.ctrlKey,
+            })
+          }
+          onMouseDown={(e) => {
+            if (e.button === 1) {
+              e.preventDefault();
+              openTab('request', req.id, req.title, { background: true });
+            }
+          }}
           className="font-medium text-primary-600 hover:text-primary-800 hover:underline"
         >
           {req.title}

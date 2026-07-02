@@ -16,6 +16,19 @@ const RENDER_TIMEOUT_MS = 30_000;
 /** Standaard aantal gelijktijdige renders; overschrijfbaar via PDF_MAX_CONCURRENCY. */
 const DEFAULT_MAX_CONCURRENCY = 3;
 
+/**
+ * Beslist per resource-request of hij door mag tijdens het renderen. De renderer mag
+ * GEEN externe/lokale bronnen ophalen: alleen het initiële document en ingesloten
+ * `data:`-afbeeldingen zijn toegestaan. Alles met schema `file:`, `http(s):` of een
+ * interne host wordt geblokkeerd (SSRF/lokale-bestandslezing-mitigatie).
+ *
+ * Pure functie zodat de interceptie-beslissing los te unit-testen is.
+ */
+export function isRenderRequestAllowed(url: string, isNavigationRequest: boolean): boolean {
+  if (isNavigationRequest) return true; // het setContent-document zelf
+  return url.startsWith('data:') || url.startsWith('about:');
+}
+
 @Injectable()
 export class PdfGenerationService implements OnModuleDestroy {
   private readonly logger = new Logger(PdfGenerationService.name);
@@ -75,9 +88,8 @@ export class PdfGenerationService implements OnModuleDestroy {
    *
    * Deze publieke methode is enkel de concurrency-gate (M5): neem een renderslot,
    * delegeer het eigenlijke page-werk aan `renderOnPage`, en geef het slot altijd
-   * weer vrij. De page-render is bewust apart gehouden zodat security-hardening
-   * (PR fix/puppeteer-document-lockdown: request-interceptie + JS uit) in
-   * `renderOnPage` landt — automatisch bínnen de semafoor, ongeacht merge-volgorde.
+   * weer vrij. De security-hardening zit in `renderOnPage` en draait dus automatisch
+   * bínnen de semafoor.
    */
   async renderPdf(html: string, opts: PdfOptions = {}): Promise<Buffer> {
     await this.acquire();
@@ -90,17 +102,26 @@ export class PdfGenerationService implements OnModuleDestroy {
 
   /**
    * Rendert één HTML-string op een verse Chromium-page naar een PDF-buffer.
-   *
-   * NB: de security-hardening uit PR fix/puppeteer-document-lockdown hoort hiér,
-   * vóór `setContent` (`page.setJavaScriptEnabled(false)` + `setRequestInterception`).
-   * Bij een merge met die PR: 1a's interceptie hierbinnen plaatsen; de semafoor in
-   * `renderPdf` blijft ongemoeid.
+   * Hardening (SSRF/lokale-bestandslezing/JS-injectie) staat vóór `setContent`.
    */
   private async renderOnPage(html: string, opts: PdfOptions): Promise<Buffer> {
     const browser = await this.getBrowser();
     const page = await browser.newPage();
     try {
-      await page.setContent(html, { waitUntil: 'networkidle0', timeout: RENDER_TIMEOUT_MS });
+      // Hardening: geen JS-uitvoering en geen netwerk/bestand-toegang tijdens render.
+      // Neutraliseert zowel de publieke signatureImage-vector als staf-editedContent.
+      await page.setJavaScriptEnabled(false);
+      await page.setRequestInterception(true);
+      page.on('request', (req) => {
+        if (isRenderRequestAllowed(req.url(), req.isNavigationRequest())) {
+          void req.continue();
+        } else {
+          void req.abort();
+        }
+      });
+
+      // Externe requests worden toch geblokkeerd → 'load' i.p.v. 'networkidle0'.
+      await page.setContent(html, { waitUntil: 'load', timeout: RENDER_TIMEOUT_MS });
       const mm = (n?: number) => `${n ?? 20}mm`;
       const headerHtml = this.formatHeaderFooter(opts.headerHtml);
       const footerHtml = this.formatHeaderFooter(opts.footerHtml);

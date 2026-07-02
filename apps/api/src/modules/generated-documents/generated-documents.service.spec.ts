@@ -378,4 +378,64 @@ describe('GeneratedDocumentsService', () => {
       );
     });
   });
+
+  // Defensieve laag vlak vóór interpolatie in de render-HTML (naast DTO-validatie).
+  describe('injectSignaturesIntoHtml — injection hardening', () => {
+    const inject = (html: string) =>
+      (service as any).injectSignaturesIntoHtml('gd-1', html) as Promise<string>;
+
+    it('HTML-escapes signerName and signerFunction', async () => {
+      mockPrisma.documentSignature.findMany.mockResolvedValue([
+        {
+          signerName: '<img src=x onerror="alert(1)">',
+          signerFunction: 'Chef "Inspectie"',
+          signerRoleCode: 'INSPECTOR',
+          signatureImage: null,
+          signedAt: new Date('2026-07-01'),
+          status: SignatureStatus.SIGNED,
+        },
+      ]);
+
+      const out = await inject('<html><body>doc</body></html>');
+
+      expect(out).not.toContain('<img src=x onerror=');
+      expect(out).toContain('&lt;img src=x onerror=&quot;alert(1)&quot;&gt;');
+      expect(out).toContain('Chef &quot;Inspectie&quot;');
+    });
+
+    it('drops a signatureImage that is not a safe data: URL (SSRF)', async () => {
+      mockPrisma.documentSignature.findMany.mockResolvedValue([
+        {
+          signerName: 'Jan',
+          signerRoleCode: 'INSPECTOR',
+          signatureImage: 'file:///etc/passwd',
+          signedAt: new Date('2026-07-01'),
+          status: SignatureStatus.SIGNED,
+        },
+      ]);
+
+      const out = await inject('<html><body>doc</body></html>');
+
+      expect(out).not.toContain('file:///etc/passwd');
+      expect(out).not.toContain('<img');
+    });
+
+    it('keeps a valid base64 data: image', async () => {
+      const png =
+        'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+      mockPrisma.documentSignature.findMany.mockResolvedValue([
+        {
+          signerName: 'Jan',
+          signerRoleCode: 'INSPECTOR',
+          signatureImage: png,
+          signedAt: new Date('2026-07-01'),
+          status: SignatureStatus.SIGNED,
+        },
+      ]);
+
+      const out = await inject('<html><body>doc</body></html>');
+
+      expect(out).toContain(`<img src="${png}"`);
+    });
+  });
 });

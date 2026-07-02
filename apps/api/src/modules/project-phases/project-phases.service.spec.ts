@@ -1,8 +1,10 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
-import { Role, PhaseStatus, MilestoneStatus } from '@prisma/client';
+import { Role, PhaseStatus, MilestoneStatus, NotificationType } from '@prisma/client';
 import { ProjectPhasesService } from './project-phases.service';
 import { PrismaService } from '@/prisma';
+import { NotificationsService } from '@/modules/notifications/notifications.service';
+import { EmailService } from '@/common/services/email.service';
 
 describe('ProjectPhasesService', () => {
   let service: ProjectPhasesService;
@@ -37,6 +39,7 @@ describe('ProjectPhasesService', () => {
     location: { findUnique: jest.fn() },
     contactPerson: { findUnique: jest.fn() },
     user: { findUnique: jest.fn() },
+    organization: { findUnique: jest.fn() },
     inspectionPlan: { count: jest.fn() },
     planningItem: { count: jest.fn() },
     workOrder: { count: jest.fn() },
@@ -45,6 +48,9 @@ describe('ProjectPhasesService', () => {
       typeof arg === 'function' ? arg(mockPrisma) : Promise.all(arg),
     ),
   };
+
+  const mockNotifications = { dispatch: jest.fn() };
+  const mockEmail = { sendNotificationEmail: jest.fn().mockResolvedValue(undefined) };
 
   const admin = { id: 'user-1', orgId: 'org-1', roles: [Role.ORG_ADMIN] } as any;
   const inspecteur = { id: 'user-2', orgId: 'org-1', roles: [Role.INSPECTEUR] } as any;
@@ -68,10 +74,16 @@ describe('ProjectPhasesService', () => {
       providers: [
         ProjectPhasesService,
         { provide: PrismaService, useValue: mockPrisma },
+        { provide: NotificationsService, useValue: mockNotifications },
+        { provide: EmailService, useValue: mockEmail },
       ],
     }).compile();
     service = module.get(ProjectPhasesService);
     mockPrisma.project.findUnique.mockResolvedValue(project);
+    mockPrisma.projectPhaseFollower.findMany.mockResolvedValue([]);
+    mockPrisma.organization.findUnique.mockResolvedValue({
+      name: 'Org', senderName: null, senderEmail: null,
+    });
   });
 
   // ─── create ───────────────────────────────────────────────
@@ -166,6 +178,53 @@ describe('ProjectPhasesService', () => {
 
     const data = mockPrisma.projectPhase.update.mock.calls[0][0].data;
     expect(data.completedAt).toBeNull();
+  });
+
+  it('update: dispatches FASE_STATUS_GEWIJZIGD to PM + internal followers (actor excluded) and e-mails externals', async () => {
+    mockPrisma.projectPhase.findUnique
+      .mockResolvedValueOnce(phaseRow({ status: PhaseStatus.NIET_GESTART })) // requirePhase
+      .mockResolvedValueOnce(phaseRow({ status: PhaseStatus.ACTIEF, milestones: [], followers: [], _count: {} })); // findOne
+    mockPrisma.projectPhase.update.mockResolvedValue(
+      phaseRow({ status: PhaseStatus.ACTIEF }),
+    );
+    mockPrisma.project.findUnique.mockResolvedValue({
+      ...project,
+      projectManagerId: 'pm-1',
+      title: 'Zuidas',
+    });
+    mockPrisma.projectPhaseFollower.findMany.mockResolvedValue([
+      { userId: 'follower-1', email: null },
+      { userId: 'user-1', email: null }, // = actor → excluded
+      { userId: null, email: 'ext@example.com' }, // external → email only
+    ]);
+
+    await service.update('project-1', 'phase-1', { status: PhaseStatus.ACTIEF }, admin);
+    await new Promise((r) => setImmediate(r)); // let the fire-and-forget email settle
+
+    expect(mockNotifications.dispatch).toHaveBeenCalledTimes(1);
+    const arg = mockNotifications.dispatch.mock.calls[0][0];
+    expect(arg.type).toBe(NotificationType.FASE_STATUS_GEWIJZIGD);
+    expect(arg.entityType).toBe('projectPhase');
+    expect(arg.entityId).toBe('phase-1');
+    expect(arg.recipientUserIds).toEqual(expect.arrayContaining(['pm-1', 'follower-1']));
+    expect(arg.recipientUserIds).not.toContain('user-1');
+    expect(mockEmail.sendNotificationEmail).toHaveBeenCalledWith(
+      'ext@example.com',
+      expect.any(String),
+      expect.any(String),
+      expect.objectContaining({ orgId: 'org-1' }),
+    );
+  });
+
+  it('update: does not dispatch when status is unchanged', async () => {
+    mockPrisma.projectPhase.findUnique
+      .mockResolvedValueOnce(phaseRow({ status: PhaseStatus.ACTIEF }))
+      .mockResolvedValueOnce(phaseRow({ status: PhaseStatus.ACTIEF, milestones: [], followers: [], _count: {} }));
+    mockPrisma.projectPhase.update.mockResolvedValue(phaseRow({ status: PhaseStatus.ACTIEF }));
+
+    await service.update('project-1', 'phase-1', { name: 'Nieuwe naam' }, admin);
+
+    expect(mockNotifications.dispatch).not.toHaveBeenCalled();
   });
 
   // ─── reorder ──────────────────────────────────────────────

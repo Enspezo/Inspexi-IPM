@@ -2,10 +2,21 @@ import {
   Injectable,
   BadRequestException,
   NotFoundException,
+  Logger,
 } from '@nestjs/common';
-import { PhaseStatus, MilestoneStatus, Prisma, Role, User } from '@prisma/client';
+import {
+  PhaseStatus,
+  MilestoneStatus,
+  NotificationType,
+  Prisma,
+  Role,
+  User,
+} from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { assertFound, assertOrgAccess, assertSameOrg } from '@/common';
+import { NotificationsService } from '@/modules/notifications/notifications.service';
+import { EmailService } from '@/common/services/email.service';
+import { PHASE_STATUS_LABELS } from './project-phases.constants';
 import {
   CreateProjectPhaseDto,
   UpdateProjectPhaseDto,
@@ -60,7 +71,13 @@ const PHASE_DETAIL_INCLUDE = {
 
 @Injectable()
 export class ProjectPhasesService {
-  constructor(private prisma: PrismaService) {}
+  private readonly logger = new Logger(ProjectPhasesService.name);
+
+  constructor(
+    private prisma: PrismaService,
+    private notifications: NotificationsService,
+    private emailService: EmailService,
+  ) {}
 
   // ─── Helpers ──────────────────────────────────────────────
 
@@ -224,8 +241,82 @@ export class ProjectPhasesService {
       }
     }
 
-    await this.prisma.projectPhase.update({ where: { id }, data });
+    const updated = await this.prisma.projectPhase.update({ where: { id }, data });
+
+    // Notificeer bij een daadwerkelijke statuswissel (§12.6.1, fire-and-forget).
+    if (dto.status !== undefined && dto.status !== existing.status) {
+      await this.notifyStatusChange(updated, existing.status, user.id).catch((err) =>
+        this.logger.error(`Fase-statusnotificatie mislukt voor fase ${id}`, err),
+      );
+    }
+
     return this.findOne(projectId, id, user);
+  }
+
+  /**
+   * Dispatch bij een statuswissel van een fase (§12.6.1):
+   * - In-app/e-mail (via prefs) naar projectmanager + interne fasevolgers,
+   *   de gebruiker die de wijziging deed uitgezonderd.
+   * - Externe fasevolgers (alleen e-mail, geen userId) krijgen **uitsluitend**
+   *   bij een statuswissel een directe e-mail (§12.12.2).
+   */
+  private async notifyStatusChange(
+    phase: { id: string; orgId: string; projectId: string; name: string; status: PhaseStatus },
+    oldStatus: PhaseStatus,
+    actingUserId: string,
+  ): Promise<void> {
+    const statusLabel = PHASE_STATUS_LABELS[phase.status] ?? phase.status;
+    const [project, followers, org] = await Promise.all([
+      this.prisma.project.findUnique({
+        where: { id: phase.projectId },
+        select: { projectManagerId: true, title: true },
+      }),
+      this.prisma.projectPhaseFollower.findMany({
+        where: { phaseId: phase.id },
+        select: { userId: true, email: true },
+      }),
+      this.prisma.organization.findUnique({
+        where: { id: phase.orgId },
+        select: { name: true, senderName: true, senderEmail: true },
+      }),
+    ]);
+
+    const title = `Fasestatus gewijzigd: ${phase.name}`;
+    const body = `Fase '${phase.name}'${
+      project?.title ? ` (project ${project.title})` : ''
+    } is nu ${statusLabel}.`;
+
+    // Interne ontvangers: projectmanager + interne fasevolgers, actor uitgesloten.
+    const internalIds = [
+      ...(project?.projectManagerId ? [project.projectManagerId] : []),
+      ...followers.map((f) => f.userId).filter((uid): uid is string => !!uid),
+    ];
+    const recipientUserIds = [...new Set(internalIds)].filter((uid) => uid !== actingUserId);
+
+    this.notifications.dispatch({
+      type: NotificationType.FASE_STATUS_GEWIJZIGD,
+      orgId: phase.orgId,
+      recipientUserIds,
+      title,
+      body,
+      entityType: 'projectPhase',
+      entityId: phase.id,
+    });
+
+    // Externe volgers: alleen e-mail, alleen bij statuswissel.
+    const externalEmails = [
+      ...new Set(followers.filter((f) => !f.userId && f.email).map((f) => f.email as string)),
+    ];
+    for (const email of externalEmails) {
+      this.emailService
+        .sendNotificationEmail(email, title, body, {
+          senderName: org?.senderName,
+          senderEmail: org?.senderEmail,
+          orgId: phase.orgId,
+          orgName: org?.name ?? undefined,
+        })
+        .catch((err) => this.logger.error(`Fase-status e-mail mislukt naar ${email}`, err));
+    }
   }
 
   async reorder(projectId: string, dto: ReorderPhasesDto, user: User) {

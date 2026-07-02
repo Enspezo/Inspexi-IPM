@@ -104,6 +104,9 @@ export const NOTIFICATION_MODELS: NotificationModelDef[] = [
     types: [
       NotificationType.PROJECT_AANGEMAAKT,
       NotificationType.PROJECT_STATUS_GEWIJZIGD,
+      NotificationType.FASE_STATUS_GEWIJZIGD,
+      NotificationType.MILESTONE_HERINNERING,
+      NotificationType.MILESTONE_VERLOPEN,
     ],
   },
   {
@@ -189,6 +192,9 @@ export const NOTIFICATION_TYPE_LABELS: Record<NotificationType, string> = {
   [NotificationType.SUPPORT_TICKET_STATUS]: 'Supportticket status gewijzigd',
   [NotificationType.MEETMIDDEL_KALIBRATIE_BINNENKORT]: 'Kalibratie verloopt binnenkort',
   [NotificationType.MEETMIDDEL_KALIBRATIE_VERLOPEN]: 'Kalibratie verlopen',
+  [NotificationType.FASE_STATUS_GEWIJZIGD]: 'Fasestatus gewijzigd',
+  [NotificationType.MILESTONE_HERINNERING]: 'Milestone-herinnering',
+  [NotificationType.MILESTONE_VERLOPEN]: 'Milestone verlopen',
 };
 
 /** Afgeleide lookup: type → model-key. */

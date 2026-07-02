@@ -1,8 +1,10 @@
 import { NestFactory } from '@nestjs/core';
 import { NestExpressApplication } from '@nestjs/platform-express';
-import { Logger, ValidationPipe } from '@nestjs/common';
+import { Logger, RawBodyRequest, ValidationPipe } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import cookieParser from 'cookie-parser';
+import { json, urlencoded } from 'express';
+import type { Request, Response } from 'express';
 import { AppModule } from './app.module';
 import { AllExceptionsFilter } from './common/filters';
 
@@ -24,8 +26,28 @@ process.on('uncaughtException', (error) => {
 });
 
 async function bootstrap() {
-  // Enable rawBody so webhook controllers can verify signatures
-  const app = await NestFactory.create<NestExpressApplication>(AppModule, { rawBody: true });
+  // We registreren de body-parsers hieronder zelf (bodyParser: false) zodat we per
+  // route gedifferentieerde limieten kunnen zetten. De default Nest/Express-limiet
+  // van 100 kB is te krap voor realistische v3-sync-pushes (honderden entiteiten +
+  // base64) → die liepen op 413. Sync krijgt 10 MB, de rest een strakke 1 MB.
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
+    bodyParser: false,
+  });
+
+  // Vang de ruwe request-body op voor webhook-signature-verificatie. Nest's eigen
+  // `rawBody: true` vervalt met `bodyParser: false`, dus doen we het hier via de
+  // body-parser `verify`-hook (draait vóór het JSON-parsen).
+  const captureRawBody = (req: Request, _res: Response, buf: Buffer): void => {
+    if (buf?.length) {
+      (req as RawBodyRequest<Request>).rawBody = buf;
+    }
+  };
+
+  // Route-specifieke limiet gaat vóór de generieke; body-parser slaat de tweede
+  // parser over zodra `req._body` gezet is, dus /api/v1/sync houdt de 10 MB-limiet.
+  app.use('/api/v1/sync', json({ limit: '10mb', verify: captureRawBody }));
+  app.use(json({ limit: '1mb', verify: captureRawBody }));
+  app.use(urlencoded({ extended: true, limit: '1mb' }));
 
   const baseDomain = process.env.BASE_DOMAIN || 'localhost';
   const portalPort = process.env.PORTAL_PORT || '5173';

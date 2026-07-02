@@ -9,6 +9,21 @@ import {
 import { Prisma } from '@prisma/client';
 import { Response, Request } from 'express';
 
+/** Fout met een numerieke HTTP-status (bv. Express body-parser's PayloadTooLargeError). */
+interface HttpErrorLike {
+  status?: number;
+  statusCode?: number;
+  message?: string;
+  expose?: boolean;
+}
+
+/** Herkent een non-HttpException die tóch een 4xx/5xx-status draagt. */
+function isHttpErrorLike(err: unknown): err is HttpErrorLike {
+  if (typeof err !== 'object' || err === null) return false;
+  const code = (err as HttpErrorLike).status ?? (err as HttpErrorLike).statusCode;
+  return typeof code === 'number' && code >= 400 && code <= 599;
+}
+
 @Catch()
 export class AllExceptionsFilter implements ExceptionFilter {
   private readonly logger = new Logger('AllExceptionsFilter');
@@ -58,6 +73,17 @@ export class AllExceptionsFilter implements ExceptionFilter {
           `Prisma ${exception.code} on ${request.method} ${request.url}: ${exception.message.split('\n').pop()}`,
         );
       }
+    } else if (isHttpErrorLike(exception)) {
+      // Express body-parser-fouten (PayloadTooLargeError → 413, kapotte JSON → 400)
+      // zijn géén Nest-HttpException maar dragen wél een numerieke `status`/`statusCode`.
+      // Zonder deze tak zouden ze als 500 terugkomen i.p.v. de juiste 4xx.
+      status = exception.status ?? exception.statusCode ?? status;
+      message =
+        status === HttpStatus.PAYLOAD_TOO_LARGE
+          ? 'Verzoek te groot'
+          : exception.expose && exception.message
+            ? exception.message
+            : message;
     }
 
     const requestId = (request as any).requestId as string | undefined;

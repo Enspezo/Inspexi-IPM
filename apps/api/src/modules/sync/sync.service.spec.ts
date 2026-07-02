@@ -29,6 +29,7 @@ describe('SyncService', () => {
     standaloneMeasurement: delegate(),
     location: delegate(),
     user: delegate(),
+    contactPerson: delegate(),
     photo: delegate(),
     contact: delegate(),
     syncQueue: delegate(),
@@ -373,6 +374,53 @@ describe('SyncService', () => {
         changes: {
           inspectionPlans: [
             { operation: 'create', data: { id: 'p1', projectName: 'X', assignedTo: 'user-x' } },
+          ],
+        },
+      } as any;
+
+      const result = await service.push(user, dto);
+
+      expect(mockPrisma.inspectionPlan.create).not.toHaveBeenCalled();
+      expect(result.errors).toHaveLength(1);
+      expect(result.processed.inspectionPlans).toBe(0);
+    });
+
+    it('M2: accepts a plan whose installationResponsibleId is a same-org ContactPerson (not User)', async () => {
+      // installationResponsibleId is een FK naar ContactPerson: valideer tegen dat
+      // model, niet tegen User (anders faalt elke legitieme push met dit veld).
+      mockPrisma.inspectionPlan.findFirst.mockResolvedValue(null); // idempotent-check: nog niet aanwezig
+      mockPrisma.contactPerson.findUnique.mockResolvedValue({ orgId: 'org-1' });
+      mockPrisma.inspectionPlan.create.mockResolvedValue({ id: 'p1' });
+
+      const dto = {
+        deviceId: 'dev-1',
+        changes: {
+          inspectionPlans: [
+            { operation: 'create', data: { id: 'p1', projectName: 'X', installationResponsibleId: 'cp-1' } },
+          ],
+        },
+      } as any;
+
+      const result = await service.push(user, dto);
+
+      expect(mockPrisma.contactPerson.findUnique).toHaveBeenCalledWith({
+        where: { id: 'cp-1' },
+        select: { orgId: true },
+      });
+      expect(mockPrisma.user.findUnique).not.toHaveBeenCalled(); // niet tegen User
+      expect(mockPrisma.inspectionPlan.create).toHaveBeenCalled();
+      expect(result.processed.inspectionPlans).toBe(1);
+      expect(result.errors).toHaveLength(0);
+    });
+
+    it('M2: rejects a plan whose installationResponsibleId ContactPerson is in ANOTHER org', async () => {
+      mockPrisma.contactPerson.findUnique.mockResolvedValue({ orgId: 'org-2' });
+
+      const dto = {
+        deviceId: 'dev-1',
+        changes: {
+          inspectionPlans: [
+            { operation: 'create', data: { id: 'p1', projectName: 'X', installationResponsibleId: 'cp-x' } },
           ],
         },
       } as any;

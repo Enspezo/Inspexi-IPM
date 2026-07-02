@@ -39,7 +39,7 @@ export type SyncModelName =
   | 'standaloneMeasurement';
 
 /** Modellen waartegen we een same-org FK-check kunnen draaien (cross-tenant guard). */
-export type FkCheckModel = 'assetNode' | 'inspectionPlan' | 'location' | 'user';
+export type FkCheckModel = 'assetNode' | 'inspectionPlan' | 'location' | 'user' | 'contactPerson';
 
 /**
  * Inkomend client-record (wire) — Beheer-veldnamen. Alleen de sleutels die de service
@@ -135,7 +135,12 @@ export const SYNC_ENTITIES: Record<SyncEntityKey, EntityConfig> = {
       ...PLAN_DATES, 'deviceId',
     ],
     // Toewijs-FK's naar gebruikers: client mag ze zetten, maar niet cross-tenant.
-    userFkChecks: ['assignedTo', 'reviewerId', 'installationResponsibleId'],
+    userFkChecks: ['assignedTo', 'reviewerId'],
+    // installationResponsibleId is een FK naar ContactPerson (niet User) — valideer
+    // tegen het juiste model, gelijk aan het REST-pad (inspection-plans.service).
+    fkChecks: [
+      { field: 'installationResponsibleId', model: 'contactPerson', label: 'Installatieverantwoordelijke' },
+    ],
   },
   assetNodes: {
     model: 'assetNode',

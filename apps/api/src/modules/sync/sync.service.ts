@@ -117,6 +117,7 @@ export class SyncService {
       inspectionPlan: this.prisma.inspectionPlan,
       location: this.prisma.location,
       user: this.prisma.user,
+      contactPerson: this.prisma.contactPerson,
     };
     return delegates[model] as SyncDelegate;
   }

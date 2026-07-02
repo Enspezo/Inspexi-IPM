@@ -43,9 +43,23 @@ async function bootstrap() {
     }
   };
 
-  // Route-specifieke limiet gaat vóór de generieke; body-parser slaat de tweede
-  // parser over zodra `req._body` gezet is, dus /api/v1/sync houdt de 10 MB-limiet.
-  app.use('/api/v1/sync', json({ limit: '10mb', verify: captureRawBody }));
+  // Routes die legitiem grote payloads dragen krijgen een ruime limiet; de rest een
+  // strakke 1 MB. Een route-specifieke parser draait vóór de generieke en zet
+  // `req._body`, waardoor body-parser de generieke parser overslaat — dus de ruime
+  // limiet blijft gelden.
+  //   • /sync            → v3-sync-pushes (honderden entiteiten + base64)
+  //   • generated-documents / signature-requests / client/documents
+  //                      → base64-handtekeningen (~MB's) + bewerkte rapport-HTML;
+  //                        met 1 MB zouden ondertekenen/rapport-bewerken op 413 lopen.
+  const LARGE_BODY_PREFIXES = [
+    '/api/v1/sync',
+    '/api/v1/generated-documents',
+    '/api/v1/signature-requests',
+    '/api/v1/client/documents',
+  ];
+  for (const prefix of LARGE_BODY_PREFIXES) {
+    app.use(prefix, json({ limit: '10mb', verify: captureRawBody }));
+  }
   app.use(json({ limit: '1mb', verify: captureRawBody }));
   app.use(urlencoded({ extended: true, limit: '1mb' }));
 

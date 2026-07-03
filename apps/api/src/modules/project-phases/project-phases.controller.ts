@@ -28,7 +28,10 @@ const WRITE_ROLES = CRM_ROLES;
 const READ_ROLES = [...CRM_ROLES, Role.INSPECTEUR];
 
 @ApiTags('project-phases')
-@RequiresFeature('BASIS_UITVOERING')
+// PRD-12 §Fase E: de hele fasen-laag (CRUD, reorder, volgers, milestones) zit
+// achter PROJECT_FASEN. Die feature hangt (dependency-closure) van BASIS_UITVOERING
+// af, dus deze key impliceert de projecten-module.
+@RequiresFeature('PROJECT_FASEN')
 @Controller('projects/:projectId/phases')
 export class ProjectPhasesController {
   constructor(private readonly service: ProjectPhasesService) {}

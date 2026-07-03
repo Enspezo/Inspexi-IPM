@@ -10,7 +10,8 @@ import { User, Role, Prisma, QuoteStatus, QuoteTemplate, RequestStatus, Notifica
 import { ConfigService } from '@nestjs/config';
 import { randomUUID } from 'crypto';
 import { PrismaService } from '@/prisma';
-import { paginate, buildOrderBy, orgScope, assertFound, assertSameOrg, resolvePhaseLink } from '@/common';
+import { paginate, buildOrderBy, orgScope, assertFound, assertSameOrg, resolvePhaseLink, PROJECT_FASEN_FEATURE, PROJECT_FASEN_REQUIRED_MESSAGE } from '@/common';
+import { EntitlementsService } from '@/modules/entitlements/entitlements.service';
 import { NumberingService } from '@/modules/numbering/numbering.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { EmailService } from '@/common/services/email.service';
@@ -43,6 +44,7 @@ export class QuotesService {
     private quotePdfService: QuotePdfService,
     private emailTemplatesService: EmailTemplatesService,
     private numbering: NumberingService,
+    private entitlements: EntitlementsService,
   ) {}
 
   async findAll(user: User, query: ListQuotesQueryDto) {
@@ -167,7 +169,17 @@ export class QuotesService {
 
   async update(id: string, dto: UpdateQuoteDto, user: User) {
     const quote = await this.findOne(id, user);
-    if (quote.status !== QuoteStatus.CONCEPT) throw new BadRequestException('Alleen offertes met status CONCEPT kunnen bewerkt worden');
+    // Fase-koppelen mag in élke offertestatus (PRD-12): een patch die uitsluitend
+    // `projectPhaseId` bevat passeert de CONCEPT-guard. Alle overige velden
+    // (subject, blocks, template, nummer, ...) blijven alleen bij CONCEPT bewerkbaar.
+    const definedKeys = Object.keys(dto).filter(
+      (key) => (dto as Record<string, unknown>)[key] !== undefined,
+    );
+    const isPhaseLinkOnly =
+      definedKeys.length > 0 && definedKeys.every((key) => key === 'projectPhaseId');
+    if (quote.status !== QuoteStatus.CONCEPT && !isPhaseLinkOnly) {
+      throw new BadRequestException('Alleen offertes met status CONCEPT kunnen bewerkt worden');
+    }
 
     // Cross-tenant guard on re-pointed FKs.
     await Promise.all([
@@ -175,8 +187,16 @@ export class QuotesService {
       assertSameOrg(this.prisma.location, dto.locationId, user.orgId, 'Locatie'),
     ]);
 
-    // Projectfase-koppeling (PRD-12): valideer org + projectconsistentie en
-    // cascadeer het project van de fase naar de offerte wanneer die er nog geen heeft.
+    // Projectfase-koppeling (PRD-12): alleen bij een DAADWERKELIJKE wijziging van
+    // projectPhaseId eerst de PROJECT_FASEN-entitlement afdwingen (§Fase E) —
+    // gewone updates (veld onaangeroerd) blijven werken na een downgrade.
+    if (dto.projectPhaseId !== undefined) {
+      await this.entitlements.assertFeature(
+        user.orgId, PROJECT_FASEN_FEATURE, PROJECT_FASEN_REQUIRED_MESSAGE,
+      );
+    }
+    // Valideer org + projectconsistentie en cascadeer het project van de fase naar
+    // de offerte wanneer die er nog geen heeft.
     const phaseLink = await resolvePhaseLink(
       this.prisma.projectPhase, dto.projectPhaseId, user.orgId, quote.projectId,
     );

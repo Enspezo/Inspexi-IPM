@@ -8,6 +8,7 @@ import { PrismaService } from '@/prisma';
 import { NotificationsService } from '../notifications/notifications.service';
 import { WorkOrdersService } from '../work-orders/work-orders.service';
 import { PlanningEmailService } from './planning-email.service';
+import { EntitlementsService } from '@/modules/entitlements/entitlements.service';
 
 describe('PlanningFollowersService', () => {
   let service: PlanningFollowersService;
@@ -124,6 +125,10 @@ describe('PlanningFollowersService', () => {
         { provide: WorkOrdersService, useValue: mockWorkOrdersService },
         { provide: PlanningEmailService, useValue: mockPlanningEmailService },
         { provide: ConfigService, useValue: mockConfigService },
+        {
+          provide: EntitlementsService,
+          useValue: { assertFeature: jest.fn().mockResolvedValue(undefined) },
+        },
       ],
     }).compile();
 

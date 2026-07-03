@@ -700,11 +700,13 @@ async function main() {
   await prisma.plan.deleteMany();
 
   // ─── SaaS-abonnementen: plannen (templates, PRD-09 §7.2) ──
-  // "Basis" = 4 basisfeatures; "Compleet" = alle 9 keys incl. add-ons
-  // (WEBHOOKS + CUSTOM_FIELDS). De catalogus (FEATURE_KEYS) is bron-van-waarheid;
-  // de DB verwijst alleen naar de keys. Per-org afwijkingen gaan via
-  // OrganizationFeature (hier nog niet geseed — beide demo-orgs draaien puur op
-  // hun plan).
+  // "Basis" = 4 basisfeatures (géén PROJECT_FASEN); "Compleet" = alle catalogus-keys
+  // incl. add-ons (PROJECT_FASEN, WEBHOOKS, CUSTOM_FIELDS). De catalogus
+  // (FEATURE_KEYS) is bron-van-waarheid; de DB verwijst alleen naar de keys. De
+  // demo-org draait op Compleet en heeft dus PROJECT_FASEN (fasen-tab + demo-fasen
+  // werken); een Basis-org (bv. Test Bedrijf) heeft de feature bewust NIET, zodat het
+  // uit-scenario testbaar is (PRD-12 §Fase E). Per-org afwijkingen gaan via
+  // OrganizationFeature.
   const basisPlan = await prisma.plan.create({
     data: {
       name: 'Basis',

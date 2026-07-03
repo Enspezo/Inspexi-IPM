@@ -17,6 +17,7 @@ import { FavoriteStar } from '@/components/favorites/favorite-star';
 import { StartChatButton } from '@/components/chat';
 import { NotesSidebarSection, HistorySidebarSection, DocumentsSidebarSection } from '@/components/layout/sidebar-sections';
 import { useAuth } from '@/providers/auth-provider';
+import { useFeatures } from '@/providers/feature-provider';
 import { useWindowTabSync } from '@/providers/window-tabs';
 import { useToast } from '@/components/ui';
 import {
@@ -71,6 +72,9 @@ export default function ProjectDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { hasFeature } = useFeatures();
+  // PRD-12 §Fase E: projectfasen zitten achter de PROJECT_FASEN-entitlement.
+  const hasPhaseFeature = hasFeature('PROJECT_FASEN');
   const { showToast } = useToast();
   const confirm = useConfirm();
   const [searchParams] = useSearchParams();
@@ -146,7 +150,10 @@ export default function ProjectDetailPage() {
 
   const tabs: { key: Tab; label: string; count?: number }[] = [
     { key: 'overzicht', label: 'Overzicht' },
-    { key: 'fasen', label: 'Fasen', count: phaseList.length },
+    // Fasen-tab alleen bij PROJECT_FASEN (§Fase E).
+    ...(hasPhaseFeature
+      ? [{ key: 'fasen' as Tab, label: 'Fasen', count: phaseList.length }]
+      : []),
     { key: 'aanvragen', label: 'Aanvragen', count: requests?.length },
     { key: 'offertes', label: 'Offertes', count: quotes?.length },
     { key: 'planning', label: 'Planning', count: planning?.length },
@@ -367,7 +374,7 @@ export default function ProjectDetailPage() {
               users={users}
               linkedLocations={linkedLocations ?? []}
               phaseProgress={
-                phaseList.length > 0
+                hasPhaseFeature && phaseList.length > 0
                   ? { done: donePhases, total: phaseList.length }
                   : null
               }
@@ -399,7 +406,7 @@ export default function ProjectDetailPage() {
           )}
 
           {/* Tab: Fasen */}
-          {activeTab === 'fasen' && (
+          {activeTab === 'fasen' && hasPhaseFeature && (
             <ProjectPhasesTab
               projectId={id!}
               contactId={project.contactId}

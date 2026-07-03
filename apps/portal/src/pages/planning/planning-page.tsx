@@ -12,6 +12,7 @@ import {
   type ColumnDef,
 } from '@/components/table-config';
 import { useAuth } from '@/providers/auth-provider';
+import { useFeatures } from '@/providers/feature-provider';
 import { useWindowTabs } from '@/providers/window-tabs';
 import { usePlanningItems } from './hooks/use-planning';
 import { useOrganization } from '../organization/hooks/use-organization';
@@ -111,6 +112,9 @@ export default function PlanningPage() {
   const navigate = useNavigate();
   const { openTab } = useWindowTabs();
   const { user } = useAuth();
+  const { hasFeature } = useFeatures();
+  // PRD-12 §Fase E: fase-kolom alleen registreren bij de PROJECT_FASEN-entitlement.
+  const hasPhaseFeature = hasFeature('PROJECT_FASEN');
   const { data: orgData } = useOrganization(user?.orgId);
   const dayStart = orgData?.workdayStart ?? 8;
   const dayEnd = orgData?.workdayEnd ?? 17;
@@ -327,20 +331,22 @@ export default function PlanningPage() {
         );
       },
     },
-    {
-      key: 'phase',
-      header: 'Fase',
-      sidebarLabel: 'Fase',
-      defaultVisible: false,
-      filterable: true,
-      filterType: 'select',
-      filterOptions: phaseFilterOptions,
-      groupable: true,
-      getFilterValue: (item) => item.projectPhase?.name ?? '',
-      render: (item) => (
-        <span className="text-gray-600">{item.projectPhase?.name ?? '—'}</span>
-      ),
-    },
+    ...(hasPhaseFeature
+      ? [{
+          key: 'phase',
+          header: 'Fase',
+          sidebarLabel: 'Fase',
+          defaultVisible: false,
+          filterable: true,
+          filterType: 'select' as const,
+          filterOptions: phaseFilterOptions,
+          groupable: true,
+          getFilterValue: (item: PlanningItem) => item.projectPhase?.name ?? '',
+          render: (item: PlanningItem) => (
+            <span className="text-gray-600">{item.projectPhase?.name ?? '—'}</span>
+          ),
+        }]
+      : []),
   ];
 
   const {

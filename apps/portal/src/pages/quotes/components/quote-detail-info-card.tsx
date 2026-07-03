@@ -23,11 +23,17 @@ type QuoteFormData = z.infer<typeof quoteSchema>;
 export function QuoteInfoCard({
   quote,
   canEditQuote,
+  canLinkPhase = false,
+  hasPhaseFeature = false,
   updateQuoteMutation,
   showToast,
 }: {
   quote: Quote;
   canEditQuote: boolean;
+  /** Fase-koppelen mag in élke offertestatus (PRD-12) — los van canEditQuote. */
+  canLinkPhase?: boolean;
+  /** PROJECT_FASEN-entitlement aan? Zo niet, verberg alle fase-UI (§Fase E). */
+  hasPhaseFeature?: boolean;
   updateQuoteMutation: ReturnType<typeof useUpdateQuote>;
   showToast: (message: string, type?: 'success' | 'error' | 'info') => void;
 }) {
@@ -66,6 +72,19 @@ export function QuoteInfoCard({
       setIsEditing(false);
     } catch (err) {
       showToast(getErrorMessage(err, 'Bijwerken mislukt'), 'error');
+    }
+  };
+
+  // Directe fase-koppeling vanuit de lees-modus (niet-CONCEPT offertes hebben
+  // geen bewerkformulier): patcht uitsluitend projectPhaseId — de backend laat
+  // precies die patch buiten de CONCEPT-guard.
+  const handlePhaseLink = async (newPhaseId: string | null) => {
+    if (newPhaseId === (quote.projectPhaseId ?? null)) return;
+    try {
+      await updateQuoteMutation.mutateAsync({ projectPhaseId: newPhaseId });
+      showToast('Fase-koppeling bijgewerkt', 'success');
+    } catch (err) {
+      showToast(getErrorMessage(err, 'Fase koppelen mislukt'), 'error');
     }
   };
 
@@ -115,7 +134,9 @@ export function QuoteInfoCard({
               placeholder="Interne notities (niet zichtbaar voor klant)..."
             />
           </div>
-          <PhaseSelect projectId={quote.projectId} value={phaseId} onChange={setPhaseId} />
+          {hasPhaseFeature && (
+            <PhaseSelect projectId={quote.projectId} value={phaseId} onChange={setPhaseId} />
+          )}
           <div className="flex justify-end gap-3 pt-2">
             <Button type="button" variant="secondary" onClick={handleCancelEdit}>
               Annuleren
@@ -174,7 +195,17 @@ export function QuoteInfoCard({
             {quote.validUntil ? new Date(quote.validUntil).toLocaleDateString('nl-NL', { day: 'numeric', month: 'long', year: 'numeric' }) : '—'}
           </dd>
         </div>
-        <PhaseInfoField phase={quote.projectPhase} projectId={quote.projectId} />
+        {hasPhaseFeature &&
+          (canLinkPhase && !canEditQuote ? (
+            <PhaseSelect
+              projectId={quote.projectId}
+              value={quote.projectPhaseId ?? null}
+              onChange={handlePhaseLink}
+              disabled={updateQuoteMutation.isPending}
+            />
+          ) : (
+            <PhaseInfoField phase={quote.projectPhase} projectId={quote.projectId} />
+          ))}
         <div>
           <dt className="text-sm font-medium text-gray-500">Aangemaakt door</dt>
           <dd className="mt-1 text-sm text-gray-900">

@@ -5,6 +5,7 @@ import { WORK_ORDER_STATUS, getStatusConfig } from '@/lib/status';
 import { WorkOrderStatus } from '@/types';
 import type { WorkOrder } from '@/types';
 import { PhaseSelect, PhaseInfoField } from '@/components/projects/phase-select';
+import { useFeatures } from '@/providers/feature-provider';
 import { useUpdateWorkOrder } from '../hooks/use-work-orders';
 import type { EditFormData } from './work-order-detail-shared';
 
@@ -45,6 +46,9 @@ export function WorkOrderAlgemeenTab({
   setPhaseId: (value: string | null) => void;
   phaseDirty: boolean;
 }) {
+  const { hasFeature } = useFeatures();
+  // PRD-12 §Fase E: fase-koppeling alleen bij de PROJECT_FASEN-entitlement.
+  const showPhase = hasFeature('PROJECT_FASEN');
   return (
     <div className="space-y-6">
       <Card>
@@ -96,7 +100,9 @@ export function WorkOrderAlgemeenTab({
               <InfoField label="Relatie" value={contactName} />
               <InfoField label="Locatie" value={locationStr} />
               <InfoField label="Inspecteur(s)" value={inspectorNames} />
-              <PhaseInfoField phase={workOrder.projectPhase} projectId={projectId} />
+              {showPhase && (
+                <PhaseInfoField phase={workOrder.projectPhase} projectId={projectId} />
+              )}
               <InfoField
                 label="Starttijd"
                 value={
@@ -183,7 +189,9 @@ export function WorkOrderAlgemeenTab({
                   className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
                 />
               </div>
-              <PhaseSelect projectId={projectId} value={phaseId} onChange={setPhaseId} />
+              {showPhase && (
+                <PhaseSelect projectId={projectId} value={phaseId} onChange={setPhaseId} />
+              )}
               <div className="flex gap-2">
                 <Button
                   type="submit"

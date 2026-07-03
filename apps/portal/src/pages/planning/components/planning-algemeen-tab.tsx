@@ -5,6 +5,7 @@ import type { ContactPerson, PlanningItem } from '@/types';
 import { Button, Card, Input, StatusBadge, useToast } from '@/components/ui';
 import { ACCEPTANCE_STATUS, WORK_ORDER_STATUS } from '@/lib/status';
 import { PhaseSelect, PhaseInfoField } from '@/components/projects/phase-select';
+import { useFeatures } from '@/providers/feature-provider';
 import { useUpdatePlanningItem } from '../hooks/use-planning';
 import { useCreateWorkOrder, usePlanningWorkOrders } from '@/pages/work-orders/hooks/use-work-orders';
 import { toDatetimeLocal } from './planning-detail-shared';
@@ -68,6 +69,9 @@ export function PlanningAlgemeenTab({
   workOrdersData: ReturnType<typeof usePlanningWorkOrders>['data'];
 }) {
   const { showToast } = useToast();
+  const { hasFeature } = useFeatures();
+  // PRD-12 §Fase E: fase-koppeling alleen tonen bij de PROJECT_FASEN-entitlement.
+  const showPhase = hasFeature('PROJECT_FASEN');
   const updateItem = useUpdatePlanningItem(id);
   const createWorkOrder = useCreateWorkOrder();
   // Fase-koppeling lokaal beheerd (blijft buiten de door de parent doorgegeven edit-state).
@@ -192,11 +196,13 @@ export function PlanningAlgemeenTab({
                   placeholder="Optionele notities..."
                 />
               </div>
-              <PhaseSelect
-                projectId={item.projectId}
-                value={editPhaseId}
-                onChange={setEditPhaseId}
-              />
+              {showPhase && (
+                <PhaseSelect
+                  projectId={item.projectId}
+                  value={editPhaseId}
+                  onChange={setEditPhaseId}
+                />
+              )}
               <div className="flex gap-2 pt-1">
                 <Button onClick={handleSaveEdit} disabled={updateItem.isPending}>
                   {updateItem.isPending ? 'Opslaan...' : 'Opslaan'}
@@ -298,7 +304,9 @@ export function PlanningAlgemeenTab({
                   {item.durationHours ? `${item.durationHours} uur` : '—'}
                 </dd>
               </div>
-              <PhaseInfoField phase={item.projectPhase} projectId={item.projectId} />
+              {showPhase && (
+                <PhaseInfoField phase={item.projectPhase} projectId={item.projectId} />
+              )}
               {item.internalNotes && (
                 <div className="col-span-2">
                   <dt className="text-sm font-medium text-gray-500">Interne notities</dt>

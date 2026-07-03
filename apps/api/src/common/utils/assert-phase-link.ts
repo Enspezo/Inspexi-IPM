@@ -3,6 +3,17 @@ import {
   ForbiddenException,
   NotFoundException,
 } from '@nestjs/common';
+import { FeatureKey } from '@inspexi/entitlements';
+
+/**
+ * SaaS-feature die de projectfasen-laag ontsluit (PRD-12 §Fase E). Het koppelen
+ * van een `projectPhaseId` op quotes/planning/work-orders/inspection-plans is
+ * alleen toegestaan voor orgs met deze feature; de check loopt via
+ * `EntitlementsService.assertFeature(orgId, PROJECT_FASEN_FEATURE, PROJECT_FASEN_REQUIRED_MESSAGE)`.
+ */
+export const PROJECT_FASEN_FEATURE: FeatureKey = 'PROJECT_FASEN';
+export const PROJECT_FASEN_REQUIRED_MESSAGE =
+  'Projectfasen zijn niet beschikbaar in uw abonnement';
 
 /**
  * Minimal Prisma delegate shape needed to validate a project-phase link.

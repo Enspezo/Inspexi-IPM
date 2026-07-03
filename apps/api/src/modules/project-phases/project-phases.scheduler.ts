@@ -3,6 +3,8 @@ import { Cron, CronExpression } from '@nestjs/schedule';
 import { MilestoneStatus, NotificationType, ProjectStatus } from '@prisma/client';
 import { PrismaService } from '@/prisma';
 import { NotificationsService } from '@/modules/notifications/notifications.service';
+import { EntitlementsService } from '@/modules/entitlements/entitlements.service';
+import { PROJECT_FASEN_FEATURE } from '@/common';
 
 type MilestoneStage = 'upcoming' | 'overdue';
 
@@ -25,6 +27,7 @@ export class ProjectPhasesScheduler {
   constructor(
     private prisma: PrismaService,
     private notifications: NotificationsService,
+    private entitlements: EntitlementsService,
   ) {}
 
   @Cron(CronExpression.EVERY_DAY_AT_6AM)
@@ -65,9 +68,21 @@ export class ProjectPhasesScheduler {
       },
     });
 
+    // Orgs zonder PROJECT_FASEN krijgen geen milestone-reminders (§Fase E). Batch
+    // de entitlement-lookup per unieke org (niet per milestone) en filter daarna.
+    const orgIds = [...new Set(openMilestones.map((m) => m.orgId))];
+    const orgHasFeature = new Map<string, boolean>();
+    await Promise.all(
+      orgIds.map(async (oid) => {
+        const enabled = await this.entitlements.getEnabledFeatures(oid);
+        orgHasFeature.set(oid, enabled.includes(PROJECT_FASEN_FEATURE));
+      }),
+    );
+
     // `reminderDaysBefore` is per milestone → in JS filteren op het venster
     // (dueDate <= now + reminderDaysBefore). Daarna per stage dedupen.
     const actionable = openMilestones
+      .filter((m) => orgHasFeature.get(m.orgId))
       .filter((m) => m.dueDate.getTime() <= now.getTime() + m.reminderDaysBefore * DAY_MS)
       .map((m) => ({ m, stage: this.stageFor(m.dueDate, now) }))
       .filter(({ m, stage }) => m.lastReminderStage !== stage);

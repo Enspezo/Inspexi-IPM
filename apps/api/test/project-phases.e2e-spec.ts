@@ -350,4 +350,212 @@ describe('Project phases (e2e)', () => {
     expect(stored?.projectPhaseId).toBe(phase2Id);
     expect(stored?.projectId).toBe(projectId);
   });
+
+  // ─── PROJECT_FASEN entitlement gating (§Fase E) ─────────────
+  //
+  // De FeatureGuard keyt op de org uit het subdomein (tenant.orgId), dus deze
+  // cases draaien op het org-subdomein (Host-header), niet op 127.0.0.1 (waar de
+  // guard lokaal open valt). Twee orgs met een plan dat identiek is op één
+  // feature na: on = mét PROJECT_FASEN, off = zónder. Beide hebben CRM_COMPLEET
+  // zodat de offerte-endpoints werken (alleen de fase-koppeling verschilt). Let op
+  // de guard-uitzondering: een org zónder énig plan valt lokaal open — daarom
+  // krijgt de "off"-org een echt (niet-leeg) plan zonder PROJECT_FASEN.
+  describe('PROJECT_FASEN entitlement gating (e2e)', () => {
+    const ON_HOST = 'e2ephasefeaton.localhost';
+    const OFF_HOST = 'e2ephasefeatoff.localhost';
+
+    let onOrgId: string;
+    let offOrgId: string;
+    let onPlanId: string;
+    let offPlanId: string;
+    let onAdminId: string;
+    let offAdminId: string;
+    let onProjectId: string;
+    let offProjectId: string;
+    let onContactId: string;
+    let offContactId: string;
+    let onToken: string;
+    let offToken: string;
+
+    beforeAll(async () => {
+      const passwordHash = await bcrypt.hash('TestPass123!', 10);
+
+      const onPlan = await prisma.plan.create({
+        data: {
+          name: 'E2E Phase Feat On',
+          slug: 'e2ephasefeatonplan',
+          features: {
+            create: [
+              { featureKey: 'BASIS_CRM' },
+              { featureKey: 'CRM_COMPLEET' },
+              { featureKey: 'BASIS_UITVOERING' },
+              { featureKey: 'PROJECT_FASEN' },
+            ],
+          },
+        },
+      });
+      onPlanId = onPlan.id;
+      const offPlan = await prisma.plan.create({
+        data: {
+          name: 'E2E Phase Feat Off',
+          slug: 'e2ephasefeatoffplan',
+          features: {
+            create: [
+              { featureKey: 'BASIS_CRM' },
+              { featureKey: 'CRM_COMPLEET' },
+              { featureKey: 'BASIS_UITVOERING' },
+            ],
+          },
+        },
+      });
+      offPlanId = offPlan.id;
+
+      const onOrg = await prisma.organization.create({
+        data: { name: 'E2E Phase Feat On', slug: 'e2ephasefeaton', planId: onPlan.id },
+      });
+      onOrgId = onOrg.id;
+      const offOrg = await prisma.organization.create({
+        data: { name: 'E2E Phase Feat Off', slug: 'e2ephasefeatoff', planId: offPlan.id },
+      });
+      offOrgId = offOrg.id;
+
+      const onAdmin = await prisma.user.create({
+        data: {
+          email: 'e2e-phasefeat-on@test.nl', passwordHash, firstName: 'Feat', lastName: 'On',
+          roles: ['ORG_ADMIN'], orgId: onOrg.id, emailVerifiedAt: new Date(),
+        },
+      });
+      onAdminId = onAdmin.id;
+      const offAdmin = await prisma.user.create({
+        data: {
+          email: 'e2e-phasefeat-off@test.nl', passwordHash, firstName: 'Feat', lastName: 'Off',
+          roles: ['ORG_ADMIN'], orgId: offOrg.id, emailVerifiedAt: new Date(),
+        },
+      });
+      offAdminId = offAdmin.id;
+
+      const onContact = await prisma.contact.create({
+        data: { orgId: onOrg.id, type: 'COMPANY', companyName: 'On Klant', email: 'on@test.nl' },
+      });
+      onContactId = onContact.id;
+      const offContact = await prisma.contact.create({
+        data: { orgId: offOrg.id, type: 'COMPANY', companyName: 'Off Klant', email: 'off@test.nl' },
+      });
+      offContactId = offContact.id;
+
+      const onProject = await prisma.project.create({
+        data: {
+          orgId: onOrg.id, projectNumber: 'E2E-PF-ON-1', title: 'On-project',
+          contactId: onContact.id, projectManagerId: onAdmin.id, createdBy: onAdmin.id,
+        },
+      });
+      onProjectId = onProject.id;
+      const offProject = await prisma.project.create({
+        data: {
+          orgId: offOrg.id, projectNumber: 'E2E-PF-OFF-1', title: 'Off-project',
+          contactId: offContact.id, projectManagerId: offAdmin.id, createdBy: offAdmin.id,
+        },
+      });
+      offProjectId = offProject.id;
+
+      const login = async (email: string): Promise<string> =>
+        (
+          await request(app.getHttpServer())
+            .post('/api/v1/auth/login')
+            .send({ email, password: 'TestPass123!' })
+        ).body.data.accessToken;
+      onToken = await login('e2e-phasefeat-on@test.nl');
+      offToken = await login('e2e-phasefeat-off@test.nl');
+    });
+
+    afterAll(async () => {
+      await prisma.quote.deleteMany({ where: { orgId: { in: [onOrgId, offOrgId] } } });
+      await prisma.phaseMilestone.deleteMany({ where: { orgId: { in: [onOrgId, offOrgId] } } });
+      await prisma.projectPhaseFollower.deleteMany({
+        where: { phase: { orgId: { in: [onOrgId, offOrgId] } } },
+      });
+      await prisma.projectPhase.deleteMany({ where: { orgId: { in: [onOrgId, offOrgId] } } });
+      await prisma.project.deleteMany({ where: { orgId: { in: [onOrgId, offOrgId] } } });
+      await prisma.numberingCounter.deleteMany({ where: { scheme: { orgId: { in: [onOrgId, offOrgId] } } } });
+      await prisma.numberingScheme.deleteMany({ where: { orgId: { in: [onOrgId, offOrgId] } } });
+      await prisma.notification.deleteMany({ where: { orgId: { in: [onOrgId, offOrgId] } } });
+      await prisma.contact.deleteMany({ where: { orgId: { in: [onOrgId, offOrgId] } } });
+      await prisma.auditLog.deleteMany({ where: { orgId: { in: [onOrgId, offOrgId] } } });
+      await prisma.refreshToken.deleteMany({ where: { userId: { in: [onAdminId, offAdminId] } } });
+      await prisma.user.deleteMany({ where: { id: { in: [onAdminId, offAdminId] } } });
+      await prisma.organization.deleteMany({ where: { id: { in: [onOrgId, offOrgId] } } });
+      await prisma.planFeature.deleteMany({ where: { planId: { in: [onPlanId, offPlanId] } } });
+      await prisma.plan.deleteMany({ where: { id: { in: [onPlanId, offPlanId] } } });
+    });
+
+    it('org zonder PROJECT_FASEN krijgt 403 op GET phases', async () => {
+      const res = await request(app.getHttpServer())
+        .get(`/api/v1/projects/${offProjectId}/phases`)
+        .set('Host', OFF_HOST)
+        .set('Authorization', `Bearer ${offToken}`);
+      expect(res.status).toBe(403);
+      expect(res.body.code).toBe('FEATURE_NOT_IN_PLAN');
+    });
+
+    it('org zonder PROJECT_FASEN krijgt 403 op POST phases', async () => {
+      const res = await request(app.getHttpServer())
+        .post(`/api/v1/projects/${offProjectId}/phases`)
+        .set('Host', OFF_HOST)
+        .set('Authorization', `Bearer ${offToken}`)
+        .send({ name: 'Mag niet' });
+      expect(res.status).toBe(403);
+      expect(res.body.code).toBe('FEATURE_NOT_IN_PLAN');
+    });
+
+    it('org zonder PROJECT_FASEN krijgt 403 op een fase-koppel-patch (offerte)', async () => {
+      const quote = await request(app.getHttpServer())
+        .post('/api/v1/quotes')
+        .set('Host', OFF_HOST)
+        .set('Authorization', `Bearer ${offToken}`)
+        .send({ contactId: offContactId, subject: 'Off-offerte' })
+        .expect(201);
+
+      // Willekeurige phaseId: de entitlement-check draait vóór resolvePhaseLink,
+      // dus de fase hoeft niet te bestaan om de 403 te bewijzen.
+      const res = await request(app.getHttpServer())
+        .patch(`/api/v1/quotes/${quote.body.data.id}`)
+        .set('Host', OFF_HOST)
+        .set('Authorization', `Bearer ${offToken}`)
+        .send({ projectPhaseId: '00000000-0000-0000-0000-000000000000' });
+      expect(res.status).toBe(403);
+      expect(res.body.message).toContain('Projectfasen');
+    });
+
+    it('org mét PROJECT_FASEN kan fasen lezen, aanmaken en koppelen', async () => {
+      await request(app.getHttpServer())
+        .get(`/api/v1/projects/${onProjectId}/phases`)
+        .set('Host', ON_HOST)
+        .set('Authorization', `Bearer ${onToken}`)
+        .expect(200);
+
+      const phase = await request(app.getHttpServer())
+        .post(`/api/v1/projects/${onProjectId}/phases`)
+        .set('Host', ON_HOST)
+        .set('Authorization', `Bearer ${onToken}`)
+        .send({ name: 'Fase 1' })
+        .expect(201);
+
+      const quote = await request(app.getHttpServer())
+        .post('/api/v1/quotes')
+        .set('Host', ON_HOST)
+        .set('Authorization', `Bearer ${onToken}`)
+        .send({ contactId: onContactId, subject: 'On-offerte' })
+        .expect(201);
+
+      await request(app.getHttpServer())
+        .patch(`/api/v1/quotes/${quote.body.data.id}`)
+        .set('Host', ON_HOST)
+        .set('Authorization', `Bearer ${onToken}`)
+        .send({ projectPhaseId: phase.body.data.id })
+        .expect(200);
+
+      const stored = await prisma.quote.findUnique({ where: { id: quote.body.data.id } });
+      expect(stored?.projectPhaseId).toBe(phase.body.data.id);
+    });
+  });
 });

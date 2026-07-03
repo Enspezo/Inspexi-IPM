@@ -3,6 +3,7 @@ import { Modal, Button, Input, Spinner } from '@/components/ui';
 import { useToast } from '@/components/ui';
 import { apiClient, getErrorMessage } from '@/lib/api-client';
 import { PhaseSelect } from '@/components/projects/phase-select';
+import { useFeatures } from '@/providers/feature-provider';
 import { useAssignToProject } from '../hooks/use-projects';
 
 interface Props {
@@ -25,14 +26,16 @@ const entityEndpoints: Record<string, string> = {
 
 export function LinkEntitiesModal({ projectId, entityType, onClose }: Props) {
   const { showToast } = useToast();
+  const { hasFeature } = useFeatures();
   const assignMutation = useAssignToProject(projectId);
   const [search, setSearch] = useState('');
   const [items, setItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  // Optionele fase-koppeling bij het koppelen (PRD-12 §12.7.2); aanvragen kennen geen fase.
+  // Optionele fase-koppeling bij het koppelen (PRD-12 §12.7.2); aanvragen kennen geen
+  // fase en de hele fase-laag zit achter PROJECT_FASEN (§Fase E).
   const [phaseId, setPhaseId] = useState<string | null>(null);
-  const supportsPhase = entityType !== 'requests';
+  const supportsPhase = entityType !== 'requests' && hasFeature('PROJECT_FASEN');
 
   useEffect(() => {
     setLoading(true);

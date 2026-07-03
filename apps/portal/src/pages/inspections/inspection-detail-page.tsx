@@ -33,6 +33,7 @@ import {
   useDeleteInspectionPlan,
 } from './hooks/use-inspections';
 import { PhaseSelect, PhaseInfoField } from '@/components/projects/phase-select';
+import { useFeatures } from '@/providers/feature-provider';
 import { usePlanTree } from './hooks/use-asset-nodes';
 import { countByType, normalizeTree } from '@/components/asset-tree';
 import { PlanDefaultInstrumentsSection } from '@/pages/meetmiddelen/components/plan-default-instruments-section';
@@ -76,6 +77,9 @@ export default function InspectionDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { hasFeature } = useFeatures();
+  // PRD-12 §Fase E: fase-koppeling alleen bij de PROJECT_FASEN-entitlement.
+  const showPhase = hasFeature('PROJECT_FASEN');
   const { showToast } = useToast();
   const confirm = useConfirm();
 
@@ -297,7 +301,9 @@ export default function InspectionDetailPage() {
                     <label className="mb-1 block text-sm font-medium text-gray-700">Interne notities</label>
                     <textarea {...register('internalNotes')} rows={2} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:ring-primary-500" />
                   </div>
-                  <PhaseSelect projectId={plan.projectId} value={phaseId} onChange={setPhaseId} />
+                  {showPhase && (
+                    <PhaseSelect projectId={plan.projectId} value={phaseId} onChange={setPhaseId} />
+                  )}
                   <div className="flex gap-2">
                     <Button type="submit" disabled={!isDirty && !phaseDirty} isLoading={updateMutation.isPending}>Opslaan</Button>
                     <Button type="button" variant="secondary" onClick={() => { resetForm(); setPhaseId(plan.projectPhaseId ?? null); setIsEditing(false); }}>Annuleren</Button>
@@ -311,7 +317,9 @@ export default function InspectionDetailPage() {
                   <InfoField label="Inspectietype" value={<LookupBadge kind="inspection-types" code={plan.inspectionTypeCode} />} />
                   <InfoField label="Normtype" value={plan.normTypeCode} />
                   <InfoField label="Opdrachtgever" value={contactName(plan)} />
-                  <PhaseInfoField phase={plan.projectPhase} projectId={plan.projectId} />
+                  {showPhase && (
+                    <PhaseInfoField phase={plan.projectPhase} projectId={plan.projectId} />
+                  )}
                   <InfoField label="Geplande datum" value={plan.plannedDate ? new Date(plan.plannedDate).toLocaleDateString('nl-NL') : null} />
                   <InfoField label="Deadline" value={plan.deadline ? new Date(plan.deadline).toLocaleDateString('nl-NL') : null} />
                   <InfoField label="Omschrijving" value={plan.description} />

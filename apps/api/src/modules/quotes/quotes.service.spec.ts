@@ -14,6 +14,7 @@ import { STORAGE_PROVIDER } from '@/common/services/storage/storage.interface';
 import { CustomFieldsValidator } from '@/modules/custom-fields/custom-fields.validator';
 import { EmailTemplatesService } from '@/modules/email-templates/email-templates.service';
 import { NumberingService } from '@/modules/numbering/numbering.service';
+import { EntitlementsService } from '@/modules/entitlements/entitlements.service';
 import { PdfService } from './pdf.service';
 import { QuotePdfService } from './quote-pdf.service';
 
@@ -214,6 +215,9 @@ describe('QuotesService', () => {
     quoteTemplate: {
       findUnique: jest.fn(),
     },
+    projectPhase: {
+      findUnique: jest.fn(),
+    },
     organization: {
       findUnique: jest.fn(),
     },
@@ -283,6 +287,10 @@ describe('QuotesService', () => {
         { provide: QuotePdfService, useValue: {} },
         { provide: EmailTemplatesService, useValue: {} },
         { provide: NumberingService, useValue: mockNumberingService },
+        {
+          provide: EntitlementsService,
+          useValue: { assertFeature: jest.fn().mockResolvedValue(undefined) },
+        },
       ],
     }).compile();
 
@@ -614,6 +622,69 @@ describe('QuotesService', () => {
       ).rejects.toThrow(
         'Alleen offertes met status CONCEPT kunnen bewerkt worden',
       );
+    });
+
+    // PRD-12: fase-koppelen is de uitzondering op de CONCEPT-guard.
+    it('should allow a phase-link-only patch on a non-CONCEPT quote', async () => {
+      const nonConceptQuote = {
+        ...mockQuoteWithIncludes,
+        status: QuoteStatus.VERSTUURD,
+      };
+      mockPrismaService.quote.findUnique.mockResolvedValue(nonConceptQuote);
+      mockPrismaService.projectPhase.findUnique.mockResolvedValue({
+        orgId: mockUser.orgId,
+        projectId: 'project-1',
+        isDeleted: false,
+      });
+      mockPrismaService.quote.update.mockResolvedValue({
+        ...mockQuote,
+        projectPhaseId: 'phase-1',
+      });
+
+      await service.update('quote-1', { projectPhaseId: 'phase-1' }, mockUser);
+
+      expect(mockPrismaService.quote.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ projectPhaseId: 'phase-1' }),
+        }),
+      );
+    });
+
+    it('should allow unlinking the phase (projectPhaseId: null) on a non-CONCEPT quote', async () => {
+      mockPrismaService.quote.findUnique.mockResolvedValue({
+        ...mockQuoteWithIncludes,
+        status: QuoteStatus.GEACCEPTEERD,
+        projectPhaseId: 'phase-1',
+      });
+      mockPrismaService.quote.update.mockResolvedValue({
+        ...mockQuote,
+        projectPhaseId: null,
+      });
+
+      await service.update('quote-1', { projectPhaseId: null }, mockUser);
+
+      expect(mockPrismaService.projectPhase.findUnique).not.toHaveBeenCalled();
+      expect(mockPrismaService.quote.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ projectPhaseId: null }),
+        }),
+      );
+    });
+
+    it('should still block other fields alongside projectPhaseId on a non-CONCEPT quote', async () => {
+      mockPrismaService.quote.findUnique.mockResolvedValue({
+        ...mockQuoteWithIncludes,
+        status: QuoteStatus.VERSTUURD,
+      });
+
+      await expect(
+        service.update(
+          'quote-1',
+          { projectPhaseId: 'phase-1', subject: 'Nieuwe titel' },
+          mockUser,
+        ),
+      ).rejects.toThrow(BadRequestException);
+      expect(mockPrismaService.quote.update).not.toHaveBeenCalled();
     });
 
     it('should update fields when status is CONCEPT', async () => {

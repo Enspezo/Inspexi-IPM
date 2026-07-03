@@ -12,6 +12,8 @@ import {
   assertFound,
   assertSameOrg,
   resolvePhaseLink,
+  PROJECT_FASEN_FEATURE,
+  PROJECT_FASEN_REQUIRED_MESSAGE,
   requireOrg,
   STATUS_DRAFT,
   STATUS_IN_PROGRESS,
@@ -19,6 +21,7 @@ import {
   STATUS_REVIEWED,
   STATUS_APPROVED,
 } from '@/common';
+import { EntitlementsService } from '@/modules/entitlements/entitlements.service';
 import { LookupService, LOOKUP_KIND, type LookupKind } from '../lookups/lookup.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { AssetNodesService } from '../asset-nodes/asset-nodes.service';
@@ -46,6 +49,7 @@ export class InspectionPlansService {
     private lookups: LookupService,
     private notifications: NotificationsService,
     private assetNodes: AssetNodesService,
+    private entitlements: EntitlementsService,
   ) {}
 
   /** Template mag een systeemtemplate (orgId null) of een eigen-org template zijn. */
@@ -303,6 +307,13 @@ export class InspectionPlansService {
     // cascadeer het project van de fase wanneer het plan er nog geen heeft.
     const effectiveProjectId =
       dto.projectId !== undefined ? dto.projectId : existing.projectId;
+    // Alleen bij een DAADWERKELIJKE wijziging van projectPhaseId de
+    // PROJECT_FASEN-entitlement afdwingen (§Fase E).
+    if (dto.projectPhaseId !== undefined) {
+      await this.entitlements.assertFeature(
+        orgId, PROJECT_FASEN_FEATURE, PROJECT_FASEN_REQUIRED_MESSAGE,
+      );
+    }
     const phaseLink = await resolvePhaseLink(
       this.prisma.projectPhase, dto.projectPhaseId, orgId, effectiveProjectId,
     );

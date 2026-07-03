@@ -3,6 +3,7 @@ import { NotificationType } from '@prisma/client';
 import { ProjectPhasesScheduler } from './project-phases.scheduler';
 import { PrismaService } from '@/prisma';
 import { NotificationsService } from '@/modules/notifications/notifications.service';
+import { EntitlementsService } from '@/modules/entitlements/entitlements.service';
 
 describe('ProjectPhasesScheduler', () => {
   let scheduler: ProjectPhasesScheduler;
@@ -11,6 +12,12 @@ describe('ProjectPhasesScheduler', () => {
     phaseMilestone: { findMany: jest.fn(), update: jest.fn() },
   };
   const mockNotifications = { dispatch: jest.fn() };
+  // Standaard: elke org heeft PROJECT_FASEN. Individuele tests overschrijven dit.
+  const mockEntitlements = {
+    getEnabledFeatures: jest
+      .fn()
+      .mockResolvedValue(['BASIS_UITVOERING', 'PROJECT_FASEN']),
+  };
 
   const NOW = new Date('2026-07-02T06:00:00.000Z');
 
@@ -34,11 +41,18 @@ describe('ProjectPhasesScheduler', () => {
 
   beforeEach(async () => {
     jest.clearAllMocks();
+    // clearAllMocks wist calls maar niet de implementatie; zet de default terug
+    // zodat een test-override (skip-scenario) niet naar de volgende test lekt.
+    mockEntitlements.getEnabledFeatures.mockResolvedValue([
+      'BASIS_UITVOERING',
+      'PROJECT_FASEN',
+    ]);
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         ProjectPhasesScheduler,
         { provide: PrismaService, useValue: mockPrisma },
         { provide: NotificationsService, useValue: mockNotifications },
+        { provide: EntitlementsService, useValue: mockEntitlements },
       ],
     }).compile();
     scheduler = module.get(ProjectPhasesScheduler);
@@ -177,6 +191,34 @@ describe('ProjectPhasesScheduler', () => {
         data: expect.objectContaining({ lastReminderStage: 'upcoming' }),
       }),
     );
+  });
+
+  it('skips milestones for orgs without the PROJECT_FASEN feature (§Fase E)', async () => {
+    // Org zit in een plan zonder PROJECT_FASEN → geen reminder, geen markering.
+    mockEntitlements.getEnabledFeatures.mockResolvedValue(['BASIS_UITVOERING']);
+    mockPrisma.phaseMilestone.findMany.mockResolvedValue([milestone()]);
+
+    const sent = await scheduler.processDueMilestones(NOW);
+
+    expect(sent).toBe(0);
+    expect(mockNotifications.dispatch).not.toHaveBeenCalled();
+    expect(mockPrisma.phaseMilestone.update).not.toHaveBeenCalled();
+    // De entitlement-lookup gebeurt per unieke org (batched), niet per milestone.
+    expect(mockEntitlements.getEnabledFeatures).toHaveBeenCalledTimes(1);
+    expect(mockEntitlements.getEnabledFeatures).toHaveBeenCalledWith('org-1');
+  });
+
+  it('batches the entitlement lookup once per org across many milestones (§Fase E)', async () => {
+    mockPrisma.phaseMilestone.findMany.mockResolvedValue([
+      milestone({ id: 'm-1', orgId: 'org-1' }),
+      milestone({ id: 'm-2', orgId: 'org-1' }),
+      milestone({ id: 'm-3', orgId: 'org-2' }),
+    ]);
+
+    await scheduler.processDueMilestones(NOW);
+
+    // 3 milestones, 2 unieke orgs → 2 lookups, niet 3.
+    expect(mockEntitlements.getEnabledFeatures).toHaveBeenCalledTimes(2);
   });
 
   it('skips milestones on non-active projects (filtered out by the query)', async () => {

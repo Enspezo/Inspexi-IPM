@@ -131,6 +131,7 @@ const enumLabels: Record<string, string> = {
   BASIS_INSPECTIES: 'Basis Inspecties',
   BASIS_WORKFLOW: 'Basis Workflow',
   WORKFLOW_COMPLEET: 'Workflow Compleet',
+  PROJECT_FASEN: 'Projectfasen',
   WEBHOOKS: 'Webhooks (add-on)',
   CUSTOM_FIELDS: 'Aangepaste velden (add-on)',
 

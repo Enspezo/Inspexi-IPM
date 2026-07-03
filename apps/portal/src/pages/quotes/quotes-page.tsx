@@ -23,6 +23,7 @@ import {
   type ColumnDef,
 } from '@/components/table-config';
 import { useAuth } from '@/providers/auth-provider';
+import { useFeatures } from '@/providers/feature-provider';
 import { useWindowTabs } from '@/providers/window-tabs';
 import { useQuotes } from './hooks/use-quotes';
 import { useQuoteTemplates } from './hooks/use-quote-templates';
@@ -53,6 +54,9 @@ export default function QuotesPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const { openTab } = useWindowTabs();
+  const { hasFeature } = useFeatures();
+  // PRD-12 §Fase E: fase-kolom alleen registreren bij de PROJECT_FASEN-entitlement.
+  const hasPhaseFeature = hasFeature('PROJECT_FASEN');
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
@@ -168,20 +172,22 @@ export default function QuotesPage() {
         <span className="text-gray-600">{quote.template?.name ?? '—'}</span>
       ),
     },
-    {
-      key: 'phase',
-      header: 'Fase',
-      sidebarLabel: 'Fase',
-      defaultVisible: false,
-      filterable: true,
-      filterType: 'select',
-      filterOptions: phaseFilterOptions,
-      groupable: true,
-      getFilterValue: (quote) => quote.projectPhase?.name ?? '',
-      render: (quote) => (
-        <span className="text-gray-600">{quote.projectPhase?.name ?? '—'}</span>
-      ),
-    },
+    ...(hasPhaseFeature
+      ? [{
+          key: 'phase',
+          header: 'Fase',
+          sidebarLabel: 'Fase',
+          defaultVisible: false,
+          filterable: true,
+          filterType: 'select' as const,
+          filterOptions: phaseFilterOptions,
+          groupable: true,
+          getFilterValue: (quote: Quote) => quote.projectPhase?.name ?? '',
+          render: (quote: Quote) => (
+            <span className="text-gray-600">{quote.projectPhase?.name ?? '—'}</span>
+          ),
+        }]
+      : []),
     {
       key: 'total',
       header: 'Totaal',

@@ -8,6 +8,7 @@ import { Role, WorkOrderStatus } from '@prisma/client';
 import { WorkOrdersService } from './work-orders.service';
 import { PrismaService } from '@/prisma';
 import { NumberingService } from '@/modules/numbering/numbering.service';
+import { EntitlementsService } from '@/modules/entitlements/entitlements.service';
 
 describe('WorkOrdersService', () => {
   let service: WorkOrdersService;
@@ -90,6 +91,10 @@ describe('WorkOrdersService', () => {
         WorkOrdersService,
         { provide: PrismaService, useValue: mockPrismaService },
         { provide: NumberingService, useValue: mockNumberingService },
+        {
+          provide: EntitlementsService,
+          useValue: { assertFeature: jest.fn().mockResolvedValue(undefined) },
+        },
       ],
     }).compile();
 

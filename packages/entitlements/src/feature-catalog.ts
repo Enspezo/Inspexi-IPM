@@ -26,6 +26,7 @@ export const FEATURE_KEYS = [
   'BASIS_WORKFLOW',
   'WORKFLOW_COMPLEET',
   // Add-ons (standaard bij Compleet; voor Basis-orgs los per org bij te schakelen)
+  'PROJECT_FASEN',
   'WEBHOOKS',
   'CUSTOM_FIELDS',
 ] as const;
@@ -85,6 +86,13 @@ export const FEATURE_CATALOG: Record<FeatureKey, FeatureDef> = {
     dependsOn: ['BASIS_WORKFLOW'],
   },
   // Add-ons — standaard bij Compleet; voor Basis-orgs los per org bij te schakelen.
+  PROJECT_FASEN: {
+    key: 'PROJECT_FASEN',
+    label: 'Projectfasen',
+    description:
+      'Deelprojecten (fasen) binnen een project: milestones, fasevolgers en voorbereiding voor deelfacturatie',
+    dependsOn: ['BASIS_UITVOERING'],
+  },
   WEBHOOKS: {
     key: 'WEBHOOKS',
     label: 'Webhooks (add-on)',

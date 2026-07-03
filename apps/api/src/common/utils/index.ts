@@ -7,3 +7,4 @@ export * from './require-org';
 export * from './config-guards';
 export * from './resolve-inspector-contact';
 export * from './html-safe';
+export * from './storage-key.util';

@@ -13,7 +13,7 @@ import {
   STORAGE_PROVIDER,
   type StorageProvider,
 } from '@/common/services/storage/storage.interface';
-import { paginate, buildOrderBy, orgScope, assertSameOrg, assertAllSameOrg } from '@/common';
+import { paginate, buildOrderBy, orgScope, assertSameOrg, assertAllSameOrg, sanitizeStorageFilename } from '@/common';
 import { UploadDocumentDto, ListDocumentsQueryDto, UpdateDocumentDto } from './dto';
 
 const userSelect = {
@@ -277,7 +277,7 @@ export class DocumentsService {
     // Validate any requested tags belong to the same org before writing.
     const tagIds = await this.resolveTagIds(dto.tagIds, orgId);
 
-    const storageKey = `${orgId}/${randomUUID()}-${file.originalname}`;
+    const storageKey = `${orgId}/${randomUUID()}-${sanitizeStorageFilename(file.originalname)}`;
 
     await this.storage.upload(storageKey, file.buffer, file.mimetype);
 

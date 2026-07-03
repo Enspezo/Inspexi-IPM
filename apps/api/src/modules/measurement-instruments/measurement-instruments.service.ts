@@ -26,6 +26,7 @@ import {
   assertAllSameOrg,
   requireOrg,
   USER_SUMMARY_SELECT,
+  sanitizeStorageFilename,
 } from '@/common';
 import {
   CreateMeasurementInstrumentDto,
@@ -511,7 +512,7 @@ export class MeasurementInstrumentsService {
 
   /** Storage-sleutel: `{orgId}/measurement-instruments/{instrumentId}/calibrations/{uuid}-{name}`. */
   private async storeFile(orgId: string, instrumentId: string, file: Express.Multer.File) {
-    const storageKey = `${orgId}/measurement-instruments/${instrumentId}/calibrations/${randomUUID()}-${file.originalname}`;
+    const storageKey = `${orgId}/measurement-instruments/${instrumentId}/calibrations/${randomUUID()}-${sanitizeStorageFilename(file.originalname)}`;
     await this.storage.upload(storageKey, file.buffer, file.mimetype);
     return {
       storageKey,

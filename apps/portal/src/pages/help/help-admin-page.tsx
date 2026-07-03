@@ -16,6 +16,7 @@ import {
 import { HELP_ARTICLE_STATUS } from '@/lib/status';
 import { ADMIN_ROLES } from '@/lib/roles';
 import { hasRole } from '@/lib/has-role';
+import { clientPortalArticleUrl } from '@/lib/client-portal';
 import {
   HelpArticleStatus,
   HelpAudience,
@@ -87,6 +88,10 @@ export default function HelpAdminPage() {
   const canManageArticle = (a: HelpArticle) =>
     isSuperuser || a.orgId === user?.orgId;
   const categoryNameById = new Map((categories ?? []).map((c) => [c.id, c.name]));
+  // Publiek/afgeschermd per categorie — bepaalt de klantportaal-route voor de preview.
+  const categoryIsPublicById = new Map(
+    (categories ?? []).map((c) => [c.id, c.isPublic]),
+  );
 
   const internalArticles = data?.data ?? [];
   const ownArticles = internalArticles.filter(canManageArticle);
@@ -173,6 +178,21 @@ export default function HelpAdminPage() {
       render: (a) =>
         canManageArticle(a) ? (
           <div className="space-x-2 whitespace-nowrap text-right">
+            {a.audience === HelpAudience.EXTERNAL &&
+              a.status === HelpArticleStatus.PUBLISHED && (
+                <a
+                  href={clientPortalArticleUrl(
+                    a.slug,
+                    categoryIsPublicById.get(a.categoryId) ?? false,
+                  )}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title="Bekijk dit artikel op het klantportaal"
+                  className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-sm font-medium text-primary-600 hover:bg-primary-50"
+                >
+                  Preview ↗
+                </a>
+              )}
             <Button size="sm" variant="ghost" onClick={() => openEdit(a)}>
               Bewerken
             </Button>

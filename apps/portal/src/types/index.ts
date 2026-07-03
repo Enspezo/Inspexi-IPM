@@ -2886,6 +2886,12 @@ export enum HelpArticleStatus {
   ARCHIVED = 'ARCHIVED',
 }
 
+// INTERNAL = staff-portal (globaal/org); EXTERNAL = klantportaal (per-org)
+export enum HelpAudience {
+  INTERNAL = 'INTERNAL',
+  EXTERNAL = 'EXTERNAL',
+}
+
 export interface HelpCategory {
   id: string;
   orgId: string | null; // null = globaal
@@ -2896,6 +2902,8 @@ export interface HelpCategory {
   order: number;
   parentId: string | null;
   isPublished: boolean;
+  audience: HelpAudience;
+  isPublic: boolean; // alleen relevant bij EXTERNAL: publiek vs achter klant-login
   createdAt: string;
   updatedAt: string;
   articles?: HelpArticle[]; // bij categorie-detail
@@ -2910,6 +2918,7 @@ export interface HelpArticle {
   excerpt: string | null;
   body: string;
   status: HelpArticleStatus;
+  audience: HelpAudience;
   tags: string[];
   moduleKeys: string[];
   order: number;

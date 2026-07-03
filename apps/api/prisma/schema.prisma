@@ -325,6 +325,12 @@ enum HelpArticleStatus {
   ARCHIVED
 }
 
+// KB-doelgroep: INTERNAL = staff-portal (org/globaal); EXTERNAL = klantportaal (per-org)
+enum HelpAudience {
+  INTERNAL
+  EXTERNAL
+}
+
 enum SupportTicketStatus {
   NIEUW
   IN_BEHANDELING
@@ -4355,11 +4361,14 @@ model HelpCategory {
   name        String
   description String?
   icon        String?
-  order       Int      @default(0)
-  parentId    String?  @map("parent_id") @db.Uuid
-  isPublished Boolean  @default(true) @map("is_published")
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  order       Int          @default(0)
+  parentId    String?      @map("parent_id") @db.Uuid
+  isPublished Boolean      @default(true) @map("is_published")
+  audience    HelpAudience @default(INTERNAL)
+  // Alleen relevant voor EXTERNAL: true = publiek zichtbaar (zonder login), false = achter klant-login
+  isPublic    Boolean      @default(false) @map("is_public")
+  createdAt   DateTime     @default(now()) @map("created_at")
+  updatedAt   DateTime     @updatedAt @map("updated_at")
 
   organization Organization?  @relation(fields: [orgId], references: [id])
   parent       HelpCategory?  @relation("HelpCategoryTree", fields: [parentId], references: [id])
@@ -4368,6 +4377,7 @@ model HelpCategory {
 
   @@unique([orgId, slug])
   @@index([parentId, order])
+  @@index([orgId, audience])
   @@map("imp_help_categories")
 }
 
@@ -4380,6 +4390,7 @@ model HelpArticle {
   excerpt     String?
   body        String            @db.Text
   status      HelpArticleStatus @default(DRAFT)
+  audience    HelpAudience      @default(INTERNAL)
   tags        String[]          @default([])
   moduleKeys  String[]          @default([]) @map("module_keys")
   order       Int               @default(0)
@@ -4397,6 +4408,7 @@ model HelpArticle {
 
   @@unique([orgId, slug])
   @@index([orgId, status])
+  @@index([orgId, audience, status])
   @@index([categoryId, order])
   // pg_trgm/GIN-indexen voor typo-tolerante KB-zoek (oorspronkelijk via raw SQL in
   // 20260623214008_help_trigram_search). Hier in het schema gemodelleerd met de

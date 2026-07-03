@@ -2309,6 +2309,87 @@ async function main() {
     }
   }
 
+  // Externe KB (klantportaal) — per-org, eigen externe categorieën.
+  // Eén publieke categorie (zonder login zichtbaar) + één afgeschermde (na klant-login).
+  if (demoOrg) {
+    const externalCats = [
+      {
+        slug: 'veelgestelde-vragen',
+        name: 'Veelgestelde vragen',
+        icon: 'help-circle',
+        order: 1,
+        isPublic: true,
+        articles: [
+          {
+            title: 'Hoe vraag ik een inspectie aan?',
+            excerpt: 'De stappen om een nieuwe inspectie-aanvraag in te dienen.',
+            body: '# Een inspectie aanvragen\n\n1. Log in op het klantportaal.\n2. Ga naar **Aanvragen** en klik op **Nieuwe aanvraag**.\n3. Vul de gegevens in en verstuur.\n\nWe nemen daarna contact met u op.',
+          },
+          {
+            title: 'Wanneer ontvang ik mijn rapport?',
+            excerpt: 'Wat u kunt verwachten na een uitgevoerde inspectie.',
+            body: '# Uw inspectierapport\n\nNa afronding van de inspectie stellen wij het rapport op. Zodra het klaarstaat vindt u het onder **Documenten** in het klantportaal en ontvangt u een melding.',
+          },
+        ],
+      },
+      {
+        slug: 'mijn-inspecties',
+        name: 'Werken met uw inspecties',
+        icon: 'clipboard',
+        order: 2,
+        isPublic: false,
+        articles: [
+          {
+            title: 'Een constatering oplossen',
+            excerpt: 'Hoe u een geconstateerd gebrek als opgelost markeert.',
+            body: '# Constatering oplossen\n\nOpen de inspectie, ga naar de constatering en klik op **Oplossen**. U kunt een foto van de herstelde situatie toevoegen.',
+          },
+          {
+            title: 'Een document ondertekenen',
+            excerpt: 'Digitaal akkoord geven op een rapport of verklaring.',
+            body: '# Document ondertekenen\n\nOnder **Documenten** ziet u welke stukken uw handtekening vereisen. Open het document en volg de stappen om digitaal te ondertekenen.',
+          },
+        ],
+      },
+    ];
+
+    for (const cat of externalCats) {
+      const category = await prisma.helpCategory.create({
+        data: {
+          orgId: demoOrg.id,
+          slug: cat.slug,
+          name: cat.name,
+          icon: cat.icon,
+          order: cat.order,
+          isPublished: true,
+          audience: 'EXTERNAL',
+          isPublic: cat.isPublic,
+        },
+      });
+      let i = 1;
+      for (const art of cat.articles) {
+        await prisma.helpArticle.create({
+          data: {
+            orgId: demoOrg.id,
+            categoryId: category.id,
+            slug: `${cat.slug}-${i}`,
+            title: art.title,
+            excerpt: art.excerpt,
+            body: art.body,
+            status: 'PUBLISHED',
+            publishedAt: new Date(),
+            audience: 'EXTERNAL',
+            moduleKeys: [],
+            tags: [cat.slug],
+            order: i,
+            authorId: demoAdmin?.id ?? null,
+          },
+        });
+        i++;
+      }
+    }
+  }
+
   // Demo-tickets op de demo-org (verschillende statussen)
   if (demoOrg && demoUser) {
     const demoTickets = [

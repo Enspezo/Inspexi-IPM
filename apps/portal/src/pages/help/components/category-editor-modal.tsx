@@ -2,8 +2,8 @@ import { useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { Modal, Button, Input, Select, useToast } from '@/components/ui';
-import type { HelpCategory } from '@/types';
+import { Modal, Button, Input, Select, Checkbox, useToast } from '@/components/ui';
+import { HelpAudience, type HelpCategory } from '@/types';
 import { useCreateHelpCategory, useUpdateHelpCategory } from '../hooks/use-help';
 
 const schema = z.object({
@@ -12,6 +12,8 @@ const schema = z.object({
   icon: z.string().optional(),
   order: z.coerce.number().int().min(0).optional(),
   parentId: z.string().optional(),
+  audience: z.nativeEnum(HelpAudience),
+  isPublic: z.boolean().optional(),
 });
 type FormData = z.infer<typeof schema>;
 
@@ -23,6 +25,11 @@ interface Props {
   categories: HelpCategory[];
 }
 
+const AUDIENCE_OPTIONS = [
+  { value: HelpAudience.INTERNAL, label: 'Intern (staff-portal)' },
+  { value: HelpAudience.EXTERNAL, label: 'Extern (klantportaal)' },
+];
+
 export function CategoryEditorModal({ isOpen, onClose, category, categories }: Props) {
   const { showToast } = useToast();
   const create = useCreateHelpCategory();
@@ -33,8 +40,13 @@ export function CategoryEditorModal({ isOpen, onClose, category, categories }: P
     register,
     handleSubmit,
     reset,
+    watch,
     formState: { errors },
   } = useForm<FormData>({ resolver: zodResolver(schema) });
+
+  // Doelgroep is bij bewerken onveranderlijk (zou artikelen ontkoppelen).
+  const audience = watch('audience') ?? HelpAudience.INTERNAL;
+  const isExternal = audience === HelpAudience.EXTERNAL;
 
   useEffect(() => {
     if (isOpen) {
@@ -44,6 +56,8 @@ export function CategoryEditorModal({ isOpen, onClose, category, categories }: P
         icon: category?.icon ?? '',
         order: category?.order ?? 0,
         parentId: category?.parentId ?? '',
+        audience: category?.audience ?? HelpAudience.INTERNAL,
+        isPublic: category?.isPublic ?? false,
       });
     }
   }, [isOpen, category, reset]);
@@ -57,6 +71,10 @@ export function CategoryEditorModal({ isOpen, onClose, category, categories }: P
       order: data.order ?? 0,
       // lege keuze = hoofdcategorie; null wist een bestaande koppeling bij bewerken
       parentId: data.parentId ? data.parentId : null,
+      // audience alleen bij aanmaken; backend negeert het bij update.
+      ...(editing ? {} : { audience: data.audience }),
+      // isPublic is alleen zinvol voor externe categorieën.
+      isPublic: data.audience === HelpAudience.EXTERNAL ? !!data.isPublic : false,
     };
     const handlers = {
       onSuccess: () => {
@@ -73,11 +91,12 @@ export function CategoryEditorModal({ isOpen, onClose, category, categories }: P
     }
   };
 
-  // Een categorie kan zichzelf niet als bovenliggende categorie hebben.
+  // Een categorie kan zichzelf niet als bovenliggende categorie hebben; alleen
+  // categorieën van dezelfde doelgroep zijn kiesbaar als ouder.
   const parentOptions = [
     { value: '', label: 'Geen (hoofdcategorie)' },
     ...categories
-      .filter((c) => c.id !== category?.id)
+      .filter((c) => c.id !== category?.id && c.audience === audience)
       .map((c) => ({ value: c.id, label: c.orgId ? `${c.name} (org)` : c.name })),
   ];
 
@@ -91,6 +110,32 @@ export function CategoryEditorModal({ isOpen, onClose, category, categories }: P
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
         <div className="max-h-[70vh] space-y-4 overflow-y-auto pr-1">
           <Input label="Naam" {...register('name')} error={errors.name?.message} />
+          {editing ? (
+            // Doelgroep is onveranderlijk na aanmaken.
+            <Input
+              label="Scope"
+              value={isExternal ? 'Extern (klantportaal)' : 'Intern (staff-portal)'}
+              disabled
+              readOnly
+            />
+          ) : (
+            <div>
+              <Select
+                label="Scope"
+                options={AUDIENCE_OPTIONS}
+                {...register('audience')}
+              />
+              <p className="mt-1 text-xs text-gray-400">
+                Extern = zichtbaar in het klantportaal.
+              </p>
+            </div>
+          )}
+          {isExternal && (
+            <Checkbox
+              label="Publiek toegankelijk (zonder login zichtbaar op het klantportaal)"
+              {...register('isPublic')}
+            />
+          )}
           <div className="w-full">
             <label
               htmlFor="help-cat-description"

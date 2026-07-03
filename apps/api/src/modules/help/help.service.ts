@@ -3,7 +3,7 @@ import {
   ForbiddenException,
   Injectable,
 } from '@nestjs/common';
-import { Prisma, User } from '@prisma/client';
+import { HelpAudience, Prisma, User } from '@prisma/client';
 import { PrismaService } from '@/prisma';
 import { paginate, buildOrderBy, assertFound, isSuperuser } from '@/common';
 import { slugify, uniqueSlug } from './help.helpers';
@@ -74,9 +74,11 @@ export class HelpService {
   }
 
   // ── Categorieën (lezen) ──────────────────────────────────────────────────
+  // De staff-reader toont uitsluitend INTERNAL content; EXTERNAL is voor het
+  // klantportaal (zie client-help.service) en mag hier nooit lekken.
   async listCategories(user: User) {
     return this.prisma.helpCategory.findMany({
-      where: { isPublished: true, ...this.orgVisibilityWhere(user) },
+      where: { isPublished: true, audience: 'INTERNAL', ...this.orgVisibilityWhere(user) },
       orderBy: [{ order: 'asc' }, { name: 'asc' }],
     });
   }
@@ -84,7 +86,7 @@ export class HelpService {
   async getCategoryBySlug(user: User, slug: string) {
     const category = assertFound(
       await this.prisma.helpCategory.findFirst({
-        where: { slug, ...this.orgVisibilityWhere(user) },
+        where: { slug, audience: 'INTERNAL', ...this.orgVisibilityWhere(user) },
         orderBy: this.slugOrderBy(user),
       }),
       'Categorie',
@@ -93,6 +95,7 @@ export class HelpService {
       where: {
         categoryId: category.id,
         status: 'PUBLISHED',
+        audience: 'INTERNAL',
         ...this.orgVisibilityWhere(user),
       },
       orderBy: [{ order: 'asc' }, { title: 'asc' }],
@@ -105,6 +108,7 @@ export class HelpService {
     const { categoryId, search, page = 1, limit = 20, sortBy, sortOrder = 'asc' } = q;
     const where: Prisma.HelpArticleWhereInput = {
       status: 'PUBLISHED',
+      audience: 'INTERNAL',
       ...this.orgVisibilityWhere(user),
       ...(categoryId ? { categoryId } : {}),
       ...(search ? { title: { contains: search, mode: 'insensitive' } } : {}),
@@ -121,7 +125,12 @@ export class HelpService {
   async getArticleBySlug(user: User, slug: string) {
     const article = assertFound(
       await this.prisma.helpArticle.findFirst({
-        where: { slug, status: 'PUBLISHED', ...this.orgVisibilityWhere(user) },
+        where: {
+          slug,
+          status: 'PUBLISHED',
+          audience: 'INTERNAL',
+          ...this.orgVisibilityWhere(user),
+        },
         include: ARTICLE_CATEGORY_INCLUDE,
         orderBy: this.slugOrderBy(user),
       }),
@@ -166,6 +175,7 @@ export class HelpService {
     ];
     const base: Prisma.HelpArticleWhereInput = {
       status: 'PUBLISHED',
+      audience: 'INTERNAL',
       ...this.orgVisibilityWhere(user),
     };
 
@@ -250,7 +260,12 @@ export class HelpService {
 
   // ── Beheer: categorieën ──────────────────────────────────────────────────
   async createCategory(user: User, dto: CreateHelpCategoryDto) {
+    const audience = dto.audience ?? HelpAudience.INTERNAL;
     const orgId = this.resolveWriteOrgId(user, dto.orgId);
+    // Externe categorieën zijn altijd per-org (geen globale externe KB).
+    if (audience === HelpAudience.EXTERNAL && !orgId) {
+      throw new BadRequestException('Externe categorieën vereisen een organisatie');
+    }
     const slug = await uniqueSlug(
       (s) =>
         this.prisma.helpCategory
@@ -267,6 +282,9 @@ export class HelpService {
         icon: dto.icon,
         order: dto.order ?? 0,
         parentId: dto.parentId,
+        audience,
+        // isPublic is alleen zinvol voor EXTERNAL; intern altijd false.
+        isPublic: audience === HelpAudience.EXTERNAL ? dto.isPublic ?? false : false,
       },
     });
   }
@@ -304,6 +322,11 @@ export class HelpService {
         ...(dto.icon !== undefined ? { icon: dto.icon } : {}),
         ...(dto.order !== undefined ? { order: dto.order } : {}),
         ...(dto.parentId !== undefined ? { parentId: dto.parentId } : {}),
+        // audience is onveranderlijk (zou artikelen ontkoppelen); alleen de
+        // publiek/afgeschermd-vlag is bij een externe categorie aanpasbaar.
+        ...(dto.isPublic !== undefined && cat.audience === HelpAudience.EXTERNAL
+          ? { isPublic: dto.isPublic }
+          : {}),
       },
     });
   }
@@ -329,12 +352,29 @@ export class HelpService {
     return { id };
   }
 
+  // ── Beheer: categorieën (lijst, alle doelgroepen in scope) ───────────────
+  /**
+   * Beheerlijst van categorieën: anders dan de reader-`listCategories` toont dit
+   * óók niet-gepubliceerde en (optioneel gefilterd) EXTERNAL categorieën, zodat
+   * het beheer intern + extern op één plek kan beheren.
+   */
+  async adminListCategories(user: User, audience?: HelpAudience) {
+    return this.prisma.helpCategory.findMany({
+      where: {
+        ...this.orgVisibilityWhere(user),
+        ...(audience ? { audience } : {}),
+      },
+      orderBy: [{ order: 'asc' }, { name: 'asc' }],
+    });
+  }
+
   // ── Beheer: artikelen (incl. concepten in scope) ─────────────────────────
   async adminListArticles(user: User, q: ListHelpArticlesDto) {
     const {
       categoryId,
       search,
       status,
+      audience,
       page = 1,
       limit = 20,
       sortBy,
@@ -343,6 +383,7 @@ export class HelpService {
     const where: Prisma.HelpArticleWhereInput = {
       ...this.orgVisibilityWhere(user), // SUPERUSER: alles; ORG_ADMIN: globaal + eigen org
       ...(status ? { status } : {}),
+      ...(audience ? { audience } : {}),
       ...(categoryId ? { categoryId } : {}),
       ...(search ? { title: { contains: search, mode: 'insensitive' } } : {}),
     };
@@ -356,8 +397,19 @@ export class HelpService {
   }
 
   async createArticle(user: User, dto: CreateHelpArticleDto) {
+    const audience = dto.audience ?? HelpAudience.INTERNAL;
     const orgId = this.resolveWriteOrgId(user, dto.orgId);
-    await this.assertCategoryInScope(user, dto.categoryId, orgId);
+    if (audience === HelpAudience.EXTERNAL && !orgId) {
+      throw new BadRequestException('Externe artikelen vereisen een organisatie');
+    }
+    const category = await this.assertCategoryInScope(user, dto.categoryId, orgId);
+    if (category.audience !== audience) {
+      throw new BadRequestException(
+        audience === HelpAudience.EXTERNAL
+          ? 'Kies een externe categorie voor een extern artikel'
+          : 'Kies een interne categorie voor een intern artikel',
+      );
+    }
     const slug = await uniqueSlug(
       (s) =>
         this.prisma.helpArticle
@@ -374,9 +426,11 @@ export class HelpService {
         excerpt: dto.excerpt,
         body: dto.body,
         tags: dto.tags ?? [],
-        moduleKeys: dto.moduleKeys ?? [],
+        // Externe artikelen koppelen niet aan modules (geen contextuele suggesties).
+        moduleKeys: audience === HelpAudience.EXTERNAL ? [] : dto.moduleKeys ?? [],
         order: dto.order ?? 0,
         status: 'DRAFT',
+        audience,
         authorId: user.id,
       },
     });
@@ -391,7 +445,16 @@ export class HelpService {
       throw new ForbiddenException('Geen rechten op dit artikel');
     }
     if (dto.categoryId) {
-      await this.assertCategoryInScope(user, dto.categoryId, article.orgId);
+      const category = await this.assertCategoryInScope(
+        user,
+        dto.categoryId,
+        article.orgId,
+      );
+      if (category.audience !== article.audience) {
+        throw new BadRequestException(
+          'De categorie hoort bij een andere doelgroep dan dit artikel',
+        );
+      }
     }
     let nextSlug: string | undefined;
     if (dto.slug !== undefined) {
@@ -418,7 +481,10 @@ export class HelpService {
         ...(dto.excerpt !== undefined ? { excerpt: dto.excerpt } : {}),
         ...(dto.body !== undefined ? { body: dto.body } : {}),
         ...(dto.tags !== undefined ? { tags: dto.tags } : {}),
-        ...(dto.moduleKeys !== undefined ? { moduleKeys: dto.moduleKeys } : {}),
+        // moduleKeys blijven leeg voor externe artikelen.
+        ...(dto.moduleKeys !== undefined && article.audience === HelpAudience.INTERNAL
+          ? { moduleKeys: dto.moduleKeys }
+          : {}),
         ...(dto.order !== undefined ? { order: dto.order } : {}),
       },
     });

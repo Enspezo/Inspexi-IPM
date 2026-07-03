@@ -3,6 +3,7 @@ import { apiClient } from '@/lib/api-client';
 import type {
   HelpArticle,
   HelpArticleStatus,
+  HelpAudience,
   HelpCategory,
   PaginatedResponse,
 } from '@/types';
@@ -11,6 +12,7 @@ interface ArticleListParams {
   categoryId?: string;
   search?: string;
   status?: HelpArticleStatus;
+  audience?: HelpAudience;
   page?: number;
   limit?: number;
 }
@@ -20,6 +22,7 @@ function toQuery(p: ArticleListParams): string {
   if (p.categoryId) q.set('categoryId', p.categoryId);
   if (p.search) q.set('search', p.search);
   if (p.status) q.set('status', p.status);
+  if (p.audience) q.set('audience', p.audience);
   if (p.page) q.set('page', String(p.page));
   if (p.limit) q.set('limit', String(p.limit));
   const s = q.toString();
@@ -92,6 +95,20 @@ export function useHelpArticleFeedback() {
 }
 
 // ── Beheer ─────────────────────────────────────────────────────────────────
+/**
+ * Beheerlijst van categorieën (alle doelgroepen + niet-gepubliceerd in scope).
+ * Optioneel gefilterd op audience (INTERNAL/EXTERNAL).
+ */
+export function useAdminHelpCategories(audience?: HelpAudience) {
+  return useQuery<HelpCategory[]>({
+    queryKey: ['help', 'admin', 'categories', audience ?? 'all'],
+    queryFn: () =>
+      apiClient.get<HelpCategory[]>(
+        `/help/admin/categories${audience ? `?audience=${audience}` : ''}`,
+      ),
+  });
+}
+
 export function useAdminHelpArticles(
   params: ArticleListParams = {},
   options: { enabled?: boolean } = {},

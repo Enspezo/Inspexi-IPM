@@ -46,6 +46,7 @@ import { CustomFieldsModule } from './modules/custom-fields/custom-fields.module
 import { NumberingModule } from './modules/numbering/numbering.module';
 import { EmailTemplatesModule } from './modules/email-templates/email-templates.module';
 import { ProjectsModule } from './modules/projects/projects.module';
+import { ProjectPhasesModule } from './modules/project-phases/project-phases.module';
 import { KvkModule } from './modules/kvk/kvk.module';
 import { VatModule } from './modules/vat/vat.module';
 import { ErrorReportsModule } from './modules/error-reports/error-reports.module';
@@ -134,6 +135,7 @@ import { VoiceModule } from './modules/voice/voice.module';
     NumberingModule,
     EmailTemplatesModule,
     ProjectsModule,
+    ProjectPhasesModule,
     KvkModule,
     VatModule,
     ErrorReportsModule,

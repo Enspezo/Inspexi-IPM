@@ -82,6 +82,9 @@ export const NOTIFICATION_MODEL_TYPES: Record<
   PROJECTEN: [
     NotificationType.PROJECT_AANGEMAAKT,
     NotificationType.PROJECT_STATUS_GEWIJZIGD,
+    NotificationType.FASE_STATUS_GEWIJZIGD,
+    NotificationType.MILESTONE_HERINNERING,
+    NotificationType.MILESTONE_VERLOPEN,
   ],
   FOUTMELDINGEN: [NotificationType.FOUTMELDING_INGEDIEND],
   INSPECTIEPLANNEN: [

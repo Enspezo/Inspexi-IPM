@@ -23,6 +23,7 @@ import {
   type ColumnDef,
 } from '@/components/table-config';
 import { useAuth } from '@/providers/auth-provider';
+import { useFeatures } from '@/providers/feature-provider';
 import { useWindowTabs } from '@/providers/window-tabs';
 import { useQuotes } from './hooks/use-quotes';
 import { useQuoteTemplates } from './hooks/use-quote-templates';
@@ -53,12 +54,17 @@ export default function QuotesPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const { openTab } = useWindowTabs();
+  const { hasFeature } = useFeatures();
+  // PRD-12 §Fase E: fase-kolom alleen registreren bij de PROJECT_FASEN-entitlement.
+  const hasPhaseFeature = hasFeature('PROJECT_FASEN');
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [templateFilter, setTemplateFilter] = useState('');
   const [onlyMine, setOnlyMine] = useState(() => tenantStorage.getItem('filter-mine:quotes') === 'true');
   const [page, setPage] = useState(1);
+  // Fase-kolomfilter (PRD-12): opties uit de zichtbare data, gevuld zodra die geladen is.
+  const [phaseFilterOptions, setPhaseFilterOptions] = useState<{ value: string; label: string }[]>([]);
 
   const { data: templatesData } = useQuoteTemplates({ limit: 200 });
   const templates = templatesData?.data ?? [];
@@ -166,6 +172,22 @@ export default function QuotesPage() {
         <span className="text-gray-600">{quote.template?.name ?? '—'}</span>
       ),
     },
+    ...(hasPhaseFeature
+      ? [{
+          key: 'phase',
+          header: 'Fase',
+          sidebarLabel: 'Fase',
+          defaultVisible: false,
+          filterable: true,
+          filterType: 'select' as const,
+          filterOptions: phaseFilterOptions,
+          groupable: true,
+          getFilterValue: (quote: Quote) => quote.projectPhase?.name ?? '',
+          render: (quote: Quote) => (
+            <span className="text-gray-600">{quote.projectPhase?.name ?? '—'}</span>
+          ),
+        }]
+      : []),
     {
       key: 'total',
       header: 'Totaal',
@@ -243,6 +265,14 @@ export default function QuotesPage() {
     sortBy: apiSort?.sortBy,
     sortOrder: apiSort?.sortOrder,
   });
+
+  // Fase-filteropties uit de zichtbare offertes (distinct fasenaam).
+  useEffect(() => {
+    const names = Array.from(
+      new Set((data?.data ?? []).map((q) => q.projectPhase?.name).filter(Boolean) as string[]),
+    ).sort();
+    setPhaseFilterOptions(names.map((n) => ({ value: n, label: n })));
+  }, [data]);
 
   if (isLoading) {
     return (

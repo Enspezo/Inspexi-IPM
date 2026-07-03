@@ -669,6 +669,7 @@ export interface Quote {
   requiresApproval: boolean;
   internalNotes: string | null;
   projectId: string | null;
+  projectPhaseId: string | null;
   customFields: Record<string, any> | null;
   createdBy: string;
   createdAt: string;
@@ -693,6 +694,7 @@ export interface Quote {
   questions?: QuoteQuestion[];
   attachments?: QuoteAttachment[];
   project?: { id: string; projectNumber: string } | null;
+  projectPhase?: ProjectPhaseRef | null;
 }
 
 export interface QuoteLine {
@@ -796,6 +798,9 @@ export enum NotificationType {
   SUPPORT_TICKET_STATUS = 'SUPPORT_TICKET_STATUS',
   MEETMIDDEL_KALIBRATIE_BINNENKORT = 'MEETMIDDEL_KALIBRATIE_BINNENKORT',
   MEETMIDDEL_KALIBRATIE_VERLOPEN = 'MEETMIDDEL_KALIBRATIE_VERLOPEN',
+  FASE_STATUS_GEWIJZIGD = 'FASE_STATUS_GEWIJZIGD',
+  MILESTONE_HERINNERING = 'MILESTONE_HERINNERING',
+  MILESTONE_VERLOPEN = 'MILESTONE_VERLOPEN',
 }
 
 export interface Notification {
@@ -875,6 +880,7 @@ export enum TaskEntityType {
   QUOTE = 'QUOTE',
   PLANNING = 'PLANNING',
   PROJECT = 'PROJECT',
+  PROJECT_PHASE = 'PROJECT_PHASE',
   USER = 'USER',
 }
 
@@ -905,6 +911,7 @@ export enum NoteEntityType {
   QUOTE = 'QUOTE',
   PLANNING = 'PLANNING',
   PROJECT = 'PROJECT',
+  PROJECT_PHASE = 'PROJECT_PHASE',
   USER = 'USER',
   WORK_ORDER = 'WORK_ORDER',
 }
@@ -937,6 +944,7 @@ export enum DocumentEntityType {
   TASK = 'TASK',
   PLANNING = 'PLANNING',
   PROJECT = 'PROJECT',
+  PROJECT_PHASE = 'PROJECT_PHASE',
   USER = 'USER',
   WORK_ORDER = 'WORK_ORDER',
 }
@@ -1200,6 +1208,7 @@ export interface PlanningItem {
   id: string;
   orgId: string;
   projectId: string | null;
+  projectPhaseId: string | null;
   quoteId: string | null;
   contactId: string;
   contactPersonId: string | null;
@@ -1261,6 +1270,7 @@ export interface PlanningItem {
     primaryColor: string | null;
   };
   project?: { id: string; projectNumber: string } | null;
+  projectPhase?: ProjectPhaseRef | null;
 }
 
 // ─── Werkbonnen (Work Orders) ────────────────────────────
@@ -1281,6 +1291,7 @@ export interface WorkOrder {
   internalNotes: string | null;
   startTime: string | null;
   endTime: string | null;
+  projectPhaseId: string | null;
   createdBy: string;
   createdAt: string;
   updatedAt: string;
@@ -1291,6 +1302,8 @@ export interface WorkOrder {
     status: string;
     contactId: string;
     locationId: string | null;
+    projectId?: string | null;
+    project?: { id: string; projectNumber: string } | null;
     contact?: {
       id: string;
       type: string;
@@ -1308,6 +1321,7 @@ export interface WorkOrder {
     };
     inspectors?: PlanningInspector[];
   };
+  projectPhase?: ProjectPhaseRef | null;
   createdByUser?: UserSummary;
   lines?: WorkOrderLine[];
 }
@@ -1389,6 +1403,118 @@ export interface ProjectFollower {
   canViewDocuments: boolean;
   createdAt: string;
   user?: UserSummary | null;
+}
+
+// ─── PRD-12: Projectfasen ─────────────────────────────────
+
+export enum PhaseStatus {
+  NIET_GESTART = 'NIET_GESTART',
+  ACTIEF = 'ACTIEF',
+  ON_HOLD = 'ON_HOLD',
+  AFGEROND = 'AFGEROND',
+  GEANNULEERD = 'GEANNULEERD',
+}
+
+export enum MilestoneStatus {
+  OPEN = 'OPEN',
+  BEHAALD = 'BEHAALD',
+  VERVALLEN = 'VERVALLEN',
+}
+
+/** Lichte fase-referentie zoals meegeleverd op gekoppelde entiteiten (PRD-12 §12.7.2). */
+export interface ProjectPhaseRef {
+  id: string;
+  name: string;
+  sortOrder: number;
+  status: PhaseStatus;
+  projectId?: string;
+}
+
+/** Fasevolger — spiegelt ProjectFollower (§12.3.3). */
+export interface ProjectPhaseFollower {
+  id: string;
+  phaseId: string;
+  userId: string | null;
+  email: string | null;
+  name: string | null;
+  canViewGeneral: boolean;
+  canViewRequests: boolean;
+  canViewQuotes: boolean;
+  canViewPlanning: boolean;
+  canViewDocuments: boolean;
+  createdAt: string;
+  user?: UserSummary | null;
+}
+
+export interface PhaseMilestone {
+  id: string;
+  orgId: string;
+  phaseId: string;
+  title: string;
+  description: string | null;
+  dueDate: string;
+  status: MilestoneStatus;
+  completedAt: string | null;
+  assigneeId: string | null;
+  reminderDaysBefore: number;
+  lastReminderStage: string | null;
+  lastReminderAt: string | null;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+  assignee?: UserSummary | null;
+}
+
+/** Lichte milestone-vorm zoals meegeleverd in de fasenlijst (§12.5). */
+export interface PhaseMilestoneSummaryItem {
+  id: string;
+  status: MilestoneStatus;
+  dueDate: string;
+}
+
+export interface PhaseCounts {
+  inspectionPlans: number;
+  planningItems: number;
+  workOrders: number;
+  quotes: number;
+  followers: number;
+  milestones: number;
+}
+
+interface PhasePersonRef {
+  id: string;
+  firstName: string | null;
+  lastName: string | null;
+  email: string | null;
+}
+
+export interface ProjectPhase {
+  id: string;
+  orgId: string;
+  projectId: string;
+  name: string;
+  description: string | null;
+  status: PhaseStatus;
+  sortOrder: number;
+  locationId: string | null;
+  contactPersonId: string | null;
+  startDate: string | null;
+  expectedEndDate: string | null;
+  completedAt: string | null;
+  // Prisma Decimal serialiseert als string; alleen aanwezig voor canWrite-rollen (§12.4.8).
+  budgetAmount?: string | null;
+  isDeleted: boolean;
+  deletedAt: string | null;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+  location?: LocationSummary | null;
+  contactPerson?: PhasePersonRef | null;
+  createdByUser?: PhasePersonRef;
+  // Lijst levert lichte milestones; detail levert de volledige lijst.
+  milestones?: PhaseMilestoneSummaryItem[];
+  followers?: ProjectPhaseFollower[];
+  _count?: PhaseCounts;
 }
 
 // ─── Global Search ────────────────────────────────────────
@@ -1945,6 +2071,7 @@ export interface InspectionPlan {
   orgId: string;
   contactId: string;
   projectId: string | null;
+  projectPhaseId: string | null;
   inspectionTemplateId: string | null;
   locationId: string | null;
   projectName: string;
@@ -1982,6 +2109,7 @@ export interface InspectionPlan {
   deletedAt: string | null;
   contact?: ContactSummary;
   project?: { id: string; projectNumber: string } | null;
+  projectPhase?: ProjectPhaseRef | null;
   assignedUser?: UserSummary | null;
   reviewer?: UserSummary | null;
   inspectionTemplate?: InspectionTemplate | null;

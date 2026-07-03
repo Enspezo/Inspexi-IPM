@@ -105,10 +105,12 @@ export function UploadDocumentModal({
   // Config-driven record sources: one entry per link type maps the matching
   // list-hook result to selectable options. Adding a new type means adding one
   // entry here — a missing record picker can no longer slip through.
-  const recordSources: Record<
+  // PROJECT_PHASE heeft geen globale record-picker (fasen leven genest onder een
+  // project) en zit daarom niet in DOCUMENT_ENTITY_LINK_TYPES — Partial dekt dat.
+  const recordSources: Partial<Record<
     DocumentEntityType,
     { isLoading: boolean; options: RecordOption[] }
-  > = {
+  >> = {
     [DocumentEntityType.CONTACT]: {
       isLoading: contacts.isLoading,
       options: (contacts.data?.data ?? []).map((c) => ({

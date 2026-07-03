@@ -13,7 +13,8 @@ import {
 } from '@prisma/client';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '@/prisma';
-import { paginate, orgScope, assertFound, assertSameOrg, assertAllSameOrg, assertOrgAccess } from '@/common';
+import { paginate, orgScope, assertFound, assertSameOrg, assertAllSameOrg, assertOrgAccess, resolvePhaseLink, PROJECT_FASEN_FEATURE, PROJECT_FASEN_REQUIRED_MESSAGE } from '@/common';
+import { EntitlementsService } from '@/modules/entitlements/entitlements.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { WorkOrdersService } from '../work-orders/work-orders.service';
 import { PlanningEmailService } from './planning-email.service';
@@ -116,6 +117,7 @@ const PLANNING_INCLUDE = {
     orderBy: { sessionNumber: 'asc' as const },
   },
   project: { select: { id: true, projectNumber: true } },
+  projectPhase: { select: { id: true, name: true, sortOrder: true, status: true } },
 };
 
 @Injectable()
@@ -128,6 +130,7 @@ export class PlanningService {
     private workOrdersService: WorkOrdersService,
     private planningEmail: PlanningEmailService,
     private config: ConfigService,
+    private entitlements: EntitlementsService,
   ) {}
 
   getPublicUrl(path: string): string {
@@ -313,11 +316,28 @@ export class PlanningService {
   async update(id: string, dto: UpdatePlanningItemDto, user: User) {
     const existing = await this.findOne(id, user);
 
+    // Projectfase-koppeling (PRD-12): alleen bij een DAADWERKELIJKE wijziging van
+    // projectPhaseId de PROJECT_FASEN-entitlement afdwingen (§Fase E).
+    if (dto.projectPhaseId !== undefined) {
+      await this.entitlements.assertFeature(
+        user.orgId, PROJECT_FASEN_FEATURE, PROJECT_FASEN_REQUIRED_MESSAGE,
+      );
+    }
+    // Valideer org + projectconsistentie en cascadeer het project van de fase naar
+    // de planregel wanneer die er nog geen heeft.
+    const phaseLink = await resolvePhaseLink(
+      this.prisma.projectPhase, dto.projectPhaseId, user.orgId, existing.projectId,
+    );
+
     const data: any = {};
     if (dto.locationId !== undefined) data.locationId = dto.locationId;
     if (dto.contactPersonId !== undefined) data.contactPersonId = dto.contactPersonId ?? null;
     if (dto.productId !== undefined) data.productId = dto.productId ?? null;
     if (dto.productName !== undefined) data.productName = dto.productName;
+    if (phaseLink !== undefined) {
+      data.projectPhaseId = phaseLink.phaseId;
+      if (phaseLink.projectId && existing.projectId == null) data.projectId = phaseLink.projectId;
+    }
     if (dto.scheduledDate !== undefined) {
       data.scheduledDate = dto.scheduledDate ? new Date(dto.scheduledDate) : null;
     }

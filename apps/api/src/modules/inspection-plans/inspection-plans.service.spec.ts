@@ -17,6 +17,7 @@ import {
 import { LookupService } from '../lookups/lookup.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { AssetNodesService } from '../asset-nodes/asset-nodes.service';
+import { EntitlementsService } from '@/modules/entitlements/entitlements.service';
 
 describe('InspectionPlansService', () => {
   let service: InspectionPlansService;
@@ -86,6 +87,10 @@ describe('InspectionPlansService', () => {
         { provide: LookupService, useValue: mockLookupService },
         { provide: NotificationsService, useValue: mockNotificationsService },
         { provide: AssetNodesService, useValue: mockAssetNodesService },
+        {
+          provide: EntitlementsService,
+          useValue: { assertFeature: jest.fn().mockResolvedValue(undefined) },
+        },
       ],
     }).compile();
 

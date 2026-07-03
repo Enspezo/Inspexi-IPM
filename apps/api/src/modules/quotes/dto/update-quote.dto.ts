@@ -29,6 +29,12 @@ export class UpdateQuoteDto {
   @IsUUID()
   templateId?: string | null;
 
+  @ApiPropertyOptional({ description: 'Projectfase ID (null om te ontkoppelen). Moet bij hetzelfde project horen (PRD-12).', nullable: true })
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null)
+  @IsUUID()
+  projectPhaseId?: string | null;
+
   @ApiPropertyOptional({ description: 'Geldig tot datum' })
   @IsOptional()
   @IsDateString()

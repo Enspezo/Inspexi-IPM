@@ -11,6 +11,9 @@ import {
   orgScope,
   assertFound,
   assertSameOrg,
+  resolvePhaseLink,
+  PROJECT_FASEN_FEATURE,
+  PROJECT_FASEN_REQUIRED_MESSAGE,
   requireOrg,
   STATUS_DRAFT,
   STATUS_IN_PROGRESS,
@@ -18,6 +21,7 @@ import {
   STATUS_REVIEWED,
   STATUS_APPROVED,
 } from '@/common';
+import { EntitlementsService } from '@/modules/entitlements/entitlements.service';
 import { LookupService, LOOKUP_KIND, type LookupKind } from '../lookups/lookup.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { AssetNodesService } from '../asset-nodes/asset-nodes.service';
@@ -45,6 +49,7 @@ export class InspectionPlansService {
     private lookups: LookupService,
     private notifications: NotificationsService,
     private assetNodes: AssetNodesService,
+    private entitlements: EntitlementsService,
   ) {}
 
   /** Template mag een systeemtemplate (orgId null) of een eigen-org template zijn. */
@@ -161,6 +166,7 @@ export class InspectionPlansService {
         contact: { select: contactSelect },
         assignedUser: { select: userSelect },
         reviewer: { select: userSelect },
+        projectPhase: { select: { id: true, name: true, sortOrder: true, status: true } },
       },
       orderBy,
       page,
@@ -179,6 +185,7 @@ export class InspectionPlansService {
         include: {
           contact: { select: contactSelect },
           project: { select: { id: true, title: true, projectNumber: true } },
+          projectPhase: { select: { id: true, name: true, sortOrder: true, status: true } },
           assignedUser: { select: userSelect },
           reviewer: { select: userSelect },
           inspectionTemplate: {
@@ -294,6 +301,30 @@ export class InspectionPlansService {
       data.project = dto.projectId
         ? { connect: { id: dto.projectId } }
         : { disconnect: true };
+
+    // Projectfase-koppeling (PRD-12): valideer org + projectconsistentie t.o.v. het
+    // effectieve project (een in dezelfde PATCH gewijzigd projectId telt mee) en
+    // cascadeer het project van de fase wanneer het plan er nog geen heeft.
+    const effectiveProjectId =
+      dto.projectId !== undefined ? dto.projectId : existing.projectId;
+    // Alleen bij een DAADWERKELIJKE wijziging van projectPhaseId de
+    // PROJECT_FASEN-entitlement afdwingen (§Fase E).
+    if (dto.projectPhaseId !== undefined) {
+      await this.entitlements.assertFeature(
+        orgId, PROJECT_FASEN_FEATURE, PROJECT_FASEN_REQUIRED_MESSAGE,
+      );
+    }
+    const phaseLink = await resolvePhaseLink(
+      this.prisma.projectPhase, dto.projectPhaseId, orgId, effectiveProjectId,
+    );
+    if (phaseLink !== undefined) {
+      data.projectPhase = phaseLink.phaseId
+        ? { connect: { id: phaseLink.phaseId } }
+        : { disconnect: true };
+      if (phaseLink.projectId && effectiveProjectId == null) {
+        data.project = { connect: { id: phaseLink.projectId } };
+      }
+    }
     if (dto.locationId !== undefined)
       data.location = dto.locationId
         ? { connect: { id: dto.locationId } }

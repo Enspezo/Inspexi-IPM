@@ -6,7 +6,8 @@ import {
 } from '@nestjs/common';
 import { User, Role, Prisma, WorkOrderStatus } from '@prisma/client';
 import { PrismaService } from '@/prisma';
-import { paginate, orgScope, assertFound } from '@/common';
+import { paginate, orgScope, assertFound, resolvePhaseLink, PROJECT_FASEN_FEATURE, PROJECT_FASEN_REQUIRED_MESSAGE } from '@/common';
+import { EntitlementsService } from '@/modules/entitlements/entitlements.service';
 import { NumberingService } from '@/modules/numbering/numbering.service';
 import {
   CreateWorkOrderDto,
@@ -25,6 +26,8 @@ const WORK_ORDER_INCLUDE = {
       status: true,
       contactId: true,
       locationId: true,
+      projectId: true,
+      project: { select: { id: true, projectNumber: true } },
       contact: {
         select: {
           id: true,
@@ -58,6 +61,7 @@ const WORK_ORDER_INCLUDE = {
       },
     },
   },
+  projectPhase: { select: { id: true, name: true, sortOrder: true, status: true, projectId: true } },
   createdByUser: {
     select: { id: true, firstName: true, lastName: true, email: true },
   },
@@ -124,6 +128,7 @@ export class WorkOrdersService {
   constructor(
     private prisma: PrismaService,
     private numbering: NumberingService,
+    private entitlements: EntitlementsService,
   ) {}
 
   /** Lazy numbering context (postcode + huisnummer) for a work order's location. */
@@ -322,10 +327,23 @@ export class WorkOrdersService {
       );
     }
 
+    // Projectfase-koppeling (PRD-12): een werkbon heeft geen eigen projectId, dus
+    // alleen een org- en bestaanscheck op de fase (geen projectconsistentie).
+    // Bij een DAADWERKELIJKE wijziging eerst de PROJECT_FASEN-entitlement afdwingen (§Fase E).
+    if (dto.projectPhaseId !== undefined) {
+      await this.entitlements.assertFeature(
+        user.orgId, PROJECT_FASEN_FEATURE, PROJECT_FASEN_REQUIRED_MESSAGE,
+      );
+    }
+    const phaseLink = await resolvePhaseLink(
+      this.prisma.projectPhase, dto.projectPhaseId, user.orgId, undefined,
+    );
+
     return serializeWorkOrder(await this.prisma.workOrder.update({
       where: { id: workOrder.id },
       data: {
         ...(manualNumber !== undefined && { workOrderNumber: manualNumber }),
+        ...(phaseLink !== undefined && { projectPhaseId: phaseLink.phaseId }),
         planningItemId: dto.planningItemId !== undefined ? (dto.planningItemId || null) : undefined,
         internalNotes: dto.internalNotes,
         startTime:

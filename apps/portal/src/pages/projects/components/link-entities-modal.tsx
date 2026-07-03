@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react';
 import { Modal, Button, Input, Spinner } from '@/components/ui';
 import { useToast } from '@/components/ui';
 import { apiClient, getErrorMessage } from '@/lib/api-client';
+import { PhaseSelect } from '@/components/projects/phase-select';
+import { useFeatures } from '@/providers/feature-provider';
 import { useAssignToProject } from '../hooks/use-projects';
 
 interface Props {
@@ -24,11 +26,16 @@ const entityEndpoints: Record<string, string> = {
 
 export function LinkEntitiesModal({ projectId, entityType, onClose }: Props) {
   const { showToast } = useToast();
+  const { hasFeature } = useFeatures();
   const assignMutation = useAssignToProject(projectId);
   const [search, setSearch] = useState('');
   const [items, setItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  // Optionele fase-koppeling bij het koppelen (PRD-12 §12.7.2); aanvragen kennen geen
+  // fase en de hele fase-laag zit achter PROJECT_FASEN (§Fase E).
+  const [phaseId, setPhaseId] = useState<string | null>(null);
+  const supportsPhase = entityType !== 'requests' && hasFeature('PROJECT_FASEN');
 
   useEffect(() => {
     setLoading(true);
@@ -63,6 +70,17 @@ export function LinkEntitiesModal({ projectId, entityType, onClose }: Props) {
 
     try {
       await assignMutation.mutateAsync(payload);
+      // De fase pas na de projectkoppeling zetten: de entiteit heeft dan het juiste
+      // projectId zodat de projectconsistentie-check (§12.4.2) op de API slaagt.
+      if (supportsPhase && phaseId) {
+        await Promise.all(
+          ids.map((id) =>
+            apiClient.patch(`${entityEndpoints[entityType]}/${id}`, {
+              projectPhaseId: phaseId,
+            }),
+          ),
+        );
+      }
       showToast(
         `${ids.length} ${entityLabels[entityType].toLowerCase()} gekoppeld`,
         'success',
@@ -96,6 +114,15 @@ export function LinkEntitiesModal({ projectId, entityType, onClose }: Props) {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
+
+        {supportsPhase && (
+          <PhaseSelect
+            projectId={projectId}
+            value={phaseId}
+            onChange={setPhaseId}
+            label="Koppelen aan fase (optioneel)"
+          />
+        )}
 
         <div className="max-h-80 space-y-2 overflow-y-auto">
           {loading ? (

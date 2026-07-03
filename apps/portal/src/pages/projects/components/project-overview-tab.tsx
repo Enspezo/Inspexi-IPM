@@ -39,6 +39,7 @@ export function OverviewTab({
   canWrite,
   users,
   linkedLocations,
+  phaseProgress,
   onUpdate,
   isUpdating,
   onDelete,
@@ -48,6 +49,7 @@ export function OverviewTab({
   canWrite: boolean;
   users: { value: string; label: string }[];
   linkedLocations: ProjectLocation[];
+  phaseProgress?: { done: number; total: number } | null;
   onUpdate: (data: any) => Promise<void>;
   isUpdating: boolean;
   onDelete: () => void;
@@ -114,6 +116,14 @@ export function OverviewTab({
                     <StatusBadge status={project.status} map={PROJECT_STATUS} />
                   </dd>
                 </div>
+                {phaseProgress && (
+                  <div>
+                    <dt className="text-sm font-medium text-gray-500">Fasen</dt>
+                    <dd className="mt-1 text-sm text-gray-900">
+                      {phaseProgress.done} van {phaseProgress.total} fasen afgerond
+                    </dd>
+                  </div>
+                )}
               </dl>
             </Card>
 

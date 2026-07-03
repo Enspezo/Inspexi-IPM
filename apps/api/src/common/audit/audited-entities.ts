@@ -87,6 +87,12 @@ export const AUDITED_ENTITIES: readonly AuditedEntity[] = [
   { model: 'NumberingScheme', table: 'imp_numbering_schemes', displayFields: ['model'] },
   { model: 'EmailTemplate', table: 'imp_email_templates', displayFields: ['name', 'subject'] },
   { model: 'Project', table: 'imp_projects', displayFields: ['projectNumber', 'title'] },
+  { model: 'ProjectPhase', table: 'imp_project_phases', displayFields: ['name'] },
+  {
+    model: 'PhaseMilestone',
+    table: 'imp_project_phase_milestones',
+    displayFields: ['title'],
+  },
   { model: 'WorkOrder', table: 'imp_work_orders', displayFields: ['workOrderNumber'] },
   { model: 'WorkOrderLine', table: 'imp_work_order_lines', displayFields: ['description'] },
 

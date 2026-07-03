@@ -19,6 +19,7 @@ import { FavoriteStar } from '@/components/favorites/favorite-star';
 import { StartChatButton } from '@/components/chat';
 import { NotesSidebarSection, HistorySidebarSection, DocumentsSidebarSection } from '@/components/layout/sidebar-sections';
 import { useAuth } from '@/providers/auth-provider';
+import { useFeatures } from '@/providers/feature-provider';
 import { useWindowTabSync } from '@/providers/window-tabs';
 import {
   useQuote,
@@ -56,6 +57,7 @@ export default function QuoteDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { hasFeature } = useFeatures();
   const { showToast } = useToast();
   const confirm = useConfirm();
   const { data: quote, isLoading, error } = useQuote(id!);
@@ -95,6 +97,11 @@ export default function QuoteDetailPage() {
   const userCanApprove = user && user.roles.some(r => canApprove.includes(r));
   // Backend staat bewerken alleen toe bij status CONCEPT (quotes.service.ts update())
   const canEditQuote = !!userCanWrite && quote?.status === QuoteStatus.CONCEPT;
+  // Projectfasen zitten achter de PROJECT_FASEN-entitlement (§Fase E).
+  const hasPhaseFeature = hasFeature('PROJECT_FASEN');
+  // Fase-koppelen mag in élke status (PRD-12): pure projectPhaseId-patch passeert de
+  // CONCEPT-guard — mits de feature aanstaat.
+  const canLinkPhase = !!userCanWrite && hasPhaseFeature;
 
   const handleSubmitApproval = async () => {
     try {
@@ -386,6 +393,8 @@ export default function QuoteDetailPage() {
         <QuoteInfoCard
           quote={quote}
           canEditQuote={canEditQuote}
+          canLinkPhase={canLinkPhase}
+          hasPhaseFeature={hasPhaseFeature}
           updateQuoteMutation={updateQuoteMutation}
           showToast={showToast}
         />

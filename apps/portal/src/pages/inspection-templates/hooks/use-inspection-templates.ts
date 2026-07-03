@@ -78,3 +78,41 @@ export function useDeleteInspectionTemplate() {
     },
   });
 }
+
+/** Publiceren (CONCEPT → ACTIEF), met optionele toelichting voor de historie. */
+export function usePublishInspectionTemplate() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, changeDescription }: { id: string; changeDescription?: string }) =>
+      apiClient.post<InspectionTemplate>(`/inspection-templates/${id}/publish`, { changeDescription }),
+    onSuccess: (_d, v) => {
+      qc.invalidateQueries({ queryKey: ['inspection-templates'] });
+      qc.invalidateQueries({ queryKey: ['inspection-template', v.id] });
+    },
+  });
+}
+
+/** Laten vervallen (ACTIEF → VERVALLEN), met optionele reden voor de historie. */
+export function useRetireInspectionTemplate() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, reason }: { id: string; reason?: string }) =>
+      apiClient.post<InspectionTemplate>(`/inspection-templates/${id}/retire`, { reason }),
+    onSuccess: (_d, v) => {
+      qc.invalidateQueries({ queryKey: ['inspection-templates'] });
+      qc.invalidateQueries({ queryKey: ['inspection-template', v.id] });
+    },
+  });
+}
+
+/** Nieuwe versie maken (kloon naar CONCEPT, versie opgehoogd). */
+export function useNewVersionInspectionTemplate() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, changeDescription }: { id: string; changeDescription?: string }) =>
+      apiClient.post<InspectionTemplate>(`/inspection-templates/${id}/new-version`, {
+        changeDescription,
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['inspection-templates'] }),
+  });
+}

@@ -5,9 +5,7 @@ import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   Button,
-  Card,
   ErrorBox,
-  InfoField,
   Spinner,
   StatusBadge,
   Tabs,
@@ -19,7 +17,6 @@ import { DetailPageLayout } from '@/components/layout/detail-page-layout';
 import { AuditHistory } from '@/components/audit-history/audit-history';
 import { useAuth } from '@/providers/auth-provider';
 import { getErrorMessage } from '@/lib/api-client';
-import { formatDate } from '@/lib/format';
 import { TEMPLATE_STATUS } from '@/lib/status';
 import { Role, TemplateStatus } from '@/types';
 import {
@@ -32,6 +29,7 @@ import {
 import { DocumentBuilderTab } from './components/document-builder-tab';
 import { ForkInspectionTemplateModal } from './components/fork-inspection-template-modal';
 import { LifecycleModal } from './components/lifecycle-modal';
+import { OverviewTab } from './components/overview-tab';
 
 type Tab = 'overzicht' | 'document-builder';
 type LifecycleAction = 'publish' | 'retire' | 'new-version' | null;
@@ -196,23 +194,7 @@ export default function InspectionTemplateDetailPage() {
         <Tabs tabs={tabs} active={activeTab} onChange={setActiveTab} />
 
         {/* Tab-inhoud */}
-        {activeTab === 'overzicht' && (
-          <Card title="Templategegevens">
-            <dl className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <InfoField label="Naam" value={template.name} />
-              <InfoField label="Code" value={template.code} />
-              <InfoField label="Normtype" value={template.normTypeCode} />
-              <InfoField label="Versie" value={template.version} />
-              <InfoField label="Classificatiemodel" value={template.classificationModel?.name} />
-              <InfoField label="Herkomst" value={template.isSystem ? 'Systeem' : 'Eigen'} />
-              <InfoField label="Aangemaakt" value={formatDate(template.createdAt)} />
-              <InfoField label="Bijgewerkt" value={formatDate(template.updatedAt)} />
-              <div className="sm:col-span-2">
-                <InfoField label="Beschrijving" value={template.description} />
-              </div>
-            </dl>
-          </Card>
-        )}
+        {activeTab === 'overzicht' && <OverviewTab template={template} canEdit={canManage} />}
 
         {activeTab === 'document-builder' && (
           <DocumentBuilderTab inspectionTemplateId={id!} canManage={canManage} />

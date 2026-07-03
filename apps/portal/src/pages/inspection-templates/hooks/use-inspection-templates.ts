@@ -24,6 +24,13 @@ export interface ForkInspectionTemplateInput {
   name?: string;
 }
 
+/** Bewerkbare velden van een inspectie-template (alleen CONCEPT). */
+export interface UpdateInspectionTemplateInput {
+  name?: string;
+  description?: string;
+  classificationModelId?: string;
+}
+
 /** Detail van één inspectie-template. */
 export function useInspectionTemplate(id: string) {
   return useQuery<InspectionTemplate>({
@@ -54,6 +61,19 @@ export function useCreateInspectionTemplate() {
     mutationFn: (data: CreateInspectionTemplateInput) =>
       apiClient.post<InspectionTemplate>('/inspection-templates', data),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['inspection-templates'] }),
+  });
+}
+
+/** Inspectie-template bijwerken (alleen CONCEPT: naam/omschrijving/classificatiemodel). */
+export function useUpdateInspectionTemplate() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, data }: { id: string; data: UpdateInspectionTemplateInput }) =>
+      apiClient.patch<InspectionTemplate>(`/inspection-templates/${id}`, data),
+    onSuccess: (_d, v) => {
+      qc.invalidateQueries({ queryKey: ['inspection-templates'] });
+      qc.invalidateQueries({ queryKey: ['inspection-template', v.id] });
+    },
   });
 }
 

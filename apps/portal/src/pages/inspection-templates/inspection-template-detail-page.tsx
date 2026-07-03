@@ -3,7 +3,7 @@
 
 import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Card, ErrorBox, InfoField, Spinner, StatusBadge, Tabs, type TabDef } from '@/components/ui';
+import { Button, Card, ErrorBox, InfoField, Spinner, StatusBadge, Tabs, type TabDef } from '@/components/ui';
 import { DetailPageLayout } from '@/components/layout/detail-page-layout';
 import { AuditHistory } from '@/components/audit-history/audit-history';
 import { useAuth } from '@/providers/auth-provider';
@@ -12,6 +12,7 @@ import { TEMPLATE_STATUS } from '@/lib/status';
 import { Role, TemplateStatus } from '@/types';
 import { useInspectionTemplate } from './hooks/use-inspection-templates';
 import { DocumentBuilderTab } from './components/document-builder-tab';
+import { ForkInspectionTemplateModal } from './components/fork-inspection-template-modal';
 
 type Tab = 'overzicht' | 'document-builder';
 
@@ -24,6 +25,7 @@ export default function InspectionTemplateDetailPage() {
 
   const { data: template, isLoading, error } = useInspectionTemplate(id!);
   const [activeTab, setActiveTab] = useState<Tab>('overzicht');
+  const [forkOpen, setForkOpen] = useState(false);
 
   if (isLoading) {
     return (
@@ -42,6 +44,8 @@ export default function InspectionTemplateDetailPage() {
   const isConcept = template.status === TemplateStatus.CONCEPT;
   const systemOk = template.isSystem ? isSuperuser : true;
   const canManage = isManagerRole && isConcept && systemOk;
+  // Forken kan alleen een org-gebruiker (heeft orgId) op een systeemtemplate.
+  const canFork = isManagerRole && template.isSystem && !!user?.orgId;
 
   const tabs: TabDef<Tab>[] = [
     { key: 'overzicht', label: 'Overzicht' },
@@ -77,6 +81,9 @@ export default function InspectionTemplateDetailPage() {
               </span>
             </div>
           </div>
+          {canFork && (
+            <Button onClick={() => setForkOpen(true)}>Forken naar mijn organisatie</Button>
+          )}
         </div>
 
         {/* Tabs */}
@@ -105,6 +112,14 @@ export default function InspectionTemplateDetailPage() {
           <DocumentBuilderTab inspectionTemplateId={id!} canManage={canManage} />
         )}
       </div>
+
+      {canFork && (
+        <ForkInspectionTemplateModal
+          isOpen={forkOpen}
+          onClose={() => setForkOpen(false)}
+          source={template}
+        />
+      )}
     </DetailPageLayout>
   );
 }

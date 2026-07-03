@@ -3,17 +3,25 @@
 
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import type { InspectionTemplate } from '@/types';
-import { ErrorBox, Spinner, Table, Input, StatusBadge } from '@/components/ui';
+import { Role, type InspectionTemplate } from '@/types';
+import { Button, ErrorBox, Spinner, Table, Input, StatusBadge } from '@/components/ui';
 import { DetailPageLayout } from '@/components/layout/detail-page-layout';
 import { PageHeader } from '@/components/layout/page-header';
 import { TableConfigSidebar, useTableConfig, type ColumnDef } from '@/components/table-config';
+import { useAuth } from '@/providers/auth-provider';
 import { TEMPLATE_STATUS } from '@/lib/status';
 import { useInspectionTemplates } from './hooks/use-inspection-templates';
+import { CreateInspectionTemplateModal } from './components/create-inspection-template-modal';
+
+const MANAGE_ROLES: Role[] = [Role.SUPERUSER, Role.ORG_ADMIN];
 
 export default function InspectionTemplatesPage() {
   const [search, setSearch] = useState('');
+  const [createOpen, setCreateOpen] = useState(false);
+  const { user } = useAuth();
   const { data, isLoading, error } = useInspectionTemplates();
+
+  const canManage = !!user && user.roles.some((r) => MANAGE_ROLES.includes(r));
 
   const columns: ColumnDef<InspectionTemplate>[] = [
     {
@@ -85,7 +93,15 @@ export default function InspectionTemplatesPage() {
       }
     >
       <div className="space-y-6">
-        <PageHeader title="Inspectie-templates" description="Inspectie-templates beheren en doorzoeken" />
+        <PageHeader
+          title="Inspectie-templates"
+          description="Inspectie-templates beheren en doorzoeken"
+          actions={
+            canManage ? (
+              <Button onClick={() => setCreateOpen(true)}>Nieuwe inspectie-template</Button>
+            ) : undefined
+          }
+        />
 
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
           <div className="flex-1">
@@ -104,6 +120,8 @@ export default function InspectionTemplatesPage() {
 
         <p className="text-sm text-gray-500">{searched.length} {searched.length !== 1 ? 'resultaten' : 'resultaat'}</p>
       </div>
+
+      <CreateInspectionTemplateModal isOpen={createOpen} onClose={() => setCreateOpen(false)} />
     </DetailPageLayout>
   );
 }

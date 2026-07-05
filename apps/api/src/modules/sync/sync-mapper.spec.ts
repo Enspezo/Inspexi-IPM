@@ -1,3 +1,4 @@
+import { BadRequestException } from '@nestjs/common';
 import { SYNC_ENTITIES, toDbData, toChildRows, toWire } from './sync-mapper';
 
 // M1: de `data`-payload van een sync-push is een kale `@IsObject()` en ontloopt dus
@@ -50,6 +51,42 @@ describe('sync-mapper — toDbData whitelist (M1)', () => {
         expect(SYNC_ENTITIES[key].allowed).not.toContain(banned);
       }
     }
+  });
+});
+
+describe('sync-mapper — JSON-kolomvalidatie (permissief, garbage → 400)', () => {
+  it('accepts existing-shaped JSON payloads (object/array passthrough)', () => {
+    expect(toDbData('assetNodes', { technicalData: { spanning: '230V', extra: { a: 1 } } })).toEqual({
+      technicalData: { spanning: '230V', extra: { a: 1 } },
+    });
+    expect(
+      toDbData('visualInspections', {
+        checklistResults: [{ itemCode: 'earthing', result: 'pass' }],
+      }),
+    ).toEqual({ checklistResults: [{ itemCode: 'earthing', result: 'pass' }] });
+    expect(toDbData('findings', { classificationValues: { SEVERITY: 'C2' } })).toEqual({
+      classificationValues: { SEVERITY: 'C2' },
+    });
+    expect(toDbData('inspectionPlans', { metadata: { any: 'obj' } })).toEqual({
+      metadata: { any: 'obj' },
+    });
+    // finalCheckResults is een object { passed, results } — geen array.
+    expect(
+      toDbData('measurementSheetRecords', { finalCheckResults: { passed: true, results: [] } }),
+    ).toEqual({ finalCheckResults: { passed: true, results: [] } });
+  });
+
+  it('rejects an object where an array is expected (and vice versa)', () => {
+    expect(() => toDbData('visualInspections', { checklistResults: { not: 'an array' } })).toThrow(
+      BadRequestException,
+    );
+    expect(() => toDbData('measurementRecords', { measurements: 'oops' })).toThrow(BadRequestException);
+    expect(() => toDbData('assetNodes', { technicalData: ['not', 'an', 'object'] })).toThrow(
+      BadRequestException,
+    );
+    expect(() => toDbData('findings', { classificationValues: 'garbage' })).toThrow(BadRequestException);
+    // non-nullable metadata → null is garbage.
+    expect(() => toDbData('inspectionPlans', { metadata: null })).toThrow(BadRequestException);
   });
 });
 

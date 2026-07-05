@@ -16,6 +16,28 @@
 //     measurementSheetRecords, standaloneMeasurements (alle org { from: 'self' }).
 //     StandaloneMeasurementValue reist genest mee in de standaloneMeasurement-payload.
 
+import type { z } from 'zod';
+import { validateJsonColumn } from '@/common';
+import { planMetadataSchema, PLAN_METADATA_LABEL } from '../inspection-plans/schemas/plan-metadata.schema';
+import { technicalDataSchema, TECHNICAL_DATA_LABEL } from '../asset-nodes/schemas/technical-data.schema';
+import {
+  classificationValuesSchema,
+  CLASSIFICATION_VALUES_LABEL,
+} from '../findings/schemas/classification-values.schema';
+import {
+  checklistResultsSchema,
+  CHECKLIST_RESULTS_LABEL,
+} from '../visual-inspections/schemas/checklist-results.schema';
+import { measurementsSchema, MEASUREMENTS_LABEL } from '../measurement-records/schemas/measurements.schema';
+import {
+  sheetRecordDataSchema,
+  SHEET_RECORD_DATA_LABEL,
+  templateSnapshotSchema,
+  TEMPLATE_SNAPSHOT_LABEL,
+  finalCheckResultsSchema,
+  FINAL_CHECK_RESULTS_LABEL,
+} from '../measurement-sheet-records/schemas/sheet-record-data.schema';
+
 /** Het contract-versienummer; bump bij elke breaking wijziging aan de wire-vorm. */
 export const SYNC_CONTRACT_VERSION = 3;
 
@@ -271,13 +293,44 @@ function coerce(field: string, value: unknown, dateFields: string[]): unknown {
   return dateFields.includes(field) && typeof value === 'string' ? new Date(value) : value;
 }
 
-/** Whitelist + datum-coercie. Onbekende velden (incl. orgId/id/_pendingSync) worden genegeerd. */
+/**
+ * Per-entiteit JSON-kolom → { schema, label }. De /sync-push omzeilt de class-validator
+ * DTO-laag (kale `@IsObject()`), dus valideren we deze vormvrije kolommen hier permissief
+ * (dezelfde colocated schema's als het REST-pad) om garbage tegen te houden.
+ */
+const JSON_FIELD_VALIDATORS: Partial<
+  Record<SyncEntityKey, Record<string, { schema: z.ZodTypeAny; label: string }>>
+> = {
+  inspectionPlans: { metadata: { schema: planMetadataSchema, label: PLAN_METADATA_LABEL } },
+  assetNodes: { technicalData: { schema: technicalDataSchema, label: TECHNICAL_DATA_LABEL } },
+  findings: {
+    classificationValues: { schema: classificationValuesSchema, label: CLASSIFICATION_VALUES_LABEL },
+  },
+  visualInspections: {
+    checklistResults: { schema: checklistResultsSchema, label: CHECKLIST_RESULTS_LABEL },
+  },
+  measurementRecords: { measurements: { schema: measurementsSchema, label: MEASUREMENTS_LABEL } },
+  measurementSheetRecords: {
+    data: { schema: sheetRecordDataSchema, label: SHEET_RECORD_DATA_LABEL },
+    templateSnapshot: { schema: templateSnapshotSchema, label: TEMPLATE_SNAPSHOT_LABEL },
+    finalCheckResults: { schema: finalCheckResultsSchema, label: FINAL_CHECK_RESULTS_LABEL },
+  },
+};
+
+/**
+ * Whitelist + datum-coercie + JSON-vormvalidatie. Onbekende velden (incl.
+ * orgId/id/_pendingSync) worden genegeerd; JSON-kolommen met de verkeerde top-level
+ * vorm geven een 400 (Nederlandse melding via {@link validateJsonColumn}).
+ */
 export function toDbData(key: SyncEntityKey, data: Record<string, unknown>): Record<string, unknown> {
   const cfg = SYNC_ENTITIES[key];
+  const jsonValidators = JSON_FIELD_VALIDATORS[key];
   const out: Record<string, unknown> = {};
   for (const field of cfg.allowed) {
     if (data[field] === undefined) continue;
-    out[field] = coerce(field, data[field], cfg.dateFields);
+    const value = coerce(field, data[field], cfg.dateFields);
+    const v = jsonValidators?.[field];
+    out[field] = v ? validateJsonColumn(v.schema, value, v.label) : value;
   }
   return out;
 }

@@ -14,10 +14,11 @@ import {
 } from '@nestjs/common';
 import { User, Prisma } from '@prisma/client';
 import { PrismaService } from '@/prisma';
-import { orgScope, assertFound, requireOrg, STATUS_OPEN, STATUS_RESOLVED } from '@/common';
+import { orgScope, assertFound, requireOrg, validateJsonColumn, STATUS_OPEN, STATUS_RESOLVED } from '@/common';
 import { LookupService, LOOKUP_KIND } from '../lookups/lookup.service';
 import { AssetNodesService } from '../asset-nodes/asset-nodes.service';
 import { CreateFindingDto, UpdateFindingDto } from './dto';
+import { classificationValuesSchema, CLASSIFICATION_VALUES_LABEL } from './schemas/classification-values.schema';
 
 @Injectable()
 export class FindingsService {
@@ -133,6 +134,7 @@ export class FindingsService {
 
   async create(assetNodeId: string, user: User, dto: CreateFindingDto, deviceId?: string) {
     const orgId = requireOrg(user);
+    validateJsonColumn(classificationValuesSchema, dto.classificationValues, CLASSIFICATION_VALUES_LABEL);
 
     // Plan binnen de org + de asset-node binnen de boom van dit plan (rootLocationId === plan.locationId).
     const plan = assertFound(
@@ -202,6 +204,7 @@ export class FindingsService {
 
   async update(id: string, user: User, dto: UpdateFindingDto) {
     const orgId = requireOrg(user);
+    validateJsonColumn(classificationValuesSchema, dto.classificationValues, CLASSIFICATION_VALUES_LABEL);
     const finding = assertFound(
       await this.prisma.finding.findFirst({ where: { id, ...orgScope(user), deletedAt: null } }),
       'Constatering',

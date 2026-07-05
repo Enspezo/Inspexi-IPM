@@ -15,12 +15,14 @@ import {
   PROJECT_FASEN_FEATURE,
   PROJECT_FASEN_REQUIRED_MESSAGE,
   requireOrg,
+  validateJsonColumn,
   STATUS_DRAFT,
   STATUS_IN_PROGRESS,
   STATUS_PENDING_REVIEW,
   STATUS_REVIEWED,
   STATUS_APPROVED,
 } from '@/common';
+import { planMetadataSchema, PLAN_METADATA_LABEL } from './schemas/plan-metadata.schema';
 import { EntitlementsService } from '@/modules/entitlements/entitlements.service';
 import { LookupService, LOOKUP_KIND, type LookupKind } from '../lookups/lookup.service';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -355,8 +357,10 @@ export class InspectionPlansService {
       data.startedAt = dto.startedAt ? new Date(dto.startedAt) : null;
     if (dto.internalNotes !== undefined)
       data.internalNotes = dto.internalNotes ?? null;
-    if (dto.metadata !== undefined)
+    if (dto.metadata !== undefined) {
+      validateJsonColumn(planMetadataSchema, dto.metadata, PLAN_METADATA_LABEL);
       data.metadata = dto.metadata as Prisma.InputJsonValue;
+    }
 
     data.lastModifiedByUser = { connect: { id: user.id } };
 

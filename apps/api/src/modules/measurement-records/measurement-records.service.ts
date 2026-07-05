@@ -10,7 +10,8 @@
 import { Injectable } from '@nestjs/common';
 import { User, Prisma, InspectionExecStatus } from '@prisma/client';
 import { PrismaService } from '@/prisma';
-import { orgScope, assertFound, assertSameOrg, requireOrg } from '@/common';
+import { orgScope, assertFound, assertSameOrg, requireOrg, validateJsonColumn } from '@/common';
+import { measurementsSchema, MEASUREMENTS_LABEL } from './schemas/measurements.schema';
 import { AssetNodesService } from '../asset-nodes/asset-nodes.service';
 import {
   CreateMeasurementRecordDto,
@@ -86,6 +87,7 @@ export class MeasurementRecordsService {
     deviceId?: string,
   ) {
     const orgId = requireOrg(user);
+    validateJsonColumn(measurementsSchema, dto.measurements, MEASUREMENTS_LABEL);
 
     // Plan binnen de org + de asset-node binnen de boom van dit plan.
     const plan = assertFound(
@@ -120,6 +122,7 @@ export class MeasurementRecordsService {
 
   async update(id: string, user: User, dto: UpdateMeasurementRecordDto) {
     requireOrg(user);
+    validateJsonColumn(measurementsSchema, dto.measurements, MEASUREMENTS_LABEL);
     const record = assertFound(
       await this.prisma.measurementRecord.findFirst({ where: { id, ...orgScope(user) } }),
       'Meting',

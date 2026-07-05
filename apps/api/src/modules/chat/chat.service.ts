@@ -6,72 +6,36 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import {
-  Availability,
   ChatThreadType,
   ChatThreadStatus,
-  NoteEntityType,
   NotificationType,
   Prisma,
   Role,
   User,
 } from '@prisma/client';
 import { PrismaService } from '@/prisma';
-import { assertAllSameOrg, assertSameOrg, orgScope, requireOrg } from '@/common';
+import { assertAllSameOrg, assertSameOrg, requireOrg } from '@/common';
 import { NotificationsService } from '../notifications/notifications.service';
-import { NotesService } from '../notes/notes.service';
+import { ListMessagesQueryDto, SendMessageDto } from './dto';
 import {
-  CreateThreadDto,
-  ListMessagesQueryDto,
-  SearchChatUsersQueryDto,
-  SendMessageDto,
-} from './dto';
-
-/** Lichte gebruikersweergave incl. presence voor de chat-UI. */
-const USER_SUMMARY = {
-  id: true,
-  firstName: true,
-  lastName: true,
-  initials: true,
-  avatarUrl: true,
-  availability: true,
-  availabilityNote: true,
-  lastSeenAt: true,
-} satisfies Prisma.UserSelect;
-
-const MESSAGE_SENDER = {
-  id: true,
-  firstName: true,
-  lastName: true,
-  initials: true,
-  avatarUrl: true,
-} satisfies Prisma.UserSelect;
+  isUniqueViolation,
+  MESSAGE_SENDER,
+  REFERENCE_TYPES,
+  ReferenceType,
+  resolveReferenceNames,
+  teamRolesOf,
+  toMessage,
+  toSummary,
+  USER_SUMMARY,
+} from './chat.helpers';
 
 /**
- * Referentie-types die in een chat gekoppeld mogen worden (PascalCase modelnaam).
- * `note` geeft het NoteEntityType waarmee een transcript bij afronden wordt
- * opgeslagen — `null` betekent "wel koppelbaar, maar geen notitie bij afronden".
+ * Kern van de chat-module: gedeelde org-scoped checks (chat-enablement,
+ * referentie-validatie, thread-toegang/membership), de read-state-queries en de
+ * primaire read/write van berichten (met notificatie-dispatch). De sub-services
+ * (`ChatThreadsService`, `ChatSyncService`, `ChatTranscriptsService`) injecteren
+ * deze service voor die gedeelde bouwstenen — nooit andersom.
  */
-const REFERENCE_TYPES = [
-  'Contact',
-  'ContactPerson',
-  'Location',
-  'Request',
-  'Quote',
-  'Task',
-  'Document',
-  'Product',
-  'PlanningItem',
-  'Project',
-  'WorkOrder',
-  'InspectionPlan',
-  'User',
-] as const;
-type ReferenceType = (typeof REFERENCE_TYPES)[number];
-
-function isUniqueViolation(e: unknown): boolean {
-  return e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002';
-}
-
 @Injectable()
 export class ChatService {
   private readonly logger = new Logger(ChatService.name);
@@ -79,24 +43,14 @@ export class ChatService {
   constructor(
     private prisma: PrismaService,
     private notifications: NotificationsService,
-    private notes: NotesService,
   ) {}
 
   // ─────────────────────────────────────────────────────────────────────────
-  // Helpers
+  // Enablement & shared checks
   // ─────────────────────────────────────────────────────────────────────────
 
-  private teamRolesOf(user: User): Role[] {
-    // SUPERUSER is geen org-teamrol; chat is strikt org-gebonden.
-    return user.roles.filter((r) => r !== Role.SUPERUSER);
-  }
-
-  private directKey(a: string, b: string): string {
-    return [a, b].sort().join(':');
-  }
-
   /** Interne chat aan/uit per organisatie (REQ1 — schakelbaar door SUPERUSER/ORG_ADMIN). */
-  private async isChatEnabled(orgId: string): Promise<boolean> {
+  async isChatEnabled(orgId: string): Promise<boolean> {
     const org = await this.prisma.organization.findUnique({
       where: { id: orgId },
       select: { chatEnabled: true },
@@ -104,39 +58,18 @@ export class ChatService {
     return org?.chatEnabled ?? false;
   }
 
-  private async assertChatEnabled(orgId: string): Promise<void> {
+  async assertChatEnabled(orgId: string): Promise<void> {
     if (!(await this.isChatEnabled(orgId))) {
       throw new ForbiddenException('Chat is uitgeschakeld voor deze organisatie');
     }
   }
 
   /** Werkt `lastSeenAt` bij zonder de audit-middleware te triggeren (User is geaudit). */
-  private touchLastSeen(userId: string): void {
+  touchLastSeen(userId: string): void {
     this.prisma
       .$executeRaw`UPDATE imp_users SET last_seen_at = now() WHERE id = ${userId}::uuid`.catch(
       (err) => this.logger.warn(`touchLastSeen faalde: ${err?.message ?? err}`),
     );
-  }
-
-  private noteEntityTypeFor(type: string | null): NoteEntityType | null {
-    switch (type) {
-      case 'Contact':
-        return NoteEntityType.CONTACT;
-      case 'Request':
-        return NoteEntityType.REQUEST;
-      case 'Quote':
-        return NoteEntityType.QUOTE;
-      case 'PlanningItem':
-        return NoteEntityType.PLANNING;
-      case 'Project':
-        return NoteEntityType.PROJECT;
-      case 'User':
-        return NoteEntityType.USER;
-      case 'WorkOrder':
-        return NoteEntityType.WORK_ORDER;
-      default:
-        return null;
-    }
   }
 
   /**
@@ -144,7 +77,7 @@ export class ChatService {
    * tot de organisatie van de gebruiker behoren (cross-tenant isolatie). Beide
    * velden moeten samen gezet zijn of beide leeg.
    */
-  private async assertReferenceInOrg(
+  async assertReferenceInOrg(
     type: string | null | undefined,
     id: string | null | undefined,
     orgId: string | null,
@@ -189,118 +122,6 @@ export class ChatService {
     }
   }
 
-  /** Batch-resolve leesbare namen voor record-referenties (key = `${type}:${id}`). */
-  private async resolveReferenceNames(
-    refs: Array<{ referenceEntityType: string | null; referenceEntityId: string | null }>,
-  ): Promise<Map<string, string>> {
-    const map = new Map<string, string>();
-    const byType = new Map<string, Set<string>>();
-    for (const r of refs) {
-      if (!r.referenceEntityType || !r.referenceEntityId) continue;
-      if (!byType.has(r.referenceEntityType)) byType.set(r.referenceEntityType, new Set());
-      byType.get(r.referenceEntityType)!.add(r.referenceEntityId);
-    }
-    const set = (type: string, id: string, name: string) => map.set(`${type}:${id}`, name);
-
-    for (const [type, idSet] of byType) {
-      const ids = [...idSet];
-      switch (type) {
-        case 'Contact': {
-          const rows = await this.prisma.contact.findMany({
-            where: { id: { in: ids } },
-            select: { id: true, companyName: true, firstName: true, lastName: true },
-          });
-          for (const c of rows)
-            set(type, c.id, c.companyName || [c.firstName, c.lastName].filter(Boolean).join(' ') || '—');
-          break;
-        }
-        case 'ContactPerson': {
-          const rows = await this.prisma.contactPerson.findMany({
-            where: { id: { in: ids } },
-            select: { id: true, firstName: true, lastName: true },
-          });
-          for (const c of rows) set(type, c.id, [c.firstName, c.lastName].filter(Boolean).join(' ') || '—');
-          break;
-        }
-        case 'Location': {
-          const rows = await this.prisma.location.findMany({
-            where: { id: { in: ids } },
-            select: { id: true, name: true },
-          });
-          for (const l of rows) set(type, l.id, l.name || '—');
-          break;
-        }
-        case 'Request': {
-          const rows = await this.prisma.request.findMany({
-            where: { id: { in: ids } },
-            select: { id: true, title: true },
-          });
-          for (const r of rows) set(type, r.id, r.title);
-          break;
-        }
-        case 'Quote': {
-          const rows = await this.prisma.quote.findMany({
-            where: { id: { in: ids } },
-            select: { id: true, quoteNumber: true },
-          });
-          for (const q of rows) set(type, q.id, q.quoteNumber);
-          break;
-        }
-        case 'Task': {
-          const rows = await this.prisma.task.findMany({
-            where: { id: { in: ids } },
-            select: { id: true, title: true },
-          });
-          for (const t of rows) set(type, t.id, t.title);
-          break;
-        }
-        case 'Project': {
-          const rows = await this.prisma.project.findMany({
-            where: { id: { in: ids } },
-            select: { id: true, title: true, projectNumber: true },
-          });
-          for (const p of rows) set(type, p.id, `${p.projectNumber} — ${p.title}`);
-          break;
-        }
-        case 'WorkOrder': {
-          const rows = await this.prisma.workOrder.findMany({
-            where: { id: { in: ids } },
-            select: { id: true, workOrderNumber: true },
-          });
-          for (const w of rows) set(type, w.id, w.workOrderNumber);
-          break;
-        }
-        case 'PlanningItem': {
-          const rows = await this.prisma.planningItem.findMany({
-            where: { id: { in: ids } },
-            select: { id: true, productName: true },
-          });
-          for (const p of rows) set(type, p.id, p.productName);
-          break;
-        }
-        case 'InspectionPlan': {
-          const rows = await this.prisma.inspectionPlan.findMany({
-            where: { id: { in: ids } },
-            select: { id: true, projectName: true, referenceNumber: true },
-          });
-          for (const i of rows) set(type, i.id, i.projectName || i.referenceNumber || '—');
-          break;
-        }
-        case 'User': {
-          const rows = await this.prisma.user.findMany({
-            where: { id: { in: ids } },
-            select: { id: true, firstName: true, lastName: true },
-          });
-          for (const u of rows) set(type, u.id, [u.firstName, u.lastName].filter(Boolean).join(' ') || '—');
-          break;
-        }
-        default:
-          break;
-      }
-    }
-    return map;
-  }
-
   // ─────────────────────────────────────────────────────────────────────────
   // Thread-toegang & membership
   // ─────────────────────────────────────────────────────────────────────────
@@ -310,7 +131,7 @@ export class ChatService {
    * rollid bij TEAM, altijd binnen dezelfde org). Geeft 404 bij geen toegang —
    * we onthullen niet of een thread van een andere org/team bestaat.
    */
-  private async loadAccessibleThread(threadId: string, user: User) {
+  async loadAccessibleThread(threadId: string, user: User) {
     const orgId = requireOrg(user);
     const thread = await this.prisma.chatThread.findFirst({
       where: { id: threadId, orgId, deletedAt: null },
@@ -325,7 +146,7 @@ export class ChatService {
    * DIRECT, rollid bij TEAM. Geeft 404 i.p.v. 403 zodat we niet onthullen of een
    * thread van een ander team/org bestaat.
    */
-  private async assertThreadMembership(
+  async assertThreadMembership(
     thread: { id: string; type: ChatThreadType; teamRole: Role | null },
     user: User,
   ): Promise<void> {
@@ -341,8 +162,8 @@ export class ChatService {
   }
 
   /** Zorgt dat de team-threads + (caught-up) deelnemer-rij van de gebruiker bestaan. */
-  private async ensureMyThreads(user: User, orgId: string): Promise<void> {
-    const roles = this.teamRolesOf(user);
+  async ensureMyThreads(user: User, orgId: string): Promise<void> {
+    const roles = teamRolesOf(user);
     if (roles.length === 0) return;
 
     const existing = await this.prisma.chatThread.findMany({
@@ -388,8 +209,8 @@ export class ChatService {
     }
   }
 
-  private async myThreadIds(user: User, orgId: string): Promise<string[]> {
-    const roles = this.teamRolesOf(user);
+  async myThreadIds(user: User, orgId: string): Promise<string[]> {
+    const roles = teamRolesOf(user);
     const [directParts, teamThreads] = await Promise.all([
       this.prisma.chatParticipant.findMany({
         where: { userId: user.id, thread: { type: ChatThreadType.DIRECT, orgId, deletedAt: null } },
@@ -406,7 +227,7 @@ export class ChatService {
   }
 
   /** Ongelezen-aantal per thread (één query) op basis van de eigen `lastReadAt`. */
-  private async unreadByThread(userId: string, threadIds: string[]): Promise<Map<string, number>> {
+  async unreadByThread(userId: string, threadIds: string[]): Promise<Map<string, number>> {
     const map = new Map<string, number>();
     if (threadIds.length === 0) return map;
     const rows = await this.prisma.$queryRaw<Array<{ threadId: string; unread: number }>>(Prisma.sql`
@@ -425,61 +246,8 @@ export class ChatService {
   }
 
   // ─────────────────────────────────────────────────────────────────────────
-  // Public API
+  // Thread read + messages (primaire read/write; hergebruikt door sub-services)
   // ─────────────────────────────────────────────────────────────────────────
-
-  async listThreads(user: User) {
-    if (!user.orgId) return [];
-    const orgId = user.orgId;
-    if (!(await this.isChatEnabled(orgId))) return [];
-    await this.ensureMyThreads(user, orgId);
-    const roles = this.teamRolesOf(user);
-
-    const [directThreads, teamThreads] = await Promise.all([
-      this.prisma.chatThread.findMany({
-        where: {
-          orgId,
-          type: ChatThreadType.DIRECT,
-          deletedAt: null,
-          participants: { some: { userId: user.id } },
-        },
-        include: {
-          participants: { include: { user: { select: USER_SUMMARY } } },
-          messages: {
-            where: { deletedAt: null },
-            orderBy: { createdAt: 'desc' },
-            take: 1,
-            include: { sender: { select: MESSAGE_SENDER } },
-          },
-        },
-      }),
-      roles.length
-        ? this.prisma.chatThread.findMany({
-            where: { orgId, type: ChatThreadType.TEAM, teamRole: { in: roles }, deletedAt: null },
-            include: {
-              messages: {
-                where: { deletedAt: null },
-                orderBy: { createdAt: 'desc' },
-                take: 1,
-                include: { sender: { select: MESSAGE_SENDER } },
-              },
-            },
-          })
-        : Promise.resolve([]),
-    ]);
-
-    const all = [...directThreads, ...teamThreads];
-    const [unread, refNames] = await Promise.all([
-      this.unreadByThread(user.id, all.map((t) => t.id)),
-      this.resolveReferenceNames(all),
-    ]);
-
-    const summaries = all.map((t) =>
-      this.toSummary(t, user, unread.get(t.id) ?? 0, refNames),
-    );
-    summaries.sort((a, b) => b.lastActivityAt.getTime() - a.lastActivityAt.getTime());
-    return summaries;
-  }
 
   async getThread(threadId: string, user: User) {
     await this.assertChatEnabled(requireOrg(user));
@@ -498,140 +266,8 @@ export class ChatService {
     });
     if (!thread) throw new NotFoundException('Gesprek niet gevonden');
     const unread = await this.unreadByThread(user.id, [threadId]);
-    const refNames = await this.resolveReferenceNames([thread]);
-    return this.toSummary(thread, user, unread.get(threadId) ?? 0, refNames);
-  }
-
-  async createThread(user: User, dto: CreateThreadDto) {
-    const orgId = requireOrg(user);
-    await this.assertChatEnabled(orgId);
-    await this.assertReferenceInOrg(dto.referenceEntityType, dto.referenceEntityId, orgId);
-
-    if (dto.type === ChatThreadType.DIRECT) {
-      return this.getOrCreateDirect(user, orgId, dto);
-    }
-    return this.getOrCreateTeam(user, orgId, dto);
-  }
-
-  private async getOrCreateDirect(user: User, orgId: string, dto: CreateThreadDto) {
-    if (!dto.userId) throw new BadRequestException('userId is vereist voor een 1-op-1 chat');
-    if (dto.userId === user.id) {
-      throw new BadRequestException('U kunt geen chat met uzelf starten');
-    }
-    const other = await this.prisma.user.findFirst({
-      where: { id: dto.userId, orgId, isDeleted: false },
-      select: { id: true },
-    });
-    if (!other) throw new NotFoundException('Gebruiker niet gevonden');
-
-    const directKey = this.directKey(user.id, dto.userId);
-    let thread = await this.prisma.chatThread.findFirst({
-      where: { orgId, directKey, deletedAt: null },
-      select: { id: true, referenceEntityType: true },
-    });
-
-    if (!thread) {
-      try {
-        const created = await this.prisma.$transaction(async (tx) => {
-          const t = await tx.chatThread.create({
-            data: {
-              orgId,
-              type: ChatThreadType.DIRECT,
-              directKey,
-              subject: dto.subject ?? null,
-              referenceEntityType: dto.referenceEntityType ?? null,
-              referenceEntityId: dto.referenceEntityId ?? null,
-              createdById: user.id,
-            },
-            select: { id: true, referenceEntityType: true },
-          });
-          await tx.chatParticipant.createMany({
-            data: [
-              { threadId: t.id, userId: user.id, lastReadAt: new Date() },
-              { threadId: t.id, userId: dto.userId! },
-            ],
-          });
-          return t;
-        });
-        thread = created;
-      } catch (e) {
-        if (!isUniqueViolation(e)) throw e;
-        thread = await this.prisma.chatThread.findFirst({
-          where: { orgId, directKey, deletedAt: null },
-          select: { id: true, referenceEntityType: true },
-        });
-      }
-    }
-    if (!thread) throw new NotFoundException('Gesprek niet gevonden');
-
-    // Koppel de referentie aan een bestaande thread alleen als die er nog geen heeft.
-    if (dto.referenceEntityType && !thread.referenceEntityType) {
-      await this.prisma.chatThread.update({
-        where: { id: thread.id },
-        data: {
-          referenceEntityType: dto.referenceEntityType,
-          referenceEntityId: dto.referenceEntityId ?? null,
-        },
-      });
-    }
-    return this.getThread(thread.id, user);
-  }
-
-  private async getOrCreateTeam(user: User, orgId: string, dto: CreateThreadDto) {
-    const role = dto.teamRole;
-    if (!role) throw new BadRequestException('teamRole is vereist voor een team-chat');
-    if (!user.roles.includes(role)) {
-      throw new ForbiddenException('U hoort niet bij dit team');
-    }
-
-    let thread = await this.prisma.chatThread.findFirst({
-      where: { orgId, type: ChatThreadType.TEAM, teamRole: role, deletedAt: null },
-      select: { id: true, referenceEntityType: true },
-    });
-    if (!thread) {
-      try {
-        thread = await this.prisma.chatThread.create({
-          data: {
-            orgId,
-            type: ChatThreadType.TEAM,
-            teamRole: role,
-            subject: dto.subject ?? null,
-            referenceEntityType: dto.referenceEntityType ?? null,
-            referenceEntityId: dto.referenceEntityId ?? null,
-            createdById: user.id,
-          },
-          select: { id: true, referenceEntityType: true },
-        });
-      } catch (e) {
-        if (!isUniqueViolation(e)) throw e;
-        thread = await this.prisma.chatThread.findFirst({
-          where: { orgId, type: ChatThreadType.TEAM, teamRole: role, deletedAt: null },
-          select: { id: true, referenceEntityType: true },
-        });
-      }
-    }
-    if (!thread) throw new NotFoundException('Gesprek niet gevonden');
-
-    await this.prisma.chatParticipant
-      .upsert({
-        where: { threadId_userId: { threadId: thread.id, userId: user.id } },
-        update: {},
-        create: { threadId: thread.id, userId: user.id, lastReadAt: new Date() },
-      })
-      .catch((e) => {
-        if (!isUniqueViolation(e)) throw e;
-      });
-
-    if (dto.referenceEntityType && !thread.referenceEntityType) {
-      await this.prisma.chatThread.update({
-        where: { id: thread.id },
-        data: {
-          referenceEntityType: dto.referenceEntityType,
-          referenceEntityId: dto.referenceEntityId ?? null,
-        },
-      });
-    }
-    return this.getThread(thread.id, user);
+    const refNames = await resolveReferenceNames(this.prisma, [thread]);
+    return toSummary(thread, user, unread.get(threadId) ?? 0, refNames);
   }
 
   async listMessages(threadId: string, user: User, query: ListMessagesQueryDto) {
@@ -647,8 +283,8 @@ export class ChatService {
     });
     this.touchLastSeen(user.id);
 
-    const refNames = await this.resolveReferenceNames(messages);
-    return messages.map((m) => this.toMessage(m, refNames));
+    const refNames = await resolveReferenceNames(this.prisma, messages);
+    return messages.map((m) => toMessage(m, refNames));
   }
 
   async sendMessage(
@@ -698,501 +334,8 @@ export class ChatService {
     this.touchLastSeen(user.id);
     await this.dispatchMessageNotifications(thread, user, message.id, dto.content, mentioned);
 
-    const refNames = await this.resolveReferenceNames([message]);
-    return this.toMessage(message, refNames);
-  }
-
-  async markRead(threadId: string, user: User) {
-    await this.assertChatEnabled(requireOrg(user));
-    await this.loadAccessibleThread(threadId, user);
-    await this.prisma.chatParticipant.upsert({
-      where: { threadId_userId: { threadId, userId: user.id } },
-      update: { lastReadAt: new Date() },
-      create: { threadId, userId: user.id, lastReadAt: new Date() },
-    });
-    // Markeer ook de bijbehorende chat-notificaties gelezen — anders houdt de
-    // dedup (dropAlreadyNotified) verdere meldingen tegen nadat je een thread al
-    // eens hebt geopend, en blijft de notificatie-bel onnodig tellen.
-    await this.prisma.notification.updateMany({
-      where: { userId: user.id, entityType: 'chatThread', entityId: threadId, isRead: false },
-      data: { isRead: true, readAt: new Date() },
-    });
-    this.touchLastSeen(user.id);
-    return { success: true };
-  }
-
-  async getUnread(user: User) {
-    if (!user.orgId) return { count: 0 };
-    if (!(await this.isChatEnabled(user.orgId))) return { count: 0 };
-    await this.ensureMyThreads(user, user.orgId);
-    this.touchLastSeen(user.id);
-    const ids = await this.myThreadIds(user, user.orgId);
-    const unread = await this.unreadByThread(user.id, ids);
-    let count = 0;
-    for (const n of unread.values()) count += n;
-    return { count };
-  }
-
-  async closeThread(threadId: string, user: User) {
-    await this.assertChatEnabled(requireOrg(user));
-    const thread = await this.loadAccessibleThread(threadId, user);
-    if (thread.status === ChatThreadStatus.AFGEROND) {
-      return this.getThread(threadId, user);
-    }
-
-    let noteId: string | null = thread.noteId ?? null;
-    const noteType = this.noteEntityTypeFor(thread.referenceEntityType);
-    if (noteType && thread.referenceEntityId) {
-      try {
-        const transcript = await this.buildTranscript(threadId);
-        const note = await this.notes.create(
-          {
-            entityType: noteType,
-            entityId: thread.referenceEntityId,
-            content: transcript,
-          },
-          user,
-        );
-        noteId = note.id;
-      } catch (err) {
-        // Een mislukte notitie mag het afronden niet blokkeren.
-        this.logger.error(`Transcript-notitie aanmaken faalde voor thread ${threadId}`, err as Error);
-      }
-    }
-
-    await this.prisma.chatThread.update({
-      where: { id: threadId },
-      data: { status: ChatThreadStatus.AFGEROND, closedAt: new Date(), noteId },
-    });
-    return this.getThread(threadId, user);
-  }
-
-  async searchUsers(user: User, query: SearchChatUsersQueryDto) {
-    if (!user.orgId) return [];
-    if (!(await this.isChatEnabled(user.orgId))) return [];
-    const q = (query.q ?? '').trim();
-    const where: Prisma.UserWhereInput = {
-      orgId: user.orgId,
-      isDeleted: false,
-      isActive: true,
-      id: { not: user.id },
-    };
-    if (q) {
-      where.OR = [
-        { firstName: { contains: q, mode: 'insensitive' } },
-        { lastName: { contains: q, mode: 'insensitive' } },
-        { email: { contains: q, mode: 'insensitive' } },
-      ];
-    }
-    return this.prisma.user.findMany({
-      where,
-      select: { ...USER_SUMMARY, roles: true },
-      orderBy: [{ firstName: 'asc' }, { lastName: 'asc' }],
-      take: 20,
-    });
-  }
-
-  // ─────────────────────────────────────────────────────────────────────────
-  // Sync (PWA-brug) — additieve /sync v2-uitbreiding (REQ1 PR2)
-  // ─────────────────────────────────────────────────────────────────────────
-
-  /**
-   * Snapshot van zichtbare chat voor de offline-PWA: alleen threads waar de
-   * gebruiker deelnemer (DIRECT) of rollid (TEAM) van is — dezelfde autorisatie
-   * als de REST-endpoints. Inclusief tombstones (deletedAt) en presence.
-   */
-  async getSyncSnapshot(user: User, since: Date) {
-    const empty = {
-      chatThreads: [] as unknown[],
-      chatMessages: [] as unknown[],
-      deletedThreadIds: [] as string[],
-      deletedMessageIds: [] as string[],
-      users: [] as unknown[],
-    };
-    if (!user.orgId) return empty;
-    const orgId = user.orgId;
-    if (!(await this.isChatEnabled(orgId))) return empty;
-    // Pull is read-only: DIRECT-zichtbaarheid via bestaande participant-rijen,
-    // TEAM via rol-membership. Team-threads worden in de portal geprovisioneerd
-    // (ensureMyThreads), niet hier — een /sync/pull mag geen rijen schrijven.
-    const roles = this.teamRolesOf(user);
-
-    const [directParts, teamThreads] = await Promise.all([
-      this.prisma.chatParticipant.findMany({
-        where: { userId: user.id, thread: { type: ChatThreadType.DIRECT, orgId } },
-        select: { threadId: true },
-      }),
-      roles.length
-        ? this.prisma.chatThread.findMany({
-            where: { orgId, type: ChatThreadType.TEAM, teamRole: { in: roles } },
-            select: { id: true },
-          })
-        : Promise.resolve([] as { id: string }[]),
-    ]);
-    const visibleIds = [
-      ...new Set([...directParts.map((p) => p.threadId), ...teamThreads.map((t) => t.id)]),
-    ];
-
-    const users = await this.presenceUsers(orgId, user.id, since);
-    if (visibleIds.length === 0) return { ...empty, users };
-
-    const [threads, delThreads, messages, delMessages] = await Promise.all([
-      this.prisma.chatThread.findMany({
-        where: {
-          id: { in: visibleIds },
-          deletedAt: null,
-          OR: [{ createdAt: { gt: since } }, { updatedAt: { gt: since } }],
-        },
-      }),
-      this.prisma.chatThread.findMany({
-        where: { id: { in: visibleIds }, deletedAt: { gt: since } },
-        select: { id: true },
-      }),
-      this.prisma.chatMessage.findMany({
-        where: {
-          threadId: { in: visibleIds },
-          deletedAt: null,
-          OR: [{ createdAt: { gt: since } }, { updatedAt: { gt: since } }],
-        },
-      }),
-      this.prisma.chatMessage.findMany({
-        where: { threadId: { in: visibleIds }, deletedAt: { gt: since } },
-        select: { id: true },
-      }),
-    ]);
-
-    return {
-      chatThreads: threads.map((t) => ({
-        id: t.id,
-        type: t.type,
-        teamRole: t.teamRole,
-        subject: t.subject,
-        status: t.status,
-        referenceEntityType: t.referenceEntityType,
-        referenceEntityId: t.referenceEntityId,
-        createdById: t.createdById,
-        createdAt: t.createdAt,
-        updatedAt: t.updatedAt,
-      })),
-      chatMessages: messages.map((m) => ({
-        id: m.id,
-        threadId: m.threadId,
-        senderId: m.senderId,
-        content: m.content,
-        mentionedUserIds: m.mentionedUserIds,
-        referenceEntityType: m.referenceEntityType,
-        referenceEntityId: m.referenceEntityId,
-        createdAt: m.createdAt,
-        updatedAt: m.updatedAt,
-      })),
-      deletedThreadIds: delThreads.map((t) => t.id),
-      deletedMessageIds: delMessages.map((m) => m.id),
-      users,
-    };
-  }
-
-  /**
-   * Presence-delta: alleen gebruikers wier presence sinds `since` veranderde
-   * (presence-wijzigingen zetten altijd `lastSeenAt`, ook bij een statuswissel —
-   * zie updatePresence/touchLastSeen), plus altijd de aanvrager zelf zodat de PWA
-   * de eigen status kent. Houdt de payload klein op frequente polls.
-   */
-  private async presenceUsers(orgId: string, selfId: string, since: Date) {
-    return this.prisma.user.findMany({
-      where: {
-        orgId,
-        isDeleted: false,
-        OR: [{ id: selfId }, { lastSeenAt: { gt: since } }],
-      },
-      select: {
-        id: true,
-        firstName: true,
-        lastName: true,
-        initials: true,
-        availability: true,
-        availabilityNote: true,
-        lastSeenAt: true,
-      },
-    });
-  }
-
-  /**
-   * Past een via /sync gepushte chat-bericht-wijziging toe. Berichten lopen
-   * bewust NIET via de generieke sync-mutator: ze vereisen membership-autorisatie
-   * + notificatie-dispatch, dus delegeren we naar `sendMessage` (idempotent op
-   * client-id, zodat replay veilig is).
-   */
-  async applySyncMessage(
-    user: User,
-    operation: 'create' | 'update' | 'delete',
-    data: Record<string, unknown>,
-  ): Promise<{ id: string; status: 'success' }> {
-    await this.assertChatEnabled(requireOrg(user));
-    const id = data.id ? String(data.id) : undefined;
-
-    if (operation === 'delete') {
-      if (!id) throw new BadRequestException('Bericht-id ontbreekt');
-      const existing = await this.prisma.chatMessage.findFirst({
-        where: { id, senderId: user.id, ...orgScope(user) },
-        select: { id: true },
-      });
-      if (!existing) throw new NotFoundException('Bericht niet gevonden');
-      await this.prisma.chatMessage.update({ where: { id }, data: { deletedAt: new Date() } });
-      return { id, status: 'success' };
-    }
-
-    // Berichten zijn immutable: alleen create (verzenden) en delete via sync.
-    if (operation === 'update') {
-      throw new BadRequestException('Bewerken van chatberichten wordt niet ondersteund');
-    }
-
-    // create → send. Idempotent (replay-veilig): een al bestaand eigen client-id
-    // is al gesynct. Org/sender-scoped zodat een (astronomisch onwaarschijnlijke)
-    // id-botsing met een ander bericht niet stilletjes wordt geslikt.
-    if (id) {
-      const existing = await this.prisma.chatMessage.findFirst({
-        where: { id, senderId: user.id, ...orgScope(user) },
-        select: { id: true },
-      });
-      if (existing) return { id, status: 'success' };
-    }
-
-    const threadId = data.threadId ? String(data.threadId) : '';
-    if (!threadId) throw new BadRequestException('threadId ontbreekt');
-    const mentioned = Array.isArray(data.mentionedUserIds)
-      ? (data.mentionedUserIds as unknown[]).map(String)
-      : undefined;
-
-    const msg = await this.sendMessage(
-      threadId,
-      user,
-      {
-        content: String(data.content ?? ''),
-        mentionedUserIds: mentioned,
-        referenceEntityType: data.referenceEntityType ? String(data.referenceEntityType) : undefined,
-        referenceEntityId: data.referenceEntityId ? String(data.referenceEntityId) : undefined,
-      },
-      { id, deviceId: data.deviceId ? String(data.deviceId) : undefined },
-    );
-    return { id: msg.id, status: 'success' };
-  }
-
-  /**
-   * Past een via /sync gepushte thread-wijziging toe. Net als berichten lopen
-   * threads bewust NIET via de generieke sync-mutator: ze vereisen membership-
-   * autorisatie (deelnemer bij DIRECT, rollid bij TEAM) + deterministische dedup
-   * (directKey / teamRole). Idempotent op client-UUID zodat replay veilig is; de
-   * server kent gezaghebbende timestamps toe (createdAt/updatedAt via Prisma).
-   */
-  async applySyncThread(
-    user: User,
-    operation: 'create' | 'update' | 'delete',
-    data: Record<string, unknown>,
-  ): Promise<{ id: string; status: 'success' }> {
-    const orgId = requireOrg(user);
-    await this.assertChatEnabled(orgId);
-    const id = data.id ? String(data.id) : undefined;
-
-    if (operation === 'delete') {
-      if (!id) throw new BadRequestException('Thread-id ontbreekt');
-      // Replay-veilig: een al verdwenen/afwezige thread (binnen onze org) is een
-      // no-op. Bestaat hij wél, dan moet de gebruiker er lid van zijn.
-      const existing = await this.prisma.chatThread.findFirst({
-        where: { id, orgId },
-        select: { id: true, type: true, teamRole: true, deletedAt: true },
-      });
-      if (!existing || existing.deletedAt) return { id, status: 'success' };
-      await this.assertThreadMembership(existing, user);
-      await this.prisma.chatThread.update({ where: { id }, data: { deletedAt: new Date() } });
-      return { id, status: 'success' };
-    }
-
-    if (operation === 'update') {
-      if (!id) throw new BadRequestException('Thread-id ontbreekt');
-      const thread = await this.loadAccessibleThread(id, user);
-      const patch: Prisma.ChatThreadUpdateInput = {};
-      if (data.subject !== undefined) {
-        patch.subject = data.subject ? String(data.subject) : null;
-      }
-      // Referentie alleen koppelen als de thread er nog geen heeft (consistent
-      // met de REST-flow); cross-org wordt door assertReferenceInOrg geblokkeerd.
-      if (data.referenceEntityType !== undefined && !thread.referenceEntityType) {
-        const refType = data.referenceEntityType ? String(data.referenceEntityType) : null;
-        const refId = data.referenceEntityId ? String(data.referenceEntityId) : null;
-        await this.assertReferenceInOrg(refType, refId, orgId);
-        patch.referenceEntityType = refType;
-        patch.referenceEntityId = refId;
-      }
-      if (Object.keys(patch).length > 0) {
-        await this.prisma.chatThread.update({ where: { id }, data: patch });
-      }
-      return { id, status: 'success' };
-    }
-
-    // create. Idempotent op client-UUID: een al-geadopteerde thread is al gesynct
-    // — bevestig membership en geef de id terug.
-    if (id) {
-      const existing = await this.prisma.chatThread.findFirst({
-        where: { id, orgId, deletedAt: null },
-        select: { id: true, type: true, teamRole: true },
-      });
-      if (existing) {
-        await this.assertThreadMembership(existing, user);
-        return { id: existing.id, status: 'success' };
-      }
-    }
-
-    const type = String(data.type ?? '');
-    if (type === ChatThreadType.DIRECT) return this.adoptDirectThread(user, orgId, id, data);
-    if (type === ChatThreadType.TEAM) return this.adoptTeamThread(user, orgId, data);
-    throw new BadRequestException('Onbekend of ontbrekend thread-type');
-  }
-
-  /** Adopteert/dedupt een offline aangemaakte 1-op-1 thread (client-UUID → server). */
-  private async adoptDirectThread(
-    user: User,
-    orgId: string,
-    clientId: string | undefined,
-    data: Record<string, unknown>,
-  ): Promise<{ id: string; status: 'success' }> {
-    const otherId = data.userId ? String(data.userId) : '';
-    if (!otherId) throw new BadRequestException('userId is vereist voor een 1-op-1 chat');
-    if (otherId === user.id) throw new BadRequestException('U kunt geen chat met uzelf starten');
-    // Cross-tenant-isolatie: de andere deelnemer moet in dezelfde org zitten.
-    const other = await this.prisma.user.findFirst({
-      where: { id: otherId, orgId, isDeleted: false },
-      select: { id: true },
-    });
-    if (!other) throw new NotFoundException('Gebruiker niet gevonden');
-
-    const refType = data.referenceEntityType ? String(data.referenceEntityType) : null;
-    const refId = data.referenceEntityId ? String(data.referenceEntityId) : null;
-    await this.assertReferenceInOrg(refType, refId, orgId);
-
-    const directKey = this.directKey(user.id, otherId);
-    // Bestaat er al een DIRECT-thread voor dit paar, dan is die de bron van
-    // waarheid (mogelijk al door pull geleverd) — dedup ernaartoe.
-    let thread = await this.prisma.chatThread.findFirst({
-      where: { orgId, directKey, deletedAt: null },
-      select: { id: true },
-    });
-    if (!thread) {
-      try {
-        thread = await this.prisma.$transaction(async (tx) => {
-          const t = await tx.chatThread.create({
-            data: {
-              ...(clientId ? { id: clientId } : {}),
-              orgId,
-              type: ChatThreadType.DIRECT,
-              directKey,
-              subject: data.subject ? String(data.subject) : null,
-              referenceEntityType: refType,
-              referenceEntityId: refId,
-              createdById: user.id,
-              deviceId: data.deviceId ? String(data.deviceId) : null,
-              syncedAt: new Date(),
-            },
-            select: { id: true },
-          });
-          await tx.chatParticipant.createMany({
-            data: [
-              { threadId: t.id, userId: user.id, lastReadAt: new Date() },
-              { threadId: t.id, userId: otherId },
-            ],
-          });
-          return t;
-        });
-      } catch (e) {
-        if (!isUniqueViolation(e)) throw e;
-        thread = await this.prisma.chatThread.findFirst({
-          where: { orgId, directKey, deletedAt: null },
-          select: { id: true },
-        });
-      }
-    }
-    if (!thread) throw new NotFoundException('Gesprek niet gevonden');
-    return { id: thread.id, status: 'success' };
-  }
-
-  /** Zorgt dat de (org+rol-unieke) team-thread bestaat en de gebruiker lid is. */
-  private async adoptTeamThread(
-    user: User,
-    orgId: string,
-    data: Record<string, unknown>,
-  ): Promise<{ id: string; status: 'success' }> {
-    const roleRaw = data.teamRole ? String(data.teamRole) : '';
-    if (!roleRaw || !(roleRaw in Role)) {
-      throw new BadRequestException('teamRole is vereist voor een team-chat');
-    }
-    const role = roleRaw as Role;
-    if (!user.roles.includes(role)) throw new ForbiddenException('U hoort niet bij dit team');
-
-    let thread = await this.prisma.chatThread.findFirst({
-      where: { orgId, type: ChatThreadType.TEAM, teamRole: role, deletedAt: null },
-      select: { id: true },
-    });
-    if (!thread) {
-      try {
-        thread = await this.prisma.chatThread.create({
-          data: {
-            orgId,
-            type: ChatThreadType.TEAM,
-            teamRole: role,
-            subject: data.subject ? String(data.subject) : null,
-            createdById: user.id,
-            deviceId: data.deviceId ? String(data.deviceId) : null,
-            syncedAt: new Date(),
-          },
-          select: { id: true },
-        });
-      } catch (e) {
-        if (!isUniqueViolation(e)) throw e;
-        thread = await this.prisma.chatThread.findFirst({
-          where: { orgId, type: ChatThreadType.TEAM, teamRole: role, deletedAt: null },
-          select: { id: true },
-        });
-      }
-    }
-    if (!thread) throw new NotFoundException('Gesprek niet gevonden');
-
-    await this.prisma.chatParticipant
-      .upsert({
-        where: { threadId_userId: { threadId: thread.id, userId: user.id } },
-        update: {},
-        create: { threadId: thread.id, userId: user.id, lastReadAt: new Date() },
-      })
-      .catch((e) => {
-        if (!isUniqueViolation(e)) throw e;
-      });
-    return { id: thread.id, status: 'success' };
-  }
-
-  /**
-   * Past een via /sync gepushte presence-wijziging toe. De gebruiker komt ALTIJD
-   * uit de JWT (nooit uit de payload) — een device kan enkel de eigen status
-   * zetten. Raw SQL, net als touchLastSeen, zodat de audit-middleware (User is
-   * geaudit) niet bij elke statuswissel ruis logt. `last_seen_at` = nu (server).
-   */
-  async applySyncPresence(
-    user: User,
-    data: Record<string, unknown>,
-  ): Promise<{ id: string; status: 'success' }> {
-    await this.assertChatEnabled(requireOrg(user));
-    const availability = data.availability ? String(data.availability) : '';
-    if (!(availability in Availability)) {
-      throw new BadRequestException('Ongeldige beschikbaarheidsstatus');
-    }
-    const note = data.availabilityNote != null ? String(data.availabilityNote) : null;
-    await this.prisma.$executeRaw`
-      UPDATE imp_users
-      SET availability = ${availability}::"Availability",
-          availability_note = ${note},
-          last_seen_at = now()
-      WHERE id = ${user.id}::uuid
-    `;
-    // Echo de door de PWA gestuurde id terug (zodat die het item als gesynct
-    // markeert); de update zelf gebruikt altijd de JWT-gebruiker.
-    return { id: data.id ? String(data.id) : user.id, status: 'success' };
+    const refNames = await resolveReferenceNames(this.prisma, [message]);
+    return toMessage(message, refNames);
   }
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -1311,139 +454,5 @@ export class ChatService {
     } catch (err) {
       this.logger.error(`Chat-notificatie dispatch faalde (msg ${messageId})`, err as Error);
     }
-  }
-
-  // ─────────────────────────────────────────────────────────────────────────
-  // Mapping
-  // ─────────────────────────────────────────────────────────────────────────
-
-  private async buildTranscript(threadId: string): Promise<string> {
-    const messages = await this.prisma.chatMessage.findMany({
-      where: { threadId, deletedAt: null },
-      orderBy: { createdAt: 'asc' },
-      include: { sender: { select: { firstName: true, lastName: true } } },
-    });
-    const fmt = new Intl.DateTimeFormat('nl-NL', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-    const names = [
-      ...new Set(
-        messages.map((m) => [m.sender.firstName, m.sender.lastName].filter(Boolean).join(' ')),
-      ),
-    ];
-    const header = [
-      'Chat-transcript (afgerond)',
-      names.length ? `Deelnemers: ${names.join(', ')}` : null,
-      '',
-    ]
-      .filter((l) => l !== null)
-      .join('\n');
-    const lines = messages.map(
-      (m) =>
-        `[${fmt.format(m.createdAt)}] ${[m.sender.firstName, m.sender.lastName]
-          .filter(Boolean)
-          .join(' ')}: ${m.content}`,
-    );
-    return `${header}\n${lines.join('\n')}`.trim();
-  }
-
-  private toMessage(
-    m: {
-      id: string;
-      threadId: string;
-      senderId: string;
-      content: string;
-      mentionedUserIds: string[];
-      referenceEntityType: string | null;
-      referenceEntityId: string | null;
-      createdAt: Date;
-      sender: { id: string; firstName: string; lastName: string; initials: string | null; avatarUrl: string | null };
-    },
-    refNames: Map<string, string>,
-  ) {
-    return {
-      id: m.id,
-      threadId: m.threadId,
-      senderId: m.senderId,
-      sender: m.sender,
-      content: m.content,
-      mentionedUserIds: m.mentionedUserIds,
-      referenceEntityType: m.referenceEntityType,
-      referenceEntityId: m.referenceEntityId,
-      referenceName:
-        m.referenceEntityType && m.referenceEntityId
-          ? refNames.get(`${m.referenceEntityType}:${m.referenceEntityId}`) ?? null
-          : null,
-      createdAt: m.createdAt,
-    };
-  }
-
-  private toSummary(
-    thread: {
-      id: string;
-      type: ChatThreadType;
-      teamRole: Role | null;
-      subject: string | null;
-      status: ChatThreadStatus;
-      referenceEntityType: string | null;
-      referenceEntityId: string | null;
-      noteId: string | null;
-      closedAt: Date | null;
-      createdAt: Date;
-      updatedAt: Date;
-      participants?: Array<{ userId: string; user: Record<string, unknown> }>;
-      messages?: Array<{
-        id: string;
-        content: string;
-        senderId: string;
-        createdAt: Date;
-        sender: { firstName: string; lastName: string };
-      }>;
-    },
-    user: User,
-    unreadCount: number,
-    refNames: Map<string, string>,
-  ) {
-    const last = thread.messages?.[0] ?? null;
-    const lastActivityAt = last?.createdAt ?? thread.createdAt;
-
-    let counterpart: Record<string, unknown> | null = null;
-    if (thread.type === ChatThreadType.DIRECT && thread.participants) {
-      counterpart = thread.participants.find((p) => p.userId !== user.id)?.user ?? null;
-    }
-
-    return {
-      id: thread.id,
-      type: thread.type,
-      teamRole: thread.teamRole,
-      subject: thread.subject,
-      status: thread.status,
-      referenceEntityType: thread.referenceEntityType,
-      referenceEntityId: thread.referenceEntityId,
-      referenceName:
-        thread.referenceEntityType && thread.referenceEntityId
-          ? refNames.get(`${thread.referenceEntityType}:${thread.referenceEntityId}`) ?? null
-          : null,
-      noteId: thread.noteId,
-      closedAt: thread.closedAt,
-      unreadCount,
-      counterpart,
-      lastMessage: last
-        ? {
-            id: last.id,
-            content: last.content,
-            senderId: last.senderId,
-            senderName: [last.sender.firstName, last.sender.lastName].filter(Boolean).join(' '),
-            createdAt: last.createdAt,
-          }
-        : null,
-      lastActivityAt,
-      createdAt: thread.createdAt,
-      updatedAt: thread.updatedAt,
-    };
   }
 }

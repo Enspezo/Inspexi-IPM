@@ -1,5 +1,9 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api-client';
+import {
+  contactPersonLocationKeys,
+  locationContactPersonKeys,
+} from '@/lib/query-keys';
 import type { LocationContactPerson } from '@/types';
 
 // ─── Location–ContactPerson links ─────────────────────
@@ -13,7 +17,7 @@ export function useContactPersonLocations(personId: string) {
       contact?: { id: string; type: string; companyName: string | null; firstName: string | null; lastName: string | null };
     };
   })[]>({
-    queryKey: ['contact-person-locations', personId],
+    queryKey: contactPersonLocationKeys.byPerson(personId),
     queryFn: () => apiClient.get(`/contacts/contact-persons/${personId}/locations`),
     enabled: !!personId,
   });
@@ -21,7 +25,7 @@ export function useContactPersonLocations(personId: string) {
 
 export function useLocationContactPersons(locationId: string) {
   return useQuery<LocationContactPerson[]>({
-    queryKey: ['location-contact-persons', locationId],
+    queryKey: locationContactPersonKeys.byLocation(locationId),
     queryFn: () => apiClient.get(`/contacts/locations/${locationId}/contact-persons`),
     enabled: !!locationId,
   });
@@ -34,7 +38,7 @@ export function useLinkContactPerson(locationId: string) {
     mutationFn: (data: { contactPersonId: string; notes?: string }) =>
       apiClient.post<LocationContactPerson>(`/contacts/locations/${locationId}/contact-persons`, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['location-contact-persons', locationId] });
+      queryClient.invalidateQueries({ queryKey: locationContactPersonKeys.byLocation(locationId) });
     },
   });
 }
@@ -46,7 +50,7 @@ export function useUpdateLocationContactPerson(linkId: string, locationId: strin
     mutationFn: (data: { notes?: string }) =>
       apiClient.patch<LocationContactPerson>(`/contacts/locations/contact-persons/${linkId}`, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['location-contact-persons', locationId] });
+      queryClient.invalidateQueries({ queryKey: locationContactPersonKeys.byLocation(locationId) });
     },
   });
 }
@@ -58,7 +62,7 @@ export function useUnlinkContactPerson(locationId: string) {
     mutationFn: (linkId: string) =>
       apiClient.delete(`/contacts/locations/contact-persons/${linkId}`),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['location-contact-persons', locationId] });
+      queryClient.invalidateQueries({ queryKey: locationContactPersonKeys.byLocation(locationId) });
     },
   });
 }
@@ -72,7 +76,7 @@ export function useLinkLocationToContactPerson(personId: string) {
     mutationFn: (data: { locationId: string; notes?: string }) =>
       apiClient.post<LocationContactPerson>(`/contacts/contact-persons/${personId}/locations`, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['contact-person-locations', personId] });
+      queryClient.invalidateQueries({ queryKey: contactPersonLocationKeys.byPerson(personId) });
     },
   });
 }
@@ -84,7 +88,7 @@ export function useUpdateContactPersonLocationNotes(personId: string) {
     mutationFn: ({ linkId, notes }: { linkId: string; notes?: string }) =>
       apiClient.patch<LocationContactPerson>(`/contacts/locations/contact-persons/${linkId}`, { notes }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['contact-person-locations', personId] });
+      queryClient.invalidateQueries({ queryKey: contactPersonLocationKeys.byPerson(personId) });
     },
   });
 }
@@ -96,7 +100,7 @@ export function useUnlinkLocationFromContactPerson(personId: string) {
     mutationFn: (linkId: string) =>
       apiClient.delete(`/contacts/locations/contact-persons/${linkId}`),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['contact-person-locations', personId] });
+      queryClient.invalidateQueries({ queryKey: contactPersonLocationKeys.byPerson(personId) });
     },
   });
 }

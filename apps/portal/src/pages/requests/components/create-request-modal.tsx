@@ -12,6 +12,7 @@ import { CustomFieldsForm } from '@/components/custom-fields';
 import { RequestSource, Priority, CustomFieldEntityType } from '@/types';
 import type { Request } from '@/types';
 import { getErrorMessage } from '@/lib/api-client';
+import { contactKeys } from '@/lib/query-keys';
 
 const sourceOptions = [
   { value: RequestSource.MANUAL, label: 'Handmatig' },
@@ -128,7 +129,7 @@ export function CreateRequestModal({ isOpen, onClose, contactId: prefilledContac
       showToast('Aanvraag aangemaakt!', 'success');
       // Invalidate contact detail so the aanvragen tab updates
       if (prefilledContactId) {
-        queryClient.invalidateQueries({ queryKey: ['contacts', prefilledContactId] });
+        queryClient.invalidateQueries({ queryKey: contactKeys.detail(prefilledContactId) });
       }
       reset();
       setSelectedContactId('');

@@ -1,9 +1,7 @@
 import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api-client';
+import { calibrationKeys, measurementInstrumentKeys } from '@/lib/query-keys';
 import type { Calibration } from '@/types';
-
-const CAL_KEY = 'calibrations';
-const INSTRUMENT_KEY = 'measurement-instruments';
 
 /** Velden van het kalibratie-formulier (datum als ISO yyyy-MM-dd). */
 export interface CalibrationFormValues {
@@ -26,13 +24,13 @@ function toFormData(values: CalibrationFormValues): FormData {
 
 /** Een kalibratie-mutatie herberekent de cache op het meetmiddel → ook instrument-queries invalideren. */
 function invalidate(qc: QueryClient, instrumentId: string) {
-  qc.invalidateQueries({ queryKey: [CAL_KEY, instrumentId] });
-  qc.invalidateQueries({ queryKey: [INSTRUMENT_KEY] });
+  qc.invalidateQueries({ queryKey: calibrationKeys.byInstrument(instrumentId) });
+  qc.invalidateQueries({ queryKey: measurementInstrumentKeys.all });
 }
 
 export function useCalibrations(instrumentId: string | undefined) {
   return useQuery<Calibration[]>({
-    queryKey: [CAL_KEY, instrumentId],
+    queryKey: calibrationKeys.byInstrument(instrumentId as string),
     queryFn: () =>
       apiClient.get<Calibration[]>(`/measurement-instruments/${instrumentId}/calibrations`),
     enabled: !!instrumentId,

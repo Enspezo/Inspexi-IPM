@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api-client';
+import { taskKeys } from '@/lib/query-keys';
 import type {
   Task,
   PaginatedResponse,
@@ -39,7 +40,7 @@ export function useTasks(params: ListTasksParams = {}) {
   const endpoint = `/tasks${qs ? `?${qs}` : ''}`;
 
   return useQuery<PaginatedResponse<Task>>({
-    queryKey: ['tasks', params],
+    queryKey: taskKeys.list(params),
     queryFn: () => apiClient.get<PaginatedResponse<Task>>(endpoint),
     enabled: params.enabled,
   });
@@ -47,7 +48,7 @@ export function useTasks(params: ListTasksParams = {}) {
 
 export function useTask(id: string) {
   return useQuery<Task>({
-    queryKey: ['tasks', id],
+    queryKey: taskKeys.detail(id),
     queryFn: () => apiClient.get<Task>(`/tasks/${id}`),
     enabled: !!id,
   });
@@ -71,7 +72,7 @@ export function useCreateTask() {
     mutationFn: (data: CreateTaskDto) =>
       apiClient.post<Task>('/tasks', data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['tasks'] });
+      queryClient.invalidateQueries({ queryKey: taskKeys.all });
     },
   });
 }
@@ -92,8 +93,8 @@ export function useUpdateTask() {
     mutationFn: ({ id, data }: { id: string; data: UpdateTaskDto }) =>
       apiClient.patch<Task>(`/tasks/${id}`, data),
     onSuccess: (_data, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['tasks'] });
-      queryClient.invalidateQueries({ queryKey: ['tasks', variables.id] });
+      queryClient.invalidateQueries({ queryKey: taskKeys.all });
+      queryClient.invalidateQueries({ queryKey: taskKeys.detail(variables.id) });
     },
   });
 }
@@ -104,7 +105,7 @@ export function useDeleteTask() {
   return useMutation({
     mutationFn: (id: string) => apiClient.delete(`/tasks/${id}`),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['tasks'] });
+      queryClient.invalidateQueries({ queryKey: taskKeys.all });
     },
   });
 }

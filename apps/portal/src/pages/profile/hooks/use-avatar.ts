@@ -1,5 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api-client';
+import { profileKeys, meKeys } from '@/lib/query-keys';
 
 export function useUploadAvatar() {
   const queryClient = useQueryClient();
@@ -11,8 +12,8 @@ export function useUploadAvatar() {
       return apiClient.upload<{ storageKey: string }>('/users/me/avatar', formData);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['profile'] });
-      queryClient.invalidateQueries({ queryKey: ['me'] });
+      queryClient.invalidateQueries({ queryKey: profileKeys.all });
+      queryClient.invalidateQueries({ queryKey: meKeys.all });
     },
   });
 }
@@ -23,8 +24,8 @@ export function useDeleteAvatar() {
   return useMutation({
     mutationFn: () => apiClient.delete('/users/me/avatar'),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['profile'] });
-      queryClient.invalidateQueries({ queryKey: ['me'] });
+      queryClient.invalidateQueries({ queryKey: profileKeys.all });
+      queryClient.invalidateQueries({ queryKey: meKeys.all });
     },
   });
 }

@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api-client';
+import { contactKeys } from '@/lib/query-keys';
 import type { ContactLog } from '@/types';
 
 interface CreateLogDto {
@@ -16,9 +17,9 @@ export function useAddLog(contactId: string) {
     mutationFn: (data: CreateLogDto) =>
       apiClient.post<ContactLog>(`/contacts/${contactId}/logs`, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['contacts', contactId] });
+      queryClient.invalidateQueries({ queryKey: contactKeys.detail(contactId) });
       queryClient.invalidateQueries({
-        queryKey: ['contacts', contactId, 'logs'],
+        queryKey: contactKeys.logs(contactId),
       });
     },
   });
@@ -26,7 +27,7 @@ export function useAddLog(contactId: string) {
 
 export function useContactLogs(contactId: string) {
   return useQuery<ContactLog[]>({
-    queryKey: ['contacts', contactId, 'logs'],
+    queryKey: contactKeys.logs(contactId),
     queryFn: () =>
       apiClient.get<ContactLog[]>(`/contacts/${contactId}/logs`),
     enabled: !!contactId,

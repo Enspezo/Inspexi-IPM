@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api-client';
+import { workOrderKeys } from '@/lib/query-keys';
 import type { WorkOrder, WorkOrderStatus } from '@/types';
 
 interface WorkOrdersParams {
@@ -30,7 +31,7 @@ export function useWorkOrders(params?: WorkOrdersParams) {
   const qs = queryParams.toString();
 
   return useQuery<PaginatedWorkOrders>({
-    queryKey: ['work-orders', params],
+    queryKey: workOrderKeys.list(params),
     queryFn: () => apiClient.get<PaginatedWorkOrders>(`/work-orders${qs ? `?${qs}` : ''}`),
     enabled: params?.enabled,
   });
@@ -38,7 +39,7 @@ export function useWorkOrders(params?: WorkOrdersParams) {
 
 export function useWorkOrder(id: string | undefined) {
   return useQuery<WorkOrder>({
-    queryKey: ['work-orders', id],
+    queryKey: workOrderKeys.detail(id as string),
     queryFn: () => apiClient.get<WorkOrder>(`/work-orders/${id}`),
     enabled: !!id,
   });
@@ -46,7 +47,7 @@ export function useWorkOrder(id: string | undefined) {
 
 export function usePlanningWorkOrders(planningItemId: string | undefined) {
   return useQuery<PaginatedWorkOrders>({
-    queryKey: ['work-orders', { planningItemId }],
+    queryKey: workOrderKeys.list({ planningItemId }),
     queryFn: () =>
       apiClient.get<PaginatedWorkOrders>(
         `/work-orders?planningItemId=${planningItemId}&limit=50`,
@@ -66,7 +67,7 @@ export function useCreateWorkOrder() {
       endTime?: string;
     }) => apiClient.post<WorkOrder>('/work-orders', data),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['work-orders'] });
+      qc.invalidateQueries({ queryKey: workOrderKeys.all });
     },
   });
 }
@@ -81,7 +82,7 @@ export function useUpdateWorkOrder(id: string | undefined) {
       projectPhaseId?: string | null;
     }) => apiClient.patch<WorkOrder>(`/work-orders/${id}`, data),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['work-orders'] });
+      qc.invalidateQueries({ queryKey: workOrderKeys.all });
     },
   });
 }
@@ -92,7 +93,7 @@ export function useUpdateWorkOrderStatus(id: string | undefined) {
     mutationFn: (data: { status: WorkOrderStatus; note?: string }) =>
       apiClient.patch<WorkOrder>(`/work-orders/${id}/status`, data),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['work-orders'] });
+      qc.invalidateQueries({ queryKey: workOrderKeys.all });
     },
   });
 }
@@ -112,7 +113,7 @@ export function useSetWorkOrderLines(id: string | undefined) {
       }>;
     }) => apiClient.put<WorkOrder>(`/work-orders/${id}/lines`, data),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['work-orders'] });
+      qc.invalidateQueries({ queryKey: workOrderKeys.all });
     },
   });
 }
@@ -122,7 +123,7 @@ export function useDeleteWorkOrder(id: string | undefined) {
   return useMutation({
     mutationFn: () => apiClient.delete(`/work-orders/${id}`),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['work-orders'] });
+      qc.invalidateQueries({ queryKey: workOrderKeys.all });
     },
   });
 }

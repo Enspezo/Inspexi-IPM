@@ -20,6 +20,7 @@ import {
 } from '@/components/ui';
 import { AuditHistory } from '@/components/audit-history/audit-history';
 import { apiClient, getErrorMessage } from '@/lib/api-client';
+import { projectKeys, projectPhaseKeys } from '@/lib/query-keys';
 import { formatDate, formatCurrency } from '@/lib/format';
 import { PHASE_STATUS, MILESTONE_STATUS } from '@/lib/status';
 import { PhaseStatus, MilestoneStatus } from '@/types';
@@ -669,8 +670,8 @@ function LinksSection({
     mutationFn: ({ kind, id }: { kind: 'quotes' | 'planning'; id: string }) =>
       apiClient.patch(`/${kind}/${id}`, { projectPhaseId: null }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['projects', projectId] });
-      queryClient.invalidateQueries({ queryKey: ['project-phases', projectId] });
+      queryClient.invalidateQueries({ queryKey: projectKeys.detail(projectId) });
+      queryClient.invalidateQueries({ queryKey: projectPhaseKeys.phases(projectId) });
     },
   });
 

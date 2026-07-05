@@ -5,6 +5,7 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api-client';
+import { normTypeKeys } from '@/lib/query-keys';
 import type { NormTypeDefinition } from '@/types';
 
 export interface UseNormTypesParams {
@@ -19,14 +20,14 @@ export function useNormTypes(params: UseNormTypesParams = {}) {
   const qs = query.toString();
 
   return useQuery<NormTypeDefinition[]>({
-    queryKey: ['norm-types', params],
+    queryKey: normTypeKeys.list(params),
     queryFn: () => apiClient.get<NormTypeDefinition[]>(`/norm-types${qs ? `?${qs}` : ''}`),
   });
 }
 
 export function useNormType(id: string) {
   return useQuery<NormTypeDefinition>({
-    queryKey: ['norm-types', id],
+    queryKey: normTypeKeys.detail(id),
     queryFn: () => apiClient.get<NormTypeDefinition>(`/norm-types/${id}`),
     enabled: !!id,
   });
@@ -37,7 +38,7 @@ export function useCreateNormType() {
   return useMutation({
     mutationFn: (data: Record<string, unknown>) =>
       apiClient.post<NormTypeDefinition>('/norm-types', data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['norm-types'] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: normTypeKeys.all }),
   });
 }
 
@@ -47,8 +48,8 @@ export function useUpdateNormType() {
     mutationFn: ({ id, data }: { id: string; data: Record<string, unknown> }) =>
       apiClient.patch<NormTypeDefinition>(`/norm-types/${id}`, data),
     onSuccess: (_d, v) => {
-      qc.invalidateQueries({ queryKey: ['norm-types'] });
-      qc.invalidateQueries({ queryKey: ['norm-types', v.id] });
+      qc.invalidateQueries({ queryKey: normTypeKeys.all });
+      qc.invalidateQueries({ queryKey: normTypeKeys.detail(v.id) });
     },
   });
 }
@@ -59,8 +60,8 @@ export function useDeleteNormType() {
   return useMutation({
     mutationFn: (id: string) => apiClient.delete(`/norm-types/${id}`),
     onSuccess: (_d, id) => {
-      qc.invalidateQueries({ queryKey: ['norm-types'] });
-      qc.invalidateQueries({ queryKey: ['norm-types', id] });
+      qc.invalidateQueries({ queryKey: normTypeKeys.all });
+      qc.invalidateQueries({ queryKey: normTypeKeys.detail(id) });
     },
   });
 }
@@ -71,8 +72,8 @@ export function useRestoreNormType() {
   return useMutation({
     mutationFn: (id: string) => apiClient.patch<NormTypeDefinition>(`/norm-types/${id}/restore`),
     onSuccess: (_d, id) => {
-      qc.invalidateQueries({ queryKey: ['norm-types'] });
-      qc.invalidateQueries({ queryKey: ['norm-types', id] });
+      qc.invalidateQueries({ queryKey: normTypeKeys.all });
+      qc.invalidateQueries({ queryKey: normTypeKeys.detail(id) });
     },
   });
 }

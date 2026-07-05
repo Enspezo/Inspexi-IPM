@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api-client';
+import { productGroupKeys, productKeys } from '@/lib/query-keys';
 import type { ProductGroup, PaginatedResponse } from '@/types';
 
 interface ListParams {
@@ -18,14 +19,14 @@ export function useProductGroups(params: ListParams = {}) {
   const endpoint = `/product-groups${qs ? `?${qs}` : ''}`;
 
   return useQuery<PaginatedResponse<ProductGroup>>({
-    queryKey: ['product-groups', params],
+    queryKey: productGroupKeys.list(params),
     queryFn: () => apiClient.get<PaginatedResponse<ProductGroup>>(endpoint),
   });
 }
 
 export function useProductGroupsCompact() {
   return useQuery<{ id: string; name: string }[]>({
-    queryKey: ['product-groups', 'compact'],
+    queryKey: productGroupKeys.compact(),
     queryFn: () =>
       apiClient.get<{ id: string; name: string }[]>('/product-groups/compact'),
     staleTime: 30 * 60 * 1000, // 30 min — dropdown options, admin-only changes
@@ -34,7 +35,7 @@ export function useProductGroupsCompact() {
 
 export function useProductGroup(id: string) {
   return useQuery<ProductGroup>({
-    queryKey: ['product-groups', id],
+    queryKey: productGroupKeys.detail(id),
     queryFn: () => apiClient.get<ProductGroup>(`/product-groups/${id}`),
     enabled: !!id,
   });
@@ -51,7 +52,7 @@ export function useCreateProductGroup() {
     mutationFn: (data: CreateDto) =>
       apiClient.post<ProductGroup>('/product-groups', data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['product-groups'] });
+      queryClient.invalidateQueries({ queryKey: productGroupKeys.all });
     },
   });
 }
@@ -62,7 +63,7 @@ export function useUpdateProductGroup(id: string) {
     mutationFn: (data: Partial<CreateDto>) =>
       apiClient.patch<ProductGroup>(`/product-groups/${id}`, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['product-groups'] });
+      queryClient.invalidateQueries({ queryKey: productGroupKeys.all });
     },
   });
 }
@@ -72,7 +73,7 @@ export function useDeleteProductGroup() {
   return useMutation({
     mutationFn: (id: string) => apiClient.delete(`/product-groups/${id}`),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['product-groups'] });
+      queryClient.invalidateQueries({ queryKey: productGroupKeys.all });
     },
   });
 }
@@ -85,8 +86,8 @@ export function useAddProductToGroup(groupId: string) {
     mutationFn: (productId: string) =>
       apiClient.post<ProductGroup>(`/product-groups/${groupId}/products`, { productId }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['product-groups', groupId] });
-      queryClient.invalidateQueries({ queryKey: ['products'] });
+      queryClient.invalidateQueries({ queryKey: productGroupKeys.detail(groupId) });
+      queryClient.invalidateQueries({ queryKey: productKeys.all });
     },
   });
 }
@@ -97,8 +98,8 @@ export function useRemoveProductFromGroup(groupId: string) {
     mutationFn: (productId: string) =>
       apiClient.delete<ProductGroup>(`/product-groups/${groupId}/products/${productId}`),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['product-groups', groupId] });
-      queryClient.invalidateQueries({ queryKey: ['products'] });
+      queryClient.invalidateQueries({ queryKey: productGroupKeys.detail(groupId) });
+      queryClient.invalidateQueries({ queryKey: productKeys.all });
     },
   });
 }

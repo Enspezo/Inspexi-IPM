@@ -1,10 +1,11 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api-client';
+import { projectKeys } from '@/lib/query-keys';
 import type { ProjectFollower } from '@/types';
 
 export function useProjectFollowers(projectId: string) {
   return useQuery({
-    queryKey: ['projects', projectId, 'followers'],
+    queryKey: projectKeys.followers(projectId),
     queryFn: () =>
       apiClient.get<ProjectFollower[]>(`/projects/${projectId}/followers`),
     enabled: !!projectId,
@@ -32,7 +33,7 @@ export function useAddProjectFollower(projectId: string) {
       ),
     onSuccess: () => {
       queryClient.invalidateQueries({
-        queryKey: ['projects', projectId, 'followers'],
+        queryKey: projectKeys.followers(projectId),
       });
     },
   });
@@ -62,7 +63,7 @@ export function useUpdateProjectFollower(projectId: string) {
       ),
     onSuccess: () => {
       queryClient.invalidateQueries({
-        queryKey: ['projects', projectId, 'followers'],
+        queryKey: projectKeys.followers(projectId),
       });
     },
   });
@@ -75,7 +76,7 @@ export function useRemoveProjectFollower(projectId: string) {
       apiClient.delete(`/projects/${projectId}/followers/${followerId}`),
     onSuccess: () => {
       queryClient.invalidateQueries({
-        queryKey: ['projects', projectId, 'followers'],
+        queryKey: projectKeys.followers(projectId),
       });
     },
   });

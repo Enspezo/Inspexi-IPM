@@ -1,10 +1,16 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api-client';
+import {
+  clientDocumentKeys,
+  clientInspectionDocumentKeys,
+  clientInspectionDetailKeys,
+  clientDashboardKeys,
+} from '@/lib/query-keys';
 import type { DocumentDetail, SignResult } from '@/types';
 
 export function useDocument(id: string | undefined) {
   return useQuery<DocumentDetail>({
-    queryKey: ['client-document', id],
+    queryKey: clientDocumentKeys.detail(id as string),
     queryFn: () => apiClient.get<DocumentDetail>(`/client/documents/${id}`),
     enabled: !!id,
   });
@@ -16,10 +22,10 @@ export function useSignDocument(documentId: string) {
     mutationFn: (body: { signatureImage: string; signerName?: string }) =>
       apiClient.post<SignResult>(`/client/documents/${documentId}/sign`, body),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['client-document', documentId] });
-      qc.invalidateQueries({ queryKey: ['client-inspection-documents'] });
-      qc.invalidateQueries({ queryKey: ['client-inspection'] });
-      qc.invalidateQueries({ queryKey: ['client-dashboard'] });
+      qc.invalidateQueries({ queryKey: clientDocumentKeys.detail(documentId) });
+      qc.invalidateQueries({ queryKey: clientInspectionDocumentKeys.all });
+      qc.invalidateQueries({ queryKey: clientInspectionDetailKeys.all });
+      qc.invalidateQueries({ queryKey: clientDashboardKeys.all });
     },
   });
 }

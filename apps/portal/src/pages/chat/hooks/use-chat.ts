@@ -10,6 +10,7 @@ import type {
   Role,
   UserPresence,
 } from '@/types';
+import { chatKeys } from '@/lib/query-keys';
 
 export interface CreateThreadInput {
   type: 'DIRECT' | 'TEAM';
@@ -27,9 +28,9 @@ export interface SendMessageInput {
   referenceEntityId?: string;
 }
 
-const THREADS_KEY = ['chat', 'threads'];
-const UNREAD_KEY = ['chat', 'unread'];
-const PRESENCE_KEY = ['chat', 'presence'];
+const THREADS_KEY = chatKeys.threads();
+const UNREAD_KEY = chatKeys.unread();
+const PRESENCE_KEY = chatKeys.presence();
 
 // ─── Threads + unread badge (polled) ──────────────────────
 
@@ -44,7 +45,7 @@ export function useChatThreads(enabled = true) {
 
 export function useChatThread(threadId: string | null) {
   return useQuery<ChatThread>({
-    queryKey: ['chat', 'thread', threadId],
+    queryKey: chatKeys.thread(threadId as string),
     queryFn: () => apiClient.get<ChatThread>(`/chat/threads/${threadId}`),
     enabled: !!threadId,
     refetchInterval: 20_000,
@@ -63,7 +64,7 @@ export function useChatUnread(enabled = true) {
 
 export function useChatUsers(q: string, enabled = true) {
   return useQuery<ChatUser[]>({
-    queryKey: ['chat', 'users', q],
+    queryKey: chatKeys.users(q),
     queryFn: () =>
       apiClient.get<ChatUser[]>(`/chat/users${q ? `?q=${encodeURIComponent(q)}` : ''}`),
     staleTime: 30_000,

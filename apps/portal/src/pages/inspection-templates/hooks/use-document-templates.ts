@@ -6,6 +6,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiClient, getAccessToken } from '@/lib/api-client';
 import { DocumentType, type DocumentTemplate, type TemplateMode } from '@/types';
 import type { DocContentBlock } from '@/components/document-builder';
+import { documentTemplateKeys } from '@/lib/query-keys';
 
 const slugFor = (type: DocumentType) => (type === DocumentType.PLAN ? 'plan' : 'report');
 
@@ -24,7 +25,7 @@ export interface UpdateDocumentTemplateInput {
 }
 
 const queryKey = (inspectionTemplateId: string, type: DocumentType) =>
-  ['document-template', inspectionTemplateId, type] as const;
+  documentTemplateKeys.detail(inspectionTemplateId, type);
 
 /** Haal de plan- of rapport-template op (get-or-create op de API). */
 export function useDocumentTemplate(inspectionTemplateId: string, type: DocumentType) {

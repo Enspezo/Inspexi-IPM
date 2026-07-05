@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api-client';
+import { projectKeys, projectPhaseKeys } from '@/lib/query-keys';
 import type {
   ProjectPhase,
   ProjectPhaseFollower,
@@ -10,26 +11,20 @@ import type {
 
 // ─── Query keys ────────────────────────────────────────────
 
-const phasesKey = (projectId: string) => ['project-phases', projectId] as const;
-const milestonesKey = (projectId: string, phaseId: string) =>
-  ['project-phases', projectId, phaseId, 'milestones'] as const;
-const followersKey = (projectId: string, phaseId: string) =>
-  ['project-phases', projectId, phaseId, 'followers'] as const;
-
 /** Invalidatie die elke fase-mutatie deelt: fasenlijst + het bovenliggende project. */
 function invalidatePhaseScope(
   queryClient: ReturnType<typeof useQueryClient>,
   projectId: string,
 ) {
-  queryClient.invalidateQueries({ queryKey: phasesKey(projectId) });
-  queryClient.invalidateQueries({ queryKey: ['projects', projectId] });
+  queryClient.invalidateQueries({ queryKey: projectPhaseKeys.phases(projectId) });
+  queryClient.invalidateQueries({ queryKey: projectKeys.detail(projectId) });
 }
 
 // ─── Phases ────────────────────────────────────────────────
 
 export function useProjectPhases(projectId: string) {
   return useQuery({
-    queryKey: phasesKey(projectId),
+    queryKey: projectPhaseKeys.phases(projectId),
     queryFn: () => apiClient.get<ProjectPhase[]>(`/projects/${projectId}/phases`),
     enabled: !!projectId,
   });
@@ -99,7 +94,7 @@ export function useReorderPhases(projectId: string) {
 
 export function usePhaseMilestones(projectId: string, phaseId: string) {
   return useQuery({
-    queryKey: milestonesKey(projectId, phaseId),
+    queryKey: projectPhaseKeys.milestones(projectId, phaseId),
     queryFn: () =>
       apiClient.get<PhaseMilestone[]>(
         `/projects/${projectId}/phases/${phaseId}/milestones`,
@@ -126,7 +121,7 @@ export function useCreateMilestone(projectId: string, phaseId: string) {
         data,
       ),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: milestonesKey(projectId, phaseId) });
+      queryClient.invalidateQueries({ queryKey: projectPhaseKeys.milestones(projectId, phaseId) });
       invalidatePhaseScope(queryClient, projectId);
     },
   });
@@ -151,7 +146,7 @@ export function useUpdateMilestone(projectId: string, phaseId: string) {
         data,
       ),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: milestonesKey(projectId, phaseId) });
+      queryClient.invalidateQueries({ queryKey: projectPhaseKeys.milestones(projectId, phaseId) });
       invalidatePhaseScope(queryClient, projectId);
     },
   });
@@ -165,7 +160,7 @@ export function useDeleteMilestone(projectId: string, phaseId: string) {
         `/projects/${projectId}/phases/${phaseId}/milestones/${id}`,
       ),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: milestonesKey(projectId, phaseId) });
+      queryClient.invalidateQueries({ queryKey: projectPhaseKeys.milestones(projectId, phaseId) });
       invalidatePhaseScope(queryClient, projectId);
     },
   });
@@ -175,7 +170,7 @@ export function useDeleteMilestone(projectId: string, phaseId: string) {
 
 export function usePhaseFollowers(projectId: string, phaseId: string) {
   return useQuery({
-    queryKey: followersKey(projectId, phaseId),
+    queryKey: projectPhaseKeys.followers(projectId, phaseId),
     queryFn: () =>
       apiClient.get<ProjectPhaseFollower[]>(
         `/projects/${projectId}/phases/${phaseId}/followers`,
@@ -204,7 +199,7 @@ export function useAddPhaseFollower(projectId: string, phaseId: string) {
         data,
       ),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: followersKey(projectId, phaseId) });
+      queryClient.invalidateQueries({ queryKey: projectPhaseKeys.followers(projectId, phaseId) });
       invalidatePhaseScope(queryClient, projectId);
     },
   });
@@ -233,7 +228,7 @@ export function useUpdatePhaseFollower(projectId: string, phaseId: string) {
         data,
       ),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: followersKey(projectId, phaseId) });
+      queryClient.invalidateQueries({ queryKey: projectPhaseKeys.followers(projectId, phaseId) });
     },
   });
 }
@@ -246,7 +241,7 @@ export function useRemovePhaseFollower(projectId: string, phaseId: string) {
         `/projects/${projectId}/phases/${phaseId}/followers/${followerId}`,
       ),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: followersKey(projectId, phaseId) });
+      queryClient.invalidateQueries({ queryKey: projectPhaseKeys.followers(projectId, phaseId) });
       invalidatePhaseScope(queryClient, projectId);
     },
   });

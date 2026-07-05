@@ -1,5 +1,12 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api-client';
+import {
+  projectKeys,
+  projectsAllKeys,
+  requestKeys,
+  quoteKeys,
+  planningKeys,
+} from '@/lib/query-keys';
 import type { Project, PaginatedResponse } from '@/types';
 
 export interface ListProjectsParams {
@@ -28,7 +35,7 @@ function buildQuery(params: Record<string, any>): string {
 export function useProjects(params: ListProjectsParams = {}) {
   const { enabled, ...queryParams } = params;
   return useQuery({
-    queryKey: ['projects', params],
+    queryKey: projectKeys.list(params),
     queryFn: () =>
       apiClient.get<PaginatedResponse<Project>>(`/projects${buildQuery(queryParams)}`),
     enabled,
@@ -39,7 +46,7 @@ export function useProjects(params: ListProjectsParams = {}) {
 export function useAllProjects(params: { search?: string; enabled?: boolean } = {}) {
   const { enabled, ...rest } = params;
   return useQuery({
-    queryKey: ['projects-all', rest],
+    queryKey: projectsAllKeys.list(rest),
     queryFn: () =>
       apiClient.get<PaginatedResponse<Project>>(
         `/projects${buildQuery({ ...rest, limit: 500 })}`,
@@ -50,7 +57,7 @@ export function useAllProjects(params: { search?: string; enabled?: boolean } = 
 
 export function useProject(id: string) {
   return useQuery({
-    queryKey: ['projects', id],
+    queryKey: projectKeys.detail(id),
     queryFn: () => apiClient.get<Project>(`/projects/${id}`),
     enabled: !!id,
   });
@@ -71,7 +78,7 @@ export function useCreateProject() {
       quoteId?: string;
     }) => apiClient.post<Project>('/projects', data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['projects'] });
+      queryClient.invalidateQueries({ queryKey: projectKeys.all });
     },
   });
 }
@@ -82,8 +89,8 @@ export function useCreateProjectFromRequest() {
     mutationFn: (requestId: string) =>
       apiClient.post<Project>(`/projects/from-request/${requestId}`, {}),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['projects'] });
-      queryClient.invalidateQueries({ queryKey: ['requests'] });
+      queryClient.invalidateQueries({ queryKey: projectKeys.all });
+      queryClient.invalidateQueries({ queryKey: requestKeys.all });
     },
   });
 }
@@ -103,8 +110,8 @@ export function useUpdateProject(id: string) {
       endDate?: string;
     }) => apiClient.patch<Project>(`/projects/${id}`, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['projects', id] });
-      queryClient.invalidateQueries({ queryKey: ['projects'] });
+      queryClient.invalidateQueries({ queryKey: projectKeys.detail(id) });
+      queryClient.invalidateQueries({ queryKey: projectKeys.all });
     },
   });
 }
@@ -114,7 +121,7 @@ export function useDeleteProject(id: string) {
   return useMutation({
     mutationFn: () => apiClient.delete(`/projects/${id}`),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['projects'] });
+      queryClient.invalidateQueries({ queryKey: projectKeys.all });
     },
   });
 }
@@ -122,7 +129,7 @@ export function useDeleteProject(id: string) {
 // Linked entities
 export function useProjectRequests(id: string) {
   return useQuery({
-    queryKey: ['projects', id, 'requests'],
+    queryKey: projectKeys.requests(id),
     queryFn: () => apiClient.get<any[]>(`/projects/${id}/requests`),
     enabled: !!id,
   });
@@ -130,7 +137,7 @@ export function useProjectRequests(id: string) {
 
 export function useProjectQuotes(id: string) {
   return useQuery({
-    queryKey: ['projects', id, 'quotes'],
+    queryKey: projectKeys.quotes(id),
     queryFn: () => apiClient.get<any[]>(`/projects/${id}/quotes`),
     enabled: !!id,
   });
@@ -138,7 +145,7 @@ export function useProjectQuotes(id: string) {
 
 export function useProjectPlanning(id: string) {
   return useQuery({
-    queryKey: ['projects', id, 'planning'],
+    queryKey: projectKeys.planning(id),
     queryFn: () => apiClient.get<any[]>(`/projects/${id}/planning`),
     enabled: !!id,
   });
@@ -155,7 +162,7 @@ export interface ProjectLocation {
 
 export function useProjectLocations(id: string) {
   return useQuery({
-    queryKey: ['projects', id, 'locations'],
+    queryKey: projectKeys.locations(id),
     queryFn: () => apiClient.get<ProjectLocation[]>(`/projects/${id}/locations`),
     enabled: !!id,
   });
@@ -170,11 +177,11 @@ export function useAssignToProject(id: string) {
       planningItemIds?: string[];
     }) => apiClient.post(`/projects/${id}/assign`, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['projects', id] });
-      queryClient.invalidateQueries({ queryKey: ['projects'] });
-      queryClient.invalidateQueries({ queryKey: ['requests'] });
-      queryClient.invalidateQueries({ queryKey: ['quotes'] });
-      queryClient.invalidateQueries({ queryKey: ['planning'] });
+      queryClient.invalidateQueries({ queryKey: projectKeys.detail(id) });
+      queryClient.invalidateQueries({ queryKey: projectKeys.all });
+      queryClient.invalidateQueries({ queryKey: requestKeys.all });
+      queryClient.invalidateQueries({ queryKey: quoteKeys.all });
+      queryClient.invalidateQueries({ queryKey: planningKeys.all });
     },
   });
 }
@@ -188,11 +195,11 @@ export function useUnassignFromProject(id: string) {
       planningItemIds?: string[];
     }) => apiClient.post(`/projects/${id}/unassign`, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['projects', id] });
-      queryClient.invalidateQueries({ queryKey: ['projects'] });
-      queryClient.invalidateQueries({ queryKey: ['requests'] });
-      queryClient.invalidateQueries({ queryKey: ['quotes'] });
-      queryClient.invalidateQueries({ queryKey: ['planning'] });
+      queryClient.invalidateQueries({ queryKey: projectKeys.detail(id) });
+      queryClient.invalidateQueries({ queryKey: projectKeys.all });
+      queryClient.invalidateQueries({ queryKey: requestKeys.all });
+      queryClient.invalidateQueries({ queryKey: quoteKeys.all });
+      queryClient.invalidateQueries({ queryKey: planningKeys.all });
     },
   });
 }

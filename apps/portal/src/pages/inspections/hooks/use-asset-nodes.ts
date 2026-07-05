@@ -15,6 +15,7 @@
  */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api-client';
+import { assetTreeKeys, planTreeKeys, scopeLocationKeys } from '@/lib/query-keys';
 import type { AssetNode, AssetNodeType, InspectionPlanLocation } from '@/types';
 
 // ── Bomen lezen ──
@@ -22,7 +23,7 @@ import type { AssetNode, AssetNodeType, InspectionPlanLocation } from '@/types';
 /** Volledige AssetNode-boom van een CRM-locatie (auto-creëert de root-node). */
 export function useAssetTree(locationId: string | undefined) {
   return useQuery<AssetNode[]>({
-    queryKey: ['asset-tree', locationId],
+    queryKey: assetTreeKeys.byLocation(locationId ?? ''),
     queryFn: () => apiClient.get<AssetNode[]>(`/locations/${locationId}/tree`),
     enabled: !!locationId,
   });
@@ -31,7 +32,7 @@ export function useAssetTree(locationId: string | undefined) {
 /** Boom van een inspectieplan; LOCATION-nodes dragen een `inScope`-vlag. */
 export function usePlanTree(planId: string | undefined) {
   return useQuery<AssetNode[]>({
-    queryKey: ['plan-tree', planId],
+    queryKey: planTreeKeys.byPlan(planId ?? ''),
     queryFn: () => apiClient.get<AssetNode[]>(`/inspection-plans/${planId}/tree`),
     enabled: !!planId,
   });
@@ -57,8 +58,8 @@ export interface CreateAssetNodeInput {
 function useInvalidateTrees() {
   const qc = useQueryClient();
   return () => {
-    qc.invalidateQueries({ queryKey: ['asset-tree'] });
-    qc.invalidateQueries({ queryKey: ['plan-tree'] });
+    qc.invalidateQueries({ queryKey: assetTreeKeys.all });
+    qc.invalidateQueries({ queryKey: planTreeKeys.all });
   };
 }
 
@@ -122,7 +123,7 @@ export function useDeleteAssetNode() {
  */
 export function useScopeLocations(planId: string | undefined) {
   const qc = useQueryClient();
-  const key = ['scope-locations', planId];
+  const key = scopeLocationKeys.byPlan(planId as string);
 
   const query = useQuery<InspectionPlanLocation[]>({
     queryKey: key,
@@ -135,7 +136,7 @@ export function useScopeLocations(planId: string | undefined) {
       apiClient.post<InspectionPlanLocation[]>(`/inspection-plans/${planId}/scope-locations/${assetNodeId}`),
     onSuccess: (data) => {
       qc.setQueryData(key, data);
-      qc.invalidateQueries({ queryKey: ['plan-tree', planId] });
+      qc.invalidateQueries({ queryKey: planTreeKeys.byPlan(planId ?? '') });
     },
   });
 
@@ -144,7 +145,7 @@ export function useScopeLocations(planId: string | undefined) {
       apiClient.delete<InspectionPlanLocation[]>(`/inspection-plans/${planId}/scope-locations/${assetNodeId}`),
     onSuccess: (data) => {
       qc.setQueryData(key, data);
-      qc.invalidateQueries({ queryKey: ['plan-tree', planId] });
+      qc.invalidateQueries({ queryKey: planTreeKeys.byPlan(planId ?? '') });
     },
   });
 

@@ -4,6 +4,7 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api-client';
+import { checklistKeys } from '@/lib/query-keys';
 import type { Checklist, ChecklistItemLink } from '@/types';
 
 interface ListParams {
@@ -24,14 +25,14 @@ export function useChecklists(params: ListParams = {}) {
   const qs = qp.toString();
 
   return useQuery<Checklist[]>({
-    queryKey: ['checklists', params],
+    queryKey: checklistKeys.list(params),
     queryFn: () => apiClient.get<Checklist[]>(`/checklists${qs ? `?${qs}` : ''}`),
   });
 }
 
 export function useChecklist(id: string) {
   return useQuery<Checklist>({
-    queryKey: ['checklists', id],
+    queryKey: checklistKeys.detail(id),
     queryFn: () => apiClient.get<Checklist>(`/checklists/${id}`),
     enabled: !!id,
   });
@@ -42,7 +43,7 @@ export function useCreateChecklist() {
   return useMutation({
     mutationFn: (data: Record<string, unknown>) =>
       apiClient.post<Checklist>('/checklists', data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['checklists'] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: checklistKeys.all }),
   });
 }
 
@@ -52,8 +53,8 @@ export function useUpdateChecklist(id: string) {
     mutationFn: (data: Record<string, unknown>) =>
       apiClient.patch<Checklist>(`/checklists/${id}`, data),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['checklists'] });
-      qc.invalidateQueries({ queryKey: ['checklists', id] });
+      qc.invalidateQueries({ queryKey: checklistKeys.all });
+      qc.invalidateQueries({ queryKey: checklistKeys.detail(id) });
     },
   });
 }
@@ -62,7 +63,7 @@ export function useDeleteChecklist(id: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: () => apiClient.delete(`/checklists/${id}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['checklists'] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: checklistKeys.all }),
   });
 }
 
@@ -72,7 +73,7 @@ export function useImportChecklist() {
   return useMutation({
     mutationFn: (data: Record<string, unknown>) =>
       apiClient.post<Checklist>('/checklists/import', data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['checklists'] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: checklistKeys.all }),
   });
 }
 
@@ -92,7 +93,7 @@ export function useAddChecklistItem(checklistId: string) {
   return useMutation({
     mutationFn: (data: AddItemInput) =>
       apiClient.post<ChecklistItemLink>(`/checklists/${checklistId}/items`, data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['checklists', checklistId] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: checklistKeys.detail(checklistId) }),
   });
 }
 
@@ -107,7 +108,7 @@ export function useUpdateChecklistItemLink(checklistId: string) {
   return useMutation({
     mutationFn: ({ linkId, data }: { linkId: string; data: UpdateItemLinkInput }) =>
       apiClient.patch<ChecklistItemLink>(`/checklists/${checklistId}/items/${linkId}`, data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['checklists', checklistId] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: checklistKeys.detail(checklistId) }),
   });
 }
 
@@ -116,7 +117,7 @@ export function useRemoveChecklistItemLink(checklistId: string) {
   return useMutation({
     mutationFn: (linkId: string) =>
       apiClient.delete(`/checklists/${checklistId}/items/${linkId}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['checklists', checklistId] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: checklistKeys.detail(checklistId) }),
   });
 }
 
@@ -128,14 +129,14 @@ export function useReorderChecklistItems(checklistId: string) {
       apiClient.post<Checklist>(`/checklists/${checklistId}/items/reorder`, { itemLinkIds }),
     // Optimistic: pas de cache-volgorde direct aan; rollback bij fout.
     onMutate: async (itemLinkIds: string[]) => {
-      await qc.cancelQueries({ queryKey: ['checklists', checklistId] });
-      const previous = qc.getQueryData<Checklist>(['checklists', checklistId]);
+      await qc.cancelQueries({ queryKey: checklistKeys.detail(checklistId) });
+      const previous = qc.getQueryData<Checklist>(checklistKeys.detail(checklistId));
       if (previous?.itemLinks) {
         const byId = new Map(previous.itemLinks.map((l) => [l.id, l]));
         const reordered = itemLinkIds
           .map((lid) => byId.get(lid))
           .filter((l): l is ChecklistItemLink => !!l);
-        qc.setQueryData<Checklist>(['checklists', checklistId], {
+        qc.setQueryData<Checklist>(checklistKeys.detail(checklistId), {
           ...previous,
           itemLinks: reordered,
         });
@@ -143,9 +144,9 @@ export function useReorderChecklistItems(checklistId: string) {
       return { previous };
     },
     onError: (_err, _vars, ctx) => {
-      if (ctx?.previous) qc.setQueryData(['checklists', checklistId], ctx.previous);
+      if (ctx?.previous) qc.setQueryData(checklistKeys.detail(checklistId), ctx.previous);
     },
-    onSettled: () => qc.invalidateQueries({ queryKey: ['checklists', checklistId] }),
+    onSettled: () => qc.invalidateQueries({ queryKey: checklistKeys.detail(checklistId) }),
   });
 }
 
@@ -164,8 +165,8 @@ export function usePublishChecklist(id: string) {
     mutationFn: (data: PublishInput) =>
       apiClient.post<Checklist>(`/checklists/${id}/publish`, data),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['checklists'] });
-      qc.invalidateQueries({ queryKey: ['checklists', id] });
+      qc.invalidateQueries({ queryKey: checklistKeys.all });
+      qc.invalidateQueries({ queryKey: checklistKeys.detail(id) });
     },
   });
 }
@@ -176,8 +177,8 @@ export function useRetireChecklist(id: string) {
     mutationFn: (data: PublishInput) =>
       apiClient.post<Checklist>(`/checklists/${id}/retire`, data),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['checklists'] });
-      qc.invalidateQueries({ queryKey: ['checklists', id] });
+      qc.invalidateQueries({ queryKey: checklistKeys.all });
+      qc.invalidateQueries({ queryKey: checklistKeys.detail(id) });
     },
   });
 }
@@ -187,7 +188,7 @@ export function useNewChecklistVersion(id: string) {
   return useMutation({
     mutationFn: (data: { changeDescription?: string }) =>
       apiClient.post<Checklist>(`/checklists/${id}/new-version`, data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['checklists'] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: checklistKeys.all }),
   });
 }
 
@@ -215,7 +216,7 @@ export interface ChecklistPreview {
 
 export function useChecklistPreview(id: string) {
   return useQuery<ChecklistPreview>({
-    queryKey: ['checklists', id, 'preview'],
+    queryKey: checklistKeys.preview(id),
     queryFn: () => apiClient.get<ChecklistPreview>(`/checklists/${id}/preview`),
     enabled: !!id,
   });
@@ -238,7 +239,7 @@ export interface ChecklistHistoryEntry {
 
 export function useChecklistHistory(id: string) {
   return useQuery<ChecklistHistoryEntry[]>({
-    queryKey: ['checklists', id, 'history'],
+    queryKey: checklistKeys.history(id),
     queryFn: () => apiClient.get<ChecklistHistoryEntry[]>(`/checklists/${id}/history`),
     enabled: !!id,
   });

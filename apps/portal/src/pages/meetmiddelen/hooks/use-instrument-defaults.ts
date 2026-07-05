@@ -1,13 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api-client';
-
-const KEY = 'instrument-defaults';
+import { instrumentDefaultKeys } from '@/lib/query-keys';
 
 // ─── Niveau 1 — globale voorkeur van de ingelogde inspecteur ───────────────
 
 export function useMyDefaultInstruments() {
   return useQuery<string[]>({
-    queryKey: [KEY, 'me'],
+    queryKey: instrumentDefaultKeys.me(),
     queryFn: () => apiClient.get<string[]>('/measurement-instruments/my-defaults'),
   });
 }
@@ -17,7 +16,7 @@ export function useSetMyDefaultInstruments() {
   return useMutation({
     mutationFn: (instrumentIds: string[]) =>
       apiClient.put<string[]>('/measurement-instruments/my-defaults', { instrumentIds }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: [KEY, 'me'] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: instrumentDefaultKeys.me() }),
   });
 }
 
@@ -25,7 +24,7 @@ export function useSetMyDefaultInstruments() {
 
 export function usePlanDefaultInstruments(planId: string | undefined) {
   return useQuery<string[]>({
-    queryKey: [KEY, 'plan', planId],
+    queryKey: instrumentDefaultKeys.plan(planId as string),
     queryFn: () =>
       apiClient.get<string[]>(`/measurement-instruments/plan-defaults/${planId}`),
     enabled: !!planId,
@@ -39,6 +38,6 @@ export function useSetPlanDefaultInstruments(planId: string) {
       apiClient.put<string[]>(`/measurement-instruments/plan-defaults/${planId}`, {
         instrumentIds,
       }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: [KEY, 'plan', planId] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: instrumentDefaultKeys.plan(planId) }),
   });
 }

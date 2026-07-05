@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api-client';
+import { planningKeys } from '@/lib/query-keys';
 import type { PlanningItem, PlanningStatus } from '@/types';
 
 interface ListPlanningParams {
@@ -40,7 +41,7 @@ export function usePlanningItems(params: ListPlanningParams = {}) {
 
   const qs = queryParams.toString();
   return useQuery<PlanningListResponse>({
-    queryKey: ['planning', params],
+    queryKey: planningKeys.list(params),
     queryFn: () => apiClient.get<PlanningListResponse>(`/planning${qs ? `?${qs}` : ''}`),
     enabled: params.enabled,
   });
@@ -48,7 +49,7 @@ export function usePlanningItems(params: ListPlanningParams = {}) {
 
 export function usePlanningItem(id: string | undefined) {
   return useQuery<PlanningItem>({
-    queryKey: ['planning', id],
+    queryKey: planningKeys.detail(id as string),
     queryFn: () => apiClient.get<PlanningItem>(`/planning/${id}`),
     enabled: !!id,
   });
@@ -58,7 +59,7 @@ export function useCreatePlanningItem() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (dto: any) => apiClient.post<PlanningItem>('/planning', dto),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['planning'] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: planningKeys.all }),
   });
 }
 
@@ -67,8 +68,8 @@ export function useUpdatePlanningItem(id: string) {
   return useMutation({
     mutationFn: (dto: any) => apiClient.patch<PlanningItem>(`/planning/${id}`, dto),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['planning', id] });
-      qc.invalidateQueries({ queryKey: ['planning'] });
+      qc.invalidateQueries({ queryKey: planningKeys.detail(id as string) });
+      qc.invalidateQueries({ queryKey: planningKeys.all });
     },
   });
 }
@@ -79,8 +80,8 @@ export function useUpdatePlanningStatus(id: string) {
     mutationFn: (dto: { status: string; note?: string }) =>
       apiClient.patch<PlanningItem>(`/planning/${id}/status`, dto),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['planning', id] });
-      qc.invalidateQueries({ queryKey: ['planning'] });
+      qc.invalidateQueries({ queryKey: planningKeys.detail(id as string) });
+      qc.invalidateQueries({ queryKey: planningKeys.all });
     },
   });
 }
@@ -90,7 +91,7 @@ export function useAssignInspectors(id: string) {
   return useMutation({
     mutationFn: (dto: { inspectorIds: string[]; primaryInspectorId?: string }) =>
       apiClient.post<PlanningItem>(`/planning/${id}/assign`, dto),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['planning', id] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: planningKeys.detail(id as string) }),
   });
 }
 
@@ -98,7 +99,7 @@ export function useAcceptPlanningItem(id: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: () => apiClient.post(`/planning/${id}/accept`, {}),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['planning', id] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: planningKeys.detail(id as string) }),
   });
 }
 
@@ -106,7 +107,7 @@ export function useRejectPlanningItem(id: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (dto: { reason: string }) => apiClient.post(`/planning/${id}/reject`, dto),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['planning', id] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: planningKeys.detail(id as string) }),
   });
 }
 
@@ -115,8 +116,8 @@ export function useCompletePlanningItem(id: string) {
   return useMutation({
     mutationFn: () => apiClient.post(`/planning/${id}/complete`, {}),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['planning', id] });
-      qc.invalidateQueries({ queryKey: ['planning'] });
+      qc.invalidateQueries({ queryKey: planningKeys.detail(id as string) });
+      qc.invalidateQueries({ queryKey: planningKeys.all });
     },
   });
 }
@@ -125,7 +126,7 @@ export function useReschedulePlanningItem(id: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (dto: { reason: string }) => apiClient.post<PlanningItem>(`/planning/${id}/reschedule`, dto),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['planning'] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: planningKeys.all }),
   });
 }
 

@@ -5,6 +5,7 @@ import type {
   PaginatedResponse,
   DocumentEntityType,
 } from '@/types';
+import { documentKeys } from '@/lib/query-keys';
 
 interface ListDocumentsParams {
   search?: string;
@@ -34,7 +35,7 @@ export function useDocuments(params: ListDocumentsParams = {}) {
   const endpoint = `/documents${qs ? `?${qs}` : ''}`;
 
   return useQuery<PaginatedResponse<CrmDocument>>({
-    queryKey: ['documents', params],
+    queryKey: documentKeys.list(params),
     queryFn: () => apiClient.get<PaginatedResponse<CrmDocument>>(endpoint),
   });
 }
@@ -71,7 +72,7 @@ export function useUploadDocument() {
       return apiClient.upload<CrmDocument>('/documents', formData);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['documents'] });
+      queryClient.invalidateQueries({ queryKey: documentKeys.all });
     },
   });
 }
@@ -89,7 +90,7 @@ export function useUpdateDocument() {
     mutationFn: ({ id, data }: { id: string; data: UpdateDocumentData }) =>
       apiClient.patch<CrmDocument>(`/documents/${id}`, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['documents'] });
+      queryClient.invalidateQueries({ queryKey: documentKeys.all });
     },
   });
 }
@@ -100,7 +101,7 @@ export function useDeleteDocument() {
   return useMutation({
     mutationFn: (id: string) => apiClient.delete(`/documents/${id}`),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['documents'] });
+      queryClient.invalidateQueries({ queryKey: documentKeys.all });
     },
   });
 }

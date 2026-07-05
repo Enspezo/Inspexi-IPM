@@ -1,5 +1,10 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api-client';
+import {
+  organizationKeys,
+  organizationEntitlementKeys,
+  auditLogKeys,
+} from '@/lib/query-keys';
 import type { Organization, User } from '@/types';
 import type {
   FeatureOverrideState,
@@ -8,7 +13,7 @@ import type {
 
 export function useOrganizations(opts?: { enabled?: boolean }) {
   return useQuery<Organization[]>({
-    queryKey: ['organizations'],
+    queryKey: organizationKeys.all,
     queryFn: () => apiClient.get<Organization[]>('/organizations'),
     staleTime: 15 * 60 * 1000, // 15 min — org list (superuser), rarely changes
     enabled: opts?.enabled ?? true,
@@ -17,7 +22,7 @@ export function useOrganizations(opts?: { enabled?: boolean }) {
 
 export function useOrganization(id: string) {
   return useQuery<Organization>({
-    queryKey: ['organizations', id],
+    queryKey: organizationKeys.detail(id),
     queryFn: () => apiClient.get<Organization>(`/organizations/${id}`),
     enabled: !!id,
   });
@@ -25,7 +30,7 @@ export function useOrganization(id: string) {
 
 export function useOrganizationUsers(orgId: string) {
   return useQuery<User[]>({
-    queryKey: ['organizations', orgId, 'users'],
+    queryKey: organizationKeys.users(orgId),
     queryFn: () => apiClient.get<User[]>(`/organizations/${orgId}/users`),
     enabled: !!orgId,
   });
@@ -47,7 +52,7 @@ export function useCreateOrganization() {
     mutationFn: (data: CreateOrganizationDto) =>
       apiClient.post<Organization>('/organizations', data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['organizations'] });
+      queryClient.invalidateQueries({ queryKey: organizationKeys.all });
     },
   });
 }
@@ -69,8 +74,8 @@ export function useUpdateOrganization(id: string) {
     mutationFn: (data: UpdateOrganizationDto) =>
       apiClient.patch<Organization>(`/organizations/${id}`, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['organizations'] });
-      queryClient.invalidateQueries({ queryKey: ['organizations', id] });
+      queryClient.invalidateQueries({ queryKey: organizationKeys.all });
+      queryClient.invalidateQueries({ queryKey: organizationKeys.detail(id) });
     },
   });
 }
@@ -80,7 +85,7 @@ export function useUpdateOrganization(id: string) {
 /** Effectieve entitlement-staat van een org (plan, overrides, effectieve set, waarschuwingen). */
 export function useOrganizationEntitlements(orgId: string) {
   return useQuery<OrganizationEntitlements>({
-    queryKey: ['organization-entitlements', orgId],
+    queryKey: organizationEntitlementKeys.byOrg(orgId),
     queryFn: () =>
       apiClient.get<OrganizationEntitlements>(`/organizations/${orgId}/entitlements`),
     enabled: !!orgId,
@@ -92,8 +97,8 @@ function invalidateEntitlements(
   queryClient: ReturnType<typeof useQueryClient>,
   orgId: string,
 ) {
-  queryClient.invalidateQueries({ queryKey: ['organization-entitlements', orgId] });
-  queryClient.invalidateQueries({ queryKey: ['audit-logs', 'Organization', orgId] });
+  queryClient.invalidateQueries({ queryKey: organizationEntitlementKeys.byOrg(orgId) });
+  queryClient.invalidateQueries({ queryKey: auditLogKeys.byEntity('Organization', orgId) });
 }
 
 export function useAssignPlan(orgId: string) {

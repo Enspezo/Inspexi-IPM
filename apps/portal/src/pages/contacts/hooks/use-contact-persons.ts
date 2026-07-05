@@ -1,5 +1,10 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api-client';
+import {
+  contactKeys,
+  contactPersonKeys,
+  contactPersonRoleKeys,
+} from '@/lib/query-keys';
 import type {
   ContactPerson,
   PaginatedResponse,
@@ -28,7 +33,7 @@ export function useContactPersons(params: ListContactPersonsParams = {}) {
   const endpoint = `/contacts/contact-persons${qs ? `?${qs}` : ''}`;
 
   return useQuery<PaginatedResponse<ContactPerson>>({
-    queryKey: ['contact-persons', params],
+    queryKey: contactPersonKeys.list(params),
     queryFn: () => apiClient.get<PaginatedResponse<ContactPerson>>(endpoint),
   });
 }
@@ -36,7 +41,7 @@ export function useContactPersons(params: ListContactPersonsParams = {}) {
 /** Lookup: actieve contactpersoon-rollen (globaal + org-specifiek). */
 export function useContactPersonRoles() {
   return useQuery<ContactPersonRoleOption[]>({
-    queryKey: ['contact-person-roles'],
+    queryKey: contactPersonRoleKeys.all,
     queryFn: () => apiClient.get<ContactPersonRoleOption[]>('/contacts/contact-person-roles'),
     staleTime: 5 * 60 * 1000,
   });
@@ -61,14 +66,14 @@ export function useAddContactPerson(contactId: string) {
         data,
       ),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['contacts', contactId] });
+      queryClient.invalidateQueries({ queryKey: contactKeys.detail(contactId) });
     },
   });
 }
 
 export function useContactPerson(personId: string) {
   return useQuery<ContactPerson>({
-    queryKey: ['contact-persons', personId],
+    queryKey: contactPersonKeys.detail(personId),
     queryFn: () =>
       apiClient.get<ContactPerson>(`/contacts/contact-persons/${personId}`),
     enabled: !!personId,
@@ -87,8 +92,8 @@ export function useUpdateContactPerson(personId: string) {
         data,
       ),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['contacts'] });
-      queryClient.invalidateQueries({ queryKey: ['contact-persons', personId] });
+      queryClient.invalidateQueries({ queryKey: contactKeys.all });
+      queryClient.invalidateQueries({ queryKey: contactPersonKeys.detail(personId) });
     },
   });
 }
@@ -100,7 +105,7 @@ export function useDeleteContactPerson() {
     mutationFn: (personId: string) =>
       apiClient.delete(`/contacts/contact-persons/${personId}`),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['contacts'] });
+      queryClient.invalidateQueries({ queryKey: contactKeys.all });
     },
   });
 }

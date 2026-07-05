@@ -8,6 +8,7 @@ import { getStatusConfig, PRIORITY } from '@/lib/status';
 import { useAllRequests } from '../hooks/use-requests';
 import { useQueryClient, useMutation } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api-client';
+import { requestKeys, requestsAllKeys } from '@/lib/query-keys';
 
 // ─── Config ────────────────────────────────────────────────────────────────
 
@@ -326,8 +327,8 @@ export function RequestsKanban({ search, priorityFilter, assignedTo }: RequestsK
     mutationFn: ({ id, status }: { id: string; status: RequestStatus }) =>
       apiClient.patch(`/requests/${id}/status`, { status }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['requests'] });
-      queryClient.invalidateQueries({ queryKey: ['requests-all'] });
+      queryClient.invalidateQueries({ queryKey: requestKeys.all });
+      queryClient.invalidateQueries({ queryKey: requestsAllKeys.all });
     },
   });
 

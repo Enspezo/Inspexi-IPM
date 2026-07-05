@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api-client';
+import { supportAccessKeys, supportAccessLogKeys } from '@/lib/query-keys';
 import type { PaginatedResponse } from '@/types';
 
 export interface SupportAccessStatus {
@@ -24,7 +25,7 @@ export interface SupportAccessLog {
 
 export function useSupportAccess(orgId: string) {
   return useQuery<SupportAccessStatus>({
-    queryKey: ['supportAccess', orgId],
+    queryKey: supportAccessKeys.byOrg(orgId),
     queryFn: () =>
       apiClient.get<SupportAccessStatus>(`/organizations/${orgId}/support-access`),
     enabled: !!orgId,
@@ -40,15 +41,15 @@ export function useSetSupportAccess(orgId: string) {
         data,
       ),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['supportAccess', orgId] });
-      qc.invalidateQueries({ queryKey: ['supportAccessLogs', orgId] });
+      qc.invalidateQueries({ queryKey: supportAccessKeys.byOrg(orgId) });
+      qc.invalidateQueries({ queryKey: supportAccessLogKeys.byOrg(orgId) });
     },
   });
 }
 
 export function useSupportAccessLogs(orgId: string) {
   return useQuery<PaginatedResponse<SupportAccessLog>>({
-    queryKey: ['supportAccessLogs', orgId],
+    queryKey: supportAccessLogKeys.byOrg(orgId),
     queryFn: () =>
       apiClient.get<PaginatedResponse<SupportAccessLog>>(
         `/organizations/${orgId}/support-access/logs?limit=20`,

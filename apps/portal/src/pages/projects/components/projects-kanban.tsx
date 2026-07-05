@@ -8,6 +8,7 @@ import { getStatusConfig, PROJECT_STATUS } from '@/lib/status';
 import { useAllProjects } from '../hooks/use-projects';
 import { useQueryClient, useMutation } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api-client';
+import { projectKeys, projectsAllKeys } from '@/lib/query-keys';
 
 // ─── Config ────────────────────────────────────────────────────────────────
 
@@ -333,8 +334,8 @@ export function ProjectsKanban({ search, managerIds }: ProjectsKanbanProps) {
     mutationFn: ({ id, status }: { id: string; status: ProjectStatus }) =>
       apiClient.patch(`/projects/${id}`, { status }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['projects'] });
-      queryClient.invalidateQueries({ queryKey: ['projects-all'] });
+      queryClient.invalidateQueries({ queryKey: projectKeys.all });
+      queryClient.invalidateQueries({ queryKey: projectsAllKeys.all });
     },
   });
 

@@ -1,5 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api-client';
+import { planningKeys } from '@/lib/query-keys';
 import type { PlanningSession } from '@/types';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -43,8 +44,8 @@ export function useCreatePlanningSession(planningItemId: string) {
     mutationFn: (payload) =>
       apiClient.post<PlanningSession>(`/planning/${planningItemId}/sessions`, payload),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ['planning', planningItemId] });
-      void qc.invalidateQueries({ queryKey: ['planning'] });
+      void qc.invalidateQueries({ queryKey: planningKeys.detail(planningItemId) });
+      void qc.invalidateQueries({ queryKey: planningKeys.all });
     },
   });
 }
@@ -55,7 +56,7 @@ export function useUpdatePlanningSession(planningItemId: string, sessionId: stri
     mutationFn: (payload) =>
       apiClient.patch<PlanningSession>(sessionBase(planningItemId, sessionId), payload),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ['planning', planningItemId] });
+      void qc.invalidateQueries({ queryKey: planningKeys.detail(planningItemId) });
     },
   });
 }
@@ -66,8 +67,8 @@ export function useCancelSession(planningItemId: string, sessionId: string) {
     mutationFn: () =>
       apiClient.delete<void>(sessionBase(planningItemId, sessionId)),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ['planning', planningItemId] });
-      void qc.invalidateQueries({ queryKey: ['planning'] });
+      void qc.invalidateQueries({ queryKey: planningKeys.detail(planningItemId) });
+      void qc.invalidateQueries({ queryKey: planningKeys.all });
     },
   });
 }
@@ -78,7 +79,7 @@ export function useAssignSessionInspectors(planningItemId: string, sessionId: st
     mutationFn: (payload) =>
       apiClient.post<PlanningSession>(`${sessionBase(planningItemId, sessionId)}/assign`, payload),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ['planning', planningItemId] });
+      void qc.invalidateQueries({ queryKey: planningKeys.detail(planningItemId) });
     },
   });
 }
@@ -89,8 +90,8 @@ export function useAcceptSession(planningItemId: string, sessionId: string) {
     mutationFn: () =>
       apiClient.post<void>(`${sessionBase(planningItemId, sessionId)}/accept`, {}),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ['planning', planningItemId] });
-      void qc.invalidateQueries({ queryKey: ['planning'] });
+      void qc.invalidateQueries({ queryKey: planningKeys.detail(planningItemId) });
+      void qc.invalidateQueries({ queryKey: planningKeys.all });
     },
   });
 }
@@ -101,8 +102,8 @@ export function useRejectSession(planningItemId: string, sessionId: string) {
     mutationFn: (payload) =>
       apiClient.post<void>(`${sessionBase(planningItemId, sessionId)}/reject`, payload),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ['planning', planningItemId] });
-      void qc.invalidateQueries({ queryKey: ['planning'] });
+      void qc.invalidateQueries({ queryKey: planningKeys.detail(planningItemId) });
+      void qc.invalidateQueries({ queryKey: planningKeys.all });
     },
   });
 }
@@ -113,8 +114,8 @@ export function useConfirmSession(planningItemId: string, sessionId: string) {
     mutationFn: () =>
       apiClient.post<void>(`${sessionBase(planningItemId, sessionId)}/confirm`, {}),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ['planning', planningItemId] });
-      void qc.invalidateQueries({ queryKey: ['planning'] });
+      void qc.invalidateQueries({ queryKey: planningKeys.detail(planningItemId) });
+      void qc.invalidateQueries({ queryKey: planningKeys.all });
     },
   });
 }
@@ -125,8 +126,8 @@ export function useRescheduleSession(planningItemId: string, sessionId: string) 
     mutationFn: (payload) =>
       apiClient.post<PlanningSession>(`${sessionBase(planningItemId, sessionId)}/reschedule`, payload),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ['planning', planningItemId] });
-      void qc.invalidateQueries({ queryKey: ['planning'] });
+      void qc.invalidateQueries({ queryKey: planningKeys.detail(planningItemId) });
+      void qc.invalidateQueries({ queryKey: planningKeys.all });
     },
   });
 }
@@ -137,8 +138,8 @@ export function useCompleteSession(planningItemId: string, sessionId: string) {
     mutationFn: () =>
       apiClient.post<void>(`${sessionBase(planningItemId, sessionId)}/complete`, {}),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ['planning', planningItemId] });
-      void qc.invalidateQueries({ queryKey: ['planning'] });
+      void qc.invalidateQueries({ queryKey: planningKeys.detail(planningItemId) });
+      void qc.invalidateQueries({ queryKey: planningKeys.all });
     },
   });
 }

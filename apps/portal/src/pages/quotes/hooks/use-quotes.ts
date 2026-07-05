@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient, getAccessToken } from '@/lib/api-client';
+import { quoteKeys, requestKeys } from '@/lib/query-keys';
 import type {
   Quote,
   QuoteLine,
@@ -39,7 +40,7 @@ export function useQuotes(params: ListQuotesParams = {}) {
   const endpoint = `/quotes${qs ? `?${qs}` : ''}`;
 
   return useQuery<PaginatedResponse<Quote>>({
-    queryKey: ['quotes', params],
+    queryKey: quoteKeys.list(params),
     queryFn: () => apiClient.get<PaginatedResponse<Quote>>(endpoint),
     enabled: params.enabled,
   });
@@ -47,7 +48,7 @@ export function useQuotes(params: ListQuotesParams = {}) {
 
 export function useQuote(id: string) {
   return useQuery<Quote>({
-    queryKey: ['quotes', id],
+    queryKey: quoteKeys.detail(id),
     queryFn: () => apiClient.get<Quote>(`/quotes/${id}`),
     enabled: !!id,
     // Refetch when returning to the tab (e.g. after client signs on public page)
@@ -78,7 +79,7 @@ export function useCreateQuote() {
     mutationFn: (data: CreateQuoteDto) =>
       apiClient.post<Quote>('/quotes', data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['quotes'] });
+      queryClient.invalidateQueries({ queryKey: quoteKeys.all });
     },
   });
 }
@@ -101,7 +102,7 @@ export function useUpdateQuote(id: string) {
     mutationFn: (data: UpdateQuoteDto) =>
       apiClient.patch<Quote>(`/quotes/${id}`, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['quotes'] });
+      queryClient.invalidateQueries({ queryKey: quoteKeys.all });
     },
   });
 }
@@ -126,7 +127,7 @@ export function useSetQuoteLines(id: string) {
     mutationFn: (data: SetQuoteLinesDto) =>
       apiClient.put<QuoteLine[]>(`/quotes/${id}/lines`, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['quotes'] });
+      queryClient.invalidateQueries({ queryKey: quoteKeys.all });
     },
   });
 }
@@ -138,7 +139,7 @@ export function useSubmitApproval(id: string) {
     mutationFn: () =>
       apiClient.post<Quote>(`/quotes/${id}/submit-approval`),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['quotes'] });
+      queryClient.invalidateQueries({ queryKey: quoteKeys.all });
     },
   });
 }
@@ -155,7 +156,7 @@ export function useApproveQuote(id: string) {
     mutationFn: (data?: ApproveQuoteDto) =>
       apiClient.post<Quote>(`/quotes/${id}/approve`, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['quotes'] });
+      queryClient.invalidateQueries({ queryKey: quoteKeys.all });
     },
   });
 }
@@ -171,7 +172,7 @@ export function useRejectQuote(id: string) {
     mutationFn: (data?: RejectQuoteDto) =>
       apiClient.post<Quote>(`/quotes/${id}/reject`, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['quotes'] });
+      queryClient.invalidateQueries({ queryKey: quoteKeys.all });
     },
   });
 }
@@ -183,7 +184,7 @@ export function useRequestTeamApproval(id: string) {
   return useMutation({
     mutationFn: (data: { role?: Role; note?: string }) =>
       apiClient.post<QuoteApprovalRequest>(`/quotes/${id}/voluntary-approval/team`, data),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['quotes', id] }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: quoteKeys.detail(id) }),
   });
 }
 
@@ -192,7 +193,7 @@ export function useRequestPersonApproval(id: string) {
   return useMutation({
     mutationFn: (data: { approverUserId: string; note?: string }) =>
       apiClient.post<QuoteApprovalRequest>(`/quotes/${id}/voluntary-approval/person`, data),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['quotes', id] }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: quoteKeys.detail(id) }),
   });
 }
 
@@ -204,7 +205,7 @@ export function useReviewVoluntaryApproval(id: string) {
         `/quotes/${id}/approval-requests/${requestId}/${approved ? 'approve' : 'reject'}`,
         { note },
       ),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['quotes', id] }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: quoteKeys.detail(id) }),
   });
 }
 
@@ -213,7 +214,7 @@ export function useCancelVoluntaryApproval(id: string) {
   return useMutation({
     mutationFn: (requestId: string) =>
       apiClient.post<QuoteApprovalRequest>(`/quotes/${id}/approval-requests/${requestId}/cancel`),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['quotes', id] }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: quoteKeys.detail(id) }),
   });
 }
 
@@ -228,7 +229,7 @@ export function useUpdateQuoteStatus(id: string) {
     mutationFn: (data: UpdateQuoteStatusDto) =>
       apiClient.patch<Quote>(`/quotes/${id}/status`, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['quotes'] });
+      queryClient.invalidateQueries({ queryKey: quoteKeys.all });
     },
   });
 }
@@ -239,7 +240,7 @@ export function useDeleteQuote() {
   return useMutation({
     mutationFn: (id: string) => apiClient.delete(`/quotes/${id}`),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['quotes'] });
+      queryClient.invalidateQueries({ queryKey: quoteKeys.all });
     },
   });
 }
@@ -259,7 +260,7 @@ export function useResolvePrice(params: ResolvePriceParams) {
   const qs = queryParams.toString();
 
   return useQuery<ResolvedPrice>({
-    queryKey: ['quotes', 'resolve-price', params],
+    queryKey: quoteKeys.resolvePrice(params),
     queryFn: () =>
       apiClient.get<ResolvedPrice>(`/quotes/resolve-price?${qs}`),
     enabled: !!params.productId && !!params.contactId,
@@ -273,8 +274,8 @@ export function useCreateQuoteFromRequest() {
     mutationFn: (requestId: string) =>
       apiClient.post<Quote>(`/requests/${requestId}/quote`),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['quotes'] });
-      queryClient.invalidateQueries({ queryKey: ['requests'] });
+      queryClient.invalidateQueries({ queryKey: quoteKeys.all });
+      queryClient.invalidateQueries({ queryKey: requestKeys.all });
     },
   });
 }
@@ -293,7 +294,7 @@ export function useSendQuote(id: string) {
     mutationFn: (data: SendQuoteDto) =>
       apiClient.post<Quote>(`/quotes/${id}/send`, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['quotes'] });
+      queryClient.invalidateQueries({ queryKey: quoteKeys.all });
     },
   });
 }
@@ -309,7 +310,7 @@ export function useAddQuestion(id: string) {
     mutationFn: (data: AddQuestionDto) =>
       apiClient.post(`/quotes/${id}/questions`, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['quotes', id] });
+      queryClient.invalidateQueries({ queryKey: quoteKeys.detail(id) });
     },
   });
 }
@@ -321,7 +322,7 @@ export function useAnswerQuestion(id: string, questionId: string) {
     mutationFn: (data: AddQuestionDto) =>
       apiClient.post(`/quotes/${id}/questions/${questionId}/answer`, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['quotes', id] });
+      queryClient.invalidateQueries({ queryKey: quoteKeys.detail(id) });
     },
   });
 }
@@ -336,7 +337,7 @@ export function useUploadQuoteAttachment(id: string) {
       return apiClient.upload(`/quotes/${id}/attachments`, formData);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['quotes', id] });
+      queryClient.invalidateQueries({ queryKey: quoteKeys.detail(id) });
     },
   });
 }
@@ -367,7 +368,7 @@ export function useDeleteQuoteAttachment(id: string) {
     mutationFn: (attachmentId: string) =>
       apiClient.delete(`/quotes/${id}/attachments/${attachmentId}`),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['quotes', id] });
+      queryClient.invalidateQueries({ queryKey: quoteKeys.detail(id) });
     },
   });
 }

@@ -1,11 +1,12 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api-client';
+import { numberingSchemeKeys } from '@/lib/query-keys';
 import type { NumberingScheme, NumberingModel } from '@/types';
 
 /** All four numbering schemes for the current org (auto-provisioned server-side). */
 export function useNumberingSchemes() {
   return useQuery<NumberingScheme[]>({
-    queryKey: ['numbering-schemes'],
+    queryKey: numberingSchemeKeys.all,
     queryFn: () => apiClient.get<NumberingScheme[]>('/numbering-schemes'),
   });
 }
@@ -28,7 +29,7 @@ export function useUpdateNumberingScheme() {
     mutationFn: ({ model, data }: { model: NumberingModel; data: UpdateNumberingSchemeInput }) =>
       apiClient.patch<NumberingScheme>(`/numbering-schemes/${model}`, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['numbering-schemes'] });
+      queryClient.invalidateQueries({ queryKey: numberingSchemeKeys.all });
     },
   });
 }

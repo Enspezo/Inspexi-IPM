@@ -5,6 +5,7 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api-client';
+import { findingTemplateKeys, classificationModelKeys } from '@/lib/query-keys';
 import type { FindingTemplate, ClassificationModel, PaginatedResponse } from '@/types';
 
 interface ListFindingTemplatesParams {
@@ -33,7 +34,7 @@ export function useFindingTemplates(params: ListFindingTemplatesParams = {}) {
   const qs = qp.toString();
 
   return useQuery<PaginatedResponse<FindingTemplate>>({
-    queryKey: ['finding-templates', params],
+    queryKey: findingTemplateKeys.list(params),
     queryFn: () => apiClient.get<PaginatedResponse<FindingTemplate>>(`/finding-templates${qs ? `?${qs}` : ''}`),
   });
 }
@@ -44,7 +45,7 @@ export function useFindingTemplates(params: ListFindingTemplatesParams = {}) {
 
 export function useFindingTemplate(id: string) {
   return useQuery<FindingTemplate>({
-    queryKey: ['finding-templates', id],
+    queryKey: findingTemplateKeys.detail(id),
     queryFn: () => apiClient.get<FindingTemplate>(`/finding-templates/${id}`),
     enabled: !!id,
   });
@@ -55,7 +56,7 @@ export function useCreateFindingTemplate() {
   return useMutation({
     mutationFn: (data: Record<string, unknown>) =>
       apiClient.post<FindingTemplate>('/finding-templates', data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['finding-templates'] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: findingTemplateKeys.all }),
   });
 }
 
@@ -65,8 +66,8 @@ export function useUpdateFindingTemplate() {
     mutationFn: ({ id, data }: { id: string; data: Record<string, unknown> }) =>
       apiClient.patch<FindingTemplate>(`/finding-templates/${id}`, data),
     onSuccess: (_d, v) => {
-      qc.invalidateQueries({ queryKey: ['finding-templates'] });
-      qc.invalidateQueries({ queryKey: ['finding-templates', v.id] });
+      qc.invalidateQueries({ queryKey: findingTemplateKeys.all });
+      qc.invalidateQueries({ queryKey: findingTemplateKeys.detail(v.id) });
     },
   });
 }
@@ -75,7 +76,7 @@ export function useDeleteFindingTemplate() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => apiClient.delete(`/finding-templates/${id}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['finding-templates'] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: findingTemplateKeys.all }),
   });
 }
 
@@ -85,7 +86,7 @@ export function useDuplicateFindingTemplate() {
   return useMutation({
     mutationFn: ({ id, code }: { id: string; code?: string }) =>
       apiClient.post<FindingTemplate>(`/finding-templates/${id}/duplicate`, code ? { code } : {}),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['finding-templates'] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: findingTemplateKeys.all }),
   });
 }
 
@@ -131,7 +132,7 @@ export function useImportFindingTemplates() {
   return useMutation({
     mutationFn: (payload: ImportFindingTemplatesPayload) =>
       apiClient.post<ImportFindingTemplatesResult>('/finding-templates/import', payload),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['finding-templates'] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: findingTemplateKeys.all }),
   });
 }
 
@@ -142,7 +143,7 @@ export function useImportFindingTemplates() {
 /** Detail van een classificatiemodel inclusief characteristics + options. */
 export function useClassificationModelDetail(id: string | null | undefined) {
   return useQuery<ClassificationModel>({
-    queryKey: ['classification-models', id],
+    queryKey: classificationModelKeys.detail(id as string),
     queryFn: () => apiClient.get<ClassificationModel>(`/classification-models/${id}`),
     enabled: !!id,
   });

@@ -1,5 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api-client';
+import { contactKeys } from '@/lib/query-keys';
 import type { ContactAddress } from '@/types';
 
 interface CreateAddressDto {
@@ -24,7 +25,7 @@ export function useAddAddress(contactId: string) {
         data,
       ),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['contacts', contactId] });
+      queryClient.invalidateQueries({ queryKey: contactKeys.detail(contactId) });
     },
   });
 }
@@ -38,7 +39,7 @@ export function useUpdateAddress(contactId: string) {
     mutationFn: ({ addressId, data }: { addressId: string; data: UpdateAddressDto }) =>
       apiClient.patch<ContactAddress>(`/contacts/addresses/${addressId}`, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['contacts', contactId] });
+      queryClient.invalidateQueries({ queryKey: contactKeys.detail(contactId) });
     },
   });
 }
@@ -50,7 +51,7 @@ export function useDeleteAddress(contactId: string) {
     mutationFn: (addressId: string) =>
       apiClient.delete(`/contacts/addresses/${addressId}`),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['contacts', contactId] });
+      queryClient.invalidateQueries({ queryKey: contactKeys.detail(contactId) });
     },
   });
 }

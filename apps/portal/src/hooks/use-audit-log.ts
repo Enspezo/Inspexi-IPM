@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api-client';
+import { auditLogKeys } from '@/lib/query-keys';
 import type { AuditLogEntry, PaginatedResponse } from '@/types';
 
 interface UseAuditLogParams {
@@ -20,7 +21,7 @@ export function useAuditLog(
   const endpoint = `/audit-logs/${entityType}/${entityId}${qs ? `?${qs}` : ''}`;
 
   return useQuery<PaginatedResponse<AuditLogEntry>>({
-    queryKey: ['audit-logs', entityType, entityId, params],
+    queryKey: auditLogKeys.list(entityType, entityId, params),
     queryFn: () =>
       apiClient.get<PaginatedResponse<AuditLogEntry>>(endpoint),
     enabled: !!entityId,

@@ -1,10 +1,11 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api-client';
+import { productKeys } from '@/lib/query-keys';
 import type { Product, PaginatedResponse } from '@/types';
 
 export function useProduct(id: string) {
   return useQuery<Product>({
-    queryKey: ['products', id],
+    queryKey: productKeys.detail(id),
     queryFn: () => apiClient.get<Product>(`/products/${id}`),
     enabled: !!id,
   });
@@ -35,7 +36,7 @@ export function useProducts(params: ListProductsParams = {}) {
   const endpoint = `/products${qs ? `?${qs}` : ''}`;
 
   return useQuery<PaginatedResponse<Product>>({
-    queryKey: ['products', params],
+    queryKey: productKeys.list(params),
     queryFn: () => apiClient.get<PaginatedResponse<Product>>(endpoint),
     enabled: params.enabled,
   });
@@ -58,7 +59,7 @@ export function useCreateProduct() {
     mutationFn: (data: CreateProductDto) =>
       apiClient.post<Product>('/products', data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['products'] });
+      queryClient.invalidateQueries({ queryKey: productKeys.all });
     },
   });
 }
@@ -72,7 +73,7 @@ export function useUpdateProduct(id: string) {
     mutationFn: (data: UpdateProductDto) =>
       apiClient.patch<Product>(`/products/${id}`, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['products'] });
+      queryClient.invalidateQueries({ queryKey: productKeys.all });
     },
   });
 }

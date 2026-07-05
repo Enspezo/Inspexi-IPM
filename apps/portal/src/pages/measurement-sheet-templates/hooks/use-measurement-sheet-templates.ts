@@ -6,6 +6,7 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api-client';
+import { measurementSheetTemplateKeys } from '@/lib/query-keys';
 import type { MeasurementSheetTemplate } from '@/types';
 
 interface ListParams {
@@ -26,7 +27,7 @@ export function useMeasurementSheetTemplates(params: ListParams = {}) {
   const qs = qp.toString();
 
   return useQuery<MeasurementSheetTemplate[]>({
-    queryKey: ['measurement-sheet-templates', params],
+    queryKey: measurementSheetTemplateKeys.list(params),
     queryFn: () =>
       apiClient.get<MeasurementSheetTemplate[]>(
         `/measurement-sheet-templates${qs ? `?${qs}` : ''}`,
@@ -37,7 +38,7 @@ export function useMeasurementSheetTemplates(params: ListParams = {}) {
 /** Detail inclusief sections (met fields). */
 export function useMeasurementSheetTemplate(id: string) {
   return useQuery<MeasurementSheetTemplate>({
-    queryKey: ['measurement-sheet-templates', id],
+    queryKey: measurementSheetTemplateKeys.detail(id),
     queryFn: () =>
       apiClient.get<MeasurementSheetTemplate>(`/measurement-sheet-templates/${id}`),
     enabled: !!id,
@@ -50,7 +51,7 @@ export function useCreateMeasurementSheetTemplate() {
   return useMutation({
     mutationFn: (data: Record<string, unknown>) =>
       apiClient.post<MeasurementSheetTemplate>('/measurement-sheet-templates', data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['measurement-sheet-templates'] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: measurementSheetTemplateKeys.all }),
   });
 }
 
@@ -61,8 +62,8 @@ export function useUpdateMeasurementSheetTemplate(id: string) {
     mutationFn: (data: Record<string, unknown>) =>
       apiClient.patch<MeasurementSheetTemplate>(`/measurement-sheet-templates/${id}`, data),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['measurement-sheet-templates'] });
-      qc.invalidateQueries({ queryKey: ['measurement-sheet-templates', id] });
+      qc.invalidateQueries({ queryKey: measurementSheetTemplateKeys.all });
+      qc.invalidateQueries({ queryKey: measurementSheetTemplateKeys.detail(id) });
     },
   });
 }
@@ -72,7 +73,7 @@ export function useDeleteMeasurementSheetTemplate(id: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: () => apiClient.delete(`/measurement-sheet-templates/${id}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['measurement-sheet-templates'] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: measurementSheetTemplateKeys.all }),
   });
 }
 
@@ -82,8 +83,8 @@ export function useDeleteMeasurementSheetTemplate(id: string) {
 
 /** Helper: refetch zowel het detail-object (heeft sections+fields) als de lijst. */
 function invalidateTemplate(qc: ReturnType<typeof useQueryClient>, id: string) {
-  qc.invalidateQueries({ queryKey: ['measurement-sheet-templates', id] });
-  qc.invalidateQueries({ queryKey: ['measurement-sheet-templates'] });
+  qc.invalidateQueries({ queryKey: measurementSheetTemplateKeys.detail(id) });
+  qc.invalidateQueries({ queryKey: measurementSheetTemplateKeys.all });
 }
 
 export function useCreateSection(id: string) {
@@ -194,7 +195,7 @@ export interface MeasurementSheetTemplateHistoryEntry {
 
 export function useTemplateHistory(id: string) {
   return useQuery<MeasurementSheetTemplateHistoryEntry[]>({
-    queryKey: ['measurement-sheet-templates', id, 'history'],
+    queryKey: measurementSheetTemplateKeys.history(id),
     queryFn: () =>
       apiClient.get<MeasurementSheetTemplateHistoryEntry[]>(
         `/measurement-sheet-templates/${id}/history`,
@@ -214,7 +215,7 @@ export function usePublishTemplate(id: string) {
       ),
     onSuccess: () => {
       invalidateTemplate(qc, id);
-      qc.invalidateQueries({ queryKey: ['measurement-sheet-templates', id, 'history'] });
+      qc.invalidateQueries({ queryKey: measurementSheetTemplateKeys.history(id) });
     },
   });
 }
@@ -230,7 +231,7 @@ export function useRetireTemplate(id: string) {
       ),
     onSuccess: () => {
       invalidateTemplate(qc, id);
-      qc.invalidateQueries({ queryKey: ['measurement-sheet-templates', id, 'history'] });
+      qc.invalidateQueries({ queryKey: measurementSheetTemplateKeys.history(id) });
     },
   });
 }
@@ -244,6 +245,6 @@ export function useNewTemplateVersion(id: string) {
         `/measurement-sheet-templates/${id}/new-version`,
         data,
       ),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['measurement-sheet-templates'] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: measurementSheetTemplateKeys.all }),
   });
 }

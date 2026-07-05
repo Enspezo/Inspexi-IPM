@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api-client';
+import { quoteTemplateKeys } from '@/lib/query-keys';
 import type {
   QuoteTemplate,
   QuoteTemplateAttachment,
@@ -34,14 +35,14 @@ export function useQuoteTemplates(params: ListQuoteTemplatesParams = {}) {
   const endpoint = `/quote-templates${qs ? `?${qs}` : ''}`;
 
   return useQuery<PaginatedResponse<QuoteTemplate>>({
-    queryKey: ['quote-templates', params],
+    queryKey: quoteTemplateKeys.list(params),
     queryFn: () => apiClient.get<PaginatedResponse<QuoteTemplate>>(endpoint),
   });
 }
 
 export function useQuoteTemplate(id: string) {
   return useQuery<QuoteTemplate>({
-    queryKey: ['quote-templates', id],
+    queryKey: quoteTemplateKeys.detail(id),
     queryFn: () => apiClient.get<QuoteTemplate>(`/quote-templates/${id}`),
     enabled: !!id,
   });
@@ -63,7 +64,7 @@ export function useCreateQuoteTemplate() {
     mutationFn: (data: CreateQuoteTemplateDto) =>
       apiClient.post<QuoteTemplate>('/quote-templates', data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['quote-templates'] });
+      queryClient.invalidateQueries({ queryKey: quoteTemplateKeys.all });
     },
   });
 }
@@ -88,7 +89,7 @@ export function useUpdateQuoteTemplate(id: string) {
     mutationFn: (data: UpdateQuoteTemplateDto) =>
       apiClient.patch<QuoteTemplate>(`/quote-templates/${id}`, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['quote-templates'] });
+      queryClient.invalidateQueries({ queryKey: quoteTemplateKeys.all });
     },
   });
 }
@@ -99,7 +100,7 @@ export function useDeleteQuoteTemplate() {
   return useMutation({
     mutationFn: (id: string) => apiClient.delete(`/quote-templates/${id}`),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['quote-templates'] });
+      queryClient.invalidateQueries({ queryKey: quoteTemplateKeys.all });
     },
   });
 }
@@ -120,7 +121,7 @@ export function useUploadTemplateImage(templateId: string) {
 
 export function useTemplateAttachments(templateId: string) {
   return useQuery<QuoteTemplateAttachment[]>({
-    queryKey: ['quote-templates', templateId, 'attachments'],
+    queryKey: quoteTemplateKeys.attachments(templateId),
     queryFn: () =>
       apiClient.get<QuoteTemplateAttachment[]>(
         `/quote-templates/${templateId}/attachments`,
@@ -140,7 +141,7 @@ export function useUploadTemplateAttachment(templateId: string) {
       ),
     onSuccess: () => {
       queryClient.invalidateQueries({
-        queryKey: ['quote-templates', templateId, 'attachments'],
+        queryKey: quoteTemplateKeys.attachments(templateId),
       });
     },
   });
@@ -156,7 +157,7 @@ export function useDeleteTemplateAttachment(templateId: string) {
       ),
     onSuccess: () => {
       queryClient.invalidateQueries({
-        queryKey: ['quote-templates', templateId, 'attachments'],
+        queryKey: quoteTemplateKeys.attachments(templateId),
       });
     },
   });
@@ -173,7 +174,7 @@ export function useReorderTemplateAttachments(templateId: string) {
       ),
     onSuccess: () => {
       queryClient.invalidateQueries({
-        queryKey: ['quote-templates', templateId, 'attachments'],
+        queryKey: quoteTemplateKeys.attachments(templateId),
       });
     },
   });
@@ -192,10 +193,10 @@ export function useUploadDocxFile(templateId: string) {
       ),
     onSuccess: () => {
       queryClient.invalidateQueries({
-        queryKey: ['quote-templates', templateId],
+        queryKey: quoteTemplateKeys.detail(templateId),
       });
       queryClient.invalidateQueries({
-        queryKey: ['quote-templates', templateId, 'docx-revisions'],
+        queryKey: quoteTemplateKeys.docxRevisions(templateId),
       });
     },
   });
@@ -203,7 +204,7 @@ export function useUploadDocxFile(templateId: string) {
 
 export function useDocxRevisions(templateId: string) {
   return useQuery<QuoteTemplateDocxRevision[]>({
-    queryKey: ['quote-templates', templateId, 'docx-revisions'],
+    queryKey: quoteTemplateKeys.docxRevisions(templateId),
     queryFn: () =>
       apiClient.get<QuoteTemplateDocxRevision[]>(
         `/quote-templates/${templateId}/docx/revisions`,
@@ -216,7 +217,7 @@ export function useDocxRevisions(templateId: string) {
 
 export function useFollowUpRules(templateId: string) {
   return useQuery<QuoteTemplateFollowUp[]>({
-    queryKey: ['quote-templates', templateId, 'follow-ups'],
+    queryKey: quoteTemplateKeys.followUps(templateId),
     queryFn: () =>
       apiClient.get<QuoteTemplateFollowUp[]>(
         `/quote-templates/${templateId}/follow-ups`,
@@ -246,10 +247,10 @@ export function useCreateFollowUp(templateId: string) {
       ),
     onSuccess: () => {
       queryClient.invalidateQueries({
-        queryKey: ['quote-templates', templateId, 'follow-ups'],
+        queryKey: quoteTemplateKeys.followUps(templateId),
       });
       queryClient.invalidateQueries({
-        queryKey: ['quote-templates', templateId],
+        queryKey: quoteTemplateKeys.detail(templateId),
       });
     },
   });
@@ -276,10 +277,10 @@ export function useUpdateFollowUp(templateId: string) {
       ),
     onSuccess: () => {
       queryClient.invalidateQueries({
-        queryKey: ['quote-templates', templateId, 'follow-ups'],
+        queryKey: quoteTemplateKeys.followUps(templateId),
       });
       queryClient.invalidateQueries({
-        queryKey: ['quote-templates', templateId],
+        queryKey: quoteTemplateKeys.detail(templateId),
       });
     },
   });
@@ -295,10 +296,10 @@ export function useDeleteFollowUp(templateId: string) {
       ),
     onSuccess: () => {
       queryClient.invalidateQueries({
-        queryKey: ['quote-templates', templateId, 'follow-ups'],
+        queryKey: quoteTemplateKeys.followUps(templateId),
       });
       queryClient.invalidateQueries({
-        queryKey: ['quote-templates', templateId],
+        queryKey: quoteTemplateKeys.detail(templateId),
       });
     },
   });

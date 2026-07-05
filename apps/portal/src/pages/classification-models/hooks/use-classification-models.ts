@@ -8,6 +8,7 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api-client';
+import { classificationModelKeys } from '@/lib/query-keys';
 import type { ClassificationModel } from '@/types';
 
 /** Resultaat van een (cascade-)delete: ofwel verwijderd, ofwel een waarschuwing die bevestiging vraagt. */
@@ -25,7 +26,7 @@ export interface DeleteResult {
 /** Actieve modellen (alle staf mag lezen). */
 export function useClassificationModels() {
   return useQuery<ClassificationModel[]>({
-    queryKey: ['classification-models'],
+    queryKey: classificationModelKeys.all,
     queryFn: () => apiClient.get<ClassificationModel[]>('/classification-models'),
   });
 }
@@ -33,7 +34,7 @@ export function useClassificationModels() {
 /** Alle modellen incl. inactieve (SUPERUSER) — voor de beheer-overzichtspagina. */
 export function useClassificationModelsAdmin() {
   return useQuery<ClassificationModel[]>({
-    queryKey: ['classification-models', 'admin'],
+    queryKey: classificationModelKeys.admin(),
     queryFn: () => apiClient.get<ClassificationModel[]>('/classification-models/admin'),
   });
 }
@@ -41,7 +42,7 @@ export function useClassificationModelsAdmin() {
 /** Eén model met geneste kenmerken + opties. */
 export function useClassificationModel(id: string) {
   return useQuery<ClassificationModel>({
-    queryKey: ['classification-models', id],
+    queryKey: classificationModelKeys.detail(id),
     queryFn: () => apiClient.get<ClassificationModel>(`/classification-models/${id}`),
     enabled: !!id,
   });
@@ -52,7 +53,7 @@ export function useCreateClassificationModel() {
   return useMutation({
     mutationFn: (data: Record<string, unknown>) =>
       apiClient.post<ClassificationModel>('/classification-models', data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['classification-models'] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: classificationModelKeys.all }),
   });
 }
 
@@ -62,8 +63,8 @@ export function useUpdateClassificationModel() {
     mutationFn: ({ id, data }: { id: string; data: Record<string, unknown> }) =>
       apiClient.patch<ClassificationModel>(`/classification-models/${id}`, data),
     onSuccess: (_d, v) => {
-      qc.invalidateQueries({ queryKey: ['classification-models'] });
-      qc.invalidateQueries({ queryKey: ['classification-models', v.id] });
+      qc.invalidateQueries({ queryKey: classificationModelKeys.all });
+      qc.invalidateQueries({ queryKey: classificationModelKeys.detail(v.id) });
     },
   });
 }
@@ -72,7 +73,7 @@ export function useDeleteClassificationModel() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => apiClient.delete(`/classification-models/${id}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['classification-models'] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: classificationModelKeys.all }),
   });
 }
 
@@ -85,7 +86,7 @@ export function useCreateCharacteristic(modelId: string) {
   return useMutation({
     mutationFn: (data: Record<string, unknown>) =>
       apiClient.post(`/classification-models/${modelId}/characteristics`, data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['classification-models', modelId] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: classificationModelKeys.detail(modelId) }),
   });
 }
 
@@ -94,7 +95,7 @@ export function useUpdateCharacteristic(modelId: string) {
   return useMutation({
     mutationFn: ({ charId, data }: { charId: string; data: Record<string, unknown> }) =>
       apiClient.patch(`/classification-models/${modelId}/characteristics/${charId}`, data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['classification-models', modelId] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: classificationModelKeys.detail(modelId) }),
   });
 }
 
@@ -110,7 +111,7 @@ export function useDeleteCharacteristic(modelId: string) {
       apiClient.delete<DeleteResult>(
         `/classification-models/${modelId}/characteristics/${charId}${confirm ? '?confirm=true' : ''}`,
       ),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['classification-models', modelId] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: classificationModelKeys.detail(modelId) }),
   });
 }
 
@@ -125,14 +126,14 @@ export function useReorderCharacteristics(modelId: string) {
       ),
     // Optimistisch: pas de geneste volgorde direct in de detail-cache aan; rollback bij fout.
     onMutate: async (characteristicIds: string[]) => {
-      await qc.cancelQueries({ queryKey: ['classification-models', modelId] });
-      const previous = qc.getQueryData<ClassificationModel>(['classification-models', modelId]);
+      await qc.cancelQueries({ queryKey: classificationModelKeys.detail(modelId) });
+      const previous = qc.getQueryData<ClassificationModel>(classificationModelKeys.detail(modelId));
       if (previous?.characteristics) {
         const byId = new Map(previous.characteristics.map((c) => [c.id, c]));
         const reordered = characteristicIds
           .map((id) => byId.get(id))
           .filter((c): c is NonNullable<typeof c> => !!c);
-        qc.setQueryData<ClassificationModel>(['classification-models', modelId], {
+        qc.setQueryData<ClassificationModel>(classificationModelKeys.detail(modelId), {
           ...previous,
           characteristics: reordered,
         });
@@ -140,9 +141,9 @@ export function useReorderCharacteristics(modelId: string) {
       return { previous };
     },
     onError: (_err, _vars, ctx) => {
-      if (ctx?.previous) qc.setQueryData(['classification-models', modelId], ctx.previous);
+      if (ctx?.previous) qc.setQueryData(classificationModelKeys.detail(modelId), ctx.previous);
     },
-    onSettled: () => qc.invalidateQueries({ queryKey: ['classification-models', modelId] }),
+    onSettled: () => qc.invalidateQueries({ queryKey: classificationModelKeys.detail(modelId) }),
   });
 }
 
@@ -158,7 +159,7 @@ export function useCreateOption(modelId: string, charId: string) {
         `/classification-models/${modelId}/characteristics/${charId}/options`,
         data,
       ),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['classification-models', modelId] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: classificationModelKeys.detail(modelId) }),
   });
 }
 
@@ -170,7 +171,7 @@ export function useUpdateOption(modelId: string, charId: string) {
         `/classification-models/${modelId}/characteristics/${charId}/options/${optionId}`,
         data,
       ),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['classification-models', modelId] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: classificationModelKeys.detail(modelId) }),
   });
 }
 
@@ -185,7 +186,7 @@ export function useDeleteOption(modelId: string, charId: string) {
       apiClient.delete<DeleteResult>(
         `/classification-models/${modelId}/characteristics/${charId}/options/${optionId}${confirm ? '?confirm=true' : ''}`,
       ),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['classification-models', modelId] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: classificationModelKeys.detail(modelId) }),
   });
 }
 
@@ -200,8 +201,8 @@ export function useReorderOptions(modelId: string, charId: string) {
       ),
     // Optimistisch: herorden de opties binnen dit kenmerk in de detail-cache; rollback bij fout.
     onMutate: async (optionIds: string[]) => {
-      await qc.cancelQueries({ queryKey: ['classification-models', modelId] });
-      const previous = qc.getQueryData<ClassificationModel>(['classification-models', modelId]);
+      await qc.cancelQueries({ queryKey: classificationModelKeys.detail(modelId) });
+      const previous = qc.getQueryData<ClassificationModel>(classificationModelKeys.detail(modelId));
       if (previous?.characteristics) {
         const characteristics = previous.characteristics.map((c) => {
           if (c.id !== charId || !c.options) return c;
@@ -211,7 +212,7 @@ export function useReorderOptions(modelId: string, charId: string) {
             .filter((o): o is NonNullable<typeof o> => !!o);
           return { ...c, options: reordered };
         });
-        qc.setQueryData<ClassificationModel>(['classification-models', modelId], {
+        qc.setQueryData<ClassificationModel>(classificationModelKeys.detail(modelId), {
           ...previous,
           characteristics,
         });
@@ -219,8 +220,8 @@ export function useReorderOptions(modelId: string, charId: string) {
       return { previous };
     },
     onError: (_err, _vars, ctx) => {
-      if (ctx?.previous) qc.setQueryData(['classification-models', modelId], ctx.previous);
+      if (ctx?.previous) qc.setQueryData(classificationModelKeys.detail(modelId), ctx.previous);
     },
-    onSettled: () => qc.invalidateQueries({ queryKey: ['classification-models', modelId] }),
+    onSettled: () => qc.invalidateQueries({ queryKey: classificationModelKeys.detail(modelId) }),
   });
 }

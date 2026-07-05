@@ -189,6 +189,9 @@ importers:
       '@inspexi/entitlements':
         specifier: workspace:*
         version: link:../../packages/entitlements
+      '@inspexi/shared-web':
+        specifier: workspace:*
+        version: link:../../packages/shared-web
       '@inspexi/ui':
         specifier: workspace:*
         version: link:../../packages/ui
@@ -305,6 +308,9 @@ importers:
       '@inspexi/entitlements':
         specifier: workspace:*
         version: link:../../packages/entitlements
+      '@inspexi/shared-web':
+        specifier: workspace:*
+        version: link:../../packages/shared-web
       '@inspexi/ui':
         specifier: workspace:*
         version: link:../../packages/ui
@@ -447,6 +453,12 @@ importers:
       ts-jest:
         specifier: ^29.2.5
         version: 29.4.6(@babel/core@7.29.0)(@jest/transform@29.7.0)(@jest/types@29.6.3)(babel-jest@29.7.0(@babel/core@7.29.0))(jest-util@29.7.0)(jest@29.7.0)(typescript@5.9.3)
+      typescript:
+        specifier: ^5.7.3
+        version: 5.9.3
+
+  packages/shared-web:
+    devDependencies:
       typescript:
         specifier: ^5.7.3
         version: 5.9.3

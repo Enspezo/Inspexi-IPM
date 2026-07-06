@@ -28,7 +28,9 @@ export function QuoteQuestionsCard({
       await addQuestionMutation.mutateAsync({ message: newQuestion });
       setNewQuestion('');
       showToast('Bericht toegevoegd', 'success');
-    } catch (err) { showToast(getErrorMessage(err, 'Toevoegen mislukt'), 'error'); }
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
+    }
   };
 
   const handleAnswer = async () => {
@@ -38,7 +40,9 @@ export function QuoteQuestionsCard({
       setAnswerText('');
       setAnsweringId(null);
       showToast('Antwoord verstuurd', 'success');
-    } catch (err) { showToast(getErrorMessage(err, 'Versturen mislukt'), 'error'); }
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
+    }
   };
 
   return (

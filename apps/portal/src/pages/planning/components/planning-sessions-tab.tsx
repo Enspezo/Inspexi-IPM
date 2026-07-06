@@ -110,8 +110,8 @@ function SessionCard({
       await updateSession.mutateAsync({ notes: notesValue || null });
       setNotesOpen(false);
       showToast('Notitie opgeslagen', 'success');
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Fout bij opslaan notitie'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 
@@ -127,8 +127,8 @@ function SessionCard({
       });
       setDateEditOpen(false);
       showToast('Datum opgeslagen', 'success');
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Fout bij opslaan datum'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 
@@ -136,8 +136,8 @@ function SessionCard({
     try {
       await acceptSessionMut.mutateAsync(undefined);
       showToast('Sessie geaccepteerd', 'success');
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Fout bij accepteren sessie'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 
@@ -145,8 +145,8 @@ function SessionCard({
     try {
       await confirmSessionMut.mutateAsync(undefined);
       showToast('Sessie bevestigd als definitief', 'success');
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Fout bij bevestigen sessie'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 
@@ -154,8 +154,8 @@ function SessionCard({
     try {
       await completeSessionMut.mutateAsync(undefined);
       showToast('Sessie afgerond', 'success');
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Fout bij afronden sessie'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 
@@ -170,8 +170,8 @@ function SessionCard({
     try {
       await cancelSessionMut.mutateAsync(undefined);
       showToast('Sessie geannuleerd', 'success');
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Fout bij annuleren sessie'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 

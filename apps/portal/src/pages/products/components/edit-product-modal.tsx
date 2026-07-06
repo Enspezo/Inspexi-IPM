@@ -80,8 +80,8 @@ export function EditProductModal({ isOpen, onClose, product, disableGroupSelect 
       });
       showToast('Product bijgewerkt!', 'success');
       onClose();
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Bijwerken mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 

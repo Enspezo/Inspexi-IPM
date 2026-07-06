@@ -26,7 +26,9 @@ export function QuoteAttachmentsCard({
     try {
       await uploadAttachmentMutation.mutateAsync(file);
       showToast('Bijlage geüpload', 'success');
-    } catch (err) { showToast(getErrorMessage(err, 'Uploaden mislukt'), 'error'); }
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
+    }
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
@@ -40,7 +42,9 @@ export function QuoteAttachmentsCard({
     try {
       await deleteAttachmentMutation.mutateAsync(attachmentId);
       showToast('Bijlage verwijderd', 'success');
-    } catch (err) { showToast(getErrorMessage(err, 'Verwijderen mislukt'), 'error'); }
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
+    }
   };
 
   const handleDownloadAttachment = async (attachment: QuoteAttachment) => {

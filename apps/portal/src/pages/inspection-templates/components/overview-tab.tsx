@@ -74,8 +74,8 @@ export function OverviewTab({ template, canEdit }: Props) {
       });
       showToast('Inspectie-template bijgewerkt', 'success');
       setIsEditing(false);
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Bijwerken mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 

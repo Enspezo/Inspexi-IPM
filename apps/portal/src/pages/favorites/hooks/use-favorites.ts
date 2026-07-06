@@ -1,15 +1,17 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useApiMutation } from '@/hooks/use-api-mutation';
 import { apiClient } from '@/lib/api-client';
 import type {
   FavoritableEntityType,
   FavoriteKey,
   FavoritesResponse,
 } from '@/types';
+import { favoriteKeys } from '@/lib/query-keys';
 
 /** All favorited (entityType, entityId) keys for the current user — drives star state. */
 export function useFavoriteKeys() {
   return useQuery<FavoriteKey[]>({
-    queryKey: ['favorites', 'keys'],
+    queryKey: favoriteKeys.keys(),
     queryFn: () => apiClient.get<FavoriteKey[]>('/favorites/keys'),
   });
 }
@@ -17,7 +19,7 @@ export function useFavoriteKeys() {
 /** Favorites grouped by entity type, enriched with display names (optionally filtered). */
 export function useFavorites(entityType?: FavoritableEntityType) {
   return useQuery<FavoritesResponse>({
-    queryKey: ['favorites', 'list', entityType ?? 'all'],
+    queryKey: favoriteKeys.list(entityType ?? 'all'),
     queryFn: () =>
       apiClient.get<FavoritesResponse>(
         `/favorites${entityType ? `?entityType=${entityType}` : ''}`,
@@ -34,7 +36,7 @@ type ToggleArgs = FavoriteKey & { isFavorited: boolean };
 export function useToggleFavorite() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useApiMutation({
     mutationFn: ({ entityType, entityId, isFavorited }: ToggleArgs) =>
       isFavorited
         ? apiClient.delete(
@@ -42,13 +44,12 @@ export function useToggleFavorite() {
           )
         : apiClient.post('/favorites', { entityType, entityId }),
     onMutate: async ({ entityType, entityId, isFavorited }: ToggleArgs) => {
-      await queryClient.cancelQueries({ queryKey: ['favorites', 'keys'] });
-      const previous = queryClient.getQueryData<FavoriteKey[]>([
-        'favorites',
-        'keys',
-      ]);
+      await queryClient.cancelQueries({ queryKey: favoriteKeys.keys() });
+      const previous = queryClient.getQueryData<FavoriteKey[]>(
+        favoriteKeys.keys(),
+      );
       queryClient.setQueryData<FavoriteKey[]>(
-        ['favorites', 'keys'],
+        favoriteKeys.keys(),
         (old = []) =>
           isFavorited
             ? old.filter(
@@ -60,11 +61,11 @@ export function useToggleFavorite() {
     },
     onError: (_err, _vars, context) => {
       if (context?.previous) {
-        queryClient.setQueryData(['favorites', 'keys'], context.previous);
+        queryClient.setQueryData(favoriteKeys.keys(), context.previous);
       }
     },
     onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: ['favorites'] });
+      queryClient.invalidateQueries({ queryKey: favoriteKeys.all });
     },
   });
 }

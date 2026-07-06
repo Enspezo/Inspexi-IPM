@@ -48,11 +48,8 @@ export function AddContactPersonModal({ isOpen, onClose, contactId }: Props) {
       showToast('Contactpersoon toegevoegd!', 'success');
       reset();
       onClose();
-    } catch (err) {
-      showToast(
-        err instanceof Error ? err.message : 'Toevoegen mislukt',
-        'error',
-      );
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 

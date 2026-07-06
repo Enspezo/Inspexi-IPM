@@ -82,8 +82,8 @@ export function CategoryModal({ isOpen, onClose, category, allCategories, asSyst
         showToast('Categorie toegevoegd', 'success');
       }
       onClose();
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Opslaan mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 

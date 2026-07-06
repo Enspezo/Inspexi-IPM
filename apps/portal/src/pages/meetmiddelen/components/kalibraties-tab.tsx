@@ -51,8 +51,8 @@ export function KalibratiesTab({ instrumentId, canEdit }: KalibratiesTabProps) {
     try {
       await deleteMutation.mutateAsync(cal.id);
       showToast('Kalibratie verwijderd', 'success');
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Verwijderen mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 

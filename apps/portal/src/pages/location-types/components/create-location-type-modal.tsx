@@ -78,8 +78,8 @@ export function CreateLocationTypeModal({ isOpen, onClose }: Props) {
       showToast('Locatie-type aangemaakt', 'success');
       onClose();
       navigate(`/location-types/${created.id}`);
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Aanmaken mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 

@@ -1,5 +1,7 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useApiMutation } from '@/hooks/use-api-mutation';
 import { apiClient } from '@/lib/api-client';
+import { documentTagKeys, documentKeys } from '@/lib/query-keys';
 import type { DocumentTag, DocumentTagRef, PaginatedResponse } from '@/types';
 
 interface ListParams {
@@ -18,7 +20,7 @@ export function useDocumentTags(params: ListParams = {}) {
   const endpoint = `/document-tags${qs ? `?${qs}` : ''}`;
 
   return useQuery<PaginatedResponse<DocumentTag>>({
-    queryKey: ['document-tags', params],
+    queryKey: documentTagKeys.list(params),
     queryFn: () => apiClient.get<PaginatedResponse<DocumentTag>>(endpoint),
   });
 }
@@ -26,7 +28,7 @@ export function useDocumentTags(params: ListParams = {}) {
 /** Compacte tag-lijst voor pickers (upload / document bewerken). */
 export function useDocumentTagsCompact() {
   return useQuery<DocumentTagRef[]>({
-    queryKey: ['document-tags', 'compact'],
+    queryKey: documentTagKeys.compact(),
     queryFn: () => apiClient.get<DocumentTagRef[]>('/document-tags/compact'),
     staleTime: 5 * 60 * 1000,
   });
@@ -40,34 +42,34 @@ interface CreateDto {
 
 export function useCreateDocumentTag() {
   const queryClient = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (data: CreateDto) =>
       apiClient.post<DocumentTag>('/document-tags', data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['document-tags'] });
+      queryClient.invalidateQueries({ queryKey: documentTagKeys.all });
     },
   });
 }
 
 export function useUpdateDocumentTag(id: string) {
   const queryClient = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (data: Partial<CreateDto>) =>
       apiClient.patch<DocumentTag>(`/document-tags/${id}`, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['document-tags'] });
+      queryClient.invalidateQueries({ queryKey: documentTagKeys.all });
     },
   });
 }
 
 export function useDeleteDocumentTag() {
   const queryClient = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (id: string) => apiClient.delete(`/document-tags/${id}`),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['document-tags'] });
+      queryClient.invalidateQueries({ queryKey: documentTagKeys.all });
       // Tag verdwijnt van documenten → herlaad documentenlijsten
-      queryClient.invalidateQueries({ queryKey: ['documents'] });
+      queryClient.invalidateQueries({ queryKey: documentKeys.all });
     },
   });
 }

@@ -53,11 +53,8 @@ export function InviteUserModal({ isOpen, onClose }: InviteUserModalProps) {
       showToast('Uitnodiging verstuurd!', 'success');
       reset();
       onClose();
-    } catch (err) {
-      showToast(
-        err instanceof Error ? err.message : 'Uitnodiging versturen mislukt',
-        'error',
-      );
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 

@@ -52,8 +52,8 @@ export default function CustomerGroupDetailPage() {
       await deleteMutation.mutateAsync(group.id);
       showToast('Klantgroep verwijderd', 'success');
       navigate('/contacts/groups');
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Verwijderen mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 
@@ -61,8 +61,8 @@ export default function CustomerGroupDetailPage() {
     try {
       await addContactMutation.mutateAsync(contactId);
       showToast('Relatie toegevoegd aan groep', 'success');
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Toevoegen mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 
@@ -77,8 +77,8 @@ export default function CustomerGroupDetailPage() {
     try {
       await removeContactMutation.mutateAsync(contactId);
       showToast('Relatie verwijderd uit groep', 'success');
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Verwijderen mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 
@@ -134,9 +134,9 @@ export default function CustomerGroupDetailPage() {
                 onSave={async (notes) => {
                   try {
                     await updateMutation.mutateAsync({ notes: notes || undefined });
-                  } catch (err) {
-                    showToast(getErrorMessage(err, 'Notities opslaan mislukt'), 'error');
-                  }
+                  } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
+    }
                 }}
               />
             </div>

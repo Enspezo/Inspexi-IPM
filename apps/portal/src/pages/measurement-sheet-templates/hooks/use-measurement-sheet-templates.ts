@@ -4,8 +4,10 @@
 // het detail-object ['measurement-sheet-templates', id] dat sections+fields meelevert.
 // Alle schrijfacties zijn SUPERUSER-only (backend dwingt dit af).
 
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useApiMutation } from '@/hooks/use-api-mutation';
 import { apiClient } from '@/lib/api-client';
+import { measurementSheetTemplateKeys } from '@/lib/query-keys';
 import type { MeasurementSheetTemplate } from '@/types';
 
 interface ListParams {
@@ -26,7 +28,7 @@ export function useMeasurementSheetTemplates(params: ListParams = {}) {
   const qs = qp.toString();
 
   return useQuery<MeasurementSheetTemplate[]>({
-    queryKey: ['measurement-sheet-templates', params],
+    queryKey: measurementSheetTemplateKeys.list(params),
     queryFn: () =>
       apiClient.get<MeasurementSheetTemplate[]>(
         `/measurement-sheet-templates${qs ? `?${qs}` : ''}`,
@@ -37,7 +39,7 @@ export function useMeasurementSheetTemplates(params: ListParams = {}) {
 /** Detail inclusief sections (met fields). */
 export function useMeasurementSheetTemplate(id: string) {
   return useQuery<MeasurementSheetTemplate>({
-    queryKey: ['measurement-sheet-templates', id],
+    queryKey: measurementSheetTemplateKeys.detail(id),
     queryFn: () =>
       apiClient.get<MeasurementSheetTemplate>(`/measurement-sheet-templates/${id}`),
     enabled: !!id,
@@ -47,22 +49,22 @@ export function useMeasurementSheetTemplate(id: string) {
 /** CREATE-body gebruikt `normType` (NIET normTypeCode) — de RESPONSE gebruikt normTypeCode. */
 export function useCreateMeasurementSheetTemplate() {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (data: Record<string, unknown>) =>
       apiClient.post<MeasurementSheetTemplate>('/measurement-sheet-templates', data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['measurement-sheet-templates'] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: measurementSheetTemplateKeys.all }),
   });
 }
 
 /** PATCH alleen toegestaan in CONCEPT. Partial van create (code immutable, dus niet meesturen). */
 export function useUpdateMeasurementSheetTemplate(id: string) {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (data: Record<string, unknown>) =>
       apiClient.patch<MeasurementSheetTemplate>(`/measurement-sheet-templates/${id}`, data),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['measurement-sheet-templates'] });
-      qc.invalidateQueries({ queryKey: ['measurement-sheet-templates', id] });
+      qc.invalidateQueries({ queryKey: measurementSheetTemplateKeys.all });
+      qc.invalidateQueries({ queryKey: measurementSheetTemplateKeys.detail(id) });
     },
   });
 }
@@ -70,9 +72,9 @@ export function useUpdateMeasurementSheetTemplate(id: string) {
 /** DELETE alleen toegestaan in CONCEPT. */
 export function useDeleteMeasurementSheetTemplate(id: string) {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: () => apiClient.delete(`/measurement-sheet-templates/${id}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['measurement-sheet-templates'] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: measurementSheetTemplateKeys.all }),
   });
 }
 
@@ -82,13 +84,13 @@ export function useDeleteMeasurementSheetTemplate(id: string) {
 
 /** Helper: refetch zowel het detail-object (heeft sections+fields) als de lijst. */
 function invalidateTemplate(qc: ReturnType<typeof useQueryClient>, id: string) {
-  qc.invalidateQueries({ queryKey: ['measurement-sheet-templates', id] });
-  qc.invalidateQueries({ queryKey: ['measurement-sheet-templates'] });
+  qc.invalidateQueries({ queryKey: measurementSheetTemplateKeys.detail(id) });
+  qc.invalidateQueries({ queryKey: measurementSheetTemplateKeys.all });
 }
 
 export function useCreateSection(id: string) {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (data: Record<string, unknown>) =>
       apiClient.post(`/measurement-sheet-templates/${id}/sections`, data),
     onSuccess: () => invalidateTemplate(qc, id),
@@ -97,7 +99,7 @@ export function useCreateSection(id: string) {
 
 export function useUpdateSection(id: string) {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: ({ sectionId, data }: { sectionId: string; data: Record<string, unknown> }) =>
       apiClient.patch(`/measurement-sheet-templates/${id}/sections/${sectionId}`, data),
     onSuccess: () => invalidateTemplate(qc, id),
@@ -106,7 +108,7 @@ export function useUpdateSection(id: string) {
 
 export function useDeleteSection(id: string) {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (sectionId: string) =>
       apiClient.delete(`/measurement-sheet-templates/${id}/sections/${sectionId}`),
     onSuccess: () => invalidateTemplate(qc, id),
@@ -116,7 +118,7 @@ export function useDeleteSection(id: string) {
 /** Herorden secties — backend verwacht exact de key `sectionIds`. */
 export function useReorderSections(id: string) {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (sectionIds: string[]) =>
       apiClient.post(`/measurement-sheet-templates/${id}/sections/reorder`, { sectionIds }),
     onSuccess: () => invalidateTemplate(qc, id),
@@ -129,7 +131,7 @@ export function useReorderSections(id: string) {
 
 export function useCreateField(id: string, sectionId: string) {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (data: Record<string, unknown>) =>
       apiClient.post(
         `/measurement-sheet-templates/${id}/sections/${sectionId}/fields`,
@@ -141,7 +143,7 @@ export function useCreateField(id: string, sectionId: string) {
 
 export function useUpdateField(id: string, sectionId: string) {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: ({ fieldId, data }: { fieldId: string; data: Record<string, unknown> }) =>
       apiClient.patch(
         `/measurement-sheet-templates/${id}/sections/${sectionId}/fields/${fieldId}`,
@@ -153,7 +155,7 @@ export function useUpdateField(id: string, sectionId: string) {
 
 export function useDeleteField(id: string, sectionId: string) {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (fieldId: string) =>
       apiClient.delete(
         `/measurement-sheet-templates/${id}/sections/${sectionId}/fields/${fieldId}`,
@@ -165,7 +167,7 @@ export function useDeleteField(id: string, sectionId: string) {
 /** Herorden velden binnen een sectie — backend verwacht exact de key `fieldIds`. */
 export function useReorderFields(id: string, sectionId: string) {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (fieldIds: string[]) =>
       apiClient.post(
         `/measurement-sheet-templates/${id}/sections/${sectionId}/fields/reorder`,
@@ -194,7 +196,7 @@ export interface MeasurementSheetTemplateHistoryEntry {
 
 export function useTemplateHistory(id: string) {
   return useQuery<MeasurementSheetTemplateHistoryEntry[]>({
-    queryKey: ['measurement-sheet-templates', id, 'history'],
+    queryKey: measurementSheetTemplateKeys.history(id),
     queryFn: () =>
       apiClient.get<MeasurementSheetTemplateHistoryEntry[]>(
         `/measurement-sheet-templates/${id}/history`,
@@ -206,7 +208,7 @@ export function useTemplateHistory(id: string) {
 /** CONCEPT → ACTIEF. changeDescription verplicht (5-500). */
 export function usePublishTemplate(id: string) {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (data: { changeDescription: string; approvalReason?: string }) =>
       apiClient.post<MeasurementSheetTemplate>(
         `/measurement-sheet-templates/${id}/publish`,
@@ -214,7 +216,7 @@ export function usePublishTemplate(id: string) {
       ),
     onSuccess: () => {
       invalidateTemplate(qc, id);
-      qc.invalidateQueries({ queryKey: ['measurement-sheet-templates', id, 'history'] });
+      qc.invalidateQueries({ queryKey: measurementSheetTemplateKeys.history(id) });
     },
   });
 }
@@ -222,7 +224,7 @@ export function usePublishTemplate(id: string) {
 /** ACTIEF → VERVALLEN. changeDescription verplicht (5-500). */
 export function useRetireTemplate(id: string) {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (data: { changeDescription: string; approvalReason?: string }) =>
       apiClient.post<MeasurementSheetTemplate>(
         `/measurement-sheet-templates/${id}/retire`,
@@ -230,7 +232,7 @@ export function useRetireTemplate(id: string) {
       ),
     onSuccess: () => {
       invalidateTemplate(qc, id);
-      qc.invalidateQueries({ queryKey: ['measurement-sheet-templates', id, 'history'] });
+      qc.invalidateQueries({ queryKey: measurementSheetTemplateKeys.history(id) });
     },
   });
 }
@@ -238,12 +240,12 @@ export function useRetireTemplate(id: string) {
 /** Kloont naar een nieuwe CONCEPT-versie; geeft de nieuwe template terug. */
 export function useNewTemplateVersion(id: string) {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (data: { changeDescription?: string }) =>
       apiClient.post<MeasurementSheetTemplate>(
         `/measurement-sheet-templates/${id}/new-version`,
         data,
       ),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['measurement-sheet-templates'] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: measurementSheetTemplateKeys.all }),
   });
 }

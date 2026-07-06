@@ -99,8 +99,8 @@ export function NotificationPrefsCard() {
         })),
       );
       showToast('Notificatie-instellingen opgeslagen', 'success');
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Opslaan mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 

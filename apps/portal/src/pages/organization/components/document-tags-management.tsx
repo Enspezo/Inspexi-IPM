@@ -40,8 +40,8 @@ export function DocumentTagsManagement() {
     try {
       await deleteMutation.mutateAsync(tag.id);
       showToast('Tag verwijderd', 'success');
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Verwijderen mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 

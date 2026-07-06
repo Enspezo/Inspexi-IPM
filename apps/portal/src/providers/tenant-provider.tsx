@@ -6,6 +6,7 @@ import {
   type ReactNode,
 } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { orgBrandingKeys } from '@/lib/query-keys';
 import { getTenantInfo, type TenantInfo } from '@/lib/tenant';
 
 export interface OrgBranding {
@@ -119,7 +120,7 @@ export function TenantProvider({ children }: TenantProviderProps) {
     isLoading,
     error: queryError,
   } = useQuery<OrgBranding>({
-    queryKey: ['org-branding', tenantInfo.slug],
+    queryKey: orgBrandingKeys.bySlug(tenantInfo.slug),
     queryFn: () => fetchBranding(tenantInfo.slug!),
     enabled: !!tenantInfo.slug,
     staleTime: 30 * 60 * 1000, // 30 min — branding rarely changes

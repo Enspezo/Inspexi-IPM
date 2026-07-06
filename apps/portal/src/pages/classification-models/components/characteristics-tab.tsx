@@ -72,8 +72,8 @@ export function CharacteristicsTab({ modelId, characteristics, canManage }: Prop
         await deleteChar.mutateAsync({ charId: char.id, confirm: true });
       }
       showToast('Kenmerk verwijderd', 'success');
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Verwijderen mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 
@@ -194,8 +194,8 @@ function OptionsEditor({ modelId, characteristic, canManage }: OptionsEditorProp
         await deleteOpt.mutateAsync({ optionId: opt.id, confirm: true });
       }
       showToast('Optie verwijderd', 'success');
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Verwijderen mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 

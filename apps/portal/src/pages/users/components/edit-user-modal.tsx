@@ -92,11 +92,8 @@ export function EditUserModal({ user, isOpen, onClose }: EditUserModalProps) {
       });
       showToast('Gebruiker bijgewerkt', 'success');
       onClose();
-    } catch (err) {
-      showToast(
-        err instanceof Error ? err.message : 'Bijwerken mislukt',
-        'error',
-      );
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 

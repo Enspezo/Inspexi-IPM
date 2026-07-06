@@ -1,17 +1,23 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useApiMutation } from '@/hooks/use-api-mutation';
 import { apiClient } from '@/lib/api-client';
+import {
+  planKeys,
+  featureCatalogKeys,
+  organizationEntitlementKeys,
+} from '@/lib/query-keys';
 import type { FeatureDef, Plan } from '@/lib/entitlements';
 
 export function usePlans() {
   return useQuery<Plan[]>({
-    queryKey: ['plans'],
+    queryKey: planKeys.all,
     queryFn: () => apiClient.get<Plan[]>('/plans'),
   });
 }
 
 export function usePlan(id: string) {
   return useQuery<Plan>({
-    queryKey: ['plans', id],
+    queryKey: planKeys.detail(id),
     queryFn: () => apiClient.get<Plan>(`/plans/${id}`),
     enabled: !!id,
   });
@@ -20,7 +26,7 @@ export function usePlan(id: string) {
 /** Feature-catalogus (keys/labels/afhankelijkheden) — bron voor de checkbox-lijst. */
 export function useFeatureCatalog() {
   return useQuery<FeatureDef[]>({
-    queryKey: ['feature-catalog'],
+    queryKey: featureCatalogKeys.all,
     queryFn: () => apiClient.get<FeatureDef[]>('/admin/features'),
     staleTime: 30 * 60 * 1000, // catalogus zit in code; verandert zelden
   });
@@ -36,10 +42,10 @@ interface CreatePlanInput {
 
 export function useCreatePlan() {
   const queryClient = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (data: CreatePlanInput) => apiClient.post<Plan>('/plans', data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['plans'] });
+      queryClient.invalidateQueries({ queryKey: planKeys.all });
     },
   });
 }
@@ -54,23 +60,23 @@ interface UpdatePlanInput {
 
 export function useUpdatePlan(id: string) {
   const queryClient = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (data: UpdatePlanInput) => apiClient.patch<Plan>(`/plans/${id}`, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['plans'] });
-      queryClient.invalidateQueries({ queryKey: ['plans', id] });
+      queryClient.invalidateQueries({ queryKey: planKeys.all });
+      queryClient.invalidateQueries({ queryKey: planKeys.detail(id) });
       // Plan-wijzigingen kunnen de effectieve set van toegewezen orgs raken.
-      queryClient.invalidateQueries({ queryKey: ['organization-entitlements'] });
+      queryClient.invalidateQueries({ queryKey: organizationEntitlementKeys.all });
     },
   });
 }
 
 export function useDeletePlan() {
   const queryClient = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (id: string) => apiClient.delete(`/plans/${id}`),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['plans'] });
+      queryClient.invalidateQueries({ queryKey: planKeys.all });
     },
   });
 }

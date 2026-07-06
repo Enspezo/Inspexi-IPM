@@ -6,8 +6,10 @@ import { ErrorBox, Spinner } from '@/components/ui';
 import { useWindowTabs } from '@/providers/window-tabs';
 import { getStatusConfig, PROJECT_STATUS } from '@/lib/status';
 import { useAllProjects } from '../hooks/use-projects';
-import { useQueryClient, useMutation } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
+import { useApiMutation } from '@/hooks/use-api-mutation';
 import { apiClient } from '@/lib/api-client';
+import { projectKeys, projectsAllKeys } from '@/lib/query-keys';
 
 // ─── Config ────────────────────────────────────────────────────────────────
 
@@ -329,12 +331,12 @@ export function ProjectsKanban({ search, managerIds }: ProjectsKanbanProps) {
   // Status-update via de bestaande, org-scoped project-update route. Projecten
   // hebben geen aparte /status-route (anders dan aanvragen); hergebruik houdt de
   // AFGEROND→einddatum-zetting en de status-notificatie op één plek.
-  const updateStatusMutation = useMutation({
+  const updateStatusMutation = useApiMutation({
     mutationFn: ({ id, status }: { id: string; status: ProjectStatus }) =>
       apiClient.patch(`/projects/${id}`, { status }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['projects'] });
-      queryClient.invalidateQueries({ queryKey: ['projects-all'] });
+      queryClient.invalidateQueries({ queryKey: projectKeys.all });
+      queryClient.invalidateQueries({ queryKey: projectsAllKeys.all });
     },
   });
 

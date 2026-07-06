@@ -48,8 +48,8 @@ export function TemplatePromptEditorModal({ isOpen, onClose, template, prompt }:
       await upsertMutation.mutateAsync({ templateId: template.id, data });
       showToast('Template-prompt opgeslagen', 'success');
       onClose();
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Opslaan mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 

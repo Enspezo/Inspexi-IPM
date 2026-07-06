@@ -71,9 +71,9 @@ export function ContactLocationsTab({
                         try {
                           await deleteLocationMutation.mutateAsync(loc.id);
                           showToast('Locatie verwijderd', 'success');
-                        } catch (err) {
-                          showToast(getErrorMessage(err, 'Verwijderen mislukt'), 'error');
-                        }
+                        } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
+    }
                       }}
                     />
                   )}

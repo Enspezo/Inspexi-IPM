@@ -77,8 +77,6 @@ export function ArticleEditorModal({ isOpen, onClose, article, categories }: Pro
         showToast(editing ? 'Artikel bijgewerkt' : 'Concept aangemaakt', 'success');
         onClose();
       },
-      onError: (e: unknown) =>
-        showToast(e instanceof Error ? e.message : 'Opslaan mislukt', 'error'),
     };
     if (editing && article) {
       update.mutate({ id: article.id, data: payload }, handlers);

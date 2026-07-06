@@ -1,5 +1,7 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useApiMutation } from '@/hooks/use-api-mutation';
 import { apiClient } from '@/lib/api-client';
+import { contactKeys, customerGroupKeys } from '@/lib/query-keys';
 import type { CustomerGroup, PaginatedResponse } from '@/types';
 
 interface ListParams {
@@ -18,14 +20,14 @@ export function useCustomerGroups(params: ListParams = {}) {
   const endpoint = `/customer-groups${qs ? `?${qs}` : ''}`;
 
   return useQuery<PaginatedResponse<CustomerGroup>>({
-    queryKey: ['customer-groups', params],
+    queryKey: customerGroupKeys.list(params),
     queryFn: () => apiClient.get<PaginatedResponse<CustomerGroup>>(endpoint),
   });
 }
 
 export function useCustomerGroupsCompact() {
   return useQuery<{ id: string; name: string }[]>({
-    queryKey: ['customer-groups', 'compact'],
+    queryKey: customerGroupKeys.compact(),
     queryFn: () =>
       apiClient.get<{ id: string; name: string }[]>(
         '/customer-groups/compact',
@@ -36,7 +38,7 @@ export function useCustomerGroupsCompact() {
 
 export function useCustomerGroup(id: string) {
   return useQuery<CustomerGroup>({
-    queryKey: ['customer-groups', id],
+    queryKey: customerGroupKeys.detail(id),
     queryFn: () => apiClient.get<CustomerGroup>(`/customer-groups/${id}`),
     enabled: !!id,
   });
@@ -50,11 +52,11 @@ interface CreateDto {
 export function useCreateCustomerGroup() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useApiMutation({
     mutationFn: (data: CreateDto) =>
       apiClient.post<CustomerGroup>('/customer-groups', data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['customer-groups'] });
+      queryClient.invalidateQueries({ queryKey: customerGroupKeys.all });
     },
   });
 }
@@ -62,11 +64,11 @@ export function useCreateCustomerGroup() {
 export function useUpdateCustomerGroup(id: string) {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useApiMutation({
     mutationFn: (data: Partial<CreateDto>) =>
       apiClient.patch<CustomerGroup>(`/customer-groups/${id}`, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['customer-groups'] });
+      queryClient.invalidateQueries({ queryKey: customerGroupKeys.all });
     },
   });
 }
@@ -74,10 +76,10 @@ export function useUpdateCustomerGroup(id: string) {
 export function useDeleteCustomerGroup() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useApiMutation({
     mutationFn: (id: string) => apiClient.delete(`/customer-groups/${id}`),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['customer-groups'] });
+      queryClient.invalidateQueries({ queryKey: customerGroupKeys.all });
     },
   });
 }
@@ -87,14 +89,14 @@ export function useDeleteCustomerGroup() {
 export function useAddContactToGroup(groupId: string) {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useApiMutation({
     mutationFn: (contactId: string) =>
       apiClient.post<CustomerGroup>(`/customer-groups/${groupId}/contacts`, {
         contactId,
       }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['customer-groups', groupId] });
-      queryClient.invalidateQueries({ queryKey: ['contacts'] });
+      queryClient.invalidateQueries({ queryKey: customerGroupKeys.detail(groupId) });
+      queryClient.invalidateQueries({ queryKey: contactKeys.all });
     },
   });
 }
@@ -102,14 +104,14 @@ export function useAddContactToGroup(groupId: string) {
 export function useRemoveContactFromGroup(groupId: string) {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useApiMutation({
     mutationFn: (contactId: string) =>
       apiClient.delete<CustomerGroup>(
         `/customer-groups/${groupId}/contacts/${contactId}`,
       ),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['customer-groups', groupId] });
-      queryClient.invalidateQueries({ queryKey: ['contacts'] });
+      queryClient.invalidateQueries({ queryKey: customerGroupKeys.detail(groupId) });
+      queryClient.invalidateQueries({ queryKey: contactKeys.all });
     },
   });
 }

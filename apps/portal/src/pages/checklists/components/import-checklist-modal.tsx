@@ -52,8 +52,8 @@ export function ImportChecklistModal({ isOpen, onClose }: Props) {
       showToast('Checklist geïmporteerd', 'success');
       onClose();
       navigate(`/checklists/${created.id}`);
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Importeren mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 

@@ -1,10 +1,16 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useApiMutation } from '@/hooks/use-api-mutation';
 import { apiClient } from '@/lib/api-client';
+import {
+  organizationSettingsKeys,
+  orgBrandingKeys,
+  orgLogoKeys,
+} from '@/lib/query-keys';
 import type { ContactDisplayMode, Organization, Role } from '@/types';
 
 export function useOrganization(orgId: string | null | undefined) {
   return useQuery<Organization>({
-    queryKey: ['organization', orgId],
+    queryKey: organizationSettingsKeys.detail(orgId as string),
     queryFn: () => apiClient.get<Organization>(`/organizations/${orgId}`),
     enabled: !!orgId,
     staleTime: 60 * 60 * 1000, // 1 hour — own org details rarely change
@@ -32,14 +38,14 @@ interface UpdateOrganizationDto {
 export function useUpdateOrganization(orgId: string | null | undefined) {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useApiMutation({
     mutationFn: (data: UpdateOrganizationDto) =>
       apiClient.patch<Organization>(`/organizations/${orgId}`, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['organization', orgId] });
+      queryClient.invalidateQueries({ queryKey: organizationSettingsKeys.detail(orgId as string) });
       // Branding (incl. chatEnabled) is cached app-wide by TenantProvider — refresh
       // it so toggling e.g. the chat on/off reflects immediately for the admin.
-      queryClient.invalidateQueries({ queryKey: ['org-branding'] });
+      queryClient.invalidateQueries({ queryKey: orgBrandingKeys.all });
     },
   });
 }
@@ -47,7 +53,7 @@ export function useUpdateOrganization(orgId: string | null | undefined) {
 export function useUploadLogo(orgId: string | null | undefined) {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useApiMutation({
     mutationFn: (file: File) => {
       const formData = new FormData();
       formData.append('file', file);
@@ -57,9 +63,9 @@ export function useUploadLogo(orgId: string | null | undefined) {
       );
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['organization', orgId] });
+      queryClient.invalidateQueries({ queryKey: organizationSettingsKeys.detail(orgId as string) });
       // Ververs de logo URL zodat de cache-busting werkt
-      queryClient.invalidateQueries({ queryKey: ['org-logo', orgId] });
+      queryClient.invalidateQueries({ queryKey: orgLogoKeys.byOrg(orgId as string) });
     },
   });
 }
@@ -67,11 +73,11 @@ export function useUploadLogo(orgId: string | null | undefined) {
 export function useDeleteLogo(orgId: string | null | undefined) {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useApiMutation({
     mutationFn: () => apiClient.delete(`/organizations/${orgId}/logo`),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['organization', orgId] });
-      queryClient.invalidateQueries({ queryKey: ['org-logo', orgId] });
+      queryClient.invalidateQueries({ queryKey: organizationSettingsKeys.detail(orgId as string) });
+      queryClient.invalidateQueries({ queryKey: orgLogoKeys.byOrg(orgId as string) });
     },
   });
 }

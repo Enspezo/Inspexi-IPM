@@ -81,8 +81,8 @@ export function CreateContactPersonModal({ isOpen, onClose, onCreated }: Props) 
       setContactIdError('');
       onCreated?.(createdForContactId);
       onClose();
-    } catch (err) {
-      showToast(err instanceof Error ? err.message : 'Aanmaken mislukt', 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 

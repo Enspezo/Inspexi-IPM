@@ -1,13 +1,13 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useApiMutation } from '@/hooks/use-api-mutation';
 import { apiClient } from '@/lib/api-client';
+import { measurementInstrumentKeys } from '@/lib/query-keys';
 import type {
   Calibration,
   MeasurementInstrument,
   MeasurementInstrumentStatus,
   PaginatedResponse,
 } from '@/types';
-
-const KEY = 'measurement-instruments';
 
 export interface MeasurementInstrumentDetail extends MeasurementInstrument {
   calibrationCount: number;
@@ -50,7 +50,7 @@ export function useMeetmiddelen(params: InstrumentListParams = {}) {
   if (params.sortBy) qs.set('sortBy', params.sortBy);
   if (params.sortOrder) qs.set('sortOrder', params.sortOrder);
   return useQuery<PaginatedResponse<MeasurementInstrument>>({
-    queryKey: [KEY, 'list', params],
+    queryKey: measurementInstrumentKeys.list(params),
     queryFn: () =>
       apiClient.get<PaginatedResponse<MeasurementInstrument>>(
         `/measurement-instruments?${qs.toString()}`,
@@ -60,7 +60,7 @@ export function useMeetmiddelen(params: InstrumentListParams = {}) {
 
 export function useMeetmiddel(id: string | undefined) {
   return useQuery<MeasurementInstrumentDetail>({
-    queryKey: [KEY, 'detail', id],
+    queryKey: measurementInstrumentKeys.detail(id as string),
     queryFn: () => apiClient.get<MeasurementInstrumentDetail>(`/measurement-instruments/${id}`),
     enabled: !!id,
   });
@@ -69,7 +69,7 @@ export function useMeetmiddel(id: string | undefined) {
 /** Distinct autocomplete-waarden voor merk/type (meetmiddel) of uitvoerende instantie. */
 export function useInstrumentSuggestions(field: 'brand' | 'type' | 'performedBy') {
   return useQuery<string[]>({
-    queryKey: [KEY, 'suggestions', field],
+    queryKey: measurementInstrumentKeys.suggestions(field),
     queryFn: () => apiClient.get<string[]>(`/measurement-instruments/suggestions?field=${field}`),
     staleTime: 5 * 60 * 1000,
   });
@@ -77,26 +77,26 @@ export function useInstrumentSuggestions(field: 'brand' | 'type' | 'performedBy'
 
 export function useCreateMeetmiddel() {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (values: InstrumentFormValues) =>
       apiClient.post<MeasurementInstrument>('/measurement-instruments', values),
-    onSuccess: () => qc.invalidateQueries({ queryKey: [KEY] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: measurementInstrumentKeys.all }),
   });
 }
 
 export function useUpdateMeetmiddel(id: string) {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (values: Partial<InstrumentFormValues>) =>
       apiClient.patch<MeasurementInstrument>(`/measurement-instruments/${id}`, values),
-    onSuccess: () => qc.invalidateQueries({ queryKey: [KEY] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: measurementInstrumentKeys.all }),
   });
 }
 
 export function useDeleteMeetmiddel() {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (id: string) => apiClient.delete(`/measurement-instruments/${id}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: [KEY] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: measurementInstrumentKeys.all }),
   });
 }

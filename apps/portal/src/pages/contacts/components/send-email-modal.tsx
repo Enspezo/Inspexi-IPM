@@ -45,11 +45,8 @@ export function SendEmailModal({
       showToast('E-mail verstuurd!', 'success');
       reset();
       onClose();
-    } catch (err) {
-      showToast(
-        err instanceof Error ? err.message : 'Versturen mislukt',
-        'error',
-      );
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 

@@ -312,7 +312,13 @@ export default function QuoteEditorPage() {
         // For newly created quotes, we need to call the API directly
         // since the mutation hook may not have the correct ID yet
         if (!isEditing) {
-          await apiClient.put(`/quotes/${quoteId}/lines`, linePayload);
+          try {
+            await apiClient.put(`/quotes/${quoteId}/lines`, linePayload);
+          } catch (err) {
+            // Rauwe API-call (geen useApiMutation) → toon de fout hier zelf.
+            showToast(getErrorMessage(err, 'Offerteregels opslaan mislukt'), 'error');
+            return;
+          }
         } else {
           await setLinesMutation.mutateAsync(linePayload);
         }
@@ -320,8 +326,8 @@ export default function QuoteEditorPage() {
 
       showToast(isEditing ? 'Offerte bijgewerkt' : 'Offerte aangemaakt', 'success');
       navigate(`/quotes/${quoteId}`);
-    } catch (err) {
-      showToast(getErrorMessage(err, isEditing ? 'Bijwerken mislukt' : 'Aanmaken mislukt'), 'error');
+    } catch {
+      /* mutatiefouten worden centraal getoond via useApiMutation */
     }
   };
 

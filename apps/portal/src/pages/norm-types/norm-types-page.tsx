@@ -32,8 +32,8 @@ export default function NormTypesPage() {
     try {
       await restoreMutation.mutateAsync(n.id);
       showToast('Normtype hersteld', 'success');
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Herstellen mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 

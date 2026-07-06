@@ -54,8 +54,8 @@ export function ForkInspectionTemplateModal({ isOpen, onClose, source }: Props) 
       showToast('Template geforkt naar uw organisatie', 'success');
       onClose();
       navigate(`/inspection-templates/${forked.id}`);
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Forken mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 

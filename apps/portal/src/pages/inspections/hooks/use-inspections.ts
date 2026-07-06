@@ -1,5 +1,7 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useApiMutation } from '@/hooks/use-api-mutation';
 import { apiClient } from '@/lib/api-client';
+import { inspectionPlanKeys } from '@/lib/query-keys';
 import type { InspectionPlan, PaginatedResponse } from '@/types';
 
 interface ListParams {
@@ -26,14 +28,14 @@ export function useInspectionPlans(params: ListParams = {}) {
   const qs = qp.toString();
 
   return useQuery<PaginatedResponse<InspectionPlan>>({
-    queryKey: ['inspection-plans', params],
+    queryKey: inspectionPlanKeys.list(params),
     queryFn: () => apiClient.get<PaginatedResponse<InspectionPlan>>(`/inspection-plans${qs ? `?${qs}` : ''}`),
   });
 }
 
 export function useInspectionPlan(id: string) {
   return useQuery<InspectionPlan>({
-    queryKey: ['inspection-plans', id],
+    queryKey: inspectionPlanKeys.detail(id),
     queryFn: () => apiClient.get<InspectionPlan>(`/inspection-plans/${id}`),
     enabled: !!id,
   });
@@ -41,21 +43,21 @@ export function useInspectionPlan(id: string) {
 
 export function useCreateInspectionPlan() {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (data: Record<string, unknown>) =>
       apiClient.post<InspectionPlan>('/inspection-plans', data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['inspection-plans'] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: inspectionPlanKeys.all }),
   });
 }
 
 export function useUpdateInspectionPlan() {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: ({ id, data }: { id: string; data: Record<string, unknown> }) =>
       apiClient.patch<InspectionPlan>(`/inspection-plans/${id}`, data),
     onSuccess: (_d, v) => {
-      qc.invalidateQueries({ queryKey: ['inspection-plans'] });
-      qc.invalidateQueries({ queryKey: ['inspection-plans', v.id] });
+      qc.invalidateQueries({ queryKey: inspectionPlanKeys.all });
+      qc.invalidateQueries({ queryKey: inspectionPlanKeys.detail(v.id) });
     },
   });
 }
@@ -63,11 +65,11 @@ export function useUpdateInspectionPlan() {
 /** Indienen ter beoordeling. */
 export function useSubmitInspectionPlan() {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (id: string) => apiClient.post<InspectionPlan>(`/inspection-plans/${id}/submit`),
     onSuccess: (_d, id) => {
-      qc.invalidateQueries({ queryKey: ['inspection-plans'] });
-      qc.invalidateQueries({ queryKey: ['inspection-plans', id] });
+      qc.invalidateQueries({ queryKey: inspectionPlanKeys.all });
+      qc.invalidateQueries({ queryKey: inspectionPlanKeys.detail(id) });
     },
   });
 }
@@ -75,20 +77,20 @@ export function useSubmitInspectionPlan() {
 /** Review-actie (backoffice): goedkeuren/afkeuren. */
 export function useReviewInspectionPlan() {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: ({ id, decision, notes }: { id: string; decision: 'approve' | 'reject'; notes?: string }) =>
       apiClient.post<InspectionPlan>(`/inspection-plans/${id}/review`, { decision, notes }),
     onSuccess: (_d, v) => {
-      qc.invalidateQueries({ queryKey: ['inspection-plans'] });
-      qc.invalidateQueries({ queryKey: ['inspection-plans', v.id] });
+      qc.invalidateQueries({ queryKey: inspectionPlanKeys.all });
+      qc.invalidateQueries({ queryKey: inspectionPlanKeys.detail(v.id) });
     },
   });
 }
 
 export function useDeleteInspectionPlan() {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (id: string) => apiClient.delete(`/inspection-plans/${id}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['inspection-plans'] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: inspectionPlanKeys.all }),
   });
 }

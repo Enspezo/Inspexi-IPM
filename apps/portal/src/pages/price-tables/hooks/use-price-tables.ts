@@ -1,5 +1,7 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useApiMutation } from '@/hooks/use-api-mutation';
 import { apiClient } from '@/lib/api-client';
+import { priceTableKeys } from '@/lib/query-keys';
 import type { PriceTable, PriceType, PaginatedResponse } from '@/types';
 
 interface ListPriceTablesParams {
@@ -22,14 +24,14 @@ export function usePriceTables(params: ListPriceTablesParams = {}) {
   const endpoint = `/price-tables${qs ? `?${qs}` : ''}`;
 
   return useQuery<PaginatedResponse<PriceTable>>({
-    queryKey: ['price-tables', params],
+    queryKey: priceTableKeys.list(params),
     queryFn: () => apiClient.get<PaginatedResponse<PriceTable>>(endpoint),
   });
 }
 
 export function usePriceTable(id: string) {
   return useQuery<PriceTable>({
-    queryKey: ['price-tables', id],
+    queryKey: priceTableKeys.detail(id),
     queryFn: () => apiClient.get<PriceTable>(`/price-tables/${id}`),
     enabled: !!id,
   });
@@ -44,11 +46,11 @@ interface CreatePriceTableDto {
 export function useCreatePriceTable() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useApiMutation({
     mutationFn: (data: CreatePriceTableDto) =>
       apiClient.post<PriceTable>('/price-tables', data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['price-tables'] });
+      queryClient.invalidateQueries({ queryKey: priceTableKeys.all });
     },
   });
 }
@@ -63,12 +65,12 @@ interface PriceTableItemInput {
 export function useSetPriceTableItems(id: string) {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useApiMutation({
     mutationFn: (items: PriceTableItemInput[]) =>
       apiClient.put<PriceTable>(`/price-tables/${id}/items`, { items }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['price-tables', id] });
-      queryClient.invalidateQueries({ queryKey: ['price-tables'] });
+      queryClient.invalidateQueries({ queryKey: priceTableKeys.detail(id) });
+      queryClient.invalidateQueries({ queryKey: priceTableKeys.all });
     },
   });
 }
@@ -76,11 +78,11 @@ export function useSetPriceTableItems(id: string) {
 export function useAssignPriceTable(id: string) {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useApiMutation({
     mutationFn: (contactId: string) =>
       apiClient.post(`/price-tables/${id}/assign/${contactId}`, {}),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['price-tables', id] });
+      queryClient.invalidateQueries({ queryKey: priceTableKeys.detail(id) });
     },
   });
 }
@@ -88,18 +90,18 @@ export function useAssignPriceTable(id: string) {
 export function useRemovePriceTableAssignment(id: string) {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useApiMutation({
     mutationFn: (contactId: string) =>
       apiClient.delete(`/price-tables/${id}/assign/${contactId}`),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['price-tables', id] });
+      queryClient.invalidateQueries({ queryKey: priceTableKeys.detail(id) });
     },
   });
 }
 
 export function usePriceTableForContact(contactId: string) {
   return useQuery<PriceTable[]>({
-    queryKey: ['price-tables', 'for-contact', contactId],
+    queryKey: priceTableKeys.forContact(contactId),
     queryFn: () =>
       apiClient.get<PriceTable[]>(`/price-tables/for-contact/${contactId}`),
     enabled: !!contactId,

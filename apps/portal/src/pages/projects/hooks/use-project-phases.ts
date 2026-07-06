@@ -1,5 +1,7 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useApiMutation } from '@/hooks/use-api-mutation';
 import { apiClient } from '@/lib/api-client';
+import { projectKeys, projectPhaseKeys } from '@/lib/query-keys';
 import type {
   ProjectPhase,
   ProjectPhaseFollower,
@@ -10,26 +12,20 @@ import type {
 
 // ─── Query keys ────────────────────────────────────────────
 
-const phasesKey = (projectId: string) => ['project-phases', projectId] as const;
-const milestonesKey = (projectId: string, phaseId: string) =>
-  ['project-phases', projectId, phaseId, 'milestones'] as const;
-const followersKey = (projectId: string, phaseId: string) =>
-  ['project-phases', projectId, phaseId, 'followers'] as const;
-
 /** Invalidatie die elke fase-mutatie deelt: fasenlijst + het bovenliggende project. */
 function invalidatePhaseScope(
   queryClient: ReturnType<typeof useQueryClient>,
   projectId: string,
 ) {
-  queryClient.invalidateQueries({ queryKey: phasesKey(projectId) });
-  queryClient.invalidateQueries({ queryKey: ['projects', projectId] });
+  queryClient.invalidateQueries({ queryKey: projectPhaseKeys.phases(projectId) });
+  queryClient.invalidateQueries({ queryKey: projectKeys.detail(projectId) });
 }
 
 // ─── Phases ────────────────────────────────────────────────
 
 export function useProjectPhases(projectId: string) {
   return useQuery({
-    queryKey: phasesKey(projectId),
+    queryKey: projectPhaseKeys.phases(projectId),
     queryFn: () => apiClient.get<ProjectPhase[]>(`/projects/${projectId}/phases`),
     enabled: !!projectId,
   });
@@ -48,7 +44,7 @@ export interface CreatePhaseData {
 
 export function useCreatePhase(projectId: string) {
   const queryClient = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (data: CreatePhaseData) =>
       apiClient.post<ProjectPhase>(`/projects/${projectId}/phases`, data),
     onSuccess: () => invalidatePhaseScope(queryClient, projectId),
@@ -68,7 +64,7 @@ export interface UpdatePhaseData {
 
 export function useUpdatePhase(projectId: string) {
   const queryClient = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: ({ id, data }: { id: string; data: UpdatePhaseData }) =>
       apiClient.patch<ProjectPhase>(`/projects/${projectId}/phases/${id}`, data),
     onSuccess: () => invalidatePhaseScope(queryClient, projectId),
@@ -77,7 +73,7 @@ export function useUpdatePhase(projectId: string) {
 
 export function useDeletePhase(projectId: string) {
   const queryClient = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (id: string) =>
       apiClient.delete(`/projects/${projectId}/phases/${id}`),
     onSuccess: () => invalidatePhaseScope(queryClient, projectId),
@@ -86,7 +82,7 @@ export function useDeletePhase(projectId: string) {
 
 export function useReorderPhases(projectId: string) {
   const queryClient = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (orderedIds: string[]) =>
       apiClient.post<ProjectPhase[]>(`/projects/${projectId}/phases/reorder`, {
         orderedIds,
@@ -99,7 +95,7 @@ export function useReorderPhases(projectId: string) {
 
 export function usePhaseMilestones(projectId: string, phaseId: string) {
   return useQuery({
-    queryKey: milestonesKey(projectId, phaseId),
+    queryKey: projectPhaseKeys.milestones(projectId, phaseId),
     queryFn: () =>
       apiClient.get<PhaseMilestone[]>(
         `/projects/${projectId}/phases/${phaseId}/milestones`,
@@ -119,14 +115,14 @@ export interface CreateMilestoneData {
 
 export function useCreateMilestone(projectId: string, phaseId: string) {
   const queryClient = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (data: CreateMilestoneData) =>
       apiClient.post<PhaseMilestone>(
         `/projects/${projectId}/phases/${phaseId}/milestones`,
         data,
       ),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: milestonesKey(projectId, phaseId) });
+      queryClient.invalidateQueries({ queryKey: projectPhaseKeys.milestones(projectId, phaseId) });
       invalidatePhaseScope(queryClient, projectId);
     },
   });
@@ -144,14 +140,14 @@ export interface UpdateMilestoneData {
 
 export function useUpdateMilestone(projectId: string, phaseId: string) {
   const queryClient = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: ({ id, data }: { id: string; data: UpdateMilestoneData }) =>
       apiClient.patch<PhaseMilestone>(
         `/projects/${projectId}/phases/${phaseId}/milestones/${id}`,
         data,
       ),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: milestonesKey(projectId, phaseId) });
+      queryClient.invalidateQueries({ queryKey: projectPhaseKeys.milestones(projectId, phaseId) });
       invalidatePhaseScope(queryClient, projectId);
     },
   });
@@ -159,13 +155,13 @@ export function useUpdateMilestone(projectId: string, phaseId: string) {
 
 export function useDeleteMilestone(projectId: string, phaseId: string) {
   const queryClient = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (id: string) =>
       apiClient.delete(
         `/projects/${projectId}/phases/${phaseId}/milestones/${id}`,
       ),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: milestonesKey(projectId, phaseId) });
+      queryClient.invalidateQueries({ queryKey: projectPhaseKeys.milestones(projectId, phaseId) });
       invalidatePhaseScope(queryClient, projectId);
     },
   });
@@ -175,7 +171,7 @@ export function useDeleteMilestone(projectId: string, phaseId: string) {
 
 export function usePhaseFollowers(projectId: string, phaseId: string) {
   return useQuery({
-    queryKey: followersKey(projectId, phaseId),
+    queryKey: projectPhaseKeys.followers(projectId, phaseId),
     queryFn: () =>
       apiClient.get<ProjectPhaseFollower[]>(
         `/projects/${projectId}/phases/${phaseId}/followers`,
@@ -197,14 +193,14 @@ export interface AddPhaseFollowerData {
 
 export function useAddPhaseFollower(projectId: string, phaseId: string) {
   const queryClient = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (data: AddPhaseFollowerData) =>
       apiClient.post<ProjectPhaseFollower>(
         `/projects/${projectId}/phases/${phaseId}/followers`,
         data,
       ),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: followersKey(projectId, phaseId) });
+      queryClient.invalidateQueries({ queryKey: projectPhaseKeys.followers(projectId, phaseId) });
       invalidatePhaseScope(queryClient, projectId);
     },
   });
@@ -220,7 +216,7 @@ export interface UpdatePhaseFollowerData {
 
 export function useUpdatePhaseFollower(projectId: string, phaseId: string) {
   const queryClient = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: ({
       followerId,
       data,
@@ -233,20 +229,20 @@ export function useUpdatePhaseFollower(projectId: string, phaseId: string) {
         data,
       ),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: followersKey(projectId, phaseId) });
+      queryClient.invalidateQueries({ queryKey: projectPhaseKeys.followers(projectId, phaseId) });
     },
   });
 }
 
 export function useRemovePhaseFollower(projectId: string, phaseId: string) {
   const queryClient = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (followerId: string) =>
       apiClient.delete(
         `/projects/${projectId}/phases/${phaseId}/followers/${followerId}`,
       ),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: followersKey(projectId, phaseId) });
+      queryClient.invalidateQueries({ queryKey: projectPhaseKeys.followers(projectId, phaseId) });
       invalidatePhaseScope(queryClient, projectId);
     },
   });

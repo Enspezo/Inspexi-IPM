@@ -86,8 +86,6 @@ export default function HelpAdminPage() {
   const onPublish = (a: HelpArticle) =>
     publish.mutate(a.id, {
       onSuccess: () => showToast('Artikel gepubliceerd', 'success'),
-      onError: (e) =>
-        showToast(e instanceof Error ? e.message : 'Publiceren mislukt', 'error'),
     });
 
   const onDelete = async (a: HelpArticle) => {
@@ -99,8 +97,6 @@ export default function HelpAdminPage() {
     if (!ok) return;
     remove.mutate(a.id, {
       onSuccess: () => showToast('Artikel verwijderd', 'success'),
-      onError: (e) =>
-        showToast(e instanceof Error ? e.message : 'Verwijderen mislukt', 'error'),
     });
   };
 
@@ -113,9 +109,8 @@ export default function HelpAdminPage() {
     if (!ok) return;
     removeCategory.mutate(c.id, {
       onSuccess: () => showToast('Categorie verwijderd', 'success'),
-      // Backend geeft 400 ("Categorie bevat nog artikelen of subcategorieën") of 403 terug
-      onError: (e) =>
-        showToast(e instanceof Error ? e.message : 'Verwijderen mislukt', 'error'),
+      // Backend geeft 400 ("Categorie bevat nog artikelen of subcategorieën") of 403 terug;
+      // die servermelding toont de centrale useApiMutation-fallback automatisch.
     });
   };
 

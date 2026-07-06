@@ -66,8 +66,8 @@ export function CategoriesTab({ canManage, isSuperuser }: Props) {
     try {
       await deleteMutation.mutateAsync(c.id);
       showToast('Categorie verwijderd', 'success');
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Verwijderen mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 

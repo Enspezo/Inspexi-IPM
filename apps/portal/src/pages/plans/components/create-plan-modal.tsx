@@ -68,8 +68,8 @@ export function CreatePlanModal({ isOpen, onClose }: CreatePlanModalProps) {
       });
       showToast('Abonnement aangemaakt', 'success');
       handleClose();
-    } catch (err) {
-      showToast(err instanceof Error ? err.message : 'Aanmaken mislukt', 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 

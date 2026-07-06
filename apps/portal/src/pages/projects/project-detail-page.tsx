@@ -201,8 +201,8 @@ export default function ProjectDetailPage() {
     try {
       await unassignMutation.mutateAsync(payload);
       showToast('Ontkoppeld', 'success');
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Ontkoppelen mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     } finally {
       setConfirmUnlink(null);
     }
@@ -217,8 +217,8 @@ export default function ProjectDetailPage() {
     try {
       await removeFollowerMutation.mutateAsync(confirmRemoveFollower.followerId);
       showToast('Volger verwijderd', 'success');
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Verwijderen mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     } finally {
       setConfirmRemoveFollower(null);
     }
@@ -229,8 +229,8 @@ export default function ProjectDetailPage() {
       await deleteMutation.mutateAsync();
       showToast('Project verwijderd', 'success');
       navigate('/projects');
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Verwijderen mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 
@@ -257,9 +257,9 @@ export default function ProjectDetailPage() {
                           const newStatus = task.status === TaskStatus.VOLTOOID ? TaskStatus.TE_DOEN : TaskStatus.VOLTOOID;
                           try {
                             await updateTaskMutation.mutateAsync({ id: task.id, data: { status: newStatus } });
-                          } catch (err) {
-                            showToast(getErrorMessage(err, 'Status wijzigen mislukt'), 'error');
-                          }
+                          } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
+    }
                         }}
                         className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors ${
                           task.status === TaskStatus.VOLTOOID
@@ -396,9 +396,9 @@ export default function ProjectDetailPage() {
                 try {
                   await updateMutation.mutateAsync(data);
                   showToast('Project bijgewerkt', 'success');
-                } catch (err) {
-                  showToast(getErrorMessage(err, 'Bijwerken mislukt'), 'error');
-                }
+                } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
+    }
               }}
               isUpdating={updateMutation.isPending}
               onDelete={() => setConfirmDelete(true)}
@@ -508,9 +508,9 @@ export default function ProjectDetailPage() {
               await addFollowerMutation.mutateAsync(data);
               showToast('Volger toegevoegd', 'success');
               setAddFollowerOpen(false);
-            } catch (err) {
-              showToast(getErrorMessage(err, 'Toevoegen mislukt'), 'error');
-            }
+            } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
+    }
           }}
           isAdding={addFollowerMutation.isPending}
         />

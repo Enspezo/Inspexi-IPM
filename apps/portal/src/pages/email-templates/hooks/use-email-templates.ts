@@ -1,5 +1,7 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useApiMutation } from '@/hooks/use-api-mutation';
 import { apiClient } from '@/lib/api-client';
+import { emailTemplateKeys, emailTemplateTypeKeys } from '@/lib/query-keys';
 import type { EmailTemplate, EmailTemplateAttachment, EmailTemplateType, EmailTemplateTypeInfo, PaginatedResponse } from '@/types';
 
 interface ListEmailTemplatesParams {
@@ -22,14 +24,14 @@ export function useEmailTemplates(params: ListEmailTemplatesParams = {}) {
   const endpoint = `/email-templates${qs ? `?${qs}` : ''}`;
 
   return useQuery<PaginatedResponse<EmailTemplate>>({
-    queryKey: ['email-templates', params],
+    queryKey: emailTemplateKeys.list(params),
     queryFn: () => apiClient.get<PaginatedResponse<EmailTemplate>>(endpoint),
   });
 }
 
 export function useEmailTemplate(id: string) {
   return useQuery<EmailTemplate>({
-    queryKey: ['email-templates', id],
+    queryKey: emailTemplateKeys.detail(id),
     queryFn: () => apiClient.get<EmailTemplate>(`/email-templates/${id}`),
     enabled: !!id,
   });
@@ -37,7 +39,7 @@ export function useEmailTemplate(id: string) {
 
 export function useEmailTemplateTypes() {
   return useQuery<EmailTemplateTypeInfo[]>({
-    queryKey: ['email-template-types'],
+    queryKey: emailTemplateTypeKeys.all,
     queryFn: () => apiClient.get<EmailTemplateTypeInfo[]>('/email-templates/types'),
     staleTime: 1000 * 60 * 60, // 1 hour — these don't change
   });
@@ -54,11 +56,11 @@ interface CreateEmailTemplateDto {
 export function useCreateEmailTemplate() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useApiMutation({
     mutationFn: (data: CreateEmailTemplateDto) =>
       apiClient.post<EmailTemplate>('/email-templates', data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['email-templates'] });
+      queryClient.invalidateQueries({ queryKey: emailTemplateKeys.all });
     },
   });
 }
@@ -74,11 +76,11 @@ interface UpdateEmailTemplateDto {
 export function useUpdateEmailTemplate(id: string) {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useApiMutation({
     mutationFn: (data: UpdateEmailTemplateDto) =>
       apiClient.patch<EmailTemplate>(`/email-templates/${id}`, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['email-templates'] });
+      queryClient.invalidateQueries({ queryKey: emailTemplateKeys.all });
     },
   });
 }
@@ -86,10 +88,10 @@ export function useUpdateEmailTemplate(id: string) {
 export function useDeleteEmailTemplate() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useApiMutation({
     mutationFn: (id: string) => apiClient.delete(`/email-templates/${id}`),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['email-templates'] });
+      queryClient.invalidateQueries({ queryKey: emailTemplateKeys.all });
     },
   });
 }
@@ -97,16 +99,16 @@ export function useDeleteEmailTemplate() {
 export function useDuplicateEmailTemplate() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useApiMutation({
     mutationFn: (id: string) => apiClient.post<EmailTemplate>(`/email-templates/${id}/duplicate`),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['email-templates'] });
+      queryClient.invalidateQueries({ queryKey: emailTemplateKeys.all });
     },
   });
 }
 
 export function usePreviewEmailTemplate() {
-  return useMutation({
+  return useApiMutation({
     mutationFn: (data: { subject: string; bodyHtml: string; type: EmailTemplateType }) =>
       apiClient.post<{ subject: string; html: string }>('/email-templates/preview', data),
   });
@@ -116,7 +118,7 @@ export function usePreviewEmailTemplate() {
 
 export function useEmailTemplateAttachments(templateId: string) {
   return useQuery<EmailTemplateAttachment[]>({
-    queryKey: ['email-templates', templateId, 'attachments'],
+    queryKey: emailTemplateKeys.attachments(templateId),
     queryFn: () =>
       apiClient.get<EmailTemplateAttachment[]>(
         `/email-templates/${templateId}/attachments`,
@@ -127,7 +129,7 @@ export function useEmailTemplateAttachments(templateId: string) {
 
 export function useUploadEmailTemplateAttachment(templateId: string) {
   const queryClient = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (formData: FormData) =>
       apiClient.upload<EmailTemplateAttachment>(
         `/email-templates/${templateId}/attachments`,
@@ -135,10 +137,10 @@ export function useUploadEmailTemplateAttachment(templateId: string) {
       ),
     onSuccess: () => {
       queryClient.invalidateQueries({
-        queryKey: ['email-templates', templateId, 'attachments'],
+        queryKey: emailTemplateKeys.attachments(templateId),
       });
       queryClient.invalidateQueries({
-        queryKey: ['email-templates', templateId],
+        queryKey: emailTemplateKeys.detail(templateId),
       });
     },
   });
@@ -146,17 +148,17 @@ export function useUploadEmailTemplateAttachment(templateId: string) {
 
 export function useDeleteEmailTemplateAttachment(templateId: string) {
   const queryClient = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (attachmentId: string) =>
       apiClient.delete(
         `/email-templates/${templateId}/attachments/${attachmentId}`,
       ),
     onSuccess: () => {
       queryClient.invalidateQueries({
-        queryKey: ['email-templates', templateId, 'attachments'],
+        queryKey: emailTemplateKeys.attachments(templateId),
       });
       queryClient.invalidateQueries({
-        queryKey: ['email-templates', templateId],
+        queryKey: emailTemplateKeys.detail(templateId),
       });
     },
   });

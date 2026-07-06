@@ -1,5 +1,7 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useApiMutation } from '@/hooks/use-api-mutation';
 import { apiClient } from '@/lib/api-client';
+import { contactKeys, locationKeys } from '@/lib/query-keys';
 import type { Location, PaginatedResponse, PdokRefreshResult } from '@/types';
 
 interface CreateLocationDto {
@@ -15,13 +17,13 @@ interface CreateLocationDto {
 export function useAddLocation(contactId: string) {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useApiMutation({
     mutationFn: (data: CreateLocationDto) =>
       apiClient.post<Location>(`/contacts/${contactId}/locations`, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['contacts', contactId] });
+      queryClient.invalidateQueries({ queryKey: contactKeys.detail(contactId) });
       queryClient.invalidateQueries({
-        queryKey: ['contacts', contactId, 'locations'],
+        queryKey: contactKeys.locations(contactId),
       });
     },
   });
@@ -29,7 +31,7 @@ export function useAddLocation(contactId: string) {
 
 export function useContactLocations(contactId: string) {
   return useQuery<Location[]>({
-    queryKey: ['contacts', contactId, 'locations'],
+    queryKey: contactKeys.locations(contactId),
     queryFn: () =>
       apiClient.get<Location[]>(`/contacts/${contactId}/locations`),
     enabled: !!contactId,
@@ -41,13 +43,13 @@ interface UpdateLocationDto extends Partial<CreateLocationDto> {}
 export function useUpdateLocation(contactId: string) {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useApiMutation({
     mutationFn: ({ locationId, data }: { locationId: string; data: UpdateLocationDto }) =>
       apiClient.patch<Location>(`/contacts/locations/${locationId}`, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['contacts', contactId] });
+      queryClient.invalidateQueries({ queryKey: contactKeys.detail(contactId) });
       queryClient.invalidateQueries({
-        queryKey: ['contacts', contactId, 'locations'],
+        queryKey: contactKeys.locations(contactId),
       });
     },
   });
@@ -56,13 +58,13 @@ export function useUpdateLocation(contactId: string) {
 export function useDeleteLocation(contactId: string) {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useApiMutation({
     mutationFn: (locationId: string) =>
       apiClient.delete(`/contacts/locations/${locationId}`),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['contacts', contactId] });
+      queryClient.invalidateQueries({ queryKey: contactKeys.detail(contactId) });
       queryClient.invalidateQueries({
-        queryKey: ['contacts', contactId, 'locations'],
+        queryKey: contactKeys.locations(contactId),
       });
     },
   });
@@ -75,11 +77,11 @@ interface UpdateLocationData extends Partial<CreateLocationDto> {
 export function useUpdateLocationById() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useApiMutation({
     mutationFn: ({ locationId, data }: { locationId: string; data: UpdateLocationData }) =>
       apiClient.patch<Location>(`/contacts/locations/${locationId}`, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['locations'] });
+      queryClient.invalidateQueries({ queryKey: locationKeys.all });
     },
   });
 }
@@ -87,11 +89,11 @@ export function useUpdateLocationById() {
 export function useDeleteLocationById() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useApiMutation({
     mutationFn: (locationId: string) =>
       apiClient.delete(`/contacts/locations/${locationId}`),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['locations'] });
+      queryClient.invalidateQueries({ queryKey: locationKeys.all });
     },
   });
 }
@@ -105,7 +107,7 @@ export function useDeleteLocationById() {
 export function useRefreshLocationPdok(locationId: string) {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useApiMutation({
     mutationFn: (confirm: boolean) =>
       apiClient.post<PdokRefreshResult>(
         `/contacts/locations/${locationId}/pdok-refresh`,
@@ -113,8 +115,8 @@ export function useRefreshLocationPdok(locationId: string) {
       ),
     onSuccess: (result) => {
       if (result.applied) {
-        queryClient.invalidateQueries({ queryKey: ['locations'] });
-        queryClient.invalidateQueries({ queryKey: ['locations', locationId] });
+        queryClient.invalidateQueries({ queryKey: locationKeys.all });
+        queryClient.invalidateQueries({ queryKey: locationKeys.detail(locationId) });
       }
     },
   });
@@ -143,7 +145,7 @@ export function useLocations(params: ListLocationsParams = {}) {
   const endpoint = `/contacts/locations${qs ? `?${qs}` : ''}`;
 
   return useQuery<PaginatedResponse<Location & { contact?: { id: string; type: string; companyName: string | null; firstName: string | null; lastName: string | null } }>>({
-    queryKey: ['locations', params],
+    queryKey: locationKeys.list(params),
     queryFn: () => apiClient.get(endpoint),
     enabled: params.enabled,
   });
@@ -151,7 +153,7 @@ export function useLocations(params: ListLocationsParams = {}) {
 
 export function useLocation(locationId: string) {
   return useQuery<Location & { contact?: { id: string; type: string; companyName: string | null; firstName: string | null; lastName: string | null } }>({
-    queryKey: ['locations', locationId],
+    queryKey: locationKeys.detail(locationId),
     queryFn: () => apiClient.get(`/contacts/locations/${locationId}`),
     enabled: !!locationId,
   });

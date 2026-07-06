@@ -45,8 +45,8 @@ export default function VoiceTemplatePromptsPage() {
     try {
       await deleteMutation.mutateAsync(t.id);
       showToast('Template-prompt verwijderd', 'success');
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Verwijderen mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 

@@ -64,8 +64,8 @@ export function DocumentsTab({ planId, canWrite, canFinalize }: DocumentsTabProp
     try {
       await generate.mutateAsync(type);
       showToast(`${DOC_TYPE_LABEL[type]} gegenereerd`, 'success');
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Genereren mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 
@@ -79,8 +79,8 @@ export function DocumentsTab({ planId, canWrite, canFinalize }: DocumentsTabProp
       const ext = format === 'pdf' ? 'pdf' : 'docx';
       const name = `${DOC_TYPE_LABEL[doc.documentType] ?? 'document'}-${doc.id.slice(0, 8)}.${ext}`;
       await downloadDocument(doc.id, format, name);
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Export mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     } finally {
       setBusy(null);
     }
@@ -96,8 +96,8 @@ export function DocumentsTab({ planId, canWrite, canFinalize }: DocumentsTabProp
     try {
       await finalize.mutateAsync(doc.id);
       showToast('Document gefinaliseerd', 'success');
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Finaliseren mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 
@@ -111,8 +111,8 @@ export function DocumentsTab({ planId, canWrite, canFinalize }: DocumentsTabProp
     try {
       await deleteDoc.mutateAsync(doc.id);
       showToast('Document verwijderd', 'success');
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Verwijderen mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 
@@ -122,8 +122,8 @@ export function DocumentsTab({ planId, canWrite, canFinalize }: DocumentsTabProp
       await requestSignature.mutateAsync({ id: signatureDocId, data });
       showToast('Ondertekenverzoek verstuurd', 'success');
       setSignatureDocId(null);
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Ondertekenverzoek mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 

@@ -1,8 +1,10 @@
 // Hooks-laag voor de checklist-items bibliotheek: lijst + detail + CRUD.
 // TanStack Query; categorie-beheer gebeurt via de gedeelde hooks in @/lib/categories.
 
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useApiMutation } from '@/hooks/use-api-mutation';
 import { apiClient } from '@/lib/api-client';
+import { checklistItemKeys } from '@/lib/query-keys';
 import type { ChecklistItem } from '@/types';
 
 export interface UseChecklistItemsParams {
@@ -19,14 +21,14 @@ export function useChecklistItems(params: UseChecklistItemsParams = {}) {
   const qs = qp.toString();
 
   return useQuery<ChecklistItem[]>({
-    queryKey: ['checklist-items', params],
+    queryKey: checklistItemKeys.list(params),
     queryFn: () => apiClient.get<ChecklistItem[]>(`/checklist-items${qs ? `?${qs}` : ''}`),
   });
 }
 
 export function useChecklistItem(id: string) {
   return useQuery<ChecklistItem>({
-    queryKey: ['checklist-items', id],
+    queryKey: checklistItemKeys.detail(id),
     queryFn: () => apiClient.get<ChecklistItem>(`/checklist-items/${id}`),
     enabled: !!id,
   });
@@ -34,26 +36,26 @@ export function useChecklistItem(id: string) {
 
 export function useCreateChecklistItem() {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (data: Record<string, unknown>) =>
       apiClient.post<ChecklistItem>('/checklist-items', data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['checklist-items'] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: checklistItemKeys.all }),
   });
 }
 
 export function useUpdateChecklistItem() {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: ({ id, data }: { id: string; data: Record<string, unknown> }) =>
       apiClient.patch<ChecklistItem>(`/checklist-items/${id}`, data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['checklist-items'] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: checklistItemKeys.all }),
   });
 }
 
 export function useDeleteChecklistItem() {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (id: string) => apiClient.delete(`/checklist-items/${id}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['checklist-items'] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: checklistItemKeys.all }),
   });
 }

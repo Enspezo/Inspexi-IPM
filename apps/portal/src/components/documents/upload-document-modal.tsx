@@ -227,11 +227,8 @@ export function UploadDocumentModal({
       });
       showToast('Document geüpload', 'success');
       handleClose();
-    } catch (err) {
-      showToast(
-        err instanceof Error ? err.message : 'Uploaden mislukt',
-        'error',
-      );
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 

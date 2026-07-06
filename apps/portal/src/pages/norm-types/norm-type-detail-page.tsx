@@ -131,8 +131,8 @@ export default function NormTypeDetailPage() {
       });
       showToast('Normtype bijgewerkt', 'success');
       setIsEditing(false);
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Bijwerken mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 
@@ -148,8 +148,8 @@ export default function NormTypeDetailPage() {
       await deleteMutation.mutateAsync(id!);
       showToast('Normtype verwijderd', 'success');
       navigate('/norm-types');
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Verwijderen mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 
@@ -157,8 +157,8 @@ export default function NormTypeDetailPage() {
     try {
       await restoreMutation.mutateAsync(id!);
       showToast('Normtype hersteld', 'success');
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Herstellen mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 

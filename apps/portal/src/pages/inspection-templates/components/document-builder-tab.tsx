@@ -95,8 +95,8 @@ export function DocumentBuilderTab({ inspectionTemplateId, canManage }: Document
       await updateMutation.mutateAsync({ templateMode: TemplateMode.BLOCKS, contentBlocks: blocks });
       showToast('Document-template opgeslagen', 'success');
       setIsDirty(false);
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Opslaan mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 

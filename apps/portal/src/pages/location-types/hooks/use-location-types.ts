@@ -1,8 +1,10 @@
 // Hooks-laag voor het location-types domein: lijst + detail + CRUD + velden + constraints.
 // TanStack Query, queryKeys als arrays, mutaties invalideren de relevante keys.
 
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useApiMutation } from '@/hooks/use-api-mutation';
 import { apiClient } from '@/lib/api-client';
+import { locationTypeKeys, locationTypeFieldKeys, locationTypeConstraintKeys } from '@/lib/query-keys';
 import type { LocationTypeDefinition, LocationTypeField, LocationTypeConstraint } from '@/types';
 
 export interface UseLocationTypesParams {
@@ -21,14 +23,14 @@ export function useLocationTypes(params: UseLocationTypesParams = {}) {
   const qs = query.toString();
 
   return useQuery<LocationTypeDefinition[]>({
-    queryKey: ['location-types', params],
+    queryKey: locationTypeKeys.list(params),
     queryFn: () => apiClient.get<LocationTypeDefinition[]>(`/location-types${qs ? `?${qs}` : ''}`),
   });
 }
 
 export function useLocationType(id: string) {
   return useQuery<LocationTypeDefinition>({
-    queryKey: ['location-types', id],
+    queryKey: locationTypeKeys.detail(id),
     queryFn: () => apiClient.get<LocationTypeDefinition>(`/location-types/${id}`),
     enabled: !!id,
   });
@@ -36,40 +38,40 @@ export function useLocationType(id: string) {
 
 export function useCreateLocationType() {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (data: Record<string, unknown>) =>
       apiClient.post<LocationTypeDefinition>('/location-types', data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['location-types'] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: locationTypeKeys.all }),
   });
 }
 
 export function useUpdateLocationType() {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: ({ id, data }: { id: string; data: Record<string, unknown> }) =>
       apiClient.patch<LocationTypeDefinition>(`/location-types/${id}`, data),
     onSuccess: (_d, v) => {
-      qc.invalidateQueries({ queryKey: ['location-types'] });
-      qc.invalidateQueries({ queryKey: ['location-types', v.id] });
+      qc.invalidateQueries({ queryKey: locationTypeKeys.all });
+      qc.invalidateQueries({ queryKey: locationTypeKeys.detail(v.id) });
     },
   });
 }
 
 export function useDeleteLocationType() {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (id: string) => apiClient.delete(`/location-types/${id}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['location-types'] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: locationTypeKeys.all }),
   });
 }
 
 /** System→org kopie; geeft de nieuwe definitie terug. */
 export function useDuplicateLocationType() {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (id: string) =>
       apiClient.post<LocationTypeDefinition>(`/location-types/${id}/duplicate`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['location-types'] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: locationTypeKeys.all }),
   });
 }
 
@@ -79,7 +81,7 @@ export function useDuplicateLocationType() {
 
 export function useLocationTypeFields(id: string) {
   return useQuery<LocationTypeField[]>({
-    queryKey: ['location-type-fields', id],
+    queryKey: locationTypeFieldKeys.byType(id),
     queryFn: () => apiClient.get<LocationTypeField[]>(`/location-types/${id}/fields`),
     enabled: !!id,
   });
@@ -87,36 +89,36 @@ export function useLocationTypeFields(id: string) {
 
 export function useCreateLocationTypeField(id: string) {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (data: Record<string, unknown>) =>
       apiClient.post<LocationTypeField>(`/location-types/${id}/fields`, data),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['location-type-fields', id] });
-      qc.invalidateQueries({ queryKey: ['location-types', id] });
+      qc.invalidateQueries({ queryKey: locationTypeFieldKeys.byType(id) });
+      qc.invalidateQueries({ queryKey: locationTypeKeys.detail(id) });
     },
   });
 }
 
 export function useUpdateLocationTypeField(id: string) {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: ({ fieldId, data }: { fieldId: string; data: Record<string, unknown> }) =>
       apiClient.patch<LocationTypeField>(`/location-types/${id}/fields/${fieldId}`, data),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['location-type-fields', id] });
-      qc.invalidateQueries({ queryKey: ['location-types', id] });
+      qc.invalidateQueries({ queryKey: locationTypeFieldKeys.byType(id) });
+      qc.invalidateQueries({ queryKey: locationTypeKeys.detail(id) });
     },
   });
 }
 
 export function useDeleteLocationTypeField(id: string) {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (fieldId: string) =>
       apiClient.delete(`/location-types/${id}/fields/${fieldId}`),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['location-type-fields', id] });
-      qc.invalidateQueries({ queryKey: ['location-types', id] });
+      qc.invalidateQueries({ queryKey: locationTypeFieldKeys.byType(id) });
+      qc.invalidateQueries({ queryKey: locationTypeKeys.detail(id) });
     },
   });
 }
@@ -124,28 +126,28 @@ export function useDeleteLocationTypeField(id: string) {
 /** Herorden velden — backend verwacht exact de key `fieldIds`. */
 export function useReorderLocationTypeFields(id: string) {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (fieldIds: string[]) =>
       apiClient.post<LocationTypeField[]>(`/location-types/${id}/fields/reorder`, { fieldIds }),
     // Optimistic: pas de cache-volgorde direct aan; rollback bij fout.
     onMutate: async (fieldIds: string[]) => {
-      await qc.cancelQueries({ queryKey: ['location-type-fields', id] });
-      const previous = qc.getQueryData<LocationTypeField[]>(['location-type-fields', id]);
+      await qc.cancelQueries({ queryKey: locationTypeFieldKeys.byType(id) });
+      const previous = qc.getQueryData<LocationTypeField[]>(locationTypeFieldKeys.byType(id));
       if (previous) {
         const byId = new Map(previous.map((f) => [f.id, f]));
         const reordered = fieldIds
           .map((fid) => byId.get(fid))
           .filter((f): f is LocationTypeField => !!f);
-        qc.setQueryData<LocationTypeField[]>(['location-type-fields', id], reordered);
+        qc.setQueryData<LocationTypeField[]>(locationTypeFieldKeys.byType(id), reordered);
       }
       return { previous };
     },
     onError: (_err, _vars, ctx) => {
-      if (ctx?.previous) qc.setQueryData(['location-type-fields', id], ctx.previous);
+      if (ctx?.previous) qc.setQueryData(locationTypeFieldKeys.byType(id), ctx.previous);
     },
     onSettled: () => {
-      qc.invalidateQueries({ queryKey: ['location-type-fields', id] });
-      qc.invalidateQueries({ queryKey: ['location-types', id] });
+      qc.invalidateQueries({ queryKey: locationTypeFieldKeys.byType(id) });
+      qc.invalidateQueries({ queryKey: locationTypeKeys.detail(id) });
     },
   });
 }
@@ -156,7 +158,7 @@ export function useReorderLocationTypeFields(id: string) {
 
 export function useLocationTypeConstraints(id: string) {
   return useQuery<LocationTypeConstraint[]>({
-    queryKey: ['location-type-constraints', id],
+    queryKey: locationTypeConstraintKeys.byType(id),
     queryFn: () => apiClient.get<LocationTypeConstraint[]>(`/location-types/${id}/constraints`),
     enabled: !!id,
   });
@@ -169,12 +171,12 @@ export interface ConstraintInput {
 
 export function useSetLocationTypeConstraints(id: string) {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (constraints: ConstraintInput[]) =>
       apiClient.put<LocationTypeConstraint[]>(`/location-types/${id}/constraints`, { constraints }),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['location-type-constraints', id] });
-      qc.invalidateQueries({ queryKey: ['location-types', id] });
+      qc.invalidateQueries({ queryKey: locationTypeConstraintKeys.byType(id) });
+      qc.invalidateQueries({ queryKey: locationTypeKeys.detail(id) });
     },
   });
 }

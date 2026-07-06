@@ -160,11 +160,8 @@ export default function UserDetailPage() {
       });
       showToast('Gebruiker bijgewerkt', 'success');
       setIsEditing(false);
-    } catch (err) {
-      showToast(
-        err instanceof Error ? err.message : 'Bijwerken mislukt',
-        'error',
-      );
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 
@@ -172,8 +169,8 @@ export default function UserDetailPage() {
     try {
       await deactivateMutation.mutateAsync(userRecord.id);
       showToast('Gebruiker gedeactiveerd', 'success');
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Deactiveren mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 
@@ -181,8 +178,8 @@ export default function UserDetailPage() {
     try {
       await activateMutation.mutateAsync(userRecord.id);
       showToast('Gebruiker geactiveerd', 'success');
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Activeren mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 
@@ -199,8 +196,8 @@ export default function UserDetailPage() {
     const newStatus = task.status === TaskStatus.VOLTOOID ? TaskStatus.TE_DOEN : TaskStatus.VOLTOOID;
     try {
       await updateTaskMutation.mutateAsync({ id: task.id, data: { status: newStatus } });
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Status wijzigen mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 

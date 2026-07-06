@@ -82,8 +82,8 @@ export function ImportFindingTemplatesModal({ isOpen, onClose }: Props) {
       } else {
         showToast('Geen sjablonen geïmporteerd', 'info');
       }
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Importeren mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 

@@ -84,8 +84,8 @@ export function ItemsTab({ canManage, isSuperuser }: Props) {
     try {
       await deleteMutation.mutateAsync(it.id);
       showToast('Item verwijderd', 'success');
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Verwijderen mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 

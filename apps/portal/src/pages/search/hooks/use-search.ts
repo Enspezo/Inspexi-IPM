@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api-client';
 import type { SearchEntityType, SearchResponse } from '@/types';
+import { searchKeys } from '@/lib/query-keys';
 
 interface SearchParams {
   q: string;
@@ -19,7 +20,7 @@ export function useSearch({ q, type, limit = 4, page = 1 }: SearchParams) {
   params.set('page', String(page));
 
   return useQuery<SearchResponse>({
-    queryKey: ['search', { q: q.trim(), type, limit, page }],
+    queryKey: searchKeys.query({ q: q.trim(), type, limit, page }),
     queryFn: () => apiClient.get<SearchResponse>(`/search?${params.toString()}`),
     enabled,
     staleTime: 30_000,

@@ -223,8 +223,8 @@ function LocationFloorPlan({
     try {
       await uploadImage.mutateAsync(file);
       showToast(image ? 'Afbeelding vervangen' : 'Afbeelding geüpload', 'success');
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Uploaden mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 
@@ -246,8 +246,8 @@ function LocationFloorPlan({
       setIsEditing(false);
       setSelectedMarkerId(undefined);
       showToast('Plattegrond verwijderd', 'success');
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Verwijderen mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 
@@ -262,17 +262,18 @@ function LocationFloorPlan({
       await createMarker.mutateAsync({ imageId: image.id, data });
       showToast('Marker toegevoegd', 'success');
       setPendingPosition(null);
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Marker toevoegen mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 
   const handleMarkerMove = (markerId: string, position: { x: number; y: number }) => {
     if (!image) return;
-    updateMarker.mutate(
-      { imageId: image.id, markerId, data: { positionX: position.x, positionY: position.y } },
-      { onError: (err) => showToast(getErrorMessage(err, 'Verplaatsen mislukt'), 'error') },
-    );
+    updateMarker.mutate({
+      imageId: image.id,
+      markerId,
+      data: { positionX: position.x, positionY: position.y },
+    });
   };
 
   const handleMarkerDelete = async (markerId: string) => {
@@ -287,8 +288,8 @@ function LocationFloorPlan({
       await deleteMarker.mutateAsync({ imageId: image.id, markerId });
       if (selectedMarkerId === markerId) setSelectedMarkerId(undefined);
       showToast('Marker verwijderd', 'success');
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Verwijderen mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 

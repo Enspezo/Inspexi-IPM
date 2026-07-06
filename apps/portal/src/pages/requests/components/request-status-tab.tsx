@@ -35,8 +35,8 @@ export function RequestStatusTab({
       showToast('Status bijgewerkt', 'success');
       setNewStatus('');
       setStatusNote('');
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Status wijzigen mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 

@@ -141,8 +141,8 @@ export default function AssetTypeDetailPage() {
       });
       showToast('Asset-type bijgewerkt', 'success');
       setIsEditing(false);
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Bijwerken mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 
@@ -151,8 +151,8 @@ export default function AssetTypeDetailPage() {
       const created = await duplicateMutation.mutateAsync(id!);
       showToast('Asset-type gedupliceerd', 'success');
       navigate(`/asset-types/${created.id}`);
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Dupliceren mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 
@@ -168,8 +168,8 @@ export default function AssetTypeDetailPage() {
       await deleteMutation.mutateAsync(id!);
       showToast('Asset-type verwijderd', 'success');
       navigate('/asset-types');
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Verwijderen mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 

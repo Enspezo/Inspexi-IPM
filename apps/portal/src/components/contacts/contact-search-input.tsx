@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Spinner } from '@/components/ui';
 import { apiClient } from '@/lib/api-client';
+import { contactKeys } from '@/lib/query-keys';
 import type { Contact, PaginatedResponse } from '@/types';
 import { ContactType } from '@/types';
 import { CreateContactModal } from '@/pages/contacts/components/create-contact-modal';
@@ -58,7 +59,7 @@ export function ContactSearchInput({
 
   // Auto-fetch the display name when value is provided but displayValue is not
   const { data: fetchedContact } = useQuery<Contact>({
-    queryKey: ['contacts', value],
+    queryKey: contactKeys.detail(value),
     queryFn: () => apiClient.get<Contact>(`/contacts/${value}`),
     enabled: !!value && !displayValue,
     staleTime: 5 * 60 * 1000,
@@ -87,7 +88,7 @@ export function ContactSearchInput({
 
   // Search via TanStack Query (cached, deduped, race-safe) instead of a manual fetch.
   const { data: searchData, isFetching: isSearching } = useQuery<PaginatedResponse<Contact>>({
-    queryKey: ['contacts', 'search', trimmedQuery],
+    queryKey: contactKeys.search(trimmedQuery),
     queryFn: () =>
       apiClient.get<PaginatedResponse<Contact>>(
         `/contacts?search=${encodeURIComponent(trimmedQuery)}&limit=10`,

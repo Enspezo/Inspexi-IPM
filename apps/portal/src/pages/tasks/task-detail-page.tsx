@@ -125,11 +125,8 @@ export default function TaskDetailPage() {
       });
       showToast('Taak bijgewerkt', 'success');
       setIsEditing(false);
-    } catch (err) {
-      showToast(
-        err instanceof Error ? err.message : 'Bijwerken mislukt',
-        'error',
-      );
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 
@@ -153,11 +150,8 @@ export default function TaskDetailPage() {
       });
       showToast('Status bijgewerkt', 'success');
       setNewStatus('');
-    } catch (err) {
-      showToast(
-        err instanceof Error ? err.message : 'Status wijzigen mislukt',
-        'error',
-      );
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 
@@ -172,11 +166,8 @@ export default function TaskDetailPage() {
       await deleteMutation.mutateAsync(task.id);
       showToast('Taak verwijderd', 'success');
       navigate('/tasks');
-    } catch (err) {
-      showToast(
-        err instanceof Error ? err.message : 'Verwijderen mislukt',
-        'error',
-      );
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 
@@ -217,9 +208,9 @@ export default function TaskDetailPage() {
                         try {
                           await updateMutation.mutateAsync({ id: task.id, data: { status: TaskStatus.VOLTOOID } });
                           showToast('Taak voltooid', 'success');
-                        } catch (err) {
-                          showToast(getErrorMessage(err, 'Status wijzigen mislukt'), 'error');
-                        }
+                        } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
+    }
                       },
                     },
                   ]

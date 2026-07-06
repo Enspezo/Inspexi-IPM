@@ -1,4 +1,5 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useApiMutation } from '@/hooks/use-api-mutation';
 import { apiClient } from '@/lib/api-client';
 import type {
   Notification,
@@ -10,12 +11,13 @@ import type {
   Role,
 } from '@/types';
 import type { NotificationModel } from '@/lib/notifications';
+import { notificationKeys, notificationPrefKeys } from '@/lib/query-keys';
 
 // ─── Unread count (polled every 30s for bell badge) ─────
 
 export function useUnreadCount() {
   return useQuery<UnreadCountResponse>({
-    queryKey: ['notifications', 'unread-count'],
+    queryKey: notificationKeys.unreadCount(),
     queryFn: () =>
       apiClient.get<UnreadCountResponse>('/notifications/unread-count'),
     refetchInterval: 30_000,
@@ -26,7 +28,7 @@ export function useUnreadCount() {
 
 export function useRecentNotifications() {
   return useQuery<PaginatedResponse<Notification>>({
-    queryKey: ['notifications', 'recent'],
+    queryKey: notificationKeys.recent(),
     queryFn: () =>
       apiClient.get<PaginatedResponse<Notification>>(
         '/notifications?limit=10&page=1',
@@ -57,7 +59,7 @@ export function useNotifications(params: ListNotificationsParams = {}) {
   const endpoint = `/notifications${qsStr ? `?${qsStr}` : ''}`;
 
   return useQuery<PaginatedResponse<Notification>>({
-    queryKey: ['notifications', params],
+    queryKey: notificationKeys.list(params),
     queryFn: () =>
       apiClient.get<PaginatedResponse<Notification>>(endpoint),
   });
@@ -68,11 +70,11 @@ export function useNotifications(params: ListNotificationsParams = {}) {
 export function useMarkRead() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useApiMutation({
     mutationFn: (id: string) =>
       apiClient.patch<Notification>(`/notifications/${id}/read`),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['notifications'] });
+      queryClient.invalidateQueries({ queryKey: notificationKeys.all });
     },
   });
 }
@@ -82,10 +84,10 @@ export function useMarkRead() {
 export function useMarkAllRead() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useApiMutation({
     mutationFn: () => apiClient.post('/notifications/read-all'),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['notifications'] });
+      queryClient.invalidateQueries({ queryKey: notificationKeys.all });
     },
   });
 }
@@ -96,7 +98,7 @@ const PREFS_STALE_TIME = 60 * 60 * 1000; // 1 hour — user changes prefs rarely
 
 export function useNotificationPrefs() {
   return useQuery<NotificationPref[]>({
-    queryKey: ['notification-prefs'],
+    queryKey: notificationPrefKeys.all,
     queryFn: () =>
       apiClient.get<NotificationPref[]>('/notification-prefs'),
     staleTime: PREFS_STALE_TIME,
@@ -112,11 +114,11 @@ interface PrefItem {
 export function useSaveNotificationPrefs() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useApiMutation({
     mutationFn: (prefs: PrefItem[]) =>
       apiClient.put('/notification-prefs', { prefs }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['notification-prefs'] });
+      queryClient.invalidateQueries({ queryKey: notificationPrefKeys.all });
     },
   });
 }
@@ -125,7 +127,7 @@ export function useSaveNotificationPrefs() {
 
 export function useGroupNotificationPrefs() {
   return useQuery<NotificationGroupPref[]>({
-    queryKey: ['notification-prefs', 'group'],
+    queryKey: notificationPrefKeys.group(),
     queryFn: () =>
       apiClient.get<NotificationGroupPref[]>('/notification-prefs/group'),
     staleTime: PREFS_STALE_TIME,
@@ -142,11 +144,11 @@ interface GroupPrefItem {
 export function useSaveGroupNotificationPrefs() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useApiMutation({
     mutationFn: (prefs: GroupPrefItem[]) =>
       apiClient.put('/notification-prefs/group', { prefs }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['notification-prefs'] });
+      queryClient.invalidateQueries({ queryKey: notificationPrefKeys.all });
     },
   });
 }

@@ -90,8 +90,8 @@ export function TreeExplorer({
         res.affected > 1 ? `${res.affected} nodes verwijderd` : 'Node verwijderd',
         'success',
       );
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Verwijderen mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 

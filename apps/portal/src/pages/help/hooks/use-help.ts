@@ -1,4 +1,5 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useApiMutation } from '@/hooks/use-api-mutation';
 import { apiClient } from '@/lib/api-client';
 import type {
   HelpArticle,
@@ -6,6 +7,7 @@ import type {
   HelpCategory,
   PaginatedResponse,
 } from '@/types';
+import { helpKeys } from '@/lib/query-keys';
 
 interface ArticleListParams {
   categoryId?: string;
@@ -29,14 +31,14 @@ function toQuery(p: ArticleListParams): string {
 // ── Lezen ──────────────────────────────────────────────────────────────────
 export function useHelpCategories() {
   return useQuery<HelpCategory[]>({
-    queryKey: ['help', 'categories'],
+    queryKey: helpKeys.categories(),
     queryFn: () => apiClient.get<HelpCategory[]>('/help/categories'),
   });
 }
 
 export function useHelpCategory(slug: string) {
   return useQuery<HelpCategory>({
-    queryKey: ['help', 'category', slug],
+    queryKey: helpKeys.category(slug),
     queryFn: () => apiClient.get<HelpCategory>(`/help/categories/${slug}`),
     enabled: !!slug,
   });
@@ -44,7 +46,7 @@ export function useHelpCategory(slug: string) {
 
 export function useHelpArticles(params: ArticleListParams = {}) {
   return useQuery<PaginatedResponse<HelpArticle>>({
-    queryKey: ['help', 'articles', params],
+    queryKey: helpKeys.articles(params),
     queryFn: () =>
       apiClient.get<PaginatedResponse<HelpArticle>>(
         `/help/articles${toQuery(params)}`,
@@ -54,7 +56,7 @@ export function useHelpArticles(params: ArticleListParams = {}) {
 
 export function useHelpArticle(slug: string) {
   return useQuery<HelpArticle>({
-    queryKey: ['help', 'article', slug],
+    queryKey: helpKeys.article(slug),
     queryFn: () => apiClient.get<HelpArticle>(`/help/articles/${slug}`),
     enabled: !!slug,
   });
@@ -71,7 +73,7 @@ export function useContextualArticles(moduleKey: string, q?: string, enabled = t
   if (q) params.set('q', q);
   const qs = params.toString();
   return useQuery<ContextualResult>({
-    queryKey: ['help', 'contextual', moduleKey, q ?? ''],
+    queryKey: helpKeys.contextual(moduleKey, q ?? ''),
     queryFn: () =>
       apiClient.get<ContextualResult>(
         `/help/articles/contextual${qs ? `?${qs}` : ''}`,
@@ -82,7 +84,7 @@ export function useContextualArticles(moduleKey: string, q?: string, enabled = t
 }
 
 export function useHelpArticleFeedback() {
-  return useMutation({
+  return useApiMutation({
     mutationFn: ({ id, helpful }: { id: string; helpful: boolean }) =>
       apiClient.post<{ id: string; helpfulYes: number; helpfulNo: number }>(
         `/help/articles/${id}/feedback`,
@@ -97,7 +99,7 @@ export function useAdminHelpArticles(
   options: { enabled?: boolean } = {},
 ) {
   return useQuery<PaginatedResponse<HelpArticle>>({
-    queryKey: ['help', 'admin', 'articles', params],
+    queryKey: helpKeys.adminArticles(params),
     queryFn: () =>
       apiClient.get<PaginatedResponse<HelpArticle>>(
         `/help/admin/articles${toQuery(params)}`,
@@ -108,61 +110,61 @@ export function useAdminHelpArticles(
 
 export function useCreateHelpArticle() {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (data: Partial<HelpArticle>) =>
       apiClient.post<HelpArticle>('/help/admin/articles', data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['help'] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: helpKeys.all }),
   });
 }
 
 export function useUpdateHelpArticle() {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: ({ id, data }: { id: string; data: Partial<HelpArticle> }) =>
       apiClient.patch<HelpArticle>(`/help/admin/articles/${id}`, data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['help'] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: helpKeys.all }),
   });
 }
 
 export function usePublishHelpArticle() {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (id: string) =>
       apiClient.post<HelpArticle>(`/help/admin/articles/${id}/publish`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['help'] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: helpKeys.all }),
   });
 }
 
 export function useDeleteHelpArticle() {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (id: string) => apiClient.delete(`/help/admin/articles/${id}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['help'] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: helpKeys.all }),
   });
 }
 
 export function useCreateHelpCategory() {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (data: Partial<HelpCategory>) =>
       apiClient.post<HelpCategory>('/help/admin/categories', data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['help'] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: helpKeys.all }),
   });
 }
 
 export function useUpdateHelpCategory() {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: ({ id, data }: { id: string; data: Partial<HelpCategory> }) =>
       apiClient.patch<HelpCategory>(`/help/admin/categories/${id}`, data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['help'] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: helpKeys.all }),
   });
 }
 
 export function useDeleteHelpCategory() {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (id: string) => apiClient.delete(`/help/admin/categories/${id}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['help'] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: helpKeys.all }),
   });
 }

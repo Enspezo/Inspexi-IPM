@@ -6,8 +6,10 @@ import { ErrorBox, Spinner } from '@/components/ui';
 import { useWindowTabs } from '@/providers/window-tabs';
 import { getStatusConfig, PRIORITY } from '@/lib/status';
 import { useAllRequests } from '../hooks/use-requests';
-import { useQueryClient, useMutation } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
+import { useApiMutation } from '@/hooks/use-api-mutation';
 import { apiClient } from '@/lib/api-client';
+import { requestKeys, requestsAllKeys } from '@/lib/query-keys';
 
 // ─── Config ────────────────────────────────────────────────────────────────
 
@@ -322,12 +324,12 @@ export function RequestsKanban({ search, priorityFilter, assignedTo }: RequestsK
   const [localOverrides, setLocalOverrides] = useState<Record<string, RequestStatus>>({});
 
   // Generieke status-update mutation — id wordt meegegeven in mutationFn
-  const updateStatusMutation = useMutation({
+  const updateStatusMutation = useApiMutation({
     mutationFn: ({ id, status }: { id: string; status: RequestStatus }) =>
       apiClient.patch(`/requests/${id}/status`, { status }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['requests'] });
-      queryClient.invalidateQueries({ queryKey: ['requests-all'] });
+      queryClient.invalidateQueries({ queryKey: requestKeys.all });
+      queryClient.invalidateQueries({ queryKey: requestsAllKeys.all });
     },
   });
 

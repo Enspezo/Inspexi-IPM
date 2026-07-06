@@ -86,11 +86,8 @@ export function EditLocationModal({
       await updateMutation.mutateAsync({ locationId: location.id, data: cleaned });
       showToast('Locatie bijgewerkt!', 'success');
       onClose();
-    } catch (err) {
-      showToast(
-        err instanceof Error ? err.message : 'Bijwerken mislukt',
-        'error',
-      );
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 

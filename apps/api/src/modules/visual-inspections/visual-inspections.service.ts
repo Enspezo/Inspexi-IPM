@@ -59,7 +59,7 @@ export class VisualInspectionsService {
         updatedAt: true,
         syncedAt: true,
         deviceId: true,
-        _count: { select: { findings: true } },
+        _count: { select: { findings: { where: { deletedAt: null } } } },
       },
     });
   }

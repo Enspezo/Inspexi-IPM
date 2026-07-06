@@ -1,4 +1,5 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useApiMutation } from '@/hooks/use-api-mutation';
 import { apiClient } from '@/lib/api-client';
 import { inspectionTemplateKeys, inspectionTemplateKeys1 } from '@/lib/query-keys';
 import type { InspectionTemplate } from '@/types';
@@ -58,7 +59,7 @@ export function useInspectionTemplates(params: ListParams = {}) {
 /** Nieuwe eigen inspectie-template aanmaken (CONCEPT). */
 export function useCreateInspectionTemplate() {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (data: CreateInspectionTemplateInput) =>
       apiClient.post<InspectionTemplate>('/inspection-templates', data),
     onSuccess: () => qc.invalidateQueries({ queryKey: inspectionTemplateKeys.all }),
@@ -68,7 +69,7 @@ export function useCreateInspectionTemplate() {
 /** Inspectie-template bijwerken (alleen CONCEPT: naam/omschrijving/classificatiemodel). */
 export function useUpdateInspectionTemplate() {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: ({ id, data }: { id: string; data: UpdateInspectionTemplateInput }) =>
       apiClient.patch<InspectionTemplate>(`/inspection-templates/${id}`, data),
     onSuccess: (_d, v) => {
@@ -81,7 +82,7 @@ export function useUpdateInspectionTemplate() {
 /** Systeemtemplate forken naar de eigen organisatie (als CONCEPT). */
 export function useForkInspectionTemplate() {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: ({ id, data }: { id: string; data: ForkInspectionTemplateInput }) =>
       apiClient.post<InspectionTemplate>(`/inspection-templates/${id}/fork`, data),
     onSuccess: () => qc.invalidateQueries({ queryKey: inspectionTemplateKeys.all }),
@@ -91,7 +92,7 @@ export function useForkInspectionTemplate() {
 /** Inspectie-template verwijderen (alleen CONCEPT). */
 export function useDeleteInspectionTemplate() {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (id: string) => apiClient.delete(`/inspection-templates/${id}`),
     onSuccess: (_d, id) => {
       qc.invalidateQueries({ queryKey: inspectionTemplateKeys.all });
@@ -103,7 +104,7 @@ export function useDeleteInspectionTemplate() {
 /** Publiceren (CONCEPT → ACTIEF), met optionele toelichting voor de historie. */
 export function usePublishInspectionTemplate() {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: ({ id, changeDescription }: { id: string; changeDescription?: string }) =>
       apiClient.post<InspectionTemplate>(`/inspection-templates/${id}/publish`, { changeDescription }),
     onSuccess: (_d, v) => {
@@ -116,7 +117,7 @@ export function usePublishInspectionTemplate() {
 /** Laten vervallen (ACTIEF → VERVALLEN), met optionele reden voor de historie. */
 export function useRetireInspectionTemplate() {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: ({ id, reason }: { id: string; reason?: string }) =>
       apiClient.post<InspectionTemplate>(`/inspection-templates/${id}/retire`, { reason }),
     onSuccess: (_d, v) => {
@@ -129,7 +130,7 @@ export function useRetireInspectionTemplate() {
 /** Nieuwe versie maken (kloon naar CONCEPT, versie opgehoogd). */
 export function useNewVersionInspectionTemplate() {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: ({ id, changeDescription }: { id: string; changeDescription?: string }) =>
       apiClient.post<InspectionTemplate>(`/inspection-templates/${id}/new-version`, {
         changeDescription,

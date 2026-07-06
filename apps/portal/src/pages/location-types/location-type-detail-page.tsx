@@ -141,8 +141,8 @@ export default function LocationTypeDetailPage() {
       });
       showToast('Locatie-type bijgewerkt', 'success');
       setIsEditing(false);
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Bijwerken mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 
@@ -151,8 +151,8 @@ export default function LocationTypeDetailPage() {
       const created = await duplicateMutation.mutateAsync(id!);
       showToast('Locatie-type gedupliceerd', 'success');
       navigate(`/location-types/${created.id}`);
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Dupliceren mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 
@@ -168,8 +168,8 @@ export default function LocationTypeDetailPage() {
       await deleteMutation.mutateAsync(id!);
       showToast('Locatie-type verwijderd', 'success');
       navigate('/location-types');
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Verwijderen mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 

@@ -1,4 +1,5 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useApiMutation } from '@/hooks/use-api-mutation';
 import { apiClient } from '@/lib/api-client';
 import { emailTemplateKeys, emailTemplateTypeKeys } from '@/lib/query-keys';
 import type { EmailTemplate, EmailTemplateAttachment, EmailTemplateType, EmailTemplateTypeInfo, PaginatedResponse } from '@/types';
@@ -55,7 +56,7 @@ interface CreateEmailTemplateDto {
 export function useCreateEmailTemplate() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useApiMutation({
     mutationFn: (data: CreateEmailTemplateDto) =>
       apiClient.post<EmailTemplate>('/email-templates', data),
     onSuccess: () => {
@@ -75,7 +76,7 @@ interface UpdateEmailTemplateDto {
 export function useUpdateEmailTemplate(id: string) {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useApiMutation({
     mutationFn: (data: UpdateEmailTemplateDto) =>
       apiClient.patch<EmailTemplate>(`/email-templates/${id}`, data),
     onSuccess: () => {
@@ -87,7 +88,7 @@ export function useUpdateEmailTemplate(id: string) {
 export function useDeleteEmailTemplate() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useApiMutation({
     mutationFn: (id: string) => apiClient.delete(`/email-templates/${id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: emailTemplateKeys.all });
@@ -98,7 +99,7 @@ export function useDeleteEmailTemplate() {
 export function useDuplicateEmailTemplate() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useApiMutation({
     mutationFn: (id: string) => apiClient.post<EmailTemplate>(`/email-templates/${id}/duplicate`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: emailTemplateKeys.all });
@@ -107,7 +108,7 @@ export function useDuplicateEmailTemplate() {
 }
 
 export function usePreviewEmailTemplate() {
-  return useMutation({
+  return useApiMutation({
     mutationFn: (data: { subject: string; bodyHtml: string; type: EmailTemplateType }) =>
       apiClient.post<{ subject: string; html: string }>('/email-templates/preview', data),
   });
@@ -128,7 +129,7 @@ export function useEmailTemplateAttachments(templateId: string) {
 
 export function useUploadEmailTemplateAttachment(templateId: string) {
   const queryClient = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (formData: FormData) =>
       apiClient.upload<EmailTemplateAttachment>(
         `/email-templates/${templateId}/attachments`,
@@ -147,7 +148,7 @@ export function useUploadEmailTemplateAttachment(templateId: string) {
 
 export function useDeleteEmailTemplateAttachment(templateId: string) {
   const queryClient = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (attachmentId: string) =>
       apiClient.delete(
         `/email-templates/${templateId}/attachments/${attachmentId}`,

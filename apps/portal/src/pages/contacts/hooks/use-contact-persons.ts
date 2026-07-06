@@ -1,4 +1,5 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useApiMutation } from '@/hooks/use-api-mutation';
 import { apiClient } from '@/lib/api-client';
 import {
   contactKeys,
@@ -59,7 +60,7 @@ interface CreateContactPersonDto {
 export function useAddContactPerson(contactId: string) {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useApiMutation({
     mutationFn: (data: CreateContactPersonDto) =>
       apiClient.post<ContactPerson>(
         `/contacts/${contactId}/contact-persons`,
@@ -85,7 +86,7 @@ interface UpdateContactPersonDto extends Partial<CreateContactPersonDto> {}
 export function useUpdateContactPerson(personId: string) {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useApiMutation({
     mutationFn: (data: UpdateContactPersonDto) =>
       apiClient.patch<ContactPerson>(
         `/contacts/contact-persons/${personId}`,
@@ -101,7 +102,7 @@ export function useUpdateContactPerson(personId: string) {
 export function useDeleteContactPerson() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useApiMutation({
     mutationFn: (personId: string) =>
       apiClient.delete(`/contacts/contact-persons/${personId}`),
     onSuccess: () => {

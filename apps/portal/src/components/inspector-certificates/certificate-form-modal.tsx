@@ -107,8 +107,8 @@ export function CertificateFormModal({
         showToast('Certificaat toegevoegd', 'success');
       }
       onClose();
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Opslaan mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 
@@ -117,8 +117,8 @@ export function CertificateFormModal({
     try {
       await removeDocMutation.mutateAsync(certificate.id);
       showToast('Document verwijderd', 'success');
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Verwijderen mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 

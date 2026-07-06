@@ -68,11 +68,8 @@ export function AddLogModal({ isOpen, onClose, contactId, initialType, initialLo
       showToast('Contactmoment gelogd!', 'success');
       reset();
       onClose();
-    } catch (err) {
-      showToast(
-        err instanceof Error ? err.message : 'Loggen mislukt',
-        'error',
-      );
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 

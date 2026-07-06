@@ -77,11 +77,8 @@ export function AddLocationModal({
       setPdokData(null);
       onCreated?.(created);
       onClose();
-    } catch (err) {
-      showToast(
-        err instanceof Error ? err.message : 'Toevoegen mislukt',
-        'error',
-      );
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 

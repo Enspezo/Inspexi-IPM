@@ -1,4 +1,5 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
+import { useApiMutation } from '@/hooks/use-api-mutation';
 import { apiClient } from '@/lib/api-client';
 import { contactKeys } from '@/lib/query-keys';
 import type { ContactAddress } from '@/types';
@@ -18,7 +19,7 @@ interface CreateAddressDto {
 export function useAddAddress(contactId: string) {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useApiMutation({
     mutationFn: (data: CreateAddressDto) =>
       apiClient.post<ContactAddress>(
         `/contacts/${contactId}/addresses`,
@@ -35,7 +36,7 @@ interface UpdateAddressDto extends Partial<CreateAddressDto> {}
 export function useUpdateAddress(contactId: string) {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useApiMutation({
     mutationFn: ({ addressId, data }: { addressId: string; data: UpdateAddressDto }) =>
       apiClient.patch<ContactAddress>(`/contacts/addresses/${addressId}`, data),
     onSuccess: () => {
@@ -47,7 +48,7 @@ export function useUpdateAddress(contactId: string) {
 export function useDeleteAddress(contactId: string) {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useApiMutation({
     mutationFn: (addressId: string) =>
       apiClient.delete(`/contacts/addresses/${addressId}`),
     onSuccess: () => {

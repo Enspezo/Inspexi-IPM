@@ -1,4 +1,5 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useApiMutation } from '@/hooks/use-api-mutation';
 import { apiClient } from '@/lib/api-client';
 import { documentTagKeys, documentKeys } from '@/lib/query-keys';
 import type { DocumentTag, DocumentTagRef, PaginatedResponse } from '@/types';
@@ -41,7 +42,7 @@ interface CreateDto {
 
 export function useCreateDocumentTag() {
   const queryClient = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (data: CreateDto) =>
       apiClient.post<DocumentTag>('/document-tags', data),
     onSuccess: () => {
@@ -52,7 +53,7 @@ export function useCreateDocumentTag() {
 
 export function useUpdateDocumentTag(id: string) {
   const queryClient = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (data: Partial<CreateDto>) =>
       apiClient.patch<DocumentTag>(`/document-tags/${id}`, data),
     onSuccess: () => {
@@ -63,7 +64,7 @@ export function useUpdateDocumentTag(id: string) {
 
 export function useDeleteDocumentTag() {
   const queryClient = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (id: string) => apiClient.delete(`/document-tags/${id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: documentTagKeys.all });

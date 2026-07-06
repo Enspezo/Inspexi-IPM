@@ -45,8 +45,8 @@ export function PlanningDetailHeader({
     try {
       await complete.mutateAsync(undefined);
       showToast('Afspraak afgerond', 'success');
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Fout bij afronden afspraak'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 
@@ -54,8 +54,8 @@ export function PlanningDetailHeader({
     try {
       await sendConfirmation.mutateAsync(undefined);
       showToast('Bevestiging verstuurd', 'success');
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Fout bij versturen bevestiging'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 
@@ -63,8 +63,8 @@ export function PlanningDetailHeader({
     try {
       await accept.mutateAsync(undefined);
       showToast('Afspraak geaccepteerd', 'success');
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Fout bij accepteren afspraak'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 

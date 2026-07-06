@@ -2,7 +2,8 @@
 // TanStack Query, queryKeys als arrays, mutaties invalideren de relevante keys.
 // Spiegelt het asset-types hooks-patroon (use-asset-types.ts).
 
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useApiMutation } from '@/hooks/use-api-mutation';
 import { apiClient } from '@/lib/api-client';
 import { checklistKeys } from '@/lib/query-keys';
 import type { Checklist, ChecklistItemLink } from '@/types';
@@ -40,7 +41,7 @@ export function useChecklist(id: string) {
 
 export function useCreateChecklist() {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (data: Record<string, unknown>) =>
       apiClient.post<Checklist>('/checklists', data),
     onSuccess: () => qc.invalidateQueries({ queryKey: checklistKeys.all }),
@@ -49,7 +50,7 @@ export function useCreateChecklist() {
 
 export function useUpdateChecklist(id: string) {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (data: Record<string, unknown>) =>
       apiClient.patch<Checklist>(`/checklists/${id}`, data),
     onSuccess: () => {
@@ -61,7 +62,7 @@ export function useUpdateChecklist(id: string) {
 
 export function useDeleteChecklist(id: string) {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: () => apiClient.delete(`/checklists/${id}`),
     onSuccess: () => qc.invalidateQueries({ queryKey: checklistKeys.all }),
   });
@@ -70,7 +71,7 @@ export function useDeleteChecklist(id: string) {
 /** Importeren vanuit een JSON-export. Geeft de aangemaakte checklist terug. */
 export function useImportChecklist() {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (data: Record<string, unknown>) =>
       apiClient.post<Checklist>('/checklists/import', data),
     onSuccess: () => qc.invalidateQueries({ queryKey: checklistKeys.all }),
@@ -90,7 +91,7 @@ export interface AddItemInput {
 
 export function useAddChecklistItem(checklistId: string) {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (data: AddItemInput) =>
       apiClient.post<ChecklistItemLink>(`/checklists/${checklistId}/items`, data),
     onSuccess: () => qc.invalidateQueries({ queryKey: checklistKeys.detail(checklistId) }),
@@ -105,7 +106,7 @@ export interface UpdateItemLinkInput {
 
 export function useUpdateChecklistItemLink(checklistId: string) {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: ({ linkId, data }: { linkId: string; data: UpdateItemLinkInput }) =>
       apiClient.patch<ChecklistItemLink>(`/checklists/${checklistId}/items/${linkId}`, data),
     onSuccess: () => qc.invalidateQueries({ queryKey: checklistKeys.detail(checklistId) }),
@@ -114,7 +115,7 @@ export function useUpdateChecklistItemLink(checklistId: string) {
 
 export function useRemoveChecklistItemLink(checklistId: string) {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (linkId: string) =>
       apiClient.delete(`/checklists/${checklistId}/items/${linkId}`),
     onSuccess: () => qc.invalidateQueries({ queryKey: checklistKeys.detail(checklistId) }),
@@ -124,7 +125,7 @@ export function useRemoveChecklistItemLink(checklistId: string) {
 /** Herorden item-links — backend verwacht exact de key `itemLinkIds`. */
 export function useReorderChecklistItems(checklistId: string) {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (itemLinkIds: string[]) =>
       apiClient.post<Checklist>(`/checklists/${checklistId}/items/reorder`, { itemLinkIds }),
     // Optimistic: pas de cache-volgorde direct aan; rollback bij fout.
@@ -161,7 +162,7 @@ export interface PublishInput {
 
 export function usePublishChecklist(id: string) {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (data: PublishInput) =>
       apiClient.post<Checklist>(`/checklists/${id}/publish`, data),
     onSuccess: () => {
@@ -173,7 +174,7 @@ export function usePublishChecklist(id: string) {
 
 export function useRetireChecklist(id: string) {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (data: PublishInput) =>
       apiClient.post<Checklist>(`/checklists/${id}/retire`, data),
     onSuccess: () => {
@@ -185,7 +186,7 @@ export function useRetireChecklist(id: string) {
 
 export function useNewChecklistVersion(id: string) {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (data: { changeDescription?: string }) =>
       apiClient.post<Checklist>(`/checklists/${id}/new-version`, data),
     onSuccess: () => qc.invalidateQueries({ queryKey: checklistKeys.all }),

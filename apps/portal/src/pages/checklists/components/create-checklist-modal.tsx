@@ -76,8 +76,8 @@ export function CreateChecklistModal({ isOpen, onClose }: Props) {
       showToast('Checklist aangemaakt', 'success');
       onClose();
       navigate(`/checklists/${created.id}`);
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Aanmaken mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 

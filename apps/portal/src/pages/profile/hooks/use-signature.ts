@@ -1,4 +1,5 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useApiMutation } from '@/hooks/use-api-mutation';
 import { apiClient } from '@/lib/api-client';
 import type { UserSignature } from '@/types';
 import { signatureKeys } from '@/lib/query-keys';
@@ -13,7 +14,7 @@ export function useSignature() {
 export function useSaveSignature() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useApiMutation({
     mutationFn: (data: { signatureType: string; signatureData: string }) =>
       apiClient.patch<UserSignature>('/users/me/signature', data),
     onSuccess: () => {
@@ -25,7 +26,7 @@ export function useSaveSignature() {
 export function useDeleteSignature() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useApiMutation({
     mutationFn: () => apiClient.delete('/users/me/signature'),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: signatureKeys.all });

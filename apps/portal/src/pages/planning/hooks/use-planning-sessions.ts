@@ -1,4 +1,5 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
+import { useApiMutation } from '@/hooks/use-api-mutation';
 import { apiClient } from '@/lib/api-client';
 import { planningKeys } from '@/lib/query-keys';
 import type { PlanningSession } from '@/types';
@@ -40,7 +41,7 @@ function sessionBase(planningItemId: string, sessionId: string) {
 
 export function useCreatePlanningSession(planningItemId: string) {
   const qc = useQueryClient();
-  return useMutation<PlanningSession, Error, CreateSessionPayload>({
+  return useApiMutation<PlanningSession, Error, CreateSessionPayload>({
     mutationFn: (payload) =>
       apiClient.post<PlanningSession>(`/planning/${planningItemId}/sessions`, payload),
     onSuccess: () => {
@@ -52,7 +53,7 @@ export function useCreatePlanningSession(planningItemId: string) {
 
 export function useUpdatePlanningSession(planningItemId: string, sessionId: string) {
   const qc = useQueryClient();
-  return useMutation<PlanningSession, Error, UpdateSessionPayload>({
+  return useApiMutation<PlanningSession, Error, UpdateSessionPayload>({
     mutationFn: (payload) =>
       apiClient.patch<PlanningSession>(sessionBase(planningItemId, sessionId), payload),
     onSuccess: () => {
@@ -63,7 +64,7 @@ export function useUpdatePlanningSession(planningItemId: string, sessionId: stri
 
 export function useCancelSession(planningItemId: string, sessionId: string) {
   const qc = useQueryClient();
-  return useMutation<void, Error, void>({
+  return useApiMutation<void, Error, void>({
     mutationFn: () =>
       apiClient.delete<void>(sessionBase(planningItemId, sessionId)),
     onSuccess: () => {
@@ -75,7 +76,7 @@ export function useCancelSession(planningItemId: string, sessionId: string) {
 
 export function useAssignSessionInspectors(planningItemId: string, sessionId: string) {
   const qc = useQueryClient();
-  return useMutation<PlanningSession, Error, AssignSessionInspectorsPayload>({
+  return useApiMutation<PlanningSession, Error, AssignSessionInspectorsPayload>({
     mutationFn: (payload) =>
       apiClient.post<PlanningSession>(`${sessionBase(planningItemId, sessionId)}/assign`, payload),
     onSuccess: () => {
@@ -86,7 +87,7 @@ export function useAssignSessionInspectors(planningItemId: string, sessionId: st
 
 export function useAcceptSession(planningItemId: string, sessionId: string) {
   const qc = useQueryClient();
-  return useMutation<void, Error, void>({
+  return useApiMutation<void, Error, void>({
     mutationFn: () =>
       apiClient.post<void>(`${sessionBase(planningItemId, sessionId)}/accept`, {}),
     onSuccess: () => {
@@ -98,7 +99,7 @@ export function useAcceptSession(planningItemId: string, sessionId: string) {
 
 export function useRejectSession(planningItemId: string, sessionId: string) {
   const qc = useQueryClient();
-  return useMutation<void, Error, RejectSessionPayload>({
+  return useApiMutation<void, Error, RejectSessionPayload>({
     mutationFn: (payload) =>
       apiClient.post<void>(`${sessionBase(planningItemId, sessionId)}/reject`, payload),
     onSuccess: () => {
@@ -110,7 +111,7 @@ export function useRejectSession(planningItemId: string, sessionId: string) {
 
 export function useConfirmSession(planningItemId: string, sessionId: string) {
   const qc = useQueryClient();
-  return useMutation<void, Error, void>({
+  return useApiMutation<void, Error, void>({
     mutationFn: () =>
       apiClient.post<void>(`${sessionBase(planningItemId, sessionId)}/confirm`, {}),
     onSuccess: () => {
@@ -122,7 +123,7 @@ export function useConfirmSession(planningItemId: string, sessionId: string) {
 
 export function useRescheduleSession(planningItemId: string, sessionId: string) {
   const qc = useQueryClient();
-  return useMutation<PlanningSession, Error, RescheduleSessionPayload>({
+  return useApiMutation<PlanningSession, Error, RescheduleSessionPayload>({
     mutationFn: (payload) =>
       apiClient.post<PlanningSession>(`${sessionBase(planningItemId, sessionId)}/reschedule`, payload),
     onSuccess: () => {
@@ -134,7 +135,7 @@ export function useRescheduleSession(planningItemId: string, sessionId: string) 
 
 export function useCompleteSession(planningItemId: string, sessionId: string) {
   const qc = useQueryClient();
-  return useMutation<void, Error, void>({
+  return useApiMutation<void, Error, void>({
     mutationFn: () =>
       apiClient.post<void>(`${sessionBase(planningItemId, sessionId)}/complete`, {}),
     onSuccess: () => {

@@ -1,4 +1,5 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useApiMutation } from '@/hooks/use-api-mutation';
 import { apiClient } from '@/lib/api-client';
 import { projectKeys, projectPhaseKeys } from '@/lib/query-keys';
 import type {
@@ -43,7 +44,7 @@ export interface CreatePhaseData {
 
 export function useCreatePhase(projectId: string) {
   const queryClient = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (data: CreatePhaseData) =>
       apiClient.post<ProjectPhase>(`/projects/${projectId}/phases`, data),
     onSuccess: () => invalidatePhaseScope(queryClient, projectId),
@@ -63,7 +64,7 @@ export interface UpdatePhaseData {
 
 export function useUpdatePhase(projectId: string) {
   const queryClient = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: ({ id, data }: { id: string; data: UpdatePhaseData }) =>
       apiClient.patch<ProjectPhase>(`/projects/${projectId}/phases/${id}`, data),
     onSuccess: () => invalidatePhaseScope(queryClient, projectId),
@@ -72,7 +73,7 @@ export function useUpdatePhase(projectId: string) {
 
 export function useDeletePhase(projectId: string) {
   const queryClient = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (id: string) =>
       apiClient.delete(`/projects/${projectId}/phases/${id}`),
     onSuccess: () => invalidatePhaseScope(queryClient, projectId),
@@ -81,7 +82,7 @@ export function useDeletePhase(projectId: string) {
 
 export function useReorderPhases(projectId: string) {
   const queryClient = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (orderedIds: string[]) =>
       apiClient.post<ProjectPhase[]>(`/projects/${projectId}/phases/reorder`, {
         orderedIds,
@@ -114,7 +115,7 @@ export interface CreateMilestoneData {
 
 export function useCreateMilestone(projectId: string, phaseId: string) {
   const queryClient = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (data: CreateMilestoneData) =>
       apiClient.post<PhaseMilestone>(
         `/projects/${projectId}/phases/${phaseId}/milestones`,
@@ -139,7 +140,7 @@ export interface UpdateMilestoneData {
 
 export function useUpdateMilestone(projectId: string, phaseId: string) {
   const queryClient = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: ({ id, data }: { id: string; data: UpdateMilestoneData }) =>
       apiClient.patch<PhaseMilestone>(
         `/projects/${projectId}/phases/${phaseId}/milestones/${id}`,
@@ -154,7 +155,7 @@ export function useUpdateMilestone(projectId: string, phaseId: string) {
 
 export function useDeleteMilestone(projectId: string, phaseId: string) {
   const queryClient = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (id: string) =>
       apiClient.delete(
         `/projects/${projectId}/phases/${phaseId}/milestones/${id}`,
@@ -192,7 +193,7 @@ export interface AddPhaseFollowerData {
 
 export function useAddPhaseFollower(projectId: string, phaseId: string) {
   const queryClient = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (data: AddPhaseFollowerData) =>
       apiClient.post<ProjectPhaseFollower>(
         `/projects/${projectId}/phases/${phaseId}/followers`,
@@ -215,7 +216,7 @@ export interface UpdatePhaseFollowerData {
 
 export function useUpdatePhaseFollower(projectId: string, phaseId: string) {
   const queryClient = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: ({
       followerId,
       data,
@@ -235,7 +236,7 @@ export function useUpdatePhaseFollower(projectId: string, phaseId: string) {
 
 export function useRemovePhaseFollower(projectId: string, phaseId: string) {
   const queryClient = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (followerId: string) =>
       apiClient.delete(
         `/projects/${projectId}/phases/${phaseId}/followers/${followerId}`,

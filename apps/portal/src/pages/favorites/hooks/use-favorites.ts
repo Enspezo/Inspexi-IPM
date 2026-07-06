@@ -1,4 +1,5 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useApiMutation } from '@/hooks/use-api-mutation';
 import { apiClient } from '@/lib/api-client';
 import type {
   FavoritableEntityType,
@@ -35,7 +36,7 @@ type ToggleArgs = FavoriteKey & { isFavorited: boolean };
 export function useToggleFavorite() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useApiMutation({
     mutationFn: ({ entityType, entityId, isFavorited }: ToggleArgs) =>
       isFavorited
         ? apiClient.delete(

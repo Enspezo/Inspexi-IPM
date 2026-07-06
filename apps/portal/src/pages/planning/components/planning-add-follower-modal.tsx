@@ -58,8 +58,8 @@ export function PlanningAddFollowerModal({
       setFollowerSearch('');
       setShowFollowerDropdown(false);
       showToast('Volger toegevoegd', 'success');
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Fout bij toevoegen volger'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 
@@ -72,8 +72,8 @@ export function PlanningAddFollowerModal({
       setNewFollowerName('');
       setFollowerSearch('');
       showToast('Volger toegevoegd', 'success');
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Fout bij toevoegen volger'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 

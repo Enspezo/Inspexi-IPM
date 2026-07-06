@@ -37,8 +37,8 @@ export function WorkOrderStatusChangeModal({
       setNewStatus('');
       setStatusNote('');
       showToast('Status bijgewerkt', 'success');
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Fout bij statuswijziging'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 
@@ -125,8 +125,8 @@ export function WorkOrderDeleteModal({
       await deleteWorkOrder.mutateAsync();
       showToast('Werkbon verwijderd', 'success');
       navigate('/work-orders');
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Fout bij verwijderen'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 

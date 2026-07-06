@@ -1,4 +1,5 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useApiMutation } from '@/hooks/use-api-mutation';
 import { apiClient } from '@/lib/api-client';
 import { instrumentDefaultKeys } from '@/lib/query-keys';
 
@@ -13,7 +14,7 @@ export function useMyDefaultInstruments() {
 
 export function useSetMyDefaultInstruments() {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (instrumentIds: string[]) =>
       apiClient.put<string[]>('/measurement-instruments/my-defaults', { instrumentIds }),
     onSuccess: () => qc.invalidateQueries({ queryKey: instrumentDefaultKeys.me() }),
@@ -33,7 +34,7 @@ export function usePlanDefaultInstruments(planId: string | undefined) {
 
 export function useSetPlanDefaultInstruments(planId: string) {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (instrumentIds: string[]) =>
       apiClient.put<string[]>(`/measurement-instruments/plan-defaults/${planId}`, {
         instrumentIds,

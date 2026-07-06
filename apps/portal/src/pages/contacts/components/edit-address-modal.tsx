@@ -59,11 +59,8 @@ export function EditAddressModal({
       await updateMutation.mutateAsync({ addressId: address.id, data });
       showToast('Adres bijgewerkt!', 'success');
       onClose();
-    } catch (err) {
-      showToast(
-        err instanceof Error ? err.message : 'Bijwerken mislukt',
-        'error',
-      );
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 

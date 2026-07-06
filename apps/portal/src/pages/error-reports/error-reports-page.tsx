@@ -48,9 +48,8 @@ function ErrorReportDetailModal({
     try {
       await updateStatus.mutateAsync({ id: report.id, status: s });
       showToast('Status bijgewerkt', 'success');
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Status bijwerken mislukt'), 'error');
-      setStatus(report.status);
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   }
 

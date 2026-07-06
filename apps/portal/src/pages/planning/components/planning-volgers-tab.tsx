@@ -21,8 +21,8 @@ export function PlanningVolgersTab({
     try {
       await removeFollower.mutateAsync(followerId);
       showToast('Volger verwijderd', 'success');
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Fout bij verwijderen volger'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 

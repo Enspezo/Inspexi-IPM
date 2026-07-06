@@ -1,4 +1,5 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useApiMutation } from '@/hooks/use-api-mutation';
 import { apiClient } from '@/lib/api-client';
 import { measurementInstrumentKeys } from '@/lib/query-keys';
 import type {
@@ -76,7 +77,7 @@ export function useInstrumentSuggestions(field: 'brand' | 'type' | 'performedBy'
 
 export function useCreateMeetmiddel() {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (values: InstrumentFormValues) =>
       apiClient.post<MeasurementInstrument>('/measurement-instruments', values),
     onSuccess: () => qc.invalidateQueries({ queryKey: measurementInstrumentKeys.all }),
@@ -85,7 +86,7 @@ export function useCreateMeetmiddel() {
 
 export function useUpdateMeetmiddel(id: string) {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (values: Partial<InstrumentFormValues>) =>
       apiClient.patch<MeasurementInstrument>(`/measurement-instruments/${id}`, values),
     onSuccess: () => qc.invalidateQueries({ queryKey: measurementInstrumentKeys.all }),
@@ -94,7 +95,7 @@ export function useUpdateMeetmiddel(id: string) {
 
 export function useDeleteMeetmiddel() {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (id: string) => apiClient.delete(`/measurement-instruments/${id}`),
     onSuccess: () => qc.invalidateQueries({ queryKey: measurementInstrumentKeys.all }),
   });

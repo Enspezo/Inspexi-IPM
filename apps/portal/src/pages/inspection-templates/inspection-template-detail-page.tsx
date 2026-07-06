@@ -83,8 +83,8 @@ export default function InspectionTemplateDetailPage() {
       await publishMutation.mutateAsync({ id: template.id, changeDescription });
       showToast('Template gepubliceerd', 'success');
       setLifecycleAction(null);
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Publiceren mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 
@@ -93,8 +93,8 @@ export default function InspectionTemplateDetailPage() {
       await retireMutation.mutateAsync({ id: template.id, reason });
       showToast('Template vervallen', 'success');
       setLifecycleAction(null);
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Laten vervallen mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 
@@ -104,8 +104,8 @@ export default function InspectionTemplateDetailPage() {
       showToast('Nieuwe versie aangemaakt', 'success');
       setLifecycleAction(null);
       navigate(`/inspection-templates/${created.id}`);
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Nieuwe versie maken mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 
@@ -121,8 +121,8 @@ export default function InspectionTemplateDetailPage() {
       await deleteMutation.mutateAsync(template.id);
       showToast('Inspectie-template verwijderd', 'success');
       navigate('/inspection-templates');
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Verwijderen mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 

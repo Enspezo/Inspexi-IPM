@@ -1,4 +1,5 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useApiMutation } from '@/hooks/use-api-mutation';
 import { apiClient } from '@/lib/api-client';
 import { Card, useToast } from '@/components/ui';
 import { formatDateTime } from '@/lib/format';
@@ -35,7 +36,7 @@ export function SessionsCard() {
     queryFn: () => apiClient.get<Session[]>('/auth/sessions'),
   });
 
-  const revokeMutation = useMutation({
+  const revokeMutation = useApiMutation({
     mutationFn: (sessionId: string) =>
       apiClient.delete(`/auth/sessions/${sessionId}`),
     onSuccess: () => {
@@ -47,7 +48,7 @@ export function SessionsCard() {
     },
   });
 
-  const revokeOthersMutation = useMutation({
+  const revokeOthersMutation = useApiMutation({
     mutationFn: () => apiClient.delete('/auth/sessions'),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: sessionKeys.all });

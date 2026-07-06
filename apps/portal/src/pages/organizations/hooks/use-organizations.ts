@@ -1,4 +1,5 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useApiMutation } from '@/hooks/use-api-mutation';
 import { apiClient } from '@/lib/api-client';
 import {
   organizationKeys,
@@ -48,7 +49,7 @@ interface CreateOrganizationDto {
 export function useCreateOrganization() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useApiMutation({
     mutationFn: (data: CreateOrganizationDto) =>
       apiClient.post<Organization>('/organizations', data),
     onSuccess: () => {
@@ -70,7 +71,7 @@ interface UpdateOrganizationDto {
 export function useUpdateOrganization(id: string) {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useApiMutation({
     mutationFn: (data: UpdateOrganizationDto) =>
       apiClient.patch<Organization>(`/organizations/${id}`, data),
     onSuccess: () => {
@@ -103,7 +104,7 @@ function invalidateEntitlements(
 
 export function useAssignPlan(orgId: string) {
   const queryClient = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (planId: string | null) =>
       apiClient.patch<OrganizationEntitlements>(`/organizations/${orgId}/plan`, {
         planId,
@@ -114,7 +115,7 @@ export function useAssignPlan(orgId: string) {
 
 export function useSetOrganizationFeature(orgId: string) {
   const queryClient = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: ({
       featureKey,
       state,

@@ -81,8 +81,8 @@ function DocumentRow({
     try {
       await deleteMutation.mutateAsync(doc.id);
       showToast('Document verwijderd', 'success');
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Verwijderen mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 
@@ -90,8 +90,8 @@ function DocumentRow({
     try {
       await updateMutation.mutateAsync({ id: doc.id, data: { isSharedWithClient: !doc.isSharedWithClient } });
       showToast(doc.isSharedWithClient ? 'Niet meer gedeeld met opdrachtgever' : 'Gedeeld met opdrachtgever', 'success');
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Bijwerken mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 

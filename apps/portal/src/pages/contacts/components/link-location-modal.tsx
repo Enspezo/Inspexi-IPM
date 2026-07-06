@@ -53,8 +53,8 @@ export function LinkLocationModal({
       await linkMutation.mutateAsync({ locationId: selectedLocationId, notes: notes || undefined });
       showToast('Locatie gekoppeld', 'success');
       handleClose();
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Koppelen mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 

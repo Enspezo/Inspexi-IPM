@@ -154,8 +154,8 @@ function GroupNotificationPrefsCard() {
         })),
       );
       showToast('Standaard notificatie-instellingen opgeslagen', 'success');
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Opslaan mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 
@@ -333,11 +333,8 @@ export default function OrganizationSettingsPage() {
         chatEnabled: data.chatEnabled,
       });
       showToast('Organisatie-instellingen opgeslagen', 'success');
-    } catch (err) {
-      showToast(
-        err instanceof Error ? err.message : 'Opslaan mislukt',
-        'error',
-      );
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 
@@ -362,12 +359,9 @@ export default function OrganizationSettingsPage() {
       setLogoCacheBust(Date.now());
       setLogoPreview(null);
       showToast('Logo geüpload', 'success');
-    } catch (err) {
+    } catch {
       setLogoPreview(null);
-      showToast(
-        err instanceof Error ? err.message : 'Upload mislukt',
-        'error',
-      );
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 
@@ -390,11 +384,8 @@ export default function OrganizationSettingsPage() {
       await deleteLogoMutation.mutateAsync();
       setLogoCacheBust(Date.now());
       showToast('Logo verwijderd', 'success');
-    } catch (err) {
-      showToast(
-        err instanceof Error ? err.message : 'Verwijderen mislukt',
-        'error',
-      );
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 

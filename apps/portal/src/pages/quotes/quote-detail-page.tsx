@@ -107,7 +107,7 @@ export default function QuoteDetailPage() {
     try {
       await submitApprovalMutation.mutateAsync();
       showToast('Offerte ter goedkeuring ingediend', 'success');
-    } catch (err) { showToast(getErrorMessage(err, 'Indienen mislukt'), 'error'); }
+    } catch { /* foutmelding wordt centraal getoond via useApiMutation */ }
   };
 
   const handleReject = async () => {
@@ -116,14 +116,14 @@ export default function QuoteDetailPage() {
       showToast('Offerte afgewezen', 'success');
       setRejectNote('');
       setShowRejectInput(false);
-    } catch (err) { showToast(getErrorMessage(err, 'Afwijzen mislukt'), 'error'); }
+    } catch { /* foutmelding wordt centraal getoond via useApiMutation */ }
   };
 
   const handleStatusUpdate = async (status: string) => {
     try {
       await updateStatusMutation.mutateAsync({ status });
       showToast('Status bijgewerkt', 'success');
-    } catch (err) { showToast(getErrorMessage(err, 'Status wijzigen mislukt'), 'error'); }
+    } catch { /* foutmelding wordt centraal getoond via useApiMutation */ }
   };
 
   const handleDelete = async () => {
@@ -138,7 +138,7 @@ export default function QuoteDetailPage() {
       await deleteMutation.mutateAsync(quote.id);
       showToast('Offerte verwijderd', 'success');
       navigate('/quotes');
-    } catch (err) { showToast(getErrorMessage(err, 'Verwijderen mislukt'), 'error'); }
+    } catch { /* foutmelding wordt centraal getoond via useApiMutation */ }
   };
 
   if (isLoading) {

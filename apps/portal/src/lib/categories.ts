@@ -3,7 +3,8 @@
  * checklist-items en finding-templates. Categorieën zijn één gedeelde boom; we werken hier
  * met de platte lijst (flat=true). Mirror van lib/lookups.ts.
  */
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useApiMutation } from '@/hooks/use-api-mutation';
 import { apiClient } from '@/lib/api-client';
 import type { Category } from '@/types';
 
@@ -41,7 +42,7 @@ export interface CategoryInput {
 
 export function useCreateCategory() {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (data: CategoryInput) => apiClient.post<Category>('/categories', data),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['categories'] }),
   });
@@ -49,7 +50,7 @@ export function useCreateCategory() {
 
 export function useUpdateCategory() {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: ({ id, data }: { id: string; data: CategoryInput }) =>
       apiClient.patch<Category>(`/categories/${id}`, data),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['categories'] }),
@@ -58,7 +59,7 @@ export function useUpdateCategory() {
 
 export function useDeleteCategory() {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (id: string) => apiClient.delete(`/categories/${id}`),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['categories'] }),
   });
@@ -66,7 +67,7 @@ export function useDeleteCategory() {
 
 export function useReorderCategories() {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (items: { id: string; sortOrder: number }[]) =>
       apiClient.post('/categories/reorder', { items }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['categories'] }),

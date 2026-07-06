@@ -89,11 +89,8 @@ export default function OrganizationDetailPage() {
         chatEnabled: data.chatEnabled,
       });
       showToast('Organisatie-instellingen opgeslagen', 'success');
-    } catch (err) {
-      showToast(
-        err instanceof Error ? err.message : 'Opslaan mislukt',
-        'error',
-      );
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 

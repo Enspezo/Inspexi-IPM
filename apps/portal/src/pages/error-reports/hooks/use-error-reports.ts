@@ -1,4 +1,5 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useApiMutation } from '@/hooks/use-api-mutation';
 import { apiClient } from '@/lib/api-client';
 import type { ErrorReport, ErrorReportStatus, PaginatedResponse } from '@/types';
 import { errorReportKeys } from '@/lib/query-keys';
@@ -41,7 +42,7 @@ export function useErrorReport(id: string | undefined) {
 export function useUpdateErrorReportStatus() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useApiMutation({
     mutationFn: ({ id, status }: { id: string; status: ErrorReportStatus }) =>
       apiClient.patch<ErrorReport>(`/error-reports/${id}/status`, { status }),
     onSuccess: () => {

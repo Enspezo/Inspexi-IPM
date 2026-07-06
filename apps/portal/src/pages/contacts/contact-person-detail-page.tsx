@@ -83,8 +83,8 @@ export default function ContactPersonDetailPage() {
       await updateMutation.mutateAsync(data);
       showToast('Contactpersoon bijgewerkt', 'success');
       setIsEditing(false);
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Opslaan mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 
@@ -114,8 +114,8 @@ export default function ContactPersonDetailPage() {
       await deleteMutation.mutateAsync(person.id);
       showToast('Contactpersoon verwijderd', 'success');
       navigate(`/contacts/${person.contactId}`);
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Verwijderen mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 
@@ -129,8 +129,8 @@ export default function ContactPersonDetailPage() {
     try {
       await unlinkLocationMutation.mutateAsync(linkId);
       showToast('Locatie ontkoppeld', 'success');
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Ontkoppelen mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 
@@ -143,8 +143,8 @@ export default function ContactPersonDetailPage() {
       });
       showToast('Opmerking opgeslagen', 'success');
       setEditingNotes(null);
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Opslaan mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 

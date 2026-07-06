@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useMutation } from '@tanstack/react-query';
+import { useApiMutation } from '@/hooks/use-api-mutation';
 import { useAuth } from '@/providers/auth-provider';
 import { apiClient, getErrorMessage } from '@/lib/api-client';
 import { Card, Button, Select, useToast } from '@/components/ui';
@@ -21,7 +21,7 @@ export function ApprovalDefaultsCard() {
     setSelected(user?.defaultApprovalPersonId ?? '');
   }, [user?.defaultApprovalPersonId]);
 
-  const mutation = useMutation({
+  const mutation = useApiMutation({
     mutationFn: (defaultApprovalPersonId: string | null) =>
       apiClient.patch<User>('/users/profile', { defaultApprovalPersonId }),
     onSuccess: () => refreshUser(),
@@ -40,8 +40,8 @@ export function ApprovalDefaultsCard() {
     try {
       await mutation.mutateAsync(selected || null);
       showToast('Standaard goedkeurder opgeslagen', 'success');
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Opslaan mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 

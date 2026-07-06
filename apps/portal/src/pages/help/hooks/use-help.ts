@@ -1,4 +1,5 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useApiMutation } from '@/hooks/use-api-mutation';
 import { apiClient } from '@/lib/api-client';
 import type {
   HelpArticle,
@@ -83,7 +84,7 @@ export function useContextualArticles(moduleKey: string, q?: string, enabled = t
 }
 
 export function useHelpArticleFeedback() {
-  return useMutation({
+  return useApiMutation({
     mutationFn: ({ id, helpful }: { id: string; helpful: boolean }) =>
       apiClient.post<{ id: string; helpfulYes: number; helpfulNo: number }>(
         `/help/articles/${id}/feedback`,
@@ -109,7 +110,7 @@ export function useAdminHelpArticles(
 
 export function useCreateHelpArticle() {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (data: Partial<HelpArticle>) =>
       apiClient.post<HelpArticle>('/help/admin/articles', data),
     onSuccess: () => qc.invalidateQueries({ queryKey: helpKeys.all }),
@@ -118,7 +119,7 @@ export function useCreateHelpArticle() {
 
 export function useUpdateHelpArticle() {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: ({ id, data }: { id: string; data: Partial<HelpArticle> }) =>
       apiClient.patch<HelpArticle>(`/help/admin/articles/${id}`, data),
     onSuccess: () => qc.invalidateQueries({ queryKey: helpKeys.all }),
@@ -127,7 +128,7 @@ export function useUpdateHelpArticle() {
 
 export function usePublishHelpArticle() {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (id: string) =>
       apiClient.post<HelpArticle>(`/help/admin/articles/${id}/publish`),
     onSuccess: () => qc.invalidateQueries({ queryKey: helpKeys.all }),
@@ -136,7 +137,7 @@ export function usePublishHelpArticle() {
 
 export function useDeleteHelpArticle() {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (id: string) => apiClient.delete(`/help/admin/articles/${id}`),
     onSuccess: () => qc.invalidateQueries({ queryKey: helpKeys.all }),
   });
@@ -144,7 +145,7 @@ export function useDeleteHelpArticle() {
 
 export function useCreateHelpCategory() {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (data: Partial<HelpCategory>) =>
       apiClient.post<HelpCategory>('/help/admin/categories', data),
     onSuccess: () => qc.invalidateQueries({ queryKey: helpKeys.all }),
@@ -153,7 +154,7 @@ export function useCreateHelpCategory() {
 
 export function useUpdateHelpCategory() {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: ({ id, data }: { id: string; data: Partial<HelpCategory> }) =>
       apiClient.patch<HelpCategory>(`/help/admin/categories/${id}`, data),
     onSuccess: () => qc.invalidateQueries({ queryKey: helpKeys.all }),
@@ -162,7 +163,7 @@ export function useUpdateHelpCategory() {
 
 export function useDeleteHelpCategory() {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (id: string) => apiClient.delete(`/help/admin/categories/${id}`),
     onSuccess: () => qc.invalidateQueries({ queryKey: helpKeys.all }),
   });

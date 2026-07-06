@@ -164,8 +164,8 @@ export default function InspectionDetailPage() {
       await updateMutation.mutateAsync({ id: id!, data: payload });
       showToast('Inspectie bijgewerkt', 'success');
       setIsEditing(false);
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Bijwerken mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 
@@ -173,8 +173,8 @@ export default function InspectionDetailPage() {
     try {
       await submitMutation.mutateAsync(id!);
       showToast('Inspectie ingediend ter beoordeling', 'success');
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Indienen mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 
@@ -183,8 +183,8 @@ export default function InspectionDetailPage() {
       await reviewMutation.mutateAsync({ id: id!, decision, notes: reviewNotes || undefined });
       showToast(decision === 'approve' ? 'Inspectie goedgekeurd' : 'Inspectie afgekeurd', 'success');
       setReviewNotes('');
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Beoordeling mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 
@@ -199,8 +199,8 @@ export default function InspectionDetailPage() {
       await deleteMutation.mutateAsync(id!);
       showToast('Inspectie verwijderd', 'success');
       navigate('/inspections');
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Verwijderen mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 

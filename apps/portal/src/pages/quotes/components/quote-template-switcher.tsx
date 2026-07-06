@@ -55,8 +55,8 @@ export function QuoteTemplateSwitcher({
     try {
       await updateQuoteMutation.mutateAsync({ templateId: next === NO_TEMPLATE ? null : next });
       showToast(next === NO_TEMPLATE ? 'Sjabloon ontkoppeld' : 'Sjabloon gewijzigd', 'success');
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Sjabloon wijzigen mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     } finally {
       setIsSaving(false);
     }

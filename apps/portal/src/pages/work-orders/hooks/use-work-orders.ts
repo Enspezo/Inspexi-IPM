@@ -1,4 +1,5 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useApiMutation } from '@/hooks/use-api-mutation';
 import { apiClient } from '@/lib/api-client';
 import { workOrderKeys } from '@/lib/query-keys';
 import type { WorkOrder, WorkOrderStatus } from '@/types';
@@ -58,7 +59,7 @@ export function usePlanningWorkOrders(planningItemId: string | undefined) {
 
 export function useCreateWorkOrder() {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (data: {
       planningItemId?: string;
       workOrderNumber?: string;
@@ -74,7 +75,7 @@ export function useCreateWorkOrder() {
 
 export function useUpdateWorkOrder(id: string | undefined) {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (data: {
       internalNotes?: string;
       startTime?: string;
@@ -89,7 +90,7 @@ export function useUpdateWorkOrder(id: string | undefined) {
 
 export function useUpdateWorkOrderStatus(id: string | undefined) {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (data: { status: WorkOrderStatus; note?: string }) =>
       apiClient.patch<WorkOrder>(`/work-orders/${id}/status`, data),
     onSuccess: () => {
@@ -100,7 +101,7 @@ export function useUpdateWorkOrderStatus(id: string | undefined) {
 
 export function useSetWorkOrderLines(id: string | undefined) {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (data: {
       lines: Array<{
         productId?: string;
@@ -120,7 +121,7 @@ export function useSetWorkOrderLines(id: string | undefined) {
 
 export function useDeleteWorkOrder(id: string | undefined) {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: () => apiClient.delete(`/work-orders/${id}`),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: workOrderKeys.all });

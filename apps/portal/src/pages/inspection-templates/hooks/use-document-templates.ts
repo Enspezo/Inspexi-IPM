@@ -2,7 +2,8 @@
 // Document-template hooks (plan/rapport per inspectie-template) — Fase 4/5d
 // ===========================================
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useApiMutation } from '@/hooks/use-api-mutation';
 import { apiClient, getAccessToken } from '@/lib/api-client';
 import { DocumentType, type DocumentTemplate, type TemplateMode } from '@/types';
 import type { DocContentBlock } from '@/components/document-builder';
@@ -42,7 +43,7 @@ export function useDocumentTemplate(inspectionTemplateId: string, type: Document
 /** Werk de plan- of rapport-template bij (incl. contentBlocks / templateMode). */
 export function useUpdateDocumentTemplate(inspectionTemplateId: string, type: DocumentType) {
   const queryClient = useQueryClient();
-  return useMutation<DocumentTemplate, Error, UpdateDocumentTemplateInput>({
+  return useApiMutation<DocumentTemplate, Error, UpdateDocumentTemplateInput>({
     mutationFn: (body) =>
       apiClient.put<DocumentTemplate>(
         `/inspection-templates/${inspectionTemplateId}/${slugFor(type)}-template`,
@@ -61,7 +62,7 @@ export function useUpdateDocumentTemplate(inspectionTemplateId: string, type: Do
  * zodat we 'm bewust kunnen triggeren na opslaan.
  */
 export function useDocumentTemplatePreview(inspectionTemplateId: string, type: DocumentType) {
-  return useMutation<string, Error, void>({
+  return useApiMutation<string, Error, void>({
     mutationFn: async () => {
       const token = getAccessToken();
       const res = await fetch(

@@ -1,4 +1,5 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useApiMutation } from '@/hooks/use-api-mutation';
 import { apiClient } from '@/lib/api-client';
 import { contactKeys, locationKeys } from '@/lib/query-keys';
 import type { Location, PaginatedResponse, PdokRefreshResult } from '@/types';
@@ -16,7 +17,7 @@ interface CreateLocationDto {
 export function useAddLocation(contactId: string) {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useApiMutation({
     mutationFn: (data: CreateLocationDto) =>
       apiClient.post<Location>(`/contacts/${contactId}/locations`, data),
     onSuccess: () => {
@@ -42,7 +43,7 @@ interface UpdateLocationDto extends Partial<CreateLocationDto> {}
 export function useUpdateLocation(contactId: string) {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useApiMutation({
     mutationFn: ({ locationId, data }: { locationId: string; data: UpdateLocationDto }) =>
       apiClient.patch<Location>(`/contacts/locations/${locationId}`, data),
     onSuccess: () => {
@@ -57,7 +58,7 @@ export function useUpdateLocation(contactId: string) {
 export function useDeleteLocation(contactId: string) {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useApiMutation({
     mutationFn: (locationId: string) =>
       apiClient.delete(`/contacts/locations/${locationId}`),
     onSuccess: () => {
@@ -76,7 +77,7 @@ interface UpdateLocationData extends Partial<CreateLocationDto> {
 export function useUpdateLocationById() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useApiMutation({
     mutationFn: ({ locationId, data }: { locationId: string; data: UpdateLocationData }) =>
       apiClient.patch<Location>(`/contacts/locations/${locationId}`, data),
     onSuccess: () => {
@@ -88,7 +89,7 @@ export function useUpdateLocationById() {
 export function useDeleteLocationById() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useApiMutation({
     mutationFn: (locationId: string) =>
       apiClient.delete(`/contacts/locations/${locationId}`),
     onSuccess: () => {
@@ -106,7 +107,7 @@ export function useDeleteLocationById() {
 export function useRefreshLocationPdok(locationId: string) {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useApiMutation({
     mutationFn: (confirm: boolean) =>
       apiClient.post<PdokRefreshResult>(
         `/contacts/locations/${locationId}/pdok-refresh`,

@@ -1,7 +1,8 @@
 // Hooks-laag voor het asset-types domein: lijst + detail + CRUD + velden + constraints.
 // TanStack Query, queryKeys als arrays, mutaties invalideren de relevante keys.
 
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useApiMutation } from '@/hooks/use-api-mutation';
 import { apiClient } from '@/lib/api-client';
 import { assetTypeKeys, assetTypeFieldKeys, assetTypeConstraintKeys } from '@/lib/query-keys';
 import type { AssetTypeDefinition, AssetTypeField, AssetTypeConstraint } from '@/types';
@@ -35,7 +36,7 @@ export function useAssetType(id: string) {
 
 export function useCreateAssetType() {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (data: Record<string, unknown>) =>
       apiClient.post<AssetTypeDefinition>('/asset-types', data),
     onSuccess: () => qc.invalidateQueries({ queryKey: assetTypeKeys.all }),
@@ -44,7 +45,7 @@ export function useCreateAssetType() {
 
 export function useUpdateAssetType() {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: ({ id, data }: { id: string; data: Record<string, unknown> }) =>
       apiClient.patch<AssetTypeDefinition>(`/asset-types/${id}`, data),
     onSuccess: (_d, v) => {
@@ -56,7 +57,7 @@ export function useUpdateAssetType() {
 
 export function useDeleteAssetType() {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (id: string) => apiClient.delete(`/asset-types/${id}`),
     onSuccess: () => qc.invalidateQueries({ queryKey: assetTypeKeys.all }),
   });
@@ -65,7 +66,7 @@ export function useDeleteAssetType() {
 /** System→org kopie; geeft de nieuwe definitie terug. */
 export function useDuplicateAssetType() {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (id: string) =>
       apiClient.post<AssetTypeDefinition>(`/asset-types/${id}/duplicate`),
     onSuccess: () => qc.invalidateQueries({ queryKey: assetTypeKeys.all }),
@@ -86,7 +87,7 @@ export function useAssetTypeFields(id: string) {
 
 export function useCreateAssetTypeField(id: string) {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (data: Record<string, unknown>) =>
       apiClient.post<AssetTypeField>(`/asset-types/${id}/fields`, data),
     onSuccess: () => {
@@ -98,7 +99,7 @@ export function useCreateAssetTypeField(id: string) {
 
 export function useUpdateAssetTypeField(id: string) {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: ({ fieldId, data }: { fieldId: string; data: Record<string, unknown> }) =>
       apiClient.patch<AssetTypeField>(`/asset-types/${id}/fields/${fieldId}`, data),
     onSuccess: () => {
@@ -110,7 +111,7 @@ export function useUpdateAssetTypeField(id: string) {
 
 export function useDeleteAssetTypeField(id: string) {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (fieldId: string) =>
       apiClient.delete(`/asset-types/${id}/fields/${fieldId}`),
     onSuccess: () => {
@@ -123,7 +124,7 @@ export function useDeleteAssetTypeField(id: string) {
 /** Herorden velden — backend verwacht exact de key `fieldIds`. */
 export function useReorderAssetTypeFields(id: string) {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (fieldIds: string[]) =>
       apiClient.post<AssetTypeField[]>(`/asset-types/${id}/fields/reorder`, { fieldIds }),
     // Optimistic: pas de cache-volgorde direct aan; rollback bij fout.
@@ -168,7 +169,7 @@ export interface ConstraintInput {
 
 export function useSetAssetTypeConstraints(id: string) {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (constraints: ConstraintInput[]) =>
       apiClient.put<AssetTypeConstraint[]>(`/asset-types/${id}/constraints`, { constraints }),
     onSuccess: () => {

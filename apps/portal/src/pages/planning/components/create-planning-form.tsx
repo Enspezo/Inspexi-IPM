@@ -68,8 +68,8 @@ export function CreatePlanningForm() {
       setNewPersonEmail('');
       setNewPersonPhone('');
       showToast('Contactpersoon aangemaakt', 'success');
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Fout bij aanmaken contactpersoon'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 
@@ -99,8 +99,8 @@ export function CreatePlanningForm() {
       });
       showToast('Planregel aangemaakt', 'success');
       navigate(`/planning/${(newItem as any).id}`);
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Fout bij aanmaken planregel'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 

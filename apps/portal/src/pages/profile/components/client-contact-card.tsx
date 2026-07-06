@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { useMutation } from '@tanstack/react-query';
+import { useApiMutation } from '@/hooks/use-api-mutation';
 import { useAuth } from '@/providers/auth-provider';
 import { apiClient, getErrorMessage } from '@/lib/api-client';
 import { Card, Input, Button, Checkbox, useToast } from '@/components/ui';
@@ -27,7 +27,7 @@ export function ClientContactCard() {
   const { user, refreshUser } = useAuth();
   const { showToast } = useToast();
 
-  const updateMutation = useMutation({
+  const updateMutation = useApiMutation({
     mutationFn: (data: ClientContactFormData) =>
       apiClient.patch<User>('/users/profile', data),
     onSuccess: () => {
@@ -85,8 +85,8 @@ export function ClientContactCard() {
         shareEmailWithClients: hasEmail ? data.shareEmailWithClients : false,
       });
       showToast('Contactgegevens klantportaal opgeslagen', 'success');
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Opslaan mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 

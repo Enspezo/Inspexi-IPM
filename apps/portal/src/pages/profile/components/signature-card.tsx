@@ -27,8 +27,8 @@ export function SignatureCard() {
       await saveMutation.mutateAsync({ signatureType: type, signatureData: data });
       showToast('Handtekening opgeslagen', 'success');
       setIsEditing(false);
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Opslaan mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 
@@ -37,8 +37,8 @@ export function SignatureCard() {
       await deleteMutation.mutateAsync();
       showToast('Handtekening verwijderd', 'success');
       setIsEditing(false);
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Verwijderen mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 

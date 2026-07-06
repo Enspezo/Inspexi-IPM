@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useApiMutation } from '@/hooks/use-api-mutation';
 import { apiClient } from '@/lib/api-client';
 import type {
   Availability,
@@ -76,7 +77,7 @@ export function useChatUsers(q: string, enabled = true) {
 
 export function useCreateThread() {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (body: CreateThreadInput) => apiClient.post<ChatThread>('/chat/threads', body),
     onSuccess: () => qc.invalidateQueries({ queryKey: THREADS_KEY }),
   });
@@ -84,7 +85,7 @@ export function useCreateThread() {
 
 export function useSendMessage(threadId: string) {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (body: SendMessageInput) =>
       apiClient.post<ChatMessage>(`/chat/threads/${threadId}/messages`, body),
     onSuccess: () => {
@@ -96,7 +97,7 @@ export function useSendMessage(threadId: string) {
 
 export function useMarkThreadRead() {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (threadId: string) => apiClient.post(`/chat/threads/${threadId}/read`),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: THREADS_KEY });
@@ -107,7 +108,7 @@ export function useMarkThreadRead() {
 
 export function useCloseThread() {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (threadId: string) => apiClient.post<ChatThread>(`/chat/threads/${threadId}/close`),
     onSuccess: () => qc.invalidateQueries({ queryKey: THREADS_KEY }),
   });
@@ -124,7 +125,7 @@ export function usePresence() {
 
 export function useUpdatePresence() {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (body: { availability: Availability; availabilityNote?: string }) =>
       apiClient.patch<UserPresence>('/users/me/presence', body),
     onSuccess: () => {

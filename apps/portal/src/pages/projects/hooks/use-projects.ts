@@ -1,4 +1,5 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useApiMutation } from '@/hooks/use-api-mutation';
 import { apiClient } from '@/lib/api-client';
 import {
   projectKeys,
@@ -65,7 +66,7 @@ export function useProject(id: string) {
 
 export function useCreateProject() {
   const queryClient = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (data: {
       title: string;
       description?: string;
@@ -85,7 +86,7 @@ export function useCreateProject() {
 
 export function useCreateProjectFromRequest() {
   const queryClient = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (requestId: string) =>
       apiClient.post<Project>(`/projects/from-request/${requestId}`, {}),
     onSuccess: () => {
@@ -97,7 +98,7 @@ export function useCreateProjectFromRequest() {
 
 export function useUpdateProject(id: string) {
   const queryClient = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (data: {
       title?: string;
       description?: string;
@@ -118,7 +119,7 @@ export function useUpdateProject(id: string) {
 
 export function useDeleteProject(id: string) {
   const queryClient = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: () => apiClient.delete(`/projects/${id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: projectKeys.all });
@@ -170,7 +171,7 @@ export function useProjectLocations(id: string) {
 
 export function useAssignToProject(id: string) {
   const queryClient = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (data: {
       requestIds?: string[];
       quoteIds?: string[];
@@ -188,7 +189,7 @@ export function useAssignToProject(id: string) {
 
 export function useUnassignFromProject(id: string) {
   const queryClient = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (data: {
       requestIds?: string[];
       quoteIds?: string[];

@@ -75,8 +75,8 @@ export function CreateInspectionTemplateModal({ isOpen, onClose }: Props) {
       showToast('Inspectie-template aangemaakt', 'success');
       onClose();
       navigate(`/inspection-templates/${created.id}`);
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Aanmaken mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 

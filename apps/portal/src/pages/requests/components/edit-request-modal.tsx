@@ -70,8 +70,8 @@ export function EditRequestModal({ isOpen, onClose, request }: EditRequestModalP
       });
       showToast('Aanvraag bijgewerkt!', 'success');
       onClose();
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Bijwerken mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 

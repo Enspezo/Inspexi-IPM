@@ -1,4 +1,5 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useApiMutation } from '@/hooks/use-api-mutation';
 import { apiClient } from '@/lib/api-client';
 import type { Note, NoteEntityType, PaginatedResponse } from '@/types';
 import { noteKeys } from '@/lib/query-keys';
@@ -53,7 +54,7 @@ interface CreateNoteDto {
 
 export function useCreateNote() {
   const queryClient = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (data: CreateNoteDto) => apiClient.post<Note>('/notes', data),
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: noteKeys.all });
@@ -66,7 +67,7 @@ export function useCreateNote() {
 
 export function useUpdateNote() {
   const queryClient = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: ({ id, content }: { id: string; content: string }) =>
       apiClient.patch<Note>(`/notes/${id}`, { content }),
     onSuccess: () => {
@@ -77,7 +78,7 @@ export function useUpdateNote() {
 
 export function useDeleteNote() {
   const queryClient = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (id: string) => apiClient.delete(`/notes/${id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: noteKeys.all });

@@ -55,8 +55,8 @@ export function CreateEmailTemplateModal({ isOpen, onClose, onCreated }: CreateE
       reset();
       onClose();
       onCreated?.(result);
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Fout bij aanmaken sjabloon'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 

@@ -27,8 +27,8 @@ export function PlanningRescheduleModal({
       setRescheduleReason('');
       showToast('Afspraak verplaatst. Nieuwe planregel aangemaakt.', 'success');
       navigate(`/planning/${(newItem as any).id}`);
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Fout bij verzetten afspraak'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 
@@ -83,8 +83,8 @@ export function PlanningRejectModal({
       setRejectOpen(false);
       setRejectReason('');
       showToast('Afspraak geweigerd', 'success');
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Fout bij weigeren afspraak'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 
@@ -138,8 +138,8 @@ export function SessionRejectModal({
       setSessionRejectOpen(false);
       setSessionRejectReason('');
       showToast('Sessie geweigerd', 'success');
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Fout bij weigeren sessie'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 
@@ -193,8 +193,8 @@ export function SessionRescheduleModal({
       setSessionRescheduleOpen(false);
       setSessionRescheduleReason('');
       showToast('Sessie verzet. Nieuwe sessie aangemaakt.', 'success');
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Fout bij verzetten sessie'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 

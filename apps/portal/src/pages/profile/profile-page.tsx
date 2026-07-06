@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { useMutation } from '@tanstack/react-query';
+import { useApiMutation } from '@/hooks/use-api-mutation';
 import { useAuth } from '@/providers/auth-provider';
 import { apiClient } from '@/lib/api-client';
 import { formatDate } from '@/lib/format';
@@ -50,7 +50,7 @@ export default function ProfilePage() {
   const initialTab = tabParam && VALID_TABS.includes(tabParam) ? tabParam : 'profiel';
   const [activeTab, setActiveTab] = useState<ProfileTab>(initialTab);
 
-  const updateProfileMutation = useMutation({
+  const updateProfileMutation = useApiMutation({
     mutationFn: (data: ProfileFormData) =>
       apiClient.patch<User>('/users/profile', data),
     onSuccess: () => {
@@ -82,11 +82,8 @@ export default function ProfilePage() {
     try {
       await updateProfileMutation.mutateAsync(data);
       showToast('Profiel bijgewerkt', 'success');
-    } catch (err) {
-      showToast(
-        err instanceof Error ? err.message : 'Profiel bijwerken mislukt',
-        'error',
-      );
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 

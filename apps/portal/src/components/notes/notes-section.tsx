@@ -150,8 +150,8 @@ export function NotesSection({ entityType, entityId }: NotesSectionProps) {
       setNewContent('');
       setIsComposerOpen(false);
       showToast('Notitie toegevoegd', 'success');
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Notitie toevoegen mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 
@@ -167,8 +167,8 @@ export function NotesSection({ entityType, entityId }: NotesSectionProps) {
       setReplyingTo(null);
       setReplyContent('');
       showToast('Antwoord geplaatst', 'success');
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Antwoord plaatsen mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 
@@ -184,8 +184,8 @@ export function NotesSection({ entityType, entityId }: NotesSectionProps) {
       setEditingNote(null);
       setEditContent('');
       showToast('Notitie bijgewerkt', 'success');
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Bijwerken mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 
@@ -199,8 +199,8 @@ export function NotesSection({ entityType, entityId }: NotesSectionProps) {
     try {
       await deleteMutation.mutateAsync(noteId);
       showToast('Notitie verwijderd', 'success');
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Verwijderen mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 

@@ -1,4 +1,5 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useApiMutation } from '@/hooks/use-api-mutation';
 import { apiClient } from '@/lib/api-client';
 import { supportAccessKeys, supportAccessLogKeys } from '@/lib/query-keys';
 import type { PaginatedResponse } from '@/types';
@@ -34,7 +35,7 @@ export function useSupportAccess(orgId: string) {
 
 export function useSetSupportAccess(orgId: string) {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (data: { enabled: boolean; expiresInHours?: number; note?: string }) =>
       apiClient.patch<SupportAccessStatus>(
         `/organizations/${orgId}/support-access`,

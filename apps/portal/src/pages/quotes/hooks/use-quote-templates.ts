@@ -1,4 +1,5 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useApiMutation } from '@/hooks/use-api-mutation';
 import { apiClient } from '@/lib/api-client';
 import { quoteTemplateKeys } from '@/lib/query-keys';
 import type {
@@ -60,7 +61,7 @@ interface CreateQuoteTemplateDto {
 export function useCreateQuoteTemplate() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useApiMutation({
     mutationFn: (data: CreateQuoteTemplateDto) =>
       apiClient.post<QuoteTemplate>('/quote-templates', data),
     onSuccess: () => {
@@ -85,7 +86,7 @@ interface UpdateQuoteTemplateDto {
 export function useUpdateQuoteTemplate(id: string) {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useApiMutation({
     mutationFn: (data: UpdateQuoteTemplateDto) =>
       apiClient.patch<QuoteTemplate>(`/quote-templates/${id}`, data),
     onSuccess: () => {
@@ -97,7 +98,7 @@ export function useUpdateQuoteTemplate(id: string) {
 export function useDeleteQuoteTemplate() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useApiMutation({
     mutationFn: (id: string) => apiClient.delete(`/quote-templates/${id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: quoteTemplateKeys.all });
@@ -108,7 +109,7 @@ export function useDeleteQuoteTemplate() {
 // ── Image upload for block editor ──────────────────────────
 
 export function useUploadTemplateImage(templateId: string) {
-  return useMutation({
+  return useApiMutation({
     mutationFn: (formData: FormData) =>
       apiClient.upload<{ storageKey: string; fileName: string }>(
         `/quote-templates/${templateId}/images`,
@@ -133,7 +134,7 @@ export function useTemplateAttachments(templateId: string) {
 export function useUploadTemplateAttachment(templateId: string) {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useApiMutation({
     mutationFn: (formData: FormData) =>
       apiClient.upload<QuoteTemplateAttachment>(
         `/quote-templates/${templateId}/attachments`,
@@ -150,7 +151,7 @@ export function useUploadTemplateAttachment(templateId: string) {
 export function useDeleteTemplateAttachment(templateId: string) {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useApiMutation({
     mutationFn: (attachmentId: string) =>
       apiClient.delete(
         `/quote-templates/${templateId}/attachments/${attachmentId}`,
@@ -166,7 +167,7 @@ export function useDeleteTemplateAttachment(templateId: string) {
 export function useReorderTemplateAttachments(templateId: string) {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useApiMutation({
     mutationFn: (attachmentIds: string[]) =>
       apiClient.patch(
         `/quote-templates/${templateId}/attachments/reorder`,
@@ -185,7 +186,7 @@ export function useReorderTemplateAttachments(templateId: string) {
 export function useUploadDocxFile(templateId: string) {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useApiMutation({
     mutationFn: (formData: FormData) =>
       apiClient.upload<QuoteTemplate>(
         `/quote-templates/${templateId}/docx`,
@@ -239,7 +240,7 @@ interface CreateFollowUpDto {
 export function useCreateFollowUp(templateId: string) {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useApiMutation({
     mutationFn: (data: CreateFollowUpDto) =>
       apiClient.post<QuoteTemplateFollowUp>(
         `/quote-templates/${templateId}/follow-ups`,
@@ -269,7 +270,7 @@ interface UpdateFollowUpDto {
 export function useUpdateFollowUp(templateId: string) {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useApiMutation({
     mutationFn: ({ followUpId, data }: { followUpId: string; data: UpdateFollowUpDto }) =>
       apiClient.patch<QuoteTemplateFollowUp>(
         `/quote-templates/${templateId}/follow-ups/${followUpId}`,
@@ -289,7 +290,7 @@ export function useUpdateFollowUp(templateId: string) {
 export function useDeleteFollowUp(templateId: string) {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useApiMutation({
     mutationFn: (followUpId: string) =>
       apiClient.delete(
         `/quote-templates/${templateId}/follow-ups/${followUpId}`,

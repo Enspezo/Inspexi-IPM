@@ -1,4 +1,5 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useApiMutation } from '@/hooks/use-api-mutation';
 import { apiClient } from '@/lib/api-client';
 import {
   lostReasonKeys,
@@ -79,7 +80,7 @@ interface CreateRequestDto {
 export function useCreateRequest() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useApiMutation({
     mutationFn: (data: CreateRequestDto) =>
       apiClient.post<Request>('/requests', data),
     onSuccess: () => {
@@ -101,7 +102,7 @@ interface UpdateRequestDto {
 export function useUpdateRequest(id: string) {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useApiMutation({
     mutationFn: (data: UpdateRequestDto) =>
       apiClient.patch<Request>(`/requests/${id}`, data),
     onSuccess: () => {
@@ -118,7 +119,7 @@ interface UpdateRequestStatusDto {
 export function useUpdateRequestStatus(id: string) {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useApiMutation({
     mutationFn: (data: UpdateRequestStatusDto) =>
       apiClient.patch<Request>(`/requests/${id}/status`, data),
     onSuccess: () => {
@@ -130,7 +131,7 @@ export function useUpdateRequestStatus(id: string) {
 export function useDeleteRequest() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useApiMutation({
     mutationFn: (id: string) => apiClient.delete(`/requests/${id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: requestKeys.all });

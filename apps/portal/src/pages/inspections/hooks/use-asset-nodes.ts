@@ -13,7 +13,8 @@
  *   POST   /inspection-plans/:id/scope-locations/:assetNodeId
  *   DELETE /inspection-plans/:id/scope-locations/:assetNodeId
  */
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useApiMutation } from '@/hooks/use-api-mutation';
 import { apiClient } from '@/lib/api-client';
 import { assetTreeKeys, planTreeKeys, scopeLocationKeys } from '@/lib/query-keys';
 import type { AssetNode, AssetNodeType, InspectionPlanLocation } from '@/types';
@@ -69,7 +70,7 @@ function useInvalidateTrees() {
  */
 export function useCreateAssetNode() {
   const invalidate = useInvalidateTrees();
-  return useMutation({
+  return useApiMutation({
     mutationFn: ({ planId, data }: { planId?: string; data: CreateAssetNodeInput }) =>
       planId
         ? apiClient.post<AssetNode>(`/inspection-plans/${planId}/asset-nodes`, data)
@@ -90,7 +91,7 @@ export interface UpdateAssetNodeInput {
 
 export function useUpdateAssetNode() {
   const invalidate = useInvalidateTrees();
-  return useMutation({
+  return useApiMutation({
     mutationFn: ({ id, data }: { id: string; data: UpdateAssetNodeInput }) =>
       apiClient.patch<AssetNode>(`/asset-nodes/${id}`, data),
     onSuccess: invalidate,
@@ -99,7 +100,7 @@ export function useUpdateAssetNode() {
 
 export function useMoveAssetNode() {
   const invalidate = useInvalidateTrees();
-  return useMutation({
+  return useApiMutation({
     mutationFn: ({ id, newParentId, sortOrder }: { id: string; newParentId: string; sortOrder?: number }) =>
       apiClient.post<AssetNode>(`/asset-nodes/${id}/move`, { newParentId, sortOrder }),
     onSuccess: invalidate,
@@ -108,7 +109,7 @@ export function useMoveAssetNode() {
 
 export function useDeleteAssetNode() {
   const invalidate = useInvalidateTrees();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (id: string) => apiClient.delete<{ deleted: boolean; affected: number }>(`/asset-nodes/${id}`),
     onSuccess: invalidate,
   });
@@ -131,7 +132,7 @@ export function useScopeLocations(planId: string | undefined) {
     enabled: !!planId,
   });
 
-  const add = useMutation({
+  const add = useApiMutation({
     mutationFn: (assetNodeId: string) =>
       apiClient.post<InspectionPlanLocation[]>(`/inspection-plans/${planId}/scope-locations/${assetNodeId}`),
     onSuccess: (data) => {
@@ -140,7 +141,7 @@ export function useScopeLocations(planId: string | undefined) {
     },
   });
 
-  const remove = useMutation({
+  const remove = useApiMutation({
     mutationFn: (assetNodeId: string) =>
       apiClient.delete<InspectionPlanLocation[]>(`/inspection-plans/${planId}/scope-locations/${assetNodeId}`),
     onSuccess: (data) => {

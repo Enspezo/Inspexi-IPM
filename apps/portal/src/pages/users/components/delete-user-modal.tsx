@@ -43,11 +43,8 @@ export function DeleteUserModal({ isOpen, onClose, user }: DeleteUserModalProps)
       await deleteMutation.mutateAsync({ userId: user.id, transferToUserId });
       showToast('Gebruiker verwijderd en records overgedragen', 'success');
       onClose();
-    } catch (err) {
-      showToast(
-        err instanceof Error ? err.message : 'Verwijderen mislukt',
-        'error',
-      );
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 

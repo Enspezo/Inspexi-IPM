@@ -55,8 +55,8 @@ export function LinkContactPersonModal({
       await linkMutation.mutateAsync({ contactPersonId: selectedPersonId, notes: notes || undefined });
       showToast('Contactpersoon gekoppeld', 'success');
       handleClose();
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Koppelen mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 

@@ -1,4 +1,5 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useApiMutation } from '@/hooks/use-api-mutation';
 import { apiClient } from '@/lib/api-client';
 import { customFieldKeys } from '@/lib/query-keys';
 import type {
@@ -35,7 +36,7 @@ interface CreateCustomFieldData {
 
 export function useCreateCustomField() {
   const queryClient = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (data: CreateCustomFieldData) =>
       apiClient.post<CustomFieldDefinition>('/custom-fields', data),
     onSuccess: () => {
@@ -52,7 +53,7 @@ interface UpdateCustomFieldData {
 
 export function useUpdateCustomField(id: string) {
   const queryClient = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (data: UpdateCustomFieldData) =>
       apiClient.patch<CustomFieldDefinition>(`/custom-fields/${id}`, data),
     onSuccess: () => {
@@ -63,7 +64,7 @@ export function useUpdateCustomField(id: string) {
 
 export function useDeleteCustomField() {
   const queryClient = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (id: string) => apiClient.delete(`/custom-fields/${id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: customFieldKeys.all });
@@ -73,7 +74,7 @@ export function useDeleteCustomField() {
 
 export function useReorderCustomFields() {
   const queryClient = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (orderedIds: string[]) =>
       apiClient.patch('/custom-fields/reorder', { orderedIds }),
     onSuccess: () => {

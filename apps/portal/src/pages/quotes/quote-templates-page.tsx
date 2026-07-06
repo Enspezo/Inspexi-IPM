@@ -182,8 +182,8 @@ export default function QuoteTemplatesPage() {
     try {
       await deleteMutation.mutateAsync(id);
       showToast('Template gedeactiveerd', 'success');
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Deactiveren mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 
@@ -354,8 +354,8 @@ function CreateTemplateModal({ isOpen, onClose }: { isOpen: boolean; onClose: ()
       setSelectedType('BLOCKS');
       onClose();
       navigate(`/quote-templates/${template.id}`);
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Aanmaken mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 

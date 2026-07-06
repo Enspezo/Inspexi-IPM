@@ -1,4 +1,5 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useApiMutation } from '@/hooks/use-api-mutation';
 import { apiClient } from '@/lib/api-client';
 import type {
   CrmDocument,
@@ -58,7 +59,7 @@ interface UploadDocumentData {
 export function useUploadDocument() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useApiMutation({
     mutationFn: (data: UploadDocumentData) => {
       const formData = new FormData();
       formData.append('file', data.file);
@@ -86,7 +87,7 @@ interface UpdateDocumentData {
 export function useUpdateDocument() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useApiMutation({
     mutationFn: ({ id, data }: { id: string; data: UpdateDocumentData }) =>
       apiClient.patch<CrmDocument>(`/documents/${id}`, data),
     onSuccess: () => {
@@ -98,7 +99,7 @@ export function useUpdateDocument() {
 export function useDeleteDocument() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useApiMutation({
     mutationFn: (id: string) => apiClient.delete(`/documents/${id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: documentKeys.all });

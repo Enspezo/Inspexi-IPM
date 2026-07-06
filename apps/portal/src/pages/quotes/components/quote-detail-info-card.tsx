@@ -70,8 +70,8 @@ export function QuoteInfoCard({
       });
       showToast('Offerte bijgewerkt', 'success');
       setIsEditing(false);
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Bijwerken mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 
@@ -83,8 +83,8 @@ export function QuoteInfoCard({
     try {
       await updateQuoteMutation.mutateAsync({ projectPhaseId: newPhaseId });
       showToast('Fase-koppeling bijgewerkt', 'success');
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Fase koppelen mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 

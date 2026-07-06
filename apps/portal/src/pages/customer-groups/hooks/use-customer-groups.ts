@@ -1,4 +1,5 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useApiMutation } from '@/hooks/use-api-mutation';
 import { apiClient } from '@/lib/api-client';
 import { contactKeys, customerGroupKeys } from '@/lib/query-keys';
 import type { CustomerGroup, PaginatedResponse } from '@/types';
@@ -51,7 +52,7 @@ interface CreateDto {
 export function useCreateCustomerGroup() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useApiMutation({
     mutationFn: (data: CreateDto) =>
       apiClient.post<CustomerGroup>('/customer-groups', data),
     onSuccess: () => {
@@ -63,7 +64,7 @@ export function useCreateCustomerGroup() {
 export function useUpdateCustomerGroup(id: string) {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useApiMutation({
     mutationFn: (data: Partial<CreateDto>) =>
       apiClient.patch<CustomerGroup>(`/customer-groups/${id}`, data),
     onSuccess: () => {
@@ -75,7 +76,7 @@ export function useUpdateCustomerGroup(id: string) {
 export function useDeleteCustomerGroup() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useApiMutation({
     mutationFn: (id: string) => apiClient.delete(`/customer-groups/${id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: customerGroupKeys.all });
@@ -88,7 +89,7 @@ export function useDeleteCustomerGroup() {
 export function useAddContactToGroup(groupId: string) {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useApiMutation({
     mutationFn: (contactId: string) =>
       apiClient.post<CustomerGroup>(`/customer-groups/${groupId}/contacts`, {
         contactId,
@@ -103,7 +104,7 @@ export function useAddContactToGroup(groupId: string) {
 export function useRemoveContactFromGroup(groupId: string) {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useApiMutation({
     mutationFn: (contactId: string) =>
       apiClient.delete<CustomerGroup>(
         `/customer-groups/${groupId}/contacts/${contactId}`,

@@ -1,4 +1,5 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useApiMutation } from '@/hooks/use-api-mutation';
 import { apiClient, getAccessToken } from '@/lib/api-client';
 import { quoteKeys, requestKeys } from '@/lib/query-keys';
 import type {
@@ -75,7 +76,7 @@ interface CreateQuoteDto {
 export function useCreateQuote() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useApiMutation({
     mutationFn: (data: CreateQuoteDto) =>
       apiClient.post<Quote>('/quotes', data),
     onSuccess: () => {
@@ -98,7 +99,7 @@ interface UpdateQuoteDto {
 export function useUpdateQuote(id: string) {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useApiMutation({
     mutationFn: (data: UpdateQuoteDto) =>
       apiClient.patch<Quote>(`/quotes/${id}`, data),
     onSuccess: () => {
@@ -123,7 +124,7 @@ interface SetQuoteLinesDto {
 export function useSetQuoteLines(id: string) {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useApiMutation({
     mutationFn: (data: SetQuoteLinesDto) =>
       apiClient.put<QuoteLine[]>(`/quotes/${id}/lines`, data),
     onSuccess: () => {
@@ -135,7 +136,7 @@ export function useSetQuoteLines(id: string) {
 export function useSubmitApproval(id: string) {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useApiMutation({
     mutationFn: () =>
       apiClient.post<Quote>(`/quotes/${id}/submit-approval`),
     onSuccess: () => {
@@ -152,7 +153,7 @@ interface ApproveQuoteDto {
 export function useApproveQuote(id: string) {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useApiMutation({
     mutationFn: (data?: ApproveQuoteDto) =>
       apiClient.post<Quote>(`/quotes/${id}/approve`, data),
     onSuccess: () => {
@@ -168,7 +169,7 @@ interface RejectQuoteDto {
 export function useRejectQuote(id: string) {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useApiMutation({
     mutationFn: (data?: RejectQuoteDto) =>
       apiClient.post<Quote>(`/quotes/${id}/reject`, data),
     onSuccess: () => {
@@ -181,7 +182,7 @@ export function useRejectQuote(id: string) {
 
 export function useRequestTeamApproval(id: string) {
   const queryClient = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (data: { role?: Role; note?: string }) =>
       apiClient.post<QuoteApprovalRequest>(`/quotes/${id}/voluntary-approval/team`, data),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: quoteKeys.detail(id) }),
@@ -190,7 +191,7 @@ export function useRequestTeamApproval(id: string) {
 
 export function useRequestPersonApproval(id: string) {
   const queryClient = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (data: { approverUserId: string; note?: string }) =>
       apiClient.post<QuoteApprovalRequest>(`/quotes/${id}/voluntary-approval/person`, data),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: quoteKeys.detail(id) }),
@@ -199,7 +200,7 @@ export function useRequestPersonApproval(id: string) {
 
 export function useReviewVoluntaryApproval(id: string) {
   const queryClient = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: ({ requestId, approved, note }: { requestId: string; approved: boolean; note?: string }) =>
       apiClient.post<QuoteApprovalRequest>(
         `/quotes/${id}/approval-requests/${requestId}/${approved ? 'approve' : 'reject'}`,
@@ -211,7 +212,7 @@ export function useReviewVoluntaryApproval(id: string) {
 
 export function useCancelVoluntaryApproval(id: string) {
   const queryClient = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (requestId: string) =>
       apiClient.post<QuoteApprovalRequest>(`/quotes/${id}/approval-requests/${requestId}/cancel`),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: quoteKeys.detail(id) }),
@@ -225,7 +226,7 @@ interface UpdateQuoteStatusDto {
 export function useUpdateQuoteStatus(id: string) {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useApiMutation({
     mutationFn: (data: UpdateQuoteStatusDto) =>
       apiClient.patch<Quote>(`/quotes/${id}/status`, data),
     onSuccess: () => {
@@ -237,7 +238,7 @@ export function useUpdateQuoteStatus(id: string) {
 export function useDeleteQuote() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useApiMutation({
     mutationFn: (id: string) => apiClient.delete(`/quotes/${id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: quoteKeys.all });
@@ -270,7 +271,7 @@ export function useResolvePrice(params: ResolvePriceParams) {
 export function useCreateQuoteFromRequest() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useApiMutation({
     mutationFn: (requestId: string) =>
       apiClient.post<Quote>(`/requests/${requestId}/quote`),
     onSuccess: () => {
@@ -290,7 +291,7 @@ interface SendQuoteDto {
 export function useSendQuote(id: string) {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useApiMutation({
     mutationFn: (data: SendQuoteDto) =>
       apiClient.post<Quote>(`/quotes/${id}/send`, data),
     onSuccess: () => {
@@ -306,7 +307,7 @@ interface AddQuestionDto {
 export function useAddQuestion(id: string) {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useApiMutation({
     mutationFn: (data: AddQuestionDto) =>
       apiClient.post(`/quotes/${id}/questions`, data),
     onSuccess: () => {
@@ -318,7 +319,7 @@ export function useAddQuestion(id: string) {
 export function useAnswerQuestion(id: string, questionId: string) {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useApiMutation({
     mutationFn: (data: AddQuestionDto) =>
       apiClient.post(`/quotes/${id}/questions/${questionId}/answer`, data),
     onSuccess: () => {
@@ -330,7 +331,7 @@ export function useAnswerQuestion(id: string, questionId: string) {
 export function useUploadQuoteAttachment(id: string) {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useApiMutation({
     mutationFn: (file: File) => {
       const formData = new FormData();
       formData.append('file', file);
@@ -364,7 +365,7 @@ export async function previewQuotePdf(id: string): Promise<string> {
 export function useDeleteQuoteAttachment(id: string) {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useApiMutation({
     mutationFn: (attachmentId: string) =>
       apiClient.delete(`/quotes/${id}/attachments/${attachmentId}`),
     onSuccess: () => {

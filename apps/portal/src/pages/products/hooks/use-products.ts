@@ -1,4 +1,5 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useApiMutation } from '@/hooks/use-api-mutation';
 import { apiClient } from '@/lib/api-client';
 import { productKeys } from '@/lib/query-keys';
 import type { Product, PaginatedResponse } from '@/types';
@@ -55,7 +56,7 @@ interface CreateProductDto {
 export function useCreateProduct() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useApiMutation({
     mutationFn: (data: CreateProductDto) =>
       apiClient.post<Product>('/products', data),
     onSuccess: () => {
@@ -69,7 +70,7 @@ interface UpdateProductDto extends Partial<CreateProductDto> {}
 export function useUpdateProduct(id: string) {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useApiMutation({
     mutationFn: (data: UpdateProductDto) =>
       apiClient.patch<Product>(`/products/${id}`, data),
     onSuccess: () => {

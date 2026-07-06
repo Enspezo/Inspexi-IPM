@@ -140,8 +140,8 @@ export default function MeasurementSheetTemplateDetailPage() {
       });
       showToast('Meetstaat-template bijgewerkt', 'success');
       setIsEditing(false);
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Bijwerken mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 
@@ -157,8 +157,8 @@ export default function MeasurementSheetTemplateDetailPage() {
       await deleteMutation.mutateAsync();
       showToast('Meetstaat-template verwijderd', 'success');
       navigate('/measurement-sheet-templates');
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Verwijderen mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 
@@ -186,8 +186,8 @@ export default function MeasurementSheetTemplateDetailPage() {
         setLifecycle(null);
         navigate(`/measurement-sheet-templates/${created.id}`);
       }
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Actie mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 

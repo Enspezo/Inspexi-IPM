@@ -2,7 +2,8 @@ import { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
+import { useApiMutation } from '@/hooks/use-api-mutation';
 import { Link } from 'react-router-dom';
 import {
   Button,
@@ -323,8 +324,8 @@ function DetailsSection({
       });
       showToast('Fase bijgewerkt', 'success');
       setIsEditing(false);
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Bijwerken mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 
@@ -338,9 +339,9 @@ function DetailsSection({
     try {
       await deleteMutation.mutateAsync(phase.id);
       showToast('Fase verwijderd', 'success');
-    } catch (err) {
-      // Toont de API-melding met aantallen wanneer er nog koppelingen zijn (§12.4.7).
-      showToast(getErrorMessage(err, 'Verwijderen mislukt'), 'error');
+    } catch {
+      // De centrale useApiMutation-fallback toont de API-melding met aantallen
+      // wanneer er nog koppelingen zijn (§12.4.7).
     }
   };
 
@@ -487,8 +488,8 @@ function MilestonesSection({
   const handleStatus = async (m: PhaseMilestone, status: MilestoneStatus) => {
     try {
       await updateMutation.mutateAsync({ id: m.id, data: { status } });
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Status wijzigen mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 
@@ -502,8 +503,8 @@ function MilestonesSection({
     try {
       await deleteMutation.mutateAsync(m.id);
       showToast('Milestone verwijderd', 'success');
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Verwijderen mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 
@@ -616,9 +617,9 @@ function MilestonesSection({
                 showToast('Milestone toegevoegd', 'success');
               }
               setModalOpen(false);
-            } catch (err) {
-              showToast(getErrorMessage(err, 'Opslaan mislukt'), 'error');
-            }
+            } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
+    }
           }}
         />
       )}
@@ -666,7 +667,7 @@ function LinksSection({
   const ownPlanning = projectPlanning.filter((p) => p.projectPhaseId === phase.id);
 
   // Ontkoppelen = projectPhaseId op de entiteit legen (Fase A-API accepteert dit).
-  const unlinkMutation = useMutation({
+  const unlinkMutation = useApiMutation({
     mutationFn: ({ kind, id }: { kind: 'quotes' | 'planning'; id: string }) =>
       apiClient.patch(`/${kind}/${id}`, { projectPhaseId: null }),
     onSuccess: () => {
@@ -685,8 +686,8 @@ function LinksSection({
     try {
       await unlinkMutation.mutateAsync({ kind, id });
       showToast('Ontkoppeld', 'success');
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Ontkoppelen mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 
@@ -700,8 +701,8 @@ function LinksSection({
     try {
       await removeFollower.mutateAsync(id);
       showToast('Volger verwijderd', 'success');
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Verwijderen mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 
@@ -873,9 +874,9 @@ function LinksSection({
               await addFollower.mutateAsync(data);
               showToast('Volger toegevoegd', 'success');
               setAddOpen(false);
-            } catch (err) {
-              showToast(getErrorMessage(err, 'Toevoegen mislukt'), 'error');
-            }
+            } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
+    }
           }}
         />
       )}

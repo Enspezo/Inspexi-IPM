@@ -1,4 +1,5 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useApiMutation } from '@/hooks/use-api-mutation';
 import { apiClient } from '@/lib/api-client';
 import type {
   SupportTicket,
@@ -67,7 +68,7 @@ export function useTicketStats() {
 
 export function useCreateTicket() {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (data: CreateTicketInput) =>
       apiClient.post<SupportTicket>('/support-tickets', data),
     onSuccess: () => qc.invalidateQueries({ queryKey: supportTicketKeys.all }),
@@ -76,7 +77,7 @@ export function useCreateTicket() {
 
 export function useAddTicketMessage(id: string) {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (body: { body: string; isInternal?: boolean }) =>
       apiClient.post<SupportTicketMessage>(`/support-tickets/${id}/messages`, body),
     onSuccess: () => {
@@ -88,7 +89,7 @@ export function useAddTicketMessage(id: string) {
 
 export function useUpdateTicket(id: string) {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (data: UpdateTicketInput) =>
       apiClient.patch<SupportTicket>(`/support-tickets/${id}`, data),
     onSuccess: () => {

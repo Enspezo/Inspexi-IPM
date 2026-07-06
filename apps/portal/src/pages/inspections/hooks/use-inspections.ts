@@ -1,4 +1,5 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useApiMutation } from '@/hooks/use-api-mutation';
 import { apiClient } from '@/lib/api-client';
 import { inspectionPlanKeys } from '@/lib/query-keys';
 import type { InspectionPlan, PaginatedResponse } from '@/types';
@@ -42,7 +43,7 @@ export function useInspectionPlan(id: string) {
 
 export function useCreateInspectionPlan() {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (data: Record<string, unknown>) =>
       apiClient.post<InspectionPlan>('/inspection-plans', data),
     onSuccess: () => qc.invalidateQueries({ queryKey: inspectionPlanKeys.all }),
@@ -51,7 +52,7 @@ export function useCreateInspectionPlan() {
 
 export function useUpdateInspectionPlan() {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: ({ id, data }: { id: string; data: Record<string, unknown> }) =>
       apiClient.patch<InspectionPlan>(`/inspection-plans/${id}`, data),
     onSuccess: (_d, v) => {
@@ -64,7 +65,7 @@ export function useUpdateInspectionPlan() {
 /** Indienen ter beoordeling. */
 export function useSubmitInspectionPlan() {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (id: string) => apiClient.post<InspectionPlan>(`/inspection-plans/${id}/submit`),
     onSuccess: (_d, id) => {
       qc.invalidateQueries({ queryKey: inspectionPlanKeys.all });
@@ -76,7 +77,7 @@ export function useSubmitInspectionPlan() {
 /** Review-actie (backoffice): goedkeuren/afkeuren. */
 export function useReviewInspectionPlan() {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: ({ id, decision, notes }: { id: string; decision: 'approve' | 'reject'; notes?: string }) =>
       apiClient.post<InspectionPlan>(`/inspection-plans/${id}/review`, { decision, notes }),
     onSuccess: (_d, v) => {
@@ -88,7 +89,7 @@ export function useReviewInspectionPlan() {
 
 export function useDeleteInspectionPlan() {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (id: string) => apiClient.delete(`/inspection-plans/${id}`),
     onSuccess: () => qc.invalidateQueries({ queryKey: inspectionPlanKeys.all }),
   });

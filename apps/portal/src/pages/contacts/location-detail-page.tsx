@@ -113,8 +113,8 @@ export default function LocationDetailPage() {
       });
       showToast('Locatie bijgewerkt', 'success');
       setIsEditing(false);
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Opslaan mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 
@@ -146,8 +146,8 @@ export default function LocationDetailPage() {
       await deleteMutation.mutateAsync(location.id);
       showToast('Locatie verwijderd', 'success');
       navigate('/contacts/locations');
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Verwijderen mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 
@@ -414,8 +414,8 @@ function ContactPersonsSection({
     try {
       await unlinkMutation.mutateAsync(linkId);
       showToast('Contactpersoon ontkoppeld', 'success');
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Ontkoppelen mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 
@@ -425,8 +425,8 @@ function ContactPersonsSection({
       await updateNotesMutation.mutateAsync({ notes: editingNotes.notes || undefined });
       showToast('Opmerking opgeslagen', 'success');
       setEditingNotes(null);
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Opslaan mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 

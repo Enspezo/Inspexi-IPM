@@ -71,8 +71,8 @@ export function FormBuilderTab({ templateId, sections, canEdit }: Props) {
     try {
       await deleteSection.mutateAsync(section.id);
       showToast('Sectie verwijderd', 'success');
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Verwijderen mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 
@@ -182,8 +182,8 @@ function SectionCard({
     try {
       await deleteField.mutateAsync(field.id);
       showToast('Veld verwijderd', 'success');
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Verwijderen mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 

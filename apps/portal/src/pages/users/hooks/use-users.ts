@@ -1,4 +1,5 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useApiMutation } from '@/hooks/use-api-mutation';
 import { apiClient } from '@/lib/api-client';
 import { userKeys } from '@/lib/query-keys';
 import type { User } from '@/types';
@@ -53,7 +54,7 @@ interface InviteUserDto {
 export function useInviteUser() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useApiMutation({
     mutationFn: (data: InviteUserDto) =>
       apiClient.post('/users/invite', data),
     onSuccess: () => {
@@ -65,7 +66,7 @@ export function useInviteUser() {
 export function useDeactivateUser() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useApiMutation({
     mutationFn: (userId: string) =>
       apiClient.patch(`/users/${userId}/deactivate`),
     onSuccess: (_data, userId) => {
@@ -78,7 +79,7 @@ export function useDeactivateUser() {
 export function useActivateUser() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useApiMutation({
     mutationFn: (userId: string) =>
       apiClient.patch(`/users/${userId}/activate`),
     onSuccess: (_data, userId) => {
@@ -96,7 +97,7 @@ interface ChangeRoleDto {
 export function useChangeRole() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useApiMutation({
     mutationFn: (data: ChangeRoleDto) =>
       apiClient.patch(`/users/${data.userId}/role`, { roles: data.roles }),
     onSuccess: () => {
@@ -106,7 +107,7 @@ export function useChangeRole() {
 }
 
 export function useAdminResetPassword() {
-  return useMutation({
+  return useApiMutation({
     mutationFn: ({
       userId,
       newPassword,
@@ -138,7 +139,7 @@ interface AdminUpdateUserDto {
 export function useAdminUpdateUser() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useApiMutation({
     mutationFn: ({ userId, data }: { userId: string; data: AdminUpdateUserDto }) =>
       apiClient.patch(`/users/${userId}`, data),
     onSuccess: (_data, { userId }) => {
@@ -169,7 +170,7 @@ export function useUserRecordCounts(userId: string | null) {
 export function useDeleteUser() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useApiMutation({
     mutationFn: ({ userId, transferToUserId }: { userId: string; transferToUserId: string }) =>
       apiClient.post(`/users/${userId}/delete`, { transferToUserId }),
     onSuccess: () => {

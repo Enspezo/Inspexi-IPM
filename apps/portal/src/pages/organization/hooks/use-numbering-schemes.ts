@@ -1,4 +1,5 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useApiMutation } from '@/hooks/use-api-mutation';
 import { apiClient } from '@/lib/api-client';
 import { numberingSchemeKeys } from '@/lib/query-keys';
 import type { NumberingScheme, NumberingModel } from '@/types';
@@ -25,7 +26,7 @@ export interface UpdateNumberingSchemeInput {
 
 export function useUpdateNumberingScheme() {
   const queryClient = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: ({ model, data }: { model: NumberingModel; data: UpdateNumberingSchemeInput }) =>
       apiClient.patch<NumberingScheme>(`/numbering-schemes/${model}`, data),
     onSuccess: () => {

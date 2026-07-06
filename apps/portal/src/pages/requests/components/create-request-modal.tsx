@@ -135,8 +135,8 @@ export function CreateRequestModal({ isOpen, onClose, contactId: prefilledContac
       setSelectedContactId('');
       onCreated?.(created);
       onClose();
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Aanmaken mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 

@@ -1,4 +1,5 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useApiMutation } from '@/hooks/use-api-mutation';
 import { apiClient } from '@/lib/api-client';
 import {
   planKeys,
@@ -41,7 +42,7 @@ interface CreatePlanInput {
 
 export function useCreatePlan() {
   const queryClient = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (data: CreatePlanInput) => apiClient.post<Plan>('/plans', data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: planKeys.all });
@@ -59,7 +60,7 @@ interface UpdatePlanInput {
 
 export function useUpdatePlan(id: string) {
   const queryClient = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (data: UpdatePlanInput) => apiClient.patch<Plan>(`/plans/${id}`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: planKeys.all });
@@ -72,7 +73,7 @@ export function useUpdatePlan(id: string) {
 
 export function useDeletePlan() {
   const queryClient = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (id: string) => apiClient.delete(`/plans/${id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: planKeys.all });

@@ -1,4 +1,5 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useApiMutation } from '@/hooks/use-api-mutation';
 import { apiClient } from '@/lib/api-client';
 import { productGroupKeys, productKeys } from '@/lib/query-keys';
 import type { ProductGroup, PaginatedResponse } from '@/types';
@@ -48,7 +49,7 @@ interface CreateDto {
 
 export function useCreateProductGroup() {
   const queryClient = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (data: CreateDto) =>
       apiClient.post<ProductGroup>('/product-groups', data),
     onSuccess: () => {
@@ -59,7 +60,7 @@ export function useCreateProductGroup() {
 
 export function useUpdateProductGroup(id: string) {
   const queryClient = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (data: Partial<CreateDto>) =>
       apiClient.patch<ProductGroup>(`/product-groups/${id}`, data),
     onSuccess: () => {
@@ -70,7 +71,7 @@ export function useUpdateProductGroup(id: string) {
 
 export function useDeleteProductGroup() {
   const queryClient = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (id: string) => apiClient.delete(`/product-groups/${id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: productGroupKeys.all });
@@ -82,7 +83,7 @@ export function useDeleteProductGroup() {
 
 export function useAddProductToGroup(groupId: string) {
   const queryClient = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (productId: string) =>
       apiClient.post<ProductGroup>(`/product-groups/${groupId}/products`, { productId }),
     onSuccess: () => {
@@ -94,7 +95,7 @@ export function useAddProductToGroup(groupId: string) {
 
 export function useRemoveProductFromGroup(groupId: string) {
   const queryClient = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (productId: string) =>
       apiClient.delete<ProductGroup>(`/product-groups/${groupId}/products/${productId}`),
     onSuccess: () => {

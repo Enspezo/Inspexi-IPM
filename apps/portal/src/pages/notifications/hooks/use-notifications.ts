@@ -1,4 +1,5 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useApiMutation } from '@/hooks/use-api-mutation';
 import { apiClient } from '@/lib/api-client';
 import type {
   Notification,
@@ -69,7 +70,7 @@ export function useNotifications(params: ListNotificationsParams = {}) {
 export function useMarkRead() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useApiMutation({
     mutationFn: (id: string) =>
       apiClient.patch<Notification>(`/notifications/${id}/read`),
     onSuccess: () => {
@@ -83,7 +84,7 @@ export function useMarkRead() {
 export function useMarkAllRead() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useApiMutation({
     mutationFn: () => apiClient.post('/notifications/read-all'),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: notificationKeys.all });
@@ -113,7 +114,7 @@ interface PrefItem {
 export function useSaveNotificationPrefs() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useApiMutation({
     mutationFn: (prefs: PrefItem[]) =>
       apiClient.put('/notification-prefs', { prefs }),
     onSuccess: () => {
@@ -143,7 +144,7 @@ interface GroupPrefItem {
 export function useSaveGroupNotificationPrefs() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useApiMutation({
     mutationFn: (prefs: GroupPrefItem[]) =>
       apiClient.put('/notification-prefs/group', { prefs }),
     onSuccess: () => {

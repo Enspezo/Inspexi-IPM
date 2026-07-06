@@ -1,4 +1,5 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useApiMutation } from '@/hooks/use-api-mutation';
 import { apiClient } from '@/lib/api-client';
 import { projectKeys } from '@/lib/query-keys';
 import type { ProjectFollower } from '@/types';
@@ -25,7 +26,7 @@ export interface AddProjectFollowerData {
 
 export function useAddProjectFollower(projectId: string) {
   const queryClient = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (data: AddProjectFollowerData) =>
       apiClient.post<ProjectFollower>(
         `/projects/${projectId}/followers`,
@@ -49,7 +50,7 @@ export interface UpdateProjectFollowerData {
 
 export function useUpdateProjectFollower(projectId: string) {
   const queryClient = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: ({
       followerId,
       data,
@@ -71,7 +72,7 @@ export function useUpdateProjectFollower(projectId: string) {
 
 export function useRemoveProjectFollower(projectId: string) {
   const queryClient = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (followerId: string) =>
       apiClient.delete(`/projects/${projectId}/followers/${followerId}`),
     onSuccess: () => {

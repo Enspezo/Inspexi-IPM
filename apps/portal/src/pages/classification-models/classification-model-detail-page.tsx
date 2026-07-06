@@ -107,8 +107,8 @@ export default function ClassificationModelDetailPage() {
       });
       showToast('Classificatiemodel bijgewerkt', 'success');
       setIsEditing(false);
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Bijwerken mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 
@@ -124,8 +124,8 @@ export default function ClassificationModelDetailPage() {
       await deleteMutation.mutateAsync(id!);
       showToast('Classificatiemodel verwijderd', 'success');
       navigate('/classification-models');
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Verwijderen mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 

@@ -1,4 +1,5 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useApiMutation } from '@/hooks/use-api-mutation';
 import { apiClient } from '@/lib/api-client';
 import {
   organizationSettingsKeys,
@@ -37,7 +38,7 @@ interface UpdateOrganizationDto {
 export function useUpdateOrganization(orgId: string | null | undefined) {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useApiMutation({
     mutationFn: (data: UpdateOrganizationDto) =>
       apiClient.patch<Organization>(`/organizations/${orgId}`, data),
     onSuccess: () => {
@@ -52,7 +53,7 @@ export function useUpdateOrganization(orgId: string | null | undefined) {
 export function useUploadLogo(orgId: string | null | undefined) {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useApiMutation({
     mutationFn: (file: File) => {
       const formData = new FormData();
       formData.append('file', file);
@@ -72,7 +73,7 @@ export function useUploadLogo(orgId: string | null | undefined) {
 export function useDeleteLogo(orgId: string | null | undefined) {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useApiMutation({
     mutationFn: () => apiClient.delete(`/organizations/${orgId}/logo`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: organizationSettingsKeys.detail(orgId as string) });

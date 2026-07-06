@@ -89,8 +89,8 @@ export function CreateAssetModal({ isOpen, onClose, planId }: Props) {
       });
       showToast('Asset aangemaakt', 'success');
       onClose();
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Aanmaken mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 

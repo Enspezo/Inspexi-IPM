@@ -3,7 +3,8 @@
 // ['finding-templates']. Bevat ook een lokale classification-model detail-query voor de
 // defaultClassification-editor (geen edit aan de classification-models map).
 
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useApiMutation } from '@/hooks/use-api-mutation';
 import { apiClient } from '@/lib/api-client';
 import { findingTemplateKeys, classificationModelKeys } from '@/lib/query-keys';
 import type { FindingTemplate, ClassificationModel, PaginatedResponse } from '@/types';
@@ -53,7 +54,7 @@ export function useFindingTemplate(id: string) {
 
 export function useCreateFindingTemplate() {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (data: Record<string, unknown>) =>
       apiClient.post<FindingTemplate>('/finding-templates', data),
     onSuccess: () => qc.invalidateQueries({ queryKey: findingTemplateKeys.all }),
@@ -62,7 +63,7 @@ export function useCreateFindingTemplate() {
 
 export function useUpdateFindingTemplate() {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: ({ id, data }: { id: string; data: Record<string, unknown> }) =>
       apiClient.patch<FindingTemplate>(`/finding-templates/${id}`, data),
     onSuccess: (_d, v) => {
@@ -74,7 +75,7 @@ export function useUpdateFindingTemplate() {
 
 export function useDeleteFindingTemplate() {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (id: string) => apiClient.delete(`/finding-templates/${id}`),
     onSuccess: () => qc.invalidateQueries({ queryKey: findingTemplateKeys.all }),
   });
@@ -83,7 +84,7 @@ export function useDeleteFindingTemplate() {
 /** Systeem→org kopie; body { code? }; geeft de nieuwe template terug. */
 export function useDuplicateFindingTemplate() {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: ({ id, code }: { id: string; code?: string }) =>
       apiClient.post<FindingTemplate>(`/finding-templates/${id}/duplicate`, code ? { code } : {}),
     onSuccess: () => qc.invalidateQueries({ queryKey: findingTemplateKeys.all }),
@@ -129,7 +130,7 @@ export interface ImportFindingTemplatesPayload {
 
 export function useImportFindingTemplates() {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (payload: ImportFindingTemplatesPayload) =>
       apiClient.post<ImportFindingTemplatesResult>('/finding-templates/import', payload),
     onSuccess: () => qc.invalidateQueries({ queryKey: findingTemplateKeys.all }),

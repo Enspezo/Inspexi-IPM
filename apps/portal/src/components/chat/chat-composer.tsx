@@ -216,8 +216,8 @@ export function ChatComposer({ threadId, disabled, onSent }: ChatComposerProps) 
       setMentions([]);
       setTrigger(null);
       onSent(msg);
-    } catch (err) {
-      showToast(err instanceof Error ? err.message : 'Versturen mislukt', 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   }
 

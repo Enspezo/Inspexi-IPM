@@ -1,4 +1,5 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useApiMutation } from '@/hooks/use-api-mutation';
 import { apiClient } from '@/lib/api-client';
 import { priceTableKeys } from '@/lib/query-keys';
 import type { PriceTable, PriceType, PaginatedResponse } from '@/types';
@@ -45,7 +46,7 @@ interface CreatePriceTableDto {
 export function useCreatePriceTable() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useApiMutation({
     mutationFn: (data: CreatePriceTableDto) =>
       apiClient.post<PriceTable>('/price-tables', data),
     onSuccess: () => {
@@ -64,7 +65,7 @@ interface PriceTableItemInput {
 export function useSetPriceTableItems(id: string) {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useApiMutation({
     mutationFn: (items: PriceTableItemInput[]) =>
       apiClient.put<PriceTable>(`/price-tables/${id}/items`, { items }),
     onSuccess: () => {
@@ -77,7 +78,7 @@ export function useSetPriceTableItems(id: string) {
 export function useAssignPriceTable(id: string) {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useApiMutation({
     mutationFn: (contactId: string) =>
       apiClient.post(`/price-tables/${id}/assign/${contactId}`, {}),
     onSuccess: () => {
@@ -89,7 +90,7 @@ export function useAssignPriceTable(id: string) {
 export function useRemovePriceTableAssignment(id: string) {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useApiMutation({
     mutationFn: (contactId: string) =>
       apiClient.delete(`/price-tables/${id}/assign/${contactId}`),
     onSuccess: () => {

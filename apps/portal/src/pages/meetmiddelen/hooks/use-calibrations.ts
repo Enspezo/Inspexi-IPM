@@ -1,4 +1,5 @@
-import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
+import { useApiMutation } from '@/hooks/use-api-mutation';
 import { apiClient } from '@/lib/api-client';
 import { calibrationKeys, measurementInstrumentKeys } from '@/lib/query-keys';
 import type { Calibration } from '@/types';
@@ -39,7 +40,7 @@ export function useCalibrations(instrumentId: string | undefined) {
 
 export function useCreateCalibration(instrumentId: string) {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (values: CalibrationFormValues) =>
       apiClient.upload<Calibration>(
         `/measurement-instruments/${instrumentId}/calibrations`,
@@ -51,7 +52,7 @@ export function useCreateCalibration(instrumentId: string) {
 
 export function useUpdateCalibration(instrumentId: string) {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: ({ calId, values }: { calId: string; values: CalibrationFormValues }) =>
       apiClient.upload<Calibration>(
         `/measurement-instruments/${instrumentId}/calibrations/${calId}`,
@@ -64,7 +65,7 @@ export function useUpdateCalibration(instrumentId: string) {
 
 export function useDeleteCalibration(instrumentId: string) {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (calId: string) =>
       apiClient.delete(`/measurement-instruments/${instrumentId}/calibrations/${calId}`),
     onSuccess: () => invalidate(qc, instrumentId),
@@ -74,7 +75,7 @@ export function useDeleteCalibration(instrumentId: string) {
 /** Alleen het certificaat verwijderen; de kalibratie blijft bestaan. */
 export function useDeleteCalibrationDocument(instrumentId: string) {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (calId: string) =>
       apiClient.delete<Calibration>(
         `/measurement-instruments/${instrumentId}/calibrations/${calId}/document`,

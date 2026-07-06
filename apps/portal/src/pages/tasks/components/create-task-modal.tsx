@@ -157,11 +157,8 @@ export function CreateTaskModal({
         setSelectedEntityId('');
       }
       onClose();
-    } catch (err) {
-      showToast(
-        err instanceof Error ? err.message : 'Aanmaken mislukt',
-        'error',
-      );
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 

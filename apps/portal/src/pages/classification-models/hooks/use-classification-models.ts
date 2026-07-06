@@ -6,7 +6,8 @@
 // dus elke kenmerk-/optie-mutatie invalideert ['classification-models', modelId] zodat de
 // detailpagina herlaadt met verse geneste data.
 
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useApiMutation } from '@/hooks/use-api-mutation';
 import { apiClient } from '@/lib/api-client';
 import { classificationModelKeys } from '@/lib/query-keys';
 import type { ClassificationModel } from '@/types';
@@ -50,7 +51,7 @@ export function useClassificationModel(id: string) {
 
 export function useCreateClassificationModel() {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (data: Record<string, unknown>) =>
       apiClient.post<ClassificationModel>('/classification-models', data),
     onSuccess: () => qc.invalidateQueries({ queryKey: classificationModelKeys.all }),
@@ -59,7 +60,7 @@ export function useCreateClassificationModel() {
 
 export function useUpdateClassificationModel() {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: ({ id, data }: { id: string; data: Record<string, unknown> }) =>
       apiClient.patch<ClassificationModel>(`/classification-models/${id}`, data),
     onSuccess: (_d, v) => {
@@ -71,7 +72,7 @@ export function useUpdateClassificationModel() {
 
 export function useDeleteClassificationModel() {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (id: string) => apiClient.delete(`/classification-models/${id}`),
     onSuccess: () => qc.invalidateQueries({ queryKey: classificationModelKeys.all }),
   });
@@ -83,7 +84,7 @@ export function useDeleteClassificationModel() {
 
 export function useCreateCharacteristic(modelId: string) {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (data: Record<string, unknown>) =>
       apiClient.post(`/classification-models/${modelId}/characteristics`, data),
     onSuccess: () => qc.invalidateQueries({ queryKey: classificationModelKeys.detail(modelId) }),
@@ -92,7 +93,7 @@ export function useCreateCharacteristic(modelId: string) {
 
 export function useUpdateCharacteristic(modelId: string) {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: ({ charId, data }: { charId: string; data: Record<string, unknown> }) =>
       apiClient.patch(`/classification-models/${modelId}/characteristics/${charId}`, data),
     onSuccess: () => qc.invalidateQueries({ queryKey: classificationModelKeys.detail(modelId) }),
@@ -106,7 +107,7 @@ export function useUpdateCharacteristic(modelId: string) {
  */
 export function useDeleteCharacteristic(modelId: string) {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: ({ charId, confirm }: { charId: string; confirm?: boolean }) =>
       apiClient.delete<DeleteResult>(
         `/classification-models/${modelId}/characteristics/${charId}${confirm ? '?confirm=true' : ''}`,
@@ -118,7 +119,7 @@ export function useDeleteCharacteristic(modelId: string) {
 /** Kenmerken herordenen — backend verwacht exact de key `characteristicIds`. */
 export function useReorderCharacteristics(modelId: string) {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (characteristicIds: string[]) =>
       apiClient.post<ClassificationModel>(
         `/classification-models/${modelId}/characteristics/reorder`,
@@ -153,7 +154,7 @@ export function useReorderCharacteristics(modelId: string) {
 
 export function useCreateOption(modelId: string, charId: string) {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (data: Record<string, unknown>) =>
       apiClient.post(
         `/classification-models/${modelId}/characteristics/${charId}/options`,
@@ -165,7 +166,7 @@ export function useCreateOption(modelId: string, charId: string) {
 
 export function useUpdateOption(modelId: string, charId: string) {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: ({ optionId, data }: { optionId: string; data: Record<string, unknown> }) =>
       apiClient.patch(
         `/classification-models/${modelId}/characteristics/${charId}/options/${optionId}`,
@@ -181,7 +182,7 @@ export function useUpdateOption(modelId: string, charId: string) {
  */
 export function useDeleteOption(modelId: string, charId: string) {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: ({ optionId, confirm }: { optionId: string; confirm?: boolean }) =>
       apiClient.delete<DeleteResult>(
         `/classification-models/${modelId}/characteristics/${charId}/options/${optionId}${confirm ? '?confirm=true' : ''}`,
@@ -193,7 +194,7 @@ export function useDeleteOption(modelId: string, charId: string) {
 /** Opties herordenen binnen een kenmerk — backend verwacht exact de key `optionIds`. */
 export function useReorderOptions(modelId: string, charId: string) {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (optionIds: string[]) =>
       apiClient.post(
         `/classification-models/${modelId}/characteristics/${charId}/options/reorder`,

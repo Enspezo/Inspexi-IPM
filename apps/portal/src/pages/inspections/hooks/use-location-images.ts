@@ -10,7 +10,8 @@
  *
  * Plus dropdown-data voor het koppelen van een marker aan een bestaande entiteit.
  */
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useApiMutation } from '@/hooks/use-api-mutation';
 import { apiClient, ApiClientError } from '@/lib/api-client';
 import {
   assetFindingKeys,
@@ -59,7 +60,7 @@ export function useLocationImage(locationId: string | undefined) {
 
 export function useUploadLocationImage(locationId: string) {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (file: File) => {
       const formData = new FormData();
       formData.append('file', file);
@@ -71,7 +72,7 @@ export function useUploadLocationImage(locationId: string) {
 
 export function useDeleteLocationImage(locationId: string) {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: () => apiClient.delete(`/locations/${locationId}/image`),
     onSuccess: () => qc.invalidateQueries({ queryKey: locationImageKeys.byLocation(locationId) }),
   });
@@ -103,7 +104,7 @@ export interface UpdateMarkerInput {
 /** locationId alleen om de juiste image-query te invalideren. */
 export function useCreateMarker(locationId: string) {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: ({ imageId, data }: { imageId: string; data: CreateMarkerInput }) =>
       apiClient.post<LocationImageMarker>(`/location-images/${imageId}/markers`, data),
     onSuccess: () => qc.invalidateQueries({ queryKey: locationImageKeys.byLocation(locationId) }),
@@ -113,7 +114,7 @@ export function useCreateMarker(locationId: string) {
 export function useUpdateMarker(locationId: string) {
   const qc = useQueryClient();
   const key = locationImageKeys.byLocation(locationId);
-  return useMutation({
+  return useApiMutation({
     mutationFn: ({ imageId, markerId, data }: { imageId: string; markerId: string; data: UpdateMarkerInput }) =>
       apiClient.patch<LocationImageMarker>(`/location-images/${imageId}/markers/${markerId}`, data),
     // Optimistisch bijwerken zodat slepen niet zichtbaar terugspringt tijdens de refetch.
@@ -137,7 +138,7 @@ export function useUpdateMarker(locationId: string) {
 
 export function useDeleteMarker(locationId: string) {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: ({ imageId, markerId }: { imageId: string; markerId: string }) =>
       apiClient.delete(`/location-images/${imageId}/markers/${markerId}`),
     onSuccess: () => qc.invalidateQueries({ queryKey: locationImageKeys.byLocation(locationId) }),
@@ -165,7 +166,7 @@ export interface CreateAssetInput {
 
 export function useCreateAsset() {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: ({ planId, data }: { planId: string; data: CreateAssetInput }) =>
       apiClient.post<Asset>(`/inspection-plans/${planId}/assets`, data),
     onSuccess: (_d, { planId }) => {

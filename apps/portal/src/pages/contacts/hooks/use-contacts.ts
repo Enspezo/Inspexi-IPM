@@ -1,4 +1,5 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useApiMutation } from '@/hooks/use-api-mutation';
 import { apiClient } from '@/lib/api-client';
 import { contactKeys, customerGroupKeys } from '@/lib/query-keys';
 import type {
@@ -77,7 +78,7 @@ interface CreateContactDto {
 export function useCreateContact() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useApiMutation({
     mutationFn: (data: CreateContactDto) =>
       apiClient.post<Contact>('/contacts', data),
     onSuccess: () => {
@@ -91,7 +92,7 @@ interface UpdateContactDto extends Partial<CreateContactDto> {}
 export function useUpdateContact(id: string) {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useApiMutation({
     mutationFn: (data: UpdateContactDto) =>
       apiClient.patch<Contact>(`/contacts/${id}`, data),
     onSuccess: () => {
@@ -103,7 +104,7 @@ export function useUpdateContact(id: string) {
 export function useDeleteContact() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useApiMutation({
     mutationFn: (id: string) => apiClient.delete(`/contacts/${id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: contactKeys.all });
@@ -116,7 +117,7 @@ export function useDeleteContact() {
 export function useSetContactGroups(contactId: string) {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useApiMutation({
     mutationFn: (groupIds: string[]) =>
       apiClient.patch<Contact>(`/contacts/${contactId}/groups`, { groupIds }),
     onSuccess: () => {

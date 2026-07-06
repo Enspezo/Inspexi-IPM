@@ -61,8 +61,8 @@ export function DocumentPreviewModal({
       setCurrentTags(updated.tags ?? []);
       showToast('Tags bijgewerkt', 'success');
       setIsEditingTags(false);
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Bijwerken mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 

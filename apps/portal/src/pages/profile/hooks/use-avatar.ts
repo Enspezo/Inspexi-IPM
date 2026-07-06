@@ -1,11 +1,12 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
+import { useApiMutation } from '@/hooks/use-api-mutation';
 import { apiClient } from '@/lib/api-client';
 import { profileKeys, meKeys } from '@/lib/query-keys';
 
 export function useUploadAvatar() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useApiMutation({
     mutationFn: (file: File) => {
       const formData = new FormData();
       formData.append('file', file);
@@ -21,7 +22,7 @@ export function useUploadAvatar() {
 export function useDeleteAvatar() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useApiMutation({
     mutationFn: () => apiClient.delete('/users/me/avatar'),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: profileKeys.all });

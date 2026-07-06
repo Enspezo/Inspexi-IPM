@@ -1,7 +1,8 @@
 // Hooks-laag voor het location-types domein: lijst + detail + CRUD + velden + constraints.
 // TanStack Query, queryKeys als arrays, mutaties invalideren de relevante keys.
 
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useApiMutation } from '@/hooks/use-api-mutation';
 import { apiClient } from '@/lib/api-client';
 import { locationTypeKeys, locationTypeFieldKeys, locationTypeConstraintKeys } from '@/lib/query-keys';
 import type { LocationTypeDefinition, LocationTypeField, LocationTypeConstraint } from '@/types';
@@ -37,7 +38,7 @@ export function useLocationType(id: string) {
 
 export function useCreateLocationType() {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (data: Record<string, unknown>) =>
       apiClient.post<LocationTypeDefinition>('/location-types', data),
     onSuccess: () => qc.invalidateQueries({ queryKey: locationTypeKeys.all }),
@@ -46,7 +47,7 @@ export function useCreateLocationType() {
 
 export function useUpdateLocationType() {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: ({ id, data }: { id: string; data: Record<string, unknown> }) =>
       apiClient.patch<LocationTypeDefinition>(`/location-types/${id}`, data),
     onSuccess: (_d, v) => {
@@ -58,7 +59,7 @@ export function useUpdateLocationType() {
 
 export function useDeleteLocationType() {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (id: string) => apiClient.delete(`/location-types/${id}`),
     onSuccess: () => qc.invalidateQueries({ queryKey: locationTypeKeys.all }),
   });
@@ -67,7 +68,7 @@ export function useDeleteLocationType() {
 /** System→org kopie; geeft de nieuwe definitie terug. */
 export function useDuplicateLocationType() {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (id: string) =>
       apiClient.post<LocationTypeDefinition>(`/location-types/${id}/duplicate`),
     onSuccess: () => qc.invalidateQueries({ queryKey: locationTypeKeys.all }),
@@ -88,7 +89,7 @@ export function useLocationTypeFields(id: string) {
 
 export function useCreateLocationTypeField(id: string) {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (data: Record<string, unknown>) =>
       apiClient.post<LocationTypeField>(`/location-types/${id}/fields`, data),
     onSuccess: () => {
@@ -100,7 +101,7 @@ export function useCreateLocationTypeField(id: string) {
 
 export function useUpdateLocationTypeField(id: string) {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: ({ fieldId, data }: { fieldId: string; data: Record<string, unknown> }) =>
       apiClient.patch<LocationTypeField>(`/location-types/${id}/fields/${fieldId}`, data),
     onSuccess: () => {
@@ -112,7 +113,7 @@ export function useUpdateLocationTypeField(id: string) {
 
 export function useDeleteLocationTypeField(id: string) {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (fieldId: string) =>
       apiClient.delete(`/location-types/${id}/fields/${fieldId}`),
     onSuccess: () => {
@@ -125,7 +126,7 @@ export function useDeleteLocationTypeField(id: string) {
 /** Herorden velden — backend verwacht exact de key `fieldIds`. */
 export function useReorderLocationTypeFields(id: string) {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (fieldIds: string[]) =>
       apiClient.post<LocationTypeField[]>(`/location-types/${id}/fields/reorder`, { fieldIds }),
     // Optimistic: pas de cache-volgorde direct aan; rollback bij fout.
@@ -170,7 +171,7 @@ export interface ConstraintInput {
 
 export function useSetLocationTypeConstraints(id: string) {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (constraints: ConstraintInput[]) =>
       apiClient.put<LocationTypeConstraint[]>(`/location-types/${id}/constraints`, { constraints }),
     onSuccess: () => {

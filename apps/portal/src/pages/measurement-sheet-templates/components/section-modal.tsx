@@ -88,8 +88,8 @@ export function SectionModal({ isOpen, onClose, templateId, section }: Props) {
         showToast('Sectie toegevoegd', 'success');
       }
       onClose();
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Opslaan mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 

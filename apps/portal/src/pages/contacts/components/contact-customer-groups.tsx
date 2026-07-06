@@ -29,8 +29,8 @@ export function ContactCustomerGroups({
       : [...assignedIds, groupId];
     try {
       await setGroupsMutation.mutateAsync(newIds);
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Klantgroepen bijwerken mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 

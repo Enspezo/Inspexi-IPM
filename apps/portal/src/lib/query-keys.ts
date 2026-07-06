@@ -31,6 +31,7 @@ export const contactKeys = {
   logs: (contactId: string) => [...contactKeys.all, contactId, 'logs'] as const,
   locations: (contactId: string) =>
     [...contactKeys.all, contactId, 'locations'] as const,
+  search: (q: string) => [...contactKeys.all, 'search', q] as const,
 };
 
 export const contactPersonKeys = {
@@ -385,6 +386,28 @@ export const organizationEntitlementKeys = {
 
 export const orgBrandingKeys = {
   all: ['org-branding'] as const,
+  bySlug: (slug: string | null) => [...orgBrandingKeys.all, slug] as const,
+};
+
+export const myFeaturesKeys = {
+  all: ['my-features'] as const,
+  forUser: (userId: string | undefined) =>
+    [...myFeaturesKeys.all, userId] as const,
+};
+
+export const myActivityKeys = {
+  all: ['my-activity'] as const,
+  list: (params: ListParams) => [...myActivityKeys.all, params] as const,
+};
+
+export const lookupKeys = {
+  all: ['lookups'] as const,
+  byKind: (kind: string) => [...lookupKeys.all, kind] as const,
+};
+
+export const categoryKeys = {
+  all: ['categories'] as const,
+  list: (params: ListParams) => [...categoryKeys.all, params] as const,
 };
 
 export const orgLogoKeys = {

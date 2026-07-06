@@ -6,6 +6,7 @@ import {
 } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api-client';
+import { myFeaturesKeys } from '@/lib/query-keys';
 import { useAuth } from '@/providers/auth-provider';
 import { hasRole } from '@/lib/has-role';
 import { Role } from '@/types';
@@ -39,7 +40,7 @@ export function FeatureProvider({ children }: { children: ReactNode }) {
   const isSuperuser = hasRole(user, Role.SUPERUSER);
 
   const query = useQuery<string[]>({
-    queryKey: ['my-features', user?.id],
+    queryKey: myFeaturesKeys.forUser(user?.id),
     queryFn: () => apiClient.get<string[]>('/organizations/me/features'),
     enabled: isAuthenticated && !isSuperuser,
     staleTime: 5 * 60 * 1000,

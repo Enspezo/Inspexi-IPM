@@ -9,3 +9,4 @@ export * from './auth/role-helpers';
 export * from './constants/inspection-status.constants';
 export * from './constants/user-select.constants';
 export * from './validators/is-safe-data-image.validator';
+export * from './validation/json-column';

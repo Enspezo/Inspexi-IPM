@@ -17,7 +17,7 @@ import {
   SYNC_ENTITIES, SyncEntityKey, SyncModelName, FkCheckModel, SyncRecordData,
   SYNC_CONTRACT_VERSION, toDbData, toChildRows, toWire,
 } from './sync-mapper';
-import { ChatService } from '../chat/chat.service';
+import { ChatSyncService } from '../chat/chat-sync.service';
 import { NumberingService } from '../numbering/numbering.service';
 import { AssetNodesService } from '../asset-nodes/asset-nodes.service';
 
@@ -104,7 +104,7 @@ export function orderAssetNodesParentFirst(changes: EntityChangeDto[]): EntityCh
 export class SyncService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly chat: ChatService,
+    private readonly chat: ChatSyncService,
     private readonly numbering: NumberingService,
     private readonly assetNodes: AssetNodesService,
   ) {}

@@ -136,20 +136,55 @@ Alle fixes zijn **klein** (alleen een `where`-toevoeging), degraderen netjes
   **90 dagen** hard verwijdert.
 - **Idempotent:** `deleteMany({ where: { deletedAt: { lt: cutoff } } })` vindt bij
   een tweede run niets meer.
-- **FK-veilige volgorde** (`TOMBSTONE_DELETE_ORDER`), afgeleid van de
-  seed-opruimvolgorde in `prisma/seed.ts` — kind → ouder:
+- **FK-veilige volgorde** (`TOMBSTONE_DELETE_ORDER`) — kind → ouder:
   `finding → visualInspection → measurementRecord → measurementSheetRecord →
   standaloneMeasurement → assetNode → inspectionPlan`.
   (`standaloneMeasurementValue` reist mee via `onDelete: Cascade`.)
-- **Cascade-vrijwaring:** `assetNode` en `inspectionPlan` worden alléén verwijderd
-  als er geen sync-kinderen meer aan hangen (`{ none: {} }`-guards). Zo kan een
-  verlopen ouder nooit via `onDelete: Cascade` nog-**levende** kinderen meesleuren;
-  de boom convergeert bottom-up over opeenvolgende runs. (Nodig omdat
-  `inspection-plans.remove` alleen het plan tombstoned, niet de kinderen.)
-- **Unit-test op de volgorde-logica:** bewijst dat `TOMBSTONE_DELETE_ORDER` exact de
-  7 `SYNC_ENTITIES` dekt, geen duplicaten heeft en topologisch klopt t.o.v.
-  `TOMBSTONE_FK_DEPENDENCIES` (elk kind vóór zijn ouder). Plus gedragstests op de
-  90-dagen-cutoff, de aanroep-volgorde en de guards.
+- **Parent-guards (`TOMBSTONE_PARENT_GUARDS`):** `assetNode` en `inspectionPlan`
+  worden alléén verwijderd als geen van hun geguarde back-relaties nog rijen heeft
+  (`{ <relatie>: { none: {} } }`). Drie soorten dekking:
+  - **RESTRICT-inbound FK's** (verplichte relatie zónder `onDelete` → effectief
+    `Restrict`): zonder guard gooit `deleteMany` een **P2003** en blokkeert de HELE
+    batch. Geguard: `planScopes` (`InspectionPlanLocation.assetNode`) en
+    `standaloneMeasurements` (`StandaloneMeasurement.locationNode`) op `assetNode`;
+    `reports` (`Report`), `generatedDocuments` (`GeneratedDocument`) en
+    `measurementSheetRecords` (`MeasurementSheetRecord`) op `inspectionPlan`.
+  - **CASCADE-inbound vanuit een sync-kind:** voorkomt dat een verlopen ouder via
+    `onDelete: Cascade` nog-**levende** kinderen meesleurt (`findings`,
+    `visualInspections`, `measurementRecords`). Nodig omdat
+    `inspection-plans.remove` alleen het plan tombstoned, niet de kinderen.
+  - **SetNull-behoud:** `children` (subtree onder een LOCATION-node) en
+    `linkedMeasurements` — voorkomt dat een parent-delete levende rijen loskoppelt.
+  - Plan-scope-rijen van een getombstoned plan hoeven géén aparte purge-stap:
+    `InspectionPlanLocation.inspectionPlan` is `onDelete: Cascade`, dus ze verdwijnen
+    mee zodra het plan zelf wordt hard-deleted.
+- **Robuustheid:** `handleCron` heeft een env-kill-switch `TOMBSTONE_CLEANUP_ENABLED`
+  (default aan; `'0'`/`'false'` = uit) en vangt fouten per delete-stap én rond de hele
+  run af (`Logger.error`), zodat de cron nooit een unhandled rejection produceert.
+- **Schema-afgeleide unit-test:** de volgorde-constraints én de vereiste RESTRICT-guards
+  worden uit de **DMMF** (`Prisma.dmmf.datamodel`) afgeleid i.p.v. uit een zelf-
+  onderhouden lijst. De test faalt automatisch zodra iemand een nieuwe verplichte
+  relatie zónder `onDelete` naar een gepurged model toevoegt (dan mist er een guard).
+  Plus gedragstests op de 90-dagen-cutoff, de aanroep-volgorde, elk van de drie
+  RESTRICT-scenario's, de per-stap-foutafhandeling en de kill-switch.
+
+### 3.1 Bekende restpunten
+
+- **Resurrect-risico bij lang-offline devices.** Een PWA-device dat > 90 dagen
+  offline was, mist de intussen gepurgede tombstone. Bij de volgende push kan het het
+  record via de **idempotente create-adoptie** in de sync-laag opnieuw tot leven wekken
+  (de server ziet geen tombstone meer en behandelt het als een nieuw record).
+  *Mitigatie (nog te implementeren, buiten Fase 1):* bij de eerste sync na een lange
+  offline-periode een **volledige re-pull** forceren i.p.v. incrementeel pushen, óf de
+  purge-horizon koppelen aan een **minimum-sync-leeftijd per device** (nooit tombstones
+  purgen die jonger zijn dan het oudste `lastSyncedAt` over alle actieve devices).
+  Zolang dit ontbreekt is 90 dagen bewust ruim gekozen t.o.v. realistische offline-duur.
+- **Photo/storage-orfanen.** `Photo` is **polymorf** (`entityType` + `entityId`, geen
+  echte FK). De purge kan die koppeling dus niet volgen: na een hard-delete blijven de
+  `Photo`-rijen én de onderliggende storage-bestanden (local/R2) achter als wezen.
+  Benoemd als bekend restpunt; **follow-up:** een aparte opruimstap die bij het purgen
+  van een sync-record ook zijn `Photo`-rijen (op `entityType`/`entityId`) en de
+  bijbehorende blobs verwijdert, of een periodieke orphan-sweep over de storage.
 
 ---
 

@@ -1,5 +1,13 @@
-import { Button, useToast } from '@/components/ui';
-import { FilePreviewModal, getMimeLabel } from '@/components/documents/file-preview-modal';
+import { lazy, Suspense } from 'react';
+import { Button, Spinner, useToast } from '@/components/ui';
+import { getMimeLabel } from '@/components/documents/file-preview-utils';
+
+// Zware preview-renderer (docx-preview + xlsx) lazy laden.
+const FilePreviewModal = lazy(() =>
+  import('@/components/documents/file-preview-modal').then((m) => ({
+    default: m.FilePreviewModal,
+  })),
+);
 import { formatShortDate, formatFileSize } from '@/lib/format';
 import { downloadCalibrationDocument } from '@/lib/download-file';
 import { getErrorMessage } from '@/lib/api-client';
@@ -72,14 +80,22 @@ export function CalibrationPreviewModal({
   );
 
   return (
-    <FilePreviewModal
-      isOpen={isOpen}
-      onClose={onClose}
-      downloadPath={`/measurement-instruments/${instrumentId}/calibrations/${cal.id}/document`}
-      fileName={cal.originalName}
-      mimeType={cal.mimeType}
-      sidebar={sidebar}
-    />
+    <Suspense
+      fallback={
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <Spinner size="lg" />
+        </div>
+      }
+    >
+      <FilePreviewModal
+        isOpen={isOpen}
+        onClose={onClose}
+        downloadPath={`/measurement-instruments/${instrumentId}/calibrations/${cal.id}/document`}
+        fileName={cal.originalName}
+        mimeType={cal.mimeType}
+        sidebar={sidebar}
+      />
+    </Suspense>
   );
 }
 

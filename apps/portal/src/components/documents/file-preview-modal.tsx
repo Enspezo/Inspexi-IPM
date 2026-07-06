@@ -1,9 +1,20 @@
 import { useState, useEffect, useCallback, useRef, type ReactNode } from 'react';
-import { Spinner } from '@/components/ui';
+import { Spinner, ErrorBoundary, ErrorBox } from '@/components/ui';
 import { getAccessToken } from '@/lib/api-client';
 import { sanitizeHtml } from '@/lib/sanitize-html';
 import { renderAsync as renderDocx } from 'docx-preview';
 import * as XLSX from 'xlsx';
+import {
+  WORD_MIME_TYPES,
+  EXCEL_MIME_TYPES,
+  getMimeLabel,
+  isPreviewable,
+} from './file-preview-utils';
+
+// Her-exporteren zodat callers deze lichte helpers ook via deze module kunnen
+// benaderen; wie enkel het label nodig heeft importeert uit './file-preview-utils'
+// en trekt zo de zware docx-preview/xlsx-bundel niet mee.
+export { getMimeLabel, isPreviewable } from './file-preview-utils';
 
 const BASE_URL = '/api/v1';
 
@@ -15,44 +26,6 @@ const BASE_URL = '/api/v1';
  * preview machinery with their own metadata.
  */
 
-export function getMimeLabel(mimeType: string): string {
-  if (mimeType === 'application/pdf') return 'PDF';
-  if (mimeType === 'image/jpeg') return 'JPEG afbeelding';
-  if (mimeType === 'image/png') return 'PNG afbeelding';
-  if (mimeType === 'image/svg+xml') return 'SVG afbeelding';
-  if (mimeType === 'image/webp') return 'WebP afbeelding';
-  if (mimeType === 'application/msword') return 'Word document (.doc)';
-  if (mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document')
-    return 'Word document (.docx)';
-  if (mimeType === 'application/vnd.ms-excel') return 'Excel spreadsheet (.xls)';
-  if (mimeType === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
-    return 'Excel spreadsheet (.xlsx)';
-  if (mimeType === 'application/vnd.ms-powerpoint') return 'PowerPoint presentatie (.ppt)';
-  if (mimeType === 'application/vnd.openxmlformats-officedocument.presentationml.presentation')
-    return 'PowerPoint presentatie (.pptx)';
-  if (mimeType === 'text/csv') return 'CSV bestand';
-  if (mimeType === 'application/zip') return 'ZIP archief';
-  return mimeType;
-}
-
-const WORD_MIME_TYPES = [
-  'application/vnd.openxmlformats-officedocument.wordprocessingml.document', // .docx
-];
-
-const EXCEL_MIME_TYPES = [
-  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', // .xlsx
-  'application/vnd.ms-excel', // .xls
-];
-
-export function isPreviewable(mimeType: string): boolean {
-  return (
-    mimeType === 'application/pdf' ||
-    mimeType.startsWith('image/') ||
-    mimeType === 'text/csv' ||
-    WORD_MIME_TYPES.includes(mimeType) ||
-    EXCEL_MIME_TYPES.includes(mimeType)
-  );
-}
 
 // ---------- Preview renderers ----------
 
@@ -442,7 +415,24 @@ export function FilePreviewModal({
     if (mimeType.startsWith('image/')) return <ImagePreview url={blobUrl} />;
     if (mimeType === 'application/pdf') return <PdfPreview url={blobUrl} />;
     if (mimeType === 'text/csv') return <CsvPreview url={blobUrl} />;
-    if (WORD_MIME_TYPES.includes(mimeType)) return <DocxPreview url={blobUrl} />;
+    if (WORD_MIME_TYPES.includes(mimeType))
+      return (
+        // Een corrupt .docx kan docx-preview tijdens het renderen laten crashen;
+        // de error-boundary vangt dat op zodat alleen de preview faalt, niet de pagina.
+        <ErrorBoundary
+          key={blobUrl}
+          fallback={() => (
+            <div className="flex h-full items-center justify-center p-6">
+              <ErrorBox>
+                Dit Word-document kon niet worden weergegeven. Het bestand is
+                mogelijk beschadigd — download het om het lokaal te openen.
+              </ErrorBox>
+            </div>
+          )}
+        >
+          <DocxPreview url={blobUrl} />
+        </ErrorBoundary>
+      );
     if (EXCEL_MIME_TYPES.includes(mimeType)) return <XlsxPreview url={blobUrl} />;
     return <NoPreview mimeType={mimeType} />;
   };

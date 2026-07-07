@@ -33,7 +33,7 @@ const PROJECT_INCLUDE = {
     select: { id: true, firstName: true, lastName: true, email: true },
   },
   _count: {
-    select: { requests: true, quotes: true, planningItems: true },
+    select: { requests: { where: { isDeleted: false } }, quotes: true, planningItems: true },
   },
 };
 

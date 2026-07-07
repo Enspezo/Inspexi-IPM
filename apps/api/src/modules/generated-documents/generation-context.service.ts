@@ -49,7 +49,7 @@ const PLAN_FULL_INCLUDE = {
       classificationModel: { include: { characteristics: { include: { options: true } } } },
     },
   },
-  measurementSheetRecords: { include: { template: true, assetNode: true } },
+  measurementSheetRecords: { where: { deletedAt: null }, include: { template: true, assetNode: true } },
 } satisfies Prisma.InspectionPlanInclude;
 
 type PlanHeader = Prisma.InspectionPlanGetPayload<{ include: typeof PLAN_HEADER_INCLUDE }>;

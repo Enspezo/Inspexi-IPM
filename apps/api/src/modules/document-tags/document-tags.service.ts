@@ -35,7 +35,7 @@ export class DocumentTagsService {
     return paginate(this.prisma.documentTag, {
       where,
       include: {
-        _count: { select: { documents: true } },
+        _count: { select: { documents: { where: { document: { isDeleted: false } } } } },
       },
       orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
       page,
@@ -60,7 +60,7 @@ export class DocumentTagsService {
   async findOne(id: string, user: User) {
     const tag = await this.prisma.documentTag.findUnique({
       where: { id },
-      include: { _count: { select: { documents: true } } },
+      include: { _count: { select: { documents: { where: { document: { isDeleted: false } } } } } },
     });
 
     if (!tag || tag.isDeleted) {

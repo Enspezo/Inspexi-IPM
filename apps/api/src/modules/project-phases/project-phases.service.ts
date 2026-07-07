@@ -38,7 +38,7 @@ const PHASE_LIST_INCLUDE = {
   milestones: { select: { id: true, status: true, dueDate: true } },
   _count: {
     select: {
-      inspectionPlans: true,
+      inspectionPlans: { where: { deletedAt: null } },
       planningItems: true,
       workOrders: true,
       quotes: true,
@@ -59,7 +59,7 @@ const PHASE_DETAIL_INCLUDE = {
   },
   _count: {
     select: {
-      inspectionPlans: true,
+      inspectionPlans: { where: { deletedAt: null } },
       planningItems: true,
       workOrders: true,
       quotes: true,

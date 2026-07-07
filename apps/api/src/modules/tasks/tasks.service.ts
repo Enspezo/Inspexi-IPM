@@ -52,7 +52,7 @@ export class TasksService {
 
     if (contactIds.length > 0) {
       const contacts = await this.prisma.contact.findMany({
-        where: { id: { in: contactIds } },
+        where: { id: { in: contactIds }, isDeleted: false },
         select: { id: true, type: true, companyName: true, firstName: true, lastName: true },
       });
       for (const c of contacts) {
@@ -63,7 +63,7 @@ export class TasksService {
 
     if (requestIds.length > 0) {
       const requests = await this.prisma.request.findMany({
-        where: { id: { in: requestIds } },
+        where: { id: { in: requestIds }, isDeleted: false },
         select: { id: true, title: true },
       });
       for (const r of requests) {
@@ -101,7 +101,7 @@ export class TasksService {
 
     if (projectIds.length > 0) {
       const projects = await this.prisma.project.findMany({
-        where: { id: { in: projectIds } },
+        where: { id: { in: projectIds }, isDeleted: false },
         select: { id: true, title: true, projectNumber: true },
       });
       for (const p of projects) {
@@ -115,7 +115,7 @@ export class TasksService {
 
     if (userIds.length > 0) {
       const users = await this.prisma.user.findMany({
-        where: { id: { in: userIds } },
+        where: { id: { in: userIds }, isDeleted: false },
         select: { id: true, firstName: true, lastName: true },
       });
       for (const u of users) {

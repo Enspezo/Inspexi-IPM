@@ -8,7 +8,7 @@ import {
 } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { PrismaService } from '@/prisma';
-import { assertFound } from '@/common';
+import { assertFound, sanitizeStorageExtension } from '@/common';
 import { TenantCacheService } from '@/common/services/tenant-cache.service';
 import {
   CreateOrganizationDto,
@@ -249,7 +249,7 @@ export class OrganizationsService {
       await this.storage.delete(org.logoUrl).catch(() => {});
     }
 
-    const ext = file.originalname.split('.').pop() ?? 'png';
+    const ext = sanitizeStorageExtension(file.originalname, 'png');
     const storageKey = `logos/${id}/${randomUUID()}.${ext}`;
     await this.storage.upload(storageKey, file.buffer, file.mimetype);
 

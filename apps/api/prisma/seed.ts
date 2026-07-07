@@ -437,17 +437,21 @@ async function seedVariantOrg(
       invitedBy: admin.id,
     },
   });
-  await prisma.clientMagicLink.create({
-    data: {
-      clientUserId: client.id,
-      email: client.email,
-      token: cfg.magicToken,
-      inspectionPlanId: plan.id,
-      expiresAt: new Date('2099-12-31T00:00:00Z'),
-      usedAt: null,
-      createdBy: admin.id,
-    },
-  });
+  // Vaste wachtwoordloze magic-link: alleen achter SEED_DEMO=1 en met korte
+  // expiry (30 dagen), net als de demo-org (zie K3-hardening).
+  if (process.env.SEED_DEMO === '1') {
+    await prisma.clientMagicLink.create({
+      data: {
+        clientUserId: client.id,
+        email: client.email,
+        token: cfg.magicToken,
+        inspectionPlanId: plan.id,
+        expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+        usedAt: null,
+        createdBy: admin.id,
+      },
+    });
+  }
 
   // Ondertekenbaar PLAN-document: inspecteur al getekend, klant PENDING.
   const docHtml = [
@@ -3246,20 +3250,27 @@ async function main() {
   });
   console.log(`  ✓ ClientAccess (VIEWER → ${contact1.companyName}) + InspectionClientAccess (canView/canSign)`);
 
-  // 6. Vaste, niet-gebruikte magic-link (ver in de toekomst verlopend) → directe login.
+  // 6. Vaste, niet-gebruikte magic-link → directe login ZONDER wachtwoord.
+  //    Dit is een gevaarlijke gemaks-shortcut en wordt daarom ALLEEN aangemaakt
+  //    achter de expliciete vlag SEED_DEMO=1 (zie .env.example). Standaard-seed
+  //    laat 'm weg. Korte expiry (30 dagen) i.p.v. "ver in de toekomst".
   //    validateMagicLink markeert 'm bij eerste gebruik als usedAt; re-seed maakt 'm opnieuw.
-  await prisma.clientMagicLink.create({
-    data: {
-      clientUserId: demoClient.id,
-      email: 'klant@inspexi-demo.nl',
-      token: 'demo-klant-magic',
-      inspectionPlanId: demoPlan.id,
-      expiresAt: new Date('2099-12-31T00:00:00Z'),
-      usedAt: null,
-      createdBy: orgAdminId,
-    },
-  });
-  console.log('  ✓ ClientMagicLink: token "demo-klant-magic" (verloopt 2099-12-31, ongebruikt)');
+  if (process.env.SEED_DEMO === '1') {
+    await prisma.clientMagicLink.create({
+      data: {
+        clientUserId: demoClient.id,
+        email: 'klant@inspexi-demo.nl',
+        token: 'demo-klant-magic',
+        inspectionPlanId: demoPlan.id,
+        expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+        usedAt: null,
+        createdBy: orgAdminId,
+      },
+    });
+    console.log('  ✓ ClientMagicLink: token "demo-klant-magic" (SEED_DEMO=1, verloopt over 30 dagen)');
+  } else {
+    console.log('  ⏭️  ClientMagicLink "demo-klant-magic" overgeslagen (zet SEED_DEMO=1 om aan te maken)');
+  }
 
   // ─── SaaS-varianten (PRD-09 §7.1) — testmatrix-orgs ─────────────────────
   // Drie extra orgs, los van de rijke demo-org, om de §7.3-testmatrix per
@@ -3333,11 +3344,15 @@ async function main() {
   console.log('   admin@inspexibasis.nl     → ORG_ADMIN (InspeXi Basis — plan Basis)');
   console.log('   admin@inspexicompleet.nl  → ORG_ADMIN (InspeXi Compleet — plan Compleet)');
   console.log('   admin@inspeximix.nl       → ORG_ADMIN (InspeXi Mix — Basis + WORKFLOW_COMPLEET)');
-  console.log('\n🔗 Klant-portaal (client-portal) — directe login via magic-link:');
-  console.log('   http://inspexidemo.localhost:5174/magic/demo-klant-magic');
-  console.log('   http://inspexibasis.localhost:5174/magic/basis-klant-magic');
-  console.log('   http://inspexicompleet.localhost:5174/magic/compleet-klant-magic');
-  console.log('   http://inspeximix.localhost:5174/magic/mix-klant-magic');
+  if (process.env.SEED_DEMO === '1') {
+    console.log('\n🔗 Klant-portaal (client-portal) — directe login via magic-link (SEED_DEMO=1):');
+    console.log('   http://inspexidemo.localhost:5174/magic/demo-klant-magic');
+    console.log('   http://inspexibasis.localhost:5174/magic/basis-klant-magic');
+    console.log('   http://inspexicompleet.localhost:5174/magic/compleet-klant-magic');
+    console.log('   http://inspeximix.localhost:5174/magic/mix-klant-magic');
+  } else {
+    console.log('\n🔗 Klant-portaal magic-links overgeslagen (zet SEED_DEMO=1 om ze aan te maken).');
+  }
 }
 
 main()

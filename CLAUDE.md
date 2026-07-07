@@ -27,7 +27,7 @@ Monorepo met **NestJS API** + **React Portal**, Turbo + pnpm workspaces.
 **Operationele gotchas (belangrijk voor browser-/dev-werk):**
 - `pnpm db:seed` **wist en herseed't de hele DB incl. users** → daarna opnieuw inloggen. Soms houdt de API daarna een **stale tenant-cache** (5 min) → een org geeft dan "niet gevonden"; **herstart de API** om de cache te legen.
 - Seed-wachtwoorden: `Password123!`. Staf-login op `inspexidemo.localhost:5173` (`admin@inspexi-demo.nl`); SUPERUSER op `mijn.localhost:5173` (`superuser@inspexi.nl`).
-- Demo-klant voor de client-portal (uit de seed): `http://inspexidemo.localhost:5174/magic/demo-klant-magic` → logt **direct in zonder wachtwoord** (vaste magic-link op het demo-inspectieplan).
+- Demo-klant voor de client-portal (uit de seed): `http://inspexidemo.localhost:5174/magic/demo-klant-magic` → logt **direct in zonder wachtwoord** (vaste magic-link op het demo-inspectieplan). **Let op (K3-hardening):** deze wachtwoordloze magic-links worden alleen geseed met **`SEED_DEMO=1`** (`SEED_DEMO=1 pnpm db:seed`); zonder die vlag worden ze overgeslagen en werkt de directe client-portal-demo-login niet. De geseede links verlopen bovendien na 30 dagen (niet meer in 2099).
 - Het demo-inspectieplan hangt op de unified AssetNode-boom: hoofdlocatie (= CRM-Locatie "Kantoorpand Zuidas") → deellocatie "Verdieping 1" (scope) → 2 assets + findings + 1 plattegrond (LocationImage op de wortel-node) + markers + 2 meetstaat-records + een gegenereerd (ondertekenbaar) document.
 - Voice `/voice/parse-measurement` vereist een `ANTHROPIC_API_KEY` in `apps/api/.env`. Document-generatie vereist Chromium voor Puppeteer in de API-image bij deploy.
 

@@ -149,8 +149,15 @@ export class AuthService {
 
     const resetToken = this.jwtService.sign(
       // E-mail in de token binden zodat een token nooit op een ander
-      // (bijv. later hergebruikt of gewijzigd) account toegepast kan worden
-      { sub: user.id, email: user.email, purpose: 'password-reset' },
+      // (bijv. later hergebruikt of gewijzigd) account toegepast kan worden.
+      // `pwStamp` bindt de token aan de huidige wachtwoordstaat → na gebruik of
+      // na een wachtwoordwijziging is de link ongeldig (single-use).
+      {
+        sub: user.id,
+        email: user.email,
+        purpose: 'password-reset',
+        pwStamp: this.passwordStamp(user.passwordChangedAt),
+      },
       {
         secret: this.config.get<string>('JWT_SECRET'),
         expiresIn: '1h',
@@ -180,9 +187,16 @@ export class AuthService {
     // Valideer dat de token nog bij dit account hoort (e-mailbinding)
     const user = await this.prisma.user.findUnique({
       where: { id: payload.sub },
-      select: { id: true, email: true },
+      select: { id: true, email: true, passwordChangedAt: true },
     });
     if (!user || !payload.email || user.email !== payload.email) {
+      throw new BadRequestException('Ongeldige of verlopen reset token');
+    }
+
+    // Single-use: de token draagt de wachtwoordstaat van het moment van
+    // aanvragen. Is het wachtwoord sindsdien gewijzigd (of is deze token al
+    // gebruikt), dan wijkt de stamp af en is de token ongeldig.
+    if (payload.pwStamp !== this.passwordStamp(user.passwordChangedAt)) {
       throw new BadRequestException('Ongeldige of verlopen reset token');
     }
 
@@ -190,7 +204,7 @@ export class AuthService {
 
     await this.prisma.user.update({
       where: { id: payload.sub },
-      data: { passwordHash },
+      data: { passwordHash, passwordChangedAt: new Date() },
     });
 
     // Revoke all refresh tokens for this user
@@ -352,6 +366,7 @@ export class AuthService {
       email: user.email,
       roles: user.roles,
       orgId: user.orgId,
+      type: 'access',
     };
     return this.jwtService.sign(payload);
   }
@@ -389,6 +404,14 @@ export class AuthService {
 
   private hashToken(token: string): string {
     return crypto.createHash('sha256').update(token).digest('hex');
+  }
+
+  /**
+   * Stabiele weergave van de wachtwoordstaat om reset-tokens single-use te
+   * maken. `null` (nog nooit gewijzigd) is een geldige, aparte waarde.
+   */
+  private passwordStamp(passwordChangedAt: Date | null): string | null {
+    return passwordChangedAt ? passwordChangedAt.toISOString() : null;
   }
 
   private calculateExpiry(duration: string): Date {

@@ -7,6 +7,7 @@ import { json, urlencoded } from 'express';
 import type { Request, Response } from 'express';
 import { AppModule } from './app.module';
 import { AllExceptionsFilter } from './common/filters';
+import { validateJwtSecrets } from './common/config/validate-jwt-secrets';
 
 const processLogger = new Logger('Process');
 
@@ -26,6 +27,10 @@ process.on('uncaughtException', (error) => {
 });
 
 async function bootstrap() {
+  // Fail-fast: weiger te starten met ontbrekende/default/gedeelde JWT-secrets
+  // (vóór het opzetten van de Nest-app, zodat een misconfiguratie meteen stopt).
+  validateJwtSecrets(process.env, process.env.NODE_ENV);
+
   // We registreren de body-parsers hieronder zelf (bodyParser: false) zodat we per
   // route gedifferentieerde limieten kunnen zetten. De default Nest/Express-limiet
   // van 100 kB is te krap voor realistische v3-sync-pushes (honderden entiteiten +

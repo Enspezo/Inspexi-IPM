@@ -45,8 +45,8 @@ export function ChecklistItemsTab({ checklistId, itemLinks, canEdit }: Props) {
   const handleToggleRequired = async (link: ChecklistItemLink) => {
     try {
       await updateLink.mutateAsync({ linkId: link.id, data: { isRequired: !link.isRequired } });
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Bijwerken mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 
@@ -63,8 +63,8 @@ export function ChecklistItemsTab({ checklistId, itemLinks, canEdit }: Props) {
       });
       showToast('Categorie bijgewerkt', 'success');
       setEditingCategoryId(null);
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Bijwerken mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 
@@ -79,8 +79,8 @@ export function ChecklistItemsTab({ checklistId, itemLinks, canEdit }: Props) {
     try {
       await removeLink.mutateAsync(link.id);
       showToast('Item verwijderd', 'success');
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Verwijderen mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 

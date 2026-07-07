@@ -50,8 +50,8 @@ export function ItemPickerModal({ isOpen, onClose, checklistId, linkedItemIds }:
     try {
       await addItem.mutateAsync({ checklistItemId });
       showToast('Item toegevoegd', 'success');
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Toevoegen mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 

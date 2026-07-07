@@ -75,8 +75,7 @@ export function ProjectPhasesTab({
       setLocalOrder(null); // server-data neemt over
     } catch (err) {
       setLocalOrder(null); // rollback naar server-volgorde
-      showToast(getErrorMessage(err, 'Herordenen mislukt'), 'error');
-    }
+}
   };
 
   return (
@@ -131,9 +130,9 @@ export function ProjectPhasesTab({
               await createMutation.mutateAsync(data);
               showToast('Fase toegevoegd', 'success');
               setCreateOpen(false);
-            } catch (err) {
-              showToast(getErrorMessage(err, 'Toevoegen mislukt'), 'error');
-            }
+            } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
+    }
           }}
         />
       )}

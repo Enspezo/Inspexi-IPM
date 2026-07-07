@@ -13,7 +13,7 @@ import {
   STORAGE_PROVIDER,
   type StorageProvider,
 } from '@/common/services/storage/storage.interface';
-import { paginate, buildOrderBy, orgScope, assertSameOrg, assertAllSameOrg } from '@/common';
+import { paginate, buildOrderBy, orgScope, assertSameOrg, assertAllSameOrg, sanitizeStorageFilename } from '@/common';
 import { UploadDocumentDto, ListDocumentsQueryDto, UpdateDocumentDto } from './dto';
 
 const userSelect = {
@@ -84,7 +84,7 @@ export class DocumentsService {
 
     if (contactIds.length > 0) {
       const contacts = await this.prisma.contact.findMany({
-        where: { id: { in: contactIds } },
+        where: { id: { in: contactIds }, isDeleted: false },
         select: { id: true, companyName: true, firstName: true, lastName: true },
       });
       for (const c of contacts) {
@@ -112,7 +112,7 @@ export class DocumentsService {
 
     if (requestIds.length > 0) {
       const requests = await this.prisma.request.findMany({
-        where: { id: { in: requestIds } },
+        where: { id: { in: requestIds }, isDeleted: false },
         select: { id: true, title: true },
       });
       for (const r of requests) {
@@ -170,7 +170,7 @@ export class DocumentsService {
 
     if (projectIds.length > 0) {
       const projects = await this.prisma.project.findMany({
-        where: { id: { in: projectIds } },
+        where: { id: { in: projectIds }, isDeleted: false },
         select: { id: true, title: true, projectNumber: true },
       });
       for (const p of projects) {
@@ -184,7 +184,7 @@ export class DocumentsService {
 
     if (userIds.length > 0) {
       const users = await this.prisma.user.findMany({
-        where: { id: { in: userIds } },
+        where: { id: { in: userIds }, isDeleted: false },
         select: { id: true, firstName: true, lastName: true },
       });
       for (const u of users) {
@@ -212,7 +212,7 @@ export class DocumentsService {
 
     if (supportTicketIds.length > 0) {
       const tickets = await this.prisma.supportTicket.findMany({
-        where: { id: { in: supportTicketIds } },
+        where: { id: { in: supportTicketIds }, isDeleted: false },
         select: { id: true, ticketNumber: true, subject: true },
       });
       for (const t of tickets) {
@@ -277,7 +277,7 @@ export class DocumentsService {
     // Validate any requested tags belong to the same org before writing.
     const tagIds = await this.resolveTagIds(dto.tagIds, orgId);
 
-    const storageKey = `${orgId}/${randomUUID()}-${file.originalname}`;
+    const storageKey = `${orgId}/${randomUUID()}-${sanitizeStorageFilename(file.originalname)}`;
 
     await this.storage.upload(storageKey, file.buffer, file.mimetype);
 

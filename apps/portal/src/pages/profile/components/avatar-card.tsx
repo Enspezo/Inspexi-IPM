@@ -35,8 +35,8 @@ export function AvatarCard() {
       setAvatarCacheBust(Date.now());
       refreshUser();
       showToast('Avatar geüpload', 'success');
-    } catch (err) {
-      showToast(err instanceof Error ? err.message : 'Upload mislukt', 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 
@@ -46,8 +46,8 @@ export function AvatarCard() {
       setAvatarCacheBust(Date.now());
       refreshUser();
       showToast('Avatar verwijderd', 'success');
-    } catch (err) {
-      showToast(err instanceof Error ? err.message : 'Verwijderen mislukt', 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 

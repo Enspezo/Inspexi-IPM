@@ -122,11 +122,8 @@ export function CustomFieldModal({
         showToast('Eigen veld aangemaakt', 'success');
       }
       onClose();
-    } catch (err) {
-      showToast(
-        err instanceof Error ? err.message : 'Er is een fout opgetreden',
-        'error',
-      );
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 

@@ -105,8 +105,8 @@ export class AssetsService {
           _count: {
             select: {
               findings: { where: { deletedAt: null } },
-              measurementRecords: true,
-              visualInspections: true,
+              measurementRecords: { where: { deletedAt: null } },
+              visualInspections: { where: { deletedAt: null } },
             },
           },
         },
@@ -184,8 +184,8 @@ export class AssetsService {
       await this.prisma.assetNode.findFirst({
         where: { id, ...orgScope(user), nodeType: AssetNodeType.ASSET, deletedAt: null },
         include: {
-          visualInspections: true,
-          measurementRecords: true,
+          visualInspections: { where: { deletedAt: null } },
+          measurementRecords: { where: { deletedAt: null } },
           findings: { where: { deletedAt: null }, orderBy: { createdAt: 'desc' } },
           children: {
             where: { deletedAt: null, nodeType: AssetNodeType.ASSET },

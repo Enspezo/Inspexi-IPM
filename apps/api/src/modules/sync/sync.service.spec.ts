@@ -3,7 +3,7 @@ import { BadRequestException } from '@nestjs/common';
 import { Role, SyncStatus } from '@prisma/client';
 import { SyncService } from './sync.service';
 import { PrismaService } from '@/prisma';
-import { ChatService } from '../chat/chat.service';
+import { ChatSyncService } from '../chat/chat-sync.service';
 import { NumberingService } from '../numbering/numbering.service';
 import { AssetNodesService } from '../asset-nodes/asset-nodes.service';
 
@@ -79,7 +79,7 @@ describe('SyncService', () => {
       providers: [
         SyncService,
         { provide: PrismaService, useValue: mockPrisma },
-        { provide: ChatService, useValue: mockChat },
+        { provide: ChatSyncService, useValue: mockChat },
         { provide: NumberingService, useValue: mockNumbering },
         { provide: AssetNodesService, useValue: mockAssetNodes },
       ],

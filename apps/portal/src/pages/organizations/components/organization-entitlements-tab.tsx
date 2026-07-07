@@ -59,16 +59,16 @@ export function OrganizationEntitlementsTab({ orgId }: { orgId: string }) {
     try {
       await assignPlan.mutateAsync(pendingPlanId || null);
       showToast('Abonnement bijgewerkt', 'success');
-    } catch (err) {
-      showToast(err instanceof Error ? err.message : 'Opslaan mislukt', 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 
   const onFeatureChange = async (featureKey: string, state: FeatureOverrideState) => {
     try {
       await setFeature.mutateAsync({ featureKey, state });
-    } catch (err) {
-      showToast(err instanceof Error ? err.message : 'Wijzigen mislukt', 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 

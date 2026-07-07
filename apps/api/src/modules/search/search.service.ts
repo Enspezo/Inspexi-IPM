@@ -438,7 +438,7 @@ export class SearchService {
       contactIds.length > 0
         ? this.prisma.contact
             .findMany({
-              where: { id: { in: contactIds } },
+              where: { id: { in: contactIds }, isDeleted: false },
               select: { id: true, companyName: true, firstName: true, lastName: true },
             })
             .then((contacts) => {
@@ -455,7 +455,7 @@ export class SearchService {
       requestIds.length > 0
         ? this.prisma.request
             .findMany({
-              where: { id: { in: requestIds } },
+              where: { id: { in: requestIds }, isDeleted: false },
               select: { id: true, title: true },
             })
             .then((requests) => {
@@ -525,7 +525,7 @@ export class SearchService {
       contactIds.length > 0
         ? this.prisma.contact
             .findMany({
-              where: { id: { in: contactIds } },
+              where: { id: { in: contactIds }, isDeleted: false },
               select: { id: true, companyName: true, firstName: true, lastName: true },
             })
             .then((contacts) => {
@@ -542,7 +542,7 @@ export class SearchService {
       requestIds.length > 0
         ? this.prisma.request
             .findMany({
-              where: { id: { in: requestIds } },
+              where: { id: { in: requestIds }, isDeleted: false },
               select: { id: true, title: true },
             })
             .then((requests) => {

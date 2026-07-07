@@ -78,8 +78,8 @@ export function CreateNormTypeModal({ isOpen, onClose }: Props) {
       showToast('Normtype aangemaakt', 'success');
       onClose();
       navigate(`/norm-types/${created.id}`);
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Aanmaken mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 

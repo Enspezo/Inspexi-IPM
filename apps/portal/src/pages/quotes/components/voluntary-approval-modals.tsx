@@ -50,8 +50,8 @@ export function RequestTeamApprovalModal({ quoteId, quoteNumber, isOpen, onClose
       });
       showToast('Goedkeuring aan team gevraagd', 'success');
       onClose();
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Verzoek mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 
@@ -128,8 +128,8 @@ export function RequestPersonApprovalModal({ quoteId, quoteNumber, isOpen, onClo
       await mutation.mutateAsync({ approverUserId, note: note.trim() || undefined });
       showToast('Goedkeuring aan persoon gevraagd', 'success');
       onClose();
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Verzoek mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 

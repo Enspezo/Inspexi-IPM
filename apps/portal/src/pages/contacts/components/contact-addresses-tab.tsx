@@ -77,9 +77,9 @@ export function ContactAddressesTab({
                         try {
                           await deleteAddressMutation.mutateAsync(addr.id);
                           showToast('Adres verwijderd', 'success');
-                        } catch (err) {
-                          showToast(getErrorMessage(err, 'Verwijderen mislukt'), 'error');
-                        }
+                        } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
+    }
                       }}
                     />
                   )}

@@ -127,8 +127,8 @@ export default function PriceTableDetailPage() {
       );
       showToast('Prijzen opgeslagen!', 'success');
       setIsDirty(false);
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Opslaan mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 
@@ -136,8 +136,8 @@ export default function PriceTableDetailPage() {
     try {
       await removeMutation.mutateAsync(contactId);
       showToast('Koppeling verwijderd', 'success');
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Verwijderen mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 

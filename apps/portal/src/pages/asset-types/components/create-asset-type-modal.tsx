@@ -78,8 +78,8 @@ export function CreateAssetTypeModal({ isOpen, onClose }: Props) {
       showToast('Asset-type aangemaakt', 'success');
       onClose();
       navigate(`/asset-types/${created.id}`);
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Aanmaken mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 

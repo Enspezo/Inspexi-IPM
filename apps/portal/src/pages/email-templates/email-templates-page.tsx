@@ -35,8 +35,8 @@ export default function EmailTemplatesPage() {
     try {
       await deleteMutation.mutateAsync(id);
       showToast('Sjabloon gedeactiveerd', 'success');
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Deactiveren mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 

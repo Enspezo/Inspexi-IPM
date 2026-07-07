@@ -89,8 +89,8 @@ export function LocationTypeConstraintsTab({ locationTypeId, canManage }: Props)
     try {
       await setConstraints.mutateAsync(payload);
       showToast('Constraints opgeslagen', 'success');
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Opslaan mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 

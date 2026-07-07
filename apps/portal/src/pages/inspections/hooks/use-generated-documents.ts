@@ -13,8 +13,10 @@
  * Blob-endpoints (preview/download) gaan via een ruwe auth-fetch i.p.v. apiClient,
  * omdat apiClient de JSON-`{ success, data }`-envelope verwacht.
  */
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useApiMutation } from '@/hooks/use-api-mutation';
 import { apiClient, getAccessToken } from '@/lib/api-client';
+import { inspectionDocumentKeys } from '@/lib/query-keys';
 import { DocumentType } from '@/types';
 import type { GeneratedDocument, DocumentSignature } from '@/types';
 
@@ -27,7 +29,7 @@ function authHeaders(): Record<string, string> {
 
 export function useInspectionDocuments(planId: string | undefined) {
   return useQuery<GeneratedDocument[]>({
-    queryKey: ['inspection-documents', planId],
+    queryKey: inspectionDocumentKeys.byPlan(planId ?? ''),
     queryFn: () => apiClient.get<GeneratedDocument[]>(`/inspection-plans/${planId}/documents`),
     enabled: !!planId,
   });
@@ -35,46 +37,46 @@ export function useInspectionDocuments(planId: string | undefined) {
 
 export function useGenerateDocument(planId: string) {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (documentType: DocumentType) => {
       const endpoint = documentType === DocumentType.PLAN ? 'generate-plan' : 'generate-report';
       return apiClient.post<GeneratedDocument>(`/inspection-plans/${planId}/${endpoint}`);
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['inspection-documents', planId] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: inspectionDocumentKeys.byPlan(planId) }),
   });
 }
 
 export function useExportDocumentPdf(planId: string) {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (id: string) =>
       apiClient.post<{ pdfUrl: string }>(`/generated-documents/${id}/export-pdf`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['inspection-documents', planId] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: inspectionDocumentKeys.byPlan(planId) }),
   });
 }
 
 export function useExportDocumentWord(planId: string) {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (id: string) =>
       apiClient.post<{ wordUrl: string }>(`/generated-documents/${id}/export-word`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['inspection-documents', planId] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: inspectionDocumentKeys.byPlan(planId) }),
   });
 }
 
 export function useFinalizeDocument(planId: string) {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (id: string) => apiClient.post<GeneratedDocument>(`/generated-documents/${id}/finalize`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['inspection-documents', planId] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: inspectionDocumentKeys.byPlan(planId) }),
   });
 }
 
 export function useDeleteDocument(planId: string) {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (id: string) => apiClient.delete(`/generated-documents/${id}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['inspection-documents', planId] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: inspectionDocumentKeys.byPlan(planId) }),
   });
 }
 
@@ -87,10 +89,10 @@ export interface RequestSignatureInput {
 
 export function useRequestSignature(planId: string) {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: ({ id, data }: { id: string; data: RequestSignatureInput }) =>
       apiClient.post<DocumentSignature>(`/generated-documents/${id}/request-signature`, data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['inspection-documents', planId] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: inspectionDocumentKeys.byPlan(planId) }),
   });
 }
 

@@ -73,8 +73,8 @@ export function CreateTemplateModal({ isOpen, onClose }: Props) {
       showToast('Meetstaat-template aangemaakt', 'success');
       onClose();
       navigate(`/measurement-sheet-templates/${created.id}`);
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Aanmaken mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 

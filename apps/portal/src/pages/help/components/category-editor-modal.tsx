@@ -81,8 +81,6 @@ export function CategoryEditorModal({ isOpen, onClose, category, categories }: P
         showToast(editing ? 'Categorie bijgewerkt' : 'Categorie aangemaakt', 'success');
         onClose();
       },
-      onError: (e: unknown) =>
-        showToast(e instanceof Error ? e.message : 'Opslaan mislukt', 'error'),
     };
     if (editing && category) {
       update.mutate({ id: category.id, data: payload }, handlers);

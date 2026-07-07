@@ -45,8 +45,8 @@ export function NewChatView() {
       });
       clearPendingReference();
       openThread(thread.id);
-    } catch (err) {
-      showToast(err instanceof Error ? err.message : 'Chat starten mislukt', 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   }
 
@@ -59,8 +59,8 @@ export function NewChatView() {
       });
       clearPendingReference();
       openThread(thread.id);
-    } catch (err) {
-      showToast(err instanceof Error ? err.message : 'Team-chat starten mislukt', 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   }
 

@@ -22,6 +22,7 @@ import { User, Role, DocumentType } from '@prisma/client';
 import { Roles, CurrentUser, Public } from '@/common/decorators';
 import { ALL_STAFF } from '@/common/auth/roles';
 import { GeneratedDocumentsService } from './generated-documents.service';
+import { DocumentSigningService } from './document-signing.service';
 import {
   GenerateDocumentDto,
   UpdateGeneratedDocumentDto,
@@ -38,7 +39,10 @@ const APPROVERS = [Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.WERKVOORBE
 @RequiresFeature('BASIS_INSPECTIES')
 @Controller()
 export class GeneratedDocumentsController {
-  constructor(private readonly service: GeneratedDocumentsService) {}
+  constructor(
+    private readonly service: GeneratedDocumentsService,
+    private readonly signing: DocumentSigningService,
+  ) {}
 
   @Post('inspection-plans/:planId/generate-plan')
   @Roles(...STAFF)
@@ -159,7 +163,7 @@ export class GeneratedDocumentsController {
     @CurrentUser() user: User,
     @Body() dto: RequestSignatureDto,
   ) {
-    return { success: true, data: await this.service.requestSignature(id, user, dto) };
+    return { success: true, data: await this.signing.requestSignature(id, user, dto) };
   }
 
   @Post('generated-documents/:id/sign')
@@ -169,7 +173,7 @@ export class GeneratedDocumentsController {
     @CurrentUser() user: User,
     @Body() dto: SignDocumentDto,
   ) {
-    return { success: true, data: await this.service.signDocument(id, user, dto) };
+    return { success: true, data: await this.signing.signDocument(id, user, dto) };
   }
 }
 
@@ -178,14 +182,14 @@ export class GeneratedDocumentsController {
 @RequiresFeature('BASIS_INSPECTIES')
 @Controller('signature-requests')
 export class SignatureRequestsController {
-  constructor(private readonly service: GeneratedDocumentsService) {}
+  constructor(private readonly signing: DocumentSigningService) {}
 
   @Get(':requestId')
   @Public()
   @Throttle({ default: { limit: 20, ttl: 60000 } })
   @ApiOperation({ summary: 'Ondertekenverzoek ophalen (publiek)' })
   async get(@Param('requestId', ParseUUIDPipe) requestId: string) {
-    return { success: true, data: await this.service.getSignatureRequest(requestId) };
+    return { success: true, data: await this.signing.getSignatureRequest(requestId) };
   }
 
   @Post(':requestId/sign')
@@ -193,7 +197,7 @@ export class SignatureRequestsController {
   @Throttle({ default: { limit: 10, ttl: 60000 } })
   @ApiOperation({ summary: 'Document ondertekenen via publieke link' })
   async sign(@Param('requestId', ParseUUIDPipe) requestId: string, @Body() dto: PublicSignDto) {
-    await this.service.signViaRequest(requestId, dto);
+    await this.signing.signViaRequest(requestId, dto);
     return { success: true };
   }
 }

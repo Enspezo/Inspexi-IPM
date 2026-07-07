@@ -560,6 +560,10 @@ model User {
   orgId           String?        @map("org_id") @db.Uuid
   email           String         @unique
   passwordHash    String         @map("password_hash")
+  // Wijzigingsmoment van het wachtwoord — bindt reset-tokens aan de huidige
+  // wachtwoordstaat zodat een reset-link éénmalig bruikbaar is en na een
+  // wachtwoordwijziging (of hergebruik) ongeldig wordt.
+  passwordChangedAt DateTime?    @map("password_changed_at")
   firstName       String         @map("first_name")
   lastName        String         @map("last_name")
   roles           Role[]         @default([])

@@ -61,8 +61,8 @@ export function FollowUpSection({
         showToast('Follow-up toegevoegd', 'success');
       }
       setShowModal(false);
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Opslaan mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 
@@ -76,8 +76,8 @@ export function FollowUpSection({
     try {
       await deleteMutation.mutateAsync(followUpId);
       showToast('Follow-up verwijderd', 'success');
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Verwijderen mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 
@@ -88,8 +88,8 @@ export function FollowUpSection({
         data: { isActive: !followUp.isActive },
       });
       showToast(followUp.isActive ? 'Follow-up uitgeschakeld' : 'Follow-up ingeschakeld', 'success');
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Wijziging mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 

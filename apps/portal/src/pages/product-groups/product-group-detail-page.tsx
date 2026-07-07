@@ -46,11 +46,8 @@ export default function ProductGroupDetailPage() {
       await deleteMutation.mutateAsync(group.id);
       showToast('Productgroep verwijderd', 'success');
       navigate('/products/groups');
-    } catch (err) {
-      showToast(
-        err instanceof Error ? err.message : 'Verwijderen mislukt',
-        'error',
-      );
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 
@@ -58,8 +55,8 @@ export default function ProductGroupDetailPage() {
     try {
       await addProductMutation.mutateAsync(productId);
       showToast('Product toegevoegd aan groep', 'success');
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Toevoegen mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 
@@ -74,8 +71,8 @@ export default function ProductGroupDetailPage() {
     try {
       await removeProductMutation.mutateAsync(productId);
       showToast('Product verwijderd uit groep', 'success');
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Verwijderen mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 
@@ -118,9 +115,9 @@ export default function ProductGroupDetailPage() {
                 onSave={async (notes) => {
                   try {
                     await updateMutation.mutateAsync({ notes: notes || undefined });
-                  } catch (err) {
-                    showToast(getErrorMessage(err, 'Notities opslaan mislukt'), 'error');
-                  }
+                  } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
+    }
                 }}
               />
             </div>

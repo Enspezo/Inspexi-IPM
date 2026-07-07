@@ -23,6 +23,7 @@ import {
   isManagement,
   hasRole,
   USER_SUMMARY_SELECT,
+  sanitizeStorageFilename,
 } from '@/common';
 import {
   CreateInspectorCertificateDto,
@@ -298,7 +299,7 @@ export class InspectorCertificatesService {
 
   /** Storage-sleutel: `{orgId}/inspector-certificates/{userId}/{uuid}-{originalName}`. */
   private async storeFile(orgId: string, userId: string, file: Express.Multer.File) {
-    const storageKey = `${orgId}/inspector-certificates/${userId}/${randomUUID()}-${file.originalname}`;
+    const storageKey = `${orgId}/inspector-certificates/${userId}/${randomUUID()}-${sanitizeStorageFilename(file.originalname)}`;
     await this.storage.upload(storageKey, file.buffer, file.mimetype);
     return {
       storageKey,

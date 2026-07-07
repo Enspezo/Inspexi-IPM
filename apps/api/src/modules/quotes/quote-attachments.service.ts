@@ -2,7 +2,7 @@ import { Injectable, NotFoundException, ForbiddenException, Inject } from '@nest
 import { User, QuoteStatus } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import { PrismaService } from '@/prisma';
-import { assertFound } from '@/common';
+import { assertFound, sanitizeStorageFilename } from '@/common';
 import { StorageProvider, STORAGE_PROVIDER } from '@/common/services/storage/storage.interface';
 import { findQuoteForUser } from './quotes.helpers';
 
@@ -21,7 +21,7 @@ export class QuoteAttachmentsService {
 
   async uploadAttachment(id: string, file: Express.Multer.File, user: User) {
     const quote = await findQuoteForUser(this.prisma, id, user);
-    const storageKey = `${quote.orgId}/quotes/${quote.id}/${randomUUID()}-${file.originalname}`;
+    const storageKey = `${quote.orgId}/quotes/${quote.id}/${randomUUID()}-${sanitizeStorageFilename(file.originalname)}`;
     await this.storage.upload(storageKey, file.buffer, file.mimetype);
     const count = await this.prisma.quoteAttachment.count({ where: { quoteId: quote.id } });
     return this.prisma.quoteAttachment.create({

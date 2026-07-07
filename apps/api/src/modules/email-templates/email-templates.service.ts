@@ -10,7 +10,7 @@ import { randomUUID } from 'crypto';
 import { User, Role, Prisma, EmailTemplateType } from '@prisma/client';
 import { PrismaService } from '@/prisma';
 import { STORAGE_PROVIDER, type StorageProvider } from '@/common/services/storage/storage.interface';
-import { paginate, orgScope, assertFound } from '@/common';
+import { paginate, orgScope, assertFound, sanitizeStorageFilename } from '@/common';
 import { CreateEmailTemplateDto } from './dto/create-email-template.dto';
 import { UpdateEmailTemplateDto } from './dto/update-email-template.dto';
 import { TEMPLATE_TYPE_PLACEHOLDERS, EMAIL_TEMPLATE_TYPE_LABELS } from './placeholder.config';
@@ -172,7 +172,7 @@ export class EmailTemplatesService {
       for (const att of template.attachments) {
         try {
           const buffer = await this.storage.download(att.storageKey);
-          const newKey = `${template.orgId}/et/${newTemplate.id}/${randomUUID()}-${att.originalName}`;
+          const newKey = `${template.orgId}/et/${newTemplate.id}/${randomUUID()}-${sanitizeStorageFilename(att.originalName)}`;
           await this.storage.upload(newKey, buffer, att.mimeType);
           await this.prisma.emailTemplateAttachment.create({
             data: {
@@ -319,7 +319,7 @@ export class EmailTemplatesService {
       throw new BadRequestException('Bestandstype niet toegestaan');
     }
 
-    const storageKey = `${template.orgId}/et/${template.id}/${randomUUID()}-${file.originalname}`;
+    const storageKey = `${template.orgId}/et/${template.id}/${randomUUID()}-${sanitizeStorageFilename(file.originalname)}`;
     await this.storage.upload(storageKey, file.buffer, file.mimetype);
 
     const maxSort = await this.prisma.emailTemplateAttachment.aggregate({

@@ -19,7 +19,8 @@ import {
   PassFailOperator,
 } from '@prisma/client';
 import { PrismaService } from '@/prisma';
-import { orgScope, assertFound, assertAllSameOrg, requireOrg } from '@/common';
+import { orgScope, assertFound, assertAllSameOrg, requireOrg, validateJsonColumn } from '@/common';
+import { sheetRecordDataSchema, SHEET_RECORD_DATA_LABEL } from './schemas/sheet-record-data.schema';
 import { AssetNodesService } from '../asset-nodes/asset-nodes.service';
 import {
   CreateMeasurementSheetRecordDto,
@@ -203,6 +204,8 @@ export class MeasurementSheetRecordsService {
         'meetmiddelen',
       );
     }
+
+    validateJsonColumn(sheetRecordDataSchema, dto.data, SHEET_RECORD_DATA_LABEL);
 
     const snapshot = record.templateSnapshot as unknown as ReturnType<
       typeof this.createTemplateSnapshot

@@ -1,10 +1,11 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { AssetNodeType, NumberingModel, Prisma, User } from '@prisma/client';
 import { PrismaService } from '@/prisma';
-import { assertFound, assertSameOrg, orgScope, requireOrg } from '@/common';
+import { assertFound, assertSameOrg, orgScope, requireOrg, validateJsonColumn } from '@/common';
 import { NumberingService } from '../numbering/numbering.service';
 import { TreeService } from './tree.service';
 import { CreateAssetNodeDto, MoveAssetNodeDto, UpdateAssetNodeDto } from './dto';
+import { technicalDataSchema, TECHNICAL_DATA_LABEL } from './schemas/technical-data.schema';
 
 /** Default type-code voor een lazily aangemaakte wortel-LOCATION-node. */
 const DEFAULT_ROOT_TYPE_CODE = 'locatie';
@@ -97,6 +98,7 @@ export class AssetNodesService {
 
   async create(user: User, dto: CreateAssetNodeDto, deviceId?: string) {
     const orgId = requireOrg(user);
+    validateJsonColumn(technicalDataSchema, dto.technicalData, TECHNICAL_DATA_LABEL);
 
     // Wortel-node aanmaken (geen parent) → moet een LOCATION met rootLocationId zijn.
     if (!dto.parentId) {
@@ -171,6 +173,7 @@ export class AssetNodesService {
 
   async update(id: string, user: User, dto: UpdateAssetNodeDto) {
     const orgId = requireOrg(user);
+    validateJsonColumn(technicalDataSchema, dto.technicalData, TECHNICAL_DATA_LABEL);
     const node = assertFound(await this.getNodeRaw(id, orgId), 'Node');
 
     await this.prisma.assetNode.update({

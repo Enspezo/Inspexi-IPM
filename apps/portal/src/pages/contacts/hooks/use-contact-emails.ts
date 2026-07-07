@@ -1,5 +1,7 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
+import { useApiMutation } from '@/hooks/use-api-mutation';
 import { apiClient } from '@/lib/api-client';
+import { contactKeys } from '@/lib/query-keys';
 import type { ContactEmail } from '@/types';
 
 interface SendEmailDto {
@@ -10,11 +12,11 @@ interface SendEmailDto {
 export function useSendEmail(contactId: string) {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useApiMutation({
     mutationFn: (data: SendEmailDto) =>
       apiClient.post<ContactEmail>(`/contacts/${contactId}/email`, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['contacts', contactId] });
+      queryClient.invalidateQueries({ queryKey: contactKeys.detail(contactId) });
     },
   });
 }

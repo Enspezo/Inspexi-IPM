@@ -1,5 +1,7 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useApiMutation } from '@/hooks/use-api-mutation';
 import { apiClient } from '@/lib/api-client';
+import { contactKeys, customerGroupKeys } from '@/lib/query-keys';
 import type {
   Contact,
   PaginatedResponse,
@@ -41,7 +43,7 @@ export function useContacts(params: ListContactsParams = {}) {
   const endpoint = `/contacts${qs ? `?${qs}` : ''}`;
 
   return useQuery<PaginatedResponse<Contact>>({
-    queryKey: ['contacts', params],
+    queryKey: contactKeys.list(params),
     queryFn: () => apiClient.get<PaginatedResponse<Contact>>(endpoint),
     enabled: params.enabled,
   });
@@ -49,7 +51,7 @@ export function useContacts(params: ListContactsParams = {}) {
 
 export function useContact(id: string) {
   return useQuery<Contact>({
-    queryKey: ['contacts', id],
+    queryKey: contactKeys.detail(id),
     queryFn: () => apiClient.get<Contact>(`/contacts/${id}`),
     enabled: !!id,
   });
@@ -76,11 +78,11 @@ interface CreateContactDto {
 export function useCreateContact() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useApiMutation({
     mutationFn: (data: CreateContactDto) =>
       apiClient.post<Contact>('/contacts', data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['contacts'] });
+      queryClient.invalidateQueries({ queryKey: contactKeys.all });
     },
   });
 }
@@ -90,11 +92,11 @@ interface UpdateContactDto extends Partial<CreateContactDto> {}
 export function useUpdateContact(id: string) {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useApiMutation({
     mutationFn: (data: UpdateContactDto) =>
       apiClient.patch<Contact>(`/contacts/${id}`, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['contacts'] });
+      queryClient.invalidateQueries({ queryKey: contactKeys.all });
     },
   });
 }
@@ -102,10 +104,10 @@ export function useUpdateContact(id: string) {
 export function useDeleteContact() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useApiMutation({
     mutationFn: (id: string) => apiClient.delete(`/contacts/${id}`),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['contacts'] });
+      queryClient.invalidateQueries({ queryKey: contactKeys.all });
     },
   });
 }
@@ -115,12 +117,12 @@ export function useDeleteContact() {
 export function useSetContactGroups(contactId: string) {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useApiMutation({
     mutationFn: (groupIds: string[]) =>
       apiClient.patch<Contact>(`/contacts/${contactId}/groups`, { groupIds }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['contacts', contactId] });
-      queryClient.invalidateQueries({ queryKey: ['customer-groups'] });
+      queryClient.invalidateQueries({ queryKey: contactKeys.detail(contactId) });
+      queryClient.invalidateQueries({ queryKey: customerGroupKeys.all });
     },
   });
 }

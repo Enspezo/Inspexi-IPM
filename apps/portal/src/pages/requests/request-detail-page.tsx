@@ -82,8 +82,8 @@ export default function RequestDetailPage() {
       const quote = await createQuoteMutation.mutateAsync(request.id);
       showToast('Offerte aangemaakt', 'success');
       navigate(`/quotes/${quote.id}/edit`);
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Offerte aanmaken mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 
@@ -99,8 +99,8 @@ export default function RequestDetailPage() {
       await deleteMutation.mutateAsync(request.id);
       showToast('Aanvraag verwijderd', 'success');
       navigate('/requests');
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Verwijderen mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 
@@ -224,9 +224,9 @@ export default function RequestDetailPage() {
                     const project = await createProjectMutation.mutateAsync(request.id);
                     showToast('Project aangemaakt', 'success');
                     navigate(`/projects/${project.id}`);
-                  } catch (err) {
-                    showToast(getErrorMessage(err, 'Project aanmaken mislukt'), 'error');
-                  }
+                  } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
+    }
                 },
                 isLoading: createProjectMutation.isPending,
               }] : []),

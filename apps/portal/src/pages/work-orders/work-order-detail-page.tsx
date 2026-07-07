@@ -204,8 +204,8 @@ export default function WorkOrderDetailPage() {
       });
       setIsEditing(false);
       showToast('Werkbon bijgewerkt', 'success');
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Fout bij opslaan'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 
@@ -243,8 +243,8 @@ export default function WorkOrderDetailPage() {
         })),
       });
       showToast('Meerwerk opgeslagen', 'success');
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Fout bij opslaan meerwerk'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 

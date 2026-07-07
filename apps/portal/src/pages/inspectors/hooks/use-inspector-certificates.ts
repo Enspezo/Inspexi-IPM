@@ -1,8 +1,8 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useApiMutation } from '@/hooks/use-api-mutation';
 import { apiClient } from '@/lib/api-client';
+import { inspectorCertificateKeys } from '@/lib/query-keys';
 import type { InspectorCertificate, PaginatedResponse } from '@/types';
-
-const KEY = 'inspector-certificates';
 
 /** Velden van het toevoeg-/bewerk-formulier (datums als ISO yyyy-MM-dd strings). */
 export interface CertificateFormValues {
@@ -31,14 +31,14 @@ export function useInspectorCertificates(params: { userId?: string } = {}) {
   const qs = new URLSearchParams({ limit: '100' });
   if (params.userId) qs.set('userId', params.userId);
   return useQuery<PaginatedResponse<InspectorCertificate>>({
-    queryKey: [KEY, 'list', params.userId ?? 'all'],
+    queryKey: inspectorCertificateKeys.list(params.userId ?? 'all'),
     queryFn: () => apiClient.get<PaginatedResponse<InspectorCertificate>>(`/inspector-certificates?${qs.toString()}`),
   });
 }
 
 export function useInspectorCertificate(id: string | undefined) {
   return useQuery<InspectorCertificate>({
-    queryKey: [KEY, 'detail', id],
+    queryKey: inspectorCertificateKeys.detail(id as string),
     queryFn: () => apiClient.get<InspectorCertificate>(`/inspector-certificates/${id}`),
     enabled: !!id,
   });
@@ -47,7 +47,7 @@ export function useInspectorCertificate(id: string | undefined) {
 /** Distinct autocomplete-waarden voor "Soort" (type) of "Instantie" (issuer). */
 export function useCertificateSuggestions(field: 'type' | 'issuer') {
   return useQuery<string[]>({
-    queryKey: [KEY, 'suggestions', field],
+    queryKey: inspectorCertificateKeys.suggestions(field),
     queryFn: () => apiClient.get<string[]>(`/inspector-certificates/suggestions?field=${field}`),
     staleTime: 5 * 60 * 1000,
   });
@@ -55,35 +55,35 @@ export function useCertificateSuggestions(field: 'type' | 'issuer') {
 
 export function useCreateInspectorCertificate() {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: ({ userId, values }: { userId: string; values: CertificateFormValues }) =>
       apiClient.upload<InspectorCertificate>('/inspector-certificates', toFormData(values, userId)),
-    onSuccess: () => qc.invalidateQueries({ queryKey: [KEY] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: inspectorCertificateKeys.all }),
   });
 }
 
 export function useUpdateInspectorCertificate() {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: ({ id, values }: { id: string; values: CertificateFormValues }) =>
       apiClient.upload<InspectorCertificate>(`/inspector-certificates/${id}`, toFormData(values), 'PATCH'),
-    onSuccess: () => qc.invalidateQueries({ queryKey: [KEY] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: inspectorCertificateKeys.all }),
   });
 }
 
 export function useDeleteInspectorCertificate() {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (id: string) => apiClient.delete(`/inspector-certificates/${id}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: [KEY] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: inspectorCertificateKeys.all }),
   });
 }
 
 /** Alleen het gekoppelde bestand verwijderen; het certificaat blijft bestaan. */
 export function useDeleteCertificateDocument() {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (id: string) => apiClient.delete<InspectorCertificate>(`/inspector-certificates/${id}/document`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: [KEY] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: inspectorCertificateKeys.all }),
   });
 }

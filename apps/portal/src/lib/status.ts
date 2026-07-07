@@ -31,20 +31,19 @@ import {
   WorkOrderStatus,
 } from '@/types';
 
-export interface StatusConfig {
-  label: string;
-  classes: string;
-}
+// Het StatusConfig/StatusMap-type, de veilige getStatusConfig-lookup en de twee
+// maps die óók in het klantportaal voorkomen (GENERATED_DOCUMENT_STATUS,
+// SIGNATURE_STATUS) komen uit @inspexi/shared-web. Hieronder alleen de
+// staf-portal-specifieke maps. Re-export zodat `@/lib/status` alles blijft leveren.
+import type { StatusConfig, StatusMap } from '@inspexi/shared-web';
+import {
+  getStatusConfig,
+  GENERATED_DOCUMENT_STATUS,
+  SIGNATURE_STATUS,
+} from '@inspexi/shared-web';
 
-export type StatusMap = Record<string, StatusConfig>;
-
-const FALLBACK: StatusConfig = { label: '', classes: 'bg-gray-100 text-gray-600' };
-
-/** Veilige lookup: onbekende waarde → grijze badge met de ruwe waarde als label. */
-export function getStatusConfig(map: StatusMap, value: string | null | undefined): StatusConfig {
-  if (!value) return { ...FALLBACK, label: '—' };
-  return map[value] ?? { ...FALLBACK, label: value };
-}
+export type { StatusConfig, StatusMap };
+export { getStatusConfig, GENERATED_DOCUMENT_STATUS, SIGNATURE_STATUS };
 
 export const TASK_STATUS: StatusMap = {
   [TaskStatus.TE_DOEN]: { label: 'Te doen', classes: 'bg-blue-100 text-blue-800' },
@@ -218,20 +217,8 @@ export const MEASUREMENT_SHEET_RECORD_STATUS: StatusMap = {
   VALIDATED: { label: 'Gevalideerd', classes: 'bg-green-100 text-green-800' },
 };
 
-export const GENERATED_DOCUMENT_STATUS: StatusMap = {
-  DRAFT: { label: 'Concept', classes: 'bg-gray-100 text-gray-700' },
-  PENDING_SIGNATURES: { label: 'Wacht op ondertekening', classes: 'bg-orange-100 text-orange-800' },
-  SIGNED: { label: 'Ondertekend', classes: 'bg-green-100 text-green-800' },
-  FINALIZED: { label: 'Definitief', classes: 'bg-green-100 text-green-800' },
-};
-
-export const SIGNATURE_STATUS: StatusMap = {
-  PENDING: { label: 'In afwachting', classes: 'bg-gray-100 text-gray-700' },
-  REQUESTED: { label: 'Verzonden', classes: 'bg-blue-100 text-blue-800' },
-  SIGNED: { label: 'Ondertekend', classes: 'bg-green-100 text-green-800' },
-  DECLINED: { label: 'Geweigerd', classes: 'bg-red-100 text-red-800' },
-  EXPIRED: { label: 'Verlopen', classes: 'bg-red-100 text-red-800' },
-};
+// GENERATED_DOCUMENT_STATUS en SIGNATURE_STATUS komen nu uit @inspexi/shared-web
+// (zie de import/re-export bovenaan) — ze zijn identiek aan de klantportaal-versie.
 
 // ─── Interne chat (REQ1) ──────────────────────────────────
 

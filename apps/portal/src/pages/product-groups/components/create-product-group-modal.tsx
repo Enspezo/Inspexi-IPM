@@ -36,11 +36,8 @@ export function CreateProductGroupModal({ isOpen, onClose }: Props) {
       showToast('Productgroep aangemaakt!', 'success');
       reset();
       onClose();
-    } catch (err) {
-      showToast(
-        err instanceof Error ? err.message : 'Aanmaken mislukt',
-        'error',
-      );
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 

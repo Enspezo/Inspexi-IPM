@@ -9,12 +9,13 @@
  */
 import { useQuery } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api-client';
+import { measurementSheetRecordKeys } from '@/lib/query-keys';
 import type { MeasurementSheetRecord } from '@/types';
 
 /** Ingevulde meetstaat-records van één asset. Enabled zodra assetId bekend is. */
 export function useAssetMeasurementRecords(assetId: string | undefined) {
   return useQuery<MeasurementSheetRecord[]>({
-    queryKey: ['measurement-sheet-records', 'asset', assetId],
+    queryKey: measurementSheetRecordKeys.byAsset(assetId ?? ''),
     queryFn: () =>
       apiClient.get<MeasurementSheetRecord[]>(`/measurement-sheet-records?assetId=${assetId}`),
     enabled: !!assetId,
@@ -29,7 +30,7 @@ export function useAssetMeasurementRecords(assetId: string | undefined) {
  */
 export function useMeasurementRecord(id: string | undefined) {
   return useQuery<MeasurementSheetRecord>({
-    queryKey: ['measurement-sheet-records', id],
+    queryKey: measurementSheetRecordKeys.detail(id ?? ''),
     queryFn: () => apiClient.get<MeasurementSheetRecord>(`/measurement-sheet-records/${id}`),
     enabled: !!id,
   });

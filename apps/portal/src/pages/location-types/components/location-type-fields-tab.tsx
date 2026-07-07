@@ -56,8 +56,8 @@ export function LocationTypeFieldsTab({ locationTypeId, canManage }: Props) {
     try {
       await deleteField.mutateAsync(field.id);
       showToast('Veld verwijderd', 'success');
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Verwijderen mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 

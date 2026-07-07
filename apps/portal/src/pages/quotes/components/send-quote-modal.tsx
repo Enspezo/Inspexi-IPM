@@ -59,8 +59,8 @@ export function SendQuoteModal({ isOpen, onClose, quote }: SendQuoteModalProps) 
       });
       showToast('Offerte verstuurd', 'success');
       onClose();
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Versturen mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 

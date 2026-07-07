@@ -103,8 +103,8 @@ export function PlanningAlgemeenTab({
       });
       setEditMode(false);
       showToast('Planregel bijgewerkt', 'success');
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Fout bij opslaan'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 
@@ -242,9 +242,9 @@ export function PlanningAlgemeenTab({
                             await updateItem.mutateAsync({ contactPersonId: quickContactPersonId });
                             setEditingContactPerson(false);
                             showToast('Contactpersoon opgeslagen', 'success');
-                          } catch (err) {
-                            showToast(getErrorMessage(err, 'Fout bij opslaan'), 'error');
-                          }
+                          } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
+    }
                         }}
                         disabled={updateItem.isPending}
                         className="text-xs font-medium text-blue-600 hover:text-blue-800 whitespace-nowrap"

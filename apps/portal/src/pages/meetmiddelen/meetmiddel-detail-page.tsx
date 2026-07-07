@@ -114,8 +114,8 @@ export default function MeetmiddelDetailPage() {
       });
       showToast('Meetmiddel bijgewerkt', 'success');
       setIsEditing(false);
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Opslaan mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 
@@ -130,8 +130,8 @@ export default function MeetmiddelDetailPage() {
       await deleteMutation.mutateAsync(instrument.id);
       showToast('Meetmiddel verwijderd', 'success');
       navigate('/meetmiddelen');
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Verwijderen mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 

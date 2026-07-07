@@ -7,8 +7,10 @@
  * Render via <LookupBadge kind=… code=… /> (components/ui/lookup-badge.tsx); filteropties
  * van lookup-velden komen dynamisch uit useLookups(kind).
  */
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useApiMutation } from '@/hooks/use-api-mutation';
 import { apiClient } from '@/lib/api-client';
+import { lookupKeys } from '@/lib/query-keys';
 
 export type LookupKind =
   | 'inspection-types' | 'plan-status-types' | 'asset-status-types'
@@ -30,7 +32,7 @@ export interface LookupRow {
 /** Gemergede lijst (systeemdefaults + org-overrides) voor een lookup-soort. */
 export function useLookups(kind: LookupKind) {
   return useQuery<LookupRow[]>({
-    queryKey: ['lookups', kind],
+    queryKey: lookupKeys.byKind(kind),
     queryFn: () => apiClient.get<LookupRow[]>(`/lookups/${kind}`),
     staleTime: 5 * 60 * 1000, // lookups veranderen zelden
   });
@@ -53,25 +55,25 @@ export interface LookupInput {
 
 export function useCreateLookup(kind: LookupKind) {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (data: LookupInput) => apiClient.post<LookupRow>(`/lookups/${kind}`, data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['lookups', kind] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: lookupKeys.byKind(kind) }),
   });
 }
 
 export function useUpdateLookup(kind: LookupKind) {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: ({ id, data }: { id: string; data: LookupInput }) =>
       apiClient.patch<LookupRow>(`/lookups/${kind}/${id}`, data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['lookups', kind] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: lookupKeys.byKind(kind) }),
   });
 }
 
 export function useDeleteLookup(kind: LookupKind) {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (id: string) => apiClient.delete(`/lookups/${kind}/${id}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['lookups', kind] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: lookupKeys.byKind(kind) }),
   });
 }

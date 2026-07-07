@@ -11,14 +11,22 @@ import {
   useConfirm,
   useToast,
   type Column,
+  type TabDef,
 } from '@/components/ui';
 import { HELP_ARTICLE_STATUS } from '@/lib/status';
 import { ADMIN_ROLES } from '@/lib/roles';
 import { hasRole } from '@/lib/has-role';
-import { HelpArticleStatus, Role, type HelpArticle, type HelpCategory } from '@/types';
+import { clientPortalArticleUrl } from '@/lib/client-portal';
+import {
+  HelpArticleStatus,
+  HelpAudience,
+  Role,
+  type HelpArticle,
+  type HelpCategory,
+} from '@/types';
 import {
   useAdminHelpArticles,
-  useHelpCategories,
+  useAdminHelpCategories,
   usePublishHelpArticle,
   useDeleteHelpArticle,
   useDeleteHelpCategory,
@@ -26,7 +34,15 @@ import {
 import { ArticleEditorModal } from './components/article-editor-modal';
 import { CategoryEditorModal } from './components/category-editor-modal';
 
-type Tab = 'articles' | 'categories';
+type Tab = 'articles' | 'global' | 'external' | 'categories';
+
+/** Leesbare scope-aanduiding per artikel/categorie. */
+const scopeLabel = (item: { audience: HelpAudience; orgId: string | null }) =>
+  item.audience === HelpAudience.EXTERNAL
+    ? 'Extern'
+    : item.orgId
+      ? 'Org-specifiek'
+      : 'Globaal';
 
 export default function HelpAdminPage() {
   const { user } = useAuth();
@@ -36,10 +52,14 @@ export default function HelpAdminPage() {
   const isSuperuser = hasRole(user, Role.SUPERUSER);
 
   const { data, isLoading, error } = useAdminHelpArticles(
-    { limit: 50 },
+    { limit: 50, audience: HelpAudience.INTERNAL },
     { enabled: canManage },
   );
-  const { data: categories } = useHelpCategories();
+  const { data: externalData } = useAdminHelpArticles(
+    { limit: 50, audience: HelpAudience.EXTERNAL },
+    { enabled: canManage },
+  );
+  const { data: categories } = useAdminHelpCategories();
   const publish = usePublishHelpArticle();
   const remove = useDeleteHelpArticle();
   const removeCategory = useDeleteHelpCategory();
@@ -47,6 +67,7 @@ export default function HelpAdminPage() {
   const [tab, setTab] = useState<Tab>('articles');
   const [editorOpen, setEditorOpen] = useState(false);
   const [editing, setEditing] = useState<HelpArticle | null>(null);
+  const [newAudience, setNewAudience] = useState<HelpAudience>(HelpAudience.INTERNAL);
   const [catEditorOpen, setCatEditorOpen] = useState(false);
   const [editingCat, setEditingCat] = useState<HelpCategory | null>(null);
 
@@ -60,14 +81,31 @@ export default function HelpAdminPage() {
   }
   if (error) return <ErrorBox>Kon artikelen niet laden.</ErrorBox>;
 
-  // Categorie kan alleen beheerd worden door SUPERUSER (alle) of door de eigenaar-org.
-  // Globale categorieën zijn voor een ORG_ADMIN alleen-lezen (backend geeft anders 403).
+  // Categorie/artikel kan alleen beheerd worden door SUPERUSER (alle) of door de eigenaar-org.
+  // Globale items zijn voor een ORG_ADMIN alleen-lezen (backend geeft anders 403).
   const canManageCategory = (c: HelpCategory) =>
     isSuperuser || c.orgId === user?.orgId;
+  const canManageArticle = (a: HelpArticle) =>
+    isSuperuser || a.orgId === user?.orgId;
   const categoryNameById = new Map((categories ?? []).map((c) => [c.id, c.name]));
+  // Publiek/afgeschermd per categorie — bepaalt de klantportaal-route voor de preview.
+  const categoryIsPublicById = new Map(
+    (categories ?? []).map((c) => [c.id, c.isPublic]),
+  );
+
+  const internalArticles = data?.data ?? [];
+  const ownArticles = internalArticles.filter(canManageArticle);
+  const globalArticles = internalArticles.filter((a) => !canManageArticle(a));
+  const externalArticles = externalData?.data ?? [];
 
   const openNew = () => {
     setEditing(null);
+    setNewAudience(HelpAudience.INTERNAL);
+    setEditorOpen(true);
+  };
+  const openNewExternal = () => {
+    setEditing(null);
+    setNewAudience(HelpAudience.EXTERNAL);
     setEditorOpen(true);
   };
   const openEdit = (a: HelpArticle) => {
@@ -121,11 +159,7 @@ export default function HelpAdminPage() {
       render: (a) => <span className="font-medium text-gray-900">{a.title}</span>,
     },
     { key: 'category', header: 'Categorie', render: (a) => a.category?.name ?? '—' },
-    {
-      key: 'scope',
-      header: 'Scope',
-      render: (a) => (a.orgId ? 'Org-specifiek' : 'Globaal'),
-    },
+    { key: 'scope', header: 'Scope', render: (a) => scopeLabel(a) },
     {
       key: 'status',
       header: 'Status',
@@ -136,26 +170,44 @@ export default function HelpAdminPage() {
       key: 'actions',
       header: '',
       className: 'text-right',
-      render: (a) => (
-        <div className="space-x-2 whitespace-nowrap text-right">
-          <Button size="sm" variant="ghost" onClick={() => openEdit(a)}>
-            Bewerken
-          </Button>
-          {a.status !== HelpArticleStatus.PUBLISHED && (
-            <Button
-              size="sm"
-              variant="secondary"
-              onClick={() => onPublish(a)}
-              disabled={publish.isPending}
-            >
-              Publiceren
+      render: (a) =>
+        canManageArticle(a) ? (
+          <div className="space-x-2 whitespace-nowrap text-right">
+            {a.audience === HelpAudience.EXTERNAL &&
+              a.status === HelpArticleStatus.PUBLISHED && (
+                <a
+                  href={clientPortalArticleUrl(
+                    a.slug,
+                    categoryIsPublicById.get(a.categoryId) ?? false,
+                  )}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title="Bekijk dit artikel op het klantportaal"
+                  className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-sm font-medium text-primary-600 hover:bg-primary-50"
+                >
+                  Preview ↗
+                </a>
+              )}
+            <Button size="sm" variant="ghost" onClick={() => openEdit(a)}>
+              Bewerken
             </Button>
-          )}
-          <Button size="sm" variant="danger" onClick={() => onDelete(a)}>
-            Verwijderen
-          </Button>
-        </div>
-      ),
+            {a.status !== HelpArticleStatus.PUBLISHED && (
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => onPublish(a)}
+                disabled={publish.isPending}
+              >
+                Publiceren
+              </Button>
+            )}
+            <Button size="sm" variant="danger" onClick={() => onDelete(a)}>
+              Verwijderen
+            </Button>
+          </div>
+        ) : (
+          <span className="text-xs text-gray-400">Globaal — alleen-lezen</span>
+        ),
     },
   ];
 
@@ -165,10 +217,16 @@ export default function HelpAdminPage() {
       header: 'Naam',
       render: (c) => <span className="font-medium text-gray-900">{c.name}</span>,
     },
+    { key: 'scope', header: 'Scope', render: (c) => scopeLabel(c) },
     {
-      key: 'scope',
-      header: 'Scope',
-      render: (c) => (c.orgId ? 'Org-specifiek' : 'Globaal'),
+      key: 'access',
+      header: 'Toegang',
+      render: (c) =>
+        c.audience === HelpAudience.EXTERNAL
+          ? c.isPublic
+            ? 'Publiek'
+            : 'Afgeschermd'
+          : '—',
     },
     {
       key: 'parent',
@@ -196,23 +254,31 @@ export default function HelpAdminPage() {
     },
   ];
 
-  const tabs = [
-    { key: 'articles', label: 'Artikelen', count: data?.total ?? 0 },
+  const tabs: TabDef<Tab>[] = [
+    { key: 'articles', label: 'Artikelen', count: ownArticles.length },
+    // Globaal-tab alleen tonen als er globale (alleen-lezen) artikelen zijn.
+    ...(globalArticles.length > 0
+      ? [{ key: 'global' as const, label: 'Globaal', count: globalArticles.length }]
+      : []),
+    { key: 'external', label: 'Extern', count: externalArticles.length },
     { key: 'categories', label: 'Categorieën', count: categories?.length ?? 0 },
-  ] as const;
+  ];
+
+  const headerActions =
+    tab === 'articles' ? (
+      <Button onClick={openNew}>Nieuw artikel</Button>
+    ) : tab === 'external' ? (
+      <Button onClick={openNewExternal}>Nieuw extern artikel</Button>
+    ) : tab === 'categories' ? (
+      <Button onClick={openNewCat}>Nieuwe categorie</Button>
+    ) : null;
 
   return (
     <div className="space-y-6">
       <PageHeader
         title="Knowledge base — beheer"
-        description="Schrijf en publiceer helpartikelen en beheer categorieën."
-        actions={
-          tab === 'articles' ? (
-            <Button onClick={openNew}>Nieuw artikel</Button>
-          ) : (
-            <Button onClick={openNewCat}>Nieuwe categorie</Button>
-          )
-        }
+        description="Schrijf en publiceer helpartikelen (intern én voor het klantportaal) en beheer categorieën."
+        actions={headerActions}
       />
 
       <Tabs tabs={tabs} active={tab} onChange={setTab} />
@@ -220,9 +286,27 @@ export default function HelpAdminPage() {
       {tab === 'articles' && (
         <Table
           columns={articleColumns}
-          data={data?.data ?? []}
+          data={ownArticles}
           keyExtractor={(a) => a.id}
           emptyMessage="Nog geen artikelen. Maak er een aan met “Nieuw artikel”."
+        />
+      )}
+
+      {tab === 'global' && (
+        <Table
+          columns={articleColumns}
+          data={globalArticles}
+          keyExtractor={(a) => a.id}
+          emptyMessage="Geen globale artikelen."
+        />
+      )}
+
+      {tab === 'external' && (
+        <Table
+          columns={articleColumns}
+          data={externalArticles}
+          keyExtractor={(a) => a.id}
+          emptyMessage="Nog geen externe artikelen. Maak er een aan met “Nieuw extern artikel”."
         />
       )}
 
@@ -239,6 +323,7 @@ export default function HelpAdminPage() {
         isOpen={editorOpen}
         onClose={() => setEditorOpen(false)}
         article={editing}
+        audience={newAudience}
         categories={categories ?? []}
       />
       <CategoryEditorModal

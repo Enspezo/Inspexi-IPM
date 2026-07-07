@@ -1,4 +1,5 @@
 @import 'tailwindcss';
+@plugin "@tailwindcss/typography";
 
 /* @inspexi/ui leeft buiten deze app; Tailwind v4 scant node_modules niet, dus wijzen
    we expliciet naar de bron zodat de classes van de gedeelde primitieven meegenomen worden. */

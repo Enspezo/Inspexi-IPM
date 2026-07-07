@@ -21,6 +21,7 @@ import {
   UpdateHelpArticleDto,
   ListHelpArticlesDto,
 } from './dto';
+import { HelpAudience } from '@prisma/client';
 
 @ApiTags('Help (beheer)')
 @ApiBearerAuth()
@@ -30,6 +31,19 @@ export class HelpAdminController {
   constructor(private help: HelpService) {}
 
   // Categorieën
+  @Get('categories')
+  @ApiOperation({ summary: 'Categorieën incl. niet-gepubliceerd (binnen scope)' })
+  async listCategories(
+    @CurrentUser() user: User,
+    @Query('audience') audience?: string,
+  ) {
+    const aud =
+      audience && (Object.values(HelpAudience) as string[]).includes(audience)
+        ? (audience as HelpAudience)
+        : undefined;
+    return { success: true, data: await this.help.adminListCategories(user, aud) };
+  }
+
   @Post('categories')
   async createCategory(
     @CurrentUser() user: User,

@@ -118,7 +118,7 @@ Elke org koppelt een eigen Anthropic-key; verbruik loopt op hun account.
 
 1. Gebruiker typt een verzoek ("Zoek relatie Jansen BV op de KVK en maak een taak aan om ze te bellen").
 2. De assistent streamt zijn antwoord; **lees-tools** (zoeken/opvragen/KVK/PDOK/web-search) draaien direct en de resultaten verschijnen inline.
-3. Voor een **schrijfactie** (taak aanmaken) toont de assistent een **bevestigingskaart**: tool + samenvatting + de exacte velden ("Taak: *Bellen Jansen BV*, toegewezen aan jou, deadline vrijdag"). Knoppen **Bevestigen** / **Afwijzen** / (optioneel) **Aanpassen**.
+3. Voor een **schrijfactie** (taak aanmaken) toont de assistent een **bevestigingskaart**: tool + samenvatting + de exacte velden ("Taak: *Bellen Jansen BV*, toegewezen aan jou, deadline vrijdag"). Knoppen **Bevestigen** / **Afwijzen** / **Aanpassen**. Met **Aanpassen** kan de gebruiker de velden inline bewerken vóór uitvoeren; de bewerkte waarden worden opnieuw gevalideerd tegen het tool-schema en tegen de rechten van de gebruiker vóór de schrijfactie.
 4. Pas na **Bevestigen** voert de backend de schrijfactie uit — via dezelfde service-laag als een normale UI-actie, op naam van de gebruiker, met `source=AI` in de audit.
 5. Het resultaat (aangemaakt record + link) verschijnt; de assistent gaat door met de volgende stap.
 
@@ -184,7 +184,7 @@ Read-tools binnen één beurt draaien via de **Tool Runner** (`client.beta.messa
 
 ### 5.5 Model & tools (Anthropic)
 
-- **Model:** standaard **`claude-opus-4-8`** (hoogste kwaliteit voor agentic werk; $5/$25 per 1M tokens). Config via `ANTHROPIC_MODEL` (net als `voice`). **Kostenknop:** een plan/organisatie kan optioneel op **`claude-sonnet-5`** draaien ($3/$15, bijna-Opus-kwaliteit op agentic/coding) — te sturen via een per-plan of per-org model-instelling. *Niet* `claude-sonnet-4-6` (dat is de vorige generatie; `voice` gebruikt die nog).
+- **Model:** standaard **`claude-sonnet-5`** ($3/$15 per 1M tokens; bijna-Opus-kwaliteit op agentic/coding tegen ~40% van de kosten — beste marge voor een gemeterde add-on). **Premium-optie:** een plan/organisatie kan op **`claude-opus-4-8`** draaien ($5/$25, hoogste kwaliteit op de zwaarste meerstaps-taken) — te sturen via een per-plan of per-org model-instelling. Config via `ANTHROPIC_MODEL` (net als `voice`). *Niet* `claude-sonnet-4-6` (dat is de vorige generatie; `voice` gebruikt die nog).
 - **Denken/effort:** `thinking: { type: 'adaptive' }` + `output_config.effort` (`medium` als kosten-kwaliteit-balans; `high` voor complexere taken).
 - **Web-search:** server-side tool **`web_search_20260209`** (dynamische filtering, ondersteund op Opus 4.8 / Sonnet 5) — geen aparte search-provider nodig, resultaten met citaties. `max_uses` begrenzen; optioneel `blocked_domains`.
 - **Streaming:** verplicht (lange antwoorden/agentic loops), via SSE naar de portal.
@@ -254,8 +254,8 @@ model AiConversation {
   updatedAt  DateTime  @updatedAt @map("updated_at")
   archivedAt DateTime? @map("archived_at")
 
-  organization Organization      @relation(fields: [orgId], references: [id])
-  user         User              @relation(fields: [userId], references: [id])
+  organization Organization      @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  user         User              @relation(fields: [userId], references: [id], onDelete: Cascade)   // auto-wissen bij offboarding
   messages     AiMessage[]
   actions      AiPendingAction[]
 
@@ -336,6 +336,14 @@ aiUsageLog
 
 De **nieuwe** agent-modellen worden **niet** in `AUDITED_ENTITIES` opgenomen (het zijn interne agent-artefacten, geen domein-records). Wél relevant: de **bestaande** geauditeerde modellen krijgen nu een `source`-stempel wanneer de mutatie door de agent komt (§9).
 
+### 6.6 Retentie & offboarding (besluit)
+
+Gesprekken zijn **privé** en worden bewaard **tot de gebruiker ze zelf wist**, met **automatisch wissen bij offboarding**:
+
+- Gebruiker beheert de eigen geschiedenis (`DELETE /ai/conversations/:id` = archiveren/verwijderen).
+- Bij deactiveren/verwijderen van een **user** of **organisatie** worden de bijbehorende `AiConversation` (+ cascade `AiMessage`/`AiPendingAction`) automatisch verwijderd. De FK's van `AiConversation` naar `User`/`Organization` krijgen daarvoor `onDelete: Cascade`; `AiUsageLog` blijft **behouden** (geanonimiseerd/aggregaat is niet nodig — het bevat geen gespreksinhoud, alleen tellingen — maar mag mee-cascaden als de org echt verdwijnt).
+- Geen vaste vervaltermijn in de MVP; een `retentionDays`-instelling kan later per org worden toegevoegd zonder migratiebreuk.
+
 ---
 
 ## 7. Entitlements & toegang (add-on)
@@ -369,10 +377,10 @@ AI_AGENT: {
 
 ### 7.3 Rol-beperking binnen de org (org-admin-keuze)
 
-De feature bepaalt *of* de org de agent heeft; een org-admin bepaalt *welke rollen* hem mogen gebruiken. Twee opties:
+De feature bepaalt *of* de org de agent heeft; een org-admin bepaalt *welke rollen* hem mogen gebruiken. **Besluit: direct configureerbaar per org in de MVP.**
 
-- **MVP:** vast toestaan voor de staf-rollen die überhaupt backoffice-werk doen (`SUPERUSER` uitgezonderd — die zit op het platformdomein). Bijv. `ORG_ADMIN, MANAGER, BACKOFFICE, WERKVOORBEREIDER`.
-- **Later:** een org-instelling `aiAgentAllowedRoles` (Role[]) zodat de org-admin het fijnmaziger zet.
+- Een org-instelling **`aiAgentAllowedRoles`** (`Role[]`, opgeslagen op `Organization` of in een kleine `AiAgentSettings`-tabel) waarmee de org-admin bepaalt welke rollen het paneel zien. Default bij het aanzetten van de add-on: `ORG_ADMIN, MANAGER, BACKOFFICE, WERKVOORBEREIDER` (`SUPERUSER` zit op het platformdomein; `INSPECTEUR` standaard uit — te overrulen door de org-admin).
+- De backend valideert bij elk AI-endpoint dat de rol van de gebruiker in `aiAgentAllowedRoles` zit.
 
 Ongeacht de rol-toegang tot het *paneel*, geldt altijd §5.2: binnen het paneel kan een gebruiker via de agent niets doen wat de gebruiker zelf niet mag.
 
@@ -383,8 +391,10 @@ Ongeacht de rol-toegang tot het *paneel*, geldt altijd §5.2: binnen het paneel 
 
 ### 7.5 Metering & fair-use (bij centrale key)
 
-- Per org **token-quota** (dag + maand), afdwingen vóór elke Anthropic-call via `AiUsageService.checkQuota(orgId)`.
-- Verbruik na elke call wegschrijven naar `AiUsageLog` (uit `response.usage`: `input_tokens`, `cache_read_input_tokens`, `output_tokens`), plus geschatte `costCents` op basis van de modelprijs.
+**Prijsmodel (besluit): vast maandbedrag per org + ruim fair-use-quotum.** Voorspelbaar voor de klant; het org-brede maandelijkse token-quotum is een plafond tegen misbruik/uitschieters, geen doorbelasting-per-token.
+
+- Per org **token-quota** (dag + maand), afdwingen vóór elke Anthropic-call via `AiUsageService.checkQuota(orgId)`. Het maandplafond is ruim bemeten zodat normaal gebruik het nooit raakt.
+- Verbruik na elke call wegschrijven naar `AiUsageLog` (uit `response.usage`: `input_tokens`, `cache_read_input_tokens`, `output_tokens`), plus geschatte `costCents` op basis van de modelprijs — voor kostenbewaking en marge-analyse, niet voor klant-facturatie.
 - Bij overschrijding: nette melding in de UI ("Het AI-tegoed voor deze maand is bereikt") en 429-achtige backend-respons.
 - **Kill-switch:** een globale env/flag (SUPERUSER) én per-org toggle om de add-on direct te bevriezen.
 
@@ -515,8 +525,8 @@ apps/portal/src/
 | **1 — Fundament** | Prisma-modellen + migratie; `AuditSource`+`source`-veld door de audit-keten; feature-key `AI_AGENT`; seed/E2E-teardown bijgewerkt | Migratie draait; audit-write zet `source`; feature toont in SUPERUSER-catalogus; unit-tests audit-keten groen |
 | **2 — Agent-kern (lezen)** | `ai-agent`-module; Anthropic-runner (streaming); tool-registry + **lees**-tools (intern) + KVK/PDOK + web-search; conversatie-CRUD; usage-metering + quota | Gebruiker kan chatten en laten opzoeken; verbruik gelogd; alles org+rol-gescoped; cross-tenant → 404 |
 | **3 — Schrijven met bevestiging** | Write-tools → `AiPendingAction`; bevestig-/afwijs-endpoints; hervat-lus; uitvoering met `source=AI`; audit-icoon in portal | Schrijfactie verschijnt als kaart; pas na bevestigen aangemaakt; audithistorie toont AI-icoon; afwijzen werkt |
-| **4 — Entitlements & portal-UX** | Feature-gate (backend+frontend); assistent-drawer + provider; sidebar/route-inhaak; rol-beperking; tegoed-widget; kill-switch | Add-on aan/uit per org werkt end-to-end; UI verborgen zonder feature; browser-smoketests groen |
-| **5 (later) — Uitbreidingen** | Meer write-tools (e-mail/document/offerte, met bevestiging); BYO-key (versleuteld) + resolver; per-org `aiAgentAllowedRoles`; RAG-koppeling met helpsysteem-KB (`IMP_PRD_10`) | Per uitbreiding apart |
+| **4 — Entitlements & portal-UX** | Feature-gate (backend+frontend); assistent-drawer + provider; sidebar/route-inhaak; **per-org `aiAgentAllowedRoles`** + rol-check; **Aanpassen-knop** op bevestigingskaarten; tegoed-widget + vast-maandbedrag/fair-use-quota; kill-switch | Add-on aan/uit per org werkt end-to-end; org-admin stelt toegestane rollen in; velden inline aanpasbaar vóór uitvoeren; UI verborgen zonder feature; browser-smoketests groen |
+| **5 (later) — Uitbreidingen** | Meer write-tools (e-mail/document/offerte, met bevestiging); **BYO-key** (versleuteld, KMS/at-rest) + `AiKeyResolver`; optionele `retentionDays` per org; RAG-koppeling met helpsysteem-KB (`IMP_PRD_10`) | Per uitbreiding apart |
 
 ---
 
@@ -530,14 +540,18 @@ apps/portal/src/
 
 ---
 
-## 13. Open vragen (te beslissen vóór bouw)
+## 13. Besloten keuzes (2026-07-09)
 
-1. **Standaardmodel per plan:** Opus 4.8 overal, of Sonnet 5 als default met Opus 4.8 als premium-optie? (kosten vs. kwaliteit)
-2. **Quota-hoogte & pricing:** welke maand-token-limieten per plan, en welke add-on-prijs/marge? (input voor `AiUsageLog`-drempels)
-3. **Rol-toegang:** vaste rollenset (MVP) of direct configureerbaar per org (`aiAgentAllowedRoles`)?
-4. **"Aanpassen"-knop op bevestigingskaarten** in de MVP, of alleen Bevestigen/Afwijzen (aanpassen = nieuw verzoek typen)?
-5. **Gespreksretentie:** hoe lang bewaren we `AiConversation`/`AiMessage` (privacy) — en verwijderen we de inhoud bij offboarding automatisch?
-6. **BYO-key:** in welke fase reëel nodig, en welke encryptie-oplossing (KMS/at-rest) hanteren we voor per-org secrets?
+Alle eerder open punten zijn samen met de eigenaar beslist:
+
+| # | Onderwerp | Besluit | Gevolg voor implementatie |
+|---|---|---|---|
+| 1 | Standaardmodel | **`claude-sonnet-5` als default; `claude-opus-4-8` als premium-optie** | Model per plan/org via `ANTHROPIC_MODEL`-config; Sonnet 5 is de kosten-effectieve basis (§5.5) |
+| 2 | Quota & prijs | **Vast maandbedrag per org + ruim fair-use-quotum** | `AiUsageService.checkQuota` op een ruim maandplafond; `AiUsageLog` voor kostenbewaking/marge, geen per-token-doorbelasting (§7.5) |
+| 3 | Rol-toegang | **Direct configureerbaar per org** (`aiAgentAllowedRoles`) | Org-instelling + rol-check op elk AI-endpoint; default `ORG_ADMIN/MANAGER/BACKOFFICE/WERKVOORBEREIDER` (§7.3) — **naar voren gehaald in fase 4** |
+| 4 | Bevestigingskaart | **Bevestigen / Afwijzen / Aanpassen** | Inline veld-bewerking vóór uitvoeren, met her-validatie tegen schema + rechten (§4.2, §10) — **in de MVP** |
+| 5 | Gespreksretentie | **Bewaren tot gebruiker wist + auto-wissen bij offboarding** | `AiConversation.userId/orgId` → `onDelete: Cascade`; geen vaste vervaltermijn (§6.6) |
+| 6 | BYO-key | **Later (fase 5); centrale beheerde key nu** | MVP frictieloos op centrale key; BYO = versleutelde per-org opslag + `AiKeyResolver` in fase 5 (§3.3, §11) |
 
 ---
 

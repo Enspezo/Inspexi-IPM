@@ -689,6 +689,11 @@ async function main() {
   // de org/plan zelf; het plan ná de organization (Organization.planId → Plan).
   await prisma.organizationFeature.deleteMany();
   await prisma.planFeature.deleteMany();
+  // AI-assistent (add-on, PRD-12) — kinderen eerst; FK's naar user + organization
+  await prisma.aiPendingAction.deleteMany();
+  await prisma.aiMessage.deleteMany();
+  await prisma.aiConversation.deleteMany();
+  await prisma.aiUsageLog.deleteMany();
   // Auth/org tables
   await prisma.auditLog.deleteMany();
   await prisma.invitation.deleteMany();

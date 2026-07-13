@@ -250,6 +250,7 @@ export class ContactsService {
           userId: ctx.userId,
           orgId: updated.orgId ?? ctx.orgId,
           ipAddress: ctx.ipAddress,
+          source: ctx.source,
         }).catch((err) => this.logger.error(`VIES audit log error: ${err}`));
       }
     }

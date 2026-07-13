@@ -28,6 +28,7 @@ export const FEATURE_KEYS = [
   // Add-ons (standaard bij Compleet; voor Basis-orgs los per org bij te schakelen)
   'WEBHOOKS',
   'CUSTOM_FIELDS',
+  'AI_AGENT',
 ] as const;
 
 export type FeatureKey = (typeof FEATURE_KEYS)[number];
@@ -96,6 +97,14 @@ export const FEATURE_CATALOG: Record<FeatureKey, FeatureDef> = {
     label: 'Aangepaste velden (add-on)',
     description: 'Custom-field-definities op entiteiten',
     dependsOn: [],
+  },
+  // AI-assistent (betaalde add-on, PRD-12). Minimaal Basis CRM als domein-basis.
+  AI_AGENT: {
+    key: 'AI_AGENT',
+    label: 'AI-assistent (add-on)',
+    description:
+      'AI-agent in de portal voor backoffice-werk (opzoeken, KVK/PDOK, web-search, muteren met bevestiging)',
+    dependsOn: ['BASIS_CRM'],
   },
 };
 

@@ -143,6 +143,14 @@ const enumLabels: Record<string, string> = {
   NORMAAL: 'Normaal',
   HOOG: 'Hoog',
   URGENT: 'Urgent',
+  // EmploymentType (PRD-12)
+  DIENSTVERBAND: 'Dienstverband',
+  FREELANCE: 'Freelance',
+
+  // AvailabilityExceptionType (PRD-12) — BESCHIKBAAR hieronder los van chat-presence
+  BESCHIKBAAR: 'Beschikbaar',
+  GEBLOKKEERD: 'Geblokkeerd',
+
   // SupportTicketCategory
   VRAAG: 'Vraag',
   PROBLEEM: 'Probleem',
@@ -180,6 +188,12 @@ const dateFields = new Set([
   'startTime',
   'endTime',
   'completedAt',
+  'startsAt',
+  'endsAt',
+  'validFrom',
+  'validUntil',
+  'recurStartDate',
+  'recurEndDate',
 ]);
 
 /** UUID v4 pattern — used to detect unresolved UUIDs */
@@ -212,6 +226,7 @@ const FK_FIELDS = new Set([
   'phaseId',
   'contactPersonId',
   'assigneeId',
+  'createdById',
 ]);
 
 const currencyFormatter = new Intl.NumberFormat('nl-NL', {

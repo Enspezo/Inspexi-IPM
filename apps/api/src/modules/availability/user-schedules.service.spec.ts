@@ -66,6 +66,17 @@ describe('UserSchedulesService', () => {
       mockPrisma.user.findUnique.mockResolvedValue({ id: TARGET, orgId: 'org-2' });
       await expect(service.getSchedule(TARGET, admin)).rejects.toThrow(NotFoundException);
     });
+
+    it('lets an INSPECTEUR read their own schedule', async () => {
+      const inspector = u(TARGET, [Role.INSPECTEUR]);
+      mockPrisma.userScheduleAssignment.findMany.mockResolvedValue([{ id: 'a1' }]);
+      await expect(service.getSchedule(TARGET, inspector)).resolves.toEqual([{ id: 'a1' }]);
+    });
+
+    it("403 when an INSPECTEUR reads another user's schedule", async () => {
+      const inspector = u('insp-other', [Role.INSPECTEUR]);
+      await expect(service.getSchedule(TARGET, inspector)).rejects.toThrow(ForbiddenException);
+    });
   });
 
   // ─── assign ────────────────────────────────────────────

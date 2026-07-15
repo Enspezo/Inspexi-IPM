@@ -28,7 +28,8 @@ export type NotificationModel =
   | 'INSPECTIEPLANNEN'
   | 'MEETMIDDELEN'
   | 'CHAT'
-  | 'SUPPORT';
+  | 'SUPPORT'
+  | 'BESCHIKBAARHEID';
 
 interface NotificationModelDef {
   key: NotificationModel;
@@ -150,6 +151,14 @@ export const NOTIFICATION_MODELS: NotificationModelDef[] = [
       NotificationType.SUPPORT_TICKET_STATUS,
     ],
   },
+  {
+    key: 'BESCHIKBAARHEID',
+    label: 'Beschikbaarheid',
+    types: [
+      NotificationType.BESCHIKBAARHEID_GEWIJZIGD_DOOR_INSPECTEUR,
+      NotificationType.BESCHIKBAARHEID_GEWIJZIGD_DOOR_MANAGER,
+    ],
+  },
 ];
 
 /** NL-labels per NotificationType (enige bron). */
@@ -195,6 +204,8 @@ export const NOTIFICATION_TYPE_LABELS: Record<NotificationType, string> = {
   [NotificationType.FASE_STATUS_GEWIJZIGD]: 'Fasestatus gewijzigd',
   [NotificationType.MILESTONE_HERINNERING]: 'Milestone-herinnering',
   [NotificationType.MILESTONE_VERLOPEN]: 'Milestone verlopen',
+  [NotificationType.BESCHIKBAARHEID_GEWIJZIGD_DOOR_INSPECTEUR]: 'Beschikbaarheid gewijzigd door inspecteur',
+  [NotificationType.BESCHIKBAARHEID_GEWIJZIGD_DOOR_MANAGER]: 'Beschikbaarheid gewijzigd door manager',
 };
 
 /** Afgeleide lookup: type → model-key. */

@@ -1,7 +1,12 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { AvailabilityExceptionType, EmploymentType, Prisma, Role, User } from '@prisma/client';
 import { PrismaService } from '@/prisma';
-import { orgScope } from '@/common';
+import { orgScope, isCrm } from '@/common';
 import {
   DaySource,
   ExceptionLike,
@@ -77,6 +82,10 @@ export class AvailabilityResolutionService {
     toKey: string,
     userIds?: string[],
   ): Promise<DayResolution[]> {
+    // Een INSPECTEUR mag uitsluitend het eigen id opvragen (nooit de org-brede default).
+    if (!isCrm(actor) && (!userIds?.length || userIds.some((id) => id !== actor.id))) {
+      throw new ForbiddenException('U mag alleen uw eigen beschikbaarheid inzien');
+    }
     this.assertRange(fromKey, toKey);
 
     const ids = userIds?.length
@@ -104,6 +113,10 @@ export class AvailabilityResolutionService {
    * gedekte delen en, per niet-gedekt deel, een leesbare NL-reden.
    */
   async check(actor: User, userId: string, startISO: string, endISO: string): Promise<CheckResult> {
+    // Een INSPECTEUR mag alleen de eigen beschikbaarheid toetsen.
+    if (!isCrm(actor) && userId !== actor.id) {
+      throw new ForbiddenException('U mag alleen uw eigen beschikbaarheid inzien');
+    }
     const scoped = await this.scopeUserIds(actor, [userId]);
     if (scoped.length === 0) {
       throw new NotFoundException('Gebruiker niet gevonden');

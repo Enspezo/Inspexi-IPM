@@ -462,10 +462,71 @@ describe('Availability (e2e)', () => {
     expect(res.body.data.conflicts[0].reason).toBe('Vaste studie');
   });
 
-  it('forbids an INSPECTEUR from reading resolved availability (403)', async () => {
-    await request(app.getHttpServer())
+  // ─── Self-access voor de INSPECTEUR (PRD-12 §12.8c) ──────
+
+  it('lets an INSPECTEUR read their own resolved availability (200)', async () => {
+    const res = await request(app.getHttpServer())
       .get(`/api/v1/availability/resolved?from=2026-07-20&to=2026-07-20&userIds=${inspecteurId}`)
       .set('Authorization', `Bearer ${inspecteurToken}`)
+      .expect(200);
+    expect(res.body.data.find((d: any) => d.date === '2026-07-20')).toBeDefined();
+  });
+
+  it("forbids an INSPECTEUR from reading someone else's resolved availability (403)", async () => {
+    await request(app.getHttpServer())
+      .get(`/api/v1/availability/resolved?from=2026-07-20&to=2026-07-20&userIds=${adminId}`)
+      .set('Authorization', `Bearer ${inspecteurToken}`)
+      .expect(403);
+  });
+
+  it('forbids an INSPECTEUR from reading org-wide resolved without userIds (403)', async () => {
+    await request(app.getHttpServer())
+      .get('/api/v1/availability/resolved?from=2026-07-20&to=2026-07-20')
+      .set('Authorization', `Bearer ${inspecteurToken}`)
+      .expect(403);
+  });
+
+  it('lets an INSPECTEUR check their own availability (200)', async () => {
+    const res = await request(app.getHttpServer())
+      .get(
+        `/api/v1/availability/check?userId=${inspecteurId}` +
+          '&start=2026-07-20T08:00:00.000Z&end=2026-07-20T09:00:00.000Z',
+      )
+      .set('Authorization', `Bearer ${inspecteurToken}`)
+      .expect(200);
+    expect(res.body.data.available).toBe(true);
+  });
+
+  it("forbids an INSPECTEUR from checking someone else's availability (403)", async () => {
+    await request(app.getHttpServer())
+      .get(
+        `/api/v1/availability/check?userId=${adminId}` +
+          '&start=2026-07-20T08:00:00.000Z&end=2026-07-20T09:00:00.000Z',
+      )
+      .set('Authorization', `Bearer ${inspecteurToken}`)
+      .expect(403);
+  });
+
+  it('lets an INSPECTEUR read their own schedule (200)', async () => {
+    const res = await request(app.getHttpServer())
+      .get(`/api/v1/availability/users/${inspecteurId}/schedule`)
+      .set('Authorization', `Bearer ${inspecteurToken}`)
+      .expect(200);
+    expect(Array.isArray(res.body.data)).toBe(true);
+  });
+
+  it("forbids an INSPECTEUR from reading someone else's schedule (403)", async () => {
+    await request(app.getHttpServer())
+      .get(`/api/v1/availability/users/${adminId}/schedule`)
+      .set('Authorization', `Bearer ${inspecteurToken}`)
+      .expect(403);
+  });
+
+  it('still forbids an INSPECTEUR from assigning a schedule (403)', async () => {
+    await request(app.getHttpServer())
+      .put(`/api/v1/availability/users/${inspecteurId}/schedule`)
+      .set('Authorization', `Bearer ${inspecteurToken}`)
+      .send({ templateId: resolveTemplateId, validFrom: '2027-01-01' })
       .expect(403);
   });
 });

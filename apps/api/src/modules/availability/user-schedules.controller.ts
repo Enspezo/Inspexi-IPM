@@ -9,19 +9,20 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { User } from '@prisma/client';
-import { MANAGEMENT_ROLES } from '@/common/auth/roles';
+import { ALL_STAFF, MANAGEMENT_ROLES } from '@/common/auth/roles';
 import { Roles, CurrentUser } from '@/common/decorators';
 import { UserSchedulesService } from './user-schedules.service';
 import { AssignScheduleDto } from './dto';
 
 @ApiTags('User schedules')
 @ApiBearerAuth()
-@Roles(...MANAGEMENT_ROLES)
 @Controller('availability/users')
 export class UserSchedulesController {
   constructor(private readonly service: UserSchedulesService) {}
 
+  // Lezen: alle staf; de service beperkt een INSPECTEUR tot het eigen schema.
   @Get(':userId/schedule')
+  @Roles(...ALL_STAFF)
   @ApiOperation({ summary: 'Schema-toewijzingen van een inspecteur (actueel + historisch)' })
   @ApiResponse({ status: 200, description: 'Lijst toewijzingen' })
   async getSchedule(
@@ -33,6 +34,7 @@ export class UserSchedulesController {
   }
 
   @Put(':userId/schedule')
+  @Roles(...MANAGEMENT_ROLES)
   @ApiOperation({ summary: 'Weekschema toewijzen (sluit de lopende toewijzing af op validFrom)' })
   @ApiResponse({ status: 200, description: 'Toewijzing aangemaakt' })
   async assign(
@@ -45,6 +47,7 @@ export class UserSchedulesController {
   }
 
   @Delete(':userId/schedule/:assignmentId')
+  @Roles(...MANAGEMENT_ROLES)
   @ApiOperation({ summary: 'Toekomstige schema-toewijzing verwijderen' })
   @ApiResponse({ status: 200, description: 'Toewijzing verwijderd' })
   @ApiResponse({ status: 400, description: 'Alleen toekomstige toewijzingen kunnen worden verwijderd' })

@@ -2,10 +2,11 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { User, Prisma } from '@prisma/client';
 import { PrismaService } from '@/prisma';
-import { assertSameOrg, assertFound, isSuperuser } from '@/common';
+import { assertSameOrg, assertFound, isSuperuser, isCrm } from '@/common';
 import { AssignScheduleDto } from './dto';
 import { AvailabilityNotifier } from './availability-notifier.service';
 
@@ -23,6 +24,10 @@ export class UserSchedulesService {
   /** Actuele + historische toewijzingen van een inspecteur (nieuwste eerst). */
   async getSchedule(userId: string, actor: User) {
     await this.assertUserInScope(userId, actor);
+    // Planners (CRM/management) mogen elk schema inzien; een INSPECTEUR alleen het eigen.
+    if (!isCrm(actor) && userId !== actor.id) {
+      throw new ForbiddenException('U mag alleen uw eigen weekschema inzien');
+    }
 
     return this.prisma.userScheduleAssignment.findMany({
       where: { userId },

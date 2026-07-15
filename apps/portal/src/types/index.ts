@@ -10,6 +10,7 @@ export * from './notifications';
 export * from './activity';
 export * from './documents';
 export * from './certificates';
+export * from './availability';
 export * from './planning';
 export * from './projects';
 export * from './search';

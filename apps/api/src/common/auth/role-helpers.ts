@@ -1,5 +1,5 @@
 import { Role } from '@prisma/client';
-import { MANAGEMENT_ROLES } from './roles';
+import { MANAGEMENT_ROLES, CRM_ROLES } from './roles';
 
 /** Minimale user-vorm voor rol-checks (Prisma `User` of JWT-payload). */
 interface RoledUser {
@@ -22,4 +22,9 @@ export function isSuperuser(user: RoledUser): boolean {
 /** Beheer + management (SUPERUSER, ORG_ADMIN, MANAGER). */
 export function isManagement(user: RoledUser): boolean {
   return hasRole(user, MANAGEMENT_ROLES);
+}
+
+/** CRM/planners — alle staf behalve de INSPECTEUR (die alleen zichzelf mag lezen). */
+export function isCrm(user: RoledUser): boolean {
+  return hasRole(user, CRM_ROLES);
 }

@@ -512,6 +512,35 @@ export const calibrationKeys = {
     [...calibrationKeys.all, instrumentId] as const,
 };
 
+// ─── Beschikbaarheid (PRD-12) ───────────────────────────────────────────────
+
+export const availabilityTemplateKeys = {
+  all: ['availability-templates'] as const,
+  lists: () => [...availabilityTemplateKeys.all] as const,
+  list: (params: ListParams) => [...availabilityTemplateKeys.all, params] as const,
+  detail: (id: string) => [...availabilityTemplateKeys.all, id] as const,
+};
+
+export const userScheduleKeys = {
+  all: ['user-schedules'] as const,
+  byUser: (userId: string) => [...userScheduleKeys.all, userId] as const,
+};
+
+export const availabilityExceptionKeys = {
+  all: ['availability-exceptions'] as const,
+  list: (params: ListParams) => [...availabilityExceptionKeys.all, params] as const,
+};
+
+export const resolvedAvailabilityKeys = {
+  all: ['resolved-availability'] as const,
+  range: (params: ListParams) => [...resolvedAvailabilityKeys.all, params] as const,
+};
+
+export const availabilityCheckKeys = {
+  all: ['availability-check'] as const,
+  query: (params: ListParams) => [...availabilityCheckKeys.all, params] as const,
+};
+
 export const inspectorCertificateKeys = {
   all: ['inspector-certificates'] as const,
   lists: () => [...inspectorCertificateKeys.all, 'list'] as const,

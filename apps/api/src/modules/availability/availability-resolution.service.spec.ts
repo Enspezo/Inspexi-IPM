@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { AvailabilityExceptionType, EmploymentType, Role } from '@prisma/client';
 import { AvailabilityResolutionService } from './availability-resolution.service';
 import { PrismaService } from '@/prisma';
@@ -18,6 +18,7 @@ describe('AvailabilityResolutionService', () => {
 
   const actor = { id: 'mgr', orgId: 'org-1', roles: [Role.MANAGER] } as any;
   const INSP = 'insp-1';
+  const inspector = { id: INSP, orgId: 'org-1', roles: [Role.INSPECTEUR] } as any;
 
   const slot = (weekday: number, startMinute: number, endMinute: number) => ({
     weekday,
@@ -242,6 +243,55 @@ describe('AvailabilityResolutionService', () => {
       expect(res.available).toBe(false);
       expect(res.conflicts).toHaveLength(1);
       expect(res.conflicts[0].reason).toBe('Tandarts');
+    });
+  });
+
+  // ─── Self-access voor de INSPECTEUR (PRD-12 §12.8c) ────────
+
+  describe('inspecteur self-access', () => {
+    it('lets an INSPECTEUR resolve their own availability', async () => {
+      setup({ employmentType: EmploymentType.FREELANCE });
+      const rows = await service.resolve(inspector, '2026-07-20', '2026-07-20', [INSP]);
+      expect(rows).toHaveLength(1);
+      expect(rows[0].userId).toBe(INSP);
+    });
+
+    it("forbids an INSPECTEUR from resolving someone else's availability", async () => {
+      setup({ employmentType: null });
+      await expect(
+        service.resolve(inspector, '2026-07-20', '2026-07-20', ['other-user']),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('forbids an INSPECTEUR from resolving org-wide (no userIds)', async () => {
+      setup({ employmentType: null });
+      await expect(
+        service.resolve(inspector, '2026-07-20', '2026-07-20'),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('lets an INSPECTEUR check their own availability', async () => {
+      setup({ employmentType: EmploymentType.FREELANCE });
+      const res = await service.check(
+        inspector,
+        INSP,
+        '2026-07-20T08:00:00.000Z',
+        '2026-07-20T09:00:00.000Z',
+      );
+      // Freelancer zonder beschikbaarheid → niet beschikbaar, maar wél toegestaan te lezen.
+      expect(res.available).toBe(false);
+    });
+
+    it("forbids an INSPECTEUR from checking someone else's availability", async () => {
+      setup({ employmentType: null });
+      await expect(
+        service.check(
+          inspector,
+          'other-user',
+          '2026-07-20T08:00:00.000Z',
+          '2026-07-20T09:00:00.000Z',
+        ),
+      ).rejects.toThrow(ForbiddenException);
     });
   });
 });

@@ -1,19 +1,20 @@
 import { Controller, Get, Query } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { User } from '@prisma/client';
-import { CRM_ROLES } from '@/common/auth/roles';
+import { ALL_STAFF } from '@/common/auth/roles';
 import { Roles, CurrentUser } from '@/common/decorators';
 import { AvailabilityResolutionService } from './availability-resolution.service';
 import { ResolvedAvailabilityQueryDto, CheckAvailabilityQueryDto } from './dto';
 
 /**
- * Berekende beschikbaarheid voor planners (CRM_ROLES). `resolved` levert per
- * inspecteur per dag de intervallen + bronnen; `check` toetst een concreet
- * tijdvenster (gebruikt door de planning-integratie in fase 4).
+ * Berekende beschikbaarheid. Planners (CRM/management) mogen elke inspecteur
+ * opvragen; een INSPECTEUR alleen zichzelf (afgedwongen in de service). `resolved`
+ * levert per inspecteur per dag de intervallen + bronnen; `check` toetst een
+ * concreet tijdvenster (gebruikt door de planning-integratie in fase 4).
  */
 @ApiTags('Availability resolved')
 @ApiBearerAuth()
-@Roles(...CRM_ROLES)
+@Roles(...ALL_STAFF)
 @Controller('availability')
 export class AvailabilityResolutionController {
   constructor(private readonly service: AvailabilityResolutionService) {}

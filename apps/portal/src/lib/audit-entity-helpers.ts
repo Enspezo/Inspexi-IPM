@@ -24,6 +24,9 @@ export const ENTITY_TYPE_LABELS: Record<string, string> = {
   WorkOrder: 'Werkbon',
   WorkOrderLine: 'Werkbonregel',
   CustomFieldDefinition: 'Aangepast veld',
+  AvailabilityTemplate: 'Beschikbaarheidstemplate',
+  UserScheduleAssignment: 'Weekschema-toewijzing',
+  AvailabilityException: 'Beschikbaarheidsuitzondering',
 };
 
 /** Returns the Dutch display label for an entity type. */
@@ -78,6 +81,12 @@ export function getEntityLink(
       return snapshot?.workOrderId ? `/work-orders/${snapshot.workOrderId}` : null;
     case 'CustomFieldDefinition':
       return null;
+    case 'AvailabilityTemplate':
+      return '/availability-templates';
+    case 'UserScheduleAssignment':
+      return snapshot?.userId ? `/users/${snapshot.userId}` : null;
+    case 'AvailabilityException':
+      return snapshot?.userId ? `/users/${snapshot.userId}` : null;
     default:
       return null;
   }
@@ -142,6 +151,12 @@ export function getEntityDisplayName(
       return snapshot.description || 'Werkbonregel';
     case 'CustomFieldDefinition':
       return snapshot.label || snapshot.name || 'Aangepast veld';
+    case 'AvailabilityTemplate':
+      return snapshot.name || 'Beschikbaarheidstemplate';
+    case 'UserScheduleAssignment':
+      return 'Weekschema-toewijzing';
+    case 'AvailabilityException':
+      return snapshot.reason || 'Beschikbaarheidsuitzondering';
     default:
       return getEntityTypeLabel(entityType);
   }

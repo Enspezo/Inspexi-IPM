@@ -159,7 +159,7 @@ export function TemplateEditorModal({ isOpen, onClose, template }: TemplateEdito
       isOpen={isOpen}
       onClose={onClose}
       title={isEdit ? 'Template bewerken' : 'Template aanmaken'}
-      className="max-w-3xl"
+      className="flex max-h-[90vh] max-w-3xl flex-col overflow-hidden [&>div:last-child]:overflow-y-auto"
     >
       <div className="space-y-4">
         {error && <ErrorBox>{error}</ErrorBox>}

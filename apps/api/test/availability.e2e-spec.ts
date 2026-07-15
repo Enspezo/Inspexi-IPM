@@ -93,6 +93,8 @@ describe('Availability (e2e)', () => {
         where: { template: { orgId } },
       });
       await prisma.availabilityTemplate.deleteMany({ where: { orgId } });
+      // Notificaties ontstaan door de fire-and-forget dispatch bij exceptie-wijzigingen.
+      await prisma.notification.deleteMany({ where: { orgId } });
       await prisma.auditLog.deleteMany({ where: { orgId } });
       await prisma.refreshToken.deleteMany({ where: { userId: { in: [adminId, inspecteurId] } } });
       await prisma.user.deleteMany({ where: { id: { in: [adminId, inspecteurId] } } });
@@ -275,5 +277,195 @@ describe('Availability (e2e)', () => {
       .set('Authorization', `Bearer ${adminToken}`)
       .expect(200);
     expect(list.body.data.data.map((t: any) => t.id)).not.toContain(templateId);
+  });
+
+  // ─── Uitzonderingen (autorisatie zelf vs. ander) ─────────
+
+  let ownExceptionId: string;
+
+  it('lets an INSPECTEUR create their own exception (201)', async () => {
+    const res = await request(app.getHttpServer())
+      .post('/api/v1/availability/exceptions')
+      .set('Authorization', `Bearer ${inspecteurToken}`)
+      .send({
+        userId: inspecteurId,
+        type: 'GEBLOKKEERD',
+        startsAt: '2026-08-03T00:00:00.000Z',
+        endsAt: '2026-08-15T00:00:00.000Z',
+        allDay: true,
+        reason: 'Vakantie',
+      })
+      .expect(201);
+    expect(res.body.data.type).toBe('GEBLOKKEERD');
+    ownExceptionId = res.body.data.id;
+  });
+
+  it('forbids an INSPECTEUR from creating an exception for someone else (403)', async () => {
+    await request(app.getHttpServer())
+      .post('/api/v1/availability/exceptions')
+      .set('Authorization', `Bearer ${inspecteurToken}`)
+      .send({
+        userId: adminId,
+        type: 'GEBLOKKEERD',
+        startsAt: '2026-08-03T00:00:00.000Z',
+        endsAt: '2026-08-04T00:00:00.000Z',
+        allDay: true,
+      })
+      .expect(403);
+  });
+
+  it('lets a MANAGER create an exception for another user (201)', async () => {
+    await request(app.getHttpServer())
+      .post('/api/v1/availability/exceptions')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        userId: inspecteurId,
+        type: 'BESCHIKBAAR',
+        isRecurring: true,
+        weekdays: [6], // zaterdag
+        startMinute: 540,
+        endMinute: 720,
+        recurStartDate: '2026-01-03',
+      })
+      .expect(201);
+  });
+
+  it('rejects an exception with both one-off and recurring fields (400)', async () => {
+    await request(app.getHttpServer())
+      .post('/api/v1/availability/exceptions')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        userId: inspecteurId,
+        type: 'GEBLOKKEERD',
+        startsAt: '2026-08-03T00:00:00.000Z',
+        endsAt: '2026-08-04T00:00:00.000Z',
+        weekdays: [1], // niet toegestaan bij een eenmalige uitzondering
+      })
+      .expect(400);
+  });
+
+  it('rejects a recurring exception without weekdays (400)', async () => {
+    await request(app.getHttpServer())
+      .post('/api/v1/availability/exceptions')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        userId: inspecteurId,
+        type: 'BESCHIKBAAR',
+        isRecurring: true,
+        startMinute: 540,
+        endMinute: 720,
+        recurStartDate: '2026-01-03',
+      })
+      .expect(400);
+  });
+
+  it('lists the inspecteur their own exceptions without a userId', async () => {
+    const res = await request(app.getHttpServer())
+      .get('/api/v1/availability/exceptions')
+      .set('Authorization', `Bearer ${inspecteurToken}`)
+      .expect(200);
+    expect(res.body.data.map((e: any) => e.id)).toContain(ownExceptionId);
+  });
+
+  it("forbids an INSPECTEUR from listing another user's exceptions (403)", async () => {
+    await request(app.getHttpServer())
+      .get(`/api/v1/availability/exceptions?userId=${adminId}`)
+      .set('Authorization', `Bearer ${inspecteurToken}`)
+      .expect(403);
+  });
+
+  it('lets the inspecteur delete their own exception (soft)', async () => {
+    await request(app.getHttpServer())
+      .delete(`/api/v1/availability/exceptions/${ownExceptionId}`)
+      .set('Authorization', `Bearer ${inspecteurToken}`)
+      .expect(200);
+  });
+
+  // ─── Resolved & check ────────────────────────────────────
+
+  let resolveTemplateId: string;
+
+  it('sets up a template + assignment + weekly block for resolution', async () => {
+    // Verse template met een maandag-slot 08:00–17:30.
+    const tpl = await request(app.getHttpServer())
+      .post('/api/v1/availability/templates')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ name: 'Resolve-schema', slots: [{ weekday: 1, startMinute: 480, endMinute: 1050 }] })
+      .expect(201);
+    resolveTemplateId = tpl.body.data.id;
+
+    await request(app.getHttpServer())
+      .put(`/api/v1/availability/users/${inspecteurId}/schedule`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ templateId: resolveTemplateId, validFrom: '2026-01-01' })
+      .expect(200);
+
+    // Wekelijkse blokkade maandag 10:00–11:00.
+    await request(app.getHttpServer())
+      .post('/api/v1/availability/exceptions')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        userId: inspecteurId,
+        type: 'GEBLOKKEERD',
+        isRecurring: true,
+        weekdays: [1],
+        startMinute: 600,
+        endMinute: 660,
+        recurStartDate: '2026-01-05',
+        reason: 'Vaste studie',
+      })
+      .expect(201);
+  });
+
+  it('resolves a workday minus the weekly block', async () => {
+    // 2026-07-20 is een maandag.
+    const res = await request(app.getHttpServer())
+      .get(`/api/v1/availability/resolved?from=2026-07-20&to=2026-07-20&userIds=${inspecteurId}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
+    const monday = res.body.data.find((d: any) => d.date === '2026-07-20');
+    expect(monday.intervals).toEqual([
+      { startMinute: 480, endMinute: 600 },
+      { startMinute: 660, endMinute: 1050 },
+    ]);
+    expect(monday.isAvailable).toBe(true);
+  });
+
+  it('rejects a resolved range larger than 3 months (400)', async () => {
+    await request(app.getHttpServer())
+      .get(`/api/v1/availability/resolved?from=2026-01-01&to=2026-06-01&userIds=${inspecteurId}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(400);
+  });
+
+  it('check: window inside availability → available true', async () => {
+    const res = await request(app.getHttpServer())
+      .get(
+        `/api/v1/availability/check?userId=${inspecteurId}` +
+          '&start=2026-07-20T08:00:00.000Z&end=2026-07-20T09:00:00.000Z',
+      )
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
+    expect(res.body.data.available).toBe(true);
+    expect(res.body.data.conflicts).toEqual([]);
+  });
+
+  it('check: window on the block → available false with reason', async () => {
+    const res = await request(app.getHttpServer())
+      .get(
+        `/api/v1/availability/check?userId=${inspecteurId}` +
+          '&start=2026-07-20T10:00:00.000Z&end=2026-07-20T10:30:00.000Z',
+      )
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
+    expect(res.body.data.available).toBe(false);
+    expect(res.body.data.conflicts[0].reason).toBe('Vaste studie');
+  });
+
+  it('forbids an INSPECTEUR from reading resolved availability (403)', async () => {
+    await request(app.getHttpServer())
+      .get(`/api/v1/availability/resolved?from=2026-07-20&to=2026-07-20&userIds=${inspecteurId}`)
+      .set('Authorization', `Bearer ${inspecteurToken}`)
+      .expect(403);
   });
 });

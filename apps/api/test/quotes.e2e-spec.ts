@@ -938,9 +938,11 @@ describe('Quotes API (e2e)', () => {
     });
 
     it('delete fails for non-CONCEPT status', async () => {
-      // Try to delete the seeded GOEDGEKEURD quote
+      // Try to delete the seeded GOEDGEKEURD quote. Filter op quoteNumber zodat de
+      // offerte gevonden wordt ongeacht paginatie (eerdere tests kunnen extra
+      // offertes hebben aangemaakt, waardoor OFF-2026-0001 van de default-20-lijst valt).
       const listRes = await request(app.getHttpServer())
-        .get('/api/v1/quotes')
+        .get('/api/v1/quotes?search=OFF-2026-0001')
         .set('Authorization', `Bearer ${org1AdminToken}`)
         .expect(200);
 

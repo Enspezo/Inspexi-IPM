@@ -11,6 +11,7 @@ import { UsersService } from './users.service';
 import { STORAGE_PROVIDER } from '@/common/services/storage/storage.interface';
 import { PrismaService } from '@/prisma';
 import { EmailService } from '@/common/services/email.service';
+import { NotificationsService } from '@/modules/notifications/notifications.service';
 
 // Mock bcrypt
 jest.mock('bcrypt', () => ({
@@ -115,6 +116,7 @@ describe('UsersService', () => {
             exists: jest.fn(),
           },
         },
+        { provide: NotificationsService, useValue: { dispatch: jest.fn() } },
       ],
     }).compile();
 

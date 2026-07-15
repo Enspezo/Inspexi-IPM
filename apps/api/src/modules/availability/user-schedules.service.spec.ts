@@ -7,6 +7,7 @@ import {
 import { Role } from '@prisma/client';
 import { UserSchedulesService } from './user-schedules.service';
 import { PrismaService } from '@/prisma';
+import { AvailabilityNotifier } from './availability-notifier.service';
 
 describe('UserSchedulesService', () => {
   let service: UserSchedulesService;
@@ -40,6 +41,10 @@ describe('UserSchedulesService', () => {
       providers: [
         UserSchedulesService,
         { provide: PrismaService, useValue: mockPrisma },
+        {
+          provide: AvailabilityNotifier,
+          useValue: { managerChangedForUser: jest.fn(), exceptionChanged: jest.fn() },
+        },
       ],
     }).compile();
     service = module.get(UserSchedulesService);

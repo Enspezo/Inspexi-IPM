@@ -71,6 +71,7 @@ describe('Cross-tenant FK isolation (e2e)', () => {
 
   // PRD-12 (availability) fixtures
   let availTemplateBId: string; // org B availability template (victim) — schedule injection
+  let availExceptionBId: string; // org B availability exception (victim) — exception injection
 
   const createdPlanningIds: string[] = [];
   const createdTaskIds: string[] = [];
@@ -422,6 +423,20 @@ describe('Cross-tenant FK isolation (e2e)', () => {
       },
     });
     availTemplateBId = availTemplateB.id;
+
+    // PRD-12: org B's availability exception (victim) for exception-injection tests.
+    const availExceptionB = await prisma.availabilityException.create({
+      data: {
+        orgId: orgB.id,
+        userId: userB.id,
+        type: 'GEBLOKKEERD',
+        startsAt: new Date('2026-08-03T00:00:00.000Z'),
+        endsAt: new Date('2026-08-04T00:00:00.000Z'),
+        allDay: true,
+        createdById: userB.id,
+      },
+    });
+    availExceptionBId = availExceptionB.id;
 
     // Support-ticket van org B (slachtoffer) — org A mag dit niet zien/muteren.
     const ticketB = await prisma.supportTicket.create({
@@ -1565,6 +1580,42 @@ describe('Cross-tenant FK isolation (e2e)', () => {
         .put(`/api/v1/availability/users/${userBId}/schedule`)
         .set('Authorization', `Bearer ${tokenA}`)
         .send({ templateId: availTemplateBId, validFrom: '2026-06-01' })
+        .expect(404);
+    });
+
+    it("rejects creating an exception for another org's user (404)", async () => {
+      await request(app.getHttpServer())
+        .post('/api/v1/availability/exceptions')
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({
+          userId: userBId,
+          type: 'GEBLOKKEERD',
+          startsAt: '2026-08-03T00:00:00.000Z',
+          endsAt: '2026-08-04T00:00:00.000Z',
+          allDay: true,
+        })
+        .expect(404);
+    });
+
+    it("rejects listing another org's user exceptions (404)", async () => {
+      await request(app.getHttpServer())
+        .get(`/api/v1/availability/exceptions?userId=${userBId}`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .expect(404);
+    });
+
+    it("rejects patching another org's exception (404)", async () => {
+      await request(app.getHttpServer())
+        .patch(`/api/v1/availability/exceptions/${availExceptionBId}`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({ reason: 'gehackt' })
+        .expect(404);
+    });
+
+    it("rejects deleting another org's exception (404)", async () => {
+      await request(app.getHttpServer())
+        .delete(`/api/v1/availability/exceptions/${availExceptionBId}`)
+        .set('Authorization', `Bearer ${tokenA}`)
         .expect(404);
     });
   });

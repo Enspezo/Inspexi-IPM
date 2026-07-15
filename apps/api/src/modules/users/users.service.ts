@@ -10,10 +10,11 @@ import {
 import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcrypt';
 import { randomUUID } from 'crypto';
-import { User, Role, TaskStatus, Availability } from '@prisma/client';
+import { User, Role, TaskStatus, Availability, NotificationType } from '@prisma/client';
 import { PrismaService } from '@/prisma';
 import { assertFound, assertSameOrg, sanitizeStorageExtension, isManagement, hasRole, ORG_ADMINS } from '@/common';
 import { EmailService } from '@/common/services/email.service';
+import { NotificationsService } from '@/modules/notifications/notifications.service';
 import {
   STORAGE_PROVIDER,
   StorageProvider,
@@ -36,6 +37,7 @@ export class UsersService {
     private emailService: EmailService,
     private config: ConfigService,
     @Inject(STORAGE_PROVIDER) private storage: StorageProvider,
+    private notifications: NotificationsService,
   ) {}
 
   async findAllByOrg(orgId: string | null, isSuperuser: boolean) {
@@ -498,6 +500,27 @@ export class UsersService {
       data,
       include: { organization: true },
     });
+
+    // PRD-12: een manager die de dienstvorm van een ander wijzigt → notificeer de
+    // betreffende inspecteur (fire-and-forget, blokkeert de update niet).
+    if (
+      dto.employmentType !== undefined &&
+      updated.employmentType !== target.employmentType &&
+      actor.id !== updated.id &&
+      updated.orgId
+    ) {
+      this.notifications.dispatch({
+        type: NotificationType.BESCHIKBAARHEID_GEWIJZIGD_DOOR_MANAGER,
+        orgId: updated.orgId,
+        recipientUserIds: [updated.id],
+        title: 'Beschikbaarheid gewijzigd',
+        body: `${actor.firstName ?? ''} ${actor.lastName ?? ''}`.trim() +
+          ' heeft jouw dienstvorm gewijzigd.',
+        entityType: 'user',
+        entityId: updated.id,
+      });
+    }
+
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { passwordHash, ...rest } = updated;
     return rest;

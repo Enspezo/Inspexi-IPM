@@ -7,6 +7,7 @@ import { User, Prisma } from '@prisma/client';
 import { PrismaService } from '@/prisma';
 import { assertSameOrg, assertFound, isSuperuser } from '@/common';
 import { AssignScheduleDto } from './dto';
+import { AvailabilityNotifier } from './availability-notifier.service';
 
 const assignmentInclude = {
   template: { select: { id: true, name: true, isActive: true, isDeleted: true } },
@@ -14,7 +15,10 @@ const assignmentInclude = {
 
 @Injectable()
 export class UserSchedulesService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private notifier: AvailabilityNotifier,
+  ) {}
 
   /** Actuele + historische toewijzingen van een inspecteur (nieuwste eerst). */
   async getSchedule(userId: string, actor: User) {
@@ -85,6 +89,14 @@ export class UserSchedulesService {
     );
 
     const results = await this.prisma.$transaction(ops);
+
+    this.notifier.managerChangedForUser(
+      actor,
+      userId,
+      target.orgId,
+      `${actor.firstName ?? ''} ${actor.lastName ?? ''}`.trim() +
+        ' heeft jouw weekschema gewijzigd.',
+    );
     return results[createIndex];
   }
 
@@ -93,7 +105,7 @@ export class UserSchedulesService {
    * deze ingangsdatum werd afgesloten wordt heropend (validUntil → null).
    */
   async remove(userId: string, assignmentId: string, actor: User) {
-    await this.assertUserInScope(userId, actor);
+    const target = await this.assertUserInScope(userId, actor);
 
     const assignment = await this.prisma.userScheduleAssignment.findUnique({
       where: { id: assignmentId },
@@ -119,6 +131,14 @@ export class UserSchedulesService {
         data: { validUntil: null },
       }),
     ]);
+
+    this.notifier.managerChangedForUser(
+      actor,
+      userId,
+      target.orgId,
+      `${actor.firstName ?? ''} ${actor.lastName ?? ''}`.trim() +
+        ' heeft een schema-toewijzing uit jouw rooster verwijderd.',
+    );
   }
 
   // ─── Helpers ────────────────────────────────────────────

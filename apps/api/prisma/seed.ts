@@ -1,4 +1,4 @@
-import { PrismaClient, Role, ContactType, LogType, PriceType, RequestSource, RequestStatus, Priority, QuoteStatus, NotificationType, PlanningStatus, AcceptanceStatus, ProjectStatus, AssetFieldType, ChecklistStatus, TemplateStatus, MeasurementSheetTemplateStatus, MeasurementSheetFieldType, FindingInspectionType, DocumentType, DocumentEntityType, TemplateMode, SectionType, ClientUserStatus, ClientAccessRole, GeneratedDocumentStatus, SignatureStatus, MarkerType, MeasurementSheetRecordStatus, InspectionExecStatus, PassFailOperator, LocationTypeScope, Availability, ChatThreadType, ChatThreadStatus, ContactDisplayMode, PhaseStatus } from '@prisma/client';
+import { PrismaClient, Role, ContactType, LogType, PriceType, RequestSource, RequestStatus, Priority, QuoteStatus, NotificationType, PlanningStatus, AcceptanceStatus, ProjectStatus, AssetFieldType, ChecklistStatus, TemplateStatus, MeasurementSheetTemplateStatus, MeasurementSheetFieldType, FindingInspectionType, DocumentType, DocumentEntityType, TemplateMode, SectionType, ClientUserStatus, ClientAccessRole, GeneratedDocumentStatus, SignatureStatus, MarkerType, MeasurementSheetRecordStatus, InspectionExecStatus, PassFailOperator, LocationTypeScope, Availability, ChatThreadType, ChatThreadStatus, ContactDisplayMode, PhaseStatus, EmploymentType, AvailabilityExceptionType } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { randomUUID } from 'crypto';
 import * as fs from 'fs';
@@ -681,6 +681,11 @@ async function main() {
   await prisma.document.deleteMany();
   await prisma.documentTag.deleteMany();
   await prisma.task.deleteMany();
+  // Beschikbaarheid inspecteurs (PRD-12) — kinderen eerst (FK → user + organization + template)
+  await prisma.availabilityException.deleteMany();
+  await prisma.userScheduleAssignment.deleteMany();
+  await prisma.availabilityTemplateSlot.deleteMany();
+  await prisma.availabilityTemplate.deleteMany();
   // Inspecteur-certificaten (PRD-11, FK → user + organization)
   await prisma.inspectorCertificate.deleteMany();
   // Custom fields & email templates
@@ -943,6 +948,109 @@ async function main() {
     createdOrg2Users[u.roles[0]] = created.id;
     console.log(`  ✓ User: ${u.email} (${u.roles[0]})`);
   }
+
+  // ─── Beschikbaarheid inspecteurs (PRD-12) ───
+  // Org 1 (InspeXi Demo): twee templates. "Standaard" (ma–vr 08:00–17:30 = 40u,
+  // pauze-aftrek buiten scope) en "Parttime ma/wo/do" (07:00–15:00).
+  const org1AvailAdminId = createdOrg1Users[Role.ORG_ADMIN];
+  const org1InspecteurId = createdOrg1Users[Role.INSPECTEUR];
+  const org2InspecteurId = createdOrg2Users[Role.INSPECTEUR];
+
+  const standaardTemplate = await prisma.availabilityTemplate.create({
+    data: {
+      orgId: org1.id,
+      name: 'Standaard',
+      description: 'Fulltime ma–vr 08:00–17:30',
+      slots: {
+        create: [1, 2, 3, 4, 5].map((weekday) => ({
+          weekday,
+          startMinute: 8 * 60, // 08:00
+          endMinute: 17 * 60 + 30, // 17:30
+        })),
+      },
+    },
+  });
+
+  await prisma.availabilityTemplate.create({
+    data: {
+      orgId: org1.id,
+      name: 'Parttime ma/wo/do',
+      description: 'Parttime maandag, woensdag, donderdag 07:00–15:00',
+      slots: {
+        create: [1, 3, 4].map((weekday) => ({
+          weekday,
+          startMinute: 7 * 60, // 07:00
+          endMinute: 15 * 60, // 15:00
+        })),
+      },
+    },
+  });
+
+  // Tom Visser (inspecteur@inspexi-demo.nl) → DIENSTVERBAND + "Standaard" +
+  // één eenmalige en één wekelijkse GEBLOKKEERD-uitzondering.
+  await prisma.user.update({
+    where: { id: org1InspecteurId },
+    data: { employmentType: EmploymentType.DIENSTVERBAND },
+  });
+  await prisma.userScheduleAssignment.create({
+    data: {
+      orgId: org1.id,
+      userId: org1InspecteurId,
+      templateId: standaardTemplate.id,
+      validFrom: new Date('2026-01-01'),
+      createdById: org1AvailAdminId,
+    },
+  });
+  await prisma.availabilityException.create({
+    data: {
+      orgId: org1.id,
+      userId: org1InspecteurId,
+      type: AvailabilityExceptionType.GEBLOKKEERD,
+      startsAt: new Date('2026-08-03T00:00:00'),
+      endsAt: new Date('2026-08-15T00:00:00'),
+      allDay: true,
+      reason: 'Vakantie',
+      createdById: org1AvailAdminId,
+    },
+  });
+  await prisma.availabilityException.create({
+    data: {
+      orgId: org1.id,
+      userId: org1InspecteurId,
+      type: AvailabilityExceptionType.GEBLOKKEERD,
+      isRecurring: true,
+      weekdays: [5], // elke vrijdagmiddag geblokkeerd
+      startMinute: 13 * 60, // 13:00
+      endMinute: 17 * 60 + 30, // 17:30
+      intervalWeeks: 1,
+      recurStartDate: new Date('2026-01-01'),
+      reason: 'Vaste studiemiddag',
+      createdById: org1AvailAdminId,
+    },
+  });
+
+  // Henk Groot (inspecteur@testbedrijf.nl) → FREELANCE + wekelijkse BESCHIKBAAR
+  // op dinsdag + donderdag.
+  await prisma.user.update({
+    where: { id: org2InspecteurId },
+    data: { employmentType: EmploymentType.FREELANCE },
+  });
+  await prisma.availabilityException.create({
+    data: {
+      orgId: org2.id,
+      userId: org2InspecteurId,
+      type: AvailabilityExceptionType.BESCHIKBAAR,
+      isRecurring: true,
+      weekdays: [2, 4], // dinsdag + donderdag
+      startMinute: 9 * 60, // 09:00
+      endMinute: 16 * 60, // 16:00
+      intervalWeeks: 1,
+      recurStartDate: new Date('2026-01-01'),
+      reason: 'Vaste beschikbare dagen',
+      createdById: createdOrg2Users[Role.ORG_ADMIN],
+    },
+  });
+  console.log('  ✓ Beschikbaarheid: 2 templates + dienstvorm/toewijzing/uitzonderingen (PRD-12)');
 
   // ─── Sample Invitations ────────────────────────────────
   await prisma.invitation.create({

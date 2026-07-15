@@ -38,6 +38,7 @@ import { DocumentsModule } from './modules/documents/documents.module';
 import { DocumentTagsModule } from './modules/document-tags/document-tags.module';
 import { InspectorCertificatesModule } from './modules/inspector-certificates/inspector-certificates.module';
 import { MeasurementInstrumentsModule } from './modules/measurement-instruments/measurement-instruments.module';
+import { AvailabilityModule } from './modules/availability/availability.module';
 import { WebhooksModule } from './modules/webhooks/webhooks.module';
 import { PlanningModule } from './modules/planning/planning.module';
 import { SearchModule } from './modules/search/search.module';
@@ -128,6 +129,7 @@ import { VoiceModule } from './modules/voice/voice.module';
     DocumentTagsModule,
     InspectorCertificatesModule,
     MeasurementInstrumentsModule,
+    AvailabilityModule,
     WebhooksModule,
     PlanningModule,
     SearchModule,

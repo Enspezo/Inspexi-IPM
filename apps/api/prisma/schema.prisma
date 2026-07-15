@@ -504,6 +504,11 @@ model Organization {
   userDefaultInstruments           UserDefaultInstrument[]
   inspectionPlanDefaultInstruments InspectionPlanDefaultInstrument[]
 
+  // Beschikbaarheid inspecteurs (PRD-12)
+  availabilityTemplates   AvailabilityTemplate[]
+  userScheduleAssignments UserScheduleAssignment[]
+  availabilityExceptions  AvailabilityException[]
+
   @@map("imp_organizations")
 }
 
@@ -693,6 +698,12 @@ model User {
   // Meetmiddelen
   assignedInstruments MeasurementInstrument[] @relation("MeasurementInstrumentAssignee")
   defaultInstruments  UserDefaultInstrument[]
+
+  // Beschikbaarheid inspecteurs (PRD-12). `employmentType` null = geen inspecteur / n.v.t.
+  // Raakt de bestaande chat-presence enum `availability` (Availability) niet.
+  employmentType         EmploymentType?          @map("employment_type")
+  scheduleAssignments    UserScheduleAssignment[]
+  availabilityExceptions AvailabilityException[]
 
   @@index([orgId, isDeleted])
   @@map("imp_users")
@@ -4636,4 +4647,110 @@ model InspectionPlanDefaultInstrument {
   @@index([orgId])
   @@index([instrumentId])
   @@map("imp_inspection_plan_default_instruments")
+}
+
+// ─── Beschikbaarheid inspecteurs (PRD-12) ────────────────────────────────────
+// Weekschema-template als baseline (dienstverband) + uitzonderingen (overrides)
+// er bovenop. Losstaand van de bestaande chat-presence enum `Availability`.
+
+/// Dienstvorm per inspecteur. `DIENSTVERBAND` = standaard beschikbaar volgens
+/// weekschema; `FREELANCE` = standaard niet beschikbaar (opgeven via excepties).
+enum EmploymentType {
+  DIENSTVERBAND
+  FREELANCE
+}
+
+/// Type uitzondering: voegt beschikbaarheid toe of blokkeert die.
+enum AvailabilityExceptionType {
+  BESCHIKBAAR // voegt beschikbaarheid toe (freelance-patroon of extra dag dienstverband)
+  GEBLOKKEERD // blokkeert beschikbaarheid (verlof, afwezigheid) — wint altijd
+}
+
+/// Herbruikbaar weekschema per organisatie met tijdsloten per weekdag.
+model AvailabilityTemplate {
+  id          String   @id @default(uuid()) @db.Uuid
+  orgId       String   @map("org_id") @db.Uuid
+  name        String // "Standaard", "Sjaak Parttime"
+  description String?
+  isActive    Boolean  @default(true) @map("is_active")
+  isDeleted   Boolean  @default(false) @map("is_deleted")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  organization Organization               @relation(fields: [orgId], references: [id])
+  slots        AvailabilityTemplateSlot[]
+  assignments  UserScheduleAssignment[]
+
+  @@unique([orgId, name])
+  @@index([orgId, isDeleted])
+  @@map("imp_availability_templates")
+}
+
+/// Eén tijdslot binnen een template-weekdag (minuten vanaf middernacht).
+model AvailabilityTemplateSlot {
+  id          String @id @default(uuid()) @db.Uuid
+  templateId  String @map("template_id") @db.Uuid
+  weekday     Int // ISO-8601: 1 = maandag ... 7 = zondag
+  startMinute Int    @map("start_minute") // 480 = 08:00
+  endMinute   Int    @map("end_minute") // 1050 = 17:30
+
+  template AvailabilityTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+
+  @@index([templateId])
+  @@map("imp_availability_template_slots")
+}
+
+/// Koppeling inspecteur → template met ingangsdatum, zodat schemawissels
+/// historisch kloppen (`validUntil` wordt gezet bij het toewijzen van een opvolger).
+model UserScheduleAssignment {
+  id          String    @id @default(uuid()) @db.Uuid
+  orgId       String    @map("org_id") @db.Uuid
+  userId      String    @map("user_id") @db.Uuid
+  templateId  String    @map("template_id") @db.Uuid
+  validFrom   DateTime  @map("valid_from") @db.Date // date-only (00:00 lokale tijd)
+  validUntil  DateTime? @map("valid_until") @db.Date // null = doorlopend
+  createdById String    @map("created_by_id") @db.Uuid
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  organization Organization         @relation(fields: [orgId], references: [id])
+  user         User                 @relation(fields: [userId], references: [id])
+  template     AvailabilityTemplate @relation(fields: [templateId], references: [id])
+
+  @@index([orgId, userId, validFrom])
+  @@map("imp_user_schedule_assignments")
+}
+
+/// Eenmalige of wekelijks herhalende periode die beschikbaarheid toevoegt of blokkeert.
+/// Óf eenmalig (startsAt/endsAt) óf herhalend (RRULE-subset FREQ=WEEKLY), nooit beide.
+model AvailabilityException {
+  id     String                    @id @default(uuid()) @db.Uuid
+  orgId  String                    @map("org_id") @db.Uuid
+  userId String                    @map("user_id") @db.Uuid
+  type   AvailabilityExceptionType
+
+  // Eenmalig (isRecurring = false): absolute periode.
+  startsAt DateTime? @map("starts_at")
+  endsAt   DateTime? @map("ends_at")
+  allDay   Boolean   @default(false) @map("all_day")
+
+  // Herhalend (isRecurring = true): RRULE-subset FREQ=WEEKLY.
+  isRecurring    Boolean   @default(false) @map("is_recurring")
+  weekdays       Int[]     @default([]) // ISO 1..7
+  startMinute    Int?      @map("start_minute") // 60 = 01:00
+  endMinute      Int?      @map("end_minute") // 300 = 05:00
+  intervalWeeks  Int       @default(1) @map("interval_weeks") // 1 = wekelijks, 2 = tweewekelijks
+  recurStartDate DateTime? @map("recur_start_date") @db.Date
+  recurEndDate   DateTime? @map("recur_end_date") @db.Date
+
+  reason      String?
+  createdById String   @map("created_by_id") @db.Uuid // inspecteur zelf of manager
+  isDeleted   Boolean  @default(false) @map("is_deleted")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [orgId], references: [id])
+  user         User         @relation(fields: [userId], references: [id])
+
+  @@index([orgId, userId, isDeleted])
+  @@map("imp_availability_exceptions")
 }

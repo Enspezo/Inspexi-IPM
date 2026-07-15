@@ -12,7 +12,7 @@ import * as bcrypt from 'bcrypt';
 import { randomUUID } from 'crypto';
 import { User, Role, TaskStatus, Availability } from '@prisma/client';
 import { PrismaService } from '@/prisma';
-import { assertFound, assertSameOrg, sanitizeStorageExtension } from '@/common';
+import { assertFound, assertSameOrg, sanitizeStorageExtension, isManagement, hasRole, ORG_ADMINS } from '@/common';
 import { EmailService } from '@/common/services/email.service';
 import {
   STORAGE_PROVIDER,
@@ -435,6 +435,21 @@ export class UsersService {
       throw new ForbiddenException();
     }
 
+    // PRD-12: de route is verbreed naar MANAGEMENT_ROLES zodat een MANAGER de
+    // dienstvorm kan zetten. Een MANAGER (zonder ORG_ADMIN/SUPERUSER) mag via
+    // deze generieke admin-update echter uitsluitend `employmentType` muteren —
+    // elk ander (gedefinieerd) veld levert 403 op.
+    if (!hasRole(actor, ORG_ADMINS)) {
+      const touchesOtherField = Object.keys(dto).some(
+        (key) => key !== 'employmentType' && (dto as Record<string, unknown>)[key] !== undefined,
+      );
+      if (touchesOtherField) {
+        throw new ForbiddenException(
+          'Als manager kunt u alleen de dienstvorm van een gebruiker wijzigen',
+        );
+      }
+    }
+
     const data: any = {};
     if (dto.firstName) data.firstName = dto.firstName;
     if (dto.lastName) data.lastName = dto.lastName;
@@ -467,6 +482,16 @@ export class UsersService {
     // Toestemming vervalt automatisch wanneer de bijbehorende waarde in dit verzoek leeg wordt gemaakt.
     if (dto.contactPhone !== undefined && !data.contactPhone) data.sharePhoneWithClients = false;
     if (dto.contactEmail !== undefined && !data.contactEmail) data.shareEmailWithClients = false;
+
+    // Dienstvorm (PRD-12): alleen MANAGEMENT_ROLES mag dit veld muteren.
+    // NB: `dto.employmentType !== undefined` (niet `'employmentType' in dto`) —
+    // class-transformer maakt alle DTO-keys aan, dus `in` zou altijd waar zijn.
+    if (dto.employmentType !== undefined) {
+      if (!isManagement(actor)) {
+        throw new ForbiddenException('U mag de dienstvorm niet wijzigen');
+      }
+      data.employmentType = dto.employmentType ?? null;
+    }
 
     const updated = await this.prisma.user.update({
       where: { id },

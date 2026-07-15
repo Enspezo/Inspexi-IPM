@@ -25,7 +25,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { Response } from 'express';
 import { User, Role } from '@prisma/client';
-import { ORG_ADMINS, ALL_STAFF } from '@/common/auth/roles';
+import { ORG_ADMINS, MANAGEMENT_ROLES, ALL_STAFF } from '@/common/auth/roles';
 import { UsersService } from './users.service';
 import {
   InviteUserDto,
@@ -314,9 +314,12 @@ export class UsersController {
   }
 
   // ─── Admin update (generic, last to avoid swallowing literals) ──
+  // MANAGEMENT_ROLES i.p.v. ORG_ADMINS: een MANAGER moet de dienstvorm
+  // (employmentType, PRD-12) kunnen zetten. De service beperkt een MANAGER
+  // (zonder ORG_ADMIN/SUPERUSER) tot uitsluitend dat veld (403 anders).
   @Patch(':id')
-  @Roles(...ORG_ADMINS)
-  @ApiOperation({ summary: 'Gebruikersgegevens bijwerken (admin)' })
+  @Roles(...MANAGEMENT_ROLES)
+  @ApiOperation({ summary: 'Gebruikersgegevens bijwerken (admin / manager: alleen dienstvorm)' })
   @ApiResponse({ status: 200, description: 'Gebruiker bijgewerkt' })
   async adminUpdate(
     @Param('id', ParseUUIDPipe) id: string,

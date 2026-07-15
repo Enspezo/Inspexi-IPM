@@ -8,12 +8,14 @@ import {
   ParseUUIDPipe,
   Post,
   Res,
+  UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { User } from '@prisma/client';
 import type { Response } from 'express';
 import { CRM_ROLES } from '@/common/auth/roles';
 import { CurrentUser, RequiresFeature, Roles } from '@/common/decorators';
+import { AiAgentAccessGuard } from './ai-agent-access.guard';
 import { AiActionService } from './ai-action.service';
 import { AiAgentService } from './ai-agent.service';
 import { AiRunnerService, SseSink } from './ai-runner.service';
@@ -30,6 +32,7 @@ import { ConfirmActionDto, CreateConversationDto, SendMessageDto } from './dto';
 @Controller('ai')
 @Roles(...CRM_ROLES)
 @RequiresFeature('AI_AGENT')
+@UseGuards(AiAgentAccessGuard)
 export class AiAgentController {
   constructor(
     private readonly agent: AiAgentService,

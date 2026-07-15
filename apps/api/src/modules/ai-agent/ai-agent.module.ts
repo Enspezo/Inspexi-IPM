@@ -11,6 +11,7 @@ import { AiActionService } from './ai-action.service';
 import { AiRunnerService } from './ai-runner.service';
 import { AiUsageService } from './ai-usage.service';
 import { AiAnthropicProvider } from './ai-anthropic.provider';
+import { AiAgentAccessGuard } from './ai-agent-access.guard';
 import { AiToolRegistry } from './tools/tool-registry';
 
 /**
@@ -35,6 +36,7 @@ import { AiToolRegistry } from './tools/tool-registry';
     AiUsageService,
     AiToolRegistry,
     AiAnthropicProvider,
+    AiAgentAccessGuard,
   ],
 })
 export class AiAgentModule {}

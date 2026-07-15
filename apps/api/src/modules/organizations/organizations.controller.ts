@@ -110,6 +110,7 @@ export class OrganizationsController {
         logoUrl: true,
         primaryColor: true,
         chatEnabled: true,
+        aiAgentEnabled: true,
       },
     });
     if (!org) {

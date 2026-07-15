@@ -395,6 +395,10 @@ model Organization {
   isActive            Boolean  @default(true) @map("is_active")
   // Interne chat per organisatie aan/uit (REQ1) — te schakelen door SUPERUSER/ORG_ADMIN.
   chatEnabled         Boolean  @default(true) @map("chat_enabled")
+  // AI-assistent (add-on, PRD-12): per-org kill-switch + toegestane rollen.
+  // Lege rollen-lijst → systeem-default (alle staf behalve INSPECTEUR).
+  aiAgentEnabled      Boolean  @default(true) @map("ai_agent_enabled")
+  aiAgentAllowedRoles Role[]   @default([]) @map("ai_agent_allowed_roles")
   // SaaS-abonnement (entitlements, PRD-09): template-plan voor deze org. Nullable —
   // een org zonder plan heeft (buiten core) geen gegate functies.
   planId              String?  @map("plan_id") @db.Uuid

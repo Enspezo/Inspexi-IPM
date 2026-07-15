@@ -6,8 +6,22 @@
  * `voice`-module (die `ANTHROPIC_MODEL` gebruikt) niet wordt beïnvloed.
  */
 
+import { Role } from '@prisma/client';
+
 /** Kosten-effectieve default. Zie PRD-12 §5.5. */
 export const AI_AGENT_DEFAULT_MODEL = 'claude-sonnet-5';
+
+/**
+ * Standaard toegestane rollen als een org `aiAgentAllowedRoles` leeg laat
+ * (PRD-12 §7.3): alle staf behalve INSPECTEUR. SUPERUSER wordt sowieso
+ * toegelaten (platformdomein) en staat daarom niet in deze lijst.
+ */
+export const DEFAULT_AI_AGENT_ROLES: Role[] = [
+  Role.ORG_ADMIN,
+  Role.MANAGER,
+  Role.BACKOFFICE,
+  Role.WERKVOORBEREIDER,
+];
 
 /** Prijs per 1.000.000 tokens, in eurocent (metering/marge, geen klant-facturatie). */
 export interface ModelPrice {

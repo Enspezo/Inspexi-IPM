@@ -404,7 +404,7 @@ export default function PlanningPage() {
     }
     return {
       ...getCalendarRange(view, calendarDate),
-      limit: 300,
+      limit: 200,
       page: 1,
     };
   }, [view, debouncedSearch, statusFilter, page, calendarDate, apiSort]);

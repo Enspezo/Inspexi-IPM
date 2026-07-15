@@ -1,9 +1,19 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsOptional, IsUUID, IsDateString, IsEnum, IsString } from 'class-validator';
+import { IsInt, IsOptional, IsUUID, IsDateString, IsEnum, IsString, Max, Min } from 'class-validator';
+import { Type } from 'class-transformer';
 import { PlanningStatus } from '@prisma/client';
 import { BasePaginationQueryDto } from '@/common/dto';
 
 export class ListPlanningQueryDto extends BasePaginationQueryDto {
+  // Kalenderweergave laadt een bereik van ~6 weken in één keer (portal limit=200)
+  @ApiPropertyOptional({ default: 20, maximum: 200 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(200)
+  limit?: number = 20;
+
   @ApiPropertyOptional({ example: 'NEN1010' })
   @IsOptional()
   @IsString()

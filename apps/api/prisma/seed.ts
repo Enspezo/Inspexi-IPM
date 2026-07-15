@@ -1006,8 +1006,10 @@ async function main() {
       orgId: org1.id,
       userId: org1InspecteurId,
       type: AvailabilityExceptionType.GEBLOKKEERD,
-      startsAt: new Date('2026-08-03T00:00:00'),
-      endsAt: new Date('2026-08-15T00:00:00'),
+      // Expliciete Z: de resolutie-kern rekent in UTC; zonder Z parseert dit als
+      // lokale tijd en raakt de all-day-blokkade op een UTC+x-machine ook 2 aug.
+      startsAt: new Date('2026-08-03T00:00:00Z'),
+      endsAt: new Date('2026-08-15T00:00:00Z'),
       allDay: true,
       reason: 'Vakantie',
       createdById: org1AvailAdminId,

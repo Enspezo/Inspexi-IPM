@@ -10,6 +10,9 @@ export class BasePaginationQueryDto {
   @Min(1)
   page?: number = 1;
 
+  // Basis-cap is 100. Endpoints die bewust meer nodig hebben overriden dit veld
+  // in hun eigen DTO met @Max(200) — o.a. ListPlanningQueryDto (kalenderweergave
+  // laadt ~6 weken in één request).
   @ApiPropertyOptional({ default: 20 })
   @IsOptional()
   @Type(() => Number)

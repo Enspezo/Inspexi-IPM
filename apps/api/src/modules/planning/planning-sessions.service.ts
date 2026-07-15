@@ -117,16 +117,25 @@ export class PlanningSessionsService {
       dto.scheduledDate !== undefined ? (dto.scheduledDate ? new Date(dto.scheduledDate) : null) : undefined;
     const newDurationHours = dto.durationHours !== undefined ? dto.durationHours : undefined;
 
-    // PRD-12 §12.9: verzetten van een sessie met toegewezen inspecteurs →
-    // beschikbaarheid opnieuw beoordelen (409 met warnings, tenzij override).
+    // PRD-12 §12.9: verzetten van een sessie óf een duur-wijziging met toegewezen
+    // inspecteurs → beschikbaarheid opnieuw beoordelen (409 met warnings, tenzij
+    // override). Een expliciete `durationHours: null` betekent "erf de duur van
+    // de planregel" en valt dus níét terug op de oude sessieduur.
     let overrideWarnings: Awaited<ReturnType<typeof this.planning.assertInspectorAvailability>> = [];
-    if (newScheduledDate instanceof Date) {
+    const effectiveDate =
+      dto.scheduledDate !== undefined ? newScheduledDate : session.scheduledDate;
+    const effectiveDuration =
+      (dto.durationHours !== undefined ? dto.durationHours : session.durationHours) ??
+      item.durationHours;
+    const durationChanged =
+      dto.durationHours !== undefined && (dto.durationHours ?? null) !== session.durationHours;
+    if (effectiveDate instanceof Date && (dto.scheduledDate !== undefined || durationChanged)) {
       const inspectorIds = (session.sessionInspectors as { userId: string | null }[])
         .map((si) => si.userId)
         .filter((uid): uid is string => !!uid);
       overrideWarnings = await this.planning.assertInspectorAvailability(
-        newScheduledDate,
-        (newDurationHours ?? session.durationHours) ?? item.durationHours,
+        effectiveDate,
+        effectiveDuration,
         inspectorIds,
         dto.overrideAvailabilityWarnings,
       );

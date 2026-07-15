@@ -355,6 +355,13 @@ describe('AvailabilityResolutionService', () => {
       ).rejects.toThrow(ForbiddenException);
     });
 
+    it('rejects a SUPERUSER without org context resolving without userIds (400)', async () => {
+      const superuser = { id: 'su-1', orgId: null, roles: ['SUPERUSER'] } as any;
+      await expect(
+        service.resolve(superuser, '2026-07-20', '2026-07-20'),
+      ).rejects.toThrow(BadRequestException);
+    });
+
     it('lets an INSPECTEUR check their own availability', async () => {
       setup({ employmentType: EmploymentType.FREELANCE });
       const res = await service.check(

@@ -93,6 +93,13 @@ export class AvailabilityResolutionService {
     if (!isCrm(actor) && (!userIds?.length || userIds.some((id) => id !== actor.id))) {
       throw new ForbiddenException('U mag alleen uw eigen beschikbaarheid inzien');
     }
+    // SUPERUSER zonder org-context: de org-brede default zou inspecteurs van
+    // álle organisaties opleveren — dat is nooit zinvol; eis expliciete userIds.
+    if (!userIds?.length && !actor.orgId) {
+      throw new BadRequestException(
+        'Geef userIds op: zonder organisatiecontext is er geen standaardselectie',
+      );
+    }
     this.assertRange(fromKey, toKey);
 
     const ids = userIds?.length

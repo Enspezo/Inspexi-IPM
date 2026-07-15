@@ -434,6 +434,57 @@ describe('PlanningService', () => {
       expect(mockPrismaService.planningItem.update).toHaveBeenCalled();
     });
 
+    it('rechecks availability when only the duration changes on a scheduled item', async () => {
+      const itemWithInspectors = {
+        ...mockPlanningItem,
+        inspectors: [{ userId: 'user-2' }],
+      };
+      mockPrismaService.planningItem.findUnique.mockResolvedValue(itemWithInspectors);
+      mockPrismaService.planningItem.update.mockResolvedValue(itemWithInspectors);
+      mockAvailabilityService.checkPlanningDay.mockResolvedValue([]);
+
+      await service.update('plan-1', { durationHours: 8 } as any, mockUser);
+
+      // Duur-wijziging zonder datum-wijziging → check op de bestaande datum met de nieuwe duur.
+      expect(mockAvailabilityService.checkPlanningDay).toHaveBeenCalledWith(
+        ['user-2'],
+        '2026-04-01',
+        8 * 60,
+      );
+    });
+
+    it('treats an explicit durationHours: null as "no duration" in the recheck', async () => {
+      const itemWithInspectors = {
+        ...mockPlanningItem,
+        inspectors: [{ userId: 'user-2' }],
+      };
+      mockPrismaService.planningItem.findUnique.mockResolvedValue(itemWithInspectors);
+      mockPrismaService.planningItem.update.mockResolvedValue(itemWithInspectors);
+      mockAvailabilityService.checkPlanningDay.mockResolvedValue([]);
+
+      await service.update('plan-1', { durationHours: null } as any, mockUser);
+
+      // Expliciete null valt níét terug op de bestaande duur (partial-PATCH-semantiek).
+      expect(mockAvailabilityService.checkPlanningDay).toHaveBeenCalledWith(
+        ['user-2'],
+        '2026-04-01',
+        null,
+      );
+    });
+
+    it('does not recheck availability when neither date nor duration changes', async () => {
+      const itemWithInspectors = {
+        ...mockPlanningItem,
+        inspectors: [{ userId: 'user-2' }],
+      };
+      mockPrismaService.planningItem.findUnique.mockResolvedValue(itemWithInspectors);
+      mockPrismaService.planningItem.update.mockResolvedValue(itemWithInspectors);
+
+      await service.update('plan-1', { internalNotes: 'x' } as any, mockUser);
+
+      expect(mockAvailabilityService.checkPlanningDay).not.toHaveBeenCalled();
+    });
+
     it('should dispatch AFSPRAAK_VERPLAATST notification when date changes with assigned inspectors', async () => {
       const itemWithInspectors = {
         ...mockPlanningItem,

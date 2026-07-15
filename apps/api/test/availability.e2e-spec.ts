@@ -279,6 +279,20 @@ describe('Availability (e2e)', () => {
     expect(list.body.data.data.map((t: any) => t.id)).not.toContain(templateId);
   });
 
+  it('allows reusing the name of a soft-deleted template (no P2002)', async () => {
+    // De vorige test soft-deletede "Standaard"; de naam moet weer vrij zijn
+    // (naam-mangling bij soft-delete, want de DB-unique kent geen isDeleted).
+    const res = await request(app.getHttpServer())
+      .post('/api/v1/availability/templates')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        name: 'Standaard',
+        slots: [{ weekday: 1, startMinute: 480, endMinute: 1050 }],
+      })
+      .expect(201);
+    expect(res.body.data.name).toBe('Standaard');
+  });
+
   // ─── Uitzonderingen (autorisatie zelf vs. ander) ─────────
 
   let ownExceptionId: string;

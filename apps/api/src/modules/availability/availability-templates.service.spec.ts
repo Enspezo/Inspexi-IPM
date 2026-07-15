@@ -190,14 +190,19 @@ describe('AvailabilityTemplatesService', () => {
       expect(mockPrisma.availabilityTemplate.update).not.toHaveBeenCalled();
     });
 
-    it('soft-deletes when there are no active assignments', async () => {
+    it('soft-deletes and mangles the name so a new template can reuse it', async () => {
       mockPrisma.availabilityTemplate.findUnique.mockResolvedValue(template());
       mockPrisma.userScheduleAssignment.count.mockResolvedValue(0);
       mockPrisma.availabilityTemplate.update.mockResolvedValue(template({ isDeleted: true }));
       await service.remove('tpl-1', admin);
       expect(mockPrisma.availabilityTemplate.update).toHaveBeenCalledWith({
         where: { id: 'tpl-1' },
-        data: { isDeleted: true },
+        data: {
+          isDeleted: true,
+          // Naam-mangling: de DB-unique (orgId, name) kent geen isDeleted,
+          // dus de oude naam moet vrijkomen voor een nieuwe template.
+          name: expect.stringMatching(/^Standaard \(verwijderd .+\)$/),
+        },
       });
     });
   });

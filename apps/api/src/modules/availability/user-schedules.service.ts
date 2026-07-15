@@ -107,7 +107,8 @@ export class UserSchedulesService {
 
   /**
    * Verwijder een toekomstige toewijzing (validFrom > nu). Een voorganger die op
-   * deze ingangsdatum werd afgesloten wordt heropend (validUntil → null).
+   * deze ingangsdatum werd afgesloten loopt daarna door tot de eerstvolgende
+   * overgebleven toewijzing (of onbeperkt als die er niet is).
    */
   async remove(userId: string, assignmentId: string, actor: User) {
     const target = await this.assertUserInScope(userId, actor);
@@ -128,12 +129,25 @@ export class UserSchedulesService {
       );
     }
 
+    // Keten-herstel: de voorganger moet doorlopen tot de eerstvolgende
+    // overgebleven toewijzing — niet blind naar null, anders ontstaan er bij
+    // gestapelde toekomstige toewijzingen twee open assignments naast elkaar.
+    const successor = await this.prisma.userScheduleAssignment.findFirst({
+      where: {
+        userId,
+        orgId: assignment.orgId,
+        validFrom: { gt: assignment.validFrom },
+        NOT: { id: assignmentId },
+      },
+      orderBy: { validFrom: 'asc' },
+      select: { validFrom: true },
+    });
+
     await this.prisma.$transaction([
       this.prisma.userScheduleAssignment.delete({ where: { id: assignmentId } }),
-      // Heropen de voorganger die exact op deze ingangsdatum werd afgesloten.
       this.prisma.userScheduleAssignment.updateMany({
         where: { userId, validUntil: assignment.validFrom },
-        data: { validUntil: null },
+        data: { validUntil: successor?.validFrom ?? null },
       }),
     ]);
 

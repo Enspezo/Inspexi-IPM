@@ -159,6 +159,12 @@ export class PlanningService {
    * (409) met een `warnings`-payload gegooid. Met override worden de
    * waarschuwingen teruggegeven zodat de caller een `AVAILABILITY_OVERRIDE`-
    * history-record kan schrijven.
+   *
+   * Let op: de kalenderdag wordt bepaald via `dateKeyOf(scheduledDate)` (UTC),
+   * consistent met de hele resolutie-kern. Dit veronderstelt dat clients
+   * date-only of UTC-gealigneerde ISO-strings sturen (de portal doet dit);
+   * een tijdstip als `2026-09-08T00:30:00+02:00` zou anders op 7 september
+   * gecheckt worden.
    */
   async assertInspectorAvailability(
     scheduledDate: Date | null,
@@ -432,16 +438,25 @@ export class PlanningService {
     if (dto.internalNotes !== undefined) data.internalNotes = dto.internalNotes ?? null;
     if (dto.labels !== undefined) data.labels = dto.labels;
 
-    // PRD-12 §12.9: verzetten naar een nieuwe datum met toegewezen inspecteurs →
-    // beschikbaarheid opnieuw beoordelen (409 met warnings, tenzij override).
+    // PRD-12 §12.9: verzetten naar een nieuwe datum óf een duur-wijziging op een
+    // geplande regel met toegewezen inspecteurs → beschikbaarheid opnieuw
+    // beoordelen (409 met warnings, tenzij override). Partial-PATCH-semantiek:
+    // een expliciete `durationHours: null` telt als "geen duur", en valt dus
+    // níét terug op de bestaande duur.
     let overrideWarnings: AvailabilityWarning[] = [];
-    if (data.scheduledDate instanceof Date) {
+    const effectiveDate =
+      dto.scheduledDate !== undefined ? data.scheduledDate : existing.scheduledDate;
+    const effectiveDuration =
+      dto.durationHours !== undefined ? (dto.durationHours ?? null) : existing.durationHours;
+    const durationChanged =
+      dto.durationHours !== undefined && (dto.durationHours ?? null) !== existing.durationHours;
+    if (effectiveDate instanceof Date && (dto.scheduledDate !== undefined || durationChanged)) {
       const inspectorIds = (existing.inspectors as { userId: string | null }[])
         .map((i) => i.userId)
         .filter((uid): uid is string => !!uid);
       overrideWarnings = await this.assertInspectorAvailability(
-        data.scheduledDate,
-        data.durationHours ?? existing.durationHours,
+        effectiveDate,
+        effectiveDuration,
         inspectorIds,
         dto.overrideAvailabilityWarnings,
       );

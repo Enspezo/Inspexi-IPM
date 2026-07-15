@@ -144,9 +144,14 @@ export class AvailabilityTemplatesService {
       );
     }
 
+    // De naam wordt gemangeld zodat de DB-unique (orgId, name) — die geen
+    // isDeleted kent — een nieuwe template met dezelfde naam niet blokkeert.
     await this.prisma.availabilityTemplate.update({
       where: { id },
-      data: { isDeleted: true },
+      data: {
+        isDeleted: true,
+        name: `${template.name} (verwijderd ${new Date().toISOString()})`,
+      },
     });
   }
 

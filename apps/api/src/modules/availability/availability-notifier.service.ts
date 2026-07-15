@@ -85,6 +85,11 @@ export class AvailabilityNotifier {
 
   // ─── Intern ───────────────────────────────────────────────
 
+  /**
+   * Alle ORG_ADMIN/MANAGER/WERKVOORBEREIDER-users van de org. Bewust breed
+   * (PRD 12.7); bij grote organisaties dempen gebruikers dit zelf via de
+   * notificatievoorkeuren-groep BESCHIKBAARHEID.
+   */
   private async roleRecipients(orgId: string, excludeUserId: string): Promise<string[]> {
     const users = await this.prisma.user.findMany({
       where: {

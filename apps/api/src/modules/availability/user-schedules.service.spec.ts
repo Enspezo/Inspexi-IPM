@@ -175,6 +175,8 @@ describe('UserSchedulesService', () => {
         orgId: ORG,
         validFrom,
       });
+      // Geen latere toewijzing meer → voorganger wordt heropend naar null.
+      mockPrisma.userScheduleAssignment.findFirst.mockResolvedValue(null);
       await service.remove(TARGET, 'fut-1', admin);
       expect(mockPrisma.userScheduleAssignment.delete).toHaveBeenCalledWith({
         where: { id: 'fut-1' },
@@ -182,6 +184,27 @@ describe('UserSchedulesService', () => {
       expect(mockPrisma.userScheduleAssignment.updateMany).toHaveBeenCalledWith({
         where: { userId: TARGET, validUntil: validFrom },
         data: { validUntil: null },
+      });
+    });
+
+    it('repairs the chain: predecessor runs until the remaining successor', async () => {
+      const validFrom = new Date('2999-01-01');
+      const successorFrom = new Date('2999-06-01');
+      mockPrisma.userScheduleAssignment.findUnique.mockResolvedValue({
+        id: 'fut-1',
+        userId: TARGET,
+        orgId: ORG,
+        validFrom,
+      });
+      // Er staat nog een latere toewijzing gepland → de voorganger moet tot
+      // díé ingangsdatum doorlopen, niet heropend worden naar null.
+      mockPrisma.userScheduleAssignment.findFirst.mockResolvedValue({
+        validFrom: successorFrom,
+      });
+      await service.remove(TARGET, 'fut-1', admin);
+      expect(mockPrisma.userScheduleAssignment.updateMany).toHaveBeenCalledWith({
+        where: { userId: TARGET, validUntil: validFrom },
+        data: { validUntil: successorFrom },
       });
     });
 

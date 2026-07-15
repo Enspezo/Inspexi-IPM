@@ -1,6 +1,11 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import Anthropic from '@anthropic-ai/sdk';
-import { AiConversation, AiMessageRole, User } from '@prisma/client';
+import {
+  AiActionStatus,
+  AiConversation,
+  AiMessageRole,
+  User,
+} from '@prisma/client';
 import { PrismaService } from '@/prisma/prisma.service';
 import {
   AI_MAX_ITERATIONS,
@@ -24,10 +29,18 @@ const WEB_SEARCH_TOOL = {
   max_uses: 5,
 };
 
+/** Genormaliseerd tool-resultaat zoals opgeslagen op AiPendingAction.result. */
+interface StoredToolResult {
+  output: unknown;
+  isError: boolean;
+}
+
 /**
- * Draait één gebruikersbeurt: streamt het antwoord, voert lees-tools uit en
- * lust door tot de assistent klaar is. Fase 2 kent alleen lees-tools; er is dus
- * (nog) geen bevestig-en-hervat-pad voor schrijfacties (dat komt in fase 3).
+ * Draait de agent-beurt en beheert het bevestig-en-hervat-pad (PRD-12 §5.3–5.4).
+ * Lees-tools draaien direct; zodra een beurt één of meer WRITE-tools bevat wordt
+ * de beurt gepauzeerd: leesresultaten worden alvast bewaard, write-tools worden
+ * `AiPendingAction`s (PENDING), en de gebruiker bevestigt ze los. Na bevestiging
+ * hervat `resumeAfterActions` de lus met de samengestelde tool_results.
  */
 @Injectable()
 export class AiRunnerService {
@@ -44,32 +57,149 @@ export class AiRunnerService {
     return this.anthropic !== null;
   }
 
+  /** Nieuw gebruikersbericht → start een beurt en stream het antwoord. */
   async streamTurn(
     conversation: AiConversation,
     userText: string,
     user: User,
     sink: SseSink,
   ): Promise<void> {
-    if (!this.anthropic) {
-      sink.send('error', { message: 'De AI-assistent is niet geconfigureerd' });
+    if (!(await this.guard(conversation, sink))) return;
+
+    // Blokkeer een nieuw bericht zolang er een openstaande (nog te bevestigen)
+    // beurt is — Anthropic vereist eerst tool_results voor alle tool_use-blokken.
+    if (await this.hasOpenToolUse(conversation.id)) {
+      sink.send('error', {
+        message:
+          'Er staan nog acties open. Bevestig of wijs ze eerst af en hervat het gesprek.',
+        code: 'AI_PENDING_ACTIONS',
+      });
       sink.close();
       return;
     }
 
+    await this.prisma.aiMessage.create({
+      data: {
+        conversationId: conversation.id,
+        orgId: conversation.orgId,
+        role: AiMessageRole.USER,
+        content: [{ type: 'text', text: userText }] as any,
+      },
+    });
+
+    await this.runLoop(conversation, user, sink, userText);
+  }
+
+  /**
+   * Hervat na bevestiging/afwijzing: stelt de tool_results samen uit de
+   * afgehandelde acties van de gepauzeerde beurt en zet de lus voort.
+   */
+  async resumeAfterActions(
+    conversation: AiConversation,
+    user: User,
+    sink: SseSink,
+  ): Promise<void> {
+    if (!(await this.guard(conversation, sink))) return;
+
+    const last = await this.prisma.aiMessage.findFirst({
+      where: { conversationId: conversation.id },
+      orderBy: { createdAt: 'desc' },
+    });
+    const toolUseIds =
+      last?.role === AiMessageRole.ASSISTANT
+        ? (last.content as any[])
+            .filter((b) => b?.type === 'tool_use')
+            .map((b) => b.id as string)
+        : [];
+    if (!last || toolUseIds.length === 0) {
+      sink.send('error', { message: 'Geen openstaande beurt om te hervatten' });
+      sink.close();
+      return;
+    }
+
+    const actions = await this.prisma.aiPendingAction.findMany({
+      where: { conversationId: conversation.id, messageId: last.id },
+    });
+    if (actions.some((a) => a.status === AiActionStatus.PENDING)) {
+      sink.send('error', {
+        message: 'Nog niet alle acties zijn bevestigd of afgewezen',
+        code: 'AI_ACTIONS_STILL_PENDING',
+      });
+      sink.close();
+      return;
+    }
+
+    const byToolUse = new Map(actions.map((a) => [a.toolUseId, a]));
+    const results: Anthropic.ToolResultBlockParam[] = toolUseIds.map((id) => {
+      const stored = (byToolUse.get(id)?.result as unknown as StoredToolResult) ?? {
+        output: null,
+        isError: false,
+      };
+      return {
+        type: 'tool_result',
+        tool_use_id: id,
+        content:
+          typeof stored.output === 'string'
+            ? stored.output
+            : JSON.stringify(stored.output ?? null),
+        is_error: stored.isError === true,
+      };
+    });
+
+    await this.prisma.aiMessage.create({
+      data: {
+        conversationId: conversation.id,
+        orgId: conversation.orgId,
+        role: AiMessageRole.USER,
+        content: results as any,
+      },
+    });
+
+    await this.runLoop(conversation, user, sink);
+  }
+
+  // ─── Interne lus ───────────────────────────────────────
+
+  private async guard(
+    conversation: AiConversation,
+    sink: SseSink,
+  ): Promise<boolean> {
+    if (!this.anthropic) {
+      sink.send('error', { message: 'De AI-assistent is niet geconfigureerd' });
+      sink.close();
+      return false;
+    }
     try {
       await this.usage.assertWithinQuota(conversation.orgId);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      sink.send('error', { message, code: 'AI_QUOTA_EXCEEDED' });
+      sink.close();
+      return false;
+    }
+    return true;
+  }
 
-      // 1) Persisteer het gebruikersbericht.
-      await this.prisma.aiMessage.create({
-        data: {
-          conversationId: conversation.id,
-          orgId: conversation.orgId,
-          role: AiMessageRole.USER,
-          content: [{ type: 'text', text: userText }] as any,
-        },
-      });
+  /** Is er een assistent-beurt met tool_use-blokken zonder tool_results? */
+  private async hasOpenToolUse(conversationId: string): Promise<boolean> {
+    const last = await this.prisma.aiMessage.findFirst({
+      where: { conversationId },
+      orderBy: { createdAt: 'desc' },
+    });
+    return (
+      last?.role === AiMessageRole.ASSISTANT &&
+      (last.content as any[]).some((b) => b?.type === 'tool_use')
+    );
+  }
 
-      // 2) Bouw de berichten-historie voor de API.
+  private async runLoop(
+    conversation: AiConversation,
+    user: User,
+    sink: SseSink,
+    firstUserText?: string,
+  ): Promise<void> {
+    const anthropic = this.anthropic!;
+    try {
       const history = await this.prisma.aiMessage.findMany({
         where: { conversationId: conversation.id },
         orderBy: { createdAt: 'asc' },
@@ -79,19 +209,16 @@ export class AiRunnerService {
         content: m.content as any,
       }));
 
-      // 3) Tools: client-lees-tools + server-side web-search.
       const clientTools = this.registry.list().map((t) => ({
         name: t.name,
         description: t.description,
         input_schema: t.inputSchema,
       }));
       const tools: any[] = [...clientTools, WEB_SEARCH_TOOL];
-
       const model = conversation.model;
 
-      // 4) Agent-loop.
       for (let iter = 0; iter < AI_MAX_ITERATIONS; iter++) {
-        const stream = this.anthropic.messages.stream({
+        const stream = anthropic.messages.stream({
           model,
           max_tokens: AI_MAX_TOKENS,
           system: [
@@ -105,13 +232,10 @@ export class AiRunnerService {
           tools,
           messages,
         });
-
-        // Stream tekst-deltas naar de client.
         stream.on('text', (delta: string) => sink.send('token', { text: delta }));
 
         const final = await stream.finalMessage();
 
-        // Metering (mag de beurt nooit breken).
         this.usage
           .record({
             orgId: conversation.orgId,
@@ -122,8 +246,7 @@ export class AiRunnerService {
           })
           .catch((err) => this.logger.error(`AI usage log error: ${err}`));
 
-        // Persisteer het assistent-bericht (alle content-blokken).
-        await this.prisma.aiMessage.create({
+        const assistantMsg = await this.prisma.aiMessage.create({
           data: {
             conversationId: conversation.id,
             orgId: conversation.orgId,
@@ -137,37 +260,38 @@ export class AiRunnerService {
           const toolUses = final.content.filter(
             (b): b is Anthropic.ToolUseBlock => b.type === 'tool_use',
           );
-          const results: Anthropic.ToolResultBlockParam[] = [];
-          for (const tu of toolUses) {
-            const def = this.registry.get(tu.name);
-            sink.send('tool', { name: tu.name });
-            if (!def) {
-              results.push({
-                type: 'tool_result',
-                tool_use_id: tu.id,
-                content: `Onbekende tool: ${tu.name}`,
-                is_error: true,
-              });
-              continue;
-            }
-            try {
-              const out = await def.run({ user }, tu.input as Record<string, any>);
-              results.push({
-                type: 'tool_result',
-                tool_use_id: tu.id,
-                content: JSON.stringify(out ?? null),
-              });
-            } catch (err) {
-              const message = err instanceof Error ? err.message : String(err);
-              results.push({
-                type: 'tool_result',
-                tool_use_id: tu.id,
-                content: message,
-                is_error: true,
-              });
-            }
+          const hasWrite = toolUses.some(
+            (tu) => this.registry.get(tu.name)?.mutates,
+          );
+
+          if (hasWrite) {
+            await this.haltForConfirmation(
+              conversation,
+              user,
+              assistantMsg.id,
+              toolUses,
+              sink,
+            );
+            await this.touch(conversation, firstUserText);
+            sink.send('done', { paused: true });
+            sink.close();
+            return;
           }
 
+          // Alleen lees-tools → direct uitvoeren en doorlopen.
+          const results: Anthropic.ToolResultBlockParam[] = [];
+          for (const tu of toolUses) {
+            const stored = await this.execTool(tu, user, sink);
+            results.push({
+              type: 'tool_result',
+              tool_use_id: tu.id,
+              content:
+                typeof stored.output === 'string'
+                  ? stored.output
+                  : JSON.stringify(stored.output ?? null),
+              is_error: stored.isError,
+            });
+          }
           await this.prisma.aiMessage.create({
             data: {
               conversationId: conversation.id,
@@ -181,7 +305,7 @@ export class AiRunnerService {
         }
 
         if (final.stop_reason === 'pause_turn') {
-          // Server-tool (web-search) bereikte de iteratie-limiet: hervat.
+          // Server-tool bereikte de iteratie-limiet: hervat.
           continue;
         }
 
@@ -189,17 +313,7 @@ export class AiRunnerService {
         break;
       }
 
-      // 5) Touch + eerste titel afleiden.
-      await this.prisma.aiConversation.update({
-        where: { id: conversation.id },
-        data: {
-          updatedAt: new Date(),
-          ...(conversation.title
-            ? {}
-            : { title: userText.slice(0, 60).trim() || 'Nieuw gesprek' }),
-        },
-      });
-
+      await this.touch(conversation, firstUserText);
       sink.send('done', {});
       sink.close();
     } catch (err) {
@@ -208,5 +322,104 @@ export class AiRunnerService {
       sink.send('error', { message });
       sink.close();
     }
+  }
+
+  /**
+   * Pauzeer voor bevestiging: lees-tools nu uitvoeren (EXECUTED), write-tools als
+   * PENDING wegschrijven. Alle tool_uses van deze beurt krijgen een actie-rij
+   * zodat `resumeAfterActions` later de volledige tool_result-set kan opbouwen.
+   */
+  private async haltForConfirmation(
+    conversation: AiConversation,
+    user: User,
+    messageId: string,
+    toolUses: Anthropic.ToolUseBlock[],
+    sink: SseSink,
+  ): Promise<void> {
+    const cards: Array<{
+      id: string;
+      toolName: string;
+      summary: string;
+      args: unknown;
+    }> = [];
+
+    for (const tu of toolUses) {
+      const def = this.registry.get(tu.name);
+
+      if (def && def.mutates) {
+        const summary = def.summarize?.(tu.input as any) ?? `Actie: ${tu.name}`;
+        const action = await this.prisma.aiPendingAction.create({
+          data: {
+            conversationId: conversation.id,
+            messageId,
+            orgId: conversation.orgId,
+            userId: user.id,
+            toolName: tu.name,
+            toolUseId: tu.id,
+            args: (tu.input ?? {}) as any,
+            summary,
+            status: AiActionStatus.PENDING,
+          },
+        });
+        cards.push({ id: action.id, toolName: tu.name, summary, args: tu.input });
+        continue;
+      }
+
+      // Lees-tool (of onbekend) → nu uitvoeren en als EXECUTED bewaren.
+      const stored = await this.execTool(tu, user, sink);
+      await this.prisma.aiPendingAction.create({
+        data: {
+          conversationId: conversation.id,
+          messageId,
+          orgId: conversation.orgId,
+          userId: user.id,
+          toolName: tu.name,
+          toolUseId: tu.id,
+          args: (tu.input ?? {}) as any,
+          summary: `Opgevraagd: ${tu.name}`,
+          status: AiActionStatus.EXECUTED,
+          result: stored as any,
+        },
+      });
+    }
+
+    sink.send('pending_actions', { actions: cards });
+  }
+
+  /** Voer een (lees-)tool uit; vang fouten als tool_result met isError. */
+  private async execTool(
+    tu: Anthropic.ToolUseBlock,
+    user: User,
+    sink: SseSink,
+  ): Promise<StoredToolResult> {
+    const def = this.registry.get(tu.name);
+    sink.send('tool', { name: tu.name });
+    if (!def) {
+      return { output: `Onbekende tool: ${tu.name}`, isError: true };
+    }
+    try {
+      const out = await def.run({ user }, tu.input as Record<string, any>);
+      return { output: out ?? null, isError: false };
+    } catch (err) {
+      return {
+        output: err instanceof Error ? err.message : String(err),
+        isError: true,
+      };
+    }
+  }
+
+  private async touch(
+    conversation: AiConversation,
+    firstUserText?: string,
+  ): Promise<void> {
+    await this.prisma.aiConversation.update({
+      where: { id: conversation.id },
+      data: {
+        updatedAt: new Date(),
+        ...(conversation.title || !firstUserText
+          ? {}
+          : { title: firstUserText.slice(0, 60).trim() || 'Nieuw gesprek' }),
+      },
+    });
   }
 }

@@ -3,6 +3,7 @@ import { User } from '@prisma/client';
 import { ContactsService } from '@/modules/contacts/contacts.service';
 import { RequestsService } from '@/modules/requests/requests.service';
 import { TasksService } from '@/modules/tasks/tasks.service';
+import { NotesService } from '@/modules/notes/notes.service';
 import { KvkService } from '@/modules/kvk/kvk.service';
 import { GeocodingService } from '@/modules/geocoding/geocoding.service';
 
@@ -13,8 +14,8 @@ export interface AiToolContext {
 
 /**
  * Een client-uitgevoerde tool (PRD-12). `mutates=false` → direct uitvoeren;
- * `mutates=true` → in fase 3 achter een bevestigingskaart. In fase 2 zijn alle
- * geregistreerde tools lees-tools.
+ * `mutates=true` → achter een bevestigingskaart (`AiPendingAction`) en pas ná
+ * bevestiging uitgevoerd via `run` (binnen een `source='AI'`-auditcontext).
  */
 export interface AiToolDef {
   name: string;
@@ -23,13 +24,16 @@ export interface AiToolDef {
   inputSchema: Record<string, unknown>;
   mutates: boolean;
   run(ctx: AiToolContext, input: Record<string, any>): Promise<unknown>;
+  /** NL-samenvatting voor de bevestigingskaart (alleen zinvol bij write-tools). */
+  summarize?(input: Record<string, any>): string;
 }
 
 /**
- * Registry van client-tools. De lees-tools delegeren naar de bestaande
+ * Registry van client-tools. Lees- én write-tools delegeren naar de bestaande
  * feature-services met de ingelogde `user`, zodat org- en rol-scoping
  * (`orgScope`, `assertSameOrg`, 404 bij cross-tenant) automatisch gelden — de
- * agent kan nooit meer dan de gebruiker zelf (PRD-12 §5.2).
+ * agent kan nooit meer dan de gebruiker zelf (PRD-12 §5.2). Write-tools worden
+ * tijdens de agent-loop NIET uitgevoerd; hun `run` draait pas bij bevestiging.
  */
 @Injectable()
 export class AiToolRegistry {
@@ -39,10 +43,11 @@ export class AiToolRegistry {
     private readonly contacts: ContactsService,
     private readonly requests: RequestsService,
     private readonly tasks: TasksService,
+    private readonly notes: NotesService,
     private readonly kvk: KvkService,
     private readonly geocoding: GeocodingService,
   ) {
-    this.tools = this.buildTools();
+    this.tools = [...this.readTools(), ...this.writeTools()];
   }
 
   list(): AiToolDef[] {
@@ -53,9 +58,9 @@ export class AiToolRegistry {
     return this.tools.find((t) => t.name === name);
   }
 
-  private buildTools(): AiToolDef[] {
+  // ─── Lees-tools (direct uitgevoerd) ────────────────────
+  private readTools(): AiToolDef[] {
     return [
-      // ─── Relaties (CRM) ───────────────────────────────
       {
         name: 'search_contacts',
         description:
@@ -87,7 +92,6 @@ export class AiToolRegistry {
         mutates: false,
         run: (ctx, input) => this.contacts.findOne(input.id, ctx.user),
       },
-      // ─── Aanvragen ────────────────────────────────────
       {
         name: 'list_requests',
         description:
@@ -120,7 +124,6 @@ export class AiToolRegistry {
         mutates: false,
         run: (ctx, input) => this.requests.findOne(input.id, ctx.user),
       },
-      // ─── Taken ────────────────────────────────────────
       {
         name: 'list_tasks',
         description:
@@ -153,7 +156,6 @@ export class AiToolRegistry {
         mutates: false,
         run: (ctx, input) => this.tasks.findOne(input.id, ctx.user),
       },
-      // ─── KvK (extern) ─────────────────────────────────
       {
         name: 'kvk_search',
         description:
@@ -177,7 +179,6 @@ export class AiToolRegistry {
         mutates: false,
         run: (_ctx, input) => this.kvk.getProfile(input.kvkNummer),
       },
-      // ─── PDOK / BAG (extern) ──────────────────────────
       {
         name: 'pdok_suggest_address',
         description:
@@ -205,6 +206,107 @@ export class AiToolRegistry {
             orgId: ctx.user.orgId ?? null,
             userId: ctx.user.id,
           }),
+      },
+    ];
+  }
+
+  // ─── Write-tools (bevestiging vereist) ─────────────────
+  private writeTools(): AiToolDef[] {
+    return [
+      {
+        name: 'create_task',
+        description:
+          'Maak een nieuwe taak aan. Vereist bevestiging door de gebruiker vóór uitvoeren.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            title: { type: 'string', description: 'Titel van de taak' },
+            description: { type: 'string' },
+            taskType: {
+              type: 'string',
+              description: 'TO_DO, EMAIL, TELEFOONGESPREK, DOCUMENT of GOEDKEURING',
+            },
+            assigneeId: { type: 'string', description: 'Gebruiker-id om aan toe te wijzen (optioneel)' },
+            deadline: { type: 'string', description: 'ISO-datum (optioneel)' },
+            entityType: { type: 'string', description: 'Gekoppelde entiteit-type (optioneel)' },
+            entityId: { type: 'string', description: 'Gekoppelde entiteit-id (optioneel)' },
+          },
+          required: ['title'],
+        },
+        mutates: true,
+        summarize: (i) =>
+          `Taak aanmaken: "${i.title}"` +
+          (i.assigneeId ? `, toegewezen aan ${i.assigneeId}` : '') +
+          (i.deadline ? `, deadline ${i.deadline}` : ''),
+        run: (ctx, input) =>
+          this.tasks.create(
+            {
+              title: input.title,
+              description: input.description,
+              taskType: input.taskType,
+              assigneeId: input.assigneeId,
+              deadline: input.deadline,
+              entityType: input.entityType,
+              entityId: input.entityId,
+            } as any,
+            ctx.user,
+          ),
+      },
+      {
+        name: 'update_task',
+        description:
+          'Werk een bestaande taak bij (bijv. status of toewijzing). Vereist bevestiging.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            id: { type: 'string', description: 'Taak-id (uuid)' },
+            title: { type: 'string' },
+            description: { type: 'string' },
+            status: { type: 'string', description: 'TE_DOEN, MEE_BEZIG of VOLTOOID' },
+            taskType: { type: 'string' },
+            assigneeId: { type: 'string' },
+            deadline: { type: 'string' },
+          },
+          required: ['id'],
+        },
+        mutates: true,
+        summarize: (i) =>
+          `Taak bijwerken (${i.id})` +
+          (i.status ? ` → status ${i.status}` : '') +
+          (i.assigneeId ? `, toewijzen aan ${i.assigneeId}` : ''),
+        run: (ctx, input) => {
+          const { id, ...rest } = input;
+          return this.tasks.update(id, rest as any, ctx.user);
+        },
+      },
+      {
+        name: 'create_note',
+        description:
+          'Voeg een notitie toe aan een record (relatie, aanvraag, offerte, project, planning, gebruiker of werkbon). Vereist bevestiging.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            entityType: {
+              type: 'string',
+              description: 'CONTACT, REQUEST, QUOTE, PLANNING, PROJECT, USER of WORK_ORDER',
+            },
+            entityId: { type: 'string', description: 'Id van het record (uuid)' },
+            content: { type: 'string', description: 'Inhoud van de notitie' },
+          },
+          required: ['entityType', 'entityId', 'content'],
+        },
+        mutates: true,
+        summarize: (i) =>
+          `Notitie toevoegen aan ${i.entityType} ${i.entityId}: "${String(i.content).slice(0, 80)}"`,
+        run: (ctx, input) =>
+          this.notes.create(
+            {
+              entityType: input.entityType,
+              entityId: input.entityId,
+              content: input.content,
+            } as any,
+            ctx.user,
+          ),
       },
     ];
   }

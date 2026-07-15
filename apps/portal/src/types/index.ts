@@ -850,6 +850,8 @@ export interface AuditLogEntry {
   snapshot: Record<string, any> | null;
   userId: string;
   user: { id: string; firstName: string; lastName: string };
+  /** Herkomst van de mutatie (PRD-12): 'AI' = via de AI-assistent uitgevoerd. */
+  source?: 'HUMAN' | 'AI';
   createdAt: string;
 }
 

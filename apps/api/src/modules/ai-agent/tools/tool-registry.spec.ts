@@ -7,6 +7,7 @@ describe('AiToolRegistry', () => {
   let contacts: any;
   let requests: any;
   let tasks: any;
+  let notes: any;
   let kvk: any;
   let geocoding: any;
   let registry: AiToolRegistry;
@@ -14,18 +15,41 @@ describe('AiToolRegistry', () => {
   beforeEach(() => {
     contacts = { findAll: jest.fn().mockResolvedValue({ data: [] }), findOne: jest.fn().mockResolvedValue({ id: 'x' }) };
     requests = { findAll: jest.fn().mockResolvedValue({ data: [] }), findOne: jest.fn() };
-    tasks = { findAll: jest.fn().mockResolvedValue({ data: [] }), findOne: jest.fn() };
+    tasks = { findAll: jest.fn().mockResolvedValue({ data: [] }), findOne: jest.fn(), create: jest.fn().mockResolvedValue({ id: 't1' }), update: jest.fn().mockResolvedValue({ id: 't1' }) };
+    notes = { create: jest.fn().mockResolvedValue({ id: 'n1' }) };
     kvk = { search: jest.fn().mockResolvedValue([]), getProfile: jest.fn() };
     geocoding = { suggest: jest.fn().mockResolvedValue([]), lookup: jest.fn() };
-    registry = new AiToolRegistry(contacts, requests, tasks, kvk, geocoding);
+    registry = new AiToolRegistry(contacts, requests, tasks, notes, kvk, geocoding);
   });
 
-  it('exposes only read tools in fase 2 (mutates === false)', () => {
+  it('has both read and write tools; every tool has a JSON-schema object', () => {
     const tools = registry.list();
-    expect(tools.length).toBeGreaterThan(0);
-    expect(tools.every((t) => t.mutates === false)).toBe(true);
-    // Every tool has a JSON-schema object
+    expect(tools.some((t) => t.mutates === false)).toBe(true);
+    expect(tools.some((t) => t.mutates === true)).toBe(true);
     expect(tools.every((t) => (t.inputSchema as any).type === 'object')).toBe(true);
+  });
+
+  it('write tools carry a summarize() for the confirmation card and are not run at registry level', () => {
+    const createTask = registry.get('create_task')!;
+    expect(createTask.mutates).toBe(true);
+    expect(typeof createTask.summarize).toBe('function');
+    expect(createTask.summarize!({ title: 'Bellen Jansen' })).toContain('Bellen Jansen');
+  });
+
+  it('create_task delegates to TasksService.create with the acting user', async () => {
+    await registry.get('create_task')!.run({ user }, { title: 'Bellen', deadline: '2026-08-01' });
+    expect(tasks.create).toHaveBeenCalledWith(
+      expect.objectContaining({ title: 'Bellen', deadline: '2026-08-01' }),
+      user,
+    );
+  });
+
+  it('create_note delegates to NotesService.create with entity + content', async () => {
+    await registry.get('create_note')!.run({ user }, { entityType: 'CONTACT', entityId: 'c1', content: 'hoi' });
+    expect(notes.create).toHaveBeenCalledWith(
+      expect.objectContaining({ entityType: 'CONTACT', entityId: 'c1', content: 'hoi' }),
+      user,
+    );
   });
 
   it('registers the expected read tools', () => {

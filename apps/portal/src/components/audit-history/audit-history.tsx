@@ -155,6 +155,22 @@ export function AuditHistory({ entityType, entityId }: AuditHistoryProps) {
 
                 <p className="text-xs text-gray-400">
                   Door {getUserDisplayName(entry)}
+                  {entry.source === 'AI' && (
+                    <span
+                      className="ml-1.5 inline-flex items-center gap-0.5 rounded bg-primary-50 px-1 py-0.5 text-[10px] font-medium text-primary-700 align-middle"
+                      title="Uitgevoerd via de AI-assistent"
+                    >
+                      <svg
+                        className="h-2.5 w-2.5"
+                        viewBox="0 0 20 20"
+                        fill="currentColor"
+                        aria-hidden="true"
+                      >
+                        <path d="M10 1.5l1.9 4.3 4.6.4-3.5 3 1.1 4.5L10 15.9 5.9 13.7 7 9.2 3.5 6.2l4.6-.4L10 1.5z" />
+                      </svg>
+                      AI
+                    </span>
+                  )}
                 </p>
               </div>
             ))}

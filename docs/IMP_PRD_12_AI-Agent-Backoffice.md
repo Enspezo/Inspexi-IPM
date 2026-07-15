@@ -290,7 +290,6 @@ model AiPendingAction {
   summary        String                                          // NL mensleesbare samenvatting voor de kaart
   status         AiActionStatus  @default(PENDING)
   result         Json?                                           // uitkomst / foutmelding
-  auditLogId     String?         @map("audit_log_id") @db.Uuid   // optionele koppeling naar de audit-regel
   confirmedById  String?         @map("confirmed_by_id") @db.Uuid
   confirmedAt    DateTime?       @map("confirmed_at")
   createdAt      DateTime        @default(now()) @map("created_at")
@@ -308,10 +307,11 @@ model AiUsageLog {
   userId         String   @map("user_id") @db.Uuid
   conversationId String?  @map("conversation_id") @db.Uuid
   model          String
-  inputTokens        Int  @default(0) @map("input_tokens")
-  cachedInputTokens  Int  @default(0) @map("cached_input_tokens")
-  outputTokens       Int  @default(0) @map("output_tokens")
-  costCents          Int  @default(0) @map("cost_cents")   // geschatte kostprijs (metering/facturatie)
+  inputTokens         Int  @default(0) @map("input_tokens")
+  cachedInputTokens   Int  @default(0) @map("cached_input_tokens")    // cache-reads (goedkoop)
+  cacheCreationTokens Int  @default(0) @map("cache_creation_tokens")  // cache-writes (~1,25× input)
+  outputTokens        Int  @default(0) @map("output_tokens")
+  costCents           Int  @default(0) @map("cost_cents")   // geschatte kostprijs (metering/facturatie)
   createdAt      DateTime @default(now()) @map("created_at")
 
   organization Organization @relation(fields: [orgId], references: [id])

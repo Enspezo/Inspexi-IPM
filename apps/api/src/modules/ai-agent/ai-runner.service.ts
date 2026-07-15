@@ -64,6 +64,7 @@ export class AiRunnerService {
     userText: string,
     user: User,
     sink: SseSink,
+    signal?: AbortSignal,
   ): Promise<void> {
     if (!(await this.guard(conversation, sink))) return;
 
@@ -88,7 +89,7 @@ export class AiRunnerService {
       },
     });
 
-    await this.runLoop(conversation, user, sink, userText);
+    await this.runLoop(conversation, user, sink, userText, signal);
   }
 
   /**
@@ -99,6 +100,7 @@ export class AiRunnerService {
     conversation: AiConversation,
     user: User,
     sink: SseSink,
+    signal?: AbortSignal,
   ): Promise<void> {
     if (!(await this.guard(conversation, sink))) return;
 
@@ -156,7 +158,7 @@ export class AiRunnerService {
       },
     });
 
-    await this.runLoop(conversation, user, sink);
+    await this.runLoop(conversation, user, sink, undefined, signal);
   }
 
   // ─── Interne lus ───────────────────────────────────────
@@ -198,6 +200,7 @@ export class AiRunnerService {
     user: User,
     sink: SseSink,
     firstUserText?: string,
+    signal?: AbortSignal,
   ): Promise<void> {
     const anthropic = this.anthropic!;
     try {
@@ -220,21 +223,25 @@ export class AiRunnerService {
 
       let hitIterationLimit = true;
       for (let iter = 0; iter < AI_MAX_ITERATIONS; iter++) {
-        const stream = anthropic.messages.stream({
-          model,
-          max_tokens: AI_MAX_TOKENS,
-          system: [
-            {
-              type: 'text',
-              text: AI_SYSTEM_PROMPT,
-              cache_control: { type: 'ephemeral' },
-            },
-          ],
-          thinking: { type: 'adaptive' } as any,
-          output_config: { effort: AI_AGENT_DEFAULT_EFFORT } as any,
-          tools,
-          messages,
-        });
+        if (signal?.aborted) return; // client is weg → stop stil, geen error-event
+        const stream = anthropic.messages.stream(
+          {
+            model,
+            max_tokens: AI_MAX_TOKENS,
+            system: [
+              {
+                type: 'text',
+                text: AI_SYSTEM_PROMPT,
+                cache_control: { type: 'ephemeral' },
+              },
+            ],
+            thinking: { type: 'adaptive' } as any,
+            output_config: { effort: AI_AGENT_DEFAULT_EFFORT } as any,
+            tools,
+            messages,
+          },
+          { signal },
+        );
         stream.on('text', (delta: string) => sink.send('token', { text: delta }));
 
         const final = await stream.finalMessage();
@@ -322,6 +329,11 @@ export class AiRunnerService {
       sink.send('done', hitIterationLimit ? { truncated: true } : {});
       sink.close();
     } catch (err) {
+      // Client-disconnect: de stream is bewust afgebroken → geen error naar de
+      // (verdwenen) client, gewoon stil stoppen.
+      if (signal?.aborted || (err as { name?: string })?.name === 'AbortError') {
+        return;
+      }
       const message = err instanceof Error ? err.message : String(err);
       this.logger.error(`AI turn error: ${message}`);
       sink.send('error', { message });

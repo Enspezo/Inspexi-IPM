@@ -14,14 +14,15 @@ const config = (quota?: string) =>
   ({ get: (_k: string, d: string) => quota ?? d }) as any;
 
 describe('AiUsageService', () => {
-  it('sums input + cached + output tokens for the month', async () => {
+  it('sums input + cached + cache-creation + output tokens for the month', async () => {
     const prisma = makePrisma({
       inputTokens: 100,
       cachedInputTokens: 20,
+      cacheCreationTokens: 40,
       outputTokens: 50,
     });
     const svc = new AiUsageService(prisma, config());
-    await expect(svc.monthlyTokens('orgA')).resolves.toBe(170);
+    await expect(svc.monthlyTokens('orgA')).resolves.toBe(210);
   });
 
   it('throws 429 when the monthly quota is reached', async () => {
@@ -49,6 +50,16 @@ describe('AiUsageService', () => {
       output_tokens: 1_000_000,
     });
     expect(cents).toBe(1800);
+  });
+
+  it('prices cache-read at 0,1× and cache-creation at 1,25× the input rate', () => {
+    const svc = new AiUsageService(makePrisma(), config());
+    // Sonnet 5 input = 300c/MTok. cache-read 1M → 30c, cache-write 1M → 375c.
+    const cents = svc.costCents('claude-sonnet-5', {
+      cache_read_input_tokens: 1_000_000,
+      cache_creation_input_tokens: 1_000_000,
+    });
+    expect(cents).toBe(30 + 375);
   });
 
   it('records a usage row with derived cost', async () => {

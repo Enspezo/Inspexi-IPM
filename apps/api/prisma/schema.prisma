@@ -1533,6 +1533,11 @@ model AiMessage {
 model AiPendingAction {
   id             String         @id @default(uuid()) @db.Uuid
   conversationId String         @map("conversation_id") @db.Uuid
+  // messageId/orgId/userId/confirmedById zijn bewust GEEN Prisma-relaties: ze
+  // worden gedenormaliseerd meegeschreven voor snelle, org-gescoopte queries en
+  // audit, zonder extra FK-joins. Referentiële integriteit loopt via de enige
+  // echte relatie (conversationId → AiConversation, Cascade); de rest cascadet
+  // mee bij verwijdering van de conversation/org.
   messageId      String         @map("message_id") @db.Uuid // assistant-message met het tool_use-blok
   orgId          String         @map("org_id") @db.Uuid
   userId         String         @map("user_id") @db.Uuid // wie moet bevestigen (= eigenaar)
@@ -1542,7 +1547,6 @@ model AiPendingAction {
   summary        String // NL mensleesbare samenvatting voor de kaart
   status         AiActionStatus @default(PENDING)
   result         Json? // uitkomst / foutmelding
-  auditLogId     String?        @map("audit_log_id") @db.Uuid // optionele koppeling naar de audit-regel
   confirmedById  String?        @map("confirmed_by_id") @db.Uuid
   confirmedAt    DateTime?      @map("confirmed_at")
   createdAt      DateTime       @default(now()) @map("created_at")
@@ -1555,16 +1559,20 @@ model AiPendingAction {
 }
 
 model AiUsageLog {
-  id                String   @id @default(uuid()) @db.Uuid
-  orgId             String   @map("org_id") @db.Uuid
-  userId            String   @map("user_id") @db.Uuid
-  conversationId    String?  @map("conversation_id") @db.Uuid
-  model             String
-  inputTokens       Int      @default(0) @map("input_tokens")
-  cachedInputTokens Int      @default(0) @map("cached_input_tokens")
-  outputTokens      Int      @default(0) @map("output_tokens")
-  costCents         Int      @default(0) @map("cost_cents") // geschatte kostprijs (metering/marge)
-  createdAt         DateTime @default(now()) @map("created_at")
+  // userId/conversationId zijn gedenormaliseerd (geen FK): metering-regels
+  // blijven bestaan ook als een gesprek/gebruiker later verdwijnt; opschonen
+  // gebeurt via de org-cascade (orgId → Organization).
+  id                  String   @id @default(uuid()) @db.Uuid
+  orgId               String   @map("org_id") @db.Uuid
+  userId              String   @map("user_id") @db.Uuid
+  conversationId      String?  @map("conversation_id") @db.Uuid
+  model               String
+  inputTokens         Int      @default(0) @map("input_tokens")
+  cachedInputTokens   Int      @default(0) @map("cached_input_tokens") // cache-reads (goedkoop)
+  cacheCreationTokens Int      @default(0) @map("cache_creation_tokens") // cache-writes (duurder dan input)
+  outputTokens        Int      @default(0) @map("output_tokens")
+  costCents           Int      @default(0) @map("cost_cents") // geschatte kostprijs (metering/marge)
+  createdAt           DateTime @default(now()) @map("created_at")
 
   organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
 

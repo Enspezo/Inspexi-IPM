@@ -1,3 +1,5 @@
+import { useQuery } from '@tanstack/react-query';
+import { apiClient } from '@/lib/api-client';
 import { useAuth } from '@/providers/auth-provider';
 import { useFeatures } from '@/providers/feature-provider';
 import { useTenant } from '@/providers/tenant-provider';
@@ -8,11 +10,26 @@ export function useAiAgentAvailable(): boolean {
   const { user } = useAuth();
   const { hasFeature } = useFeatures();
   const { orgBranding } = useTenant();
-  return (
+
+  // Goedkope client-side voorwaarden: geen netwerk-probe als de add-on sowieso
+  // niet speelt (geen org, feature niet in plan, of org-kill-switch uit).
+  const clientEligible =
     !!user?.orgId &&
     hasFeature('AI_AGENT') &&
-    orgBranding?.aiAgentEnabled !== false
-  );
+    orgBranding?.aiAgentEnabled !== false;
+
+  // Autoritatieve rol/kill-switch-check via de guard (GET /ai/access). Zo hoeft
+  // de frontend de per-org rol-default-logica niet te dupliceren: een 403 laat
+  // de query falen → geen knop. Alleen proben als de goedkope checks slagen.
+  const { data } = useQuery({
+    queryKey: ['ai', 'access'],
+    queryFn: () => apiClient.get<{ allowed: boolean }>('/ai/access'),
+    enabled: clientEligible,
+    staleTime: 5 * 60 * 1000,
+    retry: false,
+  });
+
+  return clientEligible && data?.allowed === true;
 }
 
 export function AssistantButton() {

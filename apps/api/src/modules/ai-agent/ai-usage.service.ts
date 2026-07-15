@@ -12,6 +12,7 @@ export interface AnthropicUsage {
   input_tokens?: number;
   output_tokens?: number;
   cache_read_input_tokens?: number | null;
+  cache_creation_input_tokens?: number | null;
 }
 
 /**
@@ -40,15 +41,24 @@ export class AiUsageService {
     return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
   }
 
-  /** Totaal verbruikte tokens (input + cached + output) deze maand voor de org. */
+  /**
+   * Totaal verbruikte tokens (input + cache-read + cache-write + output) deze
+   * maand voor de org. Cache-creation telt mee: het zijn echte, betaalde tokens.
+   */
   async monthlyTokens(orgId: string): Promise<number> {
     const agg = await this.prisma.aiUsageLog.aggregate({
-      _sum: { inputTokens: true, cachedInputTokens: true, outputTokens: true },
+      _sum: {
+        inputTokens: true,
+        cachedInputTokens: true,
+        cacheCreationTokens: true,
+        outputTokens: true,
+      },
       where: { orgId, createdAt: { gte: this.startOfMonth() } },
     });
     return (
       (agg._sum.inputTokens ?? 0) +
       (agg._sum.cachedInputTokens ?? 0) +
+      (agg._sum.cacheCreationTokens ?? 0) +
       (agg._sum.outputTokens ?? 0)
     );
   }
@@ -73,11 +83,14 @@ export class AiUsageService {
     const price = MODEL_PRICING[model] ?? FALLBACK_PRICE;
     const input = usage.input_tokens ?? 0;
     const cached = usage.cache_read_input_tokens ?? 0;
+    const cacheWrite = usage.cache_creation_input_tokens ?? 0;
     const output = usage.output_tokens ?? 0;
     return Math.round(
       (input / 1_000_000) * price.inputCentsPerMTok +
         // cache-reads ~0,1× input-tarief
         (cached / 1_000_000) * price.inputCentsPerMTok * 0.1 +
+        // cache-writes ~1,25× input-tarief (5-min TTL)
+        (cacheWrite / 1_000_000) * price.inputCentsPerMTok * 1.25 +
         (output / 1_000_000) * price.outputCentsPerMTok,
     );
   }
@@ -99,6 +112,7 @@ export class AiUsageService {
         model,
         inputTokens: usage.input_tokens ?? 0,
         cachedInputTokens: usage.cache_read_input_tokens ?? 0,
+        cacheCreationTokens: usage.cache_creation_input_tokens ?? 0,
         outputTokens: usage.output_tokens ?? 0,
         costCents: this.costCents(model, usage),
       },

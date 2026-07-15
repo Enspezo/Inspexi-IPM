@@ -2,6 +2,7 @@ import {
   Injectable,
   ForbiddenException,
   BadRequestException,
+  ConflictException,
   Logger,
 } from '@nestjs/common';
 import {
@@ -18,6 +19,8 @@ import { EntitlementsService } from '@/modules/entitlements/entitlements.service
 import { NotificationsService } from '../notifications/notifications.service';
 import { WorkOrdersService } from '../work-orders/work-orders.service';
 import { PlanningEmailService } from './planning-email.service';
+import { AvailabilityResolutionService } from '@/modules/availability/availability-resolution.service';
+import { dateKeyOf } from '@/modules/availability/availability-resolution.helpers';
 import {
   CreatePlanningItemDto,
   UpdatePlanningItemDto,
@@ -27,6 +30,17 @@ import {
   AddQuestionDto,
   ListPlanningQueryDto,
 } from './dto';
+
+/** Eén beschikbaarheidswaarschuwing in een 409-payload (PRD-12 §12.9). */
+export interface AvailabilityWarning {
+  userId: string;
+  name: string;
+  date: string; // YYYY-MM-DD
+  reason: string;
+}
+
+/** Actie-string voor een genegeerde beschikbaarheidswaarschuwing in PlanningHistory. */
+export const AVAILABILITY_OVERRIDE_ACTION = 'AVAILABILITY_OVERRIDE';
 
 const PLANNING_INCLUDE = {
   contact: {
@@ -131,7 +145,80 @@ export class PlanningService {
     private planningEmail: PlanningEmailService,
     private config: ConfigService,
     private entitlements: EntitlementsService,
+    private availability: AvailabilityResolutionService,
   ) {}
+
+  // ─── Beschikbaarheids-soft-check (PRD-12 §12.9) ───────────
+
+  /**
+   * Toets de beschikbaarheid van de toe te wijzen inspecteurs op de geplande
+   * datum vóór het wegschrijven. Zonder `scheduledDate` (NOG_TE_PLANNEN) of
+   * zonder inspecteurs gebeurt er niets → lege lijst.
+   *
+   * Bij ≥1 onbeschikbare inspecteur en géén override wordt een `ConflictException`
+   * (409) met een `warnings`-payload gegooid. Met override worden de
+   * waarschuwingen teruggegeven zodat de caller een `AVAILABILITY_OVERRIDE`-
+   * history-record kan schrijven.
+   */
+  async assertInspectorAvailability(
+    scheduledDate: Date | null,
+    durationHours: number | null,
+    inspectorIds: string[],
+    override: boolean | undefined,
+  ): Promise<AvailabilityWarning[]> {
+    if (!scheduledDate || inspectorIds.length === 0) return [];
+
+    const dateKey = dateKeyOf(scheduledDate);
+    const requiredMinutes =
+      durationHours && durationHours > 0 ? Math.round(durationHours * 60) : null;
+
+    const conflicts = await this.availability.checkPlanningDay(
+      inspectorIds,
+      dateKey,
+      requiredMinutes,
+    );
+    if (conflicts.length === 0) return [];
+
+    const users = await this.prisma.user.findMany({
+      where: { id: { in: conflicts.map((c) => c.userId) } },
+      select: { id: true, firstName: true, lastName: true },
+    });
+    const nameById = new Map(
+      users.map((u) => [u.id, `${u.firstName} ${u.lastName}`.trim() || 'Inspecteur']),
+    );
+    const warnings: AvailabilityWarning[] = conflicts.map((c) => ({
+      userId: c.userId,
+      name: nameById.get(c.userId) ?? 'Inspecteur',
+      date: c.date,
+      reason: c.reason,
+    }));
+
+    if (!override) {
+      throw new ConflictException({
+        success: false,
+        message: 'Een of meer inspecteurs zijn niet beschikbaar op de geplande datum',
+        warnings,
+      });
+    }
+    return warnings;
+  }
+
+  /** Schrijf een history-record wanneer beschikbaarheidswaarschuwingen genegeerd zijn. */
+  async logAvailabilityOverride(
+    planningItemId: string,
+    userId: string | null,
+    warnings: AvailabilityWarning[],
+    prefix = 'Beschikbaarheidswaarschuwing genegeerd',
+  ) {
+    if (warnings.length === 0) return;
+    const detail = warnings.map((w) => `${w.name} (${w.reason})`).join('; ');
+    await this.addHistoryEntry(
+      planningItemId,
+      userId,
+      AVAILABILITY_OVERRIDE_ACTION,
+      `${prefix}: ${detail}`,
+    );
+  }
 
   getPublicUrl(path: string): string {
     return `${this.config.get<string>('PUBLIC_URL', 'http://localhost:5173')}${path}`;
@@ -345,6 +432,21 @@ export class PlanningService {
     if (dto.internalNotes !== undefined) data.internalNotes = dto.internalNotes ?? null;
     if (dto.labels !== undefined) data.labels = dto.labels;
 
+    // PRD-12 §12.9: verzetten naar een nieuwe datum met toegewezen inspecteurs →
+    // beschikbaarheid opnieuw beoordelen (409 met warnings, tenzij override).
+    let overrideWarnings: AvailabilityWarning[] = [];
+    if (data.scheduledDate instanceof Date) {
+      const inspectorIds = (existing.inspectors as { userId: string | null }[])
+        .map((i) => i.userId)
+        .filter((uid): uid is string => !!uid);
+      overrideWarnings = await this.assertInspectorAvailability(
+        data.scheduledDate,
+        data.durationHours ?? existing.durationHours,
+        inspectorIds,
+        dto.overrideAvailabilityWarnings,
+      );
+    }
+
     const updated = await this.prisma.planningItem.update({
       where: { id },
       data,
@@ -388,6 +490,12 @@ export class PlanningService {
     }
 
     await this.addHistoryEntry(id, user.id, 'BIJGEWERKT', 'Planregel bijgewerkt');
+    await this.logAvailabilityOverride(
+      id,
+      user.id,
+      overrideWarnings,
+      'Beschikbaarheidswaarschuwing genegeerd bij verzetten',
+    );
     return updated;
   }
 
@@ -398,6 +506,14 @@ export class PlanningService {
 
     // Inspectors must belong to the same organization as the planning item
     await assertAllSameOrg(this.prisma.user, dto.inspectorIds, item.orgId, 'inspecteurs');
+
+    // PRD-12 §12.9: beschikbaarheids-soft-check (409 met warnings, tenzij override).
+    const overrideWarnings = await this.assertInspectorAvailability(
+      item.scheduledDate,
+      item.durationHours,
+      dto.inspectorIds,
+      dto.overrideAvailabilityWarnings,
+    );
 
     // Remove pending (non-responded) inspectors
     await this.prisma.planningInspector.deleteMany({
@@ -437,6 +553,8 @@ export class PlanningService {
       'INSPECTEURS_TOEGEWEZEN',
       `${dto.inspectorIds.length} inspecteur(s) toegewezen`,
     );
+
+    await this.logAvailabilityOverride(id, user.id, overrideWarnings);
 
     // Notify inspectors (excluding the actor)
     const toNotify = dto.inspectorIds.filter((iid) => iid !== user.id);

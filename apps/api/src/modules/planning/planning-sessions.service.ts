@@ -13,7 +13,7 @@ import {
   SessionStatus,
 } from '@prisma/client';
 import { PrismaService } from '@/prisma';
-import { assertFound } from '@/common';
+import { assertFound, assertAllSameOrg } from '@/common';
 import { NotificationsService } from '../notifications/notifications.service';
 import { PlanningEmailService } from './planning-email.service';
 import { PlanningService } from './planning.service';
@@ -107,22 +107,47 @@ export class PlanningSessionsService {
   }
 
   async updateSession(id: string, sessionId: string, dto: UpdateSessionDto, user: User) {
-    await this.planning.findOne(id, user);
+    const item = await this.planning.findOne(id, user);
     const session = await this.findSession(id, sessionId);
     if (session.status === SessionStatus.DEFINITIEF || session.status === SessionStatus.AFGEROND) {
       throw new BadRequestException('Definitieve sessies kunnen niet meer worden gewijzigd');
     }
 
+    const newScheduledDate =
+      dto.scheduledDate !== undefined ? (dto.scheduledDate ? new Date(dto.scheduledDate) : null) : undefined;
+    const newDurationHours = dto.durationHours !== undefined ? dto.durationHours : undefined;
+
+    // PRD-12 §12.9: verzetten van een sessie met toegewezen inspecteurs →
+    // beschikbaarheid opnieuw beoordelen (409 met warnings, tenzij override).
+    let overrideWarnings: Awaited<ReturnType<typeof this.planning.assertInspectorAvailability>> = [];
+    if (newScheduledDate instanceof Date) {
+      const inspectorIds = (session.sessionInspectors as { userId: string | null }[])
+        .map((si) => si.userId)
+        .filter((uid): uid is string => !!uid);
+      overrideWarnings = await this.planning.assertInspectorAvailability(
+        newScheduledDate,
+        (newDurationHours ?? session.durationHours) ?? item.durationHours,
+        inspectorIds,
+        dto.overrideAvailabilityWarnings,
+      );
+    }
+
     const updated = await this.prisma.planningSession.update({
       where: { id: sessionId },
       data: {
-        scheduledDate: dto.scheduledDate !== undefined ? (dto.scheduledDate ? new Date(dto.scheduledDate) : null) : undefined,
-        durationHours: dto.durationHours !== undefined ? dto.durationHours : undefined,
+        scheduledDate: newScheduledDate,
+        durationHours: newDurationHours,
         notes: dto.notes !== undefined ? dto.notes : undefined,
       },
     });
 
     await this.planning.addHistoryEntry(id, user.id, 'SESSIE_BIJGEWERKT', `Sessie ${session.sessionNumber} bijgewerkt`);
+    await this.planning.logAvailabilityOverride(
+      id,
+      user.id,
+      overrideWarnings,
+      `Beschikbaarheidswaarschuwing genegeerd bij verzetten (sessie ${session.sessionNumber})`,
+    );
     return updated;
   }
 
@@ -153,6 +178,18 @@ export class PlanningSessionsService {
     if (session.status === SessionStatus.DEFINITIEF || session.status === SessionStatus.AFGEROND) {
       throw new BadRequestException('Kan geen inspecteurs toewijzen aan een definitieve sessie');
     }
+
+    // Inspectors must belong to the same organization as the planning item.
+    await assertAllSameOrg(this.prisma.user, dto.inspectorIds, item.orgId, 'inspecteurs');
+
+    // PRD-12 §12.9: beschikbaarheids-soft-check op de sessiedatum (409 met
+    // warnings, tenzij override). Duur valt terug op de parent-duur.
+    const overrideWarnings = await this.planning.assertInspectorAvailability(
+      session.scheduledDate,
+      session.durationHours ?? item.durationHours,
+      dto.inspectorIds,
+      dto.overrideAvailabilityWarnings,
+    );
 
     // Remove PENDING session inspectors for this session
     await this.prisma.planningSessionInspector.deleteMany({
@@ -210,6 +247,13 @@ export class PlanningSessionsService {
       user.id,
       'SESSIE_INSPECTEURS_TOEGEWEZEN',
       `Sessie ${session.sessionNumber}: ${dto.inspectorIds.length} inspecteur(s) toegewezen`,
+    );
+
+    await this.planning.logAvailabilityOverride(
+      id,
+      user.id,
+      overrideWarnings,
+      `Beschikbaarheidswaarschuwing genegeerd (sessie ${session.sessionNumber})`,
     );
 
     // Notify inspectors (excluding actor)

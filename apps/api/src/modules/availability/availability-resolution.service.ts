@@ -45,6 +45,13 @@ export interface CheckResult {
   conflicts: AvailabilityConflict[];
 }
 
+/** Eén onbeschikbare inspecteur op een dag (planning-integratie, PRD-12 §12.9). */
+export interface PlanningAvailabilityConflict {
+  userId: string;
+  date: string; // YYYY-MM-DD
+  reason: string;
+}
+
 const MAX_RANGE_DAYS = 93; // ~3 maanden
 
 type AssignmentWithSlots = Prisma.UserScheduleAssignmentGetPayload<{
@@ -160,6 +167,69 @@ export class AvailabilityResolutionService {
     }
 
     return { available: conflicts.length === 0, coveredIntervals: covered, conflicts };
+  }
+
+  // ─── Planning-integratie (intern, service-naar-service) ───
+
+  /**
+   * Interne planning-check (PRD-12 §12.9). Bewust **zonder** de self-vs-CRM
+   * autorisatie van de publieke `check`: de planner die toewijst heeft
+   * CRM-rollen, maar deze methode wordt service-naar-service aangeroepen (de
+   * caller heeft de inspecteurs al org-gescoped gevalideerd).
+   *
+   * Semantiek bij een date-only-planning (§12.9): beoordeeld wordt de **hele
+   * kalenderdag** `dateKey`. Een inspecteur is beschikbaar wanneer de som van de
+   * resolved intervallen ≥ `requiredMinutes` is; zonder duur (`null`) volstaat
+   * ≥ 1 beschikbaar minuut (er is enige beschikbaarheid op die dag). GEBLOKKEERD
+   * wint altijd en kan de dag volledig dichtzetten; freelancers (en users zonder
+   * dienstvorm) zonder BESCHIKBAAR-uitzondering hebben 0 minuten en vallen dus
+   * standaard als onbeschikbaar terug. Alleen onbeschikbare inspecteurs komen
+   * terug als conflict.
+   */
+  async checkPlanningDay(
+    userIds: string[],
+    dateKey: string,
+    requiredMinutes: number | null,
+  ): Promise<PlanningAvailabilityConflict[]> {
+    if (userIds.length === 0) return [];
+    this.assertRange(dateKey, dateKey);
+
+    const ctx = await this.buildContext(userIds, dateKey, dateKey);
+    const needed = requiredMinutes && requiredMinutes > 0 ? Math.ceil(requiredMinutes) : 1;
+
+    const conflicts: PlanningAvailabilityConflict[] = [];
+    for (const userId of userIds) {
+      const { intervals, blocking } = this.computeDay(userId, dateKey, ctx);
+      const total = intervals.reduce((sum, iv) => sum + (iv.endMinute - iv.startMinute), 0);
+      if (total >= needed) continue;
+      conflicts.push({ userId, date: dateKey, reason: this.planningDayReason(dateKey, blocking, total, needed) });
+    }
+    return conflicts;
+  }
+
+  private planningDayReason(
+    dateKey: string,
+    blocking: ExceptionLike[],
+    total: number,
+    needed: number,
+  ): string {
+    if (total <= 0) {
+      for (const exc of blocking) {
+        const [hit] = expandException(exc, dateKey);
+        if (hit) {
+          const label = exc.reason?.trim();
+          return label ? `${label} — hele dag geblokkeerd` : 'Hele dag geblokkeerd';
+        }
+      }
+      return 'Geen beschikbaarheid op deze dag';
+    }
+    return `Onvoldoende beschikbaarheid (${this.formatMinutes(total)} beschikbaar, ${this.formatMinutes(needed)} nodig)`;
+  }
+
+  /** Minuten → "1,5 uur" (nl-NL decimaal-komma). */
+  private formatMinutes(minutes: number): string {
+    const hours = Math.round((minutes / 60) * 10) / 10;
+    return `${String(hours).replace('.', ',')} uur`;
   }
 
   // ─── Kern per dag ─────────────────────────────────────────

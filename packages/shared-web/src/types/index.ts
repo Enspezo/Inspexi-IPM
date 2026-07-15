@@ -9,4 +9,10 @@ export interface ApiError {
   message: string;
   statusCode: number;
   error?: string;
+  /**
+   * Extra velden die specifieke endpoints in de foutbody meesturen — bijv.
+   * `code` (FeatureGuard) of `warnings` (beschikbaarheidsconflicten, PRD-12
+   * §12.9). Endpoint-specifiek, dus als `unknown` getypt.
+   */
+  [key: string]: unknown;
 }

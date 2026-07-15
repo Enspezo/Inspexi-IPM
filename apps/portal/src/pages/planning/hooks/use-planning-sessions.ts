@@ -1,7 +1,9 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { useApiMutation } from '@/hooks/use-api-mutation';
+import { useToast } from '@/components/ui';
 import { apiClient } from '@/lib/api-client';
 import { planningKeys } from '@/lib/query-keys';
+import { makeAvailabilityAwareOnError } from '../lib/availability-warnings';
 import type { PlanningSession } from '@/types';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -16,11 +18,13 @@ interface UpdateSessionPayload {
   scheduledDate?: string | null;
   durationHours?: number | null;
   notes?: string | null;
+  overrideAvailabilityWarnings?: boolean;
 }
 
 interface AssignSessionInspectorsPayload {
   inspectorIds: string[];
   primaryInspectorId?: string;
+  overrideAvailabilityWarnings?: boolean;
 }
 
 interface RejectSessionPayload {
@@ -53,12 +57,15 @@ export function useCreatePlanningSession(planningItemId: string) {
 
 export function useUpdatePlanningSession(planningItemId: string, sessionId: string) {
   const qc = useQueryClient();
+  const { showToast } = useToast();
   return useApiMutation<PlanningSession, Error, UpdateSessionPayload>({
     mutationFn: (payload) =>
       apiClient.patch<PlanningSession>(sessionBase(planningItemId, sessionId), payload),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: planningKeys.detail(planningItemId) });
     },
+    // Beschikbaarheids-409 (verzetten sessie) wordt via de override-flow afgehandeld.
+    onError: makeAvailabilityAwareOnError(showToast),
   });
 }
 
@@ -76,12 +83,15 @@ export function useCancelSession(planningItemId: string, sessionId: string) {
 
 export function useAssignSessionInspectors(planningItemId: string, sessionId: string) {
   const qc = useQueryClient();
+  const { showToast } = useToast();
   return useApiMutation<PlanningSession, Error, AssignSessionInspectorsPayload>({
     mutationFn: (payload) =>
       apiClient.post<PlanningSession>(`${sessionBase(planningItemId, sessionId)}/assign`, payload),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: planningKeys.detail(planningItemId) });
     },
+    // Beschikbaarheids-409 wordt via de override-flow afgehandeld.
+    onError: makeAvailabilityAwareOnError(showToast),
   });
 }
 

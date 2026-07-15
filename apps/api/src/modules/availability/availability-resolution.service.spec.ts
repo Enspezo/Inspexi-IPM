@@ -246,6 +246,91 @@ describe('AvailabilityResolutionService', () => {
     });
   });
 
+  // ─── Planning-integratie: checkPlanningDay (PRD-12 §12.9) ──
+
+  describe('checkPlanningDay', () => {
+    it('no conflict when the day has enough availability for the duration', async () => {
+      setup({
+        employmentType: EmploymentType.DIENSTVERBAND,
+        assignments: [
+          {
+            userId: INSP,
+            templateId: 't1',
+            validFrom: day('2026-01-01'),
+            validUntil: null,
+            template: { slots: [slot(1, 480, 1050)] }, // maandag 08:00–17:30 (9,5u)
+          },
+        ],
+      });
+      // 2026-07-20 maandag, 2 uur nodig.
+      const conflicts = await service.checkPlanningDay([INSP], '2026-07-20', 120);
+      expect(conflicts).toEqual([]);
+    });
+
+    it('conflicts with an all-day block reason when the day is fully blocked', async () => {
+      setup({
+        employmentType: EmploymentType.DIENSTVERBAND,
+        assignments: [
+          {
+            userId: INSP,
+            templateId: 't1',
+            validFrom: day('2026-01-01'),
+            validUntil: null,
+            template: { slots: [slot(1, 480, 1050)] },
+          },
+        ],
+        exceptions: [
+          {
+            id: 'blk',
+            userId: INSP,
+            type: AvailabilityExceptionType.GEBLOKKEERD,
+            isRecurring: false,
+            startsAt: new Date('2026-07-20T00:00:00.000Z'),
+            endsAt: new Date('2026-07-21T00:00:00.000Z'),
+            allDay: true,
+            weekdays: [],
+            startMinute: null,
+            endMinute: null,
+            intervalWeeks: 1,
+            recurStartDate: null,
+            recurEndDate: null,
+            reason: 'Verlof',
+          },
+        ],
+      });
+      const conflicts = await service.checkPlanningDay([INSP], '2026-07-20', 120);
+      expect(conflicts).toEqual([
+        { userId: INSP, date: '2026-07-20', reason: 'Verlof — hele dag geblokkeerd' },
+      ]);
+    });
+
+    it('freelancer without availability conflicts (default not available)', async () => {
+      setup({ employmentType: EmploymentType.FREELANCE });
+      const conflicts = await service.checkPlanningDay([INSP], '2026-07-20', null);
+      expect(conflicts).toHaveLength(1);
+      expect(conflicts[0].reason).toBe('Geen beschikbaarheid op deze dag');
+    });
+
+    it('conflicts with "onvoldoende" when partial availability is below the duration', async () => {
+      setup({
+        employmentType: EmploymentType.DIENSTVERBAND,
+        assignments: [
+          {
+            userId: INSP,
+            templateId: 't1',
+            validFrom: day('2026-01-01'),
+            validUntil: null,
+            template: { slots: [slot(1, 480, 540)] }, // maandag 08:00–09:00 (1u)
+          },
+        ],
+      });
+      // 2 uur nodig, maar slechts 1 uur beschikbaar.
+      const conflicts = await service.checkPlanningDay([INSP], '2026-07-20', 120);
+      expect(conflicts).toHaveLength(1);
+      expect(conflicts[0].reason).toContain('Onvoldoende beschikbaarheid');
+    });
+  });
+
   // ─── Self-access voor de INSPECTEUR (PRD-12 §12.8c) ────────
 
   describe('inspecteur self-access', () => {

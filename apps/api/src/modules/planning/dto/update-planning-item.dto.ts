@@ -61,4 +61,9 @@ export class UpdatePlanningItemDto {
   @Min(2)
   @Max(30)
   sessionCount?: number;
+
+  @ApiPropertyOptional({ description: 'Negeer beschikbaarheidswaarschuwingen bij het verzetten (PRD-12 §12.9)' })
+  @IsOptional()
+  @IsBoolean()
+  overrideAvailabilityWarnings?: boolean;
 }

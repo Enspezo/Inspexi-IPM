@@ -38,6 +38,9 @@ export class AllExceptionsFilter implements ExceptionFilter {
     // Optionele machine-leesbare foutcode (bv. FEATURE_NOT_IN_PLAN uit de
     // FeatureGuard) die een exception in zijn response-payload meegeeft.
     let code: string | undefined;
+    // Optionele soft-warning-payload (bv. beschikbaarheidsconflicten uit de
+    // planning-integratie, PRD-12 §12.9) die de 409-body meedraagt.
+    let warnings: unknown;
 
     if (exception instanceof HttpException) {
       status = exception.getStatus();
@@ -52,6 +55,13 @@ export class AllExceptionsFilter implements ExceptionFilter {
         typeof (exceptionResponse as any).code === 'string'
       ) {
         code = (exceptionResponse as any).code;
+      }
+      if (
+        typeof exceptionResponse === 'object' &&
+        exceptionResponse !== null &&
+        'warnings' in exceptionResponse
+      ) {
+        warnings = (exceptionResponse as { warnings?: unknown }).warnings;
       }
     } else if (exception instanceof Prisma.PrismaClientKnownRequestError) {
       switch (exception.code) {
@@ -104,6 +114,8 @@ export class AllExceptionsFilter implements ExceptionFilter {
       ...(Array.isArray(message) && message.length > 1 ? { errors: message } : {}),
       // Machine-leesbare foutcode (bv. FEATURE_NOT_IN_PLAN), indien meegegeven
       ...(code ? { code } : {}),
+      // Soft-warnings (bv. beschikbaarheidsconflicten), indien meegegeven
+      ...(warnings !== undefined ? { warnings } : {}),
       // Alleen 500's krijgen het requestId mee — koppelbaar aan serverlogs
       ...(isServerError && requestId ? { requestId } : {}),
       statusCode: status,

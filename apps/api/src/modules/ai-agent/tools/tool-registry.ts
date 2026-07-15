@@ -274,10 +274,20 @@ export class AiToolRegistry {
           `Taak bijwerken (${i.id})` +
           (i.status ? ` → status ${i.status}` : '') +
           (i.assigneeId ? `, toewijzen aan ${i.assigneeId}` : ''),
-        run: (ctx, input) => {
-          const { id, ...rest } = input;
-          return this.tasks.update(id, rest as any, ctx.user);
-        },
+        run: (ctx, input) =>
+          // Expliciete allowlist: nooit rauwe input doorgeven (mass-assignment).
+          this.tasks.update(
+            input.id,
+            {
+              title: input.title,
+              description: input.description,
+              status: input.status,
+              taskType: input.taskType,
+              assigneeId: input.assigneeId,
+              deadline: input.deadline,
+            } as any,
+            ctx.user,
+          ),
       },
       {
         name: 'create_note',

@@ -501,15 +501,17 @@ Wijzigingen aan het audit-pad (uit de audit-analyse):
 
 ```
 apps/portal/src/
-├── providers/ai-assistant-provider.tsx     # open/close/actieve conversatie/stream-state
+├── providers/ai-agent-provider.tsx         # open/close/actieve conversatie/view-state
 ├── components/ai-assistant/
-│   ├── assistant-button.tsx                # header-knop (verbergt bij !hasFeature)
-│   ├── assistant-drawer.tsx                # slide-in, streamt berichten
-│   ├── message-list.tsx                    # tekst / tool-events / resultaten
+│   ├── assistant-button.tsx                # header-knop (verbergt bij !hasFeature/!enabled)
+│   ├── assistant-drawer.tsx                # slide-in, view-switch (lijst/gesprek)
+│   ├── conversation-list.tsx               # gesprekkenlijst + "nieuw gesprek"
+│   ├── conversation-view.tsx               # berichten + composer + streaming + kaarten
 │   ├── pending-action-card.tsx             # bevestig/afwijs/aanpassen
 │   ├── usage-badge.tsx                     # klein tegoed-indicatortje
-│   └── hooks/use-ai-conversation.ts        # SSE-consumptie + mutaties
-└── App.tsx / sidebar.tsx                   # feature-gated inhaak
+│   ├── hooks/use-ai.ts                     # TanStack Query (list/create/usage/confirm/reject)
+│   └── hooks/use-ai-stream.ts              # SSE-consumptie (rauwe fetch + bearer)
+└── main.tsx / header.tsx / app-layout.tsx  # provider + knop + drawer inhaak
 ```
 
 - Hergebruikt bestaande UI-componenten (`Button`, `Card`, `StatusBadge`, `Spinner`) en `lib/format.ts`.
@@ -534,7 +536,7 @@ apps/portal/src/
 
 - **Unit (API):** tool-registry (read vs write-classificatie), quota-check, audit-`source`-propagatie, hervat-lus-state, usage-berekening. Mock de Anthropic-SDK (geen echte calls in unit-tests).
 - **E2E (API):** conversatie-CRUD org+user-scoped; cross-tenant → 404; schrijfactie **niet** uitgevoerd zonder confirm; na confirm audit-regel met `source=AI`; feature-gate 403 zonder `AI_AGENT`. Teardown ruimt `aiPendingAction → aiMessage → aiConversation`, `aiUsageLog` op vóór `user`/`organization`.
-- **`cross-tenant.e2e-spec.ts` uitbreiden:** org A probeert via de agent org B's id's te raken → moet 403/404 geven (de service-laag `assertSameOrg` vangt dit).
+- **`cross-tenant.e2e-spec.ts` uitbreiden:** org A probeert via de agent org B's id's te raken → moet **404** geven (geen bestaan prijsgeven), consistent met §8.1; de service-laag (`orgScope`/`assertSameOrg`/`assertFound`) vangt dit.
 - **Portal (Vitest):** pending-action-card render/confirm/reject; audit-history AI-icoon bij `source: 'AI'`; feature-gate verbergt knop.
 - **Handmatige browser-smoketest:** op `inspexidemo.localhost:5173` een KVK-opzoek + taak-aanmaak-flow, controleren dat de taak pas na bevestigen bestaat en in de audithistorie een AI-icoon draagt.
 

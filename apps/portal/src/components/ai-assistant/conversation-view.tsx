@@ -2,9 +2,12 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Button, Spinner } from '@/components/ui';
 import type { AiMessage, AiPendingActionCard } from '@/types';
-import { useAiConversation } from './hooks/use-ai';
-import { streamPost, type StreamHandlers } from './hooks/use-ai-stream';
-import { PendingActionCard } from './pending-action-card';
+import { useAiConversation } from '@/components/ai-assistant/hooks/use-ai';
+import {
+  streamPost,
+  type StreamHandlers,
+} from '@/components/ai-assistant/hooks/use-ai-stream';
+import { PendingActionCard } from '@/components/ai-assistant/pending-action-card';
 
 function messageText(m: AiMessage): string {
   return (m.content ?? [])
@@ -37,6 +40,7 @@ export function ConversationView({ conversationId }: { conversationId: string })
   const [error, setError] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const continuedRef = useRef(false);
+  const abortRef = useRef<AbortController | null>(null);
 
   const visible = useMemo(
     () => (data?.messages ?? []).filter((m) => !isInternal(m)),
@@ -46,6 +50,19 @@ export function ConversationView({ conversationId }: { conversationId: string })
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
   }, [visible.length, streamingText, pending.length]);
+
+  // Reset lokale stream-state bij gespreks-wissel en breek een lopende stream af
+  // (bij wissel én unmount) zodat oude callbacks de huidige view niet muteren.
+  useEffect(() => {
+    setStreamingText('');
+    setActiveTool(null);
+    setPending([]);
+    setResolved(new Set());
+    setError(null);
+    setIsStreaming(false);
+    continuedRef.current = false;
+    return () => abortRef.current?.abort();
+  }, [conversationId]);
 
   function makeHandlers(): StreamHandlers {
     return {
@@ -67,6 +84,14 @@ export function ConversationView({ conversationId }: { conversationId: string })
     };
   }
 
+  function startStream(path: string, body: unknown, handlers: StreamHandlers) {
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+    setIsStreaming(true);
+    void streamPost(path, body, handlers, controller.signal);
+  }
+
   async function send() {
     const content = input.trim();
     if (!content || isStreaming) return;
@@ -76,11 +101,12 @@ export function ConversationView({ conversationId }: { conversationId: string })
     setPending([]);
     setResolved(new Set());
     continuedRef.current = false;
-    setIsStreaming(true);
-    await streamPost(`/ai/conversations/${conversationId}/messages`, { content }, makeHandlers());
+    startStream(`/ai/conversations/${conversationId}/messages`, { content }, makeHandlers());
   }
 
-  // Zodra alle voorgestelde acties zijn afgehandeld → hervat de beurt.
+  // Zodra alle voorgestelde acties zijn afgehandeld → hervat de beurt. Pending/
+  // resolved blijven staan tot de hervatting slaagt (onDone); bij fout wordt de
+  // lock vrijgegeven zodat de gebruiker het opnieuw kan proberen.
   useEffect(() => {
     if (
       pending.length > 0 &&
@@ -89,11 +115,21 @@ export function ConversationView({ conversationId }: { conversationId: string })
       !continuedRef.current
     ) {
       continuedRef.current = true;
-      setPending([]);
-      setResolved(new Set());
       setStreamingText('');
-      setIsStreaming(true);
-      void streamPost(`/ai/conversations/${conversationId}/continue`, {}, makeHandlers());
+      const base = makeHandlers();
+      const handlers: StreamHandlers = {
+        ...base,
+        onDone: () => {
+          setPending([]);
+          setResolved(new Set());
+          base.onDone?.(false);
+        },
+        onError: (message) => {
+          continuedRef.current = false;
+          base.onError?.(message);
+        },
+      };
+      startStream(`/ai/conversations/${conversationId}/continue`, {}, handlers);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pending, resolved, isStreaming]);

@@ -3,6 +3,7 @@ import {
   Controller,
   Delete,
   Get,
+  HttpCode,
   Ip,
   Param,
   ParseUUIDPipe,
@@ -11,6 +12,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 import { User } from '@prisma/client';
 import type { Response } from 'express';
 import { CRM_ROLES } from '@/common/auth/roles';
@@ -33,6 +35,8 @@ import { ConfirmActionDto, CreateConversationDto, SendMessageDto } from './dto';
 @Roles(...CRM_ROLES)
 @RequiresFeature('AI_AGENT')
 @UseGuards(AiAgentAccessGuard)
+// Strengere limiet dan de globale 120/min: de assistent doet dure LLM-calls.
+@Throttle({ default: { limit: 30, ttl: 60000 } })
 export class AiAgentController {
   constructor(
     private readonly agent: AiAgentService,
@@ -87,6 +91,7 @@ export class AiAgentController {
    */
   @Post('conversations/:id/messages')
   @ApiOperation({ summary: 'Stuur een bericht (SSE-stream terug)' })
+  @ApiResponse({ status: 200, description: 'SSE-stream met agent-events (token/tool/pending_actions/done/error)' })
   async sendMessage(
     @CurrentUser() user: User,
     @Param('id', ParseUUIDPipe) id: string,
@@ -105,6 +110,7 @@ export class AiAgentController {
    */
   @Post('conversations/:id/continue')
   @ApiOperation({ summary: 'Hervat na bevestiging van acties (SSE-stream)' })
+  @ApiResponse({ status: 200, description: 'SSE-stream met agent-events (token/tool/pending_actions/done/error)' })
   async continueTurn(
     @CurrentUser() user: User,
     @Param('id', ParseUUIDPipe) id: string,
@@ -117,6 +123,7 @@ export class AiAgentController {
   }
 
   @Post('actions/:id/confirm')
+  @HttpCode(200)
   @ApiOperation({ summary: 'Bevestig en voer een voorgestelde schrijfactie uit' })
   @ApiResponse({ status: 200, description: 'Actie uitgevoerd (of mislukt)' })
   async confirmAction(
@@ -130,6 +137,7 @@ export class AiAgentController {
   }
 
   @Post('actions/:id/reject')
+  @HttpCode(200)
   @ApiOperation({ summary: 'Wijs een voorgestelde schrijfactie af' })
   @ApiResponse({ status: 200, description: 'Actie afgewezen' })
   async rejectAction(

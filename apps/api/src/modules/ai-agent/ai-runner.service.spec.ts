@@ -106,6 +106,34 @@ describe('AiRunnerService.streamTurn — write halt', () => {
     expect(usage.record).toHaveBeenCalledTimes(1);
   });
 
+  it('in a mixed read+write turn: runs the read, defers the write, still halts', async () => {
+    const { prisma, usage, registry, readRun, writeRun, sink } = makeDeps();
+    const anthropic = { messages: { stream: jest.fn() } } as any;
+    anthropic.messages.stream.mockReturnValueOnce(
+      fakeStream({
+        content: [
+          { type: 'tool_use', id: 'r1', name: 'get_task', input: { id: 't1' } },
+          { type: 'tool_use', id: 'w1', name: 'create_task', input: { title: 'X' } },
+        ],
+        stop_reason: 'tool_use',
+        usage: { input_tokens: 9, output_tokens: 4 },
+      }),
+    );
+
+    const runner = new AiRunnerService(anthropic, prisma, usage, registry);
+    await runner.streamTurn(conversation, 'zoek en maak', user, sink);
+
+    // Read uitgevoerd; write niet
+    expect(readRun).toHaveBeenCalledWith({ user }, { id: 't1' });
+    expect(writeRun).not.toHaveBeenCalled();
+    // Twee actie-rijen: read EXECUTED + write PENDING
+    expect(prisma.aiPendingAction.create).toHaveBeenCalledTimes(2);
+    const statuses = prisma.aiPendingAction.create.mock.calls.map((c: any[]) => c[0].data.status);
+    expect(statuses).toEqual(expect.arrayContaining(['EXECUTED', 'PENDING']));
+    // Gepauzeerd met één kaart (alleen de write)
+    expect(sink.send).toHaveBeenCalledWith('done', { paused: true });
+  });
+
   it('blocks a new message while a tool_use turn is still open', async () => {
     const { prisma, usage, registry, sink } = makeDeps();
     prisma.aiMessage.findFirst.mockResolvedValue({

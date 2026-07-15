@@ -12,6 +12,7 @@ function makePrisma() {
       create: jest.fn().mockImplementation(({ data }) => ({ id: 'c1', ...data })),
       findFirst: jest.fn(),
       update: jest.fn().mockResolvedValue({}),
+      updateMany: jest.fn().mockResolvedValue({ count: 1 }),
     },
   } as any;
 }
@@ -59,20 +60,24 @@ describe('AiAgentService', () => {
     await expect(service.getOwnedConversation('c1', orgUser)).rejects.toThrow(
       NotFoundException,
     );
-    // The query itself is org+user scoped
+    // The query itself is org+user scoped and excludes archived conversations
     expect(prisma.aiConversation.findFirst).toHaveBeenCalledWith({
-      where: { id: 'c1', orgId: 'orgA', userId: 'u1' },
+      where: { id: 'c1', orgId: 'orgA', userId: 'u1', archivedAt: null },
     });
   });
 
-  it('archives only after the ownership check passes', async () => {
-    prisma.aiConversation.findFirst.mockResolvedValue({ id: 'c1' });
+  it('archives atomically (scoped updateMany) and 404s when nothing matched', async () => {
     await service.archiveConversation('c1', orgUser);
-    expect(prisma.aiConversation.update).toHaveBeenCalledWith(
+    expect(prisma.aiConversation.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { id: 'c1' },
+        where: { id: 'c1', orgId: 'orgA', userId: 'u1', archivedAt: null },
         data: expect.objectContaining({ archivedAt: expect.any(Date) }),
       }),
+    );
+
+    prisma.aiConversation.updateMany.mockResolvedValue({ count: 0 });
+    await expect(service.archiveConversation('c1', orgUser)).rejects.toThrow(
+      NotFoundException,
     );
   });
 });

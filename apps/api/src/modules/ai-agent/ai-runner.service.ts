@@ -8,6 +8,7 @@ import {
 } from '@prisma/client';
 import { PrismaService } from '@/prisma/prisma.service';
 import {
+  AI_AGENT_DEFAULT_EFFORT,
   AI_MAX_ITERATIONS,
   AI_MAX_TOKENS,
   AI_SYSTEM_PROMPT,
@@ -217,6 +218,7 @@ export class AiRunnerService {
       const tools: any[] = [...clientTools, WEB_SEARCH_TOOL];
       const model = conversation.model;
 
+      let hitIterationLimit = true;
       for (let iter = 0; iter < AI_MAX_ITERATIONS; iter++) {
         const stream = anthropic.messages.stream({
           model,
@@ -229,6 +231,7 @@ export class AiRunnerService {
             },
           ],
           thinking: { type: 'adaptive' } as any,
+          output_config: { effort: AI_AGENT_DEFAULT_EFFORT } as any,
           tools,
           messages,
         });
@@ -310,11 +313,13 @@ export class AiRunnerService {
         }
 
         // end_turn / max_tokens / stop_sequence / refusal → klaar.
+        hitIterationLimit = false;
         break;
       }
 
       await this.touch(conversation, firstUserText);
-      sink.send('done', {});
+      // `truncated` = de lus stopte op AI_MAX_ITERATIONS terwijl er nog tool-werk was.
+      sink.send('done', hitIterationLimit ? { truncated: true } : {});
       sink.close();
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);

@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { AiActionStatus, AiPendingAction, User } from '@prisma/client';
-import { assertFound } from '@/common';
+import { assertFound, orgScope } from '@/common';
 import { requestContext } from '@/common/services/request-context';
 import { PrismaService } from '@/prisma/prisma.service';
 import { AiToolRegistry } from './tools/tool-registry';
@@ -11,6 +11,10 @@ import { AiToolRegistry } from './tools/tool-registry';
  * op naam van de ingelogde gebruiker, via exact dezelfde service-methode als een
  * normale UI-actie — dus de bestaande guards/scoping en de audit-middleware
  * gelden, en de mutatie krijgt automatisch `source=AI` in de audittrail.
+ *
+ * Concurrency: bevestigen/afwijzen claimt de actie **atomisch** (PENDING →
+ * CONFIRMED/REJECTED via `updateMany`), zodat twee gelijktijdige bevestigingen
+ * de write nooit dubbel uitvoeren.
  */
 @Injectable()
 export class AiActionService {
@@ -24,7 +28,7 @@ export class AiActionService {
   /** Actie van de gebruiker ophalen (org+user-gescoped → 404 bij cross-tenant). */
   async getOwnedAction(id: string, user: User): Promise<AiPendingAction> {
     const action = await this.prisma.aiPendingAction.findFirst({
-      where: { id, orgId: user.orgId ?? undefined, userId: user.id },
+      where: { ...orgScope(user), id, userId: user.id },
     });
     return assertFound(action, 'Actie');
   }
@@ -37,7 +41,6 @@ export class AiActionService {
     editedArgs?: Record<string, any>,
   ): Promise<AiPendingAction> {
     const action = await this.getOwnedAction(id, user);
-    this.assertPending(action);
 
     const def = this.registry.get(action.toolName);
     if (!def || !def.mutates) {
@@ -46,16 +49,25 @@ export class AiActionService {
 
     const args = editedArgs ?? (action.args as Record<string, any>);
 
+    // Atomische claim: alleen de winnaar (PENDING → CONFIRMED) voert de write uit.
+    const claim = await this.prisma.aiPendingAction.updateMany({
+      where: { id: action.id, status: AiActionStatus.PENDING },
+      data: {
+        status: AiActionStatus.CONFIRMED,
+        args: args as any,
+        confirmedById: user.id,
+        confirmedAt: new Date(),
+      },
+    });
+    if (claim.count === 0) {
+      throw new BadRequestException('Deze actie is al afgehandeld');
+    }
+
     try {
       // Nested AsyncLocalStorage-context: de mutatie ziet source='AI', terwijl de
       // omliggende HTTP-request (interceptor) source='HUMAN' had.
       const output = await requestContext.run(
-        {
-          userId: user.id,
-          orgId: action.orgId,
-          ipAddress,
-          source: 'AI',
-        },
+        { userId: user.id, orgId: action.orgId, ipAddress, source: 'AI' },
         () => def.run({ user }, args),
       );
 
@@ -63,10 +75,7 @@ export class AiActionService {
         where: { id: action.id },
         data: {
           status: AiActionStatus.EXECUTED,
-          args: args as any,
           result: { output: output ?? null, isError: false } as any,
-          confirmedById: user.id,
-          confirmedAt: new Date(),
         },
       });
     } catch (err) {
@@ -76,10 +85,7 @@ export class AiActionService {
         where: { id: action.id },
         data: {
           status: AiActionStatus.FAILED,
-          args: args as any,
           result: { output: message, isError: true } as any,
-          confirmedById: user.id,
-          confirmedAt: new Date(),
         },
       });
     }
@@ -88,10 +94,9 @@ export class AiActionService {
   /** Wijs de schrijfactie af (de agent krijgt dit als tool_result terug). */
   async reject(id: string, user: User): Promise<AiPendingAction> {
     const action = await this.getOwnedAction(id, user);
-    this.assertPending(action);
 
-    return this.prisma.aiPendingAction.update({
-      where: { id: action.id },
+    const claim = await this.prisma.aiPendingAction.updateMany({
+      where: { id: action.id, status: AiActionStatus.PENDING },
       data: {
         status: AiActionStatus.REJECTED,
         result: {
@@ -102,11 +107,13 @@ export class AiActionService {
         confirmedAt: new Date(),
       },
     });
-  }
-
-  private assertPending(action: AiPendingAction): void {
-    if (action.status !== AiActionStatus.PENDING) {
+    if (claim.count === 0) {
       throw new BadRequestException('Deze actie is al afgehandeld');
     }
+
+    return assertFound(
+      await this.prisma.aiPendingAction.findUnique({ where: { id: action.id } }),
+      'Actie',
+    );
   }
 }

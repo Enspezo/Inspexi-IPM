@@ -16,6 +16,10 @@ export const AiAnthropicProvider: Provider = {
   inject: [ConfigService],
   useFactory: (config: ConfigService): Anthropic | null => {
     const apiKey = config.get<string>('ANTHROPIC_API_KEY');
-    return apiKey ? new Anthropic({ apiKey }) : null;
+    // Expliciete timeout/retries i.p.v. de SDK-defaults: elke agent-beurt houdt
+    // een streaming SSE-verbinding open die anders een request-thread kan blokkeren.
+    return apiKey
+      ? new Anthropic({ apiKey, timeout: 120_000, maxRetries: 2 })
+      : null;
   },
 };

@@ -29,7 +29,21 @@ export function PendingActionCard({ action, onResolved }: Props) {
 
   async function onConfirm() {
     try {
-      await confirm.mutateAsync({ id: action.id, args: editing ? args : undefined });
+      // Bewerkte velden staan als string in het formulier; parse ze terug naar
+      // native JSON-types (bijv. getallen/booleans) waar mogelijk.
+      let finalArgs: Record<string, unknown> | undefined;
+      if (editing) {
+        finalArgs = Object.fromEntries(
+          Object.entries(args).map(([k, v]) => {
+            try {
+              return [k, JSON.parse(v)];
+            } catch {
+              return [k, v];
+            }
+          }),
+        );
+      }
+      await confirm.mutateAsync({ id: action.id, args: finalArgs });
       setResolved('confirmed');
       onResolved(action.id);
     } catch (err) {

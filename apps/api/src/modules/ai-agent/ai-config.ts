@@ -50,6 +50,13 @@ export const DEFAULT_MONTHLY_TOKEN_QUOTA = 5_000_000;
 /** Max output-tokens per beurt (streaming, ruim genoeg om afkap te voorkomen). */
 export const AI_MAX_TOKENS = 4096;
 
+/**
+ * Effort-niveau (PRD-12 §5.5): 'medium' als kosten-kwaliteit-balans. Expliciet
+ * gezet zodat adaptive-thinking niet standaard op 'high' draait (kostenbeheersing
+ * i.c.m. de fair-use-quota). Overrulebaar via `AI_AGENT_EFFORT`.
+ */
+export const AI_AGENT_DEFAULT_EFFORT = 'medium';
+
 /** Max iteraties in de agent-loop (tool-rondes) — backstop tegen loops. */
 export const AI_MAX_ITERATIONS = 8;
 

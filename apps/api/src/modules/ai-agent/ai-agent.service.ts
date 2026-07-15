@@ -1,4 +1,4 @@
-import { ForbiddenException, Injectable } from '@nestjs/common';
+import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { AiConversation, User } from '@prisma/client';
 import { assertFound } from '@/common';
@@ -61,32 +61,35 @@ export class AiAgentService {
     });
   }
 
-  /** Eén gesprek + berichten (chronologisch). 404 bij cross-tenant/andermans. */
+  /** Eén gesprek + berichten (chronologisch). 404 bij cross-tenant/andermans/gearchiveerd. */
   async getConversationWithMessages(id: string, user: User) {
     const orgId = this.requireOrg(user);
     const conversation = await this.prisma.aiConversation.findFirst({
-      where: { id, orgId, userId: user.id },
+      where: { id, orgId, userId: user.id, archivedAt: null },
       include: { messages: { orderBy: { createdAt: 'asc' } } },
     });
     return assertFound(conversation, 'Gesprek');
   }
 
-  /** Eén gesprek zonder berichten (voor de runner). 404 als niet toegankelijk. */
+  /** Eén gesprek zonder berichten (voor de runner). 404 als niet toegankelijk/gearchiveerd. */
   async getOwnedConversation(id: string, user: User): Promise<AiConversation> {
     const orgId = this.requireOrg(user);
     const conversation = await this.prisma.aiConversation.findFirst({
-      where: { id, orgId, userId: user.id },
+      where: { id, orgId, userId: user.id, archivedAt: null },
     });
     return assertFound(conversation, 'Gesprek');
   }
 
   async archiveConversation(id: string, user: User) {
-    // Scoping-check (404 bij niet-eigenaar/cross-tenant) vóór de update.
-    await this.getOwnedConversation(id, user);
-    await this.prisma.aiConversation.update({
-      where: { id },
+    const orgId = this.requireOrg(user);
+    // Atomisch: alleen een eigen, nog niet gearchiveerd gesprek wordt geraakt.
+    const result = await this.prisma.aiConversation.updateMany({
+      where: { id, orgId, userId: user.id, archivedAt: null },
       data: { archivedAt: new Date() },
     });
+    if (result.count === 0) {
+      throw new NotFoundException('Gesprek niet gevonden');
+    }
     return { id, archived: true };
   }
 }

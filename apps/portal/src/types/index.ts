@@ -41,10 +41,52 @@ export interface Organization {
   quoteApprovalRequiredRole: Role | null;
   isActive: boolean;
   chatEnabled: boolean;
+  /** AI-assistent (add-on, PRD-12): kill-switch + toegestane rollen (leeg = default). */
+  aiAgentEnabled: boolean;
+  aiAgentAllowedRoles: Role[];
   /** Toegewezen SaaS-abonnement (entitlements, PRD-09); null = geen plan. */
   planId: string | null;
   createdAt: string;
   _count?: { users: number };
+}
+
+// ─── AI-assistent (add-on, PRD-12) ───────────────────────
+
+/** Eén Anthropic content-blok (tekst / tool_use / tool_result / thinking). */
+export interface AiContentBlock {
+  type: string;
+  text?: string;
+  name?: string;
+  [key: string]: unknown;
+}
+
+export interface AiMessage {
+  id: string;
+  role: 'USER' | 'ASSISTANT';
+  content: AiContentBlock[];
+  createdAt: string;
+}
+
+export interface AiConversation {
+  id: string;
+  title: string | null;
+  model: string;
+  createdAt: string;
+  updatedAt: string;
+  messages?: AiMessage[];
+}
+
+export interface AiPendingActionCard {
+  id: string;
+  toolName: string;
+  summary: string;
+  args: Record<string, unknown>;
+}
+
+export interface AiUsageSummary {
+  monthTokens: number;
+  monthlyQuota: number;
+  remaining: number;
 }
 
 export enum SignatureType {
@@ -850,6 +892,8 @@ export interface AuditLogEntry {
   snapshot: Record<string, any> | null;
   userId: string;
   user: { id: string; firstName: string; lastName: string };
+  /** Herkomst van de mutatie (PRD-12): 'AI' = via de AI-assistent uitgevoerd. */
+  source?: 'HUMAN' | 'AI';
   createdAt: string;
 }
 

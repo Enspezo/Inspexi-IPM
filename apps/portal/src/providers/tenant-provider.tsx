@@ -16,6 +16,8 @@ export interface OrgBranding {
   primaryColor: string | null;
   /** Interne chat aan/uit voor deze organisatie (REQ1). */
   chatEnabled?: boolean;
+  /** AI-assistent kill-switch voor deze organisatie (PRD-12). */
+  aiAgentEnabled?: boolean;
 }
 
 interface TenantContextType {

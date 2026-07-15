@@ -3,6 +3,7 @@ import { Sidebar } from './sidebar';
 import { Header } from './header';
 import { WindowTabStrip } from './window-tab-strip';
 import { ChatDrawer } from '@/components/chat';
+import { AssistantDrawer } from '@/components/ai-assistant';
 import { HelpWidget } from '@/components/help';
 
 export function AppLayout() {
@@ -17,6 +18,7 @@ export function AppLayout() {
         </main>
       </div>
       <ChatDrawer />
+      <AssistantDrawer />
       <HelpWidget />
     </div>
   );

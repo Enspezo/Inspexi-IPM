@@ -143,6 +143,27 @@ enum AuditAction {
   DELETE
 }
 
+// Herkomst van een audit-mutatie (PRD-12): HUMAN = normale UI-actie,
+// AI = door de AI-assistent geïnitieerd (en door de gebruiker bevestigd).
+enum AuditSource {
+  HUMAN
+  AI
+}
+
+// AI-assistent (add-on, PRD-12)
+enum AiMessageRole {
+  USER
+  ASSISTANT
+}
+
+enum AiActionStatus {
+  PENDING
+  CONFIRMED
+  REJECTED
+  EXECUTED
+  FAILED
+}
+
 enum ErrorReportStatus {
   OPEN
   IN_BEHANDELING
@@ -374,6 +395,10 @@ model Organization {
   isActive            Boolean  @default(true) @map("is_active")
   // Interne chat per organisatie aan/uit (REQ1) — te schakelen door SUPERUSER/ORG_ADMIN.
   chatEnabled         Boolean  @default(true) @map("chat_enabled")
+  // AI-assistent (add-on, PRD-12): per-org kill-switch + toegestane rollen.
+  // Lege rollen-lijst → systeem-default (alle staf behalve INSPECTEUR).
+  aiAgentEnabled      Boolean  @default(true) @map("ai_agent_enabled")
+  aiAgentAllowedRoles Role[]   @default([]) @map("ai_agent_allowed_roles")
   // SaaS-abonnement (entitlements, PRD-09): template-plan voor deze org. Nullable —
   // een org zonder plan heeft (buiten core) geen gegate functies.
   planId              String?  @map("plan_id") @db.Uuid
@@ -470,6 +495,10 @@ model Organization {
   // Interne chat (REQ1)
   chatThreads  ChatThread[]
   chatMessages ChatMessage[]
+
+  // AI-assistent (add-on, PRD-12)
+  aiConversations AiConversation[]
+  aiUsageLogs     AiUsageLog[]
 
   // SaaS-abonnement (entitlements, PRD-09)
   plan     Plan?                 @relation(fields: [planId], references: [id])
@@ -611,6 +640,9 @@ model User {
   notificationPrefs NotificationPref[]
   auditLogs         AuditLog[]
   favorites         Favorite[]
+
+  // AI-assistent (add-on, PRD-12) — privé gesprekken van deze gebruiker.
+  aiConversations AiConversation[]
 
   // Per-org feature-overrides die deze gebruiker heeft gezet (PRD-09 entitlements).
   orgFeatureUpdates OrganizationFeature[] @relation("OrgFeatureUpdatedBy")
@@ -1445,6 +1477,9 @@ model AuditLog {
   snapshot   Json?
   userId     String      @map("user_id") @db.Uuid
   ipAddress  String?     @map("ip_address")
+  // Herkomst van de mutatie (PRD-12). `userId` blijft de mens-acteur; `source=AI`
+  // markeert dat de wijziging via de AI-assistent is uitgevoerd (toont AI-icoon).
+  source     AuditSource @default(HUMAN)
   createdAt  DateTime    @default(now()) @map("created_at")
 
   user User @relation(fields: [userId], references: [id])
@@ -1453,6 +1488,96 @@ model AuditLog {
   @@index([orgId, createdAt])
   @@index([userId])
   @@map("imp_audit_logs")
+}
+
+// ─── AI-assistent (add-on, PRD-12) ───────────────────────
+// Privé per gebruiker. De FK-cascade op User/Organization vuurt bij een
+// HARD delete van de user/org. Reguliere offboarding is een soft-delete
+// (isDeleted/deletedAt) → AI-data blijft dan bewaard tot een harde verwijdering
+// of tot expliciete opruiming (open follow-up, zie PRD §11 fase 5).
+
+model AiConversation {
+  id         String    @id @default(uuid()) @db.Uuid
+  orgId      String    @map("org_id") @db.Uuid
+  userId     String    @map("user_id") @db.Uuid
+  title      String?
+  model      String // gebruikt model-id (audit/kosten)
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+  archivedAt DateTime? @map("archived_at")
+
+  organization Organization      @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  user         User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages     AiMessage[]
+  actions      AiPendingAction[]
+
+  @@index([orgId, userId, updatedAt])
+  @@map("imp_ai_conversations")
+}
+
+model AiMessage {
+  id             String        @id @default(uuid()) @db.Uuid
+  conversationId String        @map("conversation_id") @db.Uuid
+  orgId          String        @map("org_id") @db.Uuid
+  role           AiMessageRole
+  // Anthropic content-blocks (text / thinking / tool_use / tool_result) als JSON.
+  content        Json
+  createdAt      DateTime      @default(now()) @map("created_at")
+
+  conversation AiConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, createdAt])
+  @@map("imp_ai_messages")
+}
+
+model AiPendingAction {
+  id             String         @id @default(uuid()) @db.Uuid
+  conversationId String         @map("conversation_id") @db.Uuid
+  // messageId/orgId/userId/confirmedById zijn bewust GEEN Prisma-relaties: ze
+  // worden gedenormaliseerd meegeschreven voor snelle, org-gescoopte queries en
+  // audit, zonder extra FK-joins. Referentiële integriteit loopt via de enige
+  // echte relatie (conversationId → AiConversation, Cascade); de rest cascadet
+  // mee bij verwijdering van de conversation/org.
+  messageId      String         @map("message_id") @db.Uuid // assistant-message met het tool_use-blok
+  orgId          String         @map("org_id") @db.Uuid
+  userId         String         @map("user_id") @db.Uuid // wie moet bevestigen (= eigenaar)
+  toolName       String         @map("tool_name")
+  toolUseId      String         @map("tool_use_id") // Anthropic tool_use.id (koppeling)
+  args           Json // gevalideerde tool-input
+  summary        String // NL mensleesbare samenvatting voor de kaart
+  status         AiActionStatus @default(PENDING)
+  result         Json? // uitkomst / foutmelding
+  confirmedById  String?        @map("confirmed_by_id") @db.Uuid
+  confirmedAt    DateTime?      @map("confirmed_at")
+  createdAt      DateTime       @default(now()) @map("created_at")
+
+  conversation AiConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, status])
+  @@index([orgId, userId, status])
+  @@map("imp_ai_pending_actions")
+}
+
+model AiUsageLog {
+  // userId/conversationId zijn gedenormaliseerd (geen FK): metering-regels
+  // blijven bestaan ook als een gesprek/gebruiker later verdwijnt; opschonen
+  // gebeurt via de org-cascade (orgId → Organization).
+  id                  String   @id @default(uuid()) @db.Uuid
+  orgId               String   @map("org_id") @db.Uuid
+  userId              String   @map("user_id") @db.Uuid
+  conversationId      String?  @map("conversation_id") @db.Uuid
+  model               String
+  inputTokens         Int      @default(0) @map("input_tokens")
+  cachedInputTokens   Int      @default(0) @map("cached_input_tokens") // cache-reads (goedkoop)
+  cacheCreationTokens Int      @default(0) @map("cache_creation_tokens") // cache-writes (duurder dan input)
+  outputTokens        Int      @default(0) @map("output_tokens")
+  costCents           Int      @default(0) @map("cost_cents") // geschatte kostprijs (metering/marge)
+  createdAt           DateTime @default(now()) @map("created_at")
+
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@index([orgId, createdAt])
+  @@map("imp_ai_usage_logs")
 }
 
 // ─── Task Management ─────────────────────────────────────

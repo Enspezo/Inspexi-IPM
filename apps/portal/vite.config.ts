@@ -56,7 +56,9 @@ export default defineConfig(async () => {
       host: true,
       proxy: {
         '/api': {
-          target: 'http://localhost:3001',
+          // Overridebaar zodat een tweede dev-instantie (bijv. vanuit een
+          // worktree) naar een eigen API-poort kan wijzen.
+          target: process.env.API_PROXY_TARGET || 'http://localhost:3001',
           // Keep original Host header so backend can detect subdomain
           changeOrigin: false,
         },

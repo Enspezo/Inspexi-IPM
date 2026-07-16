@@ -151,6 +151,15 @@ const enumLabels: Record<string, string> = {
   BESCHIKBAAR: 'Beschikbaar',
   GEBLOKKEERD: 'Geblokkeerd',
 
+  // AiReviewItemSeverity (PRD-13)
+  CRITICAL: 'Kritiek',
+  WARNING: 'Waarschuwing',
+  SUGGESTION: 'Suggestie',
+  INFO: 'Informatie',
+  // AiReviewItemStatus (PRD-13) — OPEN al gedefinieerd hierboven
+  CHECKED: 'Afgevinkt',
+  DISMISSED: 'Afgewezen',
+
   // SupportTicketCategory
   VRAAG: 'Vraag',
   PROBLEEM: 'Probleem',
@@ -194,6 +203,7 @@ const dateFields = new Set([
   'validUntil',
   'recurStartDate',
   'recurEndDate',
+  'checkedAt',
 ]);
 
 /** UUID v4 pattern — used to detect unresolved UUIDs */

@@ -1,4 +1,4 @@
-import { PrismaClient, Role, ContactType, LogType, PriceType, RequestSource, RequestStatus, Priority, QuoteStatus, NotificationType, PlanningStatus, AcceptanceStatus, ProjectStatus, AssetFieldType, ChecklistStatus, TemplateStatus, MeasurementSheetTemplateStatus, MeasurementSheetFieldType, FindingInspectionType, DocumentType, DocumentEntityType, TemplateMode, SectionType, ClientUserStatus, ClientAccessRole, GeneratedDocumentStatus, SignatureStatus, MarkerType, MeasurementSheetRecordStatus, InspectionExecStatus, PassFailOperator, LocationTypeScope, Availability, ChatThreadType, ChatThreadStatus, ContactDisplayMode, PhaseStatus, EmploymentType, AvailabilityExceptionType } from '@prisma/client';
+import { PrismaClient, Role, ContactType, LogType, PriceType, RequestSource, RequestStatus, Priority, QuoteStatus, NotificationType, PlanningStatus, AcceptanceStatus, ProjectStatus, AssetFieldType, ChecklistStatus, TemplateStatus, MeasurementSheetTemplateStatus, MeasurementSheetFieldType, FindingInspectionType, DocumentType, DocumentEntityType, TemplateMode, SectionType, ClientUserStatus, ClientAccessRole, GeneratedDocumentStatus, SignatureStatus, MarkerType, MeasurementSheetRecordStatus, InspectionExecStatus, PassFailOperator, LocationTypeScope, Availability, ChatThreadType, ChatThreadStatus, ContactDisplayMode, PhaseStatus, EmploymentType, AvailabilityExceptionType, AiReviewRunStatus, AiReviewItemSeverity, AiReviewItemStatus } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { randomUUID } from 'crypto';
 import * as fs from 'fs';
@@ -529,6 +529,10 @@ async function main() {
   await prisma.voiceUserPrompt.deleteMany();
   await prisma.voiceTemplatePrompt.deleteMany();
   await prisma.voiceBasePrompt.deleteMany();
+  // AI-review (PRD-13) — items cascaden op run; run cascadeert op inspectionPlan,
+  // dus vóór de inspectionPlan/assetNode/finding-cleanup (kinderen eerst)
+  await prisma.aiReviewItem.deleteMany();
+  await prisma.aiReviewRun.deleteMany();
   // document generation
   await prisma.documentSignature.deleteMany();
   await prisma.generatedDocument.deleteMany();
@@ -709,8 +713,8 @@ async function main() {
   await prisma.plan.deleteMany();
 
   // ─── SaaS-abonnementen: plannen (templates, PRD-09 §7.2) ──
-  // "Basis" = 4 basisfeatures (géén PROJECT_FASEN); "Compleet" = alle catalogus-keys
-  // incl. add-ons (PROJECT_FASEN, WEBHOOKS, CUSTOM_FIELDS). De catalogus
+  // "Basis" = 4 basisfeatures (géén add-ons); "Compleet" = alle catalogus-keys
+  // incl. add-ons (PROJECT_FASEN, WEBHOOKS, CUSTOM_FIELDS, AI_REVIEW). De catalogus
   // (FEATURE_KEYS) is bron-van-waarheid; de DB verwijst alleen naar de keys. De
   // demo-org draait op Compleet en heeft dus PROJECT_FASEN (fasen-tab + demo-fasen
   // werken); een Basis-org (bv. Test Bedrijf) heeft de feature bewust NIET, zodat het
@@ -3461,6 +3465,104 @@ async function main() {
     console.log('  ✓ ClientMagicLink: token "demo-klant-magic" (SEED_DEMO=1, verloopt over 30 dagen)');
   } else {
     console.log('  ⏭️  ClientMagicLink "demo-klant-magic" overgeslagen (zet SEED_DEMO=1 om aan te maken)');
+  }
+
+  // ─── AI-voorcontrole demo (PRD-13 §13.11) — alleen bij SEED_DEMO=1 ───────
+  // Eén afgeronde AiReviewRun met items op het demo-plan, zodat het AI-paneel
+  // op de inspectie-detailpagina direct gevuld is. De demo-org krijgt de
+  // org-toggle aan plus een expliciete AI_REVIEW-override (belt-and-braces:
+  // het Compleet-plan bevat de key al, maar de override houdt de demo werkend
+  // als de plan-koppeling ooit wijzigt). Standaard-seed slaat dit over; de
+  // cleanup bovenin (aiReviewItem → aiReviewRun) ruimt de records weer op.
+  if (process.env.SEED_DEMO === '1') {
+    await prisma.organization.update({
+      where: { id: org1.id },
+      data: { aiReviewEnabled: true },
+    });
+    await prisma.organizationFeature.create({
+      data: {
+        orgId: org1.id,
+        featureKey: 'AI_REVIEW',
+        enabled: true,
+        updatedById: orgAdminId,
+      },
+    });
+
+    const managerId = createdOrg1Users[Role.MANAGER];
+    await prisma.aiReviewRun.create({
+      data: {
+        orgId: org1.id,
+        inspectionPlanId: demoPlan.id,
+        status: AiReviewRunStatus.COMPLETED,
+        triggeredBy: managerId,
+        model: 'claude-sonnet-4-6',
+        summary:
+          'Het rapport is grotendeels compleet. Belangrijkste aandachtspunt: de kritieke bevinding op de hoofdverdeler mist een aanbeveling. Daarnaast één inconsistentie tussen meting en bevinding en enkele kleinere tekstuele punten.',
+        inputTokens: 4210,
+        outputTokens: 612,
+        startedAt: new Date('2026-06-16T09:00:00Z'),
+        completedAt: new Date('2026-06-16T09:01:30Z'),
+        items: {
+          create: [
+            {
+              orgId: org1.id,
+              severity: AiReviewItemSeverity.CRITICAL,
+              category: 'VOLLEDIGHEID',
+              title: 'Kritieke bevinding zonder aanbeveling',
+              description:
+                'De bevinding "Ontbrekende afdekking op verdeelinrichting" (aanraakgevaar) bevat geen aanbeveling voor herstel. Voeg een concrete herstelmaatregel en termijn toe.',
+              findingId: finding1.id,
+              sortOrder: 0,
+            },
+            {
+              orgId: org1.id,
+              severity: AiReviewItemSeverity.WARNING,
+              category: 'CONSISTENTIE',
+              title: 'Meting spreekt bevinding tegen',
+              description:
+                'De standalone isolatieweerstandsmeting op verdieping 1 is goedgekeurd (210 MΩ), terwijl een bevinding op de onderverdeler een isolatieweerstand onder norm rapporteert (0,3 MΩ). Controleer of beide waardes kloppen en op verschillende groepen betrekking hebben.',
+              assetNodeId: asset1.id,
+              sortOrder: 1,
+            },
+            {
+              orgId: org1.id,
+              severity: AiReviewItemSeverity.WARNING,
+              category: 'NORMERING',
+              title: 'Normverwijzing controleren',
+              description:
+                'De verwijzing "NEN 1010 art. 412" bij de afdekking-bevinding lijkt niet te passen; aanraakbescherming van verdeelinrichtingen valt doorgaans onder art. 410/512. Verifieer het artikelnummer.',
+              sortOrder: 2,
+            },
+            {
+              orgId: org1.id,
+              severity: AiReviewItemSeverity.SUGGESTION,
+              category: 'TAAL',
+              title: 'Afkortingen eenmalig uitschrijven',
+              description:
+                'HVK en OVK worden zonder toelichting gebruikt. Schrijf afkortingen bij eerste gebruik voluit voor de leesbaarheid richting de opdrachtgever.',
+              status: AiReviewItemStatus.CHECKED,
+              checkedBy: managerId,
+              checkedAt: new Date('2026-06-16T10:15:00Z'),
+              sortOrder: 3,
+            },
+            {
+              orgId: org1.id,
+              severity: AiReviewItemSeverity.INFO,
+              category: 'OVERIG',
+              title: 'Plattegrond zonder marker-legenda',
+              description:
+                'De plattegrond bevat markers zonder legenda in het rapport. Overweeg een korte legenda toe te voegen zodat de opdrachtgever de markers kan duiden.',
+              sortOrder: 4,
+            },
+          ],
+        },
+      },
+    });
+    console.log(
+      '  ✓ AI-voorcontrole: org-toggle + AI_REVIEW-override + 1 COMPLETED run met 5 items (1 afgevinkt door manager) (SEED_DEMO=1)',
+    );
+  } else {
+    console.log('  ⏭️  AI-voorcontrole demo-run overgeslagen (zet SEED_DEMO=1 om aan te maken)');
   }
 
   // ─── SaaS-varianten (PRD-09 §7.1) — testmatrix-orgs ─────────────────────

@@ -140,6 +140,7 @@ enum NotificationType {
   MILESTONE_VERLOPEN
   BESCHIKBAARHEID_GEWIJZIGD_DOOR_INSPECTEUR
   BESCHIKBAARHEID_GEWIJZIGD_DOOR_MANAGER
+  AI_REVIEW_GEREED
 }
 
 enum AuditAction {
@@ -410,6 +411,11 @@ model Organization {
   supportAccessEnabled   Boolean   @default(false) @map("support_access_enabled")
   supportAccessExpiresAt DateTime? @map("support_access_expires_at")
 
+  // Inspectie-review (vier-ogen + AI-voorcontrole, PRD-13)
+  inspectionReviewEnabled Boolean @default(true) @map("inspection_review_enabled")
+  aiReviewEnabled         Boolean @default(false) @map("ai_review_enabled")
+  aiReviewInstructions    String? @map("ai_review_instructions") @db.Text
+
   users                    User[]
   invitations              Invitation[]
   contacts                 Contact[]
@@ -511,6 +517,9 @@ model Organization {
   userScheduleAssignments UserScheduleAssignment[]
   availabilityExceptions  AvailabilityException[]
 
+  // AI-review van inspectierapporten (PRD-13)
+  aiReviewRuns AiReviewRun[]
+
   @@map("imp_organizations")
 }
 
@@ -563,34 +572,34 @@ model OrganizationFeature {
 }
 
 model User {
-  id              String         @id @default(uuid()) @db.Uuid
-  orgId           String?        @map("org_id") @db.Uuid
-  email           String         @unique
-  passwordHash    String         @map("password_hash")
+  id                String         @id @default(uuid()) @db.Uuid
+  orgId             String?        @map("org_id") @db.Uuid
+  email             String         @unique
+  passwordHash      String         @map("password_hash")
   // Wijzigingsmoment van het wachtwoord — bindt reset-tokens aan de huidige
   // wachtwoordstaat zodat een reset-link éénmalig bruikbaar is en na een
   // wachtwoordwijziging (of hergebruik) ongeldig wordt.
-  passwordChangedAt DateTime?    @map("password_changed_at")
-  firstName       String         @map("first_name")
-  lastName        String         @map("last_name")
-  roles           Role[]         @default([])
-  isActive        Boolean        @default(true) @map("is_active")
-  isDeleted       Boolean        @default(false) @map("is_deleted")
-  deletedAt       DateTime?      @map("deleted_at")
-  emailVerifiedAt DateTime?      @map("email_verified_at")
-  initials        String?        @map("initials")
-  avatarUrl       String?        @map("avatar_url")
-  signatureType   SignatureType? @map("signature_type")
-  signatureData   String?        @map("signature_data")
-  color           String? // HEX kleurcode voor kalenderweergave, bijv. "#3B82F6"
-  homeStreet      String?        @map("home_street")
-  homeHouseNumber String?        @map("home_house_number")
-  homePostalCode  String?        @map("home_postal_code")
-  homeCity        String?        @map("home_city")
-  homeLat         Float?         @map("home_lat")
-  homeLng         Float?         @map("home_lng")
-  icalToken       String         @unique @default(uuid()) @map("ical_token")
-  createdAt       DateTime       @default(now()) @map("created_at")
+  passwordChangedAt DateTime?      @map("password_changed_at")
+  firstName         String         @map("first_name")
+  lastName          String         @map("last_name")
+  roles             Role[]         @default([])
+  isActive          Boolean        @default(true) @map("is_active")
+  isDeleted         Boolean        @default(false) @map("is_deleted")
+  deletedAt         DateTime?      @map("deleted_at")
+  emailVerifiedAt   DateTime?      @map("email_verified_at")
+  initials          String?        @map("initials")
+  avatarUrl         String?        @map("avatar_url")
+  signatureType     SignatureType? @map("signature_type")
+  signatureData     String?        @map("signature_data")
+  color             String? // HEX kleurcode voor kalenderweergave, bijv. "#3B82F6"
+  homeStreet        String?        @map("home_street")
+  homeHouseNumber   String?        @map("home_house_number")
+  homePostalCode    String?        @map("home_postal_code")
+  homeCity          String?        @map("home_city")
+  homeLat           Float?         @map("home_lat")
+  homeLng           Float?         @map("home_lng")
+  icalToken         String         @unique @default(uuid()) @map("ical_token")
+  createdAt         DateTime       @default(now()) @map("created_at")
 
   // Standaard vrijwillige goedkeurder (persoon) — voorvult het persoon-verzoek (REQ5).
   defaultApprovalPersonId String? @map("default_approval_person_id") @db.Uuid
@@ -706,6 +715,10 @@ model User {
   employmentType         EmploymentType?          @map("employment_type")
   scheduleAssignments    UserScheduleAssignment[]
   availabilityExceptions AvailabilityException[]
+
+  // AI-review van inspectierapporten (PRD-13)
+  triggeredAiReviewRuns AiReviewRun[]  @relation("AiReviewRunTriggeredBy")
+  checkedAiReviewItems  AiReviewItem[] @relation("AiReviewItemCheckedBy")
 
   @@index([orgId, isDeleted])
   @@map("imp_users")
@@ -2723,6 +2736,7 @@ model InspectionPlan {
   clientRequests          ClientRequest[]                   @relation("RelatedInspectionPlan")
   standaloneMeasurements  StandaloneMeasurement[]
   instrumentDefaults      InspectionPlanDefaultInstrument[]
+  aiReviewRuns            AiReviewRun[]
 
   @@index([orgId, statusCode])
   @@index([contactId])
@@ -2789,6 +2803,7 @@ model AssetNode {
   image                   LocationImage? // floor-plan op een LOCATION-node
   standaloneMeasurements  StandaloneMeasurement[]  @relation("NodeStandalone")
   planScopes              InspectionPlanLocation[] // inspecties waarvoor deze LOCATION-node in scope is
+  aiReviewItems           AiReviewItem[]
 
   @@unique([orgId, nodeNumber])
   @@index([orgId])
@@ -2929,6 +2944,7 @@ model Finding {
   resolvedByUser    User?                 @relation("FindingResolvedBy", fields: [resolvedBy], references: [id])
   resolutions       FindingResolution[]
   markers           LocationImageMarker[]
+  aiReviewItems     AiReviewItem[]
 
   @@index([orgId])
   @@index([orgId, updatedAt])
@@ -3638,6 +3654,7 @@ model GeneratedDocument {
   documentTemplate DocumentTemplate    @relation(fields: [documentTemplateId], references: [id])
   inspectionPlan   InspectionPlan      @relation(fields: [inspectionPlanId], references: [id])
   signatures       DocumentSignature[]
+  aiReviewRuns     AiReviewRun[]
 
   @@index([orgId])
   @@index([inspectionPlanId, documentType])
@@ -4372,8 +4389,8 @@ model ChatMessage {
 // Knowledge base (hybride: org_id null = globaal, gezet = org-specifiek)
 
 model HelpCategory {
-  id          String   @id @default(uuid()) @db.Uuid
-  orgId       String?  @map("org_id") @db.Uuid // null = globaal; gezet = org-specifiek
+  id          String       @id @default(uuid()) @db.Uuid
+  orgId       String?      @map("org_id") @db.Uuid // null = globaal; gezet = org-specifiek
   slug        String
   name        String
   description String?
@@ -4755,4 +4772,82 @@ model AvailabilityException {
 
   @@index([orgId, userId, isDeleted])
   @@map("imp_availability_exceptions")
+}
+
+// ─── AI-review van inspectierapporten (PRD-13) ───────────────────────────────
+// Eén analyse-run van Claude over een ingediend inspectieplan; het resultaat is
+// een checklist van aandachtspunten (items) voor de menselijke controleur.
+// Adviserend, nooit blokkerend: geen enkele statustransitie hangt hiervan af.
+
+enum AiReviewRunStatus {
+  PENDING // aangemaakt, run nog niet gestart/bezig
+  COMPLETED // analyse gelukt, items beschikbaar
+  FAILED // fout (API/timeout/parse) — errorMessage gevuld
+}
+
+enum AiReviewItemSeverity {
+  CRITICAL // waarschijnlijk fout in het rapport (bijv. meting buiten norm zonder afwijking)
+  WARNING // verdacht / inconsistent, controleren
+  SUGGESTION // verbeterpunt (formulering, volledigheid)
+  INFO // ter kennisgeving
+}
+
+enum AiReviewItemStatus {
+  OPEN
+  CHECKED // door reviewer afgevinkt (gezien/afgehandeld)
+  DISMISSED // door reviewer afgewezen (niet relevant / vals alarm)
+}
+
+model AiReviewRun {
+  id                  String            @id @default(uuid()) @db.Uuid
+  orgId               String            @map("org_id") @db.Uuid
+  inspectionPlanId    String            @map("inspection_plan_id") @db.Uuid
+  generatedDocumentId String?           @map("generated_document_id") @db.Uuid
+  status              AiReviewRunStatus @default(PENDING)
+  triggeredBy         String?           @map("triggered_by") @db.Uuid // null = automatisch bij submit
+  model               String // gebruikt Claude-model (audit/kosten)
+  summary             String?           @db.Text // NL-samenvatting van de AI
+  errorMessage        String?           @map("error_message")
+  inputTokens         Int?              @map("input_tokens")
+  outputTokens        Int?              @map("output_tokens")
+  startedAt           DateTime?         @map("started_at")
+  completedAt         DateTime?         @map("completed_at")
+  createdAt           DateTime          @default(now()) @map("created_at")
+
+  organization      Organization       @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  inspectionPlan    InspectionPlan     @relation(fields: [inspectionPlanId], references: [id], onDelete: Cascade)
+  generatedDocument GeneratedDocument? @relation(fields: [generatedDocumentId], references: [id], onDelete: SetNull)
+  triggeredByUser   User?              @relation("AiReviewRunTriggeredBy", fields: [triggeredBy], references: [id], onDelete: SetNull)
+  items             AiReviewItem[]
+
+  @@index([orgId, inspectionPlanId])
+  @@map("imp_ai_review_runs")
+}
+
+model AiReviewItem {
+  id                  String               @id @default(uuid()) @db.Uuid
+  orgId               String               @map("org_id") @db.Uuid
+  runId               String               @map("run_id") @db.Uuid
+  severity            AiReviewItemSeverity
+  category            String // vrije NL-categorie uit de prompt-taxonomie (PRD §13.6.3)
+  title               String
+  description         String               @db.Text
+  // Optionele verwijzingen zodat de UI kan deeplinken; AI levert deze alleen
+  // als het id in de input voorkwam — service valideert vóór opslag.
+  assetNodeId         String?              @map("asset_node_id") @db.Uuid
+  findingId           String?              @map("finding_id") @db.Uuid
+  measurementRecordId String?              @map("measurement_record_id") @db.Uuid
+  status              AiReviewItemStatus   @default(OPEN)
+  checkedBy           String?              @map("checked_by") @db.Uuid
+  checkedAt           DateTime?            @map("checked_at")
+  sortOrder           Int                  @default(0) @map("sort_order")
+  createdAt           DateTime             @default(now()) @map("created_at")
+
+  run           AiReviewRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  assetNode     AssetNode?  @relation(fields: [assetNodeId], references: [id], onDelete: SetNull)
+  finding       Finding?    @relation(fields: [findingId], references: [id], onDelete: SetNull)
+  checkedByUser User?       @relation("AiReviewItemCheckedBy", fields: [checkedBy], references: [id], onDelete: SetNull)
+
+  @@index([runId])
+  @@map("imp_ai_review_items")
 }

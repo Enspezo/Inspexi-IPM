@@ -134,7 +134,10 @@ interface EntityConfig {
   nestedChild?: NestedChildConfig;
 }
 
-const PLAN_DATES = ['plannedDate', 'deadline', 'startedAt', 'submittedAt', 'reviewedAt', 'approvedAt', 'completedAt'];
+// reviewedAt/approvedAt zijn bewust GEEN client-velden: de vier-ogen-review
+// (PRD-13) gebeurt in het portal door REVIEW_ROLES, nooit vanaf het device.
+// Client-schrijfbaar maken zou de vier-ogen-gate via /sync omzeilbaar maken.
+const PLAN_DATES = ['plannedDate', 'deadline', 'startedAt', 'submittedAt', 'completedAt'];
 const FINDING_DATES = ['resolvedAt'];
 const VI_DATES = ['startedAt', 'completedAt'];
 const MR_DATES = ['startedAt', 'completedAt', 'calibrationDate'];

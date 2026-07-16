@@ -17,6 +17,10 @@ export interface OrgBranding {
   primaryColor: string | null;
   /** Interne chat aan/uit voor deze organisatie (REQ1). */
   chatEnabled?: boolean;
+  /** Vier-ogen-controle verplicht op inspectieplannen (PRD-13). */
+  inspectionReviewEnabled?: boolean;
+  /** AI-voorcontrole van inspectierapporten aan/uit (PRD-13). */
+  aiReviewEnabled?: boolean;
 }
 
 interface TenantContextType {

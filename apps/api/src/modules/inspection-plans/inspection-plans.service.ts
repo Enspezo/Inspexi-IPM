@@ -1,7 +1,9 @@
 import {
   Injectable,
+  Logger,
   ForbiddenException,
   BadRequestException,
+  HttpException,
 } from '@nestjs/common';
 import { User, Prisma, NotificationType } from '@prisma/client';
 import { PrismaService } from '@/prisma';
@@ -21,11 +23,13 @@ import {
   STATUS_PENDING_REVIEW,
   STATUS_REVIEWED,
   STATUS_APPROVED,
+  STATUS_COMPLETED,
 } from '@/common';
 import { planMetadataSchema, PLAN_METADATA_LABEL } from './schemas/plan-metadata.schema';
 import { EntitlementsService } from '@/modules/entitlements/entitlements.service';
 import { LookupService, LOOKUP_KIND, type LookupKind } from '../lookups/lookup.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { AiReviewService } from '../ai-review/ai-review.service';
 import { AssetNodesService } from '../asset-nodes/asset-nodes.service';
 import { CreateAssetNodeDto } from '../asset-nodes/dto';
 import {
@@ -46,12 +50,15 @@ const contactSelect = {
 
 @Injectable()
 export class InspectionPlansService {
+  private readonly logger = new Logger(InspectionPlansService.name);
+
   constructor(
     private prisma: PrismaService,
     private lookups: LookupService,
     private notifications: NotificationsService,
     private assetNodes: AssetNodesService,
     private entitlements: EntitlementsService,
+    private aiReview: AiReviewService,
   ) {}
 
   /** Template mag een systeemtemplate (orgId null) of een eigen-org template zijn. */
@@ -351,6 +358,24 @@ export class InspectionPlansService {
       if (!row) {
         throw new BadRequestException(`Onbekende planstatus: ${dto.statusCode}`);
       }
+      // Vier-ogen-gate (PRD-13 §13.3 besluit 5): met de org-toggle aan mag een
+      // plan pas naar completed/approved als er een menselijke review is geweest.
+      // De org-query draait alleen op deze (zeldzame) transitie, niet per request;
+      // de /sync-push van de PWA loopt niet via update() en blijft ongemoeid.
+      if (
+        (dto.statusCode === STATUS_COMPLETED || dto.statusCode === STATUS_APPROVED) &&
+        !existing.reviewedAt
+      ) {
+        const org = await this.prisma.organization.findUnique({
+          where: { id: orgId },
+          select: { inspectionReviewEnabled: true },
+        });
+        if (org?.inspectionReviewEnabled) {
+          throw new BadRequestException(
+            'Dit plan moet eerst beoordeeld worden (vier-ogen-principe)',
+          );
+        }
+      }
       data.statusCode = dto.statusCode;
     }
     if (dto.startedAt !== undefined)
@@ -441,6 +466,17 @@ export class InspectionPlansService {
         reviewerId,
       ]);
     }
+
+    // AI-voorcontrole (PRD-13 §13.3 besluit 2): fire-and-forget; de guard-checks
+    // (AI_REVIEW-entitlement, org-toggle, API-key, concurrency) zitten in
+    // startRun zelf. Een geweigerde of mislukte start mag de submit nooit raken.
+    this.aiReview.startRun(updated.id, user).catch((e) => {
+      if (e instanceof HttpException) {
+        this.logger.debug(`AI-review niet gestart voor plan ${updated.id}: ${e.message}`);
+      } else {
+        this.logger.error(`AI-review starten mislukt voor plan ${updated.id}: ${e?.message}`, e?.stack);
+      }
+    });
 
     return updated;
   }

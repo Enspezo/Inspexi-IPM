@@ -23,6 +23,8 @@ import {
 import { ContactDisplayMode, NotificationType, Role } from '@/types';
 import { getTypeLabel } from '@/lib/notifications';
 import { getErrorMessage } from '@/lib/api-client';
+import { useFeatures } from '@/providers/feature-provider';
+import { useAiReviewStatus } from '@/pages/inspections/hooks/use-ai-review';
 
 const CONTACT_DISPLAY_OPTIONS = [
   { value: ContactDisplayMode.NONE, label: 'Geen' },
@@ -59,6 +61,9 @@ const orgSchema = z.object({
     .optional(),
   quoteApprovalRequiredRole: z.union([z.nativeEnum(Role), z.literal('')]).optional(),
   chatEnabled: z.boolean(),
+  inspectionReviewEnabled: z.boolean(),
+  aiReviewEnabled: z.boolean(),
+  aiReviewInstructions: z.string().max(2000, 'Maximaal 2000 tekens').optional(),
 }).refine((d) => d.workdayEnd > d.workdayStart, {
   message: 'Eindtijd moet na begintijd liggen',
   path: ['workdayEnd'],
@@ -265,7 +270,7 @@ export default function OrganizationSettingsPage() {
   const deleteLogoMutation = useDeleteLogo(user?.orgId);
 
   // Tab state
-  const [activeTab, setActiveTab] = useState<'huisstijl' | 'financieel' | 'communicatie' | 'inspecteur-portal' | 'notificaties' | 'eigen-velden' | 'document-tags' | 'nummering' | 'quota' | 'support'>('huisstijl');
+  const [activeTab, setActiveTab] = useState<'huisstijl' | 'financieel' | 'communicatie' | 'inspecties' | 'inspecteur-portal' | 'notificaties' | 'eigen-velden' | 'document-tags' | 'nummering' | 'quota' | 'support'>('huisstijl');
 
   // Logo preview state
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
@@ -287,6 +292,15 @@ export default function OrganizationSettingsPage() {
   const phoneDisplayMode = watch('inspectorPhoneDisplay');
   const emailDisplayMode = watch('inspectorEmailDisplay');
 
+  // PRD-13 §13.9.2: AI-toggle alleen actief met het AI_REVIEW-entitlement én een
+  // geconfigureerde AI-dienst; de instructies-textarea alleen als de toggle aan staat.
+  const { hasFeature } = useFeatures();
+  const { data: aiStatus } = useAiReviewStatus();
+  const hasAiEntitlement = hasFeature('AI_REVIEW');
+  const aiServiceUnavailable = aiStatus?.available === false;
+  const aiToggleDisabled = !hasAiEntitlement || aiServiceUnavailable;
+  const aiReviewOn = watch('aiReviewEnabled');
+
   useEffect(() => {
     if (organization) {
       reset({
@@ -306,6 +320,9 @@ export default function OrganizationSettingsPage() {
         quoteApprovalThreshold: organization.quoteApprovalThreshold ?? '',
         quoteApprovalRequiredRole: organization.quoteApprovalRequiredRole ?? '',
         chatEnabled: organization.chatEnabled ?? true,
+        inspectionReviewEnabled: organization.inspectionReviewEnabled ?? true,
+        aiReviewEnabled: organization.aiReviewEnabled ?? false,
+        aiReviewInstructions: organization.aiReviewInstructions ?? '',
       });
     }
   }, [organization, reset]);
@@ -331,6 +348,9 @@ export default function OrganizationSettingsPage() {
             : Number(data.quoteApprovalThreshold),
         quoteApprovalRequiredRole: data.quoteApprovalRequiredRole || null,
         chatEnabled: data.chatEnabled,
+        inspectionReviewEnabled: data.inspectionReviewEnabled,
+        aiReviewEnabled: data.aiReviewEnabled,
+        aiReviewInstructions: data.aiReviewInstructions?.trim() || null,
       });
       showToast('Organisatie-instellingen opgeslagen', 'success');
     } catch {
@@ -406,6 +426,7 @@ export default function OrganizationSettingsPage() {
     { key: 'huisstijl', label: 'Huisstijl' },
     { key: 'financieel', label: 'Financieel' },
     { key: 'communicatie', label: 'Communicatie' },
+    { key: 'inspecties', label: 'Inspecties' },
     { key: 'inspecteur-portal', label: 'Inspecteur klantportaal' },
     { key: 'notificaties', label: 'Notificaties' },
     { key: 'eigen-velden', label: 'Eigen velden' },
@@ -766,6 +787,74 @@ export default function OrganizationSettingsPage() {
               isLoading={updateMutation.isPending}
               disabled={!isDirty}
             >
+              Opslaan
+            </Button>
+          </div>
+        </form>
+      </Card>
+      )}
+
+      {activeTab === 'inspecties' && (
+      <Card>
+        <form onSubmit={handleSubmit(onSubmit)} className="space-y-8">
+          <div>
+            <h3 className="text-base font-semibold text-gray-900">Vier-ogen-controle</h3>
+            <p className="mt-1 text-sm text-gray-500">
+              Met deze controle aan moet een inspectieplan eerst ingediend en door een tweede
+              persoon beoordeeld worden voordat het afgerond kan worden. Uitschakelen laat
+              inspecties direct afronden zonder beoordelingsstap.
+            </p>
+            <div className="mt-3">
+              <Checkbox label="Vier-ogen-controle verplicht" {...register('inspectionReviewEnabled')} />
+            </div>
+          </div>
+
+          <div>
+            <h3 className="text-base font-semibold text-gray-900">AI-voorcontrole</h3>
+            <p className="mt-1 text-sm text-gray-500">
+              Laat een AI-model ingediende inspectierapporten voorcontroleren op volledigheid,
+              consistentie en normering. De aandachtspunten zijn adviserend: alleen de menselijke
+              beoordelaar bepaalt of een rapport wordt goedgekeurd. Bij de analyse wordt uitsluitend
+              de inspectie-inhoud (assets, constateringen, metingen) naar de AI-dienst (Anthropic)
+              gestuurd — geen klantcontactgegevens of foto&apos;s.
+            </p>
+            <div className="mt-3">
+              <Checkbox
+                label="AI-voorcontrole inschakelen"
+                disabled={aiToggleDisabled}
+                {...register('aiReviewEnabled')}
+              />
+            </div>
+            {!hasAiEntitlement && (
+              <p className="mt-2 text-xs text-gray-500">Niet beschikbaar in uw abonnement.</p>
+            )}
+            {hasAiEntitlement && aiServiceUnavailable && (
+              <p className="mt-2 text-xs text-gray-500">AI-dienst niet geconfigureerd.</p>
+            )}
+          </div>
+
+          <div>
+            <label className="mb-1 block text-sm font-medium text-gray-700">
+              Extra AI-instructies
+            </label>
+            <textarea
+              {...register('aiReviewInstructions')}
+              rows={4}
+              maxLength={2000}
+              disabled={aiToggleDisabled || !aiReviewOn}
+              placeholder="Bijv. Let extra op NEN 3140-terminologie."
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:ring-primary-500 disabled:cursor-not-allowed disabled:bg-gray-50 disabled:text-gray-400"
+            />
+            <p className="mt-1 text-xs text-gray-500">
+              Optionele organisatie-specifieke aanwijzingen voor de AI-voorcontrole (max 2000 tekens).
+            </p>
+            {errors.aiReviewInstructions && (
+              <p className="mt-1 text-xs text-red-600">{errors.aiReviewInstructions.message}</p>
+            )}
+          </div>
+
+          <div className="flex justify-end border-t border-gray-200 pt-4">
+            <Button type="submit" isLoading={updateMutation.isPending} disabled={!isDirty}>
               Opslaan
             </Button>
           </div>

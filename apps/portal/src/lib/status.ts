@@ -7,6 +7,7 @@
  */
 import {
   AcceptanceStatus,
+  AiReviewItemSeverity,
   ApprovalStatus,
   AuditAction,
   Availability,
@@ -333,4 +334,13 @@ export const EMPLOYMENT_TYPE: StatusMap = {
 export const EMPLOYMENT_TYPE_LABELS: Record<string, string> = {
   [EmploymentType.DIENSTVERBAND]: 'Dienstverband',
   [EmploymentType.FREELANCE]: 'Freelance',
+};
+
+// ─── PRD-13: AI-voorcontrole inspectierapporten ──────────────────
+
+export const AI_REVIEW_SEVERITY: StatusMap = {
+  [AiReviewItemSeverity.CRITICAL]: { label: 'Kritiek', classes: 'bg-red-100 text-red-800' },
+  [AiReviewItemSeverity.WARNING]: { label: 'Waarschuwing', classes: 'bg-orange-100 text-orange-800' },
+  [AiReviewItemSeverity.SUGGESTION]: { label: 'Suggestie', classes: 'bg-blue-100 text-blue-800' },
+  [AiReviewItemSeverity.INFO]: { label: 'Informatie', classes: 'bg-gray-100 text-gray-600' },
 };

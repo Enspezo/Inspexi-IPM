@@ -196,6 +196,12 @@ export const inspectionPlanKeys = {
   detail: (id: string) => [...inspectionPlanKeys.all, id] as const,
 };
 
+export const aiReviewKeys = {
+  all: ['ai-review'] as const,
+  byPlan: (planId: string) => [...aiReviewKeys.all, planId] as const,
+  status: () => [...aiReviewKeys.all, 'status'] as const,
+};
+
 export const inspectionAssetKeys = {
   all: ['inspection-assets'] as const,
   byPlan: (planId: string) => [...inspectionAssetKeys.all, planId] as const,

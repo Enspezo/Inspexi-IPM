@@ -308,4 +308,62 @@ describe('InspectionPlans (e2e)', () => {
       .set('Authorization', `Bearer ${accessToken}`)
       .expect(404);
   });
+
+  // Vier-ogen-gate (PRD-13 §13.7): met de org-toggle aan (default) mag een plan
+  // zonder menselijke review (reviewedAt leeg) niet naar completed/approved;
+  // met de toggle uit gaat dezelfde transitie wél door.
+  describe('8. four-eyes gate on update()', () => {
+    let gatedPlanId: string;
+
+    beforeAll(async () => {
+      const createRes = await request(app.getHttpServer())
+        .post('/api/v1/inspection-plans')
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({
+          contactId: testContactId,
+          projectName: 'E2E Four Eyes',
+          normTypeCode: NORM_CODE,
+        })
+        .expect(201);
+      gatedPlanId = createRes.body.data.id;
+      createdPlanIds.push(gatedPlanId);
+
+      await request(app.getHttpServer())
+        .patch(`/api/v1/inspection-plans/${gatedPlanId}`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ statusCode: 'in_progress' })
+        .expect(200);
+    });
+
+    it('rejects completed without review while inspectionReviewEnabled=true (400)', async () => {
+      const res = await request(app.getHttpServer())
+        .patch(`/api/v1/inspection-plans/${gatedPlanId}`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ statusCode: 'completed' })
+        .expect(400);
+      expect(res.body.message).toContain('vier-ogen');
+    });
+
+    it('rejects approved without review as well (400)', async () => {
+      await request(app.getHttpServer())
+        .patch(`/api/v1/inspection-plans/${gatedPlanId}`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ statusCode: 'approved' })
+        .expect(400);
+    });
+
+    it('allows completed without review when inspectionReviewEnabled=false', async () => {
+      await prisma.organization.update({
+        where: { id: testOrgId },
+        data: { inspectionReviewEnabled: false },
+      });
+
+      const res = await request(app.getHttpServer())
+        .patch(`/api/v1/inspection-plans/${gatedPlanId}`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ statusCode: 'completed' })
+        .expect(200);
+      expect(res.body.data.statusCode).toBe('completed');
+    });
+  });
 });

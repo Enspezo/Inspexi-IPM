@@ -1,5 +1,5 @@
 import { ApiPropertyOptional, PartialType } from '@nestjs/swagger';
-import { IsBoolean, IsOptional } from 'class-validator';
+import { IsBoolean, IsOptional, IsString, MaxLength } from 'class-validator';
 import { CreateOrganizationDto } from './create-organization.dto';
 
 export class UpdateOrganizationDto extends PartialType(CreateOrganizationDto) {
@@ -18,4 +18,32 @@ export class UpdateOrganizationDto extends PartialType(CreateOrganizationDto) {
   @IsOptional()
   @IsBoolean()
   chatEnabled?: boolean;
+
+  @ApiPropertyOptional({
+    example: true,
+    description:
+      'Vier-ogen-controle verplicht: inspectieplannen moeten beoordeeld worden vóór afronding (PRD-13)',
+  })
+  @IsOptional()
+  @IsBoolean()
+  inspectionReviewEnabled?: boolean;
+
+  @ApiPropertyOptional({
+    example: false,
+    description:
+      'AI-voorcontrole van inspectierapporten aan/uit (PRD-13); vereist het AI_REVIEW-entitlement',
+  })
+  @IsOptional()
+  @IsBoolean()
+  aiReviewEnabled?: boolean;
+
+  @ApiPropertyOptional({
+    example: 'Let extra op NEN 3140-terminologie.',
+    description: 'Optionele org-specifieke instructies voor de AI-voorcontrole (PRD-13)',
+    maxLength: 2000,
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  aiReviewInstructions?: string;
 }

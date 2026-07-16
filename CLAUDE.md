@@ -316,7 +316,7 @@ Bash script dat dummy documenten (PDF, PNG, CSV, SVG, DOCX, XLSX) genereert en u
 - Maps: `TASK_STATUS`, `TASK_TYPE`, `REQUEST_STATUS`, `PRIORITY`, `QUOTE_STATUS`, `APPROVAL_STATUS`, `PLANNING_STATUS`, `SESSION_STATUS`, `ACCEPTANCE_STATUS`, `WORK_ORDER_STATUS`, `PROJECT_STATUS`, `LOG_TYPE`, `ERROR_REPORT_STATUS`, `CONTACT_TYPE`, `AUDIT_ACTION` + `REQUEST_SOURCE_LABELS`, `ENTITY_TYPE_LABELS`
 
 **Shared UI (via `@/components/ui` barrel)**:
-- `<StatusBadge map={QUOTE_STATUS} value={quote.status} />` — status-pill op basis van `lib/status.ts`
+- `<StatusBadge map={QUOTE_STATUS} status={quote.status} />` — status-pill op basis van `lib/status.ts` (prop heet `status`, niet `value`)
 - `<ErrorBox>foutmelding</ErrorBox>` — rode error-box (vervangt lokale `bg-danger-50` divs)
 - `<InfoField label="..." value={...} />` — lees-modus veld op detailpagina's (dt/dd, `'—'` fallback)
 - `<Tabs tabs={TabDef[]} active={tab} onChange={setTab} />` — `TabDef = { key, label, count?, icon? }`
@@ -464,7 +464,7 @@ useEffect(() => {
 - `GET /contacts` → `{ data: Contact[], total, page, limit }` (gepagineerd)
 - `GET /requests` → `{ data: Request[], total, page, limit }` (gepagineerd)
 - `GET /quotes` → `{ data: Quote[], total, page, limit }` (gepagineerd)
-- `GET /planning` → `PlanningItem[]` (flat array)
+- `GET /planning` → `{ data: PlanningItem[], total, page, limit }` (gepagineerd — `planning.service.findAll` gebruikt `paginate()`)
 - `GET /products` → `{ data: Product[], total, page, limit }` (gepagineerd)
 
 ### Hooks Patroon (per pagina-domein)

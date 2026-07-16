@@ -72,22 +72,24 @@ export class AvailabilityTemplatesService {
 
     await this.assertNameFree(orgId, dto.name);
 
-    const created = await this.prisma.availabilityTemplate.create({
-      data: {
-        orgId,
-        name: dto.name.trim(),
-        description: dto.description?.trim() || null,
-        isActive: dto.isActive ?? true,
-        slots: {
-          create: dto.slots.map((s) => ({
-            weekday: s.weekday,
-            startMinute: s.startMinute,
-            endMinute: s.endMinute,
-          })),
+    const created = await this.runNameUnique(() =>
+      this.prisma.availabilityTemplate.create({
+        data: {
+          orgId,
+          name: dto.name.trim(),
+          description: dto.description?.trim() || null,
+          isActive: dto.isActive ?? true,
+          slots: {
+            create: dto.slots.map((s) => ({
+              weekday: s.weekday,
+              startMinute: s.startMinute,
+              endMinute: s.endMinute,
+            })),
+          },
         },
-      },
-      include: templateInclude,
-    });
+        include: templateInclude,
+      }),
+    );
 
     return this.serialize(created);
   }
@@ -106,24 +108,26 @@ export class AvailabilityTemplatesService {
     if (dto.isActive !== undefined) data.isActive = dto.isActive;
 
     // Slots worden integraal vervangen binnen een transactie (delete + recreate).
-    const updated = await this.prisma.$transaction(async (tx) => {
-      if (dto.slots !== undefined) {
-        await tx.availabilityTemplateSlot.deleteMany({ where: { templateId: id } });
-        await tx.availabilityTemplateSlot.createMany({
-          data: dto.slots.map((s) => ({
-            templateId: id,
-            weekday: s.weekday,
-            startMinute: s.startMinute,
-            endMinute: s.endMinute,
-          })),
+    const updated = await this.runNameUnique(() =>
+      this.prisma.$transaction(async (tx) => {
+        if (dto.slots !== undefined) {
+          await tx.availabilityTemplateSlot.deleteMany({ where: { templateId: id } });
+          await tx.availabilityTemplateSlot.createMany({
+            data: dto.slots.map((s) => ({
+              templateId: id,
+              weekday: s.weekday,
+              startMinute: s.startMinute,
+              endMinute: s.endMinute,
+            })),
+          });
+        }
+        return tx.availabilityTemplate.update({
+          where: { id },
+          data,
+          include: templateInclude,
         });
-      }
-      return tx.availabilityTemplate.update({
-        where: { id },
-        data,
-        include: templateInclude,
-      });
-    });
+      }),
+    );
 
     return this.serialize(updated);
   }
@@ -170,6 +174,22 @@ export class AvailabilityTemplatesService {
       throw new NotFoundException('Template niet gevonden');
     }
     return template;
+  }
+
+  /**
+   * Map een P2002 op de (orgId, name)-unique naar een nette 409 i.p.v. een 500.
+   * `assertNameFree` + de naam-mangeling in `remove()` vangen het normale geval al
+   * af; dit is de vangnet-laag mocht de DB-unique alsnog aanslaan (DB-1).
+   */
+  private async runNameUnique<T>(op: () => Promise<T>): Promise<T> {
+    try {
+      return await op();
+    } catch (e) {
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
+        throw new ConflictException('Er bestaat al een template met deze naam');
+      }
+      throw e;
+    }
   }
 
   /** Naam moet uniek zijn binnen de org (respecteert de @@unique, met NL-melding). */

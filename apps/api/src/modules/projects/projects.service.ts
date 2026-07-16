@@ -390,6 +390,9 @@ export class ProjectsService {
     }
 
     if (dto.userId) {
+      // Prevent enrolling a foreign-org user (whose email would leak back via the
+      // `user` include and who would then receive this org's notifications).
+      await assertSameOrg(this.prisma.user, dto.userId, user.orgId, 'Gebruiker');
       const exists = await this.prisma.projectFollower.findFirst({
         where: { projectId: id, userId: dto.userId },
       });

@@ -85,6 +85,9 @@ describe('PriceTablesService', () => {
     priceTier: {
       deleteMany: jest.fn(),
     },
+    product: {
+      findMany: jest.fn(),
+    },
     contact: {
       findUnique: jest.fn(),
     },
@@ -375,6 +378,11 @@ describe('PriceTablesService', () => {
       };
 
       mockPrismaService.priceTable.findUnique.mockResolvedValue(mockPriceTable);
+      // Both referenced products belong to the caller's org (assertAllSameOrg).
+      mockPrismaService.product.findMany.mockResolvedValue([
+        { id: 'prod-1' },
+        { id: 'prod-2' },
+      ]);
       mockPrismaService.priceTier.deleteMany.mockResolvedValue({ count: 0 });
       mockPrismaService.priceTableItem.deleteMany.mockResolvedValue({ count: 0 });
       mockPrismaService.priceTableItem.create.mockResolvedValue({});

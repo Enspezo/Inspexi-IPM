@@ -259,7 +259,14 @@ export class AssetsService {
   async reorder(planId: string, user: User, dto: ReorderAssetsDto) {
     requireOrg(user);
     // Org-scope-check via het plan (404 bij cross-tenant).
-    await this.assetNodes.listPlanNodes(planId, user, AssetNodeType.ASSET);
+    const planNodes = await this.assetNodes.listPlanNodes(planId, user, AssetNodeType.ASSET);
+    // Elke opgegeven asset moet in de boom van dit plan zitten — anders zou een
+    // caller met toegang tot plan A de sortOrder van nodes uit een ander plan/org
+    // kunnen herschrijven (de update draait op `where: { id }`).
+    const allowed = new Set(planNodes.map((n) => n.id));
+    if (!dto.assetIds.every((assetId) => allowed.has(assetId))) {
+      throw new BadRequestException('Een of meer assets horen niet bij dit inspectieplan');
+    }
     await this.prisma.$transaction(
       dto.assetIds.map((assetId, index) =>
         this.prisma.assetNode.update({ where: { id: assetId }, data: { sortOrder: index } }),

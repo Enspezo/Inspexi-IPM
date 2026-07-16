@@ -7,7 +7,7 @@ import {
 } from '@nestjs/common';
 import { User, Role, Prisma } from '@prisma/client';
 import { PrismaService } from '@/prisma';
-import { paginate, orgScope, assertFound } from '@/common';
+import { paginate, orgScope, assertFound, assertAllSameOrg } from '@/common';
 import {
   CreatePriceTableDto,
   UpdatePriceTableDto,
@@ -167,6 +167,16 @@ export class PriceTablesService {
 
   async setItems(id: string, dto: SetPriceTableItemsDto, user: User) {
     const priceTable = await this.findOne(id, user);
+
+    // Verify every referenced product belongs to the caller's org before writing
+    // — otherwise a tenant could attach another org's product ids and read that
+    // org's product name/unit back through the `product` include.
+    await assertAllSameOrg(
+      this.prisma.product,
+      dto.items.map((i) => i.productId).filter((pid): pid is string => !!pid),
+      user.orgId,
+      'producten',
+    );
 
     // Replace all items + tiers in a single transaction
     return this.prisma.$transaction(async (tx) => {

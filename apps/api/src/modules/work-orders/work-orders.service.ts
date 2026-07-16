@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import { User, Role, Prisma, WorkOrderStatus } from '@prisma/client';
 import { PrismaService } from '@/prisma';
-import { paginate, orgScope, assertFound, resolvePhaseLink, PROJECT_FASEN_FEATURE, PROJECT_FASEN_REQUIRED_MESSAGE } from '@/common';
+import { paginate, orgScope, assertFound, assertAllSameOrg, resolvePhaseLink, PROJECT_FASEN_FEATURE, PROJECT_FASEN_REQUIRED_MESSAGE } from '@/common';
 import { EntitlementsService } from '@/modules/entitlements/entitlements.service';
 import { NumberingService } from '@/modules/numbering/numbering.service';
 import {
@@ -381,6 +381,15 @@ export class WorkOrdersService {
 
   async setLines(id: string, dto: SetWorkOrderLinesDto, user: User) {
     const workOrder = await this.findOne(id, user);
+
+    // Verify every referenced product belongs to the caller's org (the product is
+    // read back through WORK_ORDER_INCLUDE, so an unvalidated id leaks another org's catalog).
+    await assertAllSameOrg(
+      this.prisma.product,
+      dto.lines.map((l) => l.productId).filter((pid): pid is string => !!pid),
+      user.orgId,
+      'producten',
+    );
 
     return this.prisma.$transaction(async (tx) => {
       await tx.workOrderLine.deleteMany({

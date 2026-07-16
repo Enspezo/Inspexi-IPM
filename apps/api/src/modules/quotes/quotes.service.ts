@@ -10,7 +10,7 @@ import { User, Role, Prisma, QuoteStatus, QuoteTemplate, RequestStatus, Notifica
 import { ConfigService } from '@nestjs/config';
 import { randomUUID } from 'crypto';
 import { PrismaService } from '@/prisma';
-import { paginate, buildOrderBy, orgScope, assertFound, assertSameOrg, resolvePhaseLink, PROJECT_FASEN_FEATURE, PROJECT_FASEN_REQUIRED_MESSAGE } from '@/common';
+import { paginate, buildOrderBy, orgScope, assertFound, assertSameOrg, assertAllSameOrg, resolvePhaseLink, PROJECT_FASEN_FEATURE, PROJECT_FASEN_REQUIRED_MESSAGE } from '@/common';
 import { EntitlementsService } from '@/modules/entitlements/entitlements.service';
 import { NumberingService } from '@/modules/numbering/numbering.service';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -295,6 +295,14 @@ export class QuotesService {
   async setLines(id: string, dto: SetQuoteLinesDto, user: User) {
     const quote = await this.findOne(id, user);
     if (quote.status !== QuoteStatus.CONCEPT) throw new BadRequestException('Offerteregels kunnen alleen bij status CONCEPT gewijzigd worden');
+    // Verify every referenced product belongs to the caller's org (the product is
+    // read back through QUOTE_INCLUDE, so an unvalidated id leaks another org's catalog).
+    await assertAllSameOrg(
+      this.prisma.product,
+      dto.lines.map((l) => l.productId).filter((pid): pid is string => !!pid),
+      user.orgId,
+      'producten',
+    );
     return this.prisma.$transaction(async (tx) => {
       await tx.quoteLine.deleteMany({ where: { quoteId: quote.id } });
       let subtotal = 0, vatTotal = 0, discountTotal = 0;

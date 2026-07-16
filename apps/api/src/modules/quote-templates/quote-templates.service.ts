@@ -10,7 +10,7 @@ import { User, Role, Prisma } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import * as mammoth from 'mammoth';
 import { PrismaService } from '@/prisma';
-import { paginate, buildOrderBy, orgScope, assertFound, sanitizeStorageFilename } from '@/common';
+import { paginate, buildOrderBy, orgScope, assertFound, assertSameOrg, sanitizeStorageFilename } from '@/common';
 import {
   STORAGE_PROVIDER,
   StorageProvider,
@@ -151,6 +151,13 @@ export class QuoteTemplatesService {
 
   async update(id: string, dto: UpdateQuoteTemplateDto, user: User) {
     const template = await this.findOne(id, user);
+
+    // Referenced email templates are read back through the include below — verify
+    // they belong to the caller's org so another org's template cannot be linked/leaked.
+    if (dto.sendEmailTemplateId !== undefined)
+      await assertSameOrg(this.prisma.emailTemplate, dto.sendEmailTemplateId, user.orgId, 'E-mailtemplate');
+    if (dto.acceptedEmailTemplateId !== undefined)
+      await assertSameOrg(this.prisma.emailTemplate, dto.acceptedEmailTemplateId, user.orgId, 'E-mailtemplate');
 
     // Template type cannot be changed after creation
     if (
@@ -530,6 +537,11 @@ export class QuoteTemplatesService {
   async createFollowUp(id: string, dto: CreateFollowUpDto, user: User) {
     const template = await this.findOne(id, user);
 
+    // Both FKs are read back through FOLLOW_UP_INCLUDE and assigneeUserId later
+    // assigns a task — validate they belong to the caller's org.
+    await assertSameOrg(this.prisma.emailTemplate, dto.emailTemplateId, user.orgId, 'E-mailtemplate');
+    await assertSameOrg(this.prisma.user, dto.assigneeUserId, user.orgId, 'Gebruiker');
+
     const maxOrder = await this.prisma.quoteTemplateFollowUp.aggregate({
       where: { templateId: template.id },
       _max: { sortOrder: true },
@@ -566,6 +578,12 @@ export class QuoteTemplatesService {
     if (!followUp || followUp.templateId !== id) {
       throw new NotFoundException('Follow-up regel niet gevonden');
     }
+
+    // Validate re-pointed FKs against the caller's org (read back via FOLLOW_UP_INCLUDE).
+    if (dto.emailTemplateId !== undefined)
+      await assertSameOrg(this.prisma.emailTemplate, dto.emailTemplateId, user.orgId, 'E-mailtemplate');
+    if (dto.assigneeUserId !== undefined)
+      await assertSameOrg(this.prisma.user, dto.assigneeUserId, user.orgId, 'Gebruiker');
 
     return this.prisma.quoteTemplateFollowUp.update({
       where: { id: followUpId },

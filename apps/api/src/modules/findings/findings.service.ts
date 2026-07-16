@@ -10,6 +10,7 @@
 
 import {
   Injectable,
+  Inject,
   BadRequestException,
 } from '@nestjs/common';
 import { User, Prisma } from '@prisma/client';
@@ -24,10 +25,43 @@ import {
   computeFindingIsCritical,
   loadPlanCriticalModel,
 } from '@/common';
+import { STORAGE_PROVIDER } from '@/common/services/storage/storage.interface';
+import type { StorageProvider } from '@/common/services/storage/storage.interface';
 import { LookupService, LOOKUP_KIND } from '../lookups/lookup.service';
 import { AssetNodesService } from '../asset-nodes/asset-nodes.service';
 import { CreateFindingDto, UpdateFindingDto } from './dto';
 import { classificationValuesSchema, CLASSIFICATION_VALUES_LABEL } from './schemas/classification-values.schema';
+
+// ── Online herstel (PRD-14): resoluties meesturen richting staf ──
+// Select-based zodat de storage-keys (photoUrl) nooit het API-vlak bereiken;
+// elke foto krijgt een staf-download-URL (zelfde aanpak als client-findings).
+const RESOLUTION_SELECT = {
+  id: true,
+  statusCode: true,
+  description: true,
+  resolvedAt: true,
+  photos: {
+    orderBy: { uploadedAt: 'asc' as const },
+    select: { id: true, caption: true, uploadedAt: true },
+  },
+  repairSession: {
+    select: { contactName: true, companyName: true, email: true, accessType: true },
+  },
+} satisfies Prisma.FindingResolutionSelect;
+
+type ResolutionRow = Prisma.FindingResolutionGetPayload<{ select: typeof RESOLUTION_SELECT }>;
+
+/** Publieke URL naar de staf-foto-download-route (verbergt de storage-key). */
+function resolutionPhotoUrl(id: string): string {
+  return `/api/v1/findings/resolution-photos/${id}`;
+}
+
+function serializeResolutions(resolutions: ResolutionRow[] | undefined) {
+  return (resolutions ?? []).map((r) => ({
+    ...r,
+    photos: r.photos.map((p) => ({ ...p, url: resolutionPhotoUrl(p.id) })),
+  }));
+}
 
 @Injectable()
 export class FindingsService {
@@ -35,6 +69,7 @@ export class FindingsService {
     private readonly prisma: PrismaService,
     private readonly lookups: LookupService,
     private readonly assetNodes: AssetNodesService,
+    @Inject(STORAGE_PROVIDER) private readonly storage: StorageProvider,
   ) {}
 
   private async assertStatus(code: string | undefined, orgId: string): Promise<void> {
@@ -64,6 +99,7 @@ export class FindingsService {
         shortDescription: true, longDescription: true, classificationValues: true,
         locationDescription: true, recommendation: true, recommendationCustom: true,
         normReference: true, statusCode: true, resolvedAt: true, resolutionNotes: true,
+        isCritical: true,
         createdAt: true, updatedAt: true, createdBy: true,
         findingTemplate: {
           select: {
@@ -71,6 +107,8 @@ export class FindingsService {
             classificationModel: { select: { id: true, code: true, name: true } },
           },
         },
+        // Herstelmeldingen (PRD-14): omschrijving, foto's en invullergegevens per resolutie.
+        resolutions: { orderBy: { resolvedAt: 'asc' }, select: RESOLUTION_SELECT },
       },
     });
 
@@ -103,6 +141,7 @@ export class FindingsService {
         ...f,
         createdByUser: u ? { id: u.id, name: `${u.firstName} ${u.lastName}` } : null,
         photos: photosByFinding[f.id] || [],
+        resolutions: serializeResolutions(f.resolutions),
       };
     });
   }
@@ -124,6 +163,8 @@ export class FindingsService {
               },
             },
           },
+          // Herstelmeldingen (PRD-14): omschrijving, foto's en invullergegevens per resolutie.
+          resolutions: { orderBy: { resolvedAt: 'asc' }, select: RESOLUTION_SELECT },
         },
       }),
       'Constatering',
@@ -138,7 +179,34 @@ export class FindingsService {
         : null,
     ]);
 
-    return { ...finding, createdByUser, resolvedByUser };
+    return {
+      ...finding,
+      createdByUser,
+      resolvedByUser,
+      resolutions: serializeResolutions(finding.resolutions),
+    };
+  }
+
+  /**
+   * Buffer + mime voor de staf-foto-download-route (PRD-14). Org-scoped via het
+   * finding van de resolutie; SUPERUSER (orgId null) mag alles (orgScope → {}).
+   */
+  async getResolutionPhoto(
+    photoId: string,
+    user: User,
+  ): Promise<{ buffer: Buffer; mimeType: string }> {
+    const photo = assertFound(
+      await this.prisma.findingResolutionPhoto.findFirst({
+        where: {
+          id: photoId,
+          resolution: { finding: { ...orgScope(user), deletedAt: null } },
+        },
+        select: { photoUrl: true },
+      }),
+      'Foto',
+    );
+    const buffer = await this.storage.download(photo.photoUrl);
+    return { buffer, mimeType: photo.photoUrl.endsWith('.png') ? 'image/png' : 'image/jpeg' };
   }
 
   async create(assetNodeId: string, user: User, dto: CreateFindingDto, deviceId?: string) {

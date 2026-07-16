@@ -4,6 +4,7 @@ import { Role, FindingInspectionType } from '@prisma/client';
 import { FindingsService } from './findings.service';
 import { PrismaService } from '@/prisma';
 import { STATUS_OPEN, STATUS_RESOLVED } from '@/common';
+import { STORAGE_PROVIDER } from '@/common/services/storage/storage.interface';
 import { LookupService } from '../lookups/lookup.service';
 import { AssetNodesService } from '../asset-nodes/asset-nodes.service';
 
@@ -22,6 +23,7 @@ describe('FindingsService', () => {
     visualInspection: { findFirst: jest.fn() },
     measurementRecord: { findFirst: jest.fn() },
     findingTemplate: { findFirst: jest.fn() },
+    findingResolutionPhoto: { findFirst: jest.fn() },
     photo: { findMany: jest.fn() },
     user: { findMany: jest.fn(), findUnique: jest.fn() },
   };
@@ -32,6 +34,13 @@ describe('FindingsService', () => {
 
   const mockAssetNodesService = {
     assertNodeInPlanTree: jest.fn(),
+  };
+
+  const mockStorageProvider = {
+    upload: jest.fn(),
+    download: jest.fn(),
+    delete: jest.fn(),
+    exists: jest.fn(),
   };
 
   const mockUser = {
@@ -56,6 +65,7 @@ describe('FindingsService', () => {
         { provide: PrismaService, useValue: mockPrismaService },
         { provide: LookupService, useValue: mockLookupService },
         { provide: AssetNodesService, useValue: mockAssetNodesService },
+        { provide: STORAGE_PROVIDER, useValue: mockStorageProvider },
       ],
     }).compile();
 
@@ -95,7 +105,7 @@ describe('FindingsService', () => {
     it('should return findings for the asset-node', async () => {
       mockPrismaService.assetNode.findFirst.mockResolvedValue({ id: 'node-1', orgId: 'org-1' });
       mockPrismaService.finding.findMany.mockResolvedValue([
-        { id: 'f-1', assetNodeId: 'node-1', inspectionPlanId: 'plan-1', createdBy: null },
+        { id: 'f-1', assetNodeId: 'node-1', inspectionPlanId: 'plan-1', createdBy: null, resolutions: [] },
       ]);
 
       const result = await service.findAllByAsset('node-1', mockUser);
@@ -103,11 +113,82 @@ describe('FindingsService', () => {
       expect(result).toHaveLength(1);
       expect(result[0].id).toBe('f-1');
       expect(result[0].photos).toEqual([]);
+      expect(result[0].resolutions).toEqual([]);
       expect(mockPrismaService.finding.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
           where: expect.objectContaining({ assetNodeId: 'node-1', deletedAt: null }),
         }),
       );
+    });
+
+    // PRD-14: resoluties gaan mee naar staf; foto's als download-URL, nooit als storage-key.
+    it('should map resolution photos to staff download-URLs', async () => {
+      mockPrismaService.assetNode.findFirst.mockResolvedValue({ id: 'node-1', orgId: 'org-1' });
+      mockPrismaService.finding.findMany.mockResolvedValue([
+        {
+          id: 'f-1',
+          assetNodeId: 'node-1',
+          inspectionPlanId: 'plan-1',
+          createdBy: null,
+          resolutions: [
+            {
+              id: 'res-1',
+              statusCode: 'REPORTED',
+              description: 'Kabel vervangen',
+              resolvedAt: new Date('2026-07-01T10:00:00Z'),
+              photos: [{ id: 'photo-1', caption: null, uploadedAt: new Date() }],
+              repairSession: {
+                contactName: 'Jan Hersteller',
+                companyName: 'Herstel BV',
+                email: 'jan@herstel.nl',
+                accessType: 'ANONYMOUS',
+              },
+            },
+          ],
+        },
+      ]);
+
+      const result = await service.findAllByAsset('node-1', mockUser);
+
+      expect(result[0].resolutions).toHaveLength(1);
+      expect(result[0].resolutions[0].statusCode).toBe('REPORTED');
+      expect(result[0].resolutions[0].repairSession).toEqual(
+        expect.objectContaining({ contactName: 'Jan Hersteller' }),
+      );
+      expect(result[0].resolutions[0].photos[0].url).toBe(
+        '/api/v1/findings/resolution-photos/photo-1',
+      );
+    });
+  });
+
+  describe('getResolutionPhoto (PRD-14)', () => {
+    it('streams the photo buffer org-scoped', async () => {
+      mockPrismaService.findingResolutionPhoto.findFirst.mockResolvedValue({
+        photoUrl: 'org-1/finding-photos/x.png',
+      });
+      mockStorageProvider.download.mockResolvedValue(Buffer.from('png-bytes'));
+
+      const result = await service.getResolutionPhoto('photo-1', mockUser);
+
+      expect(mockPrismaService.findingResolutionPhoto.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            id: 'photo-1',
+            resolution: { finding: { orgId: 'org-1', deletedAt: null } },
+          }),
+        }),
+      );
+      expect(result.mimeType).toBe('image/png');
+      expect(result.buffer.toString()).toBe('png-bytes');
+    });
+
+    it('throws NotFoundException for a photo outside the org', async () => {
+      mockPrismaService.findingResolutionPhoto.findFirst.mockResolvedValue(null);
+
+      await expect(service.getResolutionPhoto('photo-x', mockUser)).rejects.toThrow(
+        NotFoundException,
+      );
+      expect(mockStorageProvider.download).not.toHaveBeenCalled();
     });
   });
 

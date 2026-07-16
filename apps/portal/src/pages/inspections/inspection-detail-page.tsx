@@ -41,6 +41,7 @@ import { PlanDefaultInstrumentsSection } from '@/pages/meetmiddelen/components/p
 import { AssetsTab } from './components/assets-tab';
 import { DocumentsTab } from './components/documents-tab';
 import { AiReviewPanel } from './components/ai-review-panel';
+import { OnlineRepairSection } from './components/online-repair-section';
 
 // Konva-zware tab apart laden: alleen wanneer de gebruiker hem opent.
 const FloorPlanTab = lazy(() =>
@@ -211,6 +212,8 @@ export default function InspectionDetailPage() {
   // en kan een schrijver het plan direct afronden. Default (vlag onbekend) = aan.
   const reviewRequired = orgBranding?.inspectionReviewEnabled !== false;
   const showAiPanel = hasFeature('AI_REVIEW');
+  // Online herstel (PRD-14): sectie alleen met het ONLINE_HERSTEL-entitlement.
+  const showOnlineRepair = hasFeature('ONLINE_HERSTEL');
 
   const awaitingReview = reviewRequired && !!plan.submittedAt && !plan.reviewedAt;
   const canSubmit = reviewRequired && userCanWrite && !plan.submittedAt;
@@ -360,6 +363,8 @@ export default function InspectionDetailPage() {
                 </dl>
               )}
             </Card>
+
+            {showOnlineRepair && <OnlineRepairSection plan={plan} canWrite={userCanWrite} />}
 
             <Card title="Standaard meetmiddelen">
               <PlanDefaultInstrumentsSection planId={id!} canEdit={userCanWrite} />

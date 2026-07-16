@@ -62,6 +62,26 @@ export function useUpdateInspectionPlan() {
   });
 }
 
+/**
+ * Online herstel per plan aan/uit (PRD-14). Bewust géén default error-toast:
+ * de 400-servermelding (rapportnummer ontbreekt/niet uniek) wordt door de
+ * aanroeper inline getoond (OnlineRepairSection).
+ */
+export function useSetOnlineRepairEnabled() {
+  const qc = useQueryClient();
+  return useApiMutation({
+    mutationFn: ({ id, enabled }: { id: string; enabled: boolean }) =>
+      apiClient.patch<InspectionPlan>(`/inspection-plans/${id}`, { onlineRepairEnabled: enabled }),
+    onSuccess: (_d, v) => {
+      qc.invalidateQueries({ queryKey: inspectionPlanKeys.all });
+      qc.invalidateQueries({ queryKey: inspectionPlanKeys.detail(v.id) });
+    },
+    onError: () => {
+      /* inline afgehandeld door de aanroeper */
+    },
+  });
+}
+
 /** Indienen ter beoordeling. */
 export function useSubmitInspectionPlan() {
   const qc = useQueryClient();

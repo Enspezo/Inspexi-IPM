@@ -184,11 +184,12 @@ export interface DocumentSignature {
   status: SignatureStatus;
 }
 
-/** Gegenereerd inspectie-document (plan of rapport) — lifecycle + ondertekening. */
+/** Gegenereerd inspectie-document (plan, rapport of herstelverklaring) — lifecycle + ondertekening. */
 export interface GeneratedDocument {
   id: string;
   orgId: string;
-  documentTemplateId: string;
+  /** Null bij herstelverklaringen (PRD-14): die ontstaan zonder document-template. */
+  documentTemplateId: string | null;
   inspectionPlanId: string;
   documentType: DocumentType;
   status: GeneratedDocumentStatus;
@@ -197,7 +198,8 @@ export interface GeneratedDocument {
   pdfUrl: string | null;
   wordUrl: string | null;
   generatedAt: string;
-  generatedBy: string;
+  /** Null bij herstelverklaringen (PRD-14): gegenereerd zonder staf-gebruiker. */
+  generatedBy: string | null;
   finalizedAt: string | null;
   signatures?: DocumentSignature[];
 }
@@ -438,6 +440,8 @@ export interface Finding {
   deletedAt: string | null;
   assetNode?: AssetNode;
   findingTemplate?: FindingTemplate | null;
+  /** Herstelmeldingen (PRD-14) — meegestuurd door de findings-endpoints. */
+  resolutions?: FindingResolution[];
 }
 
 export interface StandaloneMeasurement {
@@ -1084,4 +1088,39 @@ export interface RepairSession {
   lastActivityAt: string;
   createdIpAddress: string | null;
   createdAt: string;
+}
+
+/** Statussen van een herstelmelding (FindingResolution.statusCode). */
+export enum ResolutionStatusCode {
+  PENDING_VERIFICATION = 'PENDING_VERIFICATION',
+  VERIFIED = 'VERIFIED',
+  REJECTED = 'REJECTED',
+  REPORTED = 'REPORTED',
+  CONFLICT = 'CONFLICT',
+}
+
+/** Foto bij een herstelmelding — `url` is de authenticated staf-download-route. */
+export interface FindingResolutionPhoto {
+  id: string;
+  caption: string | null;
+  uploadedAt: string;
+  url: string;
+}
+
+/** Invullergegevens van de herstelsessie (alleen zichtbaar voor staf). */
+export interface RepairSessionContact {
+  contactName: string | null;
+  companyName: string | null;
+  email: string | null;
+  accessType: RepairAccessType;
+}
+
+/** Herstelmelding op een constatering (PRD-14) zoals de findings-endpoints die serveren. */
+export interface FindingResolution {
+  id: string;
+  statusCode: ResolutionStatusCode | string;
+  description: string | null;
+  resolvedAt: string;
+  photos: FindingResolutionPhoto[];
+  repairSession: RepairSessionContact | null;
 }

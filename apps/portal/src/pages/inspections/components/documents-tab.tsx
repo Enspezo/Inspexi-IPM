@@ -33,6 +33,9 @@ import { RequestSignatureModal } from './request-signature-modal';
 const DOC_TYPE_LABEL: Record<string, string> = {
   [DocumentType.PLAN]: 'Inspectieplan',
   [DocumentType.REPORT]: 'Rapport',
+  // PRD-14: alleen een label — herstelverklaringen ontstaan uitsluitend via de
+  // online-herstel-flow (geen genereer-knop).
+  [DocumentType.HERSTELVERKLARING]: 'Herstelverklaring',
 };
 
 interface DocumentsTabProps {

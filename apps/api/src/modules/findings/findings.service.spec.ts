@@ -18,7 +18,7 @@ describe('FindingsService', () => {
       update: jest.fn(),
     },
     assetNode: { findFirst: jest.fn() },
-    inspectionPlan: { findFirst: jest.fn() },
+    inspectionPlan: { findFirst: jest.fn(), findUnique: jest.fn(), updateMany: jest.fn() },
     visualInspection: { findFirst: jest.fn() },
     measurementRecord: { findFirst: jest.fn() },
     findingTemplate: { findFirst: jest.fn() },
@@ -73,6 +73,10 @@ describe('FindingsService', () => {
       id: 'plan-1',
       orgId: 'org-1',
       locationId: 'loc-1',
+    });
+    // isCritical-berekening (PRD-14): default geen template/classificatiemodel.
+    mockPrismaService.inspectionPlan.findUnique.mockResolvedValue({
+      inspectionTemplate: null,
     });
   });
 
@@ -218,6 +222,172 @@ describe('FindingsService', () => {
       await expect(
         service.update('nonexistent', mockUser, { shortDescription: 'x' } as any),
       ).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  // isCritical is server-owned (PRD-14): afgeleid van classificationValues × de
+  // isCritical-vlaggen in het classificatiemodel van het plan.
+  describe('isCritical (PRD-14)', () => {
+    const criticalModelPlan = {
+      inspectionTemplate: {
+        classificationModel: {
+          characteristics: [
+            {
+              code: 'SEVERITY',
+              options: [
+                { code: 'C1', isCritical: true },
+                { code: 'C3', isCritical: false },
+              ],
+            },
+          ],
+        },
+      },
+    };
+
+    describe('create', () => {
+      beforeEach(() => {
+        mockPrismaService.finding.create.mockResolvedValue({
+          id: 'f-new',
+          statusCode: STATUS_OPEN,
+          classificationValues: {},
+          createdAt: new Date(),
+        });
+      });
+
+      it('zet isCritical true wanneer een classificatie-waarde een kritieke optie raakt', async () => {
+        mockPrismaService.inspectionPlan.findUnique.mockResolvedValue(criticalModelPlan);
+
+        await service.create(
+          'node-1',
+          mockUser,
+          { ...dtoBase, classificationValues: { SEVERITY: 'C1' } } as any,
+        );
+
+        expect(mockPrismaService.inspectionPlan.findUnique).toHaveBeenCalledWith(
+          expect.objectContaining({ where: { id: 'plan-1' } }),
+        );
+        expect(mockPrismaService.finding.create).toHaveBeenCalledWith(
+          expect.objectContaining({
+            data: expect.objectContaining({ isCritical: true }),
+          }),
+        );
+      });
+
+      it('zet isCritical false voor een niet-kritieke optie', async () => {
+        mockPrismaService.inspectionPlan.findUnique.mockResolvedValue(criticalModelPlan);
+
+        await service.create(
+          'node-1',
+          mockUser,
+          { ...dtoBase, classificationValues: { SEVERITY: 'C3' } } as any,
+        );
+
+        expect(mockPrismaService.finding.create).toHaveBeenCalledWith(
+          expect.objectContaining({
+            data: expect.objectContaining({ isCritical: false }),
+          }),
+        );
+      });
+
+      it('zet isCritical false wanneer het plan geen template/model heeft', async () => {
+        mockPrismaService.inspectionPlan.findUnique.mockResolvedValue({
+          inspectionTemplate: null,
+        });
+
+        await service.create(
+          'node-1',
+          mockUser,
+          { ...dtoBase, classificationValues: { SEVERITY: 'C1' } } as any,
+        );
+
+        expect(mockPrismaService.finding.create).toHaveBeenCalledWith(
+          expect.objectContaining({
+            data: expect.objectContaining({ isCritical: false }),
+          }),
+        );
+      });
+    });
+
+    describe('update', () => {
+      beforeEach(() => {
+        mockPrismaService.finding.update.mockResolvedValue({
+          id: 'f-1',
+          classificationValues: {},
+          statusCode: STATUS_OPEN,
+          resolvedAt: null,
+          updatedAt: new Date(),
+        });
+      });
+
+      it('herberekent isCritical wanneer classificationValues wijzigen', async () => {
+        mockPrismaService.finding.findFirst.mockResolvedValue({
+          id: 'f-1',
+          orgId: 'org-1',
+          inspectionPlanId: 'plan-1',
+          statusCode: STATUS_OPEN,
+          isCritical: false,
+        });
+        mockPrismaService.inspectionPlan.findUnique.mockResolvedValue(criticalModelPlan);
+
+        await service.update('f-1', mockUser, {
+          classificationValues: { SEVERITY: 'C1' },
+        } as any);
+
+        expect(mockPrismaService.inspectionPlan.findUnique).toHaveBeenCalledWith(
+          expect.objectContaining({ where: { id: 'plan-1' } }),
+        );
+        const updateCall = mockPrismaService.finding.update.mock.calls[0][0];
+        expect(updateCall.data.isCritical).toBe(true);
+      });
+
+      it('herberekent isCritical NIET zonder classificationValues in de PATCH', async () => {
+        mockPrismaService.finding.findFirst.mockResolvedValue({
+          id: 'f-1',
+          orgId: 'org-1',
+          inspectionPlanId: 'plan-1',
+          statusCode: STATUS_OPEN,
+          isCritical: true,
+        });
+
+        await service.update('f-1', mockUser, { shortDescription: 'x' } as any);
+
+        expect(mockPrismaService.inspectionPlan.findUnique).not.toHaveBeenCalled();
+        const updateCall = mockPrismaService.finding.update.mock.calls[0][0];
+        expect(updateCall.data.isCritical).toBeUndefined();
+      });
+
+      it('heropen-reset: kritieke finding resolved → open maakt criticalRepairNotifiedAt leeg', async () => {
+        mockPrismaService.finding.findFirst.mockResolvedValue({
+          id: 'f-1',
+          orgId: 'org-1',
+          inspectionPlanId: 'plan-1',
+          statusCode: STATUS_RESOLVED,
+          isCritical: true,
+        });
+        mockLookupService.resolveLookup.mockResolvedValue({ code: STATUS_OPEN });
+
+        await service.update('f-1', mockUser, { statusCode: STATUS_OPEN } as any);
+
+        expect(mockPrismaService.inspectionPlan.updateMany).toHaveBeenCalledWith({
+          where: { id: 'plan-1', criticalRepairNotifiedAt: { not: null } },
+          data: { criticalRepairNotifiedAt: null },
+        });
+      });
+
+      it('heropen-reset blijft uit voor een niet-kritieke finding', async () => {
+        mockPrismaService.finding.findFirst.mockResolvedValue({
+          id: 'f-1',
+          orgId: 'org-1',
+          inspectionPlanId: 'plan-1',
+          statusCode: STATUS_RESOLVED,
+          isCritical: false,
+        });
+        mockLookupService.resolveLookup.mockResolvedValue({ code: STATUS_OPEN });
+
+        await service.update('f-1', mockUser, { statusCode: STATUS_OPEN } as any);
+
+        expect(mockPrismaService.inspectionPlan.updateMany).not.toHaveBeenCalled();
+      });
     });
   });
 

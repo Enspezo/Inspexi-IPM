@@ -18,6 +18,7 @@ import {
   PROJECT_FASEN_REQUIRED_MESSAGE,
   requireOrg,
   validateJsonColumn,
+  ONLINE_HERSTEL_FEATURE,
   STATUS_DRAFT,
   STATUS_IN_PROGRESS,
   STATUS_PENDING_REVIEW,
@@ -206,6 +207,39 @@ export class InspectionPlansService {
     );
   }
 
+  /**
+   * Online herstel (PRD-14): het rapportnummer (referenceNumber) is de anonieme
+   * toegangssleutel en moet dus gevuld en binnen de org uniek zijn voordat
+   * `onlineRepairEnabled` aangezet mag worden. Match case-insensitief + getrimd,
+   * conform de lookup-normalisatie in client-repair.
+   */
+  private async assertOnlineRepairReference(
+    planId: string,
+    orgId: string,
+    referenceNumber: string | null | undefined,
+  ): Promise<void> {
+    const ref = referenceNumber?.trim();
+    if (!ref) {
+      throw new BadRequestException(
+        'Online herstel vereist een uniek rapportnummer (referentienummer) — vul dit eerst in.',
+      );
+    }
+    const duplicate = await this.prisma.inspectionPlan.findFirst({
+      where: {
+        orgId,
+        deletedAt: null,
+        id: { not: planId },
+        referenceNumber: { equals: ref, mode: 'insensitive' },
+      },
+      select: { id: true },
+    });
+    if (duplicate) {
+      throw new BadRequestException(
+        'Online herstel vereist een uniek rapportnummer (referentienummer) — dit nummer is al in gebruik bij een andere inspectie.',
+      );
+    }
+  }
+
   async create(dto: CreateInspectionPlanDto, user: User) {
     const orgId = requireOrg(user);
 
@@ -223,9 +257,23 @@ export class InspectionPlansService {
       this.assertLookup(LOOKUP_KIND.INSPECTION_TYPES, dto.inspectionTypeCode, orgId),
     ]);
 
+    // Online herstel (PRD-14): default vanuit de org-instelling, maar alleen
+    // wanneer het ONLINE_HERSTEL-entitlement actief is. Wijzigen van de
+    // org-default raakt bestaande plannen bewust niet (voorspelbaar gedrag).
+    let onlineRepairEnabled = false;
+    const orgSettings = await this.prisma.organization.findUnique({
+      where: { id: orgId },
+      select: { onlineRepairDefault: true },
+    });
+    if (orgSettings?.onlineRepairDefault) {
+      const features = await this.entitlements.getEnabledFeatures(orgId);
+      onlineRepairEnabled = features.includes(ONLINE_HERSTEL_FEATURE);
+    }
+
     const plan = await this.prisma.inspectionPlan.create({
       data: {
         orgId,
+        onlineRepairEnabled,
         contactId: dto.contactId,
         projectId: dto.projectId ?? null,
         locationId: dto.locationId ?? null,
@@ -385,6 +433,17 @@ export class InspectionPlansService {
     if (dto.metadata !== undefined) {
       validateJsonColumn(planMetadataSchema, dto.metadata, PLAN_METADATA_LABEL);
       data.metadata = dto.metadata as Prisma.InputJsonValue;
+    }
+
+    // Online herstel (PRD-14): aanzetten vereist een gevuld én binnen de org
+    // uniek rapportnummer (referenceNumber) — de anonieme lookup matcht erop.
+    if (dto.onlineRepairEnabled !== undefined) {
+      if (dto.onlineRepairEnabled) {
+        const effectiveRef =
+          dto.referenceNumber !== undefined ? dto.referenceNumber : existing.referenceNumber;
+        await this.assertOnlineRepairReference(existing.id, orgId, effectiveRef);
+      }
+      data.onlineRepairEnabled = dto.onlineRepairEnabled;
     }
 
     data.lastModifiedByUser = { connect: { id: user.id } };

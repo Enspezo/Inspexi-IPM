@@ -15,7 +15,7 @@
 import { Injectable } from '@nestjs/common';
 import { AssetNodeType, TemplateMode, Prisma } from '@prisma/client';
 import { PrismaService } from '@/prisma';
-import { assertFound } from '@/common';
+import { assertFound, getMainClassification } from '@/common';
 import { AssetNodesService } from '../asset-nodes/asset-nodes.service';
 import type {
   DocumentData,
@@ -432,37 +432,12 @@ export class GenerationContextService {
     };
   }
 
+  // Gedeeld met client-repair (PRD-14): zie common/utils/classification-severity.ts.
   private getMainClassification(
     classificationValues: Record<string, string> | null,
     classificationModel: ClassificationModelLite,
   ): { code: string; name: string; color: string } {
-    if (!classificationValues || Object.keys(classificationValues).length === 0) {
-      return { code: '-', name: 'Niet geclassificeerd', color: '#666666' };
-    }
-    const mainCharCode =
-      Object.keys(classificationValues).find((k) =>
-        ['CLASSIFICATIE', 'RISICO', 'SEVERITY', 'PRIORITEIT'].includes(k.toUpperCase()),
-      ) ?? Object.keys(classificationValues)[0];
-    const code = classificationValues[mainCharCode];
-
-    if (classificationModel) {
-      const characteristic = classificationModel.characteristics.find((c) => c.code === mainCharCode);
-      const option = characteristic?.options.find((o) => o.code === code);
-      if (option) return { code, name: option.name, color: option.color };
-    }
-
-    const defaultColors: Record<string, string> = {
-      '1': '#dc2626',
-      '2': '#ea580c',
-      '3': '#ca8a04',
-      '4': '#16a34a',
-      A: '#dc2626',
-      B: '#ea580c',
-      C: '#ca8a04',
-      D: '#2563eb',
-      E: '#16a34a',
-    };
-    return { code, name: code, color: defaultColors[code] || '#666666' };
+    return getMainClassification(classificationValues, classificationModel);
   }
 
   private aggregateMeasurements(records: Array<{ data: Prisma.JsonValue }>): Record<string, unknown> {

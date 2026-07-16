@@ -68,6 +68,11 @@ describe('InspectionPlansService', () => {
     create: jest.fn(),
   };
 
+  const mockEntitlementsService = {
+    assertFeature: jest.fn(),
+    getEnabledFeatures: jest.fn(),
+  };
+
   const mockUser = {
     id: 'user-1',
     orgId: 'org-1',
@@ -95,10 +100,7 @@ describe('InspectionPlansService', () => {
         { provide: NotificationsService, useValue: mockNotificationsService },
         { provide: AiReviewService, useValue: mockAiReviewService },
         { provide: AssetNodesService, useValue: mockAssetNodesService },
-        {
-          provide: EntitlementsService,
-          useValue: { assertFeature: jest.fn().mockResolvedValue(undefined) },
-        },
+        { provide: EntitlementsService, useValue: mockEntitlementsService },
       ],
     }).compile();
 
@@ -125,6 +127,8 @@ describe('InspectionPlansService', () => {
       inspectionReviewEnabled: true,
     });
     mockAiReviewService.startRun.mockResolvedValue({ id: 'run-1' });
+    mockEntitlementsService.assertFeature.mockResolvedValue(undefined);
+    mockEntitlementsService.getEnabledFeatures.mockResolvedValue([]);
   });
 
   describe('findAll', () => {
@@ -383,6 +387,184 @@ describe('InspectionPlansService', () => {
         expect.objectContaining({
           type: NotificationType.INSPECTIEPLAN_TOEGEWEZEN,
           recipientUserIds: ['user-2'],
+        }),
+      );
+    });
+  });
+
+  describe('create — online herstel default (PRD-14)', () => {
+    const createDto = {
+      contactId: 'c-1',
+      projectName: 'Plan',
+      normTypeCode: 'NEN1010',
+    } as any;
+
+    beforeEach(() => {
+      mockPrismaService.inspectionPlan.create.mockResolvedValue({
+        id: 'plan-new',
+        orgId: 'org-1',
+        projectName: 'Plan',
+        assignedTo: null,
+        locationId: null,
+      });
+    });
+
+    it('zet onlineRepairEnabled aan bij org-default + ONLINE_HERSTEL-entitlement', async () => {
+      mockPrismaService.organization.findUnique.mockResolvedValue({
+        onlineRepairDefault: true,
+      });
+      mockEntitlementsService.getEnabledFeatures.mockResolvedValue(['ONLINE_HERSTEL']);
+
+      await service.create(createDto, mockUser);
+
+      expect(mockPrismaService.inspectionPlan.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ onlineRepairEnabled: true }),
+        }),
+      );
+    });
+
+    it('blijft false bij org-default aan maar zonder entitlement', async () => {
+      mockPrismaService.organization.findUnique.mockResolvedValue({
+        onlineRepairDefault: true,
+      });
+      mockEntitlementsService.getEnabledFeatures.mockResolvedValue(['ANDERE_FEATURE']);
+
+      await service.create(createDto, mockUser);
+
+      expect(mockPrismaService.inspectionPlan.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ onlineRepairEnabled: false }),
+        }),
+      );
+    });
+
+    it('blijft false (zonder entitlement-lookup) wanneer de org-default uit staat', async () => {
+      mockPrismaService.organization.findUnique.mockResolvedValue({
+        onlineRepairDefault: false,
+      });
+
+      await service.create(createDto, mockUser);
+
+      expect(mockEntitlementsService.getEnabledFeatures).not.toHaveBeenCalled();
+      expect(mockPrismaService.inspectionPlan.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ onlineRepairEnabled: false }),
+        }),
+      );
+    });
+  });
+
+  describe('update — online herstel (PRD-14)', () => {
+    const existingPlan = (referenceNumber: string | null) => ({
+      id: 'plan-1',
+      orgId: 'org-1',
+      projectName: 'Test',
+      assignedTo: null,
+      projectId: null,
+      locationId: null,
+      referenceNumber,
+    });
+
+    beforeEach(() => {
+      mockPrismaService.inspectionPlan.update.mockResolvedValue({
+        id: 'plan-1',
+        orgId: 'org-1',
+        projectName: 'Test',
+        assignedTo: null,
+      });
+    });
+
+    it('weigert aanzetten zonder gevuld rapportnummer', async () => {
+      // De validatie faalt vóór de duplicaat-query, dus een vaste findFirst-mock volstaat.
+      mockPrismaService.inspectionPlan.findFirst.mockResolvedValue(existingPlan(null));
+
+      await expect(
+        service.update('plan-1', { onlineRepairEnabled: true } as any, mockUser),
+      ).rejects.toThrow(BadRequestException);
+      await expect(
+        service.update('plan-1', { onlineRepairEnabled: true } as any, mockUser),
+      ).rejects.toThrow(/rapportnummer/);
+      expect(mockPrismaService.inspectionPlan.update).not.toHaveBeenCalled();
+    });
+
+    it('weigert aanzetten met een binnen de org al gebruikt rapportnummer', async () => {
+      mockPrismaService.inspectionPlan.findFirst
+        .mockResolvedValueOnce(existingPlan('RAP-1')) // findOne
+        .mockResolvedValueOnce({ id: 'ander-plan' }); // duplicaat-check
+
+      await expect(
+        service.update('plan-1', { onlineRepairEnabled: true } as any, mockUser),
+      ).rejects.toThrow(/al in gebruik/);
+      expect(mockPrismaService.inspectionPlan.update).not.toHaveBeenCalled();
+    });
+
+    it('zet de vlag aan bij een gevuld en uniek rapportnummer (case-insensitieve check)', async () => {
+      mockPrismaService.inspectionPlan.findFirst
+        .mockResolvedValueOnce(existingPlan('RAP-1')) // findOne
+        .mockResolvedValueOnce(null); // geen duplicaat
+
+      await service.update('plan-1', { onlineRepairEnabled: true } as any, mockUser);
+
+      // Duplicaat-query: eigen plan uitgesloten, getrimd + case-insensitief.
+      expect(mockPrismaService.inspectionPlan.findFirst).toHaveBeenNthCalledWith(
+        2,
+        expect.objectContaining({
+          where: {
+            orgId: 'org-1',
+            deletedAt: null,
+            id: { not: 'plan-1' },
+            referenceNumber: { equals: 'RAP-1', mode: 'insensitive' },
+          },
+          select: { id: true },
+        }),
+      );
+      expect(mockPrismaService.inspectionPlan.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ onlineRepairEnabled: true }),
+        }),
+      );
+    });
+
+    it('gebruikt het in dezelfde PATCH meegegeven rapportnummer voor de validatie', async () => {
+      mockPrismaService.inspectionPlan.findFirst
+        .mockResolvedValueOnce(existingPlan(null)) // findOne: nog geen ref
+        .mockResolvedValueOnce(null); // geen duplicaat voor NEW-1
+
+      await service.update(
+        'plan-1',
+        { onlineRepairEnabled: true, referenceNumber: 'NEW-1' } as any,
+        mockUser,
+      );
+
+      expect(mockPrismaService.inspectionPlan.findFirst).toHaveBeenNthCalledWith(
+        2,
+        expect.objectContaining({
+          where: expect.objectContaining({
+            referenceNumber: { equals: 'NEW-1', mode: 'insensitive' },
+          }),
+        }),
+      );
+      expect(mockPrismaService.inspectionPlan.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            onlineRepairEnabled: true,
+            referenceNumber: 'NEW-1',
+          }),
+        }),
+      );
+    });
+
+    it('uitzetten valideert het rapportnummer niet en zet false', async () => {
+      mockPrismaService.inspectionPlan.findFirst.mockResolvedValueOnce(existingPlan(null));
+
+      await service.update('plan-1', { onlineRepairEnabled: false } as any, mockUser);
+
+      // Alleen de findOne-call — geen duplicaat-check.
+      expect(mockPrismaService.inspectionPlan.findFirst).toHaveBeenCalledTimes(1);
+      expect(mockPrismaService.inspectionPlan.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ onlineRepairEnabled: false }),
         }),
       );
     });

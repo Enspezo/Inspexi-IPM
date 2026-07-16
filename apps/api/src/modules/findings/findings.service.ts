@@ -14,7 +14,16 @@ import {
 } from '@nestjs/common';
 import { User, Prisma } from '@prisma/client';
 import { PrismaService } from '@/prisma';
-import { orgScope, assertFound, requireOrg, validateJsonColumn, STATUS_OPEN, STATUS_RESOLVED } from '@/common';
+import {
+  orgScope,
+  assertFound,
+  requireOrg,
+  validateJsonColumn,
+  STATUS_OPEN,
+  STATUS_RESOLVED,
+  computeFindingIsCritical,
+  loadPlanCriticalModel,
+} from '@/common';
 import { LookupService, LOOKUP_KIND } from '../lookups/lookup.service';
 import { AssetNodesService } from '../asset-nodes/asset-nodes.service';
 import { CreateFindingDto, UpdateFindingDto } from './dto';
@@ -177,11 +186,19 @@ export class FindingsService {
       );
     }
 
+    // Finding.isCritical is server-owned (PRD-14): afgeleid van classificationValues
+    // × de isCritical-vlaggen van het classificatiemodel van het plan.
+    const isCritical = computeFindingIsCritical(
+      dto.classificationValues ?? {},
+      await loadPlanCriticalModel(this.prisma, plan.id),
+    );
+
     return this.prisma.finding.create({
       data: {
         orgId,
         assetNodeId,
         inspectionPlanId: plan.id,
+        isCritical,
         inspectionType: dto.inspectionType,
         visualInspectionId: dto.visualInspectionId,
         measurementRecordId: dto.measurementRecordId,
@@ -214,7 +231,14 @@ export class FindingsService {
     const data: Prisma.FindingUpdateInput = {};
     if (dto.shortDescription !== undefined) data.shortDescription = dto.shortDescription;
     if (dto.longDescription !== undefined) data.longDescription = dto.longDescription;
-    if (dto.classificationValues !== undefined) data.classificationValues = dto.classificationValues as Prisma.InputJsonValue;
+    if (dto.classificationValues !== undefined) {
+      data.classificationValues = dto.classificationValues as Prisma.InputJsonValue;
+      // isCritical volgt de classificatie (PRD-14, server-owned)
+      data.isCritical = computeFindingIsCritical(
+        dto.classificationValues,
+        await loadPlanCriticalModel(this.prisma, finding.inspectionPlanId),
+      );
+    }
     if (dto.locationDescription !== undefined) data.locationDescription = dto.locationDescription;
     if (dto.recommendation !== undefined) data.recommendation = dto.recommendation;
     if (dto.recommendationCustom !== undefined) data.recommendationCustom = dto.recommendationCustom;
@@ -228,11 +252,28 @@ export class FindingsService {
       data.resolutionNotes = dto.resolutionNotes;
     }
 
-    return this.prisma.finding.update({
+    const updated = await this.prisma.finding.update({
       where: { id: finding.id },
       data,
       select: { id: true, classificationValues: true, statusCode: true, resolvedAt: true, updatedAt: true },
     });
+
+    // Heropen-reset (PRD-14 besluit 9): gaat een kritieke constatering van 'resolved'
+    // terug naar een open status, dan mag de "alle kritieke punten hersteld"-trigger
+    // opnieuw vuren → criticalRepairNotifiedAt leegmaken.
+    if (
+      dto.statusCode !== undefined &&
+      dto.statusCode !== STATUS_RESOLVED &&
+      finding.statusCode === STATUS_RESOLVED &&
+      finding.isCritical
+    ) {
+      await this.prisma.inspectionPlan.updateMany({
+        where: { id: finding.inspectionPlanId, criticalRepairNotifiedAt: { not: null } },
+        data: { criticalRepairNotifiedAt: null },
+      });
+    }
+
+    return updated;
   }
 
   async delete(id: string, user: User) {

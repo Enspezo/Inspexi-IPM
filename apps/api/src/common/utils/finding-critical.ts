@@ -17,6 +17,43 @@ export interface ClassificationModelForCritical {
   }>;
 }
 
+/**
+ * Laadt het classificatiemodel (alleen code + isCritical per optie) van het plan
+ * via `InspectionPlan.inspectionTemplate.classificationModelId`. Geen template of
+ * model → null (finding kan dan nooit kritiek zijn).
+ */
+export async function loadPlanCriticalModel(
+  prisma: {
+    inspectionPlan: {
+      findUnique(args: {
+        where: { id: string };
+        select: Record<string, unknown>;
+      }): Promise<unknown>;
+    };
+  },
+  planId: string,
+): Promise<ClassificationModelForCritical | null> {
+  const plan = (await prisma.inspectionPlan.findUnique({
+    where: { id: planId },
+    select: {
+      inspectionTemplate: {
+        select: {
+          classificationModel: {
+            select: {
+              characteristics: {
+                select: { code: true, options: { select: { code: true, isCritical: true } } },
+              },
+            },
+          },
+        },
+      },
+    },
+  })) as {
+    inspectionTemplate: { classificationModel: ClassificationModelForCritical | null } | null;
+  } | null;
+  return plan?.inspectionTemplate?.classificationModel ?? null;
+}
+
 export function computeFindingIsCritical(
   classificationValues: unknown,
   model: ClassificationModelForCritical | null | undefined,

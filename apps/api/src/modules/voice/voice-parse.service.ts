@@ -1,13 +1,17 @@
 // Spraak→meting via Anthropic. Bouwt de 3-lagen system-prompt (VoicePromptService) en laat Claude
 // de transcript naar gestructureerde meet-JSON omzetten.
 //
-// Dep: @anthropic-ai/sdk
+// Client via de gedeelde AnthropicClientService (PRD-13 §13.6.1).
 // Env: ANTHROPIC_API_KEY (vereist; zonder → voice-parsing uitgeschakeld), ANTHROPIC_MODEL (optioneel).
 // NB: het model is CONFIGUREERBAAR — geen hardcoded versie (de App had 'claude-sonnet-4-5' vast).
 
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import Anthropic from '@anthropic-ai/sdk';
+import {
+  AnthropicClientService,
+  DEFAULT_ANTHROPIC_MODEL,
+} from '@/common/services/anthropic/anthropic-client.service';
 import { VoicePromptService } from './voice-prompt.service';
 
 export interface ParsedMeasurementRow {
@@ -33,30 +37,23 @@ export interface ParseMeasurementInput {
   orgId: string | null;
 }
 
-const DEFAULT_MODEL = 'claude-sonnet-4-6';
-
 @Injectable()
 export class VoiceParseService {
   private readonly logger = new Logger(VoiceParseService.name);
-  private anthropic?: Anthropic;
-  private readonly configured: boolean;
   private readonly model: string;
 
   constructor(
     private config: ConfigService,
     private prompts: VoicePromptService,
+    private anthropic: AnthropicClientService,
   ) {
-    const apiKey = this.config.get<string>('ANTHROPIC_API_KEY');
-    this.configured = !!apiKey;
-    this.model = this.config.get<string>('ANTHROPIC_MODEL', DEFAULT_MODEL);
-    if (this.configured) this.anthropic = new Anthropic({ apiKey });
-    else this.logger.warn('ANTHROPIC_API_KEY niet gezet — voice-parsing uitgeschakeld');
+    this.model = this.config.get<string>('ANTHROPIC_MODEL', DEFAULT_ANTHROPIC_MODEL);
   }
 
-  isAvailable(): boolean { return this.configured; }
+  isAvailable(): boolean { return this.anthropic.isAvailable(); }
 
   async parseMeasurement(input: ParseMeasurementInput): Promise<ParseMeasurementResult> {
-    if (!this.configured || !this.anthropic) {
+    if (!this.anthropic.isAvailable()) {
       return { success: false, error: 'Voice-parsing niet geconfigureerd (ANTHROPIC_API_KEY)', confidence: 0, rawTranscript: input.transcript };
     }
     if (!input.transcript?.trim()) {
@@ -64,7 +61,7 @@ export class VoiceParseService {
     }
     try {
       const system = await this.prompts.buildCombinedPrompt(input.templateId, input.userId, input.orgId, input.normTypeCode);
-      const response = await this.anthropic.messages.create({
+      const response = await this.anthropic.createMessage({
         model: this.model,
         max_tokens: 1024,
         system,

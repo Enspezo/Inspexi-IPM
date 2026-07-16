@@ -94,6 +94,10 @@ import { ClientLookupsModule } from './modules/client-lookups/client-lookups.mod
 import { ClientHelpModule } from './modules/client-help/client-help.module';
 // Inspectiedomein Fase 7 — voice-input (AI spraak-naar-meting + 3-lagen prompts)
 import { VoiceModule } from './modules/voice/voice.module';
+// Gedeelde Anthropic-client (PRD-13 §13.6.1) — @Global, gebruikt door voice + ai-review
+import { AnthropicModule } from './common/services/anthropic/anthropic.module';
+// AI-voorcontrole van inspectierapporten (PRD-13)
+import { AiReviewModule } from './modules/ai-review/ai-review.module';
 
 @Module({
   imports: [
@@ -188,6 +192,9 @@ import { VoiceModule } from './modules/voice/voice.module';
     ClientHelpModule,
     // Inspectiedomein Fase 7 — voice-input (AI spraak-naar-meting + 3-lagen prompts)
     VoiceModule,
+    // Gedeelde Anthropic-client + AI-voorcontrole van inspectierapporten (PRD-13)
+    AnthropicModule,
+    AiReviewModule,
   ],
   providers: [
     {

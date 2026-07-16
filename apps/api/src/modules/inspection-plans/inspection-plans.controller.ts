@@ -19,9 +19,9 @@ import {
   ApiResponse,
   ApiBearerAuth,
 } from '@nestjs/swagger';
-import { User, Role } from '@prisma/client';
+import { User } from '@prisma/client';
 import { Roles, CurrentUser } from '@/common/decorators';
-import { ALL_STAFF, CRM_ROLES } from '@/common/auth/roles';
+import { ALL_STAFF, CRM_ROLES, REVIEW_ROLES } from '@/common/auth/roles';
 import { InspectionPlansService } from './inspection-plans.service';
 import { CreateAssetNodeDto } from '../asset-nodes/dto';
 import {
@@ -35,13 +35,6 @@ import {
 const WRITE_ROLES = CRM_ROLES;
 
 const ALL_ROLES = ALL_STAFF;
-
-const REVIEW_ROLES = [
-  Role.SUPERUSER,
-  Role.ORG_ADMIN,
-  Role.MANAGER,
-  Role.WERKVOORBEREIDER,
-] as const;
 
 @ApiTags('inspection-plans')
 @ApiBearerAuth()

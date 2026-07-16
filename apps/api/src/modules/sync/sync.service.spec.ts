@@ -33,6 +33,7 @@ describe('SyncService', () => {
     contactPerson: delegate(),
     photo: delegate(),
     contact: delegate(),
+    project: delegate(),
     syncQueue: delegate(),
     measurementInstrument: delegate(),
     userDefaultInstrument: delegate(),
@@ -93,6 +94,8 @@ describe('SyncService', () => {
   describe('push — create', () => {
     it('creates an inspection plan with injected orgId + createdBy', async () => {
       mockPrisma.inspectionPlan.create.mockResolvedValue({ id: 'p1' });
+      // contactId is now org-validated on push (SYNC-2) — same-org contact.
+      mockPrisma.contact.findUnique.mockResolvedValue({ orgId: 'org-1' });
 
       const dto = {
         deviceId: 'dev-1',
@@ -825,6 +828,46 @@ describe('SyncService', () => {
           data: expect.objectContaining({ projectName: 'MERGED' }),
         }),
       );
+    });
+
+    it('rejects a merge that injects a cross-tenant FK (SYNC-1)', async () => {
+      mockPrisma.syncQueue.findFirst.mockResolvedValue(conflictQueueItem);
+      mockPrisma.inspectionPlan.findFirst.mockResolvedValue({ id: 'p1', orgId: 'org-1' });
+      // The injected locationId belongs to another org → assertSameOrg throws.
+      mockPrisma.location.findUnique.mockResolvedValue({ orgId: 'org-2' });
+
+      const dto = {
+        deviceId: 'dev-1',
+        resolutions: [
+          { entityType: 'inspectionPlan', entityId: 'p1', resolution: 'merge', mergedData: { locationId: 'foreign-loc' } },
+        ],
+      } as any;
+
+      const result = await service.resolve(user, dto);
+
+      expect(mockPrisma.inspectionPlan.update).not.toHaveBeenCalled();
+      expect(result.resolved).toBe(0);
+      expect(result.errors).toHaveLength(1);
+    });
+
+    it('rejects a merge that bypasses the four-eyes review gate (SYNC-1)', async () => {
+      mockPrisma.syncQueue.findFirst.mockResolvedValue(conflictQueueItem);
+      // Existing plan not yet reviewed; org has the review gate enabled.
+      mockPrisma.inspectionPlan.findFirst.mockResolvedValue({ id: 'p1', orgId: 'org-1', reviewedAt: null });
+      mockPrisma.organization.findUnique.mockResolvedValue({ inspectionReviewEnabled: true });
+
+      const dto = {
+        deviceId: 'dev-1',
+        resolutions: [
+          { entityType: 'inspectionPlan', entityId: 'p1', resolution: 'merge', mergedData: { statusCode: 'completed' } },
+        ],
+      } as any;
+
+      const result = await service.resolve(user, dto);
+
+      expect(mockPrisma.inspectionPlan.update).not.toHaveBeenCalled();
+      expect(result.resolved).toBe(0);
+      expect(result.errors).toHaveLength(1);
     });
 
     it('records an error when there is no matching conflict', async () => {

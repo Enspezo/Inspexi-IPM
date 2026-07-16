@@ -61,7 +61,14 @@ export type SyncModelName =
   | 'standaloneMeasurement';
 
 /** Modellen waartegen we een same-org FK-check kunnen draaien (cross-tenant guard). */
-export type FkCheckModel = 'assetNode' | 'inspectionPlan' | 'location' | 'user' | 'contactPerson';
+export type FkCheckModel =
+  | 'assetNode'
+  | 'inspectionPlan'
+  | 'location'
+  | 'user'
+  | 'contactPerson'
+  | 'contact'
+  | 'project';
 
 /**
  * Inkomend client-record (wire) — Beheer-veldnamen. Alleen de sleutels die de service
@@ -163,8 +170,15 @@ export const SYNC_ENTITIES: Record<SyncEntityKey, EntityConfig> = {
     userFkChecks: ['assignedTo', 'reviewerId'],
     // installationResponsibleId is een FK naar ContactPerson (niet User) — valideer
     // tegen het juiste model, gelijk aan het REST-pad (inspection-plans.service).
+    // contactId/projectId/locationId zijn altijd org-eigen (geen system-variant) en
+    // worden — net als in het REST-pad — met een platte org-check gevalideerd.
+    // NB: inspectionTemplateId kent wél system-rijen (orgId null) en wordt daarom
+    // niet hier maar systeem-bewust in het generatiepad afgeschermd (SYNC-2).
     fkChecks: [
       { field: 'installationResponsibleId', model: 'contactPerson', label: 'Installatieverantwoordelijke' },
+      { field: 'contactId', model: 'contact', label: 'Relatie' },
+      { field: 'projectId', model: 'project', label: 'Project' },
+      { field: 'locationId', model: 'location', label: 'Hoofdlocatie' },
     ],
   },
   assetNodes: {

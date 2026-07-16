@@ -49,9 +49,18 @@ export class GeneratedDocumentsService {
       throw new BadRequestException('Plan heeft geen inspectie-template');
     }
 
+    // DocumentTemplate heeft zelf geen orgId (afgeleid via inspectionTemplate).
+    // Scope daarom op de relatie: alleen een template van de eigen org of een
+    // system-template (orgId null) mag renderen — dit weert een via sync op het plan
+    // beland vreemd-org inspectionTemplateId dat anders de vreemde template zou
+    // renderen in een document van deze org (SYNC-2).
     const template = assertFound(
       await this.prisma.documentTemplate.findFirst({
-        where: { documentType: type, inspectionTemplateId },
+        where: {
+          documentType: type,
+          inspectionTemplateId,
+          inspectionTemplate: { OR: [{ orgId }, { orgId: null }] },
+        },
         include: {
           sections: {
             orderBy: { sortOrder: 'asc' },

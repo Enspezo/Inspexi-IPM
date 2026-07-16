@@ -20,11 +20,24 @@ import {
 } from '@nestjs/common';
 import { randomBytes, randomUUID } from 'crypto';
 import type { Prisma, RepairSession } from '@prisma/client';
-import { RepairAccessType, RepairSessionStatus } from '@prisma/client';
+import {
+  DocumentType,
+  GeneratedDocumentStatus,
+  RepairAccessType,
+  RepairSessionStatus,
+  SignatureStatus,
+} from '@prisma/client';
 import { PrismaService } from '@/prisma';
 import { STORAGE_PROVIDER } from '@/common/services/storage/storage.interface';
 import type { StorageProvider } from '@/common/services/storage/storage.interface';
 import type { CurrentClientUserData } from '@/common/decorators/current-client-user.decorator';
+import { makeThumbnail } from '../photos/thumbnail.util';
+import { PdfGenerationService } from '../document-generation/pdf-generation.service';
+import {
+  renderDeclarationHtml,
+  injectSignatureIntoDeclarationHtml,
+  type DeclarationFinding,
+} from './templates/herstelverklaring.template';
 import {
   getMainClassification,
   resolveInspectorContact,
@@ -41,7 +54,15 @@ import {
 import { EntitlementsService } from '@/modules/entitlements/entitlements.service';
 import { ClientInspectionsService } from '../client-inspections/client-inspections.service';
 import { RepairEventsService } from './repair-events.service';
-import { RepairLookupDto, RepairResolveDto, StartRepairSessionDto } from './dto';
+import {
+  CompleteRepairDto,
+  RepairLookupDto,
+  RepairResolveDto,
+  SignRepairDto,
+  StartRepairSessionDto,
+} from './dto';
+
+const SIGNER_ROLE_HERSTELLER = 'HERSTELLER';
 
 const MAX_PHOTOS = 5;
 const EXT: Record<string, string> = { 'image/jpeg': 'jpg', 'image/png': 'png' };
@@ -107,6 +128,7 @@ export class ClientRepairService {
     private readonly inspections: ClientInspectionsService,
     private readonly entitlements: EntitlementsService,
     private readonly events: RepairEventsService,
+    private readonly pdf: PdfGenerationService,
   ) {}
 
   // ── Sessies ─────────────────────────────────────────────
@@ -621,5 +643,338 @@ export class ClientRepairService {
     }
 
     throw new NotFoundException('Foto niet gevonden');
+  }
+
+  // ── Herstelverklaring (fase 3) ──────────────────────────
+
+  /** Datumlabel in NL-notatie (Europe/Amsterdam is de projectbreed gehanteerde weergave). */
+  private formatDate(value: Date | null): string | null {
+    if (!value) return null;
+    return new Intl.DateTimeFormat('nl-NL', { day: 'numeric', month: 'long', year: 'numeric' }).format(value);
+  }
+
+  private formatDateTime(value: Date): string {
+    return new Intl.DateTimeFormat('nl-NL', {
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    }).format(value);
+  }
+
+  /** Foto → verkleinde JPEG-data-URI (de PDF-renderer laat alleen data:-URL's toe). */
+  private async photoDataUri(storageKey: string): Promise<string | null> {
+    try {
+      const buffer = await this.storage.download(storageKey);
+      const small = await makeThumbnail(buffer, 800);
+      return `data:image/jpeg;base64,${small.toString('base64')}`;
+    } catch (err) {
+      this.logger.warn(`Foto ${storageKey} niet leesbaar voor verklaring: ${(err as Error)?.message}`);
+      return null;
+    }
+  }
+
+  /**
+   * Afronden (PRD §14.6 complete): valideert de selectie (eigen REPORTED-meldingen,
+   * ≥1 foto per melding, e-mail verplicht bij ANONYMOUS), slaat de invullergegevens
+   * op de sessie op en (her)genereert de concept-herstelverklaring. Een eerdere
+   * niet-ondertekende concept-verklaring wordt vervangen, niet gestapeld.
+   */
+  async complete(session: RepairSession, dto: CompleteRepairDto) {
+    this.assertActive(session);
+
+    const email = dto.email?.trim() || session.email || null;
+    if (session.accessType === RepairAccessType.ANONYMOUS && !email) {
+      throw new BadRequestException('E-mailadres is verplicht — daar sturen we de bevestiging naartoe');
+    }
+
+    const uniqueIds = [...new Set(dto.resolutionIds)];
+    const resolutions = await this.prisma.findingResolution.findMany({
+      where: {
+        id: { in: uniqueIds },
+        repairSessionId: session.id,
+        statusCode: RESOLUTION_REPORTED,
+      },
+      include: {
+        photos: { orderBy: { uploadedAt: 'asc' }, select: { id: true, photoUrl: true } },
+        finding: {
+          select: {
+            id: true,
+            shortDescription: true,
+            locationDescription: true,
+            normReference: true,
+            classificationValues: true,
+          },
+        },
+      },
+    });
+    if (resolutions.length !== uniqueIds.length) {
+      throw new BadRequestException(
+        'Eén of meer geselecteerde meldingen zijn ongeldig (niet van deze sessie of niet doorgevoerd)',
+      );
+    }
+    const withoutPhoto = resolutions.filter((r) => r.photos.length === 0);
+    if (withoutPhoto.length > 0) {
+      throw new BadRequestException('Elke herstelmelding heeft minimaal één bewijsfoto nodig');
+    }
+
+    // Invullergegevens op de sessie (PRD §14.5).
+    const updatedSession = await this.prisma.repairSession.update({
+      where: { id: session.id },
+      data: {
+        contactName: dto.contactName.trim(),
+        companyName: dto.companyName?.trim() || null,
+        email,
+      },
+    });
+
+    const html = await this.buildDeclarationHtml(updatedSession, resolutions);
+
+    // Vervang een eerder concept (niet stapelen); een al ondertekende verklaring blijft staan.
+    if (session.generatedDocumentId) {
+      const previous = await this.prisma.generatedDocument.findFirst({
+        where: { id: session.generatedDocumentId, orgId: session.orgId },
+        select: { id: true, status: true },
+      });
+      if (previous && previous.status !== GeneratedDocumentStatus.SIGNED) {
+        await this.prisma.generatedDocument.delete({ where: { id: previous.id } });
+      }
+    }
+
+    const document = await this.prisma.generatedDocument.create({
+      data: {
+        orgId: session.orgId,
+        inspectionPlanId: session.inspectionPlanId,
+        documentType: DocumentType.HERSTELVERKLARING,
+        htmlContent: html,
+        status: GeneratedDocumentStatus.DRAFT,
+        signatures: {
+          create: {
+            signerRoleCode: SIGNER_ROLE_HERSTELLER,
+            signerName: dto.contactName.trim(),
+            signerEmail: email,
+            status: SignatureStatus.PENDING,
+          },
+        },
+      },
+      select: { id: true, htmlContent: true },
+    });
+
+    await this.prisma.repairSession.update({
+      where: { id: session.id },
+      data: { generatedDocumentId: document.id },
+    });
+
+    return { documentId: document.id, htmlPreview: document.htmlContent };
+  }
+
+  /** Bouwt de verklaring-HTML: org-branding, plan-kop, genummerde constateringen + foto's. */
+  private async buildDeclarationHtml(
+    session: RepairSession,
+    resolutions: Array<{
+      id: string;
+      description: string | null;
+      photos: Array<{ id: string; photoUrl: string }>;
+      finding: {
+        id: string;
+        shortDescription: string;
+        locationDescription: string | null;
+        normReference: string | null;
+        classificationValues: Prisma.JsonValue;
+      };
+    }>,
+  ): Promise<string> {
+    const plan = await this.prisma.inspectionPlan.findFirst({
+      where: { id: session.inspectionPlanId, orgId: session.orgId },
+      select: {
+        projectName: true,
+        referenceNumber: true,
+        plannedDate: true,
+        addressStreet: true,
+        addressHouseNumber: true,
+        addressPostalCode: true,
+        addressCity: true,
+        organization: { select: { name: true, logoUrl: true, primaryColor: true } },
+        inspectionTemplate: {
+          select: {
+            classificationModel: {
+              select: {
+                characteristics: {
+                  select: {
+                    code: true,
+                    options: { select: { code: true, name: true, color: true, isCritical: true } },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+    if (!plan) throw new NotFoundException('Inspectie niet gevonden');
+    const classificationModel = plan.inspectionTemplate?.classificationModel ?? null;
+
+    // Volgnummers: deterministische positie binnen het plan (zelfde sortering als GET session).
+    const allFindings = await this.prisma.finding.findMany({
+      where: { inspectionPlanId: session.inspectionPlanId, orgId: session.orgId, deletedAt: null },
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+      select: { id: true },
+    });
+    const seqByFinding = new Map(allFindings.map((f, i) => [f.id, i + 1]));
+
+    const findings: DeclarationFinding[] = [];
+    for (const resolution of [...resolutions].sort(
+      (a, b) => (seqByFinding.get(a.finding.id) ?? 0) - (seqByFinding.get(b.finding.id) ?? 0),
+    )) {
+      const classification = getMainClassification(
+        resolution.finding.classificationValues as Record<string, string> | null,
+        classificationModel,
+      );
+      const photos: Array<{ dataUri: string }> = [];
+      for (const photo of resolution.photos) {
+        const dataUri = await this.photoDataUri(photo.photoUrl);
+        if (dataUri) photos.push({ dataUri });
+      }
+      findings.push({
+        seq: seqByFinding.get(resolution.finding.id) ?? 0,
+        shortDescription: resolution.finding.shortDescription,
+        locationDescription: resolution.finding.locationDescription,
+        normReference: resolution.finding.normReference,
+        classificationLabel: classification.name,
+        classificationColor: classification.color,
+        repairDescription: resolution.description ?? '',
+        photos,
+      });
+    }
+
+    let logoDataUri: string | null = null;
+    if (plan.organization.logoUrl) {
+      logoDataUri = await this.photoDataUri(plan.organization.logoUrl);
+    }
+
+    const address = [
+      [plan.addressStreet, plan.addressHouseNumber].filter(Boolean).join(' '),
+      [plan.addressPostalCode, plan.addressCity].filter(Boolean).join(' '),
+    ]
+      .filter(Boolean)
+      .join(', ');
+
+    return renderDeclarationHtml({
+      org: {
+        name: plan.organization.name,
+        logoDataUri,
+        primaryColor: plan.organization.primaryColor || '#1E40AF',
+      },
+      plan: {
+        referenceNumber: plan.referenceNumber,
+        projectName: plan.projectName,
+        address,
+        plannedDate: this.formatDate(plan.plannedDate),
+      },
+      filler: {
+        contactName: session.contactName ?? '',
+        companyName: session.companyName,
+        email: session.email,
+      },
+      findings,
+      signature: { imageDataUri: null, signedAt: null, ipAddress: null },
+      generatedAt: this.formatDateTime(new Date()),
+    });
+  }
+
+  /**
+   * Ondertekenen (PRD §14.6 sign): handtekening op de HERSTELLER-signature,
+   * document → SIGNED, PDF renderen + opslaan, sessie → COMPLETED. Daarna
+   * fire-and-forget de HERSTEL_AFGEROND-notificatie + bevestigings-e-mails.
+   */
+  async sign(session: RepairSession, dto: SignRepairDto, ip?: string) {
+    this.assertActive(session);
+    if (!session.generatedDocumentId) {
+      throw new BadRequestException('Rond eerst het overzicht af voordat u ondertekent');
+    }
+
+    const document = await this.prisma.generatedDocument.findFirst({
+      where: {
+        id: session.generatedDocumentId,
+        orgId: session.orgId,
+        documentType: DocumentType.HERSTELVERKLARING,
+      },
+      include: { signatures: true },
+    });
+    if (!document) throw new NotFoundException('Herstelverklaring niet gevonden');
+    if (document.status === GeneratedDocumentStatus.SIGNED) {
+      throw new BadRequestException('Deze herstelverklaring is al ondertekend');
+    }
+    const signature = document.signatures.find(
+      (s) => s.signerRoleCode === SIGNER_ROLE_HERSTELLER && s.status === SignatureStatus.PENDING,
+    );
+    if (!signature) throw new BadRequestException('Geen openstaande handtekening gevonden');
+
+    const signedAt = new Date();
+    const finalHtml = injectSignatureIntoDeclarationHtml(document.htmlContent, {
+      imageDataUri: dto.signatureImage,
+      signedAtLabel: this.formatDateTime(signedAt),
+      ipAddress: ip ?? null,
+    });
+
+    await this.prisma.documentSignature.update({
+      where: { id: signature.id },
+      data: {
+        signatureImage: dto.signatureImage,
+        signerName: session.contactName ?? signature.signerName,
+        signerEmail: session.email ?? signature.signerEmail,
+        signedAt,
+        signedIpAddress: ip ?? null,
+        status: SignatureStatus.SIGNED,
+      },
+    });
+
+    // PDF renderen en opslaan (patroon uit generated-documents.exportToPdf).
+    const pdfBuffer = await this.pdf.renderPdf(finalHtml, {});
+    const pdfKey = `${session.orgId}/documents/${document.id}.pdf`;
+    await this.storage.upload(pdfKey, pdfBuffer, 'application/pdf');
+
+    await this.prisma.generatedDocument.update({
+      where: { id: document.id },
+      data: {
+        htmlContent: finalHtml,
+        status: GeneratedDocumentStatus.SIGNED,
+        pdfUrl: pdfKey,
+      },
+    });
+
+    const completedSession = await this.prisma.repairSession.update({
+      where: { id: session.id },
+      data: { status: RepairSessionStatus.COMPLETED, completedAt: signedAt },
+    });
+
+    const filename = `herstelverklaring-${(completedSession.contactName ?? 'extern').replace(/[^a-zA-Z0-9-]+/g, '-').toLowerCase()}.pdf`;
+    this.events
+      .onDeclarationSigned(completedSession, { filename, content: pdfBuffer })
+      .catch((err) => this.logger.error('Dispatch na ondertekening mislukt', err));
+
+    return {
+      documentId: document.id,
+      status: GeneratedDocumentStatus.SIGNED,
+      signedAt,
+      pdfDownloadUrl: '/api/v1/client/repair/declaration/pdf',
+    };
+  }
+
+  /** PDF-stream van de (ondertekende) herstelverklaring van deze sessie. */
+  async getDeclarationPdf(session: RepairSession): Promise<{ buffer: Buffer; filename: string }> {
+    if (!session.generatedDocumentId) {
+      throw new NotFoundException('Geen herstelverklaring voor deze sessie');
+    }
+    const document = await this.prisma.generatedDocument.findFirst({
+      where: { id: session.generatedDocumentId, orgId: session.orgId },
+      select: { pdfUrl: true },
+    });
+    if (!document?.pdfUrl) {
+      throw new NotFoundException('De herstelverklaring is nog niet ondertekend');
+    }
+    const buffer = await this.storage.download(document.pdfUrl);
+    return { buffer, filename: 'herstelverklaring.pdf' };
   }
 }

@@ -211,6 +211,13 @@ export const AUDITED_ENTITIES: readonly AuditedEntity[] = [
   // het afvinken/afwijzen van items (checkedBy) is wél een menselijke handeling.
   { model: 'AiReviewItem', table: 'imp_ai_review_items', displayFields: ['title'] },
 
+  // Online herstel (PRD-14). NB: client-/anonieme mutaties lopen buiten de
+  // staf-audit-context (geen userId) en worden dus niet geaudit — alleen
+  // staf-handelingen op deze modellen. Traceerbaarheid van anonieme sessies zit
+  // in de records zelf (createdIpAddress, repairSessionId).
+  { model: 'RepairSession', table: 'imp_repair_sessions', displayFields: ['contactName'] },
+  { model: 'FindingResolution', table: 'imp_finding_resolutions', displayFields: ['description'] },
+
   // Beschikbaarheid inspecteurs (PRD-12) — templateslots worden niet los geaudit
   // (ze horen bij hun template en worden integraal vervangen).
   {

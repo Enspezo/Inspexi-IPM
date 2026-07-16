@@ -141,6 +141,9 @@ enum NotificationType {
   BESCHIKBAARHEID_GEWIJZIGD_DOOR_INSPECTEUR
   BESCHIKBAARHEID_GEWIJZIGD_DOOR_MANAGER
   AI_REVIEW_GEREED
+  HERSTEL_AFGEROND
+  HERSTEL_CONFLICT
+  HERINSPECTIE_VOORSTEL
 }
 
 enum AuditAction {
@@ -3650,7 +3653,8 @@ model DocumentSection {
 model GeneratedDocument {
   id                 String       @id @default(uuid()) @db.Uuid
   orgId              String       @map("org_id") @db.Uuid
-  documentTemplateId String       @map("document_template_id") @db.Uuid
+  // PRD-14: nullable — de herstelverklaring is een code-based template zonder DocumentTemplate-rij
+  documentTemplateId String?      @map("document_template_id") @db.Uuid
   inspectionPlanId   String       @map("inspection_plan_id") @db.Uuid
   documentType       DocumentType @map("document_type")
 
@@ -3666,11 +3670,12 @@ model GeneratedDocument {
   wordUrl String? @map("word_url")
 
   generatedAt DateTime  @default(now()) @map("generated_at")
-  generatedBy String    @map("generated_by") @db.Uuid
+  // PRD-14: nullable — een via online herstel gegenereerde verklaring heeft geen staf-gebruiker
+  generatedBy String?   @map("generated_by") @db.Uuid
   finalizedAt DateTime? @map("finalized_at")
 
   organization     Organization        @relation(fields: [orgId], references: [id])
-  documentTemplate DocumentTemplate    @relation(fields: [documentTemplateId], references: [id])
+  documentTemplate DocumentTemplate?   @relation(fields: [documentTemplateId], references: [id])
   inspectionPlan   InspectionPlan      @relation(fields: [inspectionPlanId], references: [id])
   signatures       DocumentSignature[]
   aiReviewRuns     AiReviewRun[]

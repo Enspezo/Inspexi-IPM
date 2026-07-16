@@ -38,7 +38,13 @@ import {
 import { ClientRepairService } from './client-repair.service';
 import { RepairSessionGuard } from './repair-session.guard';
 import { CurrentRepairSession } from './current-repair-session.decorator';
-import { RepairLookupDto, RepairResolveDto, StartRepairSessionDto } from './dto';
+import {
+  CompleteRepairDto,
+  RepairLookupDto,
+  RepairResolveDto,
+  SignRepairDto,
+  StartRepairSessionDto,
+} from './dto';
 
 const photoFileFilter = (
   _req: unknown,
@@ -137,6 +143,47 @@ export class ClientRepairController {
   ): Promise<StreamableFile> {
     const { buffer, mimeType } = await this.service.getPhoto(session, id);
     res.set({ 'Content-Type': mimeType, 'Cache-Control': 'private, max-age=86400' });
+    return new StreamableFile(buffer);
+  }
+
+  @Post('complete')
+  @UseGuards(RepairSessionGuard)
+  @RequiresFeature('ONLINE_HERSTEL')
+  @Throttle({ default: { limit: 20, ttl: 60000 } })
+  @ApiOperation({ summary: 'Afronden: selectie valideren + concept-herstelverklaring genereren' })
+  async complete(
+    @Body() dto: CompleteRepairDto,
+    @CurrentRepairSession() session: RepairSession,
+  ) {
+    return { success: true, data: await this.service.complete(session, dto) };
+  }
+
+  @Post('sign')
+  @UseGuards(RepairSessionGuard)
+  @RequiresFeature('ONLINE_HERSTEL')
+  @Throttle({ default: { limit: 20, ttl: 60000 } })
+  @ApiOperation({ summary: 'Herstelverklaring digitaal ondertekenen (rol HERSTELLER)' })
+  async sign(
+    @Body() dto: SignRepairDto,
+    @CurrentRepairSession() session: RepairSession,
+    @Ip() ip: string,
+  ) {
+    return { success: true, data: await this.service.sign(session, dto, ip) };
+  }
+
+  @Get('declaration/pdf')
+  @UseGuards(RepairSessionGuard)
+  @RequiresFeature('ONLINE_HERSTEL')
+  @ApiOperation({ summary: 'PDF-download van de ondertekende herstelverklaring van deze sessie' })
+  async declarationPdf(
+    @CurrentRepairSession() session: RepairSession,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<StreamableFile> {
+    const { buffer, filename } = await this.service.getDeclarationPdf(session);
+    res.set({
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `attachment; filename="${filename}"`,
+    });
     return new StreamableFile(buffer);
   }
 }

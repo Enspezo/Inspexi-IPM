@@ -63,6 +63,7 @@ const FALLBACK_FIELD_MODEL: Readonly<Record<string, string>> = {
   editedBy: 'User',
   generatedBy: 'User',
   handledBy: 'User',
+  verifiedBy: 'User', // FindingResolution.verifiedBy (PRD-14): bare uuid zonder Prisma-relatie
   // NB: OrganizationFeature.updatedById heeft sinds de FK-migratie een echte
   // Prisma-relatie en wordt dus al door FK_TARGETS (DMMF) afgehandeld — geen
   // fallback meer nodig.

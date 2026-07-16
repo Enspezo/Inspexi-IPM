@@ -241,7 +241,9 @@ export class GeneratedDocumentsService {
     return `/api/v1/generated-documents/${docId}/download?format=${format}`;
   }
 
-  private async pdfOptionsFor(documentTemplateId: string): Promise<PdfOptions> {
+  private async pdfOptionsFor(documentTemplateId: string | null): Promise<PdfOptions> {
+    // PRD-14: code-based documenten (herstelverklaring) hebben geen DocumentTemplate → defaults.
+    if (!documentTemplateId) return {};
     const t = await this.prisma.documentTemplate.findUnique({ where: { id: documentTemplateId } });
     if (!t) return {};
     const format = t.pageSize === 'A3' || t.pageSize === 'Letter' ? t.pageSize : 'A4';

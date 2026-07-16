@@ -1,5 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { ArrayNotEmpty, IsArray, IsNotEmpty, IsOptional, IsString, IsUUID, MaxLength } from 'class-validator';
+import { ArrayNotEmpty, IsArray, IsEmail, IsNotEmpty, IsOptional, IsString, IsUUID, MaxLength } from 'class-validator';
+import { IsSafeDataImage } from '@/common';
 
 /** Anonieme toegang: rapportnummer + postcode (PRD-14 §14.6). */
 export class RepairLookupDto {
@@ -54,7 +55,7 @@ export class CompleteRepairDto {
 
   @ApiPropertyOptional({ description: 'E-mailadres (verplicht bij anonieme sessies)' })
   @IsOptional()
-  @IsString()
+  @IsEmail({}, { message: 'Ongeldig e-mailadres' })
   @MaxLength(320)
   email?: string;
 }
@@ -64,5 +65,6 @@ export class SignRepairDto {
   @ApiProperty({ description: 'Handtekening als data-URL (base64 PNG)' })
   @IsString({ message: 'Handtekening is verplicht' })
   @IsNotEmpty({ message: 'Handtekening is verplicht' })
+  @IsSafeDataImage()
   signatureImage!: string;
 }

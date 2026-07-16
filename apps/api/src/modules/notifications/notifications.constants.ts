@@ -95,6 +95,10 @@ export const NOTIFICATION_MODEL_TYPES: Record<
     NotificationType.INSPECTIEPLAN_GOEDGEKEURD,
     NotificationType.INSPECTIEPLAN_AFGEKEURD,
     NotificationType.AI_REVIEW_GEREED,
+    // Online herstel (PRD-14)
+    NotificationType.HERSTEL_AFGEROND,
+    NotificationType.HERSTEL_CONFLICT,
+    NotificationType.HERINSPECTIE_VOORSTEL,
   ],
   MEETMIDDELEN: [
     NotificationType.MEETMIDDEL_KALIBRATIE_BINNENKORT,

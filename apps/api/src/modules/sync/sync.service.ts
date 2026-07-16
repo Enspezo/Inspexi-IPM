@@ -484,8 +484,10 @@ export class SyncService {
       // dat voorkomt ook een dubbele nodeNumber-toekenning voor assetNodes.
       const dup = await model.findFirst({ where: { id, ...orgScope(user) } });
       if (dup) {
+        await this.assertPlanReviewGate(key, fields, dup, orgId);
         return this.applyUpdate(cfg, model, id, ref, data, fields, childRows, dup, user, deviceId);
       }
+      await this.assertPlanReviewGate(key, fields, null, orgId);
 
       const createData: Record<string, unknown> = { ...fields, id, orgId };
       // createdBy is server-owned: altijd de pushende gebruiker, nooit de client-waarde.
@@ -526,7 +528,36 @@ export class SyncService {
     // update
     const existing = await model.findFirst({ where: { id, ...orgScope(user) } });
     if (!existing) throw new BadRequestException('Record niet gevonden');
+    await this.assertPlanReviewGate(key, fields, existing, orgId);
     return this.applyUpdate(cfg, model, id, ref, data, fields, childRows, existing, user, deviceId);
+  }
+
+  /**
+   * Vier-ogen-gate (PRD-13 §13.7), gespiegeld uit inspection-plans.service.update():
+   * ook via de /sync-push mag een plan niet naar completed/approved zonder
+   * menselijke review zolang de org-toggle aan staat. reviewedAt/approvedAt zijn
+   * bovendien geen client-velden (zie sync-mapper), dus de servertoestand is
+   * hier leidend. De org-query draait alleen op deze (zeldzame) transitie.
+   */
+  private async assertPlanReviewGate(
+    key: SyncEntityKey,
+    fields: Record<string, unknown>,
+    existing: Record<string, unknown> | null,
+    orgId: string,
+  ): Promise<void> {
+    if (key !== 'inspectionPlans') return;
+    const status = fields.statusCode;
+    if (status !== 'completed' && status !== 'approved') return;
+    if (existing?.reviewedAt) return;
+    const org = await this.prisma.organization.findUnique({
+      where: { id: orgId },
+      select: { inspectionReviewEnabled: true },
+    });
+    if (org?.inspectionReviewEnabled) {
+      throw new BadRequestException(
+        'Dit plan moet eerst beoordeeld worden (vier-ogen-principe)',
+      );
+    }
   }
 
   /**

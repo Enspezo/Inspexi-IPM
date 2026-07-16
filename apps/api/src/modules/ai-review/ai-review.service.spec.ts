@@ -10,6 +10,7 @@ import {
   AiReviewItemStatus,
   AiReviewRunStatus,
   NotificationType,
+  Prisma,
   Role,
   User,
 } from '@prisma/client';
@@ -124,12 +125,53 @@ describe('AiReviewService', () => {
       expect(prisma.aiReviewRun.create).not.toHaveBeenCalled();
     });
 
-    it('gooit 409 wanneer er al een PENDING-run voor het plan draait', async () => {
-      prisma.aiReviewRun.findFirst.mockResolvedValue({ id: 'lopend' });
+    it('gooit 409 wanneer er al een (verse) PENDING-run voor het plan draait', async () => {
+      prisma.aiReviewRun.findFirst.mockResolvedValue({
+        id: 'lopend',
+        startedAt: new Date(),
+        createdAt: new Date(),
+      });
       await expect(service.startRun('plan1', user)).rejects.toThrow(
         new ConflictException('Er draait al een AI-analyse voor dit plan'),
       );
       expect(prisma.aiReviewRun.create).not.toHaveBeenCalled();
+      expect(prisma.aiReviewRun.update).not.toHaveBeenCalled();
+    });
+
+    it('boekt een verweesde PENDING-run (>10 min) als FAILED af en staat een nieuwe start toe', async () => {
+      const executeSpy = jest.spyOn(service, 'executeRun').mockResolvedValue(undefined);
+      const stale = new Date(Date.now() - 11 * 60_000);
+      prisma.aiReviewRun.findFirst.mockResolvedValue({
+        id: 'wees',
+        startedAt: stale,
+        createdAt: stale,
+      });
+
+      const run = await service.startRun('plan1', user);
+
+      expect(prisma.aiReviewRun.update).toHaveBeenCalledWith({
+        where: { id: 'wees' },
+        data: expect.objectContaining({
+          status: AiReviewRunStatus.FAILED,
+          errorMessage: expect.stringContaining('verlopen'),
+        }),
+      });
+      expect(run).toMatchObject({ id: 'run1', status: AiReviewRunStatus.PENDING });
+      executeSpy.mockRestore();
+    });
+
+    it('vertaalt een unique-race op de PENDING-index (P2002) naar een 409', async () => {
+      // TOCTOU: twee gelijktijdige starts — de verliezer botst op de partial
+      // unique index imp_ai_review_runs_pending_plan_key.
+      prisma.aiReviewRun.create.mockRejectedValue(
+        new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+          code: 'P2002',
+          clientVersion: 'test',
+        }),
+      );
+      await expect(service.startRun('plan1', user)).rejects.toThrow(
+        new ConflictException('Er draait al een AI-analyse voor dit plan'),
+      );
     });
   });
 

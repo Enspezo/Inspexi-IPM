@@ -19,6 +19,7 @@ describe('SyncService', () => {
   });
 
   const mockPrisma = {
+    organization: delegate(),
     inspectionPlan: delegate(),
     // Unified asset tree: de 'assetNodes' sync-entiteit gebruikt de assetNode-delegate.
     assetNode: delegate(),
@@ -601,6 +602,102 @@ describe('SyncService', () => {
         expect.objectContaining({ where: { id: 'q-open' } }),
       );
       expect(result.conflicts).toHaveLength(1);
+    });
+  });
+
+  // ── PUSH: vier-ogen-gate (PRD-13) ─────────────────────
+  // Spiegel van de gate in inspection-plans.service.update(): ook via de
+  // sync-push mag een plan niet naar completed/approved zonder review.
+  describe('push — four-eyes gate on inspection plans', () => {
+    const planUpdate = (statusCode: string) =>
+      ({
+        deviceId: 'dev-1',
+        changes: {
+          inspectionPlans: [
+            { operation: 'update', data: { id: 'p1', statusCode, syncedAt: '2025-01-01T00:00:00Z' } },
+          ],
+        },
+      }) as any;
+
+    beforeEach(() => {
+      mockPrisma.inspectionPlan.findFirst.mockResolvedValue({
+        id: 'p1', orgId: 'org-1', reviewedAt: null, updatedAt: new Date('2020-01-01'),
+      });
+      mockPrisma.inspectionPlan.update.mockResolvedValue({ id: 'p1' });
+    });
+
+    it('rejects completed without review while the org toggle is on', async () => {
+      mockPrisma.organization.findUnique.mockResolvedValue({ inspectionReviewEnabled: true });
+
+      const result = await service.push(user, planUpdate('completed'));
+
+      expect(mockPrisma.inspectionPlan.update).not.toHaveBeenCalled();
+      expect(result.errors).toHaveLength(1);
+      expect(result.errors[0].error).toContain('vier-ogen');
+    });
+
+    it('rejects approved without review as well (create-adoption path included)', async () => {
+      mockPrisma.organization.findUnique.mockResolvedValue({ inspectionReviewEnabled: true });
+
+      const dto = {
+        deviceId: 'dev-1',
+        changes: {
+          inspectionPlans: [
+            { operation: 'create', data: { id: 'p1', statusCode: 'approved' } },
+          ],
+        },
+      } as any;
+      const result = await service.push(user, dto);
+
+      expect(mockPrisma.inspectionPlan.update).not.toHaveBeenCalled();
+      expect(result.errors).toHaveLength(1);
+    });
+
+    it('allows completed when the plan is already reviewed (no org lookup)', async () => {
+      mockPrisma.inspectionPlan.findFirst.mockResolvedValue({
+        id: 'p1', orgId: 'org-1', reviewedAt: new Date('2026-01-01'), updatedAt: new Date('2020-01-01'),
+      });
+
+      const result = await service.push(user, planUpdate('completed'));
+
+      expect(mockPrisma.organization.findUnique).not.toHaveBeenCalled();
+      expect(mockPrisma.inspectionPlan.update).toHaveBeenCalled();
+      expect(result.errors).toHaveLength(0);
+    });
+
+    it('allows completed without review when the org toggle is off', async () => {
+      mockPrisma.organization.findUnique.mockResolvedValue({ inspectionReviewEnabled: false });
+
+      const result = await service.push(user, planUpdate('completed'));
+
+      expect(mockPrisma.inspectionPlan.update).toHaveBeenCalled();
+      expect(result.errors).toHaveLength(0);
+    });
+
+    it('strips client-supplied reviewedAt/approvedAt (server-owned fields)', async () => {
+      const dto = {
+        deviceId: 'dev-1',
+        changes: {
+          inspectionPlans: [
+            {
+              operation: 'update',
+              data: {
+                id: 'p1',
+                projectName: 'Y',
+                reviewedAt: '2026-01-01T00:00:00Z',
+                approvedAt: '2026-01-01T00:00:00Z',
+                syncedAt: '2025-01-01T00:00:00Z',
+              },
+            },
+          ],
+        },
+      } as any;
+      const result = await service.push(user, dto);
+
+      const updateData = mockPrisma.inspectionPlan.update.mock.calls[0][0].data;
+      expect(updateData).not.toHaveProperty('reviewedAt');
+      expect(updateData).not.toHaveProperty('approvedAt');
+      expect(result.errors).toHaveLength(0);
     });
   });
 

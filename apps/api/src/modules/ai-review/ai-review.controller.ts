@@ -43,7 +43,7 @@ export class AiReviewController {
   @RequiresFeature('AI_REVIEW')
   @Roles(...ALL_STAFF)
   @ApiOperation({ summary: 'Laatste AI-review-run (incl. items) van een inspectieplan' })
-  @ApiQuery({ name: 'all', required: false, description: 'true → alle runs (nieuwste eerst)' })
+  @ApiQuery({ name: 'all', required: false, description: 'true → recente runs (max 20, nieuwste eerst)' })
   @ApiResponse({ status: 200, description: 'Laatste run of null; met ?all=true een lijst' })
   @ApiResponse({ status: 404, description: 'Inspectieplan niet gevonden' })
   async getForPlan(

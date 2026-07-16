@@ -38,6 +38,15 @@ import { DEFAULT_REVIEW_BASE_PROMPT } from './default-review-prompt';
 
 const REQUEST_TIMEOUT_MS = 120_000;
 const MAX_OUTPUT_TOKENS = 4096;
+/**
+ * PENDING-runs ouder dan dit gelden als verweesd (executeRun draait in-process;
+ * een API-crash of -herstart mid-run laat de rij anders eeuwig PENDING staan en
+ * elke nieuwe start zou 409 geven). Ruim boven de echte max-runtime
+ * (REQUEST_TIMEOUT_MS × (1 + maxRetries) ≈ 4 min).
+ */
+const STALE_PENDING_MS = 10 * 60_000;
+/** Hoeveel runs `?all=true` maximaal teruggeeft (nieuwste eerst). */
+const MAX_RUNS_LISTED = 20;
 
 const VALID_SEVERITIES = new Set<string>(Object.values(AiReviewItemSeverity));
 
@@ -116,14 +125,14 @@ export class AiReviewService {
     return { available: this.anthropic.isAvailable(), model: this.model };
   }
 
-  /** Laatste run (incl. items) voor het review-blok; `all=true` → alle runs. */
+  /** Laatste run (incl. items) voor het review-blok; `all=true` → recente runs (max 20). */
   async getForPlan(planId: string, user: User, all = false) {
     await this.assertPlan(planId, user);
     const runs = await this.prisma.aiReviewRun.findMany({
       where: { inspectionPlanId: planId, ...orgScope(user) },
       include: { items: { orderBy: { sortOrder: 'asc' } } },
       orderBy: { createdAt: 'desc' },
-      ...(all ? {} : { take: 1 }),
+      take: all ? MAX_RUNS_LISTED : 1,
     });
     return all ? runs : (runs[0] ?? null);
   }
@@ -160,25 +169,51 @@ export class AiReviewService {
       throw new ServiceUnavailableException('AI-dienst is niet geconfigureerd (ANTHROPIC_API_KEY)');
     }
 
-    // Max één lopende analyse per plan.
+    // Max één lopende analyse per plan. Een verweesde PENDING-run (crash/herstart
+    // mid-run) mag het plan niet permanent op slot zetten: ouder dan
+    // STALE_PENDING_MS → als FAILED afboeken en een nieuwe start toestaan.
     const pending = await this.prisma.aiReviewRun.findFirst({
       where: { inspectionPlanId: plan.id, status: AiReviewRunStatus.PENDING },
-      select: { id: true },
+      select: { id: true, startedAt: true, createdAt: true },
     });
     if (pending) {
-      throw new ConflictException('Er draait al een AI-analyse voor dit plan');
+      const startedAt = (pending.startedAt ?? pending.createdAt).getTime();
+      if (Date.now() - startedAt < STALE_PENDING_MS) {
+        throw new ConflictException('Er draait al een AI-analyse voor dit plan');
+      }
+      await this.prisma.aiReviewRun.update({
+        where: { id: pending.id },
+        data: {
+          status: AiReviewRunStatus.FAILED,
+          errorMessage:
+            'De AI-analyse is verlopen (mogelijk onderbroken door een herstart van de server)',
+          completedAt: new Date(),
+        },
+      });
+      this.logger.warn(`Verweesde PENDING AI-run ${pending.id} als FAILED afgeboekt`);
     }
 
-    const run = await this.prisma.aiReviewRun.create({
-      data: {
-        orgId: plan.orgId,
-        inspectionPlanId: plan.id,
-        status: AiReviewRunStatus.PENDING,
-        triggeredBy: user?.id ?? null,
-        model: this.model,
-        startedAt: new Date(),
-      },
-    });
+    let run: AiReviewRun;
+    try {
+      run = await this.prisma.aiReviewRun.create({
+        data: {
+          orgId: plan.orgId,
+          inspectionPlanId: plan.id,
+          status: AiReviewRunStatus.PENDING,
+          triggeredBy: user?.id ?? null,
+          model: this.model,
+          startedAt: new Date(),
+        },
+      });
+    } catch (e) {
+      // TOCTOU: twee gelijktijdige starts kunnen beide de findFirst hierboven
+      // passeren; de partial unique index (imp_ai_review_runs_pending_plan_key,
+      // WHERE status='PENDING') vangt de verliezer → nette 409 i.p.v. dubbele run.
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
+        throw new ConflictException('Er draait al een AI-analyse voor dit plan');
+      }
+      throw e;
+    }
 
     // Analyse buiten de request-cyclus; fouten worden binnen executeRun als
     // FAILED weggeschreven en nooit richting de caller gegooid.

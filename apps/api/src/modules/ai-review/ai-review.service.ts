@@ -22,6 +22,7 @@ import {
   AiReviewRunStatus,
   AiReviewItemStatus,
   AiReviewItemSeverity,
+  NotificationType,
   Prisma,
 } from '@prisma/client';
 import { PrismaService } from '@/prisma';
@@ -31,6 +32,7 @@ import {
   DEFAULT_ANTHROPIC_MODEL,
 } from '@/common/services/anthropic/anthropic-client.service';
 import { EntitlementsService } from '@/modules/entitlements/entitlements.service';
+import { NotificationsService } from '@/modules/notifications/notifications.service';
 import { AiReviewInputBuilder, AiReviewInput } from './ai-review-input.builder';
 import { DEFAULT_REVIEW_BASE_PROMPT } from './default-review-prompt';
 
@@ -104,6 +106,7 @@ export class AiReviewService {
     private readonly anthropic: AnthropicClientService,
     private readonly entitlements: EntitlementsService,
     private readonly inputBuilder: AiReviewInputBuilder,
+    private readonly notifications: NotificationsService,
   ) {
     this.model = this.config.get<string>('ANTHROPIC_REVIEW_MODEL', DEFAULT_ANTHROPIC_MODEL);
   }
@@ -180,8 +183,9 @@ export class AiReviewService {
     // Analyse buiten de request-cyclus; fouten worden binnen executeRun als
     // FAILED weggeschreven en nooit richting de caller gegooid.
     setImmediate(() => {
-      this.executeRun(run.id, plan.id, plan.orgId, org.aiReviewInstructions).catch((e) =>
-        this.logger.error(`AI-review-run ${run.id} onverwacht mislukt: ${e?.message}`, e?.stack),
+      this.executeRun(run.id, plan.id, plan.orgId, org.aiReviewInstructions, run.triggeredBy).catch(
+        (e) =>
+          this.logger.error(`AI-review-run ${run.id} onverwacht mislukt: ${e?.message}`, e?.stack),
       );
     });
 
@@ -213,6 +217,7 @@ export class AiReviewService {
     planId: string,
     orgId: string,
     orgInstructions: string | null,
+    triggeredBy: string | null = null,
   ): Promise<void> {
     try {
       const input = await this.inputBuilder.build(planId, orgId);
@@ -257,6 +262,8 @@ export class AiReviewService {
           },
         }),
       ]);
+
+      await this.notifyReviewer(planId, orgId, triggeredBy);
     } catch (e: any) {
       this.logger.error(`AI-review-run ${runId} mislukt: ${e?.message}`, e?.stack);
       await this.prisma.aiReviewRun
@@ -271,6 +278,38 @@ export class AiReviewService {
         .catch((updateError) =>
           this.logger.error(`FAILED-status wegschrijven mislukt voor run ${runId}: ${updateError?.message}`),
         );
+    }
+  }
+
+  /**
+   * Notificatie na een COMPLETED run (PRD §13.8): naar plan.reviewerId, alleen
+   * indien gezet en niet degene die de run zelf startte. Zelfde dispatch-patroon
+   * als de inspection-plans notify()-helper; geen notificatie bij FAILED
+   * (bewust — zichtbaar in de UI). Gooit nooit: een notificatiefout mag een al
+   * COMPLETED weggeschreven run niet alsnog FAILED markeren.
+   */
+  private async notifyReviewer(
+    planId: string,
+    orgId: string,
+    triggeredBy: string | null,
+  ): Promise<void> {
+    try {
+      const plan = await this.prisma.inspectionPlan.findFirst({
+        where: { id: planId },
+        select: { reviewerId: true, projectName: true },
+      });
+      if (!plan?.reviewerId || plan.reviewerId === triggeredBy) return;
+      this.notifications.dispatch({
+        type: NotificationType.AI_REVIEW_GEREED,
+        orgId,
+        recipientUserIds: [plan.reviewerId],
+        title: 'AI-controle afgerond',
+        body: `AI-controle afgerond voor inspectie "${plan.projectName}".`,
+        entityType: 'inspectionPlan',
+        entityId: planId,
+      });
+    } catch (e: any) {
+      this.logger.error(`AI-review-notificatie mislukt voor plan ${planId}: ${e?.message}`);
     }
   }
 

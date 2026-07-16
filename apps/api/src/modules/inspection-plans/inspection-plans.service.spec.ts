@@ -13,9 +13,11 @@ import {
   STATUS_PENDING_REVIEW,
   STATUS_REVIEWED,
   STATUS_APPROVED,
+  STATUS_COMPLETED,
 } from '@/common';
 import { LookupService } from '../lookups/lookup.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { AiReviewService } from '../ai-review/ai-review.service';
 import { AssetNodesService } from '../asset-nodes/asset-nodes.service';
 import { EntitlementsService } from '@/modules/entitlements/entitlements.service';
 
@@ -30,6 +32,7 @@ describe('InspectionPlansService', () => {
       update: jest.fn(),
       count: jest.fn(),
     },
+    organization: { findUnique: jest.fn() },
     contact: { findUnique: jest.fn() },
     project: { findUnique: jest.fn() },
     location: { findUnique: jest.fn() },
@@ -52,6 +55,10 @@ describe('InspectionPlansService', () => {
 
   const mockNotificationsService = {
     dispatch: jest.fn(),
+  };
+
+  const mockAiReviewService = {
+    startRun: jest.fn(),
   };
 
   const mockAssetNodesService = {
@@ -86,6 +93,7 @@ describe('InspectionPlansService', () => {
         { provide: PrismaService, useValue: mockPrismaService },
         { provide: LookupService, useValue: mockLookupService },
         { provide: NotificationsService, useValue: mockNotificationsService },
+        { provide: AiReviewService, useValue: mockAiReviewService },
         { provide: AssetNodesService, useValue: mockAssetNodesService },
         {
           provide: EntitlementsService,
@@ -113,6 +121,10 @@ describe('InspectionPlansService', () => {
     mockPrismaService.normTypeDefinition.findUnique.mockResolvedValue({
       isActive: true,
     });
+    mockPrismaService.organization.findUnique.mockResolvedValue({
+      inspectionReviewEnabled: true,
+    });
+    mockAiReviewService.startRun.mockResolvedValue({ id: 'run-1' });
   });
 
   describe('findAll', () => {
@@ -376,6 +388,75 @@ describe('InspectionPlansService', () => {
     });
   });
 
+  describe('update — vier-ogen-gate (PRD-13)', () => {
+    const basePlan = {
+      id: 'plan-1',
+      orgId: 'org-1',
+      projectName: 'Test',
+      assignedTo: null,
+      reviewedAt: null,
+    };
+
+    beforeEach(() => {
+      mockPrismaService.inspectionPlan.findFirst.mockResolvedValue(basePlan);
+      mockPrismaService.inspectionPlan.update.mockResolvedValue({
+        ...basePlan,
+        statusCode: STATUS_COMPLETED,
+      });
+    });
+
+    it('weigert completed zonder review wanneer de org-toggle aan staat', async () => {
+      await expect(
+        service.update('plan-1', { statusCode: STATUS_COMPLETED } as any, mockUser),
+      ).rejects.toThrow('Dit plan moet eerst beoordeeld worden (vier-ogen-principe)');
+      expect(mockPrismaService.inspectionPlan.update).not.toHaveBeenCalled();
+    });
+
+    it('weigert ook approved zonder review', async () => {
+      await expect(
+        service.update('plan-1', { statusCode: STATUS_APPROVED } as any, mockUser),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('staat completed toe wanneer de org-toggle uit staat', async () => {
+      mockPrismaService.organization.findUnique.mockResolvedValue({
+        inspectionReviewEnabled: false,
+      });
+
+      await service.update('plan-1', { statusCode: STATUS_COMPLETED } as any, mockUser);
+
+      expect(mockPrismaService.inspectionPlan.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ statusCode: STATUS_COMPLETED }),
+        }),
+      );
+    });
+
+    it('staat completed toe wanneer het plan al beoordeeld is (reviewedAt gezet)', async () => {
+      mockPrismaService.inspectionPlan.findFirst.mockResolvedValue({
+        ...basePlan,
+        reviewedAt: new Date('2026-07-01'),
+      });
+
+      await service.update('plan-1', { statusCode: STATUS_COMPLETED } as any, mockUser);
+
+      // reviewedAt gevuld → gate slaat de org-lookup helemaal over.
+      expect(mockPrismaService.organization.findUnique).not.toHaveBeenCalled();
+      expect(mockPrismaService.inspectionPlan.update).toHaveBeenCalled();
+    });
+
+    it('checkt de org-vlag niet voor andere statustransities', async () => {
+      mockPrismaService.inspectionPlan.update.mockResolvedValue({
+        ...basePlan,
+        statusCode: STATUS_IN_PROGRESS,
+      });
+
+      await service.update('plan-1', { statusCode: STATUS_IN_PROGRESS } as any, mockUser);
+
+      expect(mockPrismaService.organization.findUnique).not.toHaveBeenCalled();
+    });
+  });
+
   describe('submit', () => {
     it('should throw BadRequest when not in_progress', async () => {
       mockPrismaService.inspectionPlan.findFirst.mockResolvedValue({
@@ -420,6 +501,66 @@ describe('InspectionPlansService', () => {
           recipientUserIds: ['user-2'],
         }),
       );
+    });
+
+    describe('AI-review-hook (PRD-13, fire-and-forget)', () => {
+      const inProgressPlan = {
+        id: 'plan-1',
+        orgId: 'org-1',
+        projectName: 'Test',
+        statusCode: STATUS_IN_PROGRESS,
+        reviewerId: 'user-2',
+        internalNotes: null,
+      };
+
+      beforeEach(() => {
+        mockPrismaService.inspectionPlan.findFirst.mockResolvedValue(inProgressPlan);
+        mockPrismaService.inspectionPlan.update.mockResolvedValue({
+          ...inProgressPlan,
+          statusCode: STATUS_PENDING_REVIEW,
+        });
+      });
+
+      it('start een AI-run na een geslaagde submit (guards zitten in startRun)', async () => {
+        await service.submit('plan-1', {} as any, mockUser);
+
+        expect(mockAiReviewService.startRun).toHaveBeenCalledWith('plan-1', mockUser);
+      });
+
+      it('laat de submit slagen wanneer startRun weigert (entitlement/toggle/key uit → HttpException)', async () => {
+        // Representatief voor alle guard-weigeringen in startRun: 403 (geen
+        // AI_REVIEW-entitlement), 400 (org-toggle uit), 503 (geen API-key), 409.
+        mockAiReviewService.startRun.mockRejectedValue(
+          new ForbiddenException('AI-rapportcontrole zit niet in uw abonnement'),
+        );
+
+        const result = await service.submit('plan-1', {} as any, mockUser);
+
+        expect(result.statusCode).toBe(STATUS_PENDING_REVIEW);
+        expect(mockNotificationsService.dispatch).toHaveBeenCalledWith(
+          expect.objectContaining({ type: NotificationType.INSPECTIEPLAN_TER_REVIEW }),
+        );
+      });
+
+      it('laat de submit slagen bij een onverwachte fout uit startRun', async () => {
+        mockAiReviewService.startRun.mockRejectedValue(new Error('db weg'));
+
+        await expect(service.submit('plan-1', {} as any, mockUser)).resolves.toMatchObject({
+          statusCode: STATUS_PENDING_REVIEW,
+        });
+      });
+
+      it('start GEEN run wanneer de submit zelf faalt (verkeerde status)', async () => {
+        mockPrismaService.inspectionPlan.findFirst.mockResolvedValue({
+          ...inProgressPlan,
+          statusCode: STATUS_DRAFT,
+        });
+
+        await expect(service.submit('plan-1', {} as any, mockUser)).rejects.toThrow(
+          BadRequestException,
+        );
+        expect(mockAiReviewService.startRun).not.toHaveBeenCalled();
+      });
     });
   });
 

@@ -94,6 +94,7 @@ export const NOTIFICATION_MODEL_TYPES: Record<
     NotificationType.INSPECTIEPLAN_TER_REVIEW,
     NotificationType.INSPECTIEPLAN_GOEDGEKEURD,
     NotificationType.INSPECTIEPLAN_AFGEKEURD,
+    NotificationType.AI_REVIEW_GEREED,
   ],
   MEETMIDDELEN: [
     NotificationType.MEETMIDDEL_KALIBRATIE_BINNENKORT,

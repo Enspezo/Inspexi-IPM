@@ -6,10 +6,17 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { AiReviewItemStatus, AiReviewRunStatus, Role, User } from '@prisma/client';
+import {
+  AiReviewItemStatus,
+  AiReviewRunStatus,
+  NotificationType,
+  Role,
+  User,
+} from '@prisma/client';
 import { PrismaService } from '@/prisma';
 import { AnthropicClientService } from '@/common/services/anthropic/anthropic-client.service';
 import { EntitlementsService } from '@/modules/entitlements/entitlements.service';
+import { NotificationsService } from '@/modules/notifications/notifications.service';
 import { AiReviewService } from './ai-review.service';
 import { AiReviewInputBuilder, AiReviewInput } from './ai-review-input.builder';
 
@@ -29,6 +36,7 @@ describe('AiReviewService', () => {
   const anthropic = { isAvailable: jest.fn(), createMessage: jest.fn() };
   const entitlements = { assertFeature: jest.fn() };
   const builder = { build: jest.fn() };
+  const notifications = { dispatch: jest.fn() };
 
   const service = new AiReviewService(
     prisma as unknown as PrismaService,
@@ -36,6 +44,7 @@ describe('AiReviewService', () => {
     anthropic as unknown as AnthropicClientService,
     entitlements as unknown as EntitlementsService,
     builder as unknown as AiReviewInputBuilder,
+    notifications as unknown as NotificationsService,
   );
 
   const user = { id: 'u1', orgId: 'org1', roles: [Role.MANAGER] } as User;
@@ -68,7 +77,11 @@ describe('AiReviewService', () => {
       aiReviewInstructions: null,
     });
     prisma.aiReviewRun.findFirst.mockResolvedValue(null);
-    prisma.aiReviewRun.create.mockResolvedValue({ id: 'run1', status: AiReviewRunStatus.PENDING });
+    prisma.aiReviewRun.create.mockResolvedValue({
+      id: 'run1',
+      status: AiReviewRunStatus.PENDING,
+      triggeredBy: 'u1',
+    });
     prisma.aiReviewRun.update.mockResolvedValue({});
     prisma.aiReviewItem.createMany.mockResolvedValue({ count: 0 });
     anthropic.isAvailable.mockReturnValue(true);
@@ -141,7 +154,7 @@ describe('AiReviewService', () => {
       // De analyse draait pas ná de request-cyclus (setImmediate).
       expect(executeSpy).not.toHaveBeenCalled();
       await flushImmediate();
-      expect(executeSpy).toHaveBeenCalledWith('run1', 'plan1', 'org1', null);
+      expect(executeSpy).toHaveBeenCalledWith('run1', 'plan1', 'org1', null, 'u1');
       executeSpy.mockRestore();
     });
   });
@@ -250,6 +263,76 @@ describe('AiReviewService', () => {
         }),
       });
       expect(prisma.aiReviewItem.createMany).not.toHaveBeenCalled();
+    });
+
+    describe('notificatie naar de reviewer (AI_REVIEW_GEREED, PRD §13.8)', () => {
+      const completedResponse = () => toolResponse({ summary: 's', items: [] });
+
+      it('notificeert plan.reviewerId na een COMPLETED run', async () => {
+        anthropic.createMessage.mockResolvedValue(completedResponse());
+        prisma.inspectionPlan.findFirst.mockResolvedValue({
+          reviewerId: 'rev1',
+          projectName: 'Kantoorpand Zuidas',
+        });
+
+        await service.executeRun('run1', 'plan1', 'org1', null, 'u1');
+
+        expect(notifications.dispatch).toHaveBeenCalledWith({
+          type: NotificationType.AI_REVIEW_GEREED,
+          orgId: 'org1',
+          recipientUserIds: ['rev1'],
+          title: 'AI-controle afgerond',
+          body: 'AI-controle afgerond voor inspectie "Kantoorpand Zuidas".',
+          entityType: 'inspectionPlan',
+          entityId: 'plan1',
+        });
+      });
+
+      it('notificeert NIET wanneer de reviewer de run zelf startte', async () => {
+        anthropic.createMessage.mockResolvedValue(completedResponse());
+        prisma.inspectionPlan.findFirst.mockResolvedValue({
+          reviewerId: 'rev1',
+          projectName: 'Test',
+        });
+
+        await service.executeRun('run1', 'plan1', 'org1', null, 'rev1');
+
+        expect(notifications.dispatch).not.toHaveBeenCalled();
+      });
+
+      it('notificeert NIET zonder reviewerId op het plan', async () => {
+        anthropic.createMessage.mockResolvedValue(completedResponse());
+        prisma.inspectionPlan.findFirst.mockResolvedValue({
+          reviewerId: null,
+          projectName: 'Test',
+        });
+
+        await service.executeRun('run1', 'plan1', 'org1', null, 'u1');
+
+        expect(notifications.dispatch).not.toHaveBeenCalled();
+      });
+
+      it('notificeert NIET bij een FAILED run', async () => {
+        anthropic.createMessage.mockRejectedValue(new Error('timeout'));
+
+        await service.executeRun('run1', 'plan1', 'org1', null, 'u1');
+
+        expect(notifications.dispatch).not.toHaveBeenCalled();
+      });
+
+      it('laat de run COMPLETED wanneer de notificatie-lookup faalt', async () => {
+        anthropic.createMessage.mockResolvedValue(completedResponse());
+        prisma.inspectionPlan.findFirst.mockRejectedValue(new Error('db weg'));
+
+        await service.executeRun('run1', 'plan1', 'org1', null, 'u1');
+
+        expect(prisma.aiReviewRun.update).toHaveBeenCalledTimes(1);
+        expect(prisma.aiReviewRun.update).toHaveBeenCalledWith(
+          expect.objectContaining({
+            data: expect.objectContaining({ status: AiReviewRunStatus.COMPLETED }),
+          }),
+        );
+      });
     });
 
     it('zet de run op FAILED wanneer de respons geen tool-use bevat', async () => {

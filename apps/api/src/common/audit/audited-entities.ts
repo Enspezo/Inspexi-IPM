@@ -207,6 +207,10 @@ export const AUDITED_ENTITIES: readonly AuditedEntity[] = [
     display: (r) => `Kalibratie #${shortId(r)}`,
   },
 
+  // AI-review (PRD-13) — de run zelf is machine-gegenereerd en niet geaudit;
+  // het afvinken/afwijzen van items (checkedBy) is wél een menselijke handeling.
+  { model: 'AiReviewItem', table: 'imp_ai_review_items', displayFields: ['title'] },
+
   // Beschikbaarheid inspecteurs (PRD-12) — templateslots worden niet los geaudit
   // (ze horen bij hun template en worden integraal vervangen).
   {

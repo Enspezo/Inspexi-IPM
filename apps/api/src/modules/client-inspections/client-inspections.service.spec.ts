@@ -9,7 +9,7 @@ describe('ClientInspectionsService (tenant + ClientAccess scoping)', () => {
 
   const mockPrisma = {
     clientAccess: { findMany: jest.fn() },
-    inspectionClientAccess: { findMany: jest.fn() },
+    inspectionClientAccess: { findMany: jest.fn(), findFirst: jest.fn() },
     inspectionPlan: { findFirst: jest.fn(), findMany: jest.fn() },
     finding: { findMany: jest.fn(), count: jest.fn() },
     assetNode: { findMany: jest.fn() },
@@ -41,6 +41,25 @@ describe('ClientInspectionsService (tenant + ClientAccess scoping)', () => {
     });
     it('geeft de orgId terug wanneer aanwezig', () => {
       expect(service.requireOrg('org-A')).toBe('org-A');
+    });
+  });
+
+  describe('assertSignAccess (SEC-11)', () => {
+    it('staat ondertekenen toe met een canSign-grant', async () => {
+      mockPrisma.inspectionClientAccess.findFirst.mockResolvedValue({ inspectionPlanId: 'plan-1' });
+      await expect(service.assertSignAccess('cu-1', 'org-A', 'plan-1')).resolves.toBeUndefined();
+      expect(mockPrisma.inspectionClientAccess.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ clientUserId: 'cu-1', inspectionPlanId: 'plan-1', canSign: true }),
+        }),
+      );
+    });
+
+    it('weigert ondertekenen zonder canSign-grant (view-only)', async () => {
+      mockPrisma.inspectionClientAccess.findFirst.mockResolvedValue(null);
+      await expect(service.assertSignAccess('cu-1', 'org-A', 'plan-1')).rejects.toThrow(
+        ForbiddenException,
+      );
     });
   });
 

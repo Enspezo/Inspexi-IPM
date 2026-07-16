@@ -84,6 +84,27 @@ export class ClientInspectionsService {
     }
   }
 
+  /**
+   * 403 wanneer de klant geen ONDERTEKEN-recht heeft op dit plan (SEC-11). Signing
+   * vereist een expliciete InspectionClientAccess-grant met canSign=true — het
+   * magic-link-pad zet die altijd, maar een staf-aangemaakte view-only grant
+   * (canSign=false) of louter contact-niveau-toegang mag niet ondertekenen.
+   */
+  async assertSignAccess(clientUserId: string, orgId: string, planId: string): Promise<void> {
+    const grant = await this.prisma.inspectionClientAccess.findFirst({
+      where: {
+        clientUserId,
+        inspectionPlanId: planId,
+        canSign: true,
+        inspectionPlan: { orgId, deletedAt: null },
+      },
+      select: { inspectionPlanId: true },
+    });
+    if (!grant) {
+      throw new ForbiddenException('Geen recht om dit document te ondertekenen');
+    }
+  }
+
   async list(user: CurrentClientUserData, orgId: string | null) {
     const org = this.requireOrg(orgId);
     const { contactIds, planIds } = await this.accessScope(user.id, org);

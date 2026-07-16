@@ -139,8 +139,14 @@ export class GeneratedDocumentsService {
 
   async updateEditedContent(id: string, user: User, editedContent: string) {
     const doc = await this.findScoped(id, user);
-    if (doc.status === GeneratedDocumentStatus.FINALIZED) {
-      throw new ForbiddenException('Gefinaliseerd document kan niet bewerkt worden');
+    // Once (fully) SIGNED the content is locked — editing it would change the
+    // document out from under the collected signatures (SYNC-5). FINALIZED is
+    // likewise immutable.
+    if (
+      doc.status === GeneratedDocumentStatus.SIGNED ||
+      doc.status === GeneratedDocumentStatus.FINALIZED
+    ) {
+      throw new ForbiddenException('Een ondertekend document kan niet meer bewerkt worden');
     }
     return this.prisma.generatedDocument.update({
       where: { id: doc.id },

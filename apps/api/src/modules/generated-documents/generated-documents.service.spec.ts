@@ -181,6 +181,18 @@ describe('GeneratedDocumentsService', () => {
         ForbiddenException,
       );
     });
+
+    it('blocks editing a signed document (SYNC-5)', async () => {
+      mockPrisma.generatedDocument.findUnique.mockResolvedValue({ orgId: 'org-1' });
+      mockPrisma.generatedDocument.findFirst.mockResolvedValue({
+        id: 'gd-1',
+        status: GeneratedDocumentStatus.SIGNED,
+      });
+      await expect(service.updateEditedContent('gd-1', user, '<p>x</p>')).rejects.toThrow(
+        ForbiddenException,
+      );
+      expect(mockPrisma.generatedDocument.update).not.toHaveBeenCalled();
+    });
   });
 
   describe('finalizeDocument', () => {

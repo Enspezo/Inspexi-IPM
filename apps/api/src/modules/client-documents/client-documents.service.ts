@@ -94,6 +94,12 @@ export class ClientDocumentsService {
     ip?: string,
   ) {
     const document = await this.getWithAccessCheck(user, orgId, documentId);
+    // Ondertekenen vereist expliciet canSign-recht, niet alleen inzage (SEC-11).
+    await this.inspections.assertSignAccess(
+      user.id,
+      this.inspections.requireOrg(orgId),
+      document.inspectionPlanId,
+    );
     if (document.status === GeneratedDocumentStatus.FINALIZED) {
       throw new BadRequestException('Gefinaliseerd document kan niet meer ondertekend worden');
     }

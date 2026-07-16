@@ -21,6 +21,7 @@ import { DetailPageLayout } from '@/components/layout/detail-page-layout';
 import { HistorySidebarSection } from '@/components/layout/sidebar-sections';
 import { PageHeader } from '@/components/layout/page-header';
 import { useAuth } from '@/providers/auth-provider';
+import { useTenant } from '@/providers/tenant-provider';
 import { useWindowTabSync } from '@/providers/window-tabs';
 import { useLookups } from '@/lib/lookups';
 import { getErrorMessage } from '@/lib/api-client';
@@ -39,6 +40,7 @@ import { countByType, normalizeTree } from '@/components/asset-tree';
 import { PlanDefaultInstrumentsSection } from '@/pages/meetmiddelen/components/plan-default-instruments-section';
 import { AssetsTab } from './components/assets-tab';
 import { DocumentsTab } from './components/documents-tab';
+import { AiReviewPanel } from './components/ai-review-panel';
 
 // Konva-zware tab apart laden: alleen wanneer de gebruiker hem opent.
 const FloorPlanTab = lazy(() =>
@@ -77,6 +79,7 @@ export default function InspectionDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { orgBranding } = useTenant();
   const { hasFeature } = useFeatures();
   // PRD-12 §Fase E: fase-koppeling alleen bij de PROJECT_FASEN-entitlement.
   const showPhase = hasFeature('PROJECT_FASEN');
@@ -204,8 +207,24 @@ export default function InspectionDetailPage() {
     }
   };
 
-  const awaitingReview = !!plan.submittedAt && !plan.reviewedAt;
-  const canSubmit = userCanWrite && !plan.submittedAt;
+  // Vier-ogen-toggle (PRD-13): met de org-vlag uit vervalt de submit-/review-flow
+  // en kan een schrijver het plan direct afronden. Default (vlag onbekend) = aan.
+  const reviewRequired = orgBranding?.inspectionReviewEnabled !== false;
+  const showAiPanel = hasFeature('AI_REVIEW');
+
+  const awaitingReview = reviewRequired && !!plan.submittedAt && !plan.reviewedAt;
+  const canSubmit = reviewRequired && userCanWrite && !plan.submittedAt;
+  const canComplete =
+    !reviewRequired && userCanWrite && plan.statusCode !== 'completed' && plan.statusCode !== 'approved';
+
+  const handleComplete = async () => {
+    try {
+      await updateMutation.mutateAsync({ id: id!, data: { statusCode: 'completed' } });
+      showToast('Inspectie afgerond', 'success');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
+    }
+  };
 
   const tabs = [
     { key: 'overzicht' as const, label: 'Overzicht' },
@@ -242,6 +261,11 @@ export default function InspectionDetailPage() {
                   Indienen
                 </Button>
               )}
+              {canComplete && (
+                <Button variant="secondary" onClick={handleComplete} isLoading={updateMutation.isPending}>
+                  Afronden
+                </Button>
+              )}
             </div>
           }
         />
@@ -267,6 +291,15 @@ export default function InspectionDetailPage() {
                   </div>
                 </div>
               </Card>
+            )}
+
+            {showAiPanel && (
+              <AiReviewPanel
+                planId={id!}
+                canReview={userCanReview}
+                aiEnabled={orgBranding?.aiReviewEnabled === true}
+                onOpenAssets={() => setActiveTab('assets')}
+              />
             )}
 
             <Card

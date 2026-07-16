@@ -110,6 +110,11 @@ export class OrganizationsController {
         logoUrl: true,
         primaryColor: true,
         chatEnabled: true,
+        // PRD-13: workflow-vlaggen die de portal-UI voor álle stafrollen nodig
+        // heeft (GET /organizations/:id is ORG_ADMIN-only) — zelfde precedent
+        // als chatEnabled, niet gevoelig.
+        inspectionReviewEnabled: true,
+        aiReviewEnabled: true,
       },
     });
     if (!org) {

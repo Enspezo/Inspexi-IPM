@@ -33,6 +33,9 @@ interface UpdateOrganizationDto {
   quoteApprovalThreshold?: number | null;
   quoteApprovalRequiredRole?: Role | null;
   chatEnabled?: boolean;
+  inspectionReviewEnabled?: boolean;
+  aiReviewEnabled?: boolean;
+  aiReviewInstructions?: string | null;
 }
 
 export function useUpdateOrganization(orgId: string | null | undefined) {

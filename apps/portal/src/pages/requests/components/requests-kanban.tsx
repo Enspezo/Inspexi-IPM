@@ -4,7 +4,7 @@ import { RequestStatus } from '@/types';
 import type { Priority, Request } from '@/types';
 import { ErrorBox, Spinner } from '@/components/ui';
 import { useWindowTabs } from '@/providers/window-tabs';
-import { getStatusConfig, PRIORITY } from '@/lib/status';
+import { getStatusConfig, PRIORITY, REQUEST_STATUS } from '@/lib/status';
 import { useAllRequests } from '../hooks/use-requests';
 import { useQueryClient } from '@tanstack/react-query';
 import { useApiMutation } from '@/hooks/use-api-mutation';
@@ -13,52 +13,45 @@ import { requestKeys, requestsAllKeys } from '@/lib/query-keys';
 
 // ─── Config ────────────────────────────────────────────────────────────────
 
-const COLUMNS: {
+// Kanban-specifieke kolomconfig (volgorde, header-achtergrond, standaard ingeklapt).
+// Label + kleur komen uit de canonieke REQUEST_STATUS-map (geen duplicaat — FE-2).
+const COLUMN_META: {
   status: RequestStatus;
-  label: string;
-  color: string;
   headerBg: string;
   defaultCollapsed?: boolean;
 }[] = [
   {
     status: RequestStatus.NIEUW,
-    label: 'Nieuw',
-    color: 'bg-blue-100 text-blue-800',
     headerBg: 'bg-blue-50 border-blue-200',
   },
   {
     status: RequestStatus.IN_BEHANDELING,
-    label: 'In behandeling',
-    color: 'bg-yellow-100 text-yellow-800',
     headerBg: 'bg-yellow-50 border-yellow-200',
   },
   {
     status: RequestStatus.OFFERTE_GEMAAKT,
-    label: 'Offerte gemaakt',
-    color: 'bg-purple-100 text-purple-800',
     headerBg: 'bg-purple-50 border-purple-200',
   },
   {
     status: RequestStatus.GEWONNEN,
-    label: 'Gewonnen',
-    color: 'bg-green-100 text-green-800',
     headerBg: 'bg-green-50 border-green-200',
   },
   {
     status: RequestStatus.VERLOREN,
-    label: 'Verloren',
-    color: 'bg-red-100 text-red-800',
     headerBg: 'bg-red-50 border-red-200',
     defaultCollapsed: true,
   },
   {
     status: RequestStatus.ON_HOLD,
-    label: 'On hold',
-    color: 'bg-gray-100 text-gray-600',
     headerBg: 'bg-gray-50 border-gray-200',
     defaultCollapsed: true,
   },
 ];
+
+const COLUMNS = COLUMN_META.map((col) => {
+  const { label, classes } = getStatusConfig(REQUEST_STATUS, col.status);
+  return { ...col, label, color: classes };
+});
 
 // ─── KanbanCard ────────────────────────────────────────────────────────────
 

@@ -7,14 +7,24 @@ import { aiReviewKeys } from '@/lib/query-keys';
 import type { AiReviewItem, AiReviewRun } from '@/types';
 import { AiReviewItemStatus, AiReviewRunStatus } from '@/types';
 
+// Stop met pollen wanneer een run al langer dan dit PENDING is: de server boekt
+// verweesde PENDING-runs (> 10 min, bv. na een crash mid-run) bij de volgende
+// start als FAILED af, dus eindeloos client-pollen heeft geen zin (PR-126).
+const PENDING_POLL_CUTOFF_MS = 10 * 60 * 1000;
+
 /** Laatste AI-run (incl. items) van een inspectieplan; null zonder runs. */
 export function useAiReview(planId: string | undefined, enabled = true) {
   return useQuery<AiReviewRun | null>({
     queryKey: aiReviewKeys.byPlan(planId as string),
     queryFn: () => apiClient.get<AiReviewRun | null>(`/inspection-plans/${planId}/ai-review`),
     enabled: !!planId && enabled,
-    refetchInterval: (query) =>
-      query.state.data?.status === AiReviewRunStatus.PENDING ? 5000 : false,
+    refetchInterval: (query) => {
+      const run = query.state.data;
+      if (run?.status !== AiReviewRunStatus.PENDING) return false;
+      const started = new Date(run.startedAt ?? run.createdAt).getTime();
+      // Blijf pollen zolang de run "vers" is; daarna stoppen (mogelijk vastgelopen).
+      return Date.now() - started < PENDING_POLL_CUTOFF_MS ? 5000 : false;
+    },
   });
 }
 

@@ -267,6 +267,11 @@ export function getNotificationRoute(notif: Notification): string | null {
       return `/meetmiddelen/${notif.entityId}`;
     case 'inspectionPlan':
       return `/inspections/${notif.entityId}`;
+    case 'user':
+      return `/users/${notif.entityId}`;
+    case 'availabilityException':
+      // Beschikbaarheids-uitzondering wijzigt → de eigen beschikbaarheidspagina.
+      return '/my-availability';
     default:
       return null;
   }

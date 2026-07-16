@@ -38,6 +38,8 @@ export interface InstallationResponsible {
 
 export interface InspectionDetail extends InspectionListItem {
   description: string | null;
+  /** Online herstel (PRD-14): per-plan vlag — stuurt de herstel-ingang in het klantportaal. */
+  onlineRepairEnabled: boolean;
   startedAt: string | null;
   submittedAt: string | null;
   reviewedAt: string | null;

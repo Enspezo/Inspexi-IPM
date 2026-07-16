@@ -1,9 +1,13 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { clsx } from 'clsx';
-import { Card, InfoField, LookupBadge, Button } from '@/components/ui';
+import { Card, InfoField, LookupBadge, Button, useToast } from '@/components/ui';
+import { useFeatures } from '@/providers/feature-provider';
 import { formatDate } from '@/lib/format';
 import { contactName, personName, normTypeLabel } from '@/lib/labels';
+import { getErrorMessage } from '@/lib/api-client';
 import { ReinspectionRequestModal } from '@/pages/requests/components/reinspection-request-modal';
+import { useStartRepairSession } from '@/pages/herstel/hooks/use-repair';
 import type { InspectionDetail } from '@/types';
 import type { InspectionTabKey } from '../inspection-detail-page';
 
@@ -24,10 +28,25 @@ interface OverviewTabProps {
 
 export function OverviewTab({ inspection, onNavigateTab }: OverviewTabProps) {
   const [showReinspection, setShowReinspection] = useState(false);
+  const navigate = useNavigate();
+  const { showToast } = useToast();
+  const { hasFeature } = useFeatures();
+  const startRepair = useStartRepairSession();
   const currentIdx = ORDER.indexOf(inspection.statusCode);
   const isCancelled = inspection.statusCode === 'cancelled';
   const counts = inspection.findingCounts;
   const hasOpenFindings = counts.open > 0;
+  // Online herstel (PRD-14 §14.9.5): alleen bij de add-on én de per-plan vlag.
+  const onlineRepair = inspection.onlineRepairEnabled && hasFeature('ONLINE_HERSTEL');
+
+  const handleStartRepair = async () => {
+    try {
+      await startRepair.mutateAsync(inspection.id);
+      navigate('/herstel/overzicht');
+    } catch (err) {
+      showToast(getErrorMessage(err, 'Kon de herstelsessie niet starten'), 'error');
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -154,6 +173,18 @@ export function OverviewTab({ inspection, onNavigateTab }: OverviewTabProps) {
             Constateringen bekijken →
           </button>
         </div>
+      )}
+
+      {onlineRepair && (
+        <Card title="Online herstel">
+          <p className="text-sm text-gray-600">
+            Meld uitgevoerde herstelwerkzaamheden per constatering (met bewijsfoto's) en rond af
+            met een digitaal ondertekende herstelverklaring.
+          </p>
+          <Button className="mt-3" onClick={handleStartRepair} isLoading={startRepair.isPending}>
+            Online herstel starten
+          </Button>
+        </Card>
       )}
 
       {inspection.statusCode === 'completed' && (

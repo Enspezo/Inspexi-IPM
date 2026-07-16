@@ -57,6 +57,14 @@ export const clientMessageKeys = {
     [...clientMessageKeys.all, inspectionId] as const,
 };
 
+/**
+ * Herstelsessie (PRD-14, online herstel). Eén actieve sessie per tab — de key is
+ * daarom niet geparametriseerd; een nieuwe lookup/sessiestart vervangt de cache.
+ */
+export const repairSessionKeys = {
+  all: ['repair-session'] as const,
+};
+
 export const clientRequestKeys = {
   all: ['client-requests'] as const,
   lists: () => [...clientRequestKeys.all] as const,

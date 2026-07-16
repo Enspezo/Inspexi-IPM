@@ -61,7 +61,12 @@ export default function InspectionDetailPage() {
       <Tabs tabs={tabs} active={tab} onChange={setTab} />
 
       {tab === 'overview' && <OverviewTab inspection={inspection} onNavigateTab={setTab} />}
-      {tab === 'findings' && <FindingsTab inspectionId={inspection.id} />}
+      {tab === 'findings' && (
+        <FindingsTab
+          inspectionId={inspection.id}
+          onlineRepairEnabled={inspection.onlineRepairEnabled}
+        />
+      )}
       {tab === 'messages' && <MessagesTab inspectionId={inspection.id} />}
       {tab === 'documents' && (
         <DocumentsTab inspectionId={inspection.id} inspectionName={inspection.projectName} />

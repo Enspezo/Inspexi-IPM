@@ -10,6 +10,7 @@
     "test": "turbo test",
     "test:e2e": "turbo test:e2e",
     "db:migrate": "pnpm --filter api prisma:migrate",
+    "db:migrate:deploy": "pnpm --filter api prisma:migrate:deploy",
     "db:seed": "pnpm --filter api prisma:seed",
     "db:studio": "pnpm --filter api prisma:studio"
   },

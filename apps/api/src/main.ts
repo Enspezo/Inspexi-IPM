@@ -138,19 +138,33 @@ async function bootstrap() {
   // Global exception filter
   app.useGlobalFilters(new AllExceptionsFilter());
 
-  // Swagger
-  const config = new DocumentBuilder()
-    .setTitle('InspeXi Beheer API')
-    .setDescription('Inspectie Management Platform — REST API')
-    .setVersion('1.0')
-    .addBearerAuth()
-    .build();
-  const document = SwaggerModule.createDocument(app, config);
-  SwaggerModule.setup('api/docs', app, document);
+  // Run OnModuleDestroy hooks (Prisma $disconnect, Puppeteer browser close) on
+  // SIGTERM/SIGINT so redeploys shut down cleanly (DEP-10).
+  app.enableShutdownHooks();
+
+  // Swagger — publishes the full API surface unauthenticated, so keep it OFF in
+  // production unless SWAGGER_ENABLED=true is set explicitly. Non-production keeps
+  // it on by default (DEP-9 / SEC-15).
+  const enableSwagger =
+    process.env.SWAGGER_ENABLED !== undefined
+      ? process.env.SWAGGER_ENABLED === 'true'
+      : process.env.NODE_ENV !== 'production';
+  if (enableSwagger) {
+    const config = new DocumentBuilder()
+      .setTitle('InspeXi Beheer API')
+      .setDescription('Inspectie Management Platform — REST API')
+      .setVersion('1.0')
+      .addBearerAuth()
+      .build();
+    const document = SwaggerModule.createDocument(app, config);
+    SwaggerModule.setup('api/docs', app, document);
+  }
 
   const port = process.env.API_PORT || 3000;
   await app.listen(port);
   console.log(`🚀 API running on http://localhost:${port}/api/v1`);
-  console.log(`📚 Swagger docs at http://localhost:${port}/api/docs`);
+  if (enableSwagger) {
+    console.log(`📚 Swagger docs at http://localhost:${port}/api/docs`);
+  }
 }
 bootstrap();

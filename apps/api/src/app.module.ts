@@ -50,6 +50,7 @@ import { ProjectsModule } from './modules/projects/projects.module';
 import { ProjectPhasesModule } from './modules/project-phases/project-phases.module';
 import { KvkModule } from './modules/kvk/kvk.module';
 import { VatModule } from './modules/vat/vat.module';
+import { HealthModule } from './modules/health/health.module';
 import { ErrorReportsModule } from './modules/error-reports/error-reports.module';
 import { HelpModule } from './modules/help/help.module';
 import { SupportTicketsModule } from './modules/support-tickets/support-tickets.module';
@@ -195,6 +196,7 @@ import { AiReviewModule } from './modules/ai-review/ai-review.module';
     // Gedeelde Anthropic-client + AI-voorcontrole van inspectierapporten (PRD-13)
     AnthropicModule,
     AiReviewModule,
+    HealthModule,
   ],
   providers: [
     {

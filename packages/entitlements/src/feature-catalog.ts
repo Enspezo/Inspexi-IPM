@@ -29,6 +29,7 @@ export const FEATURE_KEYS = [
   'PROJECT_FASEN',
   'WEBHOOKS',
   'CUSTOM_FIELDS',
+  'AI_REVIEW',
 ] as const;
 
 export type FeatureKey = (typeof FEATURE_KEYS)[number];
@@ -104,6 +105,12 @@ export const FEATURE_CATALOG: Record<FeatureKey, FeatureDef> = {
     label: 'Aangepaste velden (add-on)',
     description: 'Custom-field-definities op entiteiten',
     dependsOn: [],
+  },
+  AI_REVIEW: {
+    key: 'AI_REVIEW',
+    label: 'AI-rapportcontrole (add-on)',
+    description: 'AI-voorcontrole van inspectierapporten vóór de menselijke review',
+    dependsOn: ['BASIS_INSPECTIES'],
   },
 };
 

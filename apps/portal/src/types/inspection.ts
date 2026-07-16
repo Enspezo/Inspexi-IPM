@@ -981,3 +981,66 @@ export interface VoiceTemplatePrompt {
   /** Meegestuurd door de API (include) — handig voor weergave. */
   template?: { id: string; name: string };
 }
+
+// ─── AI-review van inspectierapporten (PRD-13) ───
+
+export enum AiReviewRunStatus {
+  PENDING = 'PENDING',
+  COMPLETED = 'COMPLETED',
+  FAILED = 'FAILED',
+}
+
+export enum AiReviewItemSeverity {
+  CRITICAL = 'CRITICAL',
+  WARNING = 'WARNING',
+  SUGGESTION = 'SUGGESTION',
+  INFO = 'INFO',
+}
+
+export enum AiReviewItemStatus {
+  OPEN = 'OPEN',
+  CHECKED = 'CHECKED',
+  DISMISSED = 'DISMISSED',
+}
+
+/** Eén AI-analyse-run over een ingediend inspectieplan (adviserend, nooit blokkerend). */
+export interface AiReviewRun {
+  id: string;
+  orgId: string;
+  inspectionPlanId: string;
+  generatedDocumentId: string | null;
+  status: AiReviewRunStatus;
+  /** Null = automatisch gestart bij indienen ter review. */
+  triggeredBy: string | null;
+  /** Gebruikt Claude-model (audit/kosten). */
+  model: string;
+  /** NL-samenvatting van de AI. */
+  summary: string | null;
+  errorMessage: string | null;
+  inputTokens: number | null;
+  outputTokens: number | null;
+  startedAt: string | null;
+  completedAt: string | null;
+  createdAt: string;
+  items?: AiReviewItem[];
+}
+
+/** Eén AI-aandachtspunt, af te vinken of af te wijzen door de reviewer. */
+export interface AiReviewItem {
+  id: string;
+  orgId: string;
+  runId: string;
+  severity: AiReviewItemSeverity;
+  /** Vrije NL-categorie uit de prompt-taxonomie (VOLLEDIGHEID, CONSISTENTIE, …). */
+  category: string;
+  title: string;
+  description: string;
+  assetNodeId: string | null;
+  findingId: string | null;
+  measurementRecordId: string | null;
+  status: AiReviewItemStatus;
+  checkedBy: string | null;
+  checkedAt: string | null;
+  sortOrder: number;
+  createdAt: string;
+}

@@ -43,6 +43,12 @@ export interface Organization {
   quoteApprovalRequiredRole: Role | null;
   isActive: boolean;
   chatEnabled: boolean;
+  /** Vier-ogen-controle verplicht op inspectieplannen (PRD-13). */
+  inspectionReviewEnabled: boolean;
+  /** AI-voorcontrole van inspectierapporten aan/uit (PRD-13). */
+  aiReviewEnabled: boolean;
+  /** Optionele org-specifieke instructies voor de AI-voorcontrole (PRD-13). */
+  aiReviewInstructions: string | null;
   /** Toegewezen SaaS-abonnement (entitlements, PRD-09); null = geen plan. */
   planId: string | null;
   createdAt: string;

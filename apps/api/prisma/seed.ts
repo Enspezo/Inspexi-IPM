@@ -529,6 +529,10 @@ async function main() {
   await prisma.voiceUserPrompt.deleteMany();
   await prisma.voiceTemplatePrompt.deleteMany();
   await prisma.voiceBasePrompt.deleteMany();
+  // AI-review (PRD-13) — items cascaden op run; run cascadeert op inspectionPlan,
+  // dus vóór de inspectionPlan/assetNode/finding-cleanup (kinderen eerst)
+  await prisma.aiReviewItem.deleteMany();
+  await prisma.aiReviewRun.deleteMany();
   // document generation
   await prisma.documentSignature.deleteMany();
   await prisma.generatedDocument.deleteMany();
@@ -709,8 +713,8 @@ async function main() {
   await prisma.plan.deleteMany();
 
   // ─── SaaS-abonnementen: plannen (templates, PRD-09 §7.2) ──
-  // "Basis" = 4 basisfeatures (géén PROJECT_FASEN); "Compleet" = alle catalogus-keys
-  // incl. add-ons (PROJECT_FASEN, WEBHOOKS, CUSTOM_FIELDS). De catalogus
+  // "Basis" = 4 basisfeatures (géén add-ons); "Compleet" = alle catalogus-keys
+  // incl. add-ons (PROJECT_FASEN, WEBHOOKS, CUSTOM_FIELDS, AI_REVIEW). De catalogus
   // (FEATURE_KEYS) is bron-van-waarheid; de DB verwijst alleen naar de keys. De
   // demo-org draait op Compleet en heeft dus PROJECT_FASEN (fasen-tab + demo-fasen
   // werken); een Basis-org (bv. Test Bedrijf) heeft de feature bewust NIET, zodat het

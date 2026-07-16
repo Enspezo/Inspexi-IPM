@@ -1,4 +1,4 @@
-import { PrismaClient, Role, ContactType, LogType, PriceType, RequestSource, RequestStatus, Priority, QuoteStatus, NotificationType, PlanningStatus, AcceptanceStatus, ProjectStatus, AssetFieldType, ChecklistStatus, TemplateStatus, MeasurementSheetTemplateStatus, MeasurementSheetFieldType, FindingInspectionType, DocumentType, DocumentEntityType, TemplateMode, SectionType, ClientUserStatus, ClientAccessRole, GeneratedDocumentStatus, SignatureStatus, MarkerType, MeasurementSheetRecordStatus, InspectionExecStatus, PassFailOperator, LocationTypeScope, Availability, ChatThreadType, ChatThreadStatus, ContactDisplayMode, PhaseStatus, EmploymentType, AvailabilityExceptionType, AiReviewRunStatus, AiReviewItemSeverity, AiReviewItemStatus } from '@prisma/client';
+import { PrismaClient, Role, ContactType, LogType, PriceType, RequestSource, RequestStatus, Priority, QuoteStatus, NotificationType, PlanningStatus, AcceptanceStatus, ProjectStatus, AssetFieldType, ChecklistStatus, TemplateStatus, MeasurementSheetTemplateStatus, MeasurementSheetFieldType, FindingInspectionType, DocumentType, DocumentEntityType, TemplateMode, SectionType, ClientUserStatus, ClientAccessRole, GeneratedDocumentStatus, SignatureStatus, MarkerType, MeasurementSheetRecordStatus, InspectionExecStatus, PassFailOperator, LocationTypeScope, Availability, ChatThreadType, ChatThreadStatus, ContactDisplayMode, PhaseStatus, EmploymentType, AvailabilityExceptionType, AiReviewRunStatus, AiReviewItemSeverity, AiReviewItemStatus, RepairAccessType, RepairSessionStatus } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { randomUUID } from 'crypto';
 import * as fs from 'fs';
@@ -2996,7 +2996,7 @@ async function main() {
       statusCode: 'open',
     },
   });
-  await prisma.finding.create({
+  const finding2 = await prisma.finding.create({
     data: {
       orgId: org1.id,
       assetNodeId: asset2.id,
@@ -3565,6 +3565,139 @@ async function main() {
     );
   } else {
     console.log('  ⏭️  AI-voorcontrole demo-run overgeslagen (zet SEED_DEMO=1 om aan te maken)');
+  }
+
+  // ─── Online herstel demo (PRD-14 §14.12) — alleen bij SEED_DEMO=1 ────────
+  // De demo-org krijgt het ONLINE_HERSTEL-entitlement (override, belt-and-braces
+  // naast het Compleet-plan) + org-default aan; het demo-plan krijgt het
+  // demo-rapportnummer 'RAP-2026-001' en de plan-vlag aan. Eén classificatie-
+  // optie (NEN C1) wordt kritiek → finding1 is een OPEN kritieke constatering
+  // (zo blijft de herinspectie-trigger demo-baar). Op finding2 staat een
+  // afgeronde ANONIEME herstelsessie met REPORTED-resolutie, bewijsfoto en een
+  // ondertekende herstelverklaring (incl. echt PDF-bestand in de storage).
+  if (process.env.SEED_DEMO === '1') {
+    await prisma.organization.update({
+      where: { id: org1.id },
+      data: { onlineRepairDefault: true },
+    });
+    await prisma.organizationFeature.create({
+      data: {
+        orgId: org1.id,
+        featureKey: 'ONLINE_HERSTEL',
+        enabled: true,
+        updatedById: orgAdminId,
+      },
+    });
+    await prisma.inspectionPlan.update({
+      where: { id: demoPlan.id },
+      data: { referenceNumber: 'RAP-2026-001', onlineRepairEnabled: true },
+    });
+
+    await prisma.classificationOption.updateMany({
+      where: {
+        code: 'C1',
+        characteristic: { code: 'SEVERITY', classificationModelId: classModelNen.id },
+      },
+      data: { isCritical: true },
+    });
+    await prisma.finding.update({
+      where: { id: finding1.id },
+      data: { classificationValues: { SEVERITY: 'C1' }, isCritical: true },
+    });
+
+    const repairSignedAt = new Date('2026-07-10T09:30:00Z');
+    await prisma.finding.update({
+      where: { id: finding2.id },
+      data: { statusCode: 'resolved', resolvedAt: repairSignedAt },
+    });
+
+    const declarationHtml = [
+      '<!DOCTYPE html><html lang="nl"><head><meta charset="utf-8" /><title>Herstelverklaring RAP-2026-001</title></head><body>',
+      '<h1>Herstelverklaring</h1>',
+      '<p>Rapportnummer: RAP-2026-001 — NEN 1010 inspectie hoofdkantoor De Vries</p>',
+      '<p>Ingevuld door: Jan de Installateur (Installatiebedrijf Jansen)</p>',
+      '<h2>Herstelde constateringen</h2>',
+      '<ol start="2"><li>Isolatieweerstand onder norm op groep 3 — groep 3 opnieuw afgemonteerd; gemeten 2,1 MΩ.</li></ol>',
+      '<p>Ondergetekende verklaart dat de bovengenoemde constateringen zijn hersteld zoals omschreven.</p>',
+      '<p>Ondertekend op 10 juli 2026 (IP: 203.0.113.10)</p>',
+      '</body></html>',
+    ].join('\n');
+    const declaration = await prisma.generatedDocument.create({
+      data: {
+        orgId: org1.id,
+        inspectionPlanId: demoPlan.id,
+        documentType: DocumentType.HERSTELVERKLARING,
+        htmlContent: declarationHtml,
+        status: GeneratedDocumentStatus.SIGNED,
+        signatures: {
+          create: {
+            signerRoleCode: 'HERSTELLER',
+            signerName: 'Jan de Installateur',
+            signerEmail: 'installateur@jansen-demo.nl',
+            status: SignatureStatus.SIGNED,
+            signedAt: repairSignedAt,
+            signedIpAddress: '203.0.113.10',
+            signatureImage: 'data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=',
+          },
+        },
+      },
+    });
+    const declarationPdfKey = `${org1.id}/documents/${declaration.id}.pdf`;
+    const declarationPdfPath = path.join(process.env.UPLOAD_DIR || './uploads', declarationPdfKey);
+    fs.mkdirSync(path.dirname(declarationPdfPath), { recursive: true });
+    fs.writeFileSync(declarationPdfPath, makeCertificatePdf('Herstelverklaring RAP-2026-001 - InspeXi Demo'));
+    await prisma.generatedDocument.update({
+      where: { id: declaration.id },
+      data: { pdfUrl: declarationPdfKey },
+    });
+
+    const repairSession = await prisma.repairSession.create({
+      data: {
+        orgId: org1.id,
+        inspectionPlanId: demoPlan.id,
+        accessType: RepairAccessType.ANONYMOUS,
+        status: RepairSessionStatus.COMPLETED,
+        token: 'demo-herstel-sessie', // vaste demo-token; sessie is afgerond (en verlopen expiresAt is prima)
+        contactName: 'Jan de Installateur',
+        companyName: 'Installatiebedrijf Jansen',
+        email: 'installateur@jansen-demo.nl',
+        generatedDocumentId: declaration.id,
+        expiresAt: new Date('2026-07-11T09:00:00Z'),
+        completedAt: repairSignedAt,
+        createdIpAddress: '203.0.113.10',
+        lastActivityAt: repairSignedAt,
+        createdAt: new Date('2026-07-10T08:15:00Z'),
+      },
+    });
+
+    // Bewijsfoto (1×1 JPEG) écht naar de lokale storage, zodat de foto-stream werkt.
+    const repairPhotoKey = `${org1.id}/finding-photos/${randomUUID()}.jpg`;
+    const repairPhotoPath = path.join(process.env.UPLOAD_DIR || './uploads', repairPhotoKey);
+    fs.mkdirSync(path.dirname(repairPhotoPath), { recursive: true });
+    fs.writeFileSync(
+      repairPhotoPath,
+      Buffer.from(
+        '/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/2wBDAQkJCQwLDBgNDRgyIRwhMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjL/wAARCAABAAEDASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/9oADAMBAAIRAxEAPwD3+iiigD//2Q==',
+        'base64',
+      ),
+    );
+
+    await prisma.findingResolution.create({
+      data: {
+        findingId: finding2.id,
+        repairSessionId: repairSession.id,
+        description: 'Groep 3 opnieuw afgemonteerd en isolatieweerstand gemeten: 2,1 MΩ (boven de norm).',
+        statusCode: 'REPORTED',
+        resolvedAt: repairSignedAt,
+        photos: { create: [{ photoUrl: repairPhotoKey }] },
+      },
+    });
+
+    console.log(
+      '  ✓ Online herstel: ONLINE_HERSTEL-override + org-default + plan RAP-2026-001 aan, C1 kritiek (finding1 open-kritiek), afgeronde anonieme sessie + ondertekende herstelverklaring op finding2 (SEED_DEMO=1)',
+    );
+  } else {
+    console.log('  ⏭️  Online-herstel demo overgeslagen (zet SEED_DEMO=1 om aan te maken)');
   }
 
   // ─── SaaS-varianten (PRD-09 §7.1) — testmatrix-orgs ─────────────────────

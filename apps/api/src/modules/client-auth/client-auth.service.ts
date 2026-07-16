@@ -350,7 +350,11 @@ export class ClientAuthService {
       },
     });
 
-    const baseUrl = this.config.get<string>('PUBLIC_URL', 'http://localhost:5173');
+    // Client reset links must point at the CLIENT portal, not the staff portal.
+    // Prefer CLIENT_PUBLIC_URL; fall back to PUBLIC_URL for dev/back-compat (DEP-5).
+    const baseUrl =
+      this.config.get<string>('CLIENT_PUBLIC_URL') ??
+      this.config.get<string>('PUBLIC_URL', 'http://localhost:5174');
     const resetUrl = `${baseUrl}/reset-password?token=${token}`;
     // Fire-and-forget: EmailService.sendPasswordReset logt bij falen (geen enumeratie).
     await this.email.sendPasswordReset(user.email, resetUrl, orgId).catch((e) => {

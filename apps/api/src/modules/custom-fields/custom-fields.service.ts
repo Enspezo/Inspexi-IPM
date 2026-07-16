@@ -115,6 +115,14 @@ export class CustomFieldsService {
   }
 
   async reorder(orgId: string, orderedIds: string[]) {
+    // Every id must belong to the caller's org — the update runs on `where: { id }`,
+    // so without this check a caller could rewrite another org's field ordering.
+    const count = await this.prisma.customFieldDefinition.count({
+      where: { id: { in: orderedIds }, orgId, isDeleted: false },
+    });
+    if (count !== new Set(orderedIds).size) {
+      throw new BadRequestException('Een of meer velden horen niet bij uw organisatie');
+    }
     await this.prisma.$transaction(
       orderedIds.map((id, index) =>
         this.prisma.customFieldDefinition.update({

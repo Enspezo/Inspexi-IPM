@@ -28,7 +28,10 @@ export class PhotosController {
   @Roles(...ALL)
   @ApiConsumes('multipart/form-data')
   @ApiOperation({ summary: 'Foto uploaden voor asset/finding/inspectionPlan' })
-  @UseInterceptors(FileInterceptor('file'))
+  // Multer-level size cap so an oversized body is rejected before it is fully
+  // buffered into memory; the MaxFileSizeValidator is the defence-in-depth check
+  // after buffering (SEC-12).
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 25 * 1024 * 1024 } }))
   async upload(
     @UploadedFile(
       new ParseFilePipe({ validators: [new MaxFileSizeValidator({ maxSize: 25 * 1024 * 1024 })] }),

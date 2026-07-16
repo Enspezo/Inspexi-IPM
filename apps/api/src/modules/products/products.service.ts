@@ -5,7 +5,7 @@ import {
 } from '@nestjs/common';
 import { User, Role, Prisma } from '@prisma/client';
 import { PrismaService } from '@/prisma';
-import { paginate, buildOrderBy, orgScope, assertFound } from '@/common';
+import { paginate, buildOrderBy, orgScope, assertFound, assertSameOrg } from '@/common';
 import { NumberingService } from '@/modules/numbering/numbering.service';
 import { CustomFieldsValidator } from '@/modules/custom-fields/custom-fields.validator';
 import {
@@ -87,6 +87,10 @@ export class ProductsService {
       ? await this.customFieldsValidator.validateAndSanitize(orgId!, 'PRODUCT', dto.customFields)
       : null;
 
+    // The product group is read back through the include — verify it belongs to
+    // the caller's org (a foreign group's name would otherwise leak).
+    await assertSameOrg(this.prisma.productGroup, dto.productGroupId, orgId, 'Productgroep');
+
     return this.numbering.runWithGeneratedNumber(
       'PRODUCT',
       orgId!,
@@ -144,6 +148,10 @@ export class ProductsService {
         product.orgId, 'PRODUCT', dto.productCode, product.id,
       );
     }
+
+    // Validate a re-pointed product group against the caller's org (read back via include).
+    if (dto.productGroupId !== undefined)
+      await assertSameOrg(this.prisma.productGroup, dto.productGroupId, user.orgId, 'Productgroep');
 
     return this.prisma.product.update({
       where: { id: product.id },

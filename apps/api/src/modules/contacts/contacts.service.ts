@@ -7,7 +7,7 @@ import {
 } from '@nestjs/common';
 import { User, Role, Prisma } from '@prisma/client';
 import { PrismaService } from '@/prisma';
-import { paginate, buildOrderBy, orgScope, assertAllSameOrg } from '@/common';
+import { paginate, buildOrderBy, orgScope, assertSameOrg, assertAllSameOrg } from '@/common';
 import { requestContext } from '@/common/services/request-context';
 import { EmailService } from '@/common/services/email.service';
 import { CustomFieldsValidator } from '@/modules/custom-fields/custom-fields.validator';
@@ -168,6 +168,9 @@ export class ContactsService {
       ? await this.customFieldsValidator.validateAndSanitize(orgId!, 'CONTACT', dto.customFields)
       : null;
 
+    // A supplied owner is read back by findOne — verify it is a user in the caller's org.
+    await assertSameOrg(this.prisma.user, dto.ownerId, orgId, 'Eigenaar');
+
     return this.prisma.contact.create({
       data: {
         orgId: orgId!,
@@ -199,6 +202,8 @@ export class ContactsService {
     // Eigenaar wijzigen: alleen eigenaar, ORG_ADMIN of SUPERUSER
     if (dto.ownerId !== undefined) {
       this.assertOwnerOrAdmin(contact, user);
+      // The new owner is read back by findOne — verify it is a user in the caller's org.
+      await assertSameOrg(this.prisma.user, dto.ownerId, user.orgId, 'Eigenaar');
     }
 
     const oldCompanyName = contact.companyName;

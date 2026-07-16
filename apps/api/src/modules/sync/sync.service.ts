@@ -131,6 +131,8 @@ export class SyncService {
       location: this.prisma.location,
       user: this.prisma.user,
       contactPerson: this.prisma.contactPerson,
+      contact: this.prisma.contact,
+      project: this.prisma.project,
     };
     return delegates[model] as SyncDelegate;
   }
@@ -675,9 +677,21 @@ export class SyncService {
         });
         if (!existing) throw new BadRequestException('Record niet gevonden');
 
+        // Apply the same tenant/FK/tree/review guards as the push path. The chosen
+        // data — especially a client-supplied `mergedData` — is untrusted and must
+        // not be able to inject cross-tenant FKs or bypass the four-eyes review gate
+        // that processChange() enforces (SYNC-1). The guards no-op on absent fields,
+        // so a partial merge stays valid.
+        await this.assertFkChecks(key, chosen, user);
+        await this.assertUserFkChecks(key, chosen, user);
+        await this.assertTreeMembership(key, chosen, user);
+        const fields = toDbData(key, chosen);
+        const gateOrgId = (existing as { orgId?: string | null }).orgId ?? user.orgId!;
+        await this.assertPlanReviewGate(key, fields, existing as Record<string, unknown>, gateOrgId);
+
         const updated = await delegate.update({
           where: { id: r.entityId },
-          data: { ...toDbData(key, chosen), syncedAt: new Date() },
+          data: { ...fields, syncedAt: new Date() },
           select: { updatedAt: true },
         });
         await this.prisma.syncQueue.update({

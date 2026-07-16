@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { NotFoundException, BadRequestException } from '@nestjs/common';
+import { NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { Role, PlanningStatus } from '@prisma/client';
 import { ConfigService } from '@nestjs/config';
 import { PlanningFollowersService } from './planning-followers.service';
@@ -34,6 +34,9 @@ describe('PlanningFollowersService', () => {
       findUnique: jest.fn(),
       create: jest.fn(),
       delete: jest.fn(),
+    },
+    user: {
+      findUnique: jest.fn(),
     },
   };
 
@@ -148,6 +151,7 @@ describe('PlanningFollowersService', () => {
   describe('addFollower', () => {
     it('should add a follower by userId', async () => {
       mockPrismaService.planningItem.findUnique.mockResolvedValue(mockPlanningItem);
+      mockPrismaService.user.findUnique.mockResolvedValue({ orgId: 'org-1' });
       mockPrismaService.planningFollower.findFirst.mockResolvedValue(null);
       const newFollower = {
         id: 'follower-1',
@@ -178,11 +182,23 @@ describe('PlanningFollowersService', () => {
 
     it('should throw BadRequestException when follower already exists', async () => {
       mockPrismaService.planningItem.findUnique.mockResolvedValue(mockPlanningItem);
+      mockPrismaService.user.findUnique.mockResolvedValue({ orgId: 'org-1' });
       mockPrismaService.planningFollower.findFirst.mockResolvedValue({ id: 'follower-existing' });
 
       await expect(
         service.addFollower('plan-1', { userId: 'user-2' } as any, mockUser),
       ).rejects.toThrow(BadRequestException);
+    });
+
+    it('should reject a follower userId from another organization', async () => {
+      mockPrismaService.planningItem.findUnique.mockResolvedValue(mockPlanningItem);
+      // The referenced user lives in a different org.
+      mockPrismaService.user.findUnique.mockResolvedValue({ orgId: 'org-2' });
+
+      await expect(
+        service.addFollower('plan-1', { userId: 'foreign-user' } as any, mockUser),
+      ).rejects.toThrow(ForbiddenException);
+      expect(mockPrismaService.planningFollower.create).not.toHaveBeenCalled();
     });
   });
 

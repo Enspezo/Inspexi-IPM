@@ -422,6 +422,16 @@ export class PlanningService {
       this.prisma.projectPhase, dto.projectPhaseId, user.orgId, existing.projectId,
     );
 
+    // Verify re-pointed foreign keys belong to the user's organization (mirrors
+    // create()); without this a caller could inject another org's UUIDs and read
+    // that org's address/contact PII back through PLANNING_INCLUDE.
+    if (dto.locationId !== undefined)
+      await assertSameOrg(this.prisma.location, dto.locationId, user.orgId, 'Locatie');
+    if (dto.contactPersonId !== undefined)
+      await assertSameOrg(this.prisma.contactPerson, dto.contactPersonId, user.orgId, 'Contactpersoon');
+    if (dto.productId !== undefined)
+      await assertSameOrg(this.prisma.product, dto.productId, user.orgId, 'Product');
+
     const data: any = {};
     if (dto.locationId !== undefined) data.locationId = dto.locationId;
     if (dto.contactPersonId !== undefined) data.contactPersonId = dto.contactPersonId ?? null;

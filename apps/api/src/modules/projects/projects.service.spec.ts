@@ -49,6 +49,9 @@ describe('ProjectsService', () => {
     contact: {
       findUnique: jest.fn(),
     },
+    user: {
+      findUnique: jest.fn(),
+    },
     $transaction: jest.fn(),
   };
 
@@ -437,6 +440,7 @@ describe('ProjectsService', () => {
   describe('addFollower', () => {
     it('should add an internal follower by userId with all permissions', async () => {
       mockPrismaService.project.findUnique.mockResolvedValue(mockProject);
+      mockPrismaService.user.findUnique.mockResolvedValue({ orgId: 'org-1' });
       mockPrismaService.projectFollower.findFirst.mockResolvedValue(null);
       const newFollower = {
         id: 'follower-1',
@@ -508,11 +512,23 @@ describe('ProjectsService', () => {
 
     it('should throw BadRequestException when userId follower already exists', async () => {
       mockPrismaService.project.findUnique.mockResolvedValue(mockProject);
+      mockPrismaService.user.findUnique.mockResolvedValue({ orgId: 'org-1' });
       mockPrismaService.projectFollower.findFirst.mockResolvedValue({ id: 'existing-follower' });
 
       await expect(
         service.addFollower('project-1', { userId: 'user-2' } as any, mockUser),
       ).rejects.toThrow(BadRequestException);
+    });
+
+    it('should reject a follower userId from another organization', async () => {
+      mockPrismaService.project.findUnique.mockResolvedValue(mockProject);
+      // The referenced user lives in a different org.
+      mockPrismaService.user.findUnique.mockResolvedValue({ orgId: 'org-2' });
+
+      await expect(
+        service.addFollower('project-1', { userId: 'foreign-user' } as any, mockUser),
+      ).rejects.toThrow(ForbiddenException);
+      expect(mockPrismaService.projectFollower.create).not.toHaveBeenCalled();
     });
 
     it('should throw BadRequestException when email follower already exists', async () => {

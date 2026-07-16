@@ -7,16 +7,16 @@ import { R2StorageProvider } from './r2-storage.provider';
 @Global()
 @Module({
   providers: [
-    LocalStorageProvider,
-    R2StorageProvider,
     {
       provide: STORAGE_PROVIDER,
-      inject: [ConfigService, LocalStorageProvider, R2StorageProvider],
-      useFactory: (
-        config: ConfigService,
-        local: LocalStorageProvider,
-        r2: R2StorageProvider,
-      ) => (config.get<string>('STORAGE_DRIVER', 'local') === 'r2' ? r2 : local),
+      inject: [ConfigService],
+      // Instantiate ONLY the selected provider. R2StorageProvider's constructor
+      // getOrThrow's the R2_* keys, so listing it as an eager provider would crash
+      // boot on a `local` deployment that omits those keys (DEP-2).
+      useFactory: (config: ConfigService) =>
+        config.get<string>('STORAGE_DRIVER', 'local') === 'r2'
+          ? new R2StorageProvider(config)
+          : new LocalStorageProvider(config),
     },
   ],
   exports: [STORAGE_PROVIDER],

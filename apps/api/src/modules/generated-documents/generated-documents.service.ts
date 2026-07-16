@@ -49,9 +49,18 @@ export class GeneratedDocumentsService {
       throw new BadRequestException('Plan heeft geen inspectie-template');
     }
 
+    // DocumentTemplate heeft zelf geen orgId (afgeleid via inspectionTemplate).
+    // Scope daarom op de relatie: alleen een template van de eigen org of een
+    // system-template (orgId null) mag renderen — dit weert een via sync op het plan
+    // beland vreemd-org inspectionTemplateId dat anders de vreemde template zou
+    // renderen in een document van deze org (SYNC-2).
     const template = assertFound(
       await this.prisma.documentTemplate.findFirst({
-        where: { documentType: type, inspectionTemplateId },
+        where: {
+          documentType: type,
+          inspectionTemplateId,
+          inspectionTemplate: { OR: [{ orgId }, { orgId: null }] },
+        },
         include: {
           sections: {
             orderBy: { sortOrder: 'asc' },
@@ -130,8 +139,14 @@ export class GeneratedDocumentsService {
 
   async updateEditedContent(id: string, user: User, editedContent: string) {
     const doc = await this.findScoped(id, user);
-    if (doc.status === GeneratedDocumentStatus.FINALIZED) {
-      throw new ForbiddenException('Gefinaliseerd document kan niet bewerkt worden');
+    // Once (fully) SIGNED the content is locked — editing it would change the
+    // document out from under the collected signatures (SYNC-5). FINALIZED is
+    // likewise immutable.
+    if (
+      doc.status === GeneratedDocumentStatus.SIGNED ||
+      doc.status === GeneratedDocumentStatus.FINALIZED
+    ) {
+      throw new ForbiddenException('Een ondertekend document kan niet meer bewerkt worden');
     }
     return this.prisma.generatedDocument.update({
       where: { id: doc.id },

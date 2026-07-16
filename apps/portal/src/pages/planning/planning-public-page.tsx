@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { Spinner } from '@/components/ui';
 import { formatFileSize, formatWeekdayDate as formatDate, formatTime } from '@/lib/format';
+import { getStatusConfig, PLANNING_STATUS, SESSION_STATUS } from '@/lib/status';
 import type { PlanningItem, CrmDocument, PlanningSession, UserSummary } from '@/types';
 import { PlanningStatus, AcceptanceStatus, SessionStatus } from '@/types';
 
@@ -50,28 +51,14 @@ function InspectorContactLinks({ user }: { user?: UserSummary | null }) {
 }
 
 function StatusBadge({ status }: { status: PlanningStatus }) {
-  const config: Record<PlanningStatus, { label: string; className: string }> = {
-    [PlanningStatus.NOG_TE_PLANNEN]: { label: 'Nog te plannen', className: 'bg-gray-100 text-gray-700' },
-    [PlanningStatus.CONCEPT]: { label: 'Concept', className: 'bg-amber-100 text-amber-700' },
-    [PlanningStatus.GEPLAND]: { label: 'Gepland', className: 'bg-blue-100 text-blue-700' },
-    [PlanningStatus.AFGEROND]: { label: 'Afgerond', className: 'bg-green-100 text-green-700' },
-    [PlanningStatus.VERVALLEN]: { label: 'Vervallen', className: 'bg-red-100 text-red-700' },
-  };
-  const { label, className } = config[status] ?? { label: status, className: 'bg-gray-100 text-gray-700' };
+  // Canonieke bron (lib/status.ts) — geen lokale status-map dupliceren (FE-2).
+  const { label, classes } = getStatusConfig(PLANNING_STATUS, status);
   return (
-    <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${className}`}>
+    <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${classes}`}>
       {label}
     </span>
   );
 }
-
-const sessionStatusConfig: Record<string, { label: string; className: string }> = {
-  [SessionStatus.NOG_TE_PLANNEN]: { label: 'Nog te plannen', className: 'bg-gray-100 text-gray-700' },
-  [SessionStatus.CONCEPT]: { label: 'Concept', className: 'bg-amber-100 text-amber-700' },
-  [SessionStatus.DEFINITIEF]: { label: 'Definitief', className: 'bg-green-100 text-green-700' },
-  [SessionStatus.AFGEROND]: { label: 'Afgerond', className: 'bg-emerald-100 text-emerald-700' },
-  [SessionStatus.VERVALLEN]: { label: 'Vervallen', className: 'bg-red-100 text-red-700' },
-};
 
 function SessionPublicCard({
   session,
@@ -82,10 +69,7 @@ function SessionPublicCard({
   totalSessions: number;
   primaryColor: string;
 }) {
-  const { label, className } = sessionStatusConfig[session.status] ?? {
-    label: session.status,
-    className: 'bg-gray-100 text-gray-700',
-  };
+  const { label, classes: className } = getStatusConfig(SESSION_STATUS, session.status);
   const acceptedInspectors =
     session.sessionInspectors?.filter((si) => si.acceptanceStatus === AcceptanceStatus.ACCEPTED) ?? [];
 

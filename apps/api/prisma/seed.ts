@@ -514,6 +514,8 @@ async function main() {
   // client-portal
   await prisma.findingResolutionPhoto.deleteMany();
   await prisma.findingResolution.deleteMany();
+  // Online herstel (PRD-14): vóór generatedDocument/clientUser/inspectionPlan (FK's SetNull/Cascade)
+  await prisma.repairSession.deleteMany();
   await prisma.messageAttachment.deleteMany();
   await prisma.inspectionMessage.deleteMany();
   await prisma.clientMagicLink.deleteMany();
@@ -714,7 +716,7 @@ async function main() {
 
   // ─── SaaS-abonnementen: plannen (templates, PRD-09 §7.2) ──
   // "Basis" = 4 basisfeatures (géén add-ons); "Compleet" = alle catalogus-keys
-  // incl. add-ons (PROJECT_FASEN, WEBHOOKS, CUSTOM_FIELDS, AI_REVIEW). De catalogus
+  // incl. add-ons (PROJECT_FASEN, WEBHOOKS, CUSTOM_FIELDS, AI_REVIEW, ONLINE_HERSTEL). De catalogus
   // (FEATURE_KEYS) is bron-van-waarheid; de DB verwijst alleen naar de keys. De
   // demo-org draait op Compleet en heeft dus PROJECT_FASEN (fasen-tab + demo-fasen
   // werken); een Basis-org (bv. Test Bedrijf) heeft de feature bewust NIET, zodat het

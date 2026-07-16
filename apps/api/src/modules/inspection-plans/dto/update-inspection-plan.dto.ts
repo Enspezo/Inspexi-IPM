@@ -1,5 +1,5 @@
 import { ApiPropertyOptional, PartialType } from '@nestjs/swagger';
-import { IsString, IsOptional, IsObject, IsDateString, IsUUID, ValidateIf } from 'class-validator';
+import { IsBoolean, IsString, IsOptional, IsObject, IsDateString, IsUUID, ValidateIf } from 'class-validator';
 import { CreateInspectionPlanDto } from './create-inspection-plan.dto';
 
 /**
@@ -38,4 +38,12 @@ export class UpdateInspectionPlanDto extends PartialType(
   @IsOptional()
   @IsObject()
   metadata?: Record<string, unknown>;
+
+  @ApiPropertyOptional({
+    description:
+      'Online herstel aan/uit voor dit plan (PRD-14). Aanzetten vereist een gevuld, binnen de org uniek referenceNumber.',
+  })
+  @IsOptional()
+  @IsBoolean()
+  onlineRepairEnabled?: boolean;
 }

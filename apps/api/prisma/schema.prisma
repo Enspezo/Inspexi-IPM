@@ -416,6 +416,9 @@ model Organization {
   aiReviewEnabled         Boolean @default(false) @map("ai_review_enabled")
   aiReviewInstructions    String? @map("ai_review_instructions") @db.Text
 
+  // Online herstel (PRD-14): default voor `InspectionPlan.onlineRepairEnabled` bij nieuwe plannen
+  onlineRepairDefault Boolean @default(false) @map("online_repair_default")
+
   users                    User[]
   invitations              Invitation[]
   contacts                 Contact[]
@@ -519,6 +522,9 @@ model Organization {
 
   // AI-review van inspectierapporten (PRD-13)
   aiReviewRuns AiReviewRun[]
+
+  // Online herstel van constateringen (PRD-14)
+  repairSessions RepairSession[]
 
   @@map("imp_organizations")
 }
@@ -2258,6 +2264,7 @@ enum TemplateStatus {
 enum DocumentType {
   PLAN
   REPORT
+  HERSTELVERKLARING
 }
 
 enum TemplateMode {
@@ -2648,6 +2655,8 @@ model ClassificationOption {
   description      String?
   color            String
   sortOrder        Int     @default(0) @map("sort_order")
+  // Online herstel (PRD-14): markeert deze optie als "kritiek" (→ Finding.isCritical)
+  isCritical       Boolean @default(false) @map("is_critical")
 
   characteristic ClassificationCharacteristic @relation(fields: [characteristicId], references: [id], onDelete: Cascade)
 
@@ -2702,6 +2711,10 @@ model InspectionPlan {
   internalNotes String? @map("internal_notes")
   metadata      Json    @default("{}")
 
+  // Online herstel (PRD-14)
+  onlineRepairEnabled      Boolean   @default(false) @map("online_repair_enabled")
+  criticalRepairNotifiedAt DateTime? @map("critical_repair_notified_at")
+
   createdAt      DateTime  @default(now()) @map("created_at")
   updatedAt      DateTime  @updatedAt @map("updated_at")
   syncedAt       DateTime? @map("synced_at")
@@ -2737,6 +2750,7 @@ model InspectionPlan {
   standaloneMeasurements  StandaloneMeasurement[]
   instrumentDefaults      InspectionPlanDefaultInstrument[]
   aiReviewRuns            AiReviewRun[]
+  repairSessions          RepairSession[]
 
   @@index([orgId, statusCode])
   @@index([contactId])
@@ -2927,6 +2941,10 @@ model Finding {
   resolvedBy      String?   @map("resolved_by") @db.Uuid
   resolutionNotes String?   @map("resolution_notes")
 
+  // Online herstel (PRD-14): gedenormaliseerd uit classificationValues × ClassificationOption.isCritical
+  // (server-owned: gezet door findings.service en de /sync-push-mapper, niet client-schrijfbaar)
+  isCritical Boolean @default(false) @map("is_critical")
+
   createdAt DateTime  @default(now()) @map("created_at")
   updatedAt DateTime  @updatedAt @map("updated_at")
   syncedAt  DateTime? @map("synced_at")
@@ -2952,6 +2970,7 @@ model Finding {
   @@index([inspectionPlanId])
   @@index([findingTemplateId])
   @@index([orgId, statusCode])
+  @@index([inspectionPlanId, isCritical, statusCode])
   @@map("imp_findings")
 }
 
@@ -3655,6 +3674,7 @@ model GeneratedDocument {
   inspectionPlan   InspectionPlan      @relation(fields: [inspectionPlanId], references: [id])
   signatures       DocumentSignature[]
   aiReviewRuns     AiReviewRun[]
+  repairSessions   RepairSession[]
 
   @@index([orgId])
   @@index([inspectionPlanId, documentType])
@@ -4050,6 +4070,7 @@ model ClientUser {
   messages           InspectionMessage[]      @relation("MessageClientUser")
   findingResolutions FindingResolution[]
   clientRequests     ClientRequest[]
+  repairSessions     RepairSession[]
 
   @@map("imp_client_users")
 }
@@ -4162,9 +4183,12 @@ model MessageAttachment {
 }
 
 model FindingResolution {
+  // PRD-14: resolvedByClientUserId is optioneel geworden — een anonieme herstelsessie
+  // (RepairSession ANONYMOUS) heeft geen ClientUser; herkomst zit dan in repairSessionId.
   id                     String    @id @default(uuid()) @db.Uuid
   findingId              String    @map("finding_id") @db.Uuid
-  resolvedByClientUserId String    @map("resolved_by_client_user_id") @db.Uuid
+  resolvedByClientUserId String?   @map("resolved_by_client_user_id") @db.Uuid
+  repairSessionId        String?   @map("repair_session_id") @db.Uuid
   description            String?   @db.Text
   resolvedAt             DateTime  @default(now()) @map("resolved_at")
   statusCode             String    @default("PENDING_VERIFICATION") @map("status") // → imp_resolution_status_types.code
@@ -4173,10 +4197,12 @@ model FindingResolution {
   verificationNotes      String?   @map("verification_notes")
 
   finding              Finding                  @relation(fields: [findingId], references: [id], onDelete: Cascade)
-  resolvedByClientUser ClientUser               @relation(fields: [resolvedByClientUserId], references: [id])
+  resolvedByClientUser ClientUser?              @relation(fields: [resolvedByClientUserId], references: [id])
+  repairSession        RepairSession?           @relation(fields: [repairSessionId], references: [id], onDelete: SetNull)
   photos               FindingResolutionPhoto[]
 
   @@index([findingId])
+  @@index([repairSessionId])
   @@map("imp_finding_resolutions")
 }
 
@@ -4190,6 +4216,50 @@ model FindingResolutionPhoto {
   resolution FindingResolution @relation(fields: [resolutionId], references: [id], onDelete: Cascade)
 
   @@map("imp_finding_resolution_photos")
+}
+
+// ─── Online herstel van constateringen (PRD-14) ───
+
+enum RepairAccessType {
+  CLIENT_USER // ingelogde klantportaal-gebruiker
+  ANONYMOUS // rapportnummer + postcode (later: QR)
+}
+
+enum RepairSessionStatus {
+  ACTIVE
+  COMPLETED // herstelverklaring ondertekend
+  EXPIRED
+}
+
+model RepairSession {
+  id               String              @id @default(uuid()) @db.Uuid
+  orgId            String              @map("org_id") @db.Uuid
+  inspectionPlanId String              @map("inspection_plan_id") @db.Uuid
+  accessType       RepairAccessType    @map("access_type")
+  status           RepairSessionStatus @default(ACTIVE)
+  token            String              @unique // crypto-random, zoals ClientMagicLink
+  clientUserId     String?             @map("client_user_id") @db.Uuid
+
+  // Invullergegevens (verklaring); bij CLIENT_USER vooraf gevuld vanuit het account
+  contactName         String? @map("contact_name")
+  companyName         String? @map("company_name")
+  email               String? // verplicht bij ANONYMOUS vóór afronden
+  generatedDocumentId String? @map("generated_document_id") @db.Uuid // herstelverklaring
+
+  expiresAt        DateTime  @map("expires_at") // now + 72 uur
+  completedAt      DateTime? @map("completed_at")
+  lastActivityAt   DateTime  @default(now()) @map("last_activity_at")
+  createdIpAddress String?   @map("created_ip_address")
+  createdAt        DateTime  @default(now()) @map("created_at")
+
+  organization      Organization        @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  inspectionPlan    InspectionPlan      @relation(fields: [inspectionPlanId], references: [id], onDelete: Cascade)
+  clientUser        ClientUser?         @relation(fields: [clientUserId], references: [id], onDelete: SetNull)
+  generatedDocument GeneratedDocument?  @relation(fields: [generatedDocumentId], references: [id], onDelete: SetNull)
+  resolutions       FindingResolution[]
+
+  @@index([orgId, inspectionPlanId])
+  @@map("imp_repair_sessions")
 }
 
 model ClientRequest {

@@ -76,6 +76,7 @@ export enum AssetFieldType {
 export enum DocumentType {
   PLAN = 'PLAN',
   REPORT = 'REPORT',
+  HERSTELVERKLARING = 'HERSTELVERKLARING',
 }
 
 export enum SectionType {
@@ -283,6 +284,10 @@ export interface InspectionPlan {
   notes: string | null;
   internalNotes: string | null;
   metadata: Record<string, unknown>;
+  /** Online herstel aan/uit voor dit plan (PRD-14). */
+  onlineRepairEnabled: boolean;
+  /** Moment waarop de "alle kritieke constateringen hersteld"-melding is verstuurd (PRD-14). */
+  criticalRepairNotifiedAt: string | null;
   createdAt: string;
   updatedAt: string;
   syncedAt: string | null;
@@ -423,6 +428,8 @@ export interface Finding {
   resolvedAt: string | null;
   resolvedBy: string | null;
   resolutionNotes: string | null;
+  /** Gedenormaliseerd: kritieke classificatie-optie geraakt (PRD-14, server-owned). */
+  isCritical: boolean;
   createdAt: string;
   updatedAt: string;
   syncedAt: string | null;
@@ -584,6 +591,8 @@ export interface ClassificationOption {
   description: string | null;
   color: string;
   sortOrder: number;
+  /** Markeert deze optie als "kritiek" (PRD-14, → Finding.isCritical). */
+  isCritical: boolean;
 }
 
 // ── Categorieën (constatering- & checklist-item-categorieën) ──
@@ -1042,5 +1051,37 @@ export interface AiReviewItem {
   checkedBy: string | null;
   checkedAt: string | null;
   sortOrder: number;
+  createdAt: string;
+}
+
+// ── Online herstel van constateringen (PRD-14) ──
+
+export enum RepairAccessType {
+  CLIENT_USER = 'CLIENT_USER',
+  ANONYMOUS = 'ANONYMOUS',
+}
+
+export enum RepairSessionStatus {
+  ACTIVE = 'ACTIVE',
+  COMPLETED = 'COMPLETED',
+  EXPIRED = 'EXPIRED',
+}
+
+/** Herstelsessie: één toegangssessie tot de herstel-flow van één inspectieplan. */
+export interface RepairSession {
+  id: string;
+  orgId: string;
+  inspectionPlanId: string;
+  accessType: RepairAccessType;
+  status: RepairSessionStatus;
+  clientUserId: string | null;
+  contactName: string | null;
+  companyName: string | null;
+  email: string | null;
+  generatedDocumentId: string | null;
+  expiresAt: string;
+  completedAt: string | null;
+  lastActivityAt: string;
+  createdIpAddress: string | null;
   createdAt: string;
 }

@@ -30,6 +30,7 @@ export const FEATURE_KEYS = [
   'WEBHOOKS',
   'CUSTOM_FIELDS',
   'AI_REVIEW',
+  'ONLINE_HERSTEL',
 ] as const;
 
 export type FeatureKey = (typeof FEATURE_KEYS)[number];
@@ -110,6 +111,13 @@ export const FEATURE_CATALOG: Record<FeatureKey, FeatureDef> = {
     key: 'AI_REVIEW',
     label: 'AI-rapportcontrole (add-on)',
     description: 'AI-voorcontrole van inspectierapporten vóór de menselijke review',
+    dependsOn: ['BASIS_INSPECTIES'],
+  },
+  ONLINE_HERSTEL: {
+    key: 'ONLINE_HERSTEL',
+    label: 'Online herstel (add-on)',
+    description:
+      'Externen en klanten melden herstel van constateringen online, incl. ondertekende herstelverklaring',
     dependsOn: ['BASIS_INSPECTIES'],
   },
 };

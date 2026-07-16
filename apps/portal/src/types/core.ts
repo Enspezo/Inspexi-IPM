@@ -1,3 +1,5 @@
+import type { EmploymentType } from './availability';
+
 export enum Role {
   SUPERUSER = 'SUPERUSER',
   ORG_ADMIN = 'ORG_ADMIN',
@@ -86,6 +88,8 @@ export interface User {
   sharePhoneWithClients: boolean;
   shareEmailWithClients: boolean;
   defaultApprovalPersonId: string | null;
+  /** Dienstvorm (PRD-12) — null = geen inspecteur / n.v.t. */
+  employmentType?: EmploymentType | null;
   availability?: Availability;
   availabilityNote?: string | null;
   lastSeenAt?: string | null;

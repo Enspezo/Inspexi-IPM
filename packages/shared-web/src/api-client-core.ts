@@ -13,12 +13,19 @@ import type { ApiError } from './types';
 export class ApiClientError extends Error {
   statusCode: number;
   error?: string;
+  /**
+   * Volledige server-foutbody. Draagt endpoint-specifieke extra velden mee die
+   * niet in `message`/`statusCode` passen — bijv. de `warnings`-array van een
+   * 409 uit de planning-integratie (PRD-12 §12.9).
+   */
+  data: ApiError;
 
   constructor(data: ApiError) {
     super(data.message);
     this.name = 'ApiClientError';
     this.statusCode = data.statusCode;
     this.error = data.error;
+    this.data = data;
   }
 }
 

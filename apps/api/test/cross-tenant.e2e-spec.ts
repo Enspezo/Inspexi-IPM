@@ -69,6 +69,10 @@ describe('Cross-tenant FK isolation (e2e)', () => {
   // PRD-12 (project phases) fixtures
   let phaseBId: string; // org B phase (victim) — projectPhaseId injection target
 
+  // PRD-12 (availability) fixtures
+  let availTemplateBId: string; // org B availability template (victim) — schedule injection
+  let availExceptionBId: string; // org B availability exception (victim) — exception injection
+
   const createdPlanningIds: string[] = [];
   const createdTaskIds: string[] = [];
   // NB: rows created by PR-2 positive controls are swept by the orgId-bulk
@@ -410,6 +414,30 @@ describe('Cross-tenant FK isolation (e2e)', () => {
     });
     phaseBId = phaseB.id;
 
+    // PRD-12: org B's availability template (victim) for schedule-injection tests.
+    const availTemplateB = await prisma.availabilityTemplate.create({
+      data: {
+        orgId: orgB.id,
+        name: 'Template B',
+        slots: { create: [{ weekday: 1, startMinute: 480, endMinute: 1050 }] },
+      },
+    });
+    availTemplateBId = availTemplateB.id;
+
+    // PRD-12: org B's availability exception (victim) for exception-injection tests.
+    const availExceptionB = await prisma.availabilityException.create({
+      data: {
+        orgId: orgB.id,
+        userId: userB.id,
+        type: 'GEBLOKKEERD',
+        startsAt: new Date('2026-08-03T00:00:00.000Z'),
+        endsAt: new Date('2026-08-04T00:00:00.000Z'),
+        allDay: true,
+        createdById: userB.id,
+      },
+    });
+    availExceptionBId = availExceptionB.id;
+
     // Support-ticket van org B (slachtoffer) — org A mag dit niet zien/muteren.
     const ticketB = await prisma.supportTicket.create({
       data: {
@@ -509,6 +537,11 @@ describe('Cross-tenant FK isolation (e2e)', () => {
       // are created, so drop counters + schemes before the orgs they reference.
       await prisma.numberingCounter.deleteMany({ where: { scheme: { orgId: { in: orgIds } } } });
       await prisma.numberingScheme.deleteMany({ where: { orgId: { in: orgIds } } });
+      // Beschikbaarheid (PRD-12): kinderen eerst, vóór users/orgs/templates.
+      await prisma.availabilityException.deleteMany({ where: { orgId: { in: orgIds } } });
+      await prisma.userScheduleAssignment.deleteMany({ where: { orgId: { in: orgIds } } });
+      await prisma.availabilityTemplateSlot.deleteMany({ where: { template: { orgId: { in: orgIds } } } });
+      await prisma.availabilityTemplate.deleteMany({ where: { orgId: { in: orgIds } } });
       // Inspecteur-certificaten (PRD-11) vóór de users/orgs waar ze naar verwijzen.
       await prisma.inspectorCertificate.deleteMany({ where: { orgId: { in: orgIds } } });
       await prisma.auditLog.deleteMany({ where: { orgId: { in: orgIds } } });
@@ -1520,6 +1553,70 @@ describe('Cross-tenant FK isolation (e2e)', () => {
         .field('issueDate', '2024-01-01')
         .field('issuer', 'X')
         .expect(403);
+    });
+  });
+
+  // ─── Beschikbaarheid — cross-tenant isolatie (PRD-12) ────────────────
+  // Org A injecteert org B's templateId in een schedule-PUT (assertSameOrg → 403)
+  // en probeert het schema van een org-B-inspecteur te lezen (userId niet in scope → 404).
+  describe('Availability — cross-tenant isolatie', () => {
+    it("rejects assigning another org's template to an own user (403)", async () => {
+      await request(app.getHttpServer())
+        .put(`/api/v1/availability/users/${userAId}/schedule`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({ templateId: availTemplateBId, validFrom: '2026-06-01' })
+        .expect(403);
+    });
+
+    it("rejects reading the schedule of another org's user (404)", async () => {
+      await request(app.getHttpServer())
+        .get(`/api/v1/availability/users/${userBId}/schedule`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .expect(404);
+    });
+
+    it("rejects assigning a schedule to another org's user (404)", async () => {
+      await request(app.getHttpServer())
+        .put(`/api/v1/availability/users/${userBId}/schedule`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({ templateId: availTemplateBId, validFrom: '2026-06-01' })
+        .expect(404);
+    });
+
+    it("rejects creating an exception for another org's user (404)", async () => {
+      await request(app.getHttpServer())
+        .post('/api/v1/availability/exceptions')
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({
+          userId: userBId,
+          type: 'GEBLOKKEERD',
+          startsAt: '2026-08-03T00:00:00.000Z',
+          endsAt: '2026-08-04T00:00:00.000Z',
+          allDay: true,
+        })
+        .expect(404);
+    });
+
+    it("rejects listing another org's user exceptions (404)", async () => {
+      await request(app.getHttpServer())
+        .get(`/api/v1/availability/exceptions?userId=${userBId}`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .expect(404);
+    });
+
+    it("rejects patching another org's exception (404)", async () => {
+      await request(app.getHttpServer())
+        .patch(`/api/v1/availability/exceptions/${availExceptionBId}`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({ reason: 'gehackt' })
+        .expect(404);
+    });
+
+    it("rejects deleting another org's exception (404)", async () => {
+      await request(app.getHttpServer())
+        .delete(`/api/v1/availability/exceptions/${availExceptionBId}`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .expect(404);
     });
   });
 });

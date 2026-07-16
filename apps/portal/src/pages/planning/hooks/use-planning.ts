@@ -1,7 +1,9 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useApiMutation } from '@/hooks/use-api-mutation';
+import { useToast } from '@/components/ui';
 import { apiClient } from '@/lib/api-client';
 import { planningKeys } from '@/lib/query-keys';
+import { makeAvailabilityAwareOnError } from '../lib/availability-warnings';
 import type { PlanningItem, PlanningStatus } from '@/types';
 
 interface ListPlanningParams {
@@ -66,12 +68,15 @@ export function useCreatePlanningItem() {
 
 export function useUpdatePlanningItem(id: string) {
   const qc = useQueryClient();
+  const { showToast } = useToast();
   return useApiMutation({
     mutationFn: (dto: any) => apiClient.patch<PlanningItem>(`/planning/${id}`, dto),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: planningKeys.detail(id as string) });
       qc.invalidateQueries({ queryKey: planningKeys.all });
     },
+    // Beschikbaarheids-409 (verzetten) wordt via de override-flow afgehandeld.
+    onError: makeAvailabilityAwareOnError(showToast),
   });
 }
 
@@ -89,10 +94,19 @@ export function useUpdatePlanningStatus(id: string) {
 
 export function useAssignInspectors(id: string) {
   const qc = useQueryClient();
+  const { showToast } = useToast();
   return useApiMutation({
-    mutationFn: (dto: { inspectorIds: string[]; primaryInspectorId?: string }) =>
-      apiClient.post<PlanningItem>(`/planning/${id}/assign`, dto),
-    onSuccess: () => qc.invalidateQueries({ queryKey: planningKeys.detail(id as string) }),
+    mutationFn: (dto: {
+      inspectorIds: string[];
+      primaryInspectorId?: string;
+      overrideAvailabilityWarnings?: boolean;
+    }) => apiClient.post<PlanningItem>(`/planning/${id}/assign`, dto),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: planningKeys.detail(id as string) });
+      qc.invalidateQueries({ queryKey: planningKeys.all });
+    },
+    // Beschikbaarheids-409 wordt via de override-flow afgehandeld.
+    onError: makeAvailabilityAwareOnError(showToast),
   });
 }
 

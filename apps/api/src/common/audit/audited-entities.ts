@@ -206,6 +206,25 @@ export const AUDITED_ENTITIES: readonly AuditedEntity[] = [
     table: 'imp_measurement_instrument_calibrations',
     display: (r) => `Kalibratie #${shortId(r)}`,
   },
+
+  // Beschikbaarheid inspecteurs (PRD-12) — templateslots worden niet los geaudit
+  // (ze horen bij hun template en worden integraal vervangen).
+  {
+    model: 'AvailabilityTemplate',
+    table: 'imp_availability_templates',
+    displayFields: ['name'],
+  },
+  {
+    model: 'UserScheduleAssignment',
+    table: 'imp_user_schedule_assignments',
+    display: (r) => `Schema-toewijzing #${shortId(r)}`,
+  },
+  {
+    model: 'AvailabilityException',
+    table: 'imp_availability_exceptions',
+    display: (r) =>
+      r.reason ? `Uitzondering: ${r.reason}` : `Uitzondering #${shortId(r)}`,
+  },
 ];
 
 /** Builds a display function from an entry's `display` / `displayFields`, falling back to id. */

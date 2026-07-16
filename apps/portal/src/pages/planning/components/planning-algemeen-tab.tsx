@@ -7,9 +7,10 @@ import { ACCEPTANCE_STATUS, WORK_ORDER_STATUS } from '@/lib/status';
 import { PhaseSelect, PhaseInfoField } from '@/components/projects/phase-select';
 import { useFeatures } from '@/providers/feature-provider';
 import { useUpdatePlanningItem } from '../hooks/use-planning';
+import { useAvailabilityOverride } from '../hooks/use-availability-override';
+import { InspectorAssignModal } from './planning-inspector-assign-modal';
 import { useCreateWorkOrder, usePlanningWorkOrders } from '@/pages/work-orders/hooks/use-work-orders';
 import { toDatetimeLocal } from './planning-detail-shared';
-import { getErrorMessage } from '@/lib/api-client';
 
 export function PlanningAlgemeenTab({
   id,
@@ -73,9 +74,11 @@ export function PlanningAlgemeenTab({
   // PRD-12 §Fase E: fase-koppeling alleen tonen bij de PROJECT_FASEN-entitlement.
   const showPhase = hasFeature('PROJECT_FASEN');
   const updateItem = useUpdatePlanningItem(id);
+  const withAvailabilityOverride = useAvailabilityOverride();
   const createWorkOrder = useCreateWorkOrder();
   // Fase-koppeling lokaal beheerd (blijft buiten de door de parent doorgegeven edit-state).
   const [editPhaseId, setEditPhaseId] = useState<string | null>(item.projectPhaseId ?? null);
+  const [assignOpen, setAssignOpen] = useState(false);
 
   const handleOpenEdit = () => {
     setEditProductName(item.productName ?? '');
@@ -89,18 +92,21 @@ export function PlanningAlgemeenTab({
   };
 
   const handleSaveEdit = async () => {
+    const payload = {
+      productName: editProductName || undefined,
+      scheduledDate: editScheduledDate ? new Date(editScheduledDate).toISOString() : null,
+      durationHours: editDurationHours ? Number(editDurationHours) : null,
+      internalNotes: editInternalNotes || null,
+      contactPersonId: editContactPersonId ?? null,
+      locationId: editLocationId ?? undefined,
+      ...(editPhaseId !== (item.projectPhaseId ?? null) ? { projectPhaseId: editPhaseId } : {}),
+    };
     try {
-      await updateItem.mutateAsync({
-        productName: editProductName || undefined,
-        scheduledDate: editScheduledDate ? new Date(editScheduledDate).toISOString() : null,
-        durationHours: editDurationHours ? Number(editDurationHours) : null,
-        internalNotes: editInternalNotes || null,
-        contactPersonId: editContactPersonId ?? null,
-        locationId: editLocationId ?? undefined,
-        ...(editPhaseId !== (item.projectPhaseId ?? null)
-          ? { projectPhaseId: editPhaseId }
-          : {}),
-      });
+      // Verzetten naar een nieuwe datum kan een beschikbaarheids-409 geven → override-flow.
+      const { ok } = await withAvailabilityOverride((override) =>
+        updateItem.mutateAsync(override ? { ...payload, overrideAvailabilityWarnings: true } : payload),
+      );
+      if (!ok) return;
       setEditMode(false);
       showToast('Planregel bijgewerkt', 'success');
     } catch {
@@ -321,7 +327,14 @@ export function PlanningAlgemeenTab({
       {/* Inspectors */}
       <Card>
         <div className="p-6">
-          <h3 className="font-semibold text-gray-900 mb-4">Inspecteurs</h3>
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-semibold text-gray-900">Inspecteurs</h3>
+            {!item.isCancelled && userCanWrite && !item.isMultiDay && (
+              <Button variant="secondary" size="sm" onClick={() => setAssignOpen(true)}>
+                {item.inspectors && item.inspectors.length > 0 ? 'Wijzigen' : 'Toewijzen'}
+              </Button>
+            )}
+          </div>
           {item.inspectors && item.inspectors.length > 0 ? (
             <div className="space-y-3">
               {item.inspectors.map((inspector) => (
@@ -353,6 +366,15 @@ export function PlanningAlgemeenTab({
           )}
         </div>
       </Card>
+
+      <InspectorAssignModal
+        planningItemId={id}
+        isOpen={assignOpen}
+        onClose={() => setAssignOpen(false)}
+        scheduledDate={item.scheduledDate}
+        currentInspectorIds={(item.inspectors ?? []).map((i) => i.userId).filter((u): u is string => !!u)}
+        currentPrimaryId={(item.inspectors ?? []).find((i) => i.isPrimary)?.userId ?? null}
+      />
 
       {/* Werkbonnen */}
       {(item.status === PlanningStatus.GEPLAND || item.status === PlanningStatus.AFGEROND) && (

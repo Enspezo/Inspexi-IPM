@@ -10,6 +10,8 @@ import {
   ApprovalStatus,
   AuditAction,
   Availability,
+  AvailabilityExceptionType,
+  EmploymentType,
   ChatThreadStatus,
   ContactType,
   HelpArticleStatus,
@@ -313,4 +315,22 @@ export const MEETMIDDEL_STATUS: StatusMap = {
   ACTIEF: { label: 'Actief', classes: 'bg-green-100 text-green-800' },
   BUITEN_GEBRUIK: { label: 'Buiten gebruik', classes: 'bg-gray-100 text-gray-700' },
   AFGEKEURD: { label: 'Afgekeurd', classes: 'bg-red-100 text-red-800' },
+};
+
+// ─── PRD-12: Beschikbaarheid inspecteurs ──────────────────
+
+export const AVAILABILITY_EXCEPTION_TYPE: StatusMap = {
+  [AvailabilityExceptionType.BESCHIKBAAR]: { label: 'Beschikbaar', classes: 'bg-green-100 text-green-800' },
+  [AvailabilityExceptionType.GEBLOKKEERD]: { label: 'Geblokkeerd', classes: 'bg-red-100 text-red-800' },
+};
+
+export const EMPLOYMENT_TYPE: StatusMap = {
+  [EmploymentType.DIENSTVERBAND]: { label: 'Dienstverband', classes: 'bg-blue-100 text-blue-800' },
+  [EmploymentType.FREELANCE]: { label: 'Freelance', classes: 'bg-purple-100 text-purple-800' },
+};
+
+/** Label-only map voor selects/weergave (zonder badge-kleuren). */
+export const EMPLOYMENT_TYPE_LABELS: Record<string, string> = {
+  [EmploymentType.DIENSTVERBAND]: 'Dienstverband',
+  [EmploymentType.FREELANCE]: 'Freelance',
 };

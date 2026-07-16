@@ -15,12 +15,14 @@ import { useAuth } from '@/providers/auth-provider';
 import { useFeatures } from '@/providers/feature-provider';
 import { useWindowTabs } from '@/providers/window-tabs';
 import { usePlanningItems } from './hooks/use-planning';
+import { useResolvedAvailability } from '@/pages/availability/hooks/use-availability';
 import { useOrganization } from '../organization/hooks/use-organization';
 import {
   PlanningCalendarView,
   MONTHS_NL,
   getMonday,
   addDays,
+  localDateKey,
   type CalendarViewMode,
 } from './components/planning-calendar-view';
 import { InspectorFilter, type InspectorOption } from './components/inspector-filter';
@@ -104,6 +106,21 @@ function getCalendarRange(view: ViewMode, date: Date): { dateFrom: string; dateT
   const gridEnd = addDays(gridStart, 41);
   gridEnd.setHours(23, 59, 59, 999);
   return { dateFrom: gridStart.toISOString(), dateTo: gridEnd.toISOString() };
+}
+
+/** Zichtbare kalenderbereik als lokale date-keys (voor de resolved availability). */
+function getCalendarRangeKeys(view: ViewMode, date: Date): { fromKey: string; toKey: string } {
+  if (view === 'dag') {
+    const key = localDateKey(date);
+    return { fromKey: key, toKey: key };
+  }
+  if (view === 'week') {
+    const monday = getMonday(date);
+    return { fromKey: localDateKey(monday), toKey: localDateKey(addDays(monday, 6)) };
+  }
+  // maand — volledige 6-weken-grid.
+  const gridStart = getMonday(new Date(date.getFullYear(), date.getMonth(), 1));
+  return { fromKey: localDateKey(gridStart), toKey: localDateKey(addDays(gridStart, 41)) };
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -387,7 +404,7 @@ export default function PlanningPage() {
     }
     return {
       ...getCalendarRange(view, calendarDate),
-      limit: 300,
+      limit: 200,
       page: 1,
     };
   }, [view, debouncedSearch, statusFilter, page, calendarDate, apiSort]);
@@ -435,6 +452,28 @@ export default function PlanningPage() {
       ),
     );
   }, [allItems, selectedInspectorIds]);
+
+  // ─── Beschikbaarheids-overlay (kalender, PRD-12 §12.9) ──────────────────────
+  // Alleen actief wanneer op precies één inspecteur gefilterd is.
+  const activeInspectorId = selectedInspectorIds.length === 1 ? selectedInspectorIds[0] : null;
+  const calRangeKeys = useMemo(
+    () => (view !== 'list' ? getCalendarRangeKeys(view, calendarDate) : null),
+    [view, calendarDate],
+  );
+  const { data: resolvedDays } = useResolvedAvailability(
+    calRangeKeys?.fromKey ?? '',
+    calRangeKeys?.toKey ?? '',
+    activeInspectorId ? [activeInspectorId] : [],
+    { enabled: !!calRangeKeys && !!activeInspectorId },
+  );
+  const unavailableDates = useMemo(() => {
+    const set = new Set<string>();
+    if (!activeInspectorId) return set;
+    for (const d of resolvedDays ?? []) {
+      if (!d.isAvailable) set.add(d.date);
+    }
+    return set;
+  }, [resolvedDays, activeInspectorId]);
 
   const handleSearch = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     setSearch(e.target.value);
@@ -668,6 +707,7 @@ export default function PlanningPage() {
             }}
             dayStart={dayStart}
             dayEnd={dayEnd}
+            unavailableDates={unavailableDates}
           />
         </div>
       )}

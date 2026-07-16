@@ -25,7 +25,8 @@ export type NotificationModel =
   | 'INSPECTIEPLANNEN'
   | 'MEETMIDDELEN'
   | 'CHAT'
-  | 'SUPPORT';
+  | 'SUPPORT'
+  | 'BESCHIKBAARHEID';
 
 export const NOTIFICATION_MODEL_KEYS: NotificationModel[] = [
   'OFFERTES',
@@ -40,6 +41,7 @@ export const NOTIFICATION_MODEL_KEYS: NotificationModel[] = [
   'MEETMIDDELEN',
   'CHAT',
   'SUPPORT',
+  'BESCHIKBAARHEID',
 ];
 
 export const NOTIFICATION_MODEL_TYPES: Record<
@@ -106,6 +108,10 @@ export const NOTIFICATION_MODEL_TYPES: Record<
     NotificationType.SUPPORT_TICKET_AANGEMAAKT,
     NotificationType.SUPPORT_TICKET_REACTIE,
     NotificationType.SUPPORT_TICKET_STATUS,
+  ],
+  BESCHIKBAARHEID: [
+    NotificationType.BESCHIKBAARHEID_GEWIJZIGD_DOOR_INSPECTEUR,
+    NotificationType.BESCHIKBAARHEID_GEWIJZIGD_DOOR_MANAGER,
   ],
 };
 

@@ -11,6 +11,7 @@ import { UsersService } from './users.service';
 import { STORAGE_PROVIDER } from '@/common/services/storage/storage.interface';
 import { PrismaService } from '@/prisma';
 import { EmailService } from '@/common/services/email.service';
+import { NotificationsService } from '@/modules/notifications/notifications.service';
 
 // Mock bcrypt
 jest.mock('bcrypt', () => ({
@@ -115,6 +116,7 @@ describe('UsersService', () => {
             exists: jest.fn(),
           },
         },
+        { provide: NotificationsService, useValue: { dispatch: jest.fn() } },
       ],
     }).compile();
 
@@ -526,6 +528,72 @@ describe('UsersService', () => {
         },
         include: { organization: true },
       });
+    });
+  });
+
+  describe('adminUpdateUser() — dienstvorm (PRD-12)', () => {
+    const mockManager = {
+      id: 'manager-1',
+      orgId: 'org-1',
+      roles: [Role.MANAGER],
+    } as any;
+
+    const targetInspecteur = {
+      id: 'insp-1',
+      orgId: 'org-1',
+      roles: [Role.INSPECTEUR],
+      organization: mockOrganization,
+    } as any;
+
+    beforeEach(() => {
+      // findOne() → the target inspecteur in the same org.
+      mockPrismaService.user.findUnique.mockResolvedValue(targetInspecteur);
+      mockPrismaService.user.update.mockImplementation(({ data }: any) =>
+        Promise.resolve({ ...targetInspecteur, ...data, passwordHash: 'x' }),
+      );
+    });
+
+    it('lets a MANAGER set employmentType', async () => {
+      const result = await service.adminUpdateUser(
+        'insp-1',
+        { employmentType: 'DIENSTVERBAND' } as any,
+        mockManager,
+      );
+      expect(result.employmentType).toBe('DIENSTVERBAND');
+      expect(mockPrismaService.user.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'insp-1' },
+          data: { employmentType: 'DIENSTVERBAND' },
+        }),
+      );
+    });
+
+    it('forbids a MANAGER from mutating any other field (403)', async () => {
+      await expect(
+        service.adminUpdateUser(
+          'insp-1',
+          { employmentType: 'FREELANCE', firstName: 'Hacked' } as any,
+          mockManager,
+        ),
+      ).rejects.toThrow(ForbiddenException);
+      expect(mockPrismaService.user.update).not.toHaveBeenCalled();
+    });
+
+    it('forbids a MANAGER from a non-employmentType-only update (403)', async () => {
+      await expect(
+        service.adminUpdateUser('insp-1', { lastName: 'Nieuw' } as any, mockManager),
+      ).rejects.toThrow(ForbiddenException);
+      expect(mockPrismaService.user.update).not.toHaveBeenCalled();
+    });
+
+    it('still lets an ORG_ADMIN update other fields', async () => {
+      const result = await service.adminUpdateUser(
+        'insp-1',
+        { firstName: 'Jan' } as any,
+        mockUser, // ORG_ADMIN
+      );
+      expect(result.firstName).toBe('Jan');
+      expect(mockPrismaService.user.update).toHaveBeenCalled();
     });
   });
 });

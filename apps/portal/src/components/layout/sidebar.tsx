@@ -6,7 +6,7 @@ import { useAuth } from '@/providers/auth-provider';
 import { useTenant } from '@/providers/tenant-provider';
 import { OrgSwitcher } from './org-switcher';
 import { SidebarBottomBar } from './sidebar-bottom-bar';
-import { ADMIN_ROLES as adminRoles, CRM_ROLES as crmRoles } from '@/lib/roles';
+import { ADMIN_ROLES as adminRoles, CRM_ROLES as crmRoles, MANAGEMENT_ROLES as managementRoles } from '@/lib/roles';
 import { useFeatures } from '@/providers/feature-provider';
 import type { FeatureKey } from '@/lib/features';
 import { Role } from '@/types';
@@ -175,6 +175,17 @@ export const mainSections: NavSection[] = [
           </svg>
         ),
       },
+      {
+        to: '/my-availability',
+        label: 'Mijn beschikbaarheid',
+        roles: [Role.INSPECTEUR],
+        feature: 'BASIS_INSPECTIES',
+        icon: (
+          <svg className="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+          </svg>
+        ),
+      },
     ],
   },
   {
@@ -290,6 +301,17 @@ export const organisatieSections: NavSection[] = [
           { to: '/lookups', label: 'Lookups' },
           { to: '/voice-prompts/template', label: 'Voice-prompts' },
         ],
+      },
+      {
+        to: '/availability-templates',
+        label: 'Beschikbaarheid',
+        roles: managementRoles,
+        feature: 'BASIS_INSPECTIES',
+        icon: (
+          <svg className="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+          </svg>
+        ),
       },
       {
         to: '/classification-models',
@@ -455,7 +477,12 @@ export function Sidebar() {
     user,
     hasFeature,
   );
-  const hasOrgAccess = !!user && user.roles.some((r) => adminRoles.includes(r));
+  // De Organisatie-trigger opent zodra de gebruiker minstens één item in het
+  // Organisatie-submenu mag zien (rol + feature). Zo bereikt een MANAGER de
+  // Beschikbaarheid-templates via het menu; de children blijven individueel op
+  // hun eigen `roles` gefilterd, dus dit ontsluit geen admin-only items.
+  const hasOrgAccess =
+    !!user && filterSections(organisatieSections, user, hasFeature).some((s) => s.items.length > 0);
   const orgMenuActive = organisatieRoutePrefixes.some((prefix) =>
     location.pathname.startsWith(prefix),
   );

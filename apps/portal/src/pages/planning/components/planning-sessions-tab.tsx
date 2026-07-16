@@ -11,7 +11,7 @@ import {
   useCompleteSession,
 } from '../hooks/use-planning-sessions';
 import { toDatetimeLocal } from './planning-detail-shared';
-import { getErrorMessage } from '@/lib/api-client';
+import { useAvailabilityOverride } from '../hooks/use-availability-override';
 
 export function SessionsTab({
   sessions,
@@ -86,6 +86,7 @@ function SessionCard({
   const [dateEditValue, setDateEditValue] = useState('');
   const { showToast } = useToast();
   const confirm = useConfirm();
+  const withAvailabilityOverride = useAvailabilityOverride();
   const updateSession = useUpdatePlanningSession(planningItemId, session.id);
   const acceptSessionMut = useAcceptSession(planningItemId, session.id);
   const confirmSessionMut = useConfirmSession(planningItemId, session.id);
@@ -121,10 +122,16 @@ function SessionCard({
   };
 
   const handleSaveDate = async () => {
+    const isoDate = dateEditValue ? new Date(dateEditValue).toISOString() : null;
     try {
-      await updateSession.mutateAsync({
-        scheduledDate: dateEditValue ? new Date(dateEditValue).toISOString() : null,
-      });
+      // Verzetten van een sessie met inspecteurs kan een beschikbaarheids-409 geven.
+      const { ok } = await withAvailabilityOverride((override) =>
+        updateSession.mutateAsync({
+          scheduledDate: isoDate,
+          ...(override ? { overrideAvailabilityWarnings: true } : {}),
+        }),
+      );
+      if (!ok) return;
       setDateEditOpen(false);
       showToast('Datum opgeslagen', 'success');
     } catch {

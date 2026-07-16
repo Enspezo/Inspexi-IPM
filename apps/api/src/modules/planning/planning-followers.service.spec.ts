@@ -9,6 +9,7 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { WorkOrdersService } from '../work-orders/work-orders.service';
 import { PlanningEmailService } from './planning-email.service';
 import { EntitlementsService } from '@/modules/entitlements/entitlements.service';
+import { AvailabilityResolutionService } from '@/modules/availability/availability-resolution.service';
 
 describe('PlanningFollowersService', () => {
   let service: PlanningFollowersService;
@@ -128,6 +129,10 @@ describe('PlanningFollowersService', () => {
         {
           provide: EntitlementsService,
           useValue: { assertFeature: jest.fn().mockResolvedValue(undefined) },
+        },
+        {
+          provide: AvailabilityResolutionService,
+          useValue: { checkPlanningDay: jest.fn().mockResolvedValue([]) },
         },
       ],
     }).compile();

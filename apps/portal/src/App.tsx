@@ -129,6 +129,8 @@ const AssetsPage = lazy(() => import('@/pages/assets/assets-page'));
 const AssetDetailPage = lazy(() => import('@/pages/assets/asset-detail-page'));
 const InspectorsPage = lazy(() => import('@/pages/inspectors/inspectors-page'));
 const InspectorDetailPage = lazy(() => import('@/pages/inspectors/inspector-detail-page'));
+const AvailabilityTemplatesPage = lazy(() => import('@/pages/organization/availability-templates-page'));
+const MyAvailabilityPage = lazy(() => import('@/pages/availability/my-availability-page'));
 const ChecklistsPage = lazy(() => import('@/pages/checklists/checklists-page'));
 const ChecklistDetailPage = lazy(() => import('@/pages/checklists/checklist-detail-page'));
 const ChecklistItemsPage = lazy(() => import('@/pages/checklist-items/checklist-items-page'));
@@ -195,6 +197,8 @@ export default function App() {
               element={<OrganizationSettingsPage />}
             />
             <Route path="/profile" element={<ProfilePage />} />
+            <Route path="/availability-templates" element={<AvailabilityTemplatesPage />} />
+            <Route path="/my-availability" element={<MyAvailabilityPage />} />
             <Route path="/email-templates" element={<EmailTemplatesPage />} />
             <Route path="/email-templates/:id" element={<EmailTemplateDetailPage />} />
             <Route path="/search" element={<SearchPage />} />

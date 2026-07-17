@@ -37,6 +37,10 @@ function computeChanges(
   // can change. `after` (the full write result) carries a value for each of them.
   for (const key of Object.keys(before)) {
     if (EXCLUDED_FIELDS.has(key)) continue;
+    // Defensief: draait een caller de update met een narrow `select`, dan mist
+    // `after` kolommen die wél gelezen zijn in `before`. Overslaan i.p.v. een
+    // bogus `veld → null`-diff schrijven (zie sync resolve()-regressie).
+    if (!(key in after)) continue;
     const oldVal = before[key];
     const newVal = after[key];
     if (JSON.stringify(oldVal) !== JSON.stringify(newVal)) {
@@ -123,12 +127,21 @@ export class PrismaService
             ipAddress: ctx.ipAddress,
           });
         } else if (action === 'update') {
+          // Defensief (zoals het delete-pad): een update met een narrow `select`
+          // levert een result zonder `id` — val terug op de where-clause i.p.v.
+          // de audit-write op entity_id NOT NULL te laten stranden.
+          const updateEntityId = result?.id ?? params.args?.where?.id;
+          if (result?.id == null && updateEntityId != null) {
+            this.logger.warn(
+              `Audit: update-result van ${model} mist 'id' (narrow select bij de caller?) — entityId via where.id`,
+            );
+          }
           if (before) {
             const changes = computeChanges(before, result);
-            if (changes) {
+            if (changes && updateEntityId != null) {
               await this.writeAuditLog({
                 entityType: model,
-                entityId: result.id,
+                entityId: updateEntityId,
                 action: 'UPDATE',
                 snapshot: null,
                 changes,
@@ -137,11 +150,11 @@ export class PrismaService
                 ipAddress: ctx.ipAddress,
               });
             }
-          } else {
+          } else if (updateEntityId != null) {
             // No before-state available, log with snapshot
             await this.writeAuditLog({
               entityType: model,
-              entityId: result.id,
+              entityId: updateEntityId,
               action: 'UPDATE',
               snapshot: sanitize(result),
               changes: null,

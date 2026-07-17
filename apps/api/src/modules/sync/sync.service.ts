@@ -689,10 +689,13 @@ export class SyncService {
         const gateOrgId = (existing as { orgId?: string | null }).orgId ?? user.orgId!;
         await this.assertPlanReviewGate(key, fields, existing as Record<string, unknown>, gateOrgId);
 
+        // Bewust GEEN narrow select: de audit-$use-middleware (prisma.service)
+        // leest entityId/orgId én de nieuwe veldwaarden uit het update-resultaat.
+        // Met `select: { updatedAt: true }` ontbrak result.id → de UPDATE-audit-row
+        // van elke conflict-resolve faalde stil op entity_id NOT NULL (23502).
         const updated = await delegate.update({
           where: { id: r.entityId },
           data: { ...fields, syncedAt: new Date() },
-          select: { updatedAt: true },
         });
         await this.prisma.syncQueue.update({
           where: { id: queueItem.id },

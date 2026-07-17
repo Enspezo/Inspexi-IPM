@@ -19,10 +19,11 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { randomBytes, randomUUID } from 'crypto';
-import type { Prisma, RepairSession } from '@prisma/client';
+import type { RepairSession } from '@prisma/client';
 import {
   DocumentType,
   GeneratedDocumentStatus,
+  Prisma,
   RepairAccessType,
   RepairSessionStatus,
   SignatureStatus,
@@ -459,29 +460,41 @@ export class ClientRepairService {
       throw new BadRequestException('U heeft deze constatering al hersteld gemeld');
     }
 
-    const { won, resolution } = await this.prisma.$transaction(async (tx) => {
-      const updated = await tx.finding.updateMany({
-        where: {
-          id: findingId,
-          orgId: session.orgId,
-          inspectionPlanId: session.inspectionPlanId,
-          statusCode: STATUS_OPEN,
-          deletedAt: null,
-        },
-        data: { statusCode: STATUS_RESOLVED, resolvedAt: new Date() },
-      });
-      const wonRace = updated.count === 1;
-      const created = await tx.findingResolution.create({
-        data: {
-          findingId,
-          repairSessionId: session.id,
-          resolvedByClientUserId: session.clientUserId,
-          description: dto.description,
-          statusCode: wonRace ? RESOLUTION_REPORTED : RESOLUTION_CONFLICT,
-        },
-      });
-      return { won: wonRace, resolution: created };
-    });
+    let won: boolean;
+    let resolution: Awaited<ReturnType<typeof this.prisma.findingResolution.create>>;
+    try {
+      ({ won, resolution } = await this.prisma.$transaction(async (tx) => {
+        const updated = await tx.finding.updateMany({
+          where: {
+            id: findingId,
+            orgId: session.orgId,
+            inspectionPlanId: session.inspectionPlanId,
+            statusCode: STATUS_OPEN,
+            deletedAt: null,
+          },
+          data: { statusCode: STATUS_RESOLVED, resolvedAt: new Date() },
+        });
+        const wonRace = updated.count === 1;
+        const created = await tx.findingResolution.create({
+          data: {
+            findingId,
+            repairSessionId: session.id,
+            resolvedByClientUserId: session.clientUserId,
+            description: dto.description,
+            statusCode: wonRace ? RESOLUTION_REPORTED : RESOLUTION_CONFLICT,
+          },
+        });
+        return { won: wonRace, resolution: created };
+      }));
+    } catch (err) {
+      // Dubbelklik-race binnen dezelfde sessie (review #9): de `mine`-precheck is
+      // niet atomisch; de @@unique([findingId, repairSessionId]) vangt de tweede
+      // parallelle claim → nette 400, transactie (incl. status-flip) teruggedraaid.
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+        throw new BadRequestException('U heeft deze constatering al hersteld gemeld');
+      }
+      throw err;
+    }
 
     if (!won) {
       // Na commit: conflictdispatch fire-and-forget (fase 3 vult de inhoud in).
@@ -918,36 +931,38 @@ export class ClientRepairService {
       ipAddress: ip ?? null,
     });
 
-    await this.prisma.documentSignature.update({
-      where: { id: signature.id },
-      data: {
-        signatureImage: dto.signatureImage,
-        signerName: session.contactName ?? signature.signerName,
-        signerEmail: session.email ?? signature.signerEmail,
-        signedAt,
-        signedIpAddress: ip ?? null,
-        status: SignatureStatus.SIGNED,
-      },
-    });
-
-    // PDF renderen en opslaan (patroon uit generated-documents.exportToPdf).
+    // Eerst de PDF renderen + uploaden (review #6): faalt Puppeteer/storage, dan
+    // is er nog níets gemuteerd en kan de klant gewoon opnieuw ondertekenen.
     const pdfBuffer = await this.pdf.renderPdf(finalHtml, {});
     const pdfKey = `${session.orgId}/documents/${document.id}.pdf`;
     await this.storage.upload(pdfKey, pdfBuffer, 'application/pdf');
 
-    await this.prisma.generatedDocument.update({
-      where: { id: document.id },
-      data: {
-        htmlContent: finalHtml,
-        status: GeneratedDocumentStatus.SIGNED,
-        pdfUrl: pdfKey,
-      },
-    });
-
-    const completedSession = await this.prisma.repairSession.update({
-      where: { id: session.id },
-      data: { status: RepairSessionStatus.COMPLETED, completedAt: signedAt },
-    });
+    // Daarna de drie statusmutaties atomisch (signature → document → sessie).
+    const [, , completedSession] = await this.prisma.$transaction([
+      this.prisma.documentSignature.update({
+        where: { id: signature.id },
+        data: {
+          signatureImage: dto.signatureImage,
+          signerName: session.contactName ?? signature.signerName,
+          signerEmail: session.email ?? signature.signerEmail,
+          signedAt,
+          signedIpAddress: ip ?? null,
+          status: SignatureStatus.SIGNED,
+        },
+      }),
+      this.prisma.generatedDocument.update({
+        where: { id: document.id },
+        data: {
+          htmlContent: finalHtml,
+          status: GeneratedDocumentStatus.SIGNED,
+          pdfUrl: pdfKey,
+        },
+      }),
+      this.prisma.repairSession.update({
+        where: { id: session.id },
+        data: { status: RepairSessionStatus.COMPLETED, completedAt: signedAt },
+      }),
+    ]);
 
     const filename = `herstelverklaring-${(completedSession.contactName ?? 'extern').replace(/[^a-zA-Z0-9-]+/g, '-').toLowerCase()}.pdf`;
     this.events

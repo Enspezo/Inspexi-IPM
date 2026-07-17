@@ -141,4 +141,26 @@ describe('RepairSessionGuard', () => {
       guard.canActivate(createContext(buildRequest('Bearer tok-123', 'org-1'))),
     ).resolves.toBe(true);
   });
+
+  it('lazy expiry geldt alléén voor ACTIVE: een COMPLETED-sessie ná de TTL blijft toegestaan zonder status-flip (review #8)', async () => {
+    mockPrisma.repairSession.findUnique.mockResolvedValue(
+      activeSession({
+        status: RepairSessionStatus.COMPLETED,
+        expiresAt: new Date(Date.now() - 1000),
+      }),
+    );
+
+    await expect(
+      guard.canActivate(createContext(buildRequest('Bearer tok-123', 'org-1'))),
+    ).resolves.toBe(true);
+
+    // Geen EXPIRED-flip; alleen de gebruikelijke lastActivityAt-update.
+    expect(mockPrisma.repairSession.update).not.toHaveBeenCalledWith(
+      expect.objectContaining({ data: { status: RepairSessionStatus.EXPIRED } }),
+    );
+    expect(mockPrisma.repairSession.update).toHaveBeenCalledWith({
+      where: { id: 'sess-1' },
+      data: { lastActivityAt: expect.any(Date) },
+    });
+  });
 });

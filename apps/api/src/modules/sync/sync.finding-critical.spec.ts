@@ -1,8 +1,10 @@
 // Sync-push × Finding.isCritical (PRD-14): het veld is server-owned — het staat
-// niet in de sync-mapper-whitelist en wordt in applyFindingCriticalFields
-// herberekend uit classificationValues × het classificatiemodel van het plan
-// (per-push gecachet). Heropen van een kritieke finding reset bovendien
-// InspectionPlan.criticalRepairNotifiedAt (besluit 9).
+// niet in de sync-mapper-whitelist en wordt in computeFindingCriticalField
+// (vóór de write) herberekend uit classificationValues × het classificatiemodel
+// van het plan (per-push gecachet). resetCriticalRepairNotified (alléén ná een
+// geslaagde write, review #5) reset InspectionPlan.criticalRepairNotifiedAt bij
+// heropen van een kritieke finding, bij een nieuwe open+kritieke finding en bij
+// becameOpenCritical (review #7) — maar NIET bij een LWW-conflict.
 import { Test, TestingModule } from '@nestjs/testing';
 import { Role } from '@prisma/client';
 import { SyncService } from './sync.service';
@@ -186,6 +188,67 @@ describe('SyncService — finding isCritical (PRD-14)', () => {
     expect(modelLoadCalls()).toHaveLength(0);
     expect(result.processed.findings).toBe(1);
     expect(result.errors).toHaveLength(0);
+  });
+
+  it('create: een nieuwe open+kritieke finding via de push her-armt de herinspectie-trigger (review #7)', async () => {
+    const dto = {
+      deviceId: 'dev-1',
+      changes: { findings: [findingCreate('f1', { SEVERITY: 'C1' })] },
+    } as any;
+
+    await service.push(user, dto);
+
+    expect(mockPrisma.inspectionPlan.updateMany).toHaveBeenCalledWith({
+      where: { id: 'p1', criticalRepairNotifiedAt: { not: null } },
+      data: { criticalRepairNotifiedAt: null },
+    });
+  });
+
+  it('create: een niet-kritieke finding laat de trigger-timestamp met rust', async () => {
+    const dto = {
+      deviceId: 'dev-1',
+      changes: { findings: [findingCreate('f1', { SEVERITY: 'C3' })] },
+    } as any;
+
+    await service.push(user, dto);
+
+    expect(mockPrisma.inspectionPlan.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('update: een LWW-conflict her-armt de trigger NIET (reset alleen ná een geslaagde write, review #5)', async () => {
+    // Server nieuwer dan wat de client laatst zag → applyUpdate eindigt als
+    // 'conflict' en schrijft niets weg; de stale statusCode:'open' van de PWA
+    // mag criticalRepairNotifiedAt dan ook niet leegmaken.
+    mockPrisma.finding.findFirst.mockResolvedValue({
+      id: 'f1',
+      orgId: 'org-1',
+      inspectionPlanId: 'p1',
+      statusCode: 'resolved',
+      isCritical: true,
+      updatedAt: new Date('2026-01-02T00:00:00Z'),
+    });
+    mockPrisma.syncQueue.findFirst.mockResolvedValue(null); // geen open conflict → create-pad
+    mockPrisma.syncQueue.create.mockResolvedValue({ id: 'q1' });
+
+    const dto = {
+      deviceId: 'dev-1',
+      changes: {
+        findings: [
+          {
+            operation: 'update',
+            data: { id: 'f1', statusCode: 'open', syncedAt: '2026-01-01T00:00:00Z' },
+          },
+        ],
+      },
+    } as any;
+
+    const result = await service.push(user, dto);
+
+    expect(result.conflicts).toHaveLength(1);
+    expect(result.processed.findings).toBe(0);
+    // Niets weggeschreven én geen trigger-reset.
+    expect(mockPrisma.finding.update).not.toHaveBeenCalled();
+    expect(mockPrisma.inspectionPlan.updateMany).not.toHaveBeenCalled();
   });
 
   it('update: heropen van een NIET-kritieke finding laat de timestamp met rust', async () => {

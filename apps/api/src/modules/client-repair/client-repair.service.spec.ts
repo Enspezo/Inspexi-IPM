@@ -14,6 +14,7 @@ import {
 import {
   DocumentType,
   GeneratedDocumentStatus,
+  Prisma,
   RepairAccessType,
   RepairSessionStatus,
   SignatureStatus,
@@ -148,10 +149,14 @@ describe('ClientRepairService', () => {
 
     service = module.get<ClientRepairService>(ClientRepairService);
 
-    // Defaults: entitlement aan, transactie voert de callback direct uit op mockPrisma,
-    // sessie-create echoot z'n data terug, events resolven, geen findings/foto's.
+    // Defaults: entitlement aan, transactie is polymorf (callback-vorm voert de
+    // callback direct uit op mockPrisma; array-vorm — sign(), review #6 — gedraagt
+    // zich als Promise.all), sessie-create echoot z'n data terug, events resolven,
+    // geen findings/foto's.
     mockEntitlements.getEnabledFeatures.mockResolvedValue([ONLINE_HERSTEL_FEATURE]);
-    mockPrisma.$transaction.mockImplementation(async (fn: any) => fn(mockPrisma));
+    mockPrisma.$transaction.mockImplementation(async (arg: any) =>
+      typeof arg === 'function' ? arg(mockPrisma) : Promise.all(arg),
+    );
     mockPrisma.repairSession.create.mockImplementation(async ({ data }: any) => ({
       id: 'sess-new',
       status: RepairSessionStatus.ACTIVE,
@@ -453,6 +458,42 @@ describe('ClientRepairService', () => {
         service.claimFinding(buildSession(), 'f-1', { description: 'x' } as any),
       ).rejects.toThrow(BadRequestException);
       expect(mockPrisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('parallelle dubbelclaim: P2002 uit @@unique([findingId, repairSessionId]) → nette 400, géén 409 (review #9)', async () => {
+      // De `mine`-precheck is niet atomisch: bij een dubbelklik-race binnen
+      // dezelfde sessie vangt de unique-constraint de tweede claim in de
+      // transactie. Die hoort als invoerfout (400) terug, niet als conflict.
+      setupClaim();
+      mockPrisma.finding.updateMany.mockResolvedValue({ count: 1 });
+      mockPrisma.findingResolution.create.mockRejectedValue(
+        new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+          code: 'P2002',
+          clientVersion: 'x',
+        } as any),
+      );
+
+      const error = await service
+        .claimFinding(buildSession(), 'f-1', { description: 'x' } as any)
+        .catch((e) => e);
+      await flush();
+
+      expect(error).toBeInstanceOf(BadRequestException);
+      expect(error).not.toBeInstanceOf(ConflictException);
+      expect(error.message).toBe('U heeft deze constatering al hersteld gemeld');
+      // Geen conflict-dispatch en geen kritiek-check: de claim is niet doorgegaan.
+      expect(mockEvents.onRepairConflict).not.toHaveBeenCalled();
+      expect(mockPrisma.finding.count).not.toHaveBeenCalled();
+    });
+
+    it('een andere transactiefout dan P2002 wordt onveranderd doorgegooid', async () => {
+      setupClaim();
+      mockPrisma.finding.updateMany.mockResolvedValue({ count: 1 });
+      mockPrisma.findingResolution.create.mockRejectedValue(new Error('db weg'));
+
+      await expect(
+        service.claimFinding(buildSession(), 'f-1', { description: 'x' } as any),
+      ).rejects.toThrow('db weg');
     });
 
     it('weigert een claim op een niet-ACTIVE sessie', async () => {
@@ -1145,6 +1186,15 @@ describe('ClientRepairService', () => {
           'application/pdf',
         );
 
+        // Volgorde (review #6): eerst renderen + uploaden, pas daarna de
+        // statusmutaties — faalt Puppeteer/storage, dan is er niets gemuteerd.
+        expect(mockPdf.renderPdf.mock.invocationCallOrder[0]).toBeLessThan(
+          mockStorage.upload.mock.invocationCallOrder[0],
+        );
+        expect(mockStorage.upload.mock.invocationCallOrder[0]).toBeLessThan(
+          mockPrisma.documentSignature.update.mock.invocationCallOrder[0],
+        );
+
         // Sessie afgerond.
         expect(mockPrisma.repairSession.update).toHaveBeenCalledWith({
           where: { id: 'sess-1' },
@@ -1163,6 +1213,35 @@ describe('ClientRepairService', () => {
           signedAt: expect.any(Date),
           pdfDownloadUrl: '/api/v1/client/repair/declaration/pdf',
         });
+      });
+
+      it('PDF-renderfout → niets gemuteerd; de klant kan opnieuw ondertekenen (review #6)', async () => {
+        mockPrisma.generatedDocument.findFirst.mockResolvedValue(buildDocument());
+        mockPdf.renderPdf.mockRejectedValue(new Error('puppeteer down'));
+
+        await expect(service.sign(signSession(), signDto)).rejects.toThrow('puppeteer down');
+        await flush();
+
+        expect(mockStorage.upload).not.toHaveBeenCalled();
+        expect(mockPrisma.$transaction).not.toHaveBeenCalled();
+        expect(mockPrisma.documentSignature.update).not.toHaveBeenCalled();
+        expect(mockPrisma.generatedDocument.update).not.toHaveBeenCalled();
+        expect(mockPrisma.repairSession.update).not.toHaveBeenCalled();
+        expect(mockEvents.onDeclarationSigned).not.toHaveBeenCalled();
+      });
+
+      it('storage-uploadfout na een geslaagde render → eveneens niets gemuteerd (review #6)', async () => {
+        mockPrisma.generatedDocument.findFirst.mockResolvedValue(buildDocument());
+        mockStorage.upload.mockRejectedValue(new Error('storage weg'));
+
+        await expect(service.sign(signSession(), signDto)).rejects.toThrow('storage weg');
+        await flush();
+
+        expect(mockPrisma.$transaction).not.toHaveBeenCalled();
+        expect(mockPrisma.documentSignature.update).not.toHaveBeenCalled();
+        expect(mockPrisma.generatedDocument.update).not.toHaveBeenCalled();
+        expect(mockPrisma.repairSession.update).not.toHaveBeenCalled();
+        expect(mockEvents.onDeclarationSigned).not.toHaveBeenCalled();
       });
     });
 

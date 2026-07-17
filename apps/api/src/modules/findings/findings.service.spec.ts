@@ -387,6 +387,36 @@ describe('FindingsService', () => {
           }),
         );
       });
+
+      // Review #7: een nieuwe open kritieke constatering her-armt de eenmalige
+      // herinspectie-trigger — anders blokkeert een eerder gevuurde melding een
+      // tweede terwijl er wél weer een kritiek punt open staat.
+      it('nieuwe kritieke constatering reset criticalRepairNotifiedAt op het plan', async () => {
+        mockPrismaService.inspectionPlan.findUnique.mockResolvedValue(criticalModelPlan);
+
+        await service.create(
+          'node-1',
+          mockUser,
+          { ...dtoBase, classificationValues: { SEVERITY: 'C1' } } as any,
+        );
+
+        expect(mockPrismaService.inspectionPlan.updateMany).toHaveBeenCalledWith({
+          where: { id: 'plan-1', criticalRepairNotifiedAt: { not: null } },
+          data: { criticalRepairNotifiedAt: null },
+        });
+      });
+
+      it('nieuwe niet-kritieke constatering laat criticalRepairNotifiedAt met rust', async () => {
+        mockPrismaService.inspectionPlan.findUnique.mockResolvedValue(criticalModelPlan);
+
+        await service.create(
+          'node-1',
+          mockUser,
+          { ...dtoBase, classificationValues: { SEVERITY: 'C3' } } as any,
+        );
+
+        expect(mockPrismaService.inspectionPlan.updateMany).not.toHaveBeenCalled();
+      });
     });
 
     describe('update', () => {
@@ -467,6 +497,46 @@ describe('FindingsService', () => {
 
         await service.update('f-1', mockUser, { statusCode: STATUS_OPEN } as any);
 
+        expect(mockPrismaService.inspectionPlan.updateMany).not.toHaveBeenCalled();
+      });
+
+      // Review #7: becameOpenCritical — een open finding die door een
+      // classificatiewijziging kritiek wórdt her-armt de trigger óók.
+      it('becameOpenCritical: open finding wordt kritiek (C3 → C1) → reset', async () => {
+        mockPrismaService.finding.findFirst.mockResolvedValue({
+          id: 'f-1',
+          orgId: 'org-1',
+          inspectionPlanId: 'plan-1',
+          statusCode: STATUS_OPEN,
+          isCritical: false,
+        });
+        mockPrismaService.inspectionPlan.findUnique.mockResolvedValue(criticalModelPlan);
+
+        await service.update('f-1', mockUser, {
+          classificationValues: { SEVERITY: 'C1' },
+        } as any);
+
+        expect(mockPrismaService.inspectionPlan.updateMany).toHaveBeenCalledWith({
+          where: { id: 'plan-1', criticalRepairNotifiedAt: { not: null } },
+          data: { criticalRepairNotifiedAt: null },
+        });
+      });
+
+      it('GEEN reset wanneer een resolved finding kritiek wordt zonder statuswijziging', async () => {
+        mockPrismaService.finding.findFirst.mockResolvedValue({
+          id: 'f-1',
+          orgId: 'org-1',
+          inspectionPlanId: 'plan-1',
+          statusCode: STATUS_RESOLVED,
+          isCritical: false,
+        });
+        mockPrismaService.inspectionPlan.findUnique.mockResolvedValue(criticalModelPlan);
+
+        await service.update('f-1', mockUser, {
+          classificationValues: { SEVERITY: 'C1' },
+        } as any);
+
+        // De finding blijft resolved → geen open kritiek punt → trigger blijft staan.
         expect(mockPrismaService.inspectionPlan.updateMany).not.toHaveBeenCalled();
       });
     });

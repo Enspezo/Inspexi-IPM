@@ -34,7 +34,11 @@ export function RepairClaimModal({ finding, onClose }: RepairClaimModalProps) {
   const [success, setSuccess] = useState(false);
   // Bij een gefaalde foto-upload ná een gelukte claim mag de claim niet herhaald
   // worden (server geeft dan 400 "al gemeld") — opnieuw proberen uploadt alleen.
-  const claimed = useRef(false);
+  // Ref voor de submit-logica (state is stale binnen dezelfde closure) + state
+  // voor de UI: de textarea gaat zichtbaar op slot (review #14), zodat een
+  // naderhand bewerkte omschrijving niet stil genegeerd wordt.
+  const claimedRef = useRef(false);
+  const [claimed, setClaimed] = useState(false);
 
   const busy = claim.isPending || upload.isPending;
   const canSubmit = description.trim().length > 0 && files.length >= 1 && !busy;
@@ -42,9 +46,10 @@ export function RepairClaimModal({ finding, onClose }: RepairClaimModalProps) {
   const handleSubmit = async () => {
     setError(null);
     try {
-      if (!claimed.current) {
+      if (!claimedRef.current) {
         await claim.mutateAsync({ findingId: finding.id, description: description.trim() });
-        claimed.current = true;
+        claimedRef.current = true;
+        setClaimed(true);
       }
       await upload.mutateAsync({ findingId: finding.id, files });
       invalidate();
@@ -64,7 +69,7 @@ export function RepairClaimModal({ finding, onClose }: RepairClaimModalProps) {
           ),
         );
         invalidate();
-      } else if (claimed.current) {
+      } else if (claimedRef.current) {
         setError(
           `${getErrorMessage(err, 'Foto-upload mislukt')} — uw melding is al geregistreerd; probeer de foto's opnieuw te versturen.`,
         );
@@ -134,9 +139,15 @@ export function RepairClaimModal({ finding, onClose }: RepairClaimModalProps) {
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             rows={4}
+            disabled={claimed || busy}
             placeholder="Beschrijf welke herstelwerkzaamheden zijn uitgevoerd…"
-            className="block w-full resize-none rounded-lg border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
+            className="block w-full resize-none rounded-lg border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20 disabled:bg-gray-100 disabled:text-gray-500"
           />
+          {claimed && (
+            <p className="mt-1.5 text-xs text-gray-500">
+              Uw omschrijving is al geregistreerd — alleen de foto's worden opnieuw verstuurd.
+            </p>
+          )}
         </div>
 
         <div>

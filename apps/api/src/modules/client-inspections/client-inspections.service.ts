@@ -231,7 +231,9 @@ export class ClientInspectionsService {
 
     // Leak-strip: verwijder de org-modus en de rauwe inspecteur-velden uit de response en vervang
     // de inspecteur-ref door uitsluitend het server-side geresolveerde telefoon/e-mail (of null).
-    const { organization, assignedUser, ...planRest } = plan;
+    // criticalRepairNotifiedAt is een staf-intern procesveld (PRD-14) → strippen.
+    const { organization, assignedUser, criticalRepairNotifiedAt: _internal, ...planRest } = plan;
+    void _internal;
     const assignedInspector = assignedUser
       ? {
           id: assignedUser.id,

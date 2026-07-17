@@ -43,8 +43,11 @@ export class RepairSessionGuard implements CanActivate {
     if (!session || session.status === RepairSessionStatus.EXPIRED) {
       throw new UnauthorizedException(REPAIR_SESSION_EXPIRED_ERROR);
     }
-    if (session.expiresAt < new Date()) {
-      // Lazy expiry: markeer de sessie als verlopen (claims blijven geldig, PRD §14.11).
+    // Lazy expiry geldt alleen voor ACTIVE-sessies (review #8): een COMPLETED-
+    // sessie houdt haar eindstatus en blijft leesbaar (bevestiging/PDF), ook na
+    // de 72u-TTL; mutaties blijven geblokkeerd via assertActive in de service.
+    if (session.status === RepairSessionStatus.ACTIVE && session.expiresAt < new Date()) {
+      // Markeer de sessie als verlopen (claims blijven geldig, PRD §14.11).
       this.prisma.repairSession
         .update({ where: { id: session.id }, data: { status: RepairSessionStatus.EXPIRED } })
         .catch(() => undefined);

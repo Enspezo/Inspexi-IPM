@@ -127,5 +127,70 @@ describe('RepairClaimModal', () => {
     expect(screen.getByLabelText(/Uitgevoerde werkzaamheden/)).toHaveValue(
       'Wandcontactdoos vervangen',
     );
+    // De claim is niet gelukt → omschrijving blijft bewerkbaar, geen slot-hint
+    expect(screen.getByLabelText(/Uitgevoerde werkzaamheden/)).toBeEnabled();
+    expect(screen.queryByText(/Uw omschrijving is al geregistreerd/)).not.toBeInTheDocument();
+  });
+
+  it('zet na een gelukte claim met gefaalde foto-upload de omschrijving op slot met hint (review #14)', async () => {
+    claimMock.mockResolvedValue({ resolution: { id: 'r1' } });
+    uploadMock.mockRejectedValue(
+      new ApiClientError({ message: 'Upload mislukt', statusCode: 500 }),
+    );
+
+    const { baseElement } = render(<RepairClaimModal finding={finding} onClose={vi.fn()} />);
+    fillDescription('Wandcontactdoos vervangen');
+    addPhoto(baseElement);
+    fireEvent.click(screen.getByRole('button', { name: 'Herstel melden' }));
+
+    // Foutmelding maakt duidelijk dat de melding zelf al geregistreerd is
+    await waitFor(() =>
+      expect(
+        screen.getByText(/uw melding is al geregistreerd; probeer de foto's opnieuw te versturen/),
+      ).toBeInTheDocument(),
+    );
+    // Textarea op slot + zichtbare hint: een naderhand bewerkte omschrijving
+    // zou anders stil genegeerd worden bij de retry (alleen de upload herhaalt).
+    expect(screen.getByLabelText(/Uitgevoerde werkzaamheden/)).toBeDisabled();
+    expect(
+      screen.getByText(/Uw omschrijving is al geregistreerd — alleen de foto's worden opnieuw verstuurd\./),
+    ).toBeInTheDocument();
+    expect(claimMock).toHaveBeenCalledTimes(1);
+    expect(uploadMock).toHaveBeenCalledTimes(1);
+    // Geen succes-scherm en geen refetch zolang de upload niet gelukt is
+    expect(screen.queryByText('Hersteld gemeld')).not.toBeInTheDocument();
+    expect(invalidateMock).not.toHaveBeenCalled();
+  });
+
+  it('herhaalt bij een tweede poging na een gefaalde upload alleen de upload, niet de claim (review #14)', async () => {
+    claimMock.mockResolvedValue({ resolution: { id: 'r1' } });
+    uploadMock
+      .mockRejectedValueOnce(new ApiClientError({ message: 'Upload mislukt', statusCode: 500 }))
+      .mockResolvedValueOnce([{ id: 'p1' }]);
+
+    const { baseElement } = render(<RepairClaimModal finding={finding} onClose={vi.fn()} />);
+    fillDescription('Wandcontactdoos vervangen');
+    addPhoto(baseElement);
+
+    // Eerste poging: claim slaagt, upload faalt
+    fireEvent.click(screen.getByRole('button', { name: 'Herstel melden' }));
+    await waitFor(() =>
+      expect(
+        screen.getByText(/uw melding is al geregistreerd; probeer de foto's opnieuw te versturen/),
+      ).toBeInTheDocument(),
+    );
+    expect(claimMock).toHaveBeenCalledTimes(1);
+
+    // Tweede poging: alleen de foto-upload wordt herhaald (server zou een
+    // herhaalde claim met 400 "al gemeld" afwijzen)
+    fireEvent.click(screen.getByRole('button', { name: 'Herstel melden' }));
+    await waitFor(() => expect(screen.getByText('Hersteld gemeld')).toBeInTheDocument());
+    expect(claimMock).toHaveBeenCalledTimes(1);
+    expect(uploadMock).toHaveBeenCalledTimes(2);
+    expect(uploadMock).toHaveBeenLastCalledWith({
+      findingId: 'f1',
+      files: [expect.any(File)],
+    });
+    expect(invalidateMock).toHaveBeenCalled();
   });
 });

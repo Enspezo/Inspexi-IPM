@@ -393,10 +393,13 @@ describe('InspectionPlansService', () => {
   });
 
   describe('create — online herstel default (PRD-14)', () => {
+    // Review #4: de org-default zet de vlag alleen aan bij een gevuld én binnen
+    // de org uniek rapportnummer — anders blijft hij stil uit (geen throw).
     const createDto = {
       contactId: 'c-1',
       projectName: 'Plan',
       normTypeCode: 'NEN1010',
+      referenceNumber: 'RAP-NIEUW',
     } as any;
 
     beforeEach(() => {
@@ -409,17 +412,91 @@ describe('InspectionPlansService', () => {
       });
     });
 
-    it('zet onlineRepairEnabled aan bij org-default + ONLINE_HERSTEL-entitlement', async () => {
+    it('zet onlineRepairEnabled aan bij org-default + entitlement + gevuld uniek rapportnummer', async () => {
+      mockPrismaService.organization.findUnique.mockResolvedValue({
+        onlineRepairDefault: true,
+      });
+      mockEntitlementsService.getEnabledFeatures.mockResolvedValue(['ONLINE_HERSTEL']);
+      mockPrismaService.inspectionPlan.findFirst.mockResolvedValue(null); // geen duplicaat
+
+      await service.create(createDto, mockUser);
+
+      // Duplicaat-check: getrimd + case-insensitief binnen de org.
+      expect(mockPrismaService.inspectionPlan.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            orgId: 'org-1',
+            deletedAt: null,
+            referenceNumber: { equals: 'RAP-NIEUW', mode: 'insensitive' },
+          },
+          select: { id: true },
+        }),
+      );
+      expect(mockPrismaService.inspectionPlan.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ onlineRepairEnabled: true }),
+        }),
+      );
+    });
+
+    it('blijft stil false zonder rapportnummer (org-default + entitlement, geen throw)', async () => {
       mockPrismaService.organization.findUnique.mockResolvedValue({
         onlineRepairDefault: true,
       });
       mockEntitlementsService.getEnabledFeatures.mockResolvedValue(['ONLINE_HERSTEL']);
 
+      await service.create({ ...createDto, referenceNumber: undefined }, mockUser);
+
+      // Zonder ref geen duplicaat-query en geen fout — de vlag blijft gewoon uit.
+      expect(mockPrismaService.inspectionPlan.findFirst).not.toHaveBeenCalled();
+      expect(mockPrismaService.inspectionPlan.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            onlineRepairEnabled: false,
+            referenceNumber: null,
+          }),
+        }),
+      );
+    });
+
+    it('blijft stil false bij een duplicaat-rapportnummer (org-default + entitlement)', async () => {
+      mockPrismaService.organization.findUnique.mockResolvedValue({
+        onlineRepairDefault: true,
+      });
+      mockEntitlementsService.getEnabledFeatures.mockResolvedValue(['ONLINE_HERSTEL']);
+      mockPrismaService.inspectionPlan.findFirst.mockResolvedValue({ id: 'ander-plan' });
+
       await service.create(createDto, mockUser);
 
       expect(mockPrismaService.inspectionPlan.create).toHaveBeenCalledWith(
         expect.objectContaining({
-          data: expect.objectContaining({ onlineRepairEnabled: true }),
+          data: expect.objectContaining({ onlineRepairEnabled: false }),
+        }),
+      );
+    });
+
+    it('slaat het rapportnummer getrimd op en checkt het duplicaat getrimd (review #10)', async () => {
+      mockPrismaService.organization.findUnique.mockResolvedValue({
+        onlineRepairDefault: true,
+      });
+      mockEntitlementsService.getEnabledFeatures.mockResolvedValue(['ONLINE_HERSTEL']);
+      mockPrismaService.inspectionPlan.findFirst.mockResolvedValue(null);
+
+      await service.create({ ...createDto, referenceNumber: ' REF-1 ' }, mockUser);
+
+      expect(mockPrismaService.inspectionPlan.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            referenceNumber: { equals: 'REF-1', mode: 'insensitive' },
+          }),
+        }),
+      );
+      expect(mockPrismaService.inspectionPlan.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            onlineRepairEnabled: true,
+            referenceNumber: 'REF-1',
+          }),
         }),
       );
     });
@@ -456,7 +533,7 @@ describe('InspectionPlansService', () => {
   });
 
   describe('update — online herstel (PRD-14)', () => {
-    const existingPlan = (referenceNumber: string | null) => ({
+    const existingPlan = (referenceNumber: string | null, onlineRepairEnabled = false) => ({
       id: 'plan-1',
       orgId: 'org-1',
       projectName: 'Test',
@@ -464,6 +541,7 @@ describe('InspectionPlansService', () => {
       projectId: null,
       locationId: null,
       referenceNumber,
+      onlineRepairEnabled,
     });
 
     beforeEach(() => {
@@ -565,6 +643,84 @@ describe('InspectionPlansService', () => {
       expect(mockPrismaService.inspectionPlan.update).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({ onlineRepairEnabled: false }),
+        }),
+      );
+    });
+
+    // Review #3: de invariant geldt ook andersom — zolang de vlag (effectief)
+    // aan staat mag het rapportnummer niet geleegd of gedupliceerd worden.
+    it('weigert een duplicaat-rapportnummer op een plan met de vlag al aan (alleen ref-wijziging)', async () => {
+      mockPrismaService.inspectionPlan.findFirst
+        .mockResolvedValueOnce(existingPlan('RAP-1', true)) // findOne: vlag staat aan
+        .mockResolvedValueOnce({ id: 'ander-plan' }); // duplicaat voor RAP-9
+
+      await expect(
+        service.update('plan-1', { referenceNumber: 'RAP-9' } as any, mockUser),
+      ).rejects.toThrow(/al in gebruik/);
+      expect(mockPrismaService.inspectionPlan.update).not.toHaveBeenCalled();
+    });
+
+    it('weigert het legen van het rapportnummer zolang de vlag aan staat', async () => {
+      mockPrismaService.inspectionPlan.findFirst.mockResolvedValueOnce(
+        existingPlan('RAP-1', true),
+      );
+
+      await expect(
+        service.update('plan-1', { referenceNumber: '' } as any, mockUser),
+      ).rejects.toThrow(/vul dit eerst in/);
+      // Lege ref faalt vóór de duplicaat-query: alleen de findOne-call.
+      expect(mockPrismaService.inspectionPlan.findFirst).toHaveBeenCalledTimes(1);
+      expect(mockPrismaService.inspectionPlan.update).not.toHaveBeenCalled();
+    });
+
+    it('valideert niet bij een ref-wijziging terwijl de vlag uit staat en blijft', async () => {
+      mockPrismaService.inspectionPlan.findFirst.mockResolvedValueOnce(
+        existingPlan('RAP-1', false),
+      );
+
+      await service.update('plan-1', { referenceNumber: 'RAP-9' } as any, mockUser);
+
+      expect(mockPrismaService.inspectionPlan.findFirst).toHaveBeenCalledTimes(1);
+      expect(mockPrismaService.inspectionPlan.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ referenceNumber: 'RAP-9' }),
+        }),
+      );
+    });
+
+    it('vlag uit + ref legen in één PATCH → geen validatie, referenceNumber null', async () => {
+      mockPrismaService.inspectionPlan.findFirst.mockResolvedValueOnce(
+        existingPlan('RAP-1', true),
+      );
+
+      await service.update(
+        'plan-1',
+        { onlineRepairEnabled: false, referenceNumber: '' } as any,
+        mockUser,
+      );
+
+      // dto.onlineRepairEnabled=false wint van de bestaande vlag → geen gate.
+      expect(mockPrismaService.inspectionPlan.findFirst).toHaveBeenCalledTimes(1);
+      expect(mockPrismaService.inspectionPlan.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            onlineRepairEnabled: false,
+            referenceNumber: null,
+          }),
+        }),
+      );
+    });
+
+    it('slaat het rapportnummer getrimd op (review #10)', async () => {
+      mockPrismaService.inspectionPlan.findFirst.mockResolvedValueOnce(
+        existingPlan(null, false),
+      );
+
+      await service.update('plan-1', { referenceNumber: '  NEW-2  ' } as any, mockUser);
+
+      expect(mockPrismaService.inspectionPlan.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ referenceNumber: 'NEW-2' }),
         }),
       );
     });

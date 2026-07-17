@@ -261,6 +261,16 @@ export class FindingsService {
       await loadPlanCriticalModel(this.prisma, plan.id),
     );
 
+    // Nieuwe open kritieke constatering → herinspectie-trigger her-armen
+    // (review #7): een eerder gevuurde melding blokkeert anders een tweede
+    // terwijl er wél weer een kritiek punt open staat.
+    if (isCritical) {
+      await this.prisma.inspectionPlan.updateMany({
+        where: { id: plan.id, criticalRepairNotifiedAt: { not: null } },
+        data: { criticalRepairNotifiedAt: null },
+      });
+    }
+
     return this.prisma.finding.create({
       data: {
         orgId,
@@ -326,15 +336,19 @@ export class FindingsService {
       select: { id: true, classificationValues: true, statusCode: true, resolvedAt: true, updatedAt: true },
     });
 
-    // Heropen-reset (PRD-14 besluit 9): gaat een kritieke constatering van 'resolved'
-    // terug naar een open status, dan mag de "alle kritieke punten hersteld"-trigger
-    // opnieuw vuren → criticalRepairNotifiedAt leegmaken.
-    if (
+    // Herinspectie-trigger her-armen (PRD-14 besluit 9 + review #7):
+    //  - heropenen van een kritieke constatering (resolved → open status), of
+    //  - een open constatering die door een classificatiewijziging kritiek wordt.
+    const reopenedCritical =
       dto.statusCode !== undefined &&
       dto.statusCode !== STATUS_RESOLVED &&
       finding.statusCode === STATUS_RESOLVED &&
-      finding.isCritical
-    ) {
+      finding.isCritical;
+    const becameOpenCritical =
+      data.isCritical === true &&
+      !finding.isCritical &&
+      (dto.statusCode ?? finding.statusCode) !== STATUS_RESOLVED;
+    if (reopenedCritical || becameOpenCritical) {
       await this.prisma.inspectionPlan.updateMany({
         where: { id: finding.inspectionPlanId, criticalRepairNotifiedAt: { not: null } },
         data: { criticalRepairNotifiedAt: null },

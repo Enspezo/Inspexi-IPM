@@ -7,6 +7,7 @@ import { useState } from 'react';
 import { Card, Checkbox, Button, ErrorBox, InfoField, useToast } from '@/components/ui';
 import { getErrorMessage } from '@/lib/api-client';
 import { clientPortalBaseUrl } from '@/lib/client-portal';
+import { getTenantInfo } from '@/lib/tenant';
 import type { InspectionPlan } from '@/types';
 import { useSetOnlineRepairEnabled } from '../hooks/use-inspections';
 
@@ -36,6 +37,10 @@ export function OnlineRepairSection({
     }
   };
 
+  // Op het SUPERUSER-domein (mijn.…) zou de URL naar mijn.…:5174/herstel wijzen —
+  // dat is geen org-subdomein en dus onbruikbaar (review #12). Verberg het
+  // URL-blok daar; de toggle zelf blijft werken (API is org-onafhankelijk).
+  const onOrgDomain = !getTenantInfo().isBaseDomain;
   const repairUrl = buildRepairUrl();
 
   const handleCopy = async () => {
@@ -63,7 +68,13 @@ export function OnlineRepairSection({
         />
         {toggleError && <ErrorBox>{toggleError}</ErrorBox>}
 
-        {plan.onlineRepairEnabled && (
+        {plan.onlineRepairEnabled && !onOrgDomain && (
+          <p className="text-xs text-gray-500">
+            De herstel-URL is alleen zichtbaar op het subdomein van de organisatie
+            (niet op het beheerdomein).
+          </p>
+        )}
+        {plan.onlineRepairEnabled && onOrgDomain && (
           <div className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3">
             <dl className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <InfoField label="Rapportnummer" value={plan.referenceNumber} />

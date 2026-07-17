@@ -499,11 +499,17 @@ export class SyncService {
       const dup = await model.findFirst({ where: { id, ...orgScope(user) } });
       if (dup) {
         await this.assertPlanReviewGate(key, fields, dup, orgId);
-        await this.applyFindingCriticalFields(key, fields, dup, data, criticalModelCache);
-        return this.applyUpdate(cfg, model, id, ref, data, fields, childRows, dup, user, deviceId);
+        await this.computeFindingCriticalField(key, fields, dup, data, criticalModelCache);
+        const adopted = await this.applyUpdate(cfg, model, id, ref, data, fields, childRows, dup, user, deviceId);
+        // Reset pas ná een geslaagde write (review #5): een LWW-conflict mag de
+        // herinspectie-trigger niet her-armen op basis van stale PWA-data.
+        if (adopted.status === 'success') {
+          await this.resetCriticalRepairNotified(key, fields, dup);
+        }
+        return adopted;
       }
       await this.assertPlanReviewGate(key, fields, null, orgId);
-      await this.applyFindingCriticalFields(key, fields, null, data, criticalModelCache);
+      await this.computeFindingCriticalField(key, fields, null, data, criticalModelCache);
 
       const createData: Record<string, unknown> = { ...fields, id, orgId };
       // createdBy is server-owned: altijd de pushende gebruiker, nooit de client-waarde.
@@ -538,6 +544,8 @@ export class SyncService {
       }
 
       await model.create({ data: createData });
+      // Nieuwe open kritieke constatering via de push → trigger her-armen (review #7).
+      await this.resetCriticalRepairNotified(key, fields, null);
       return { ...ref, status: 'success' };
     }
 
@@ -545,20 +553,23 @@ export class SyncService {
     const existing = await model.findFirst({ where: { id, ...orgScope(user) } });
     if (!existing) throw new BadRequestException('Record niet gevonden');
     await this.assertPlanReviewGate(key, fields, existing, orgId);
-    await this.applyFindingCriticalFields(key, fields, existing, data, criticalModelCache);
-    return this.applyUpdate(cfg, model, id, ref, data, fields, childRows, existing, user, deviceId);
+    await this.computeFindingCriticalField(key, fields, existing, data, criticalModelCache);
+    const result = await this.applyUpdate(cfg, model, id, ref, data, fields, childRows, existing, user, deviceId);
+    // Reset pas ná een geslaagde write (review #5): een LWW-conflict mag de
+    // herinspectie-trigger niet her-armen op basis van stale PWA-data.
+    if (result.status === 'success') {
+      await this.resetCriticalRepairNotified(key, fields, existing);
+    }
+    return result;
   }
 
   /**
    * Finding.isCritical is server-owned (PRD-14): het staat bewust NIET in de
    * allowed-whitelist van de sync-mapper. Herbereken de vlag bij een create of
    * wanneer classificationValues meekomen, op basis van het classificatiemodel
-   * van het plan (per-push gecachet). Heropen-reset: gaat een kritieke finding
-   * van 'resolved' terug naar een open status, dan wordt
-   * `InspectionPlan.criticalRepairNotifiedAt` leeggemaakt zodat de
-   * herinspectie-trigger opnieuw kan vuren (PRD-14 besluit 9).
+   * van het plan (per-push gecachet).
    */
-  private async applyFindingCriticalFields(
+  private async computeFindingCriticalField(
     key: SyncEntityKey,
     fields: Record<string, unknown>,
     existing: SyncRow | null,
@@ -579,15 +590,39 @@ export class SyncService {
       }
       fields.isCritical = computeFindingIsCritical(fields.classificationValues ?? {}, model);
     }
+  }
 
-    const newStatus = fields.statusCode as string | undefined;
-    if (
-      existing &&
-      newStatus !== undefined &&
-      newStatus !== STATUS_RESOLVED &&
+  /**
+   * Her-arm de eenmalige herinspectie-trigger (PRD-14 besluit 9, review #5/#7)
+   * — alléén na een geslaagde write:
+   *  - heropenen van een kritieke finding (resolved → open status), of
+   *  - een (nieuw of bestaand) finding dat open + kritiek wordt terwijl het
+   *    dat nog niet was (nieuwe create, of classificatie wordt kritiek)
+   * → `InspectionPlan.criticalRepairNotifiedAt` leegmaken zodat de trigger
+   * opnieuw kan vuren.
+   */
+  private async resetCriticalRepairNotified(
+    key: SyncEntityKey,
+    fields: Record<string, unknown>,
+    existing: SyncRow | null,
+  ): Promise<void> {
+    if (key !== 'findings') return;
+    const planId = String(fields.inspectionPlanId ?? existing?.inspectionPlanId ?? '');
+    if (!planId) return;
+
+    const newStatus = (fields.statusCode as string | undefined) ?? (existing?.statusCode as string | undefined) ?? 'open';
+    const reopened =
+      existing !== null &&
+      fields.statusCode !== undefined &&
+      fields.statusCode !== STATUS_RESOLVED &&
       existing.statusCode === STATUS_RESOLVED &&
-      existing.isCritical === true
-    ) {
+      existing.isCritical === true;
+    const becameOpenCritical =
+      fields.isCritical === true &&
+      newStatus !== STATUS_RESOLVED &&
+      (existing === null || existing.isCritical !== true);
+
+    if (reopened || becameOpenCritical) {
       await this.prisma.inspectionPlan.updateMany({
         where: { id: planId, criticalRepairNotifiedAt: { not: null } },
         data: { criticalRepairNotifiedAt: null },

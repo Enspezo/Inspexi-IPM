@@ -735,6 +735,32 @@ describe('Client Repair — online herstel (e2e)', () => {
     });
   });
 
+  // ── COMPLETED-sessie blijft leesbaar (review #8/#15) ────────────────────
+  describe('COMPLETED-sessie blijft leesbaar', () => {
+    it('GET session op de COMPLETED-sessie → 200 met status COMPLETED', async () => {
+      const res = await getA('/api/v1/client/repair/session').set(bearer(tokenS1)).expect(200);
+
+      expect(res.body.data.session.status).toBe('COMPLETED');
+      expect(res.body.data.session.completedAt).not.toBeNull();
+    });
+
+    it('blijft ook ná de TTL leesbaar en wordt NIET naar EXPIRED geflipt (review #8)', async () => {
+      // Lazy expiry geldt alleen voor ACTIVE-sessies: forceer de expiresAt van de
+      // afgeronde sessie in het verleden en controleer dat de guard haar doorlaat.
+      await prisma.repairSession.update({
+        where: { id: sessionS1Id },
+        data: { expiresAt: new Date(Date.now() - 3600_000) },
+      });
+
+      const res = await getA('/api/v1/client/repair/session').set(bearer(tokenS1)).expect(200);
+      expect(res.body.data.session.status).toBe('COMPLETED');
+
+      // Geen EXPIRED-flip in de database: de eindstatus blijft staan.
+      const row = await prisma.repairSession.findUnique({ where: { id: sessionS1Id } });
+      expect(row?.status).toBe('COMPLETED');
+    });
+  });
+
   // ── Cross-tenant-isolatie (§14.11) ──────────────────────────────────────
   describe('cross-tenant', () => {
     it('sessietoken van org A op het subdomein van org B → 401', async () => {

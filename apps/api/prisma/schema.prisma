@@ -4206,6 +4206,11 @@ model FindingResolution {
   repairSession        RepairSession?           @relation(fields: [repairSessionId], references: [id], onDelete: SetNull)
   photos               FindingResolutionPhoto[]
 
+  // Max één herstelmelding per constatering per sessie (PRD-14): vangt de
+  // dubbelklik-race die de niet-atomische precheck in claimFinding mist.
+  // NB: rijen met repairSessionId NULL (oude PENDING_VERIFICATION-flow) botsen
+  // nooit — Postgres-uniques negeren NULL.
+  @@unique([findingId, repairSessionId])
   @@index([findingId])
   @@index([repairSessionId])
   @@map("imp_finding_resolutions")

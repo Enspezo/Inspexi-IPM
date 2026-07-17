@@ -1,14 +1,27 @@
 import { useState } from 'react';
+import { clsx } from 'clsx';
 import { useInspectionFindings } from '../hooks/use-inspections';
 import { Spinner, LookupBadge, ErrorBox } from '@/components/ui';
+import { useFeatures } from '@/providers/feature-provider';
 import { FindingDetailModal } from './finding-detail-modal';
 import { formatDate } from '@/lib/format';
 import type { Finding } from '@/types';
 
-export function FindingsTab({ inspectionId }: { inspectionId: string }) {
+interface FindingsTabProps {
+  inspectionId: string;
+  /** Online herstel (PRD-14 §14.9.6): per-plan vlag — stuurt de meld-flow om. */
+  onlineRepairEnabled?: boolean;
+}
+
+export function FindingsTab({ inspectionId, onlineRepairEnabled = false }: FindingsTabProps) {
   const { data, isLoading, error } = useInspectionFindings(inspectionId);
+  const { hasFeature } = useFeatures();
   const [selected, setSelected] = useState<string | null>(null);
   const findings = data ?? [];
+
+  // Met de add-on én de plan-vlag verwijst de findings-tab naar de herstel-flow
+  // (één consistente route); zonder add-on blijft het bestaande gedrag intact.
+  const onlineRepair = onlineRepairEnabled && hasFeature('ONLINE_HERSTEL');
 
   return (
     <div className="space-y-4">
@@ -32,19 +45,39 @@ export function FindingsTab({ inspectionId }: { inspectionId: string }) {
           ) : (
             <div className="space-y-3">
               {findings.map((finding) => (
-                <FindingCard key={finding.id} finding={finding} onClick={() => setSelected(finding.id)} />
+                <FindingCard
+                  key={finding.id}
+                  finding={finding}
+                  dimmed={onlineRepair && finding.statusCode === 'resolved'}
+                  onClick={() => setSelected(finding.id)}
+                />
               ))}
             </div>
           )}
         </>
       )}
 
-      {selected && <FindingDetailModal findingId={selected} onClose={() => setSelected(null)} />}
+      {selected && (
+        <FindingDetailModal
+          findingId={selected}
+          inspectionId={inspectionId}
+          onlineRepair={onlineRepair}
+          onClose={() => setSelected(null)}
+        />
+      )}
     </div>
   );
 }
 
-function FindingCard({ finding, onClick }: { finding: Finding; onClick: () => void }) {
+function FindingCard({
+  finding,
+  dimmed,
+  onClick,
+}: {
+  finding: Finding;
+  dimmed: boolean;
+  onClick: () => void;
+}) {
   const resolution = finding.resolutions[0];
   const chips = Object.entries(finding.classificationValues ?? {});
   const location = finding.locationDescription || finding.asset.locationDescription;
@@ -53,7 +86,10 @@ function FindingCard({ finding, onClick }: { finding: Finding; onClick: () => vo
     <button
       type="button"
       onClick={onClick}
-      className="block w-full rounded-xl border border-gray-200 bg-white p-4 text-left shadow-sm transition-colors hover:border-gray-300"
+      className={clsx(
+        'block w-full rounded-xl border border-gray-200 bg-white p-4 text-left shadow-sm transition-colors hover:border-gray-300',
+        dimmed && 'bg-gray-50 opacity-70',
+      )}
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">

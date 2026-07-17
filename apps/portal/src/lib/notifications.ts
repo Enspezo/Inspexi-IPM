@@ -124,6 +124,10 @@ export const NOTIFICATION_MODELS: NotificationModelDef[] = [
       NotificationType.INSPECTIEPLAN_GOEDGEKEURD,
       NotificationType.INSPECTIEPLAN_AFGEKEURD,
       NotificationType.AI_REVIEW_GEREED,
+      // Online herstel (PRD-14)
+      NotificationType.HERSTEL_AFGEROND,
+      NotificationType.HERSTEL_CONFLICT,
+      NotificationType.HERINSPECTIE_VOORSTEL,
     ],
   },
   {
@@ -195,6 +199,9 @@ export const NOTIFICATION_TYPE_LABELS: Record<NotificationType, string> = {
   [NotificationType.INSPECTIEPLAN_GOEDGEKEURD]: 'Inspectieplan goedgekeurd',
   [NotificationType.INSPECTIEPLAN_AFGEKEURD]: 'Inspectieplan afgekeurd',
   [NotificationType.AI_REVIEW_GEREED]: 'AI-controle afgerond',
+  [NotificationType.HERSTEL_AFGEROND]: 'Herstelverklaring ondertekend',
+  [NotificationType.HERSTEL_CONFLICT]: 'Herstel-conflict gemeld',
+  [NotificationType.HERINSPECTIE_VOORSTEL]: 'Herinspectie voorgesteld',
   [NotificationType.CHAT_BERICHT]: 'Nieuw chatbericht',
   [NotificationType.CHAT_TEAM_BERICHT]: 'Nieuw team-chatbericht',
   [NotificationType.CHAT_MENTION]: 'Genoemd in een chat',

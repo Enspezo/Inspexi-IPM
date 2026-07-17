@@ -46,4 +46,13 @@ export class UpdateOrganizationDto extends PartialType(CreateOrganizationDto) {
   @IsString()
   @MaxLength(2000)
   aiReviewInstructions?: string;
+
+  @ApiPropertyOptional({
+    example: false,
+    description:
+      'Online herstel standaard aan voor nieuwe inspecties (PRD-14); vereist het ONLINE_HERSTEL-entitlement',
+  })
+  @IsOptional()
+  @IsBoolean()
+  onlineRepairDefault?: boolean;
 }

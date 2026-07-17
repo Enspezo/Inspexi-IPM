@@ -6,8 +6,7 @@ import { useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { Modal, Input, Button, useToast } from '@/components/ui';
-import { getErrorMessage } from '@/lib/api-client';
+import { Modal, Input, Button, Checkbox, useToast } from '@/components/ui';
 import type { ClassificationOption } from '@/types';
 import { useCreateOption, useUpdateOption } from '../hooks/use-classification-models';
 
@@ -22,6 +21,7 @@ const schema = z.object({
   name: z.string().min(1, 'Naam is verplicht').max(100, 'Maximaal 100 tekens'),
   description: z.string().max(500, 'Maximaal 500 tekens').optional(),
   color: z.string().regex(HEX, 'Geldige hex-kleur vereist (bijv. #DC2626)'),
+  isCritical: z.boolean(),
 });
 type FormData = z.infer<typeof schema>;
 
@@ -60,6 +60,7 @@ export function OptionModal({ isOpen, onClose, modelId, charId, option }: Props)
       name: option?.name ?? '',
       description: option?.description ?? '',
       color: option?.color ?? '#16A34A',
+      isCritical: option?.isCritical ?? false,
     });
   }, [isOpen, option, reset]);
 
@@ -73,6 +74,7 @@ export function OptionModal({ isOpen, onClose, modelId, charId, option }: Props)
             name: data.name,
             description: data.description || null,
             color: data.color,
+            isCritical: data.isCritical,
           },
         });
         showToast('Optie bijgewerkt', 'success');
@@ -82,6 +84,7 @@ export function OptionModal({ isOpen, onClose, modelId, charId, option }: Props)
           name: data.name,
           description: data.description || undefined,
           color: data.color,
+          isCritical: data.isCritical,
         });
         showToast('Optie toegevoegd', 'success');
       }
@@ -135,6 +138,16 @@ export function OptionModal({ isOpen, onClose, modelId, charId, option }: Props)
             rows={2}
             className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:ring-primary-500"
           />
+        </div>
+
+        {/* Kritiek (PRD-14): stuurt Finding.isCritical bij constateringen met deze optie. */}
+        <div>
+          <Checkbox label="Kritiek" {...register('isCritical')} />
+          <p className="mt-1 text-xs text-gray-500">
+            Constateringen met deze classificatie-optie tellen als kritiek voor online herstel.
+            Werkt door op nieuwe/bijgewerkte constateringen; draai voor bestaande constateringen
+            het backfill-script <code>apps/api/scripts/backfill-finding-is-critical.ts</code>.
+          </p>
         </div>
 
         <div className="flex justify-end gap-3 pt-2">

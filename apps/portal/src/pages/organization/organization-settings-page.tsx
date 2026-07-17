@@ -64,6 +64,7 @@ const orgSchema = z.object({
   inspectionReviewEnabled: z.boolean(),
   aiReviewEnabled: z.boolean(),
   aiReviewInstructions: z.string().max(2000, 'Maximaal 2000 tekens').optional(),
+  onlineRepairDefault: z.boolean(),
 }).refine((d) => d.workdayEnd > d.workdayStart, {
   message: 'Eindtijd moet na begintijd liggen',
   path: ['workdayEnd'],
@@ -300,6 +301,8 @@ export default function OrganizationSettingsPage() {
   const aiServiceUnavailable = aiStatus?.available === false;
   const aiToggleDisabled = !hasAiEntitlement || aiServiceUnavailable;
   const aiReviewOn = watch('aiReviewEnabled');
+  // PRD-14 §14.4: online-herstel-default alleen instelbaar met het ONLINE_HERSTEL-entitlement.
+  const hasOnlineRepairEntitlement = hasFeature('ONLINE_HERSTEL');
 
   useEffect(() => {
     if (organization) {
@@ -323,6 +326,7 @@ export default function OrganizationSettingsPage() {
         inspectionReviewEnabled: organization.inspectionReviewEnabled ?? true,
         aiReviewEnabled: organization.aiReviewEnabled ?? false,
         aiReviewInstructions: organization.aiReviewInstructions ?? '',
+        onlineRepairDefault: organization.onlineRepairDefault ?? false,
       });
     }
   }, [organization, reset]);
@@ -351,6 +355,7 @@ export default function OrganizationSettingsPage() {
         inspectionReviewEnabled: data.inspectionReviewEnabled,
         aiReviewEnabled: data.aiReviewEnabled,
         aiReviewInstructions: data.aiReviewInstructions?.trim() || null,
+        onlineRepairDefault: data.onlineRepairDefault,
       });
       showToast('Organisatie-instellingen opgeslagen', 'success');
     } catch {
@@ -850,6 +855,27 @@ export default function OrganizationSettingsPage() {
             </p>
             {errors.aiReviewInstructions && (
               <p className="mt-1 text-xs text-red-600">{errors.aiReviewInstructions.message}</p>
+            )}
+          </div>
+
+          <div>
+            <h3 className="text-base font-semibold text-gray-900">Online herstel</h3>
+            <p className="mt-1 text-sm text-gray-500">
+              Met online herstel kunnen externen en klanten hersteld werk aan constateringen
+              online melden en afronden met een ondertekende herstelverklaring. Deze instelling
+              bepaalt de standaardwaarde voor <strong>nieuwe</strong> inspecties; per inspectie
+              blijft de toggle aanpasbaar. Het e-mailadres van de invuller wordt uitsluitend
+              gebruikt voor de bevestiging en eventuele conflictafhandeling (AVG).
+            </p>
+            <div className="mt-3">
+              <Checkbox
+                label="Online herstel standaard aan voor nieuwe inspecties"
+                disabled={!hasOnlineRepairEntitlement}
+                {...register('onlineRepairDefault')}
+              />
+            </div>
+            {!hasOnlineRepairEntitlement && (
+              <p className="mt-2 text-xs text-gray-500">Niet beschikbaar in uw abonnement.</p>
             )}
           </div>
 

@@ -22,6 +22,9 @@ const KennisbankPage = lazy(() => import('@/pages/kennisbank/kennisbank-page'));
 const KennisbankArticlePage = lazy(
   () => import('@/pages/kennisbank/kennisbank-article-page'),
 );
+const HerstelLookupPage = lazy(() => import('@/pages/herstel/herstel-lookup-page'));
+const HerstelOverzichtPage = lazy(() => import('@/pages/herstel/herstel-overzicht-page'));
+const HerstelAfrondenPage = lazy(() => import('@/pages/herstel/herstel-afronden-page'));
 
 function PageLoader() {
   return (
@@ -56,6 +59,12 @@ export default function App() {
               element={<KennisbankArticlePage publicMode />}
             />
           </Route>
+
+          {/* Publiek — online herstel (PRD-14): anonieme toegang met rapportnummer +
+              postcode; overzicht/afronden draaien op het herstelsessie-token (geen login). */}
+          <Route path="/herstel" element={<HerstelLookupPage />} />
+          <Route path="/herstel/overzicht" element={<HerstelOverzichtPage />} />
+          <Route path="/herstel/afronden" element={<HerstelAfrondenPage />} />
 
           {/* Root → dashboard */}
           <Route path="/" element={<Navigate to="/dashboard" replace />} />

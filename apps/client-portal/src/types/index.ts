@@ -13,3 +13,4 @@ export * from './findings';
 export * from './messages';
 export * from './requests';
 export * from './dashboard';
+export * from './repair';

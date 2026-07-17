@@ -366,4 +366,60 @@ describe('InspectionPlans (e2e)', () => {
       expect(res.body.data.statusCode).toBe('completed');
     });
   });
+
+  // Online herstel (PRD-14, besluit 1): het rapportnummer (referenceNumber) is de
+  // anonieme toegangssleutel — de plan-vlag mag alleen aan wanneer het nummer
+  // gevuld én (case-insensitief) uniek binnen de org is.
+  describe('9. online herstel plan-vlag (PRD-14)', () => {
+    const createPlan = async (referenceNumber?: string): Promise<string> => {
+      const res = await request(app.getHttpServer())
+        .post('/api/v1/inspection-plans')
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({
+          contactId: testContactId,
+          projectName: 'E2E Online Herstel',
+          normTypeCode: NORM_CODE,
+          ...(referenceNumber ? { referenceNumber } : {}),
+        })
+        .expect(201);
+      createdPlanIds.push(res.body.data.id);
+      return res.body.data.id;
+    };
+
+    it('weigert aanzetten zonder referenceNumber (400)', async () => {
+      const planId = await createPlan();
+      const res = await request(app.getHttpServer())
+        .patch(`/api/v1/inspection-plans/${planId}`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ onlineRepairEnabled: true })
+        .expect(400);
+      expect(res.body.message).toContain('rapportnummer');
+
+      const plan = await prisma.inspectionPlan.findUnique({ where: { id: planId } });
+      expect(plan?.onlineRepairEnabled).toBe(false);
+    });
+
+    it('weigert aanzetten met een duplicaat referenceNumber binnen de org (400)', async () => {
+      await createPlan('E2E-OR-DUP');
+      // Case-insensitieve botsing — de lookup matcht immers ook case-insensitief.
+      const planId = await createPlan('e2e-or-dup');
+
+      const res = await request(app.getHttpServer())
+        .patch(`/api/v1/inspection-plans/${planId}`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ onlineRepairEnabled: true })
+        .expect(400);
+      expect(res.body.message).toContain('al in gebruik');
+    });
+
+    it('zet de vlag aan met een uniek referenceNumber (200)', async () => {
+      const planId = await createPlan('E2E-OR-UNIEK');
+      const res = await request(app.getHttpServer())
+        .patch(`/api/v1/inspection-plans/${planId}`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ onlineRepairEnabled: true })
+        .expect(200);
+      expect(res.body.data.onlineRepairEnabled).toBe(true);
+    });
+  });
 });

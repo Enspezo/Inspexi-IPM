@@ -67,17 +67,26 @@ export class ClientFindingsService {
     if (!finding) throw new NotFoundException('Constatering niet gevonden');
 
     // Storage-keys verbergen: elke foto krijgt een download-URL.
+    // Anonimiteit (PRD-14 §14.3 besluit 4): bij herstel-flow-resoluties
+    // (REPORTED/CONFLICT) mag het klantportaal nooit zien wíe herstelde —
+    // ook niet wanneer een ingelogde klant de hersteller was. Staf ziet de
+    // invullergegevens wél (via de staf-serializer in findings.service).
     return {
       ...finding,
-      resolutions: finding.resolutions.map((r) => ({
-        ...r,
-        photos: r.photos.map((p) => ({
-          id: p.id,
-          caption: p.caption,
-          uploadedAt: p.uploadedAt,
-          url: photoDownloadUrl(p.id),
-        })),
-      })),
+      resolutions: finding.resolutions.map((r) => {
+        const anonymous = r.statusCode === 'REPORTED' || r.statusCode === 'CONFLICT';
+        return {
+          ...r,
+          resolvedByClientUserId: anonymous ? null : r.resolvedByClientUserId,
+          resolvedByClientUser: anonymous ? null : r.resolvedByClientUser,
+          photos: r.photos.map((p) => ({
+            id: p.id,
+            caption: p.caption,
+            uploadedAt: p.uploadedAt,
+            url: photoDownloadUrl(p.id),
+          })),
+        };
+      }),
     };
   }
 

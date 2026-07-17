@@ -49,6 +49,8 @@ export interface Organization {
   aiReviewEnabled: boolean;
   /** Optionele org-specifieke instructies voor de AI-voorcontrole (PRD-13). */
   aiReviewInstructions: string | null;
+  /** Online herstel standaard aan voor nieuwe inspecties (PRD-14). */
+  onlineRepairDefault: boolean;
   /** Toegewezen SaaS-abonnement (entitlements, PRD-09); null = geen plan. */
   planId: string | null;
   createdAt: string;

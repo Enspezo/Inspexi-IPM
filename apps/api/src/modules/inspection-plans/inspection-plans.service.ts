@@ -18,6 +18,7 @@ import {
   PROJECT_FASEN_REQUIRED_MESSAGE,
   requireOrg,
   validateJsonColumn,
+  ONLINE_HERSTEL_FEATURE,
   STATUS_DRAFT,
   STATUS_IN_PROGRESS,
   STATUS_PENDING_REVIEW,
@@ -206,6 +207,39 @@ export class InspectionPlansService {
     );
   }
 
+  /**
+   * Online herstel (PRD-14): het rapportnummer (referenceNumber) is de anonieme
+   * toegangssleutel en moet dus gevuld en binnen de org uniek zijn voordat
+   * `onlineRepairEnabled` aangezet mag worden. Match case-insensitief + getrimd,
+   * conform de lookup-normalisatie in client-repair.
+   */
+  private async assertOnlineRepairReference(
+    planId: string,
+    orgId: string,
+    referenceNumber: string | null | undefined,
+  ): Promise<void> {
+    const ref = referenceNumber?.trim();
+    if (!ref) {
+      throw new BadRequestException(
+        'Online herstel vereist een uniek rapportnummer (referentienummer) — vul dit eerst in.',
+      );
+    }
+    const duplicate = await this.prisma.inspectionPlan.findFirst({
+      where: {
+        orgId,
+        deletedAt: null,
+        id: { not: planId },
+        referenceNumber: { equals: ref, mode: 'insensitive' },
+      },
+      select: { id: true },
+    });
+    if (duplicate) {
+      throw new BadRequestException(
+        'Online herstel vereist een uniek rapportnummer (referentienummer) — dit nummer is al in gebruik bij een andere inspectie.',
+      );
+    }
+  }
+
   async create(dto: CreateInspectionPlanDto, user: User) {
     const orgId = requireOrg(user);
 
@@ -223,16 +257,46 @@ export class InspectionPlansService {
       this.assertLookup(LOOKUP_KIND.INSPECTION_TYPES, dto.inspectionTypeCode, orgId),
     ]);
 
+    // Online herstel (PRD-14): default vanuit de org-instelling, maar alleen
+    // wanneer het ONLINE_HERSTEL-entitlement actief is. Wijzigen van de
+    // org-default raakt bestaande plannen bewust niet (voorspelbaar gedrag).
+    // Invariant (review PR #128 #4): de vlag mag alleen aan mét een gevuld,
+    // binnen de org uniek rapportnummer — anders blijft hij stil uit (het
+    // create-formulier kent geen toggle; staf kan hem later alsnog aanzetten).
+    let onlineRepairEnabled = false;
+    const orgSettings = await this.prisma.organization.findUnique({
+      where: { id: orgId },
+      select: { onlineRepairDefault: true },
+    });
+    if (orgSettings?.onlineRepairDefault) {
+      const features = await this.entitlements.getEnabledFeatures(orgId);
+      const createRef = dto.referenceNumber?.trim();
+      if (features.includes(ONLINE_HERSTEL_FEATURE) && createRef) {
+        const duplicate = await this.prisma.inspectionPlan.findFirst({
+          where: {
+            orgId,
+            deletedAt: null,
+            referenceNumber: { equals: createRef, mode: 'insensitive' },
+          },
+          select: { id: true },
+        });
+        onlineRepairEnabled = !duplicate;
+      }
+    }
+
     const plan = await this.prisma.inspectionPlan.create({
       data: {
         orgId,
+        onlineRepairEnabled,
         contactId: dto.contactId,
         projectId: dto.projectId ?? null,
         locationId: dto.locationId ?? null,
         inspectionTemplateId: dto.inspectionTemplateId ?? null,
         projectName: dto.projectName,
         description: dto.description ?? null,
-        referenceNumber: dto.referenceNumber ?? null,
+        // Getrimd opslaan (review #10): de uniciteitscheck en de anonieme
+        // lookup vergelijken getrimd — padded opslag zou daar doorheen glippen.
+        referenceNumber: dto.referenceNumber?.trim() || null,
         normTypeCode: dto.normTypeCode,
         inspectionTypeCode: dto.inspectionTypeCode ?? 'initial',
         statusCode: STATUS_DRAFT,
@@ -295,7 +359,7 @@ export class InspectionPlansService {
     if (dto.projectName !== undefined) data.projectName = dto.projectName;
     if (dto.description !== undefined) data.description = dto.description ?? null;
     if (dto.referenceNumber !== undefined)
-      data.referenceNumber = dto.referenceNumber ?? null;
+      data.referenceNumber = dto.referenceNumber?.trim() || null;
     if (dto.normTypeCode !== undefined) data.normTypeCode = dto.normTypeCode;
     if (dto.inspectionTypeCode !== undefined)
       data.inspectionTypeCode = dto.inspectionTypeCode;
@@ -385,6 +449,24 @@ export class InspectionPlansService {
     if (dto.metadata !== undefined) {
       validateJsonColumn(planMetadataSchema, dto.metadata, PLAN_METADATA_LABEL);
       data.metadata = dto.metadata as Prisma.InputJsonValue;
+    }
+
+    // Online herstel (PRD-14): aanzetten vereist een gevuld én binnen de org
+    // uniek rapportnummer (referenceNumber) — de anonieme lookup matcht erop.
+    // De invariant geldt ook andersom (review #3): zolang de vlag (effectief)
+    // aan staat mag het rapportnummer niet geleegd of gedupliceerd worden.
+    const effectiveOnlineRepair =
+      dto.onlineRepairEnabled !== undefined ? dto.onlineRepairEnabled : existing.onlineRepairEnabled;
+    if (
+      dto.onlineRepairEnabled === true ||
+      (dto.referenceNumber !== undefined && effectiveOnlineRepair)
+    ) {
+      const effectiveRef =
+        dto.referenceNumber !== undefined ? dto.referenceNumber : existing.referenceNumber;
+      await this.assertOnlineRepairReference(existing.id, orgId, effectiveRef);
+    }
+    if (dto.onlineRepairEnabled !== undefined) {
+      data.onlineRepairEnabled = dto.onlineRepairEnabled;
     }
 
     data.lastModifiedByUser = { connect: { id: user.id } };

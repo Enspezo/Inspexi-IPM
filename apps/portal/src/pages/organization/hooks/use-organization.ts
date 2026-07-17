@@ -36,6 +36,7 @@ interface UpdateOrganizationDto {
   inspectionReviewEnabled?: boolean;
   aiReviewEnabled?: boolean;
   aiReviewInstructions?: string | null;
+  onlineRepairDefault?: boolean;
 }
 
 export function useUpdateOrganization(orgId: string | null | undefined) {

@@ -93,6 +93,7 @@ import { ClientMessagesModule } from './modules/client-messages/client-messages.
 import { ClientRequestsModule } from './modules/client-requests/client-requests.module';
 import { ClientLookupsModule } from './modules/client-lookups/client-lookups.module';
 import { ClientHelpModule } from './modules/client-help/client-help.module';
+import { ClientRepairModule } from './modules/client-repair/client-repair.module';
 // Inspectiedomein Fase 7 — voice-input (AI spraak-naar-meting + 3-lagen prompts)
 import { VoiceModule } from './modules/voice/voice.module';
 // Gedeelde Anthropic-client (PRD-13 §13.6.1) — @Global, gebruikt door voice + ai-review
@@ -191,6 +192,7 @@ import { AiReviewModule } from './modules/ai-review/ai-review.module';
     ClientRequestsModule,
     ClientLookupsModule,
     ClientHelpModule,
+    ClientRepairModule,
     // Inspectiedomein Fase 7 — voice-input (AI spraak-naar-meting + 3-lagen prompts)
     VoiceModule,
     // Gedeelde Anthropic-client + AI-voorcontrole van inspectierapporten (PRD-13)

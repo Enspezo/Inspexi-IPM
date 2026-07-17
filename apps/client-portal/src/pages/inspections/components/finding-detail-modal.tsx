@@ -10,8 +10,10 @@ import {
   useToast,
 } from '@/components/ui';
 import type { LightboxImage } from '@/components/ui/image-lightbox';
+import { useNavigate } from 'react-router-dom';
 import { useFinding, useDeleteResolution } from '../hooks/use-findings';
 import { ResolveFindingModal } from './resolve-finding-modal';
+import { useStartRepairSession } from '@/pages/herstel/hooks/use-repair';
 import { getAccessToken, getErrorMessage } from '@/lib/api-client';
 import { formatDate } from '@/lib/format';
 import { personName } from '@/lib/labels';
@@ -58,16 +60,39 @@ function useAuthBlobUrls(urls: string[]): (string | null)[] {
 interface FindingDetailModalProps {
   findingId: string;
   onClose: () => void;
+  /** Nodig om vanuit de modal een herstelsessie te starten (online herstel, PRD-14). */
+  inspectionId?: string;
+  /** true → de oude "Als opgelost markeren"-flow wordt vervangen door online herstel (§14.9.6). */
+  onlineRepair?: boolean;
 }
 
-export function FindingDetailModal({ findingId, onClose }: FindingDetailModalProps) {
+export function FindingDetailModal({
+  findingId,
+  onClose,
+  inspectionId,
+  onlineRepair = false,
+}: FindingDetailModalProps) {
   const { data: finding, isLoading, error } = useFinding(findingId);
   const [showResolve, setShowResolve] = useState(false);
   const [lightbox, setLightbox] = useState<{ images: LightboxImage[]; index: number } | null>(null);
+  const navigate = useNavigate();
+  const { showToast } = useToast();
+  const startRepair = useStartRepairSession();
 
   const hasPending = !!finding?.resolutions.some((r) => r.statusCode === PENDING);
   const canResolve = !!finding && finding.statusCode !== 'resolved' && !hasPending;
+  const canOnlineRepair = onlineRepair && !!inspectionId && !!finding && finding.statusCode !== 'resolved';
   const recommendation = finding?.recommendationCustom || finding?.recommendation;
+
+  const handleStartRepair = async () => {
+    if (!inspectionId) return;
+    try {
+      await startRepair.mutateAsync(inspectionId);
+      navigate('/herstel/overzicht');
+    } catch (err) {
+      showToast(getErrorMessage(err, 'Kon de herstelsessie niet starten'), 'error');
+    }
+  };
 
   return (
     <Modal isOpen title="Constatering" onClose={onClose} className="max-w-2xl">
@@ -138,7 +163,13 @@ export function FindingDetailModal({ findingId, onClose }: FindingDetailModalPro
             <Button variant="secondary" onClick={onClose}>
               Sluiten
             </Button>
-            {canResolve ? (
+            {onlineRepair ? (
+              canOnlineRepair ? (
+                <Button onClick={handleStartRepair} isLoading={startRepair.isPending}>
+                  Online herstel
+                </Button>
+              ) : null
+            ) : canResolve ? (
               <Button onClick={() => setShowResolve(true)}>Als opgelost markeren</Button>
             ) : hasPending ? (
               <span className="text-sm text-gray-500">Wacht op verificatie door de inspecteur</span>

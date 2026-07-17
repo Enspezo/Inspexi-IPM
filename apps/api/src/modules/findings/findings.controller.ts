@@ -1,8 +1,12 @@
 // Route-roots: assets/:assetId/findings + findings/:id. INSPECTEUR mag schrijven (PWA).
+// NB: de specifieke route findings/resolution-photos/:id staat vóór findings/:id
+// (NestJS route-volgorde).
 
 import {
   Controller, Get, Post, Patch, Delete, Param, Body, Headers, ParseUUIDPipe,
+  Res, StreamableFile,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import { RequiresFeature } from '@/common/decorators/requires-feature.decorator';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { User } from '@prisma/client';
@@ -37,6 +41,19 @@ export class FindingsController {
     @Headers('x-device-id') deviceId?: string,
   ) {
     return { success: true, data: await this.service.create(assetId, user, dto, deviceId) };
+  }
+
+  @Get('findings/resolution-photos/:id')
+  @Roles(...ALL)
+  @ApiOperation({ summary: 'Herstel-resolutiefoto downloaden (staf, org-scoped)' })
+  async resolutionPhoto(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: User,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<StreamableFile> {
+    const { buffer, mimeType } = await this.service.getResolutionPhoto(id, user);
+    res.set({ 'Content-Type': mimeType, 'Cache-Control': 'private, max-age=86400' });
+    return new StreamableFile(buffer);
   }
 
   @Get('findings/:id')

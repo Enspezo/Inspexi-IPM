@@ -134,6 +134,18 @@ const enumLabels: Record<string, string> = {
   PROJECT_FASEN: 'Projectfasen',
   WEBHOOKS: 'Webhooks (add-on)',
   CUSTOM_FIELDS: 'Aangepaste velden (add-on)',
+  AI_REVIEW: 'AI-rapportcontrole (add-on)',
+  ONLINE_HERSTEL: 'Online herstel (add-on)',
+
+  // Online herstel (PRD-14) — RepairSession.accessType/status + resolutie-statussen
+  CLIENT_USER: 'Ingelogde klant',
+  ANONYMOUS: 'Anoniem (rapportnummer + postcode)',
+  ACTIVE: 'Actief',
+  EXPIRED: 'Verlopen',
+  PENDING_VERIFICATION: 'Wacht op verificatie',
+  VERIFIED: 'Geverifieerd',
+  REPORTED: 'Hersteld gemeld',
+  CONFLICT: 'Conflict — niet doorgevoerd',
 
   // SupportTicket (PRD-10) — NIEUW/IN_BEHANDELING/WACHT_OP_KLANT al hierboven
   OPGELOST: 'Opgelost',
@@ -204,6 +216,11 @@ const dateFields = new Set([
   'recurStartDate',
   'recurEndDate',
   'checkedAt',
+  // Online herstel (PRD-14)
+  'expiresAt',
+  'lastActivityAt',
+  'resolvedAt',
+  'verifiedAt',
 ]);
 
 /** UUID v4 pattern — used to detect unresolved UUIDs */
@@ -237,6 +254,14 @@ const FK_FIELDS = new Set([
   'contactPersonId',
   'assigneeId',
   'createdById',
+  // Online herstel (PRD-14)
+  'inspectionPlanId',
+  'clientUserId',
+  'generatedDocumentId',
+  'findingId',
+  'repairSessionId',
+  'resolvedByClientUserId',
+  'verifiedBy',
 ]);
 
 const currencyFormatter = new Intl.NumberFormat('nl-NL', {

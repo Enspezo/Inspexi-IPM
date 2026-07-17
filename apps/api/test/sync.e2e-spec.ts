@@ -355,6 +355,20 @@ describe('Sync v2 round-trip (e2e)', () => {
     expect(plan?.projectName).toBe('CLIENT EDIT 2');
     // De nieuwe serverVersion lijnt uit met de daadwerkelijke updatedAt.
     expect(plan?.updatedAt.toISOString()).toBe(resolvedResult.serverVersion);
+
+    // Regressie: de conflict-resolve moet een geldige UPDATE-audit-row opleveren.
+    // Vóór de fix deed resolve() de update met `select: { updatedAt: true }`,
+    // waardoor de audit-middleware geen entityId had en de write stil faalde
+    // op entity_id NOT NULL (23502) — de audit van elke resolve ging verloren.
+    const auditRow = await prisma.auditLog.findFirst({
+      where: { entityType: 'InspectionPlan', entityId: planId, action: 'UPDATE' },
+      orderBy: { createdAt: 'desc' },
+    });
+    expect(auditRow).not.toBeNull();
+    const changes = auditRow?.changes as Record<string, { from: unknown; to: unknown }>;
+    expect(changes.projectName).toEqual({ from: 'SERVER EDIT', to: 'CLIENT EDIT 2' });
+    // Geen bogus `id → null`-diff (de narrow-select-symptomen).
+    expect(changes.id).toBeUndefined();
   });
 
   it('7. push delete finding → tombstone surfaces in pull deletedIds', async () => {

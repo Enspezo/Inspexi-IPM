@@ -773,9 +773,11 @@ describe('SyncService', () => {
         expect.objectContaining({
           where: { id: 'p1' },
           data: expect.objectContaining({ projectName: 'CLIENT', syncedAt: expect.any(Date) }),
-          select: { updatedAt: true },
         }),
       );
+      // Regressie: GEEN narrow select — de audit-middleware heeft het volledige
+      // update-resultaat (incl. id/orgId) nodig voor een geldige audit-row.
+      expect(mockPrisma.inspectionPlan.update.mock.calls[0][0].select).toBeUndefined();
       expect(mockPrisma.syncQueue.update).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({ status: SyncStatus.completed }),

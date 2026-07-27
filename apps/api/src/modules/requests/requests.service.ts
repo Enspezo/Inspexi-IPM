@@ -3,6 +3,7 @@ import {
   Logger,
   NotFoundException,
   ForbiddenException,
+  BadRequestException,
 } from '@nestjs/common';
 import { User, Role, Prisma, RequestStatus, NotificationType } from '@prisma/client';
 import { PrismaService } from '@/prisma';
@@ -388,6 +389,15 @@ export class RequestsService {
 
   async updateStatus(id: string, dto: UpdateRequestStatusDto, user: User) {
     const request = await this.findOne(id, user);
+
+    // B-315 §1: een aanvraag op VERLOREN zetten vereist een reden — zonder
+    // reden is de verlies-registratie (lost_reason_id) betekenisloos en kan
+    // er nooit op gestuurd worden.
+    if (dto.status === 'VERLOREN' && !dto.lostReasonId) {
+      throw new BadRequestException(
+        'Kies een reden waarom deze aanvraag verloren is gegaan',
+      );
+    }
 
     const lostReasonId =
       dto.status === 'VERLOREN'

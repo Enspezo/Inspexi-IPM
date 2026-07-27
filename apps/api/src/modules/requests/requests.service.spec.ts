@@ -165,6 +165,9 @@ describe('RequestsService', () => {
     requestStatusHistory: {
       create: jest.fn(),
     },
+    lostReason: {
+      findFirst: jest.fn(),
+    },
     $transaction: jest.fn((cb: (tx: typeof mockTx) => Promise<unknown>) =>
       cb(mockTx),
     ),
@@ -633,6 +636,49 @@ describe('RequestsService', () => {
       expect(mockTx.requestStatusHistory.create).toHaveBeenCalledWith({
         data: expect.objectContaining({
           changedBy: 'user-1',
+        }),
+      });
+    });
+
+    // ── B-315 §1: VERLOREN vereist een reden ──
+    it('B-315 §1: VERLOREN zonder lostReasonId → 400 met NL-melding, geen write', async () => {
+      mockPrismaService.request.findUnique.mockResolvedValue(mockRequestWithIncludes);
+
+      await expect(
+        service.updateStatus(
+          'request-1',
+          { status: RequestStatus.VERLOREN },
+          mockUser,
+        ),
+      ).rejects.toThrow('Kies een reden waarom deze aanvraag verloren is gegaan');
+      expect(mockTx.request.update).not.toHaveBeenCalled();
+    });
+
+    it('B-315 §1: VERLOREN mét geldige reden schrijft lostReasonId + lostNote weg', async () => {
+      mockPrismaService.request.findUnique.mockResolvedValue(mockRequestWithIncludes);
+      mockPrismaService.lostReason.findFirst.mockResolvedValue({ id: 'reden-1' });
+      mockTx.request.update.mockResolvedValue({
+        ...mockRequest,
+        status: RequestStatus.VERLOREN,
+      });
+      mockTx.requestStatusHistory.create.mockResolvedValue({});
+
+      await service.updateStatus(
+        'request-1',
+        {
+          status: RequestStatus.VERLOREN,
+          lostReasonId: 'reden-1',
+          lostNote: 'Gekozen voor concurrent',
+        },
+        mockUser,
+      );
+
+      expect(mockTx.request.update).toHaveBeenCalledWith({
+        where: { id: 'request-1' },
+        data: expect.objectContaining({
+          status: RequestStatus.VERLOREN,
+          lostReasonId: 'reden-1',
+          lostNote: 'Gekozen voor concurrent',
         }),
       });
     });

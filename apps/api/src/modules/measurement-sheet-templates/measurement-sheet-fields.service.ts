@@ -39,6 +39,12 @@ export class MeasurementSheetFieldsService {
     }
 
     this.validateFieldTypeOptions(dto);
+    this.assertConsistentBounds({
+      minValue: dto.minValue ?? null,
+      maxValue: dto.maxValue ?? null,
+      passFailMinValue: dto.passFailMinValue ?? null,
+      passFailMaxValue: dto.passFailMaxValue ?? null,
+    });
 
     let sortOrder = dto.sortOrder;
     if (sortOrder === undefined) {
@@ -111,6 +117,17 @@ export class MeasurementSheetFieldsService {
         name: dto.name || field.name,
       } as CreateMeasurementSheetFieldDto);
     }
+
+    // B-506: cross-field-check op de EFFECTIEVE grenzen (PATCH-semantiek —
+    // een niet-meegestuurd veld behoudt zijn bestaande waarde).
+    this.assertConsistentBounds({
+      minValue: dto.minValue !== undefined ? dto.minValue : field.minValue,
+      maxValue: dto.maxValue !== undefined ? dto.maxValue : field.maxValue,
+      passFailMinValue:
+        dto.passFailMinValue !== undefined ? dto.passFailMinValue : field.passFailMinValue,
+      passFailMaxValue:
+        dto.passFailMaxValue !== undefined ? dto.passFailMaxValue : field.passFailMaxValue,
+    });
 
     const updated = await this.prisma.measurementSheetField.update({
       where: { id: fieldId },
@@ -224,6 +241,36 @@ export class MeasurementSheetFieldsService {
       throw new NotFoundException('Veld niet gevonden');
     }
     return field;
+  }
+
+  /**
+   * B-506: `min > max` (of pass/fail-min > pass/fail-max) maakt een veld
+   * oninvulbaar — elke waarde is dan óf te klein óf te groot en de PWA
+   * blokkeert het opslaan zonder uitweg. Weiger de combinatie met een NL-
+   * melding bij het max-veld. Prisma levert Decimal-waarden; via Number()
+   * vergelijken dekt zowel DTO-numbers als bestaande DB-waarden.
+   */
+  private assertConsistentBounds(bounds: {
+    minValue: number | Prisma.Decimal | null;
+    maxValue: number | Prisma.Decimal | null;
+    passFailMinValue: number | Prisma.Decimal | null;
+    passFailMaxValue: number | Prisma.Decimal | null;
+  }): void {
+    const { minValue, maxValue, passFailMinValue, passFailMaxValue } = bounds;
+    if (minValue != null && maxValue != null && Number(minValue) > Number(maxValue)) {
+      throw new BadRequestException(
+        `Maximum (${Number(maxValue)}) moet groter of gelijk zijn aan het minimum (${Number(minValue)})`,
+      );
+    }
+    if (
+      passFailMinValue != null &&
+      passFailMaxValue != null &&
+      Number(passFailMinValue) > Number(passFailMaxValue)
+    ) {
+      throw new BadRequestException(
+        `Pass/fail-maximum (${Number(passFailMaxValue)}) moet groter of gelijk zijn aan het pass/fail-minimum (${Number(passFailMinValue)})`,
+      );
+    }
   }
 
   /** Validatie van veldtype-specifieke opties. */

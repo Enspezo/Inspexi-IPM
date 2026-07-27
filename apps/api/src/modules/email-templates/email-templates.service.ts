@@ -10,7 +10,7 @@ import { randomUUID } from 'crypto';
 import { User, Role, Prisma, EmailTemplateType } from '@prisma/client';
 import { PrismaService } from '@/prisma';
 import { STORAGE_PROVIDER, type StorageProvider } from '@/common/services/storage/storage.interface';
-import { paginate, orgScope, assertFound, sanitizeStorageFilename } from '@/common';
+import { paginate, orgScope, assertFound, sanitizeStorageFilename, requireOrg } from '@/common';
 import { CreateEmailTemplateDto } from './dto/create-email-template.dto';
 import { UpdateEmailTemplateDto } from './dto/update-email-template.dto';
 import { TEMPLATE_TYPE_PLACEHOLDERS, EMAIL_TEMPLATE_TYPE_LABELS } from './placeholder.config';
@@ -78,10 +78,9 @@ export class EmailTemplatesService {
   }
 
   async create(dto: CreateEmailTemplateDto, user: User) {
-    const orgId = user.orgId;
-    if (!orgId) {
-      throw new ForbiddenException('Geen organisatie gekoppeld');
-    }
+    // WP-B3 (B-503): effectieve org (SUPERUSER op org-subdomein → tenant-org);
+    // zonder org een nette NL-400 i.p.v. een 403.
+    const orgId = requireOrg(user);
 
     // Auto-deactivate existing active template of same type
     return this.prisma.$transaction(async (tx) => {

@@ -1,8 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import {
-  NotFoundException,
-  ForbiddenException,
-} from '@nestjs/common';
+import { NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
 import { Role, User } from '@prisma/client';
 import { ProductsService } from './products.service';
 import { CustomFieldsValidator } from '@/modules/custom-fields/custom-fields.validator';
@@ -301,7 +298,7 @@ describe('ProductsService', () => {
       });
     });
 
-    it('should throw ForbiddenException if no orgId and not SUPERUSER', async () => {
+    it('should throw BadRequestException if no orgId (WP-B3)', async () => {
       const userNoOrg = {
         ...mockUser,
         id: 'user-no-org',
@@ -311,10 +308,10 @@ describe('ProductsService', () => {
 
       await expect(
         service.create(createDto, userNoOrg),
-      ).rejects.toThrow(ForbiddenException);
+      ).rejects.toThrow(BadRequestException);
       await expect(
         service.create(createDto, userNoOrg),
-      ).rejects.toThrow('Geen organisatie gekoppeld');
+      ).rejects.toThrow('Selecteer eerst een organisatie');
     });
   });
 

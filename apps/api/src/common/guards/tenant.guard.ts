@@ -46,8 +46,22 @@ export class TenantGuard implements CanActivate {
       return false;
     }
 
-    // SUPERUSER can access any subdomain + base domain
+    // SUPERUSER can access any subdomain + base domain.
+    //
+    // Beslissing D2 (WP-B3, B-502/B-503/B-504): het subdomein bepaalt de
+    // scope. Koppel de tenantcontext van het subdomein hier — het enige punt
+    // dat user én tenant samen ziet — aan de request-user, zodat álle
+    // downstream org-scoping (orgScope/requireOrg/`user.orgId`) automatisch
+    // de bezochte org gebruikt. Op het superuser-domein (`mijn.*`) en op een
+    // onbekende host blijft `orgId` null → platform-breed lezen.
     if (user.roles.includes(Role.SUPERUSER)) {
+      if (tenant.orgId !== null && user.orgId !== tenant.orgId) {
+        request.user = {
+          ...user,
+          orgId: tenant.orgId,
+          organization: tenant.organization,
+        };
+      }
       return true;
     }
 

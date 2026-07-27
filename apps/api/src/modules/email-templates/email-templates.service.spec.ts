@@ -234,7 +234,7 @@ describe('EmailTemplatesService', () => {
       expect(txMock.emailTemplate.create).toHaveBeenCalled();
     });
 
-    it('should throw ForbiddenException when user has no orgId', async () => {
+    it('should throw BadRequestException when user has no orgId (WP-B3)', async () => {
       const dto = {
         type: EmailTemplateType.OFFERTE_VERSTUURD,
         name: 'Template',
@@ -243,7 +243,7 @@ describe('EmailTemplatesService', () => {
       };
 
       await expect(service.create(dto as any, mockSuperuser)).rejects.toThrow(
-        ForbiddenException,
+        BadRequestException,
       );
     });
 

@@ -5,7 +5,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Role } from '@/types';
 import type { User } from '@/types';
-import { Button, Card, Checkbox, ErrorBox, Input, Spinner, Badge, Tabs, useToast } from '@/components/ui';
+import { Button, Card, Checkbox, ErrorBox, Input, Spinner, Badge, Tabs, useConfirm, useToast } from '@/components/ui';
 import { formatDate, formatDateTime } from '@/lib/format';
 import { DetailPageLayout } from '@/components/layout/detail-page-layout';
 import { AuditHistory } from '@/components/audit-history/audit-history';
@@ -17,6 +17,7 @@ import {
   useUpdateOrganization,
 } from './hooks/use-organizations';
 import { OrganizationEntitlementsTab } from './components/organization-entitlements-tab';
+import { InviteOrgUserModal } from './components/invite-org-user-modal';
 
 type Tab = 'algemeen' | 'gebruikers' | 'abonnement' | 'instellingen';
 
@@ -51,11 +52,51 @@ export default function OrganizationDetailPage() {
   const { showToast } = useToast();
   const { user } = useAuth();
   const isSuperuser = hasRole(user, Role.SUPERUSER);
+  const confirm = useConfirm();
   const { data: org, isLoading, error } = useOrganization(id!);
   const { data: users, isLoading: usersLoading } = useOrganizationUsers(id!);
   const updateMutation = useUpdateOrganization(id!);
 
   const [activeTab, setActiveTab] = useState<Tab>('algemeen');
+  const [inviteOpen, setInviteOpen] = useState(false);
+
+  // B-511 §1: offboarding — actief/inactief schakelen met expliciete waarschuwing.
+  const handleToggleActive = async () => {
+    if (!org) return;
+    const deactivating = org.isActive;
+    const confirmed = await confirm({
+      title: deactivating
+        ? 'Organisatie deactiveren'
+        : 'Organisatie activeren',
+      message: deactivating ? (
+        <>
+          Weet u zeker dat u <strong>{org.name}</strong> wilt deactiveren?
+          Het subdomein <span className="font-mono">{org.slug}</span> geeft
+          daarna een 404 en gebruikers van deze organisatie kunnen niet meer
+          inloggen totdat de organisatie weer geactiveerd wordt.
+        </>
+      ) : (
+        <>
+          Weet u zeker dat u <strong>{org.name}</strong> weer wilt activeren?
+          Het subdomein <span className="font-mono">{org.slug}</span> is daarna
+          direct weer bereikbaar en gebruikers kunnen weer inloggen.
+        </>
+      ),
+      confirmLabel: deactivating ? 'Deactiveren' : 'Activeren',
+      variant: deactivating ? 'danger' : 'primary',
+    });
+    if (!confirmed) return;
+
+    try {
+      await updateMutation.mutateAsync({ isActive: !deactivating });
+      showToast(
+        deactivating ? 'Organisatie gedeactiveerd' : 'Organisatie geactiveerd',
+        'success',
+      );
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
+    }
+  };
 
   const {
     register,
@@ -158,7 +199,14 @@ export default function OrganizationDetailPage() {
               />
             )}
             <div>
-              <h2 className="text-2xl font-bold text-gray-900">{org.name}</h2>
+              <div className="flex items-center gap-2">
+                <h2 className="text-2xl font-bold text-gray-900">{org.name}</h2>
+                {!org.isActive && (
+                  <span className="inline-flex items-center rounded-full bg-red-100 px-2.5 py-0.5 text-xs font-medium text-red-800">
+                    Inactief
+                  </span>
+                )}
+              </div>
               <p className="text-sm text-gray-500">
                 {org.slug}.inspexi.nl
               </p>
@@ -260,11 +308,29 @@ export default function OrganizationDetailPage() {
                 <Spinner size="sm" />
               </div>
             ) : sortedUsers.length === 0 ? (
-              <p className="py-8 text-center text-sm text-gray-400">
-                Geen gebruikers in deze organisatie
-              </p>
+              <div className="flex flex-col items-center gap-4 py-8">
+                <p className="text-center text-sm text-gray-400">
+                  Geen gebruikers in deze organisatie
+                </p>
+                {/* WP-B3 (B-504): onboarding — eerste beheerder uitnodigen */}
+                {isSuperuser && (
+                  <Button onClick={() => setInviteOpen(true)}>
+                    Eerste beheerder uitnodigen
+                  </Button>
+                )}
+              </div>
             ) : (
               <div className="overflow-x-auto">
+                {isSuperuser && (
+                  <div className="mb-4 flex justify-end">
+                    <Button
+                      variant="secondary"
+                      onClick={() => setInviteOpen(true)}
+                    >
+                      Uitnodigen
+                    </Button>
+                  </div>
+                )}
                 <table className="min-w-full divide-y divide-gray-200">
                   <thead>
                     <tr>
@@ -338,6 +404,7 @@ export default function OrganizationDetailPage() {
 
         {/* Tab: Instellingen */}
         {activeTab === 'instellingen' && (
+          <>
           <Card>
             <form
               onSubmit={handleSubmit(onSettingsSubmit)}
@@ -399,8 +466,53 @@ export default function OrganizationDetailPage() {
               </div>
             </form>
           </Card>
+
+          {/* B-511 §1: offboarding — organisatie activeren/deactiveren (SUPERUSER) */}
+          {isSuperuser && (
+            <Card>
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-900">
+                    Status organisatie
+                  </h3>
+                  <p className="mt-1 text-sm text-gray-500">
+                    {org.isActive ? (
+                      <>
+                        Deze organisatie is <strong>actief</strong>. Na
+                        deactiveren geeft het subdomein{' '}
+                        <span className="font-mono">{org.slug}</span> een 404 en
+                        kunnen gebruikers niet meer inloggen.
+                      </>
+                    ) : (
+                      <>
+                        Deze organisatie is <strong>inactief</strong>: het
+                        subdomein <span className="font-mono">{org.slug}</span>{' '}
+                        geeft een 404 en gebruikers kunnen niet inloggen.
+                      </>
+                    )}
+                  </p>
+                </div>
+                <Button
+                  variant={org.isActive ? 'danger' : 'primary'}
+                  isLoading={updateMutation.isPending}
+                  onClick={handleToggleActive}
+                >
+                  {org.isActive ? 'Deactiveren' : 'Activeren'}
+                </Button>
+              </div>
+            </Card>
+          )}
+          </>
         )}
       </div>
+
+      {/* WP-B3 (B-504): onboarding-modal */}
+      <InviteOrgUserModal
+        isOpen={inviteOpen}
+        onClose={() => setInviteOpen(false)}
+        orgId={id!}
+        orgName={org.name}
+      />
     </DetailPageLayout>
   );
 }

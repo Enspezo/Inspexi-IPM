@@ -60,7 +60,7 @@ GOLF 4  Gecoördineerd contractwerk            3 WP    ~3-4 dagen  (na stabilisa
 | **A2** | Dataverlies-stop: findings + meetstaten | PWA | B-210, B-206, B-207, B-223d | **S1** | A1 | ✅ gemerged (PR InspeXi #31 + #149) |
 | **A3** | Documentketen-integriteit | API | B-101, B-102, B-103, B-104 | **S1** | — | ✅ gemerged (PR #133) |
 | **A4** | Klantportaal-crash (AssetNode) | client-portal | B-401 | **S1** | — | ✅ gemerged (PR #132) |
-| **B1** | Referentiedata-sync herstellen | PWA | B-202, B-204, B-205a | S2 | A1 | open |
+| **B1** | Referentiedata-sync herstellen | PWA | B-202, B-204, B-205a | S2 | A1 | ✅ gemerged (InspeXi #32 + #155) |
 | **B2** | Assetboom + dode UI | PWA | B-201, B-213, B-214, B-215, B-223c/f/g, B-221 | S2/S3 | B1 | open |
 | **B3** | Superuser-scoping & onboarding | API + portal | B-502, B-503, B-504, B-511§1 | S2 | — | ✅ gemerged (PR #141) |
 | **B4** | Upload-security (logo + avatar) | API | B-507 | S2 | — | ✅ gemerged (PR #136) |

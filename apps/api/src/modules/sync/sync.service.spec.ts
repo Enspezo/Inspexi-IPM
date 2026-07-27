@@ -1,11 +1,12 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { BadRequestException } from '@nestjs/common';
-import { Role, SyncStatus } from '@prisma/client';
+import { Prisma, Role, SyncStatus } from '@prisma/client';
 import { SyncService } from './sync.service';
 import { PrismaService } from '@/prisma';
 import { ChatSyncService } from '../chat/chat-sync.service';
 import { NumberingService } from '../numbering/numbering.service';
 import { AssetNodesService } from '../asset-nodes/asset-nodes.service';
+import { InspectionPlansService } from '../inspection-plans/inspection-plans.service';
 
 describe('SyncService', () => {
   let service: SyncService;
@@ -38,8 +39,17 @@ describe('SyncService', () => {
     measurementInstrument: delegate(),
     userDefaultInstrument: delegate(),
     inspectionPlanDefaultInstrument: delegate(),
-    assetTypeDefinition: { ...delegate(), findMany: jest.fn().mockResolvedValue([]) },
-    locationTypeDefinition: { ...delegate(), findMany: jest.fn().mockResolvedValue([]) },
+    // WP-C3 (B-203): typeCode wordt nu tegen de type-definities gevalideerd —
+    // default een systeem-def met shortcode zodat de happy-path creates slagen;
+    // de typeCode-validatietests overriden dit per test.
+    assetTypeDefinition: {
+      ...delegate(),
+      findMany: jest.fn().mockResolvedValue([{ orgId: null, shortCode: 'EI' }]),
+    },
+    locationTypeDefinition: {
+      ...delegate(),
+      findMany: jest.fn().mockResolvedValue([{ orgId: null, shortCode: 'GEB' }]),
+    },
   };
 
   // Numbering-engine: voert de create-callback uit met een vast nodeNumber en geeft
@@ -65,10 +75,16 @@ describe('SyncService', () => {
     applySyncPresence: jest.fn().mockResolvedValue({ id: 'user-1', status: 'success' }),
   };
 
-  // AssetNodesService — alleen assertNodeInPlanTree wordt door de sync gebruikt
-  // (boom-integriteit). Default: node zit in de boom (resolve).
+  // AssetNodesService — assertNodeInPlanTree (boom-integriteit) en
+  // assertDepthForWrite (WP-C3/B-216 dieptegrens). Default: alles toegestaan.
   const mockAssetNodes = {
     assertNodeInPlanTree: jest.fn().mockResolvedValue({ id: 'node-a', nodeType: 'ASSET' }),
+    assertDepthForWrite: jest.fn().mockResolvedValue(undefined),
+  };
+
+  // WP-C3 (B-218): submit-side-effects worden aan InspectionPlansService gedelegeerd.
+  const mockInspectionPlans = {
+    dispatchSubmitSideEffects: jest.fn().mockResolvedValue(undefined),
   };
 
   const user = { id: 'user-1', orgId: 'org-1', roles: [Role.INSPECTEUR] } as any;
@@ -84,6 +100,7 @@ describe('SyncService', () => {
         { provide: ChatSyncService, useValue: mockChat },
         { provide: NumberingService, useValue: mockNumbering },
         { provide: AssetNodesService, useValue: mockAssetNodes },
+        { provide: InspectionPlansService, useValue: mockInspectionPlans },
       ],
     }).compile();
 
@@ -1129,6 +1146,488 @@ describe('SyncService', () => {
       ]);
       // A failing thread must not block presence (or anything after it).
       expect(result.processed.presence).toBe(1);
+    });
+  });
+
+  // ── WP-C3 (B-203): typeCode-validatie + assigned nodeNumber ─────────────
+  describe('push — typeCode validation & assigned nodeNumber (B-203)', () => {
+    const nodeCreate = (typeCode: string) =>
+      ({
+        deviceId: 'dev-1',
+        changes: {
+          assetNodes: [
+            { operation: 'create', data: { id: 'a1', nodeType: 'ASSET', typeCode, name: 'X' } },
+          ],
+        },
+      }) as any;
+
+    it('rejects an UNKNOWN typeCode with a Dutch message and never creates', async () => {
+      mockPrisma.assetNode.findFirst.mockResolvedValue(null);
+      mockPrisma.assetTypeDefinition.findMany.mockResolvedValueOnce([]); // geen match
+
+      const result = await service.push(user, nodeCreate('bestaat_niet'));
+
+      expect(mockPrisma.assetNode.create).not.toHaveBeenCalled();
+      expect(mockNumbering.runWithGeneratedNumber).not.toHaveBeenCalled();
+      expect(result.errors).toHaveLength(1);
+      expect(result.errors[0].error).toBe('Onbekend assettype "bestaat_niet"');
+    });
+
+    it('rejects an EMPTY typeCode', async () => {
+      mockPrisma.assetNode.findFirst.mockResolvedValue(null);
+
+      const result = await service.push(user, nodeCreate(''));
+
+      expect(mockPrisma.assetNode.create).not.toHaveBeenCalled();
+      expect(result.errors[0].error).toBe('Geen assettype opgegeven: kies een geldig type');
+    });
+
+    it('validates a LOCATION node against the location type definitions', async () => {
+      mockPrisma.assetNode.findFirst.mockResolvedValue(null);
+      mockPrisma.locationTypeDefinition.findMany.mockResolvedValueOnce([]);
+
+      const dto = {
+        deviceId: 'dev-1',
+        changes: {
+          assetNodes: [
+            { operation: 'create', data: { id: 'l1', nodeType: 'LOCATION', typeCode: 'spookruimte', name: 'X' } },
+          ],
+        },
+      } as any;
+      const result = await service.push(user, dto);
+
+      expect(result.errors[0].error).toBe('Onbekend locatietype "spookruimte"');
+    });
+
+    it('feeds the resolved shortCode into the numbering context (no loadContext round-trip)', async () => {
+      mockPrisma.assetNode.findFirst.mockResolvedValue(null);
+      mockPrisma.assetNode.create.mockResolvedValue({ id: 'a1', nodeNumber: 'NODE-0001' });
+
+      await service.push(user, nodeCreate('electrical_installation'));
+
+      expect(mockNumbering.runWithGeneratedNumber).toHaveBeenCalledWith(
+        'ASSET_NODE',
+        'org-1',
+        { context: { typeShortCode: 'EI' } },
+        expect.any(Function),
+      );
+    });
+
+    it('returns the server-assigned nodeNumber under the additive assigned[] key (create)', async () => {
+      mockPrisma.assetNode.findFirst.mockResolvedValue(null);
+      mockPrisma.assetNode.create.mockResolvedValue({ id: 'a1', nodeNumber: 'NODE-0001' });
+
+      const result = await service.push(user, nodeCreate('electrical_installation'));
+
+      expect(result.errors).toHaveLength(0);
+      expect(result.assigned).toEqual([
+        { entityType: 'assetNode', entityId: 'a1', nodeNumber: 'NODE-0001' },
+      ]);
+    });
+
+    it('returns the EXISTING nodeNumber on an idempotent create retry (adopt path)', async () => {
+      // Retry van een create die eerder half slaagde: record bestaat al mét nummer.
+      mockPrisma.assetNode.findFirst.mockResolvedValue({
+        id: 'a1', orgId: 'org-1', typeCode: 'electrical_installation', parentId: null,
+        nodeNumber: 'EI-0007', updatedAt: new Date('2020-01-01'),
+      });
+      mockPrisma.assetNode.update.mockResolvedValue({ id: 'a1', updatedAt: new Date() });
+
+      const result = await service.push(user, nodeCreate('electrical_installation'));
+
+      expect(mockPrisma.assetNode.create).not.toHaveBeenCalled();
+      expect(result.assigned).toEqual([
+        { entityType: 'assetNode', entityId: 'a1', nodeNumber: 'EI-0007' },
+      ]);
+    });
+
+    it('allows an UNCHANGED typeCode echo on update (legacy records keep syncing)', async () => {
+      mockPrisma.assetNode.findFirst.mockResolvedValue({
+        id: 'a1', orgId: 'org-1', typeCode: 'legacy_type', parentId: null,
+        nodeNumber: null, updatedAt: new Date('2020-01-01'),
+      });
+      mockPrisma.assetNode.update.mockResolvedValue({ id: 'a1', updatedAt: new Date() });
+
+      const dto = {
+        deviceId: 'dev-1',
+        changes: {
+          assetNodes: [
+            { operation: 'update', data: { id: 'a1', nodeType: 'ASSET', typeCode: 'legacy_type', name: 'Echo', syncedAt: '2025-01-01T00:00:00Z' } },
+          ],
+        },
+      } as any;
+      const result = await service.push(user, dto);
+
+      // Echo = geen wijziging → geen type-lookup en geen fout.
+      expect(mockPrisma.assetTypeDefinition.findMany).not.toHaveBeenCalled();
+      expect(result.errors).toHaveLength(0);
+      expect(result.processed.assetNodes).toBe(1);
+    });
+
+    it('rejects a typeCode CHANGE to an unknown type on update', async () => {
+      mockPrisma.assetNode.findFirst.mockResolvedValue({
+        id: 'a1', orgId: 'org-1', typeCode: 'electrical_installation', nodeType: 'ASSET', parentId: null,
+        nodeNumber: 'EI-0001', updatedAt: new Date('2020-01-01'),
+      });
+      mockPrisma.assetTypeDefinition.findMany.mockResolvedValueOnce([]);
+
+      const dto = {
+        deviceId: 'dev-1',
+        changes: {
+          assetNodes: [
+            { operation: 'update', data: { id: 'a1', typeCode: 'onzin', syncedAt: '2025-01-01T00:00:00Z' } },
+          ],
+        },
+      } as any;
+      const result = await service.push(user, dto);
+
+      expect(mockPrisma.assetNode.update).not.toHaveBeenCalled();
+      expect(result.errors[0].error).toBe('Onbekend assettype "onzin"');
+    });
+  });
+
+  // ── WP-C3 (B-216): dieptegrens ──────────────────────────────────────────
+  describe('push — depth limit (B-216)', () => {
+    it('runs the depth guard for a child create', async () => {
+      mockPrisma.assetNode.findUnique.mockResolvedValue({ orgId: 'org-1' }); // parent same-org
+      mockPrisma.assetNode.findFirst.mockResolvedValue(null);
+      mockPrisma.assetNode.create.mockResolvedValue({ id: 'a1', nodeNumber: 'NODE-0001' });
+
+      const dto = {
+        deviceId: 'dev-1',
+        changes: {
+          assetNodes: [
+            { operation: 'create', data: { id: 'a1', nodeType: 'ASSET', typeCode: 'electrical_installation', name: 'X', parentId: 'parent-1' } },
+          ],
+        },
+      } as any;
+      const result = await service.push(user, dto);
+
+      expect(mockAssetNodes.assertDepthForWrite).toHaveBeenCalledWith('parent-1', 'org-1');
+      expect(result.errors).toHaveLength(0);
+    });
+
+    it('rejects the create when the depth guard throws (NL message)', async () => {
+      mockPrisma.assetNode.findUnique.mockResolvedValue({ orgId: 'org-1' });
+      mockPrisma.assetNode.findFirst.mockResolvedValue(null);
+      mockAssetNodes.assertDepthForWrite.mockRejectedValueOnce(
+        new BadRequestException('Maximale nestdiepte (10) bereikt'),
+      );
+
+      const dto = {
+        deviceId: 'dev-1',
+        changes: {
+          assetNodes: [
+            { operation: 'create', data: { id: 'a1', nodeType: 'ASSET', typeCode: 'electrical_installation', name: 'X', parentId: 'parent-1' } },
+          ],
+        },
+      } as any;
+      const result = await service.push(user, dto);
+
+      expect(mockPrisma.assetNode.create).not.toHaveBeenCalled();
+      expect(result.errors[0].error).toBe('Maximale nestdiepte (10) bereikt');
+    });
+
+    it('runs the guard on a reparent (changed parentId) but not on an unchanged echo', async () => {
+      mockPrisma.assetNode.findUnique.mockResolvedValue({ orgId: 'org-1' });
+      mockPrisma.assetNode.findFirst.mockResolvedValue({
+        id: 'a1', orgId: 'org-1', typeCode: 'electrical_installation', parentId: 'old-parent',
+        nodeNumber: 'EI-0001', updatedAt: new Date('2020-01-01'),
+      });
+      mockPrisma.assetNode.update.mockResolvedValue({ id: 'a1', updatedAt: new Date() });
+
+      // Echo: parentId ongewijzigd → geen dieptecheck.
+      await service.push(user, {
+        deviceId: 'dev-1',
+        changes: {
+          assetNodes: [
+            { operation: 'update', data: { id: 'a1', parentId: 'old-parent', syncedAt: '2025-01-01T00:00:00Z' } },
+          ],
+        },
+      } as any);
+      expect(mockAssetNodes.assertDepthForWrite).not.toHaveBeenCalled();
+
+      // Reparent: gewijzigde parentId → move-variant van de check (met nodeId).
+      await service.push(user, {
+        deviceId: 'dev-1',
+        changes: {
+          assetNodes: [
+            { operation: 'update', data: { id: 'a1', parentId: 'new-parent', syncedAt: '2025-01-01T00:00:00Z' } },
+          ],
+        },
+      } as any);
+      expect(mockAssetNodes.assertDepthForWrite).toHaveBeenCalledWith('new-parent', 'org-1', 'a1');
+    });
+  });
+
+  // ── WP-C3 (B-217 / beslispunt A6-b): toewijzings-rolguard ───────────────
+  describe('push — plan assignment role guard (B-217)', () => {
+    const planner = { id: 'user-2', orgId: 'org-1', roles: [Role.WERKVOORBEREIDER] } as any;
+
+    const planUpdate = (data: Record<string, unknown>) =>
+      ({
+        deviceId: 'dev-1',
+        changes: {
+          inspectionPlans: [
+            { operation: 'update', data: { id: 'p1', syncedAt: '2025-01-01T00:00:00Z', ...data } },
+          ],
+        },
+      }) as any;
+
+    beforeEach(() => {
+      mockPrisma.user.findUnique.mockResolvedValue({ orgId: 'org-1' }); // user-FK same-org
+      mockPrisma.inspectionPlan.findFirst.mockResolvedValue({
+        id: 'p1', orgId: 'org-1', statusCode: 'in_progress',
+        reviewerId: 'rev-1', assignedTo: 'user-9', updatedAt: new Date('2020-01-01'),
+      });
+      mockPrisma.inspectionPlan.update.mockResolvedValue({ id: 'p1', updatedAt: new Date() });
+    });
+
+    it('INSPECTEUR cannot CHANGE reviewerId (e.g. to himself)', async () => {
+      const result = await service.push(user, planUpdate({ reviewerId: 'user-1' }));
+
+      expect(mockPrisma.inspectionPlan.update).not.toHaveBeenCalled();
+      expect(result.errors).toHaveLength(1);
+      expect(result.errors[0].error).toContain('management- of werkvoorbereidingsrollen');
+    });
+
+    it('INSPECTEUR cannot CHANGE assignedTo either', async () => {
+      const result = await service.push(user, planUpdate({ assignedTo: 'user-1' }));
+
+      expect(mockPrisma.inspectionPlan.update).not.toHaveBeenCalled();
+      expect(result.errors).toHaveLength(1);
+    });
+
+    it('an UNCHANGED echo of reviewerId/assignedTo passes for INSPECTEUR (PWA pushes full records)', async () => {
+      const result = await service.push(
+        user,
+        planUpdate({ reviewerId: 'rev-1', assignedTo: 'user-9', projectName: 'Echo' }),
+      );
+
+      expect(result.errors).toHaveLength(0);
+      expect(result.processed.inspectionPlans).toBe(1);
+    });
+
+    it('WERKVOORBEREIDER (REVIEW_ROLES) may change the reviewer', async () => {
+      const result = await service.push(planner, planUpdate({ reviewerId: 'rev-2' }));
+
+      expect(result.errors).toHaveLength(0);
+      expect(mockPrisma.inspectionPlan.update).toHaveBeenCalled();
+    });
+
+    it('INSPECTEUR may self-assign a NEW plan (offline create, assignedTo === self)', async () => {
+      mockPrisma.inspectionPlan.findFirst.mockResolvedValue(null); // geen dup
+      mockPrisma.inspectionPlan.create.mockResolvedValue({ id: 'p-new' });
+
+      const dto = {
+        deviceId: 'dev-1',
+        changes: {
+          inspectionPlans: [
+            { operation: 'create', data: { id: 'p-new', projectName: 'Offline', assignedTo: 'user-1' } },
+          ],
+        },
+      } as any;
+      const result = await service.push(user, dto);
+
+      expect(result.errors).toHaveLength(0);
+      expect(mockPrisma.inspectionPlan.create).toHaveBeenCalled();
+    });
+
+    it('INSPECTEUR may NOT assign a new plan to someone else', async () => {
+      mockPrisma.inspectionPlan.findFirst.mockResolvedValue(null);
+
+      const dto = {
+        deviceId: 'dev-1',
+        changes: {
+          inspectionPlans: [
+            { operation: 'create', data: { id: 'p-new', projectName: 'Offline', assignedTo: 'user-5' } },
+          ],
+        },
+      } as any;
+      const result = await service.push(user, dto);
+
+      expect(mockPrisma.inspectionPlan.create).not.toHaveBeenCalled();
+      expect(result.errors).toHaveLength(1);
+    });
+
+    it('a conflict-bound stale update reports a CONFLICT, not a role failure', async () => {
+      // Server is nieuwer dan de client-baseline → conflictpad; de rolguard
+      // moet dat pad niet kapen (resolve() draait de guard alsnog).
+      mockPrisma.inspectionPlan.findFirst.mockResolvedValue({
+        id: 'p1', orgId: 'org-1', statusCode: 'in_progress',
+        reviewerId: 'rev-NEW', assignedTo: 'user-9', updatedAt: new Date(),
+      });
+      mockPrisma.syncQueue.findFirst.mockResolvedValue(null);
+      mockPrisma.syncQueue.create.mockResolvedValue({ id: 'q1' });
+
+      const result = await service.push(
+        user,
+        planUpdate({ reviewerId: 'rev-OLD', syncedAt: '2020-01-01T00:00:00Z' }),
+      );
+
+      expect(result.conflicts).toHaveLength(1);
+      expect(result.errors).toHaveLength(0);
+    });
+
+    it('resolve() enforces the role guard on the chosen data (no conflict-skip)', async () => {
+      mockPrisma.syncQueue.findFirst.mockResolvedValue({
+        id: 'q1',
+        payload: { id: 'p1', reviewerId: 'user-1' },
+        conflictData: { serverData: { id: 'p1' } },
+        status: 'conflict',
+      });
+      mockPrisma.inspectionPlan.findFirst.mockResolvedValue({
+        id: 'p1', orgId: 'org-1', reviewerId: 'rev-1', assignedTo: 'user-9',
+        statusCode: 'in_progress', updatedAt: new Date(),
+      });
+
+      const result = await service.resolve(user, {
+        deviceId: 'dev-1',
+        resolutions: [{ entityType: 'inspectionPlan', entityId: 'p1', resolution: 'client' }],
+      } as any);
+
+      expect(mockPrisma.inspectionPlan.update).not.toHaveBeenCalled();
+      expect(result.resolved).toBe(0);
+      expect(result.errors).toHaveLength(1);
+      expect(result.errors[0].error).toContain('management- of werkvoorbereidingsrollen');
+    });
+  });
+
+  // ── WP-C3 (B-218): submit-side-effects via sync ─────────────────────────
+  describe('push — submit side-effects on pending_review (B-218)', () => {
+    const submitPush = (extra: Record<string, unknown> = {}) =>
+      ({
+        deviceId: 'dev-1',
+        changes: {
+          inspectionPlans: [
+            {
+              operation: 'update',
+              data: { id: 'p1', statusCode: 'pending_review', syncedAt: '2025-01-01T00:00:00Z', ...extra },
+            },
+          ],
+        },
+      }) as any;
+
+    beforeEach(() => {
+      mockPrisma.inspectionPlan.findFirst.mockResolvedValue({
+        id: 'p1', orgId: 'org-1', statusCode: 'in_progress', submittedAt: null,
+        reviewerId: null, assignedTo: 'user-1', updatedAt: new Date('2020-01-01'),
+      });
+      mockPrisma.inspectionPlan.update.mockResolvedValue({ id: 'p1', updatedAt: new Date() });
+    });
+
+    it('delegates to InspectionPlansService.dispatchSubmitSideEffects on in_progress → pending_review', async () => {
+      const result = await service.push(user, submitPush());
+
+      expect(result.errors).toHaveLength(0);
+      expect(mockInspectionPlans.dispatchSubmitSideEffects).toHaveBeenCalledWith('p1', user);
+    });
+
+    it('fills submittedAt server-side when the client omitted it (same write, mirror of submit())', async () => {
+      await service.push(user, submitPush());
+
+      const written = mockPrisma.inspectionPlan.update.mock.calls[0][0].data;
+      expect(written.submittedAt).toBeInstanceOf(Date);
+    });
+
+    it('keeps a client-supplied submittedAt untouched', async () => {
+      await service.push(user, submitPush({ submittedAt: '2026-07-27T07:39:31.000Z' }));
+
+      const written = mockPrisma.inspectionPlan.update.mock.calls[0][0].data;
+      expect(written.submittedAt).toEqual(new Date('2026-07-27T07:39:31.000Z'));
+    });
+
+    it('does NOT fire on a pending_review echo (plan was already submitted)', async () => {
+      mockPrisma.inspectionPlan.findFirst.mockResolvedValue({
+        id: 'p1', orgId: 'org-1', statusCode: 'pending_review', submittedAt: new Date(),
+        reviewerId: null, assignedTo: 'user-1', updatedAt: new Date('2020-01-01'),
+      });
+
+      await service.push(user, submitPush());
+
+      expect(mockInspectionPlans.dispatchSubmitSideEffects).not.toHaveBeenCalled();
+    });
+
+    it('fires on a create that arrives directly as pending_review (fully-offline submit)', async () => {
+      mockPrisma.inspectionPlan.findFirst.mockResolvedValue(null); // geen dup
+      mockPrisma.inspectionPlan.create.mockResolvedValue({ id: 'p1' });
+
+      const dto = {
+        deviceId: 'dev-1',
+        changes: {
+          inspectionPlans: [
+            { operation: 'create', data: { id: 'p1', projectName: 'Offline', statusCode: 'pending_review' } },
+          ],
+        },
+      } as any;
+      const result = await service.push(user, dto);
+
+      expect(result.errors).toHaveLength(0);
+      expect(mockInspectionPlans.dispatchSubmitSideEffects).toHaveBeenCalledWith('p1', user);
+    });
+
+    it('a rejected side-effects promise never fails the push (fire-and-forget)', async () => {
+      mockInspectionPlans.dispatchSubmitSideEffects.mockRejectedValueOnce(new Error('boom'));
+
+      const result = await service.push(user, submitPush());
+
+      expect(result.errors).toHaveLength(0);
+      expect(result.processed.inspectionPlans).toBe(1);
+    });
+
+    it('does not fire when the status write conflicts (nothing applied)', async () => {
+      mockPrisma.inspectionPlan.findFirst.mockResolvedValue({
+        id: 'p1', orgId: 'org-1', statusCode: 'in_progress', submittedAt: null,
+        reviewerId: null, assignedTo: 'user-1', updatedAt: new Date(),
+      });
+      mockPrisma.syncQueue.findFirst.mockResolvedValue(null);
+      mockPrisma.syncQueue.create.mockResolvedValue({ id: 'q1' });
+
+      const result = await service.push(user, submitPush({ syncedAt: '2020-01-01T00:00:00Z' }));
+
+      expect(result.conflicts).toHaveLength(1);
+      expect(mockInspectionPlans.dispatchSubmitSideEffects).not.toHaveBeenCalled();
+    });
+  });
+
+  // ── WP-C3 (B-212): NL-foutmapping in errors[] ───────────────────────────
+  describe('push — error sanitation (B-212)', () => {
+    it('maps a Prisma FK error (P2003) to Dutch without leaking path/payload', async () => {
+      mockPrisma.inspectionPlan.findFirst.mockResolvedValue(null);
+      // Rauwe Prisma-fout zoals in dev: pad + broncode + constraintnaam.
+      mockPrisma.inspectionPlan.create.mockRejectedValue(
+        new Prisma.PrismaClientKnownRequestError(
+          '\nInvalid `model.create()` invocation in\n/Users/mathijs/VIBE/InspeXi-Beheer-test/apps/api/src/modules/sync/sync.service.ts:546:19\nForeign key constraint violated: `imp_findings_visual_inspection_id_fkey (index)`',
+          { code: 'P2003', clientVersion: '5.22.0' },
+        ),
+      );
+
+      const dto = {
+        deviceId: 'dev-1',
+        changes: {
+          inspectionPlans: [{ operation: 'create', data: { id: 'p1', projectName: 'X' } }],
+        },
+      } as any;
+      const result = await service.push(user, dto);
+
+      expect(result.errors).toHaveLength(1);
+      const msg = result.errors[0].error as string;
+      expect(msg).toMatch(/^Verwijzing naar niet-bestaande gegevens \(referentie [0-9a-f-]+\)$/);
+      expect(msg).not.toContain('/Users/');
+      expect(msg).not.toContain('sync.service.ts');
+      expect(msg).not.toContain('imp_findings');
+    });
+
+    it('keeps own NL HttpException messages as-is (no reference suffix)', async () => {
+      mockPrisma.inspectionPlan.findFirst.mockResolvedValue(null); // delete: record weg
+
+      const dto = {
+        deviceId: 'dev-1',
+        changes: { inspectionPlans: [{ operation: 'delete', data: { id: 'gone' } }] },
+      } as any;
+      const result = await service.push(user, dto);
+
+      expect(result.errors[0].error).toBe('Record niet gevonden');
     });
   });
 });

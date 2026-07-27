@@ -55,6 +55,18 @@ export class PrismaService
   extends PrismaClient
   implements OnModuleInit, OnModuleDestroy
 {
+  constructor() {
+    // WP-C3 (B-212): Prisma's uitgebreide foutweergave bevat het absolute
+    // serverpad, broncoderegels en de volledige query-payload. In productie
+    // minimal — defense-in-depth voor elk pad waar een Prisma-message ooit
+    // een response zou bereiken; lokaal/test blijft de rijke dev-weergave.
+    super(
+      process.env.NODE_ENV === 'production'
+        ? { errorFormat: 'minimal' }
+        : {},
+    );
+  }
+
   private readonly logger = new Logger(PrismaService.name);
 
   /** Timestamps (ms) of recent audit-write failures within the rolling window */

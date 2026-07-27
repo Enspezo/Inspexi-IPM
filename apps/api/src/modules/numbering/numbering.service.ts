@@ -15,6 +15,7 @@ import {
   randomCandidate,
   sampleContext,
   schemeNeedsContext,
+  typecodeResolvesEmpty,
   validateAffix,
 } from './numbering.helpers';
 
@@ -234,6 +235,16 @@ export class NumberingService {
     scheme: NumberingScheme,
     ctx: NumberingContext,
   ): Promise<string> {
+    // WP-C3 (B-203): een leeg-resolvende `[typecode]` gaf misvormde nummers
+    // (bv. `-0033`, leidend streepje zonder typeprefix) die bovendien de
+    // org-unieke nummerruimte vervuilen. Weiger de generatie vóór de counter
+    // bump; het type moet eerst een shortcode krijgen (of het schema moet de
+    // placeholder laten vallen).
+    if (typecodeResolvesEmpty(scheme, ctx)) {
+      throw new BadRequestException(
+        'Nummer kan niet gegenereerd worden: het type heeft geen shortcode voor de [typecode]-placeholder in het nummeringsschema',
+      );
+    }
     const date = ctx.date ?? new Date();
     if (scheme.mode === 'RANDOM') {
       return composeNumber(scheme, randomCandidate(scheme.digits), ctx, date);

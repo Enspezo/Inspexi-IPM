@@ -41,6 +41,7 @@
     "docxtemplater": "^3.68.3",
     "express": "^4.22.1",
     "handlebars": "^4.7.8",
+    "helmet": "^8.3.0",
     "html-docx-js": "^0.3.1",
     "mammoth": "^1.11.0",
     "multer": "^2.0.2",

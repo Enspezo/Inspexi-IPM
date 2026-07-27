@@ -31,6 +31,8 @@ Conform `docs/testprogramma/00-master-testplan.md` §5: API `:3001` (`NODE_ENV=t
 | B9 | `fix/wp-b9-client-portal-mitigations` | [#139](https://github.com/Enspezo/Inspexi-IPM/pull/139) | ✅ gemerged + browser-geverifieerd (gate + canSign op originele repro-plannen) | B-412 ✔, B-402 △ mitigatie, B-403 △ mitigatie, B-406a ✔ | review-gate e2e 10, client-portal vitest 36 |
 | B1 | — | — | in uitvoering | B-202, B-204, B-205a | — |
 | B2, B10 | — | — | open (na B1) | — | — |
+| C1 | `fix/wp-c1-error-contract` | [#152](https://github.com/Enspezo/Inspexi-IPM/pull/152) | ✅ gemerged + live geverifieerd (404-oracle byte-identiek, NL 401/403/400, RoleRoute) | B-105 ✔ (39 sites), B-106 ✔, B-151 ✔, B-155 ✔ (494 callsites/63 controllers), B-501 ✔, B-509 ✔, B-601 ✔ | error-contract-e2e 21 (404-oracle + NL-sweep) |
+| C5 | `fix/wp-c5-config-validation` | [#153](https://github.com/Enspezo/Inspexi-IPM/pull/153) | ✅ gemerged + live geverifieerd (publish-gate, KPI's, herseed schoon) | B-001 ✔, B-107 ✔, B-153 ✔, B-154 ✔, B-313 ✔ (+7 extra stille no-ops), B-315-rest ✔, B-505 ✔, B-506 ✔, B-508 ✔, B-510 ✔, B-511 §3-§7 ✔ | wp-c5-e2e 28, DTO↔mapping-regressietest, org-settings-schema 7 |
 | C2 | `fix/wp-c2-client-hygiene` | [#147](https://github.com/Enspezo/Inspexi-IPM/pull/147) | ✅ gemerged + live geverifieerd | B-404 ✔, B-405 ✔, B-407 ✔, B-408 ✔, B-410 ✔, B-411 ✔; B-409 → beslispunt A4 | gedeelde SignatureImageDto-afdwinging, magic-link-race, 18+8 tests; fixte ook de kapotte feature-entitlements-e2e |
 | C3 | `fix/wp-c3-sync-hardening` | [#150](https://github.com/Enspezo/Inspexi-IPM/pull/150) | ✅ gemerged (A2+C3 samen: 119 sync-unit + 28 e2e groen) | B-203 ✔, B-212 ✔, B-216 ✔, B-217 ✔ (A6: rol-guard — PWA stuurt velden mee), B-218 ✔; B-223a → beslispunt A3 | sync-errors-mapper, sync-hardening-e2e 9 |
 | C4 | `fix/wp-c4-docgen-overflow` | [#148](https://github.com/Enspezo/Inspexi-IPM/pull/148) | ✅ gemerged + visueel geverifieerd (vóór/ná-PDF's + portal-tabellen) | B-311 ✔, B-312 ✔ (CJK = deploy-vereiste), B-301 ✔ | header-resolver-tests, table.test.tsx 9 |
@@ -40,6 +42,13 @@ Conform `docs/testprogramma/00-master-testplan.md` §5: API `:3001` (`NODE_ENV=t
 ---
 
 ## Chronologisch logboek
+
+### 28 juli 2026 — GOLF 3 VOLLEDIG AF (C1–C5) + herseed gevalideerd
+
+- **WP-C1 gemerged** (#152): 404-oracle live byte-identiek; NL-contract op 401/403/400/429; RoleRoute ("Geen toegang" voor MANAGER op /organizations). Integratieconflicten (controller @Ip×ParseUuidPipe; dubbel gebouwde RoleRoute C1×C5; tenant-middleware C5-structuur × C1-bodyshape) inhoudelijk opgelost; 2231 unit + 75 gerichte e2e groen op de combinatie.
+- **WP-C5 gemerged** (#153): publish-gate live ("Veld 'SU18 omgekeerde grenzen' … minimum (100) … maximum (0) — corrigeer de grenzen"); dashboard-KPI's tonen echte cijfers; generieke DTO↔mapping-test ving 7 extra stille no-ops. Datachecks dev: 0 rijen (threshold=0, foute slugs); prod-queries als pre-deploy-stap in de PR.
+- **Herseed gevalideerd**: seed draait schoon mét de B5/C5/A2-fixture-aanpassingen (TP-OFF-010 nu geldig; MS-SU17 bewust-fout CONCEPT en onpubliceerbaar; TP-plannen met inspectionTemplateId). API herstart; sessies vernieuwd.
+- **Golf 3-terugkoppeling:** 32 bevindingen afgehandeld in C1–C5 (S3/S4-zwaartepunt): C1×7, C2×6, C3×5, C4×3, C5×11. Twee bewust doorgeschoven naar beslispunten: B-409 (A4), B-223a (A3). Risicogebied **R6 Validatie → GO** (B5+C1+C5: grenzen, NL-contract, config-validatie); **R1 Isolatie verder verstevigd** (404-oracle sluit het bestaans-orakel).
 
 ### 28 juli 2026 — GOLF 1 VOLLEDIG AF + C2/C3/C4 gemerged
 

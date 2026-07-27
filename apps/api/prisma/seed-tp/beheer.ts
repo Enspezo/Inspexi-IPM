@@ -188,7 +188,7 @@ interface TpQuoteTotals {
  *
  * Bewust hier herhaald (en niet geïmporteerd) zodat het testprogramma kan
  * vaststellen of API én portal met dezelfde formule rekenen — inclusief de
- * onzin-regels (negatieve prijs, korting > 100%, btw 250%) uit §F.
+ * randgeval-regels (minimale prijs, korting 100%, btw 100%) uit §F.
  */
 function computeQuoteTotals(specs: TpQuoteLineSpec[]): TpQuoteTotals {
   let subtotal = 0;
@@ -1480,12 +1480,13 @@ export async function seedBeheer(prisma: PrismaClient, refs: TpRefs): Promise<vo
     [],
   );
 
-  // F10. Bewust onzinnige regels (BO-13..16). De backend kent geen @Min/@Max, dus
-  // dit mag bestaan; het testprogramma vergelijkt de UI-totalen met onderstaande:
-  //   regel A: 2 × -100,00, 0% korting, 21% btw → lineTotal   -200,00 / btw  -42,00
-  //   regel B: 1 ×  500,00, 150% korting, 21% btw → lineTotal -250,00 / btw  -52,50
-  //   regel C: 1 ×  100,00, 0% korting, 250% btw → lineTotal   100,00 / btw  250,00
-  //   subtotal -350,00 · discountTotal 750,00 · vatTotal 155,50 · total -194,50
+  // F10. Randgeval-regels op de grenzen van de validatie (BO-13..16). Sinds WP-B5
+  // (B-302/B-303) weigert de backend negatieve prijzen, korting > 100% en btw > 100%
+  // — de fixture blijft het herkenbare randgeval, maar nu net BINNEN de grenzen:
+  //   regel A: 2 ×    0,01, 0% korting,  21% btw → lineTotal    0,02 / btw   0,00
+  //   regel B: 1 ×  500,00, 100% korting, 21% btw → lineTotal    0,00 / btw   0,00
+  //   regel C: 1 ×  100,00, 0% korting, 100% btw → lineTotal  100,00 / btw 100,00
+  //   subtotal 100,02 · discountTotal 500,00 · vatTotal 100,00 · total 200,02
   refs.quotes.onzin = await upsertQuote(
     prisma,
     demoOrg.id,
@@ -1493,40 +1494,40 @@ export async function seedBeheer(prisma: PrismaClient, refs: TpRefs): Promise<vo
     'TP-OFF-010',
     {
       status: QuoteStatus.CONCEPT,
-      subject: 'TP Onzinnige regels (negatieve prijs, korting 150%, btw 250%)',
+      subject: 'TP Randgeval-regels (minimale prijs, korting 100%, btw 100%)',
       contactId: refs.contacts.net,
       locationId: refs.locations.net,
       validUntil,
       internalNotes:
-        'Doeltestgeval: backend accepteert deze waarden. Verwachte totalen staan in de seed-comment.',
+        'Doeltestgeval: waarden exact op de validatiegrenzen (B-302/B-303). Verwachte totalen staan in de seed-comment.',
     },
     [
       {
-        description: 'TP Negatieve eenheidsprijs',
+        description: 'TP Minimale eenheidsprijs (€ 0,01)',
         quantity: 2,
         unit: 'stuks',
-        unitPrice: -100.0,
+        unitPrice: 0.01,
         vatRate: 21,
       },
       {
-        description: 'TP Korting van 150%',
+        description: 'TP Volledige korting (100%)',
         quantity: 1,
         unit: 'stuks',
         unitPrice: 500.0,
         vatRate: 21,
-        discountPct: 150,
+        discountPct: 100,
       },
       {
-        description: 'TP Btw-tarief van 250%',
+        description: 'TP Btw-bovengrens (100%)',
         quantity: 1,
         unit: 'stuks',
         unitPrice: 100.0,
-        vatRate: 250,
+        vatRate: 100,
       },
     ],
   );
 
-  step('   ✓ 10 offertes: alle 8 statussen + drempelvarianten + 0 regels + onzin-regels');
+  step('   ✓ 10 offertes: alle 8 statussen + drempelvarianten + 0 regels + randgeval-regels');
 
   // ─── G. Projecten & planning ──────────────────────────────────────────────
   step('G. Project + planning');

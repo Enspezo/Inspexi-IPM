@@ -48,6 +48,12 @@ export class QuoteApprovalsService {
       );
     // CONCEPT → TER_GOEDKEURING leaves CONCEPT — a template must be linked.
     assertTemplateLinked(quote);
+    // B-315: een lege offerte (0 regels) ter goedkeuring aanbieden is zinloos —
+    // dezelfde guard als bij versturen.
+    if ((quote.lines?.length ?? 0) === 0)
+      throw new BadRequestException(
+        'Deze offerte heeft geen offerteregels en kan niet ter goedkeuring worden ingediend. Voeg eerst regels toe.',
+      );
 
     const org = await this.getApprovalConfig(quote.orgId);
     if (!isQuoteApprovalRequired(org, quote))
@@ -100,7 +106,7 @@ export class QuoteApprovalsService {
       },
       orderBy: { requestedAt: 'desc' },
     });
-    this.assertIsApprover(user, pending);
+    await this.assertIsApprover(user, pending, quote.orgId);
 
     const updated = await this.prisma.$transaction(async (tx) => {
       if (pending)
@@ -148,7 +154,7 @@ export class QuoteApprovalsService {
       },
       orderBy: { requestedAt: 'desc' },
     });
-    this.assertIsApprover(user, pending);
+    await this.assertIsApprover(user, pending, quote.orgId);
 
     const updated = await this.prisma.$transaction(async (tx) => {
       if (pending)
@@ -248,7 +254,7 @@ export class QuoteApprovalsService {
     const request = await this.findVoluntaryRequest(quote.id, requestId);
     if (request.status !== ApprovalStatus.PENDING)
       throw new BadRequestException('Dit verzoek is al afgehandeld');
-    this.assertIsApprover(user, request);
+    await this.assertIsApprover(user, request, quote.orgId);
 
     const updated = await this.prisma.quoteApprovalRequest.update({
       where: { id: request.id },
@@ -332,11 +338,22 @@ export class QuoteApprovalsService {
    *  - VOLUNTARY_PERSON → exact die persoon;
    *  - rol-gericht (THRESHOLD/VOLUNTARY_TEAM) → bezit de doelrol, of bij ontbrekende
    *    doelrol (THRESHOLD-fallback) de MANAGER/ORG_ADMIN-rol. SUPERUSER mag altijd.
+   *
+   * Vier-ogen (B-307): de aanvrager mag zijn éígen verzoek niet afhandelen —
+   * approve én reject — tenzij de org dat expliciet toestaat
+   * (`quoteApprovalSelfApprovalAllowed`, bedoeld voor kleine orgs met één
+   * goedkeurder). SUPERUSER blijft altijd gebypasst.
    */
-  private assertIsApprover(
+  private async assertIsApprover(
     user: User,
-    request: { kind: ApprovalKind; approverRole: Role | null; approverUserId: string | null } | null,
-  ): void {
+    request: {
+      kind: ApprovalKind;
+      approverRole: Role | null;
+      approverUserId: string | null;
+      requestedBy: string;
+    } | null,
+    orgId: string,
+  ): Promise<void> {
     if (user.roles.includes(Role.SUPERUSER)) return;
     if (!request) {
       // Geen verzoek gevonden: val terug op de verplichte fallback-doelgroep.
@@ -352,6 +369,16 @@ export class QuoteApprovalsService {
     const targetRoles = request.approverRole ? [request.approverRole] : MANDATORY_FALLBACK_ROLES;
     if (!user.roles.some((r) => targetRoles.includes(r)))
       throw new ForbiddenException('U heeft niet de vereiste rol om dit verzoek goed te keuren');
+    if (request.requestedBy === user.id) {
+      const org = await this.prisma.organization.findUnique({
+        where: { id: orgId },
+        select: { quoteApprovalSelfApprovalAllowed: true },
+      });
+      if (!org?.quoteApprovalSelfApprovalAllowed)
+        throw new ForbiddenException(
+          'U kunt uw eigen goedkeuringsverzoek niet zelf afhandelen (vier-ogen-principe). Vraag een collega met de vereiste rol om de offerte te beoordelen, of laat een beheerder self-approval aanzetten in de organisatie-instellingen.',
+        );
+    }
   }
 
   private async usersWithRoles(orgId: string, roles: Role[], excludeUserId?: string) {

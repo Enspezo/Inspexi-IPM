@@ -32,6 +32,7 @@ interface UpdateOrganizationDto {
   inspectorStaticEmail?: string | null;
   quoteApprovalThreshold?: number | null;
   quoteApprovalRequiredRole?: Role | null;
+  quoteApprovalSelfApprovalAllowed?: boolean;
   chatEnabled?: boolean;
   inspectionReviewEnabled?: boolean;
   aiReviewEnabled?: boolean;

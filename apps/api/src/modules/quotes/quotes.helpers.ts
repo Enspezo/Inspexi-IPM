@@ -90,6 +90,13 @@ export const VALID_TRANSITIONS: Record<QuoteStatus, QuoteStatus[]> = {
   [QuoteStatus.VERLOPEN]: [],
 };
 
+/**
+ * Maximaal representeerbaar bedrag in de `numeric(12,2)`-geldkolommen
+ * (lineTotal/subtotal/vatTotal/discountTotal/total). Berekeningen die hier
+ * bovenuit komen worden vóór de write geweigerd met een NL-melding (B-303).
+ */
+export const MAX_QUOTE_AMOUNT = 9_999_999_999.99;
+
 export function calculateLineTotal(quantity: number, unitPrice: number, discountPct: number): number {
   return Math.round(quantity * unitPrice * (1 - discountPct / 100) * 100) / 100;
 }

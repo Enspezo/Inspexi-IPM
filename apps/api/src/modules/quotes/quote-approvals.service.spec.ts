@@ -44,6 +44,16 @@ describe('QuoteApprovalsService', () => {
     createdBy: 'user-1',
   };
 
+  const mockLine = {
+    id: 'line-1',
+    description: 'Dienst',
+    quantity: 1,
+    unitPrice: 100,
+    vatRate: 21,
+    discountPct: 0,
+    lineTotal: 100,
+  };
+
   const quoteWithIncludes = (overrides: Record<string, unknown> = {}) => ({
     ...baseQuote,
     contact: { id: 'contact-1', companyName: 'Acme B.V.' },
@@ -51,7 +61,7 @@ describe('QuoteApprovalsService', () => {
     request: null,
     template: null,
     createdByUser: { id: 'user-1', firstName: 'Test', lastName: 'User', email: 'u@test.com' },
-    lines: [],
+    lines: [mockLine],
     approvalRequests: [],
     ...overrides,
   });
@@ -151,6 +161,16 @@ describe('QuoteApprovalsService', () => {
       expect(mockTx.quote.update).not.toHaveBeenCalled();
     });
 
+    it('blocks submit of a quote without lines (B-315, NL-melding)', async () => {
+      mockPrismaService.quote.findUnique.mockResolvedValue(
+        quoteWithIncludes({ templateId: 'template-1', requiresApproval: true, lines: [] }),
+      );
+      await expect(service.submitForApproval('quote-1', {}, adminUser)).rejects.toThrow(
+        'Deze offerte heeft geen offerteregels',
+      );
+      expect(mockTx.quote.update).not.toHaveBeenCalled();
+    });
+
     it('blocks submit without a linked template (REQ26 guard)', async () => {
       mockPrismaService.quote.findUnique.mockResolvedValue(
         quoteWithIncludes({ requiresApproval: true }),
@@ -164,12 +184,14 @@ describe('QuoteApprovalsService', () => {
   // ─── approve / reject (mandatory, role-enforced) ─────────────────────
 
   describe('approve()', () => {
+    // Aangevraagd door user-1 (admin) — manager-1 is dus een ándere goedkeurder.
     const pending = {
       id: 'approval-1',
       quoteId: 'quote-1',
       kind: ApprovalKind.THRESHOLD,
       approverRole: Role.MANAGER,
       approverUserId: null,
+      requestedBy: 'user-1',
       status: ApprovalStatus.PENDING,
       note: null,
     };
@@ -202,6 +224,58 @@ describe('QuoteApprovalsService', () => {
       );
       expect(mockTx.quote.update).not.toHaveBeenCalled();
     });
+
+    // ─── Vier-ogen / self-approval (B-307) ─────────────────────────────
+
+    it('forbids the requester from approving their own request (B-307, NL-melding)', async () => {
+      mockPrismaService.quote.findUnique.mockResolvedValue(
+        quoteWithIncludes({ status: QuoteStatus.TER_GOEDKEURING }),
+      );
+      mockPrismaService.quoteApprovalRequest.findFirst.mockResolvedValue({
+        ...pending,
+        requestedBy: 'manager-1', // dezelfde manager die nu goedkeurt
+      });
+
+      await expect(service.approve('quote-1', {}, managerUser)).rejects.toThrow(
+        'U kunt uw eigen goedkeuringsverzoek niet zelf afhandelen',
+      );
+      expect(mockTx.quote.update).not.toHaveBeenCalled();
+    });
+
+    it('allows self-approval when the org explicitly enables it', async () => {
+      mockPrismaService.organization.findUnique.mockResolvedValue({
+        quoteApprovalThreshold: 10000,
+        quoteApprovalRequiredRole: Role.MANAGER,
+        quoteApprovalSelfApprovalAllowed: true,
+      });
+      mockPrismaService.quote.findUnique.mockResolvedValue(
+        quoteWithIncludes({ status: QuoteStatus.TER_GOEDKEURING }),
+      );
+      mockPrismaService.quoteApprovalRequest.findFirst.mockResolvedValue({
+        ...pending,
+        requestedBy: 'manager-1',
+      });
+      mockTx.quoteApprovalRequest.update.mockResolvedValue({});
+      mockTx.quote.update.mockResolvedValue({ ...baseQuote, status: QuoteStatus.GOEDGEKEURD });
+
+      const result = await service.approve('quote-1', {}, managerUser);
+
+      expect(result.status).toBe(QuoteStatus.GOEDGEKEURD);
+    });
+
+    it('still lets a different approver with the required role approve (four-eyes happy path)', async () => {
+      mockPrismaService.quote.findUnique.mockResolvedValue(
+        quoteWithIncludes({ status: QuoteStatus.TER_GOEDKEURING }),
+      );
+      mockPrismaService.quoteApprovalRequest.findFirst.mockResolvedValue(pending); // requestedBy user-1
+      mockTx.quoteApprovalRequest.update.mockResolvedValue({});
+      mockTx.quote.update.mockResolvedValue({ ...baseQuote, status: QuoteStatus.GOEDGEKEURD });
+
+      const result = await service.approve('quote-1', {}, managerUser);
+
+      expect(result.status).toBe(QuoteStatus.GOEDGEKEURD);
+      // Geen org-lookup nodig op het happy path (self-check niet getriggerd).
+    });
   });
 
   describe('reject()', () => {
@@ -228,6 +302,49 @@ describe('QuoteApprovalsService', () => {
         where: { id: 'approval-1' },
         data: expect.objectContaining({ status: ApprovalStatus.REJECTED, note: 'Prijs te hoog' }),
       });
+    });
+
+    it('accepts a rejection without a note (B-314: note is optioneel)', async () => {
+      mockPrismaService.quote.findUnique.mockResolvedValue(
+        quoteWithIncludes({ status: QuoteStatus.TER_GOEDKEURING }),
+      );
+      mockPrismaService.quoteApprovalRequest.findFirst.mockResolvedValue({
+        id: 'approval-1',
+        quoteId: 'quote-1',
+        kind: ApprovalKind.THRESHOLD,
+        approverRole: Role.MANAGER,
+        approverUserId: null,
+        requestedBy: 'user-1',
+        status: ApprovalStatus.PENDING,
+        note: null,
+      });
+      mockTx.quoteApprovalRequest.update.mockResolvedValue({});
+      mockTx.quote.update.mockResolvedValue({ ...baseQuote, status: QuoteStatus.CONCEPT });
+
+      const result = await service.reject('quote-1', {}, managerUser);
+
+      expect(result.status).toBe(QuoteStatus.CONCEPT);
+    });
+
+    it('forbids the requester from rejecting their own request (B-307)', async () => {
+      mockPrismaService.quote.findUnique.mockResolvedValue(
+        quoteWithIncludes({ status: QuoteStatus.TER_GOEDKEURING }),
+      );
+      mockPrismaService.quoteApprovalRequest.findFirst.mockResolvedValue({
+        id: 'approval-1',
+        quoteId: 'quote-1',
+        kind: ApprovalKind.THRESHOLD,
+        approverRole: Role.MANAGER,
+        approverUserId: null,
+        requestedBy: 'manager-1', // zelfde als de afhandelaar
+        status: ApprovalStatus.PENDING,
+        note: null,
+      });
+
+      await expect(service.reject('quote-1', { note: 'x' }, managerUser)).rejects.toThrow(
+        'U kunt uw eigen goedkeuringsverzoek niet zelf afhandelen',
+      );
+      expect(mockTx.quote.update).not.toHaveBeenCalled();
     });
   });
 

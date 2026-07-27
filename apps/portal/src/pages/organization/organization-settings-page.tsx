@@ -60,6 +60,7 @@ const orgSchema = z.object({
     .union([z.coerce.number().min(0, 'Bedrag moet minimaal 0 zijn'), z.literal('')])
     .optional(),
   quoteApprovalRequiredRole: z.union([z.nativeEnum(Role), z.literal('')]).optional(),
+  quoteApprovalSelfApprovalAllowed: z.boolean(),
   chatEnabled: z.boolean(),
   inspectionReviewEnabled: z.boolean(),
   aiReviewEnabled: z.boolean(),
@@ -322,6 +323,7 @@ export default function OrganizationSettingsPage() {
         inspectorStaticEmail: organization.inspectorStaticEmail ?? '',
         quoteApprovalThreshold: organization.quoteApprovalThreshold ?? '',
         quoteApprovalRequiredRole: organization.quoteApprovalRequiredRole ?? '',
+        quoteApprovalSelfApprovalAllowed: organization.quoteApprovalSelfApprovalAllowed ?? false,
         chatEnabled: organization.chatEnabled ?? true,
         inspectionReviewEnabled: organization.inspectionReviewEnabled ?? true,
         aiReviewEnabled: organization.aiReviewEnabled ?? false,
@@ -351,6 +353,7 @@ export default function OrganizationSettingsPage() {
             ? null
             : Number(data.quoteApprovalThreshold),
         quoteApprovalRequiredRole: data.quoteApprovalRequiredRole || null,
+        quoteApprovalSelfApprovalAllowed: data.quoteApprovalSelfApprovalAllowed,
         chatEnabled: data.chatEnabled,
         inspectionReviewEnabled: data.inspectionReviewEnabled,
         aiReviewEnabled: data.aiReviewEnabled,
@@ -680,6 +683,16 @@ export default function OrganizationSettingsPage() {
                 ]}
                 {...register('quoteApprovalRequiredRole')}
               />
+            </div>
+            <div className="mt-4">
+              <Checkbox
+                label="Aanvrager mag eigen goedkeuringsverzoek afhandelen (self-approval)"
+                {...register('quoteApprovalSelfApprovalAllowed')}
+              />
+              <p className="mt-1 text-xs text-gray-500">
+                Standaard uit (vier-ogen-principe). Alleen aanzetten als uw organisatie maar
+                één persoon met de vereiste goedkeur-rol heeft.
+              </p>
             </div>
           </div>
 

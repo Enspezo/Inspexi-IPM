@@ -1,11 +1,10 @@
-import { useState } from 'react';
+import { useRef } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Modal, Button, Input, useToast } from '@/components/ui';
 import { useSendQuote } from '../hooks/use-quotes';
 import type { Quote } from '@/types';
-import { getErrorMessage } from '@/lib/api-client';
 
 const schema = z.object({
   to: z.string().email('Ongeldig e-mailadres'),
@@ -25,6 +24,9 @@ interface SendQuoteModalProps {
 export function SendQuoteModal({ isOpen, onClose, quote }: SendQuoteModalProps) {
   const { showToast } = useToast();
   const sendMutation = useSendQuote(quote.id);
+  // B-308: `mutation.isPending` wordt pas ná een re-render zichtbaar — twee snelle
+  // klikken vallen in dezelfde render-batch. Deze ref blokkeert synchroon, vóór de await.
+  const isSendingRef = useRef(false);
 
   const contactEmail = quote.contact?.email ?? '';
   const contactName = quote.contact?.companyName
@@ -46,6 +48,11 @@ export function SendQuoteModal({ isOpen, onClose, quote }: SendQuoteModalProps) 
   });
 
   const onSubmit = async (data: FormData) => {
+    // Synchrone dubbelklik-guard (B-308): tweede submit in dezelfde render-batch
+    // komt hier binnen vóórdat isPending true is — direct afbreken.
+    if (isSendingRef.current) return;
+    isSendingRef.current = true;
+
     const ccList = data.cc
       ? data.cc.split(',').map((e) => e.trim()).filter(Boolean)
       : undefined;
@@ -61,6 +68,8 @@ export function SendQuoteModal({ isOpen, onClose, quote }: SendQuoteModalProps) 
       onClose();
     } catch {
       /* foutmelding wordt centraal getoond via useApiMutation */
+    } finally {
+      isSendingRef.current = false;
     }
   };
 

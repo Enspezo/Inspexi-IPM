@@ -789,12 +789,18 @@ describe('Quotes API (e2e)', () => {
     });
 
     it('voluntary person request is advisory: keeps CONCEPT and does not block', async () => {
-      // Find a manager to target via the selectable list.
+      // Find a manager to target via the selectable list. Deterministisch op
+      // e-mail matchen (niet data[0]): de gedeelde demo-org kan meerdere
+      // MANAGER-users bevatten (bv. multi@inspexi-demo.nl uit het
+      // testprogramma-seed-dataset), en de goedkeuring hieronder moet door
+      // exact de getargete manager gebeuren.
       const usersRes = await request(app.getHttpServer())
         .get('/api/v1/users/selectable?role=MANAGER')
         .set('Authorization', `Bearer ${org1AdminToken}`)
         .expect(200);
-      const managerId = usersRes.body.data[0].id;
+      const managerId = usersRes.body.data.find(
+        (u: { email: string }) => u.email === 'manager@inspexi-demo.nl',
+      )!.id;
 
       const reqRes = await request(app.getHttpServer())
         .post(`/api/v1/quotes/${smallQuoteId}/voluntary-approval/person`)

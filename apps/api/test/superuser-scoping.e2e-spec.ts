@@ -245,7 +245,7 @@ describe('Superuser tenant-scoping & onboarding (e2e, WP-B3)', () => {
 
     it('GET /contacts met Host mijn.localhost → beide orgs zichtbaar', async () => {
       const res = await request(app.getHttpServer())
-        .get('/api/v1/contacts?limit=100&search=WPB3 Contact')
+        .get('/api/v1/contacts?limit=100&search=WPB3%20Contact')
         .set('Host', HOST_MIJN)
         .set('Authorization', `Bearer ${suToken}`)
         .expect(200);

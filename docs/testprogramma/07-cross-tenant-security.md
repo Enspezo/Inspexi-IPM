@@ -18,7 +18,24 @@ Legenda **T**: A=autorisatie, I=isolatie, S=sessie, TH=throttle.
 | SEC-03 | A | INSPECTEUR muteert een contact / offerte via UI én via directe API-call | 403; geen schrijfrechten op CRM |
 | SEC-04 | A | BACKOFFICE keurt een offerte goed die MANAGER-approval vereist | Geweigerd (approver-rol) |
 | SEC-05 | A | WERKVOORBEREIDER opent org-instellingen | Geen toegang (admin-only) |
-| SEC-06 | A | INSPECTEUR genereert/ondertekent een rapport in de portal | Geen rechten (alleen-lezen inspectiedomein) |
+| SEC-06 | A | INSPECTEUR doorloopt de documentketen via de API (genereren, ondertekenen, bewerken, verwijderen) | Volgens de WP-A3-rolmatrix (zie hieronder) |
+
+> **SEC-06 — vastgestelde norm (WP-A3, B-101/B-102/B-103/B-104).** De oorspronkelijke
+> aanname "inspectiedomein is alleen-lezen voor INSPECTEUR" klopte niet met het ontwerp:
+> de INSPECTEUR stelt het rapport in de PWA op en mag documenten dus wél **genereren**
+> (bewuste keuze, B-103). De norm per route (`generated-documents.controller.ts`):
+>
+> | Route | Rollen | Extra service-poort |
+> |---|---|---|
+> | `POST …/generate-plan` / `generate-report` | ALL_STAFF | — |
+> | `GET` lijst/detail/html, preview/export/download | ALL_STAFF | — |
+> | `PATCH /generated-documents/:id` (inhoud) | ALL_STAFF | 403 zodra FINALIZED óf ≥1 SIGNED-handtekening (B-104) |
+> | `POST …/request-signature` | ALL_STAFF | rolcode moet bestaan in signer-roles-lookup |
+> | `POST …/sign` (intern) | ALL_STAFF | onbekende rolcode → 400; INSPECTEUR → alleen `INSPECTOR`; REVIEW_ROLES → ook `REVIEWER`; BACKOFFICE → geen; klant-rollen (`CLIENT`, `INSTALLATION_RESPONSIBLE`, …) alléén via het publieke ondertekenverzoek → 403 (B-101). Hooguit één handtekening per (document, rol); `signedByUserId` + `signedIpAddress` worden vastgelegd |
+> | `DELETE /generated-documents/:id` | APPROVERS (= REVIEW_ROLES) | 400 zodra ≥1 SIGNED-handtekening; FINALIZED → 403 (B-102) |
+> | `POST …/finalize` | APPROVERS | — |
+>
+> Regressievangnet: `apps/api/test/generated-documents-roles.e2e-spec.ts` (rolmatrix per route × rol).
 
 ## Cross-tenant isolatie (horizontaal — org A vs org B)
 

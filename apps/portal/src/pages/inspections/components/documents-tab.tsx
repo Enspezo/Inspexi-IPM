@@ -222,6 +222,9 @@ function DocumentRow({
 }: DocumentRowProps) {
   const isFinalized = doc.status === GeneratedDocumentStatus.FINALIZED;
   const signatures = doc.signatures ?? [];
+  // WP-A3 (B-102): verwijderen is API-zijdig APPROVERS-only en geblokkeerd zodra
+  // er een handtekening staat — de knop volgt die regels.
+  const hasSignedSignature = signatures.some((s) => s.status === SignatureStatus.SIGNED);
 
   return (
     <li className="py-3">
@@ -269,7 +272,7 @@ function DocumentRow({
               Finaliseren
             </Button>
           )}
-          {canWrite && !isFinalized && (
+          {canFinalize && !isFinalized && !hasSignedSignature && (
             <Button size="sm" variant="ghost" onClick={onDelete} className="text-danger-600 hover:text-danger-700">
               Verwijderen
             </Button>

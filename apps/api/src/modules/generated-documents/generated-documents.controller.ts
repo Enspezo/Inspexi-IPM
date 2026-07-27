@@ -11,6 +11,7 @@ import {
   Body,
   Query,
   Res,
+  Ip,
   ParseUUIDPipe,
   StreamableFile,
 } from '@nestjs/common';
@@ -18,9 +19,9 @@ import { RequiresFeature } from '@/common/decorators/requires-feature.decorator'
 import { Throttle } from '@nestjs/throttler';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import type { Response } from 'express';
-import { User, Role, DocumentType } from '@prisma/client';
+import { User, DocumentType } from '@prisma/client';
 import { Roles, CurrentUser, Public } from '@/common/decorators';
-import { ALL_STAFF } from '@/common/auth/roles';
+import { ALL_STAFF, REVIEW_ROLES } from '@/common/auth/roles';
 import { GeneratedDocumentsService } from './generated-documents.service';
 import { DocumentSigningService } from './document-signing.service';
 import {
@@ -31,8 +32,24 @@ import {
   PublicSignDto,
 } from './dto';
 
+// ── Rolmatrix documentketen (WP-A3 — B-101/B-102/B-103/B-104) ──────────────
+// STAFF (= ALL_STAFF, incl. INSPECTEUR):
+//   - genereren (generate-plan/-report), lezen, preview/export/download: de
+//     INSPECTEUR stelt het rapport in de PWA op en moet het dus ook kunnen
+//     genereren — dit is een bewuste keuze, geen omissie (B-103);
+//   - PATCH (inhoud bewerken): route is STAFF, maar de service weigert zodra het
+//     document FINALIZED is of er ≥1 SIGNED-handtekening staat (B-104);
+//   - intern ondertekenen (sign): route is STAFF, maar de service valideert de
+//     rolcode tegen de signer-roles-lookup en beperkt per stafrol — INSPECTEUR
+//     → alleen INSPECTOR; REVIEW_ROLES → ook REVIEWER; klant-rollen (CLIENT,
+//     INSTALLATION_RESPONSIBLE, …) uitsluitend via het publieke
+//     ondertekenverzoek (B-101);
+//   - ondertekenverzoek aanmaken (request-signature): STAFF.
+// APPROVERS (= REVIEW_ROLES: SUPERUSER/ORG_ADMIN/MANAGER/WERKVOORBEREIDER):
+//   - finalize én DELETE (B-102) — en verwijderen weigert bovendien in de
+//     service zodra er ≥1 SIGNED-handtekening onder het document staat.
 const STAFF = ALL_STAFF;
-const APPROVERS = [Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.WERKVOORBEREIDER] as const;
+const APPROVERS = REVIEW_ROLES;
 
 @ApiTags('Generated Documents')
 @ApiBearerAuth()
@@ -93,7 +110,9 @@ export class GeneratedDocumentsController {
   }
 
   @Delete('generated-documents/:id')
-  @Roles(...STAFF)
+  // B-102: verwijderen is gelijkgetrokken met finalize (APPROVERS) — de service
+  // weigert daarnaast elk document met een reeds gezette handtekening.
+  @Roles(...APPROVERS)
   async remove(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: User) {
     await this.service.delete(id, user);
     return { success: true };
@@ -167,13 +186,16 @@ export class GeneratedDocumentsController {
   }
 
   @Post('generated-documents/:id/sign')
+  // B-101: route blijft STAFF; de service dwingt de rolcode-validatie en de
+  // stafrol→signer-rol-mapping af (zie rolmatrix bovenaan dit bestand).
   @Roles(...STAFF)
   async sign(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: User,
     @Body() dto: SignDocumentDto,
+    @Ip() ip: string,
   ) {
-    return { success: true, data: await this.signing.signDocument(id, user, dto) };
+    return { success: true, data: await this.signing.signDocument(id, user, dto, ip) };
   }
 }
 

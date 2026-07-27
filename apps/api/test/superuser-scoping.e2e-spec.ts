@@ -7,6 +7,48 @@ import { PrismaService } from '@/prisma';
 import { AllExceptionsFilter } from '@/common/filters';
 import bcrypt from 'bcrypt';
 
+const FIXTURE_SLUGS = ['e2ewpb3scope', 'e2ewpb3other', 'e2ewpb3onboard'];
+
+/**
+ * Ruimt alle fixtures van deze suite op (op slug/e-mailprefix), kinderen eerst.
+ * Wordt zowel vóór (zelfherstel na een gekillde run) als ná de suite gedraaid.
+ */
+async function cleanupFixtures(prisma: PrismaService): Promise<void> {
+  const orgs = await prisma.organization.findMany({
+    where: { slug: { in: FIXTURE_SLUGS } },
+    select: { id: true },
+  });
+  const orgIds = orgs.map((o) => o.id);
+  const users = await prisma.user.findMany({
+    where: {
+      OR: [
+        { email: { startsWith: 'e2e-wpb3-' } },
+        ...(orgIds.length ? [{ orgId: { in: orgIds } }] : []),
+      ],
+    },
+    select: { id: true },
+  });
+  const userIds = users.map((u) => u.id);
+
+  await prisma.auditLog.deleteMany({
+    where: {
+      OR: [
+        { userId: { in: userIds } },
+        ...(orgIds.length ? [{ orgId: { in: orgIds } }] : []),
+      ],
+    },
+  });
+  if (orgIds.length) {
+    await prisma.contact.deleteMany({ where: { orgId: { in: orgIds } } });
+    await prisma.invitation.deleteMany({ where: { orgId: { in: orgIds } } });
+  }
+  await prisma.refreshToken.deleteMany({ where: { userId: { in: userIds } } });
+  await prisma.user.deleteMany({ where: { id: { in: userIds } } });
+  if (orgIds.length) {
+    await prisma.organization.deleteMany({ where: { id: { in: orgIds } } });
+  }
+}
+
 /**
  * WP-B3 — tenant-aware superuser scoping + onboarding (B-502/B-503/B-504).
  *
@@ -40,9 +82,6 @@ describe('Superuser tenant-scoping & onboarding (e2e, WP-B3)', () => {
   let contactAId: string;
   let contactBId: string;
 
-  const fixtureUserIds = (): string[] =>
-    [adminAUserId, userBId, suUserId].filter(Boolean);
-
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
@@ -64,6 +103,10 @@ describe('Superuser tenant-scoping & onboarding (e2e, WP-B3)', () => {
     await app.init();
 
     prisma = app.get(PrismaService);
+
+    // Zelfherstellend: leftovers van een eerder gekillde run opruimen (de
+    // gedeelde dev-DB mag hier niet gereseed worden).
+    await cleanupFixtures(prisma);
 
     const passwordHash = await bcrypt.hash('TestPass123!', 10);
 
@@ -149,28 +192,7 @@ describe('Superuser tenant-scoping & onboarding (e2e, WP-B3)', () => {
 
   afterAll(async () => {
     try {
-      const userIds = fixtureUserIds();
-      const orgIds = [orgAId, orgBId, onboardOrgId].filter(
-        (id): id is string => !!id,
-      );
-      const onboardUsers = await prisma.user.findMany({
-        where: { email: { startsWith: 'e2e-wpb3-onboard' } },
-        select: { id: true },
-      });
-      const allUserIds = [...userIds, ...onboardUsers.map((u) => u.id)];
-
-      await prisma.auditLog.deleteMany({
-        where: {
-          OR: [{ userId: { in: allUserIds } }, { orgId: { in: orgIds } }],
-        },
-      });
-      await prisma.contact.deleteMany({ where: { orgId: { in: orgIds } } });
-      await prisma.invitation.deleteMany({ where: { orgId: { in: orgIds } } });
-      await prisma.refreshToken.deleteMany({
-        where: { userId: { in: allUserIds } },
-      });
-      await prisma.user.deleteMany({ where: { id: { in: allUserIds } } });
-      await prisma.organization.deleteMany({ where: { id: { in: orgIds } } });
+      await cleanupFixtures(prisma);
     } finally {
       await app.close();
     }

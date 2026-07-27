@@ -3,8 +3,9 @@ import { NestExpressApplication } from '@nestjs/platform-express';
 import { Logger, RawBodyRequest, ValidationPipe } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import cookieParser from 'cookie-parser';
+import helmet from 'helmet';
 import { json, urlencoded } from 'express';
-import type { Request, Response } from 'express';
+import type { NextFunction, Request, Response } from 'express';
 import { AppModule } from './app.module';
 import { AllExceptionsFilter } from './common/filters';
 import { validateJwtSecrets } from './common/config/validate-jwt-secrets';
@@ -78,6 +79,64 @@ async function bootstrap() {
   // maar negeert door clients meegestuurde extra headers. Lokaal (geen proxy)
   // expliciet uit, zodat een client de tenant-hostname niet kan spoofen.
   app.set('trust proxy', isLocalhost ? false : 1);
+
+  // Beveiligingsheaders (WP-B4 / B-507) — platformbreed vangnet naast de
+  // route-specifieke headers op de bestandsroutes (logo, avatar, documenten).
+  //
+  // • CSP: deze applicatie serveert JSON, binaire bestanden en een paar kleine
+  //   HTML-pagina's (afmeldbevestiging, template-previews). `default-src 'none'`
+  //   is het vangnet: er valt geen script uit te voeren wanneer zo'n respons als
+  //   document geopend wordt — precies het escalatiepad uit B-507. `style-src`/
+  //   `img-src` staan wél open zodat die HTML-pagina's leesbaar blijven; er is
+  //   géén `script-src`, dus die valt terug op `default-src 'none'`.
+  //   Swagger UI heeft eigen scripts nodig en krijgt hieronder een eigen policy.
+  // • CORP: de portal (:5173) en het klantportaal (:5174) laden logo's van de
+  //   API met een `<img>`. helmet's default `same-origin` zou die loads blokkeren
+  //   zodra API en portal niet exact hetzelfde origin delen, dus expliciet
+  //   `cross-origin`. Dit verandert niets aan CORS (credentials blijven via de
+  //   bestaande origin-functie geregeld).
+  // • HSTS laten we aan helmet over, maar niet op localhost: een Strict-Transport-
+  //   Security-header op http://…localhost zou de dev-portals naar https duwen.
+  app.use(
+    helmet({
+      contentSecurityPolicy: {
+        useDefaults: false,
+        directives: {
+          defaultSrc: ["'none'"],
+          styleSrc: ["'self'", "'unsafe-inline'"],
+          imgSrc: ["'self'", 'data:', 'blob:'],
+          fontSrc: ["'self'", 'data:'],
+          frameAncestors: ["'none'"],
+          baseUri: ["'none'"],
+          formAction: ["'none'"],
+        },
+      },
+      crossOriginResourcePolicy: { policy: 'cross-origin' },
+      // COEP zou cross-origin subresources zonder CORP-opt-in blokkeren; die
+      // isolatie hebben we niet nodig en helmet zet hem standaard ook niet aan.
+      crossOriginEmbedderPolicy: false,
+      hsts: isLocalhost ? false : undefined,
+    }),
+  );
+
+  // Swagger UI laadt eigen scripts/styles (deels inline) vanaf hetzelfde origin.
+  // Die pagina krijgt daarom een eigen CSP; hij draait ná de globale helmet, dus
+  // deze header overschrijft de strikte variant hierboven voor /api/docs.
+  app.use('/api/docs', (_req: Request, res: Response, next: NextFunction) => {
+    res.setHeader(
+      'Content-Security-Policy',
+      [
+        "default-src 'self'",
+        "script-src 'self' 'unsafe-inline'",
+        "style-src 'self' 'unsafe-inline'",
+        "img-src 'self' data:",
+        "font-src 'self' data:",
+        "connect-src 'self'",
+        "frame-ancestors 'none'",
+      ].join('; '),
+    );
+    next();
+  });
 
   // Cookie parser
   app.use(cookieParser());

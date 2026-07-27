@@ -12,7 +12,15 @@ import * as bcrypt from 'bcrypt';
 import { randomUUID } from 'crypto';
 import { User, Role, TaskStatus, Availability, NotificationType } from '@prisma/client';
 import { PrismaService } from '@/prisma';
-import { assertFound, assertSameOrg, sanitizeStorageExtension, isManagement, hasRole, ORG_ADMINS } from '@/common';
+import {
+  assertFound,
+  assertSameOrg,
+  assertAllowedImageUpload,
+  resolveImageResponseType,
+  isManagement,
+  hasRole,
+  ORG_ADMINS,
+} from '@/common';
 import { EmailService } from '@/common/services/email.service';
 import { NotificationsService } from '@/modules/notifications/notifications.service';
 import {
@@ -526,11 +534,13 @@ export class UsersService {
     return rest;
   }
 
+  /**
+   * B-507 / WP-B4: zelfde behandeling als het organisatielogo — de magic bytes
+   * bepalen wat er opgeslagen én teruggeserveerd wordt, niet `file.mimetype`
+   * (client-header) of `file.originalname` (bestandsnaam).
+   */
   async uploadAvatar(userId: string, file: Express.Multer.File): Promise<string> {
-    const allowed = ['image/png', 'image/jpeg', 'image/webp'];
-    if (!allowed.includes(file.mimetype)) {
-      throw new BadRequestException('Alleen PNG, JPEG en WebP afbeeldingen zijn toegestaan');
-    }
+    const detected = assertAllowedImageUpload(file);
 
     const user = assertFound(
       await this.prisma.user.findUnique({ where: { id: userId } }),
@@ -542,27 +552,26 @@ export class UsersService {
       await this.storage.delete(user.avatarUrl).catch(() => {});
     }
 
-    const ext = sanitizeStorageExtension(file.originalname, 'png');
-    const storageKey = `avatars/${userId}/${randomUUID()}.${ext}`;
-    await this.storage.upload(storageKey, file.buffer, file.mimetype);
+    const storageKey = `avatars/${userId}/${randomUUID()}.${detected.extension}`;
+    await this.storage.upload(storageKey, file.buffer, detected.mimeType);
 
     await this.prisma.user.update({ where: { id: userId }, data: { avatarUrl: storageKey } });
     return storageKey;
   }
 
-  async downloadAvatar(userId: string): Promise<{ buffer: Buffer; mimeType: string }> {
+  async downloadAvatar(userId: string): Promise<{
+    buffer: Buffer;
+    mimeType: string;
+    filename: string;
+    disposition: 'inline' | 'attachment';
+    storageKey: string;
+  }> {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user?.avatarUrl) throw new NotFoundException('Geen avatar gevonden');
 
     const buffer = await this.storage.download(user.avatarUrl);
-    const ext = user.avatarUrl.split('.').pop()?.toLowerCase() ?? 'png';
-    const mimeMap: Record<string, string> = {
-      png: 'image/png',
-      jpg: 'image/jpeg',
-      jpeg: 'image/jpeg',
-      webp: 'image/webp',
-    };
-    return { buffer, mimeType: mimeMap[ext] ?? 'image/png' };
+    const { mimeType, filename, disposition } = resolveImageResponseType(buffer, 'avatar');
+    return { buffer, mimeType, filename, disposition, storageKey: user.avatarUrl };
   }
 
   async deleteAvatar(userId: string): Promise<void> {

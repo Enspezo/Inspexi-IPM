@@ -8,7 +8,11 @@ import {
 } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { PrismaService } from '@/prisma';
-import { assertFound, sanitizeStorageExtension } from '@/common';
+import {
+  assertFound,
+  assertAllowedImageUpload,
+  resolveImageResponseType,
+} from '@/common';
 import { TenantCacheService } from '@/common/services/tenant-cache.service';
 import {
   CreateOrganizationDto,
@@ -234,13 +238,13 @@ export class OrganizationsService {
     return this.getEntitlements(orgId);
   }
 
+  /**
+   * B-507 / WP-B4: de inhoud bepaalt het type, niet `file.mimetype` (client-header)
+   * en niet `file.originalname` (bestandsnaam). SVG is uit de whitelist; zowel de
+   * opslagextensie als het opgeslagen mimetype komen uit de magic bytes.
+   */
   async uploadLogo(id: string, file: Express.Multer.File): Promise<string> {
-    const allowed = ['image/png', 'image/jpeg', 'image/svg+xml', 'image/webp'];
-    if (!allowed.includes(file.mimetype)) {
-      throw new BadRequestException(
-        'Alleen PNG, JPEG, SVG en WebP afbeeldingen zijn toegestaan',
-      );
-    }
+    const detected = assertAllowedImageUpload(file);
 
     const org = await this.findOne(id);
 
@@ -249,9 +253,8 @@ export class OrganizationsService {
       await this.storage.delete(org.logoUrl).catch(() => {});
     }
 
-    const ext = sanitizeStorageExtension(file.originalname, 'png');
-    const storageKey = `logos/${id}/${randomUUID()}.${ext}`;
-    await this.storage.upload(storageKey, file.buffer, file.mimetype);
+    const storageKey = `logos/${id}/${randomUUID()}.${detected.extension}`;
+    await this.storage.upload(storageKey, file.buffer, detected.mimeType);
 
     await this.prisma.organization.update({
       where: { id },
@@ -261,9 +264,13 @@ export class OrganizationsService {
     return storageKey;
   }
 
-  async downloadLogo(
-    id: string,
-  ): Promise<{ buffer: Buffer; mimeType: string }> {
+  async downloadLogo(id: string): Promise<{
+    buffer: Buffer;
+    mimeType: string;
+    filename: string;
+    disposition: 'inline' | 'attachment';
+    storageKey: string;
+  }> {
     const org = await this.findOne(id);
     if (!org.logoUrl) {
       throw new NotFoundException('Geen logo gevonden');
@@ -271,18 +278,12 @@ export class OrganizationsService {
 
     const buffer = await this.storage.download(org.logoUrl);
 
-    // Bepaal mimeType op basis van extensie
-    const ext = org.logoUrl.split('.').pop()?.toLowerCase() ?? 'png';
-    const mimeMap: Record<string, string> = {
-      png: 'image/png',
-      jpg: 'image/jpeg',
-      jpeg: 'image/jpeg',
-      svg: 'image/svg+xml',
-      webp: 'image/webp',
-    };
-    const mimeType = mimeMap[ext] ?? 'image/png';
+    // Het Content-Type komt uit de bytes, niet uit de extensie van de sleutel:
+    // rijen van vóór WP-B4 kunnen nog op `.svg` eindigen en die mogen nooit als
+    // `image/svg+xml` teruggaan (uitvoerbaar op het app-origin).
+    const { mimeType, filename, disposition } = resolveImageResponseType(buffer, 'logo');
 
-    return { buffer, mimeType };
+    return { buffer, mimeType, filename, disposition, storageKey: org.logoUrl };
   }
 
   async deleteLogo(id: string): Promise<void> {

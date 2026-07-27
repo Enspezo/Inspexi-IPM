@@ -10,3 +10,4 @@ export * from './html-safe';
 export * from './storage-key.util';
 export * from './finding-critical';
 export * from './classification-severity';
+export * from './public-tenant';

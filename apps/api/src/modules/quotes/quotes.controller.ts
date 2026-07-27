@@ -24,7 +24,9 @@ import { User, QuoteStatus } from '@prisma/client';
 import { ALL_STAFF, CRM_ROLES, MANAGEMENT_ROLES, OFFICE_ROLES } from '@/common/auth/roles';
 import { Roles } from '@/common/decorators/roles.decorator';
 import { CurrentUser } from '@/common/decorators/current-user.decorator';
+import { CurrentTenant } from '@/common/decorators/current-tenant.decorator';
 import { Public } from '@/common/decorators/public.decorator';
+import { TenantContext } from '@/common/interfaces/tenant-context.interface';
 import { QuotesService } from './quotes.service';
 import { QuoteApprovalsService } from './quote-approvals.service';
 import { QuoteQuestionsService } from './quote-questions.service';
@@ -323,9 +325,14 @@ export class QuotesController {
 }
 
 // ─── Public controller (geen auth vereist) ─────────────
+//
+// WP-B7 (B-152): bewust GEEN klasse-brede @RequiresFeature meer — de guard zou
+// de entitlement tegen de BEZOEKENDE tenant evalueren i.p.v. tegen de eigenaar
+// van de offerte. De feature-gate zit nu in de services, tegen `quote.orgId`.
+// Elke handler injecteert @CurrentTenant() zodat de services de token-lookup aan
+// het bezochte subdomein kunnen binden (zie `publicTenantWhere` in @/common).
 
 @ApiTags('public-quotes')
-@RequiresFeature('CRM_COMPLEET')
 @Controller('public/quotes')
 export class PublicQuotesController {
   constructor(
@@ -338,16 +345,20 @@ export class PublicQuotesController {
   @Get(':token')
   @ApiOperation({ summary: 'Offerte ophalen via publieke token' })
   @Public()
-  async getByToken(@Param('token') token: string) {
-    const data = await this.publicService.findByPublicToken(token);
+  async getByToken(@Param('token') token: string, @CurrentTenant() tenant: TenantContext) {
+    const data = await this.publicService.findByPublicToken(token, tenant);
     return { success: true, data };
   }
 
   @Get(':token/pdf')
   @ApiOperation({ summary: 'Offerte-PDF via publieke token' })
   @Public()
-  async downloadPdf(@Param('token') token: string, @Res() res: Response) {
-    const { buffer, quoteNumber } = await this.quotePdfService.downloadPublicPdf(token);
+  async downloadPdf(
+    @Param('token') token: string,
+    @CurrentTenant() tenant: TenantContext,
+    @Res() res: Response,
+  ) {
+    const { buffer, quoteNumber } = await this.quotePdfService.downloadPublicPdf(token, tenant);
     res.set({
       'Content-Type': 'application/pdf',
       'Content-Disposition': `inline; filename="Offerte-${quoteNumber}.pdf"`,
@@ -360,8 +371,12 @@ export class PublicQuotesController {
   @ApiOperation({ summary: 'Klantvraag stellen via publieke token' })
   @Public()
   @HttpCode(HttpStatus.CREATED)
-  async addQuestion(@Param('token') token: string, @Body() dto: AddQuestionDto) {
-    const data = await this.questionsService.addClientQuestion(token, dto);
+  async addQuestion(
+    @Param('token') token: string,
+    @Body() dto: AddQuestionDto,
+    @CurrentTenant() tenant: TenantContext,
+  ) {
+    const data = await this.questionsService.addClientQuestion(token, dto, tenant);
     return { success: true, data };
   }
 
@@ -369,10 +384,15 @@ export class PublicQuotesController {
   @ApiOperation({ summary: 'Offerte ondertekenen via publieke token' })
   @Public()
   @HttpCode(HttpStatus.OK)
-  async sign(@Param('token') token: string, @Body() dto: SignQuoteDto, @Req() req: Request) {
+  async sign(
+    @Param('token') token: string,
+    @Body() dto: SignQuoteDto,
+    @CurrentTenant() tenant: TenantContext,
+    @Req() req: Request,
+  ) {
     const clientIp = req.ip || req.socket.remoteAddress;
     const userAgent = req.headers['user-agent'];
-    const data = await this.publicService.signQuote(token, dto, clientIp, userAgent);
+    const data = await this.publicService.signQuote(token, dto, tenant, clientIp, userAgent);
     return { success: true, data };
   }
 
@@ -382,9 +402,10 @@ export class PublicQuotesController {
   async downloadAttachment(
     @Param('token') token: string,
     @Param('attachmentId', ParseUUIDPipe) attachmentId: string,
+    @CurrentTenant() tenant: TenantContext,
     @Res() res: Response,
   ) {
-    const { buffer, attachment } = await this.attachmentsService.downloadPublicAttachment(token, attachmentId);
+    const { buffer, attachment } = await this.attachmentsService.downloadPublicAttachment(token, attachmentId, tenant);
     res.set({ 'Content-Type': attachment.mimeType, 'Content-Disposition': `attachment; filename="${attachment.fileName}"`, 'Content-Length': buffer.length });
     res.send(buffer);
   }

@@ -272,16 +272,23 @@ export class MeasurementSheetTemplatesController {
 
   @Get()
   @Roles(...READ_ROLES)
-  @ApiOperation({ summary: 'Meetstaat-templates (filters: normType, assetType, status)' })
+  @ApiOperation({
+    summary:
+      'Meetstaat-templates (filters: normType, assetType, status; include=sections voor secties+velden)',
+  })
   async findAll(
     @Query('normType') normType?: string,
     @Query('assetType') assetType?: string,
     @Query('status') status?: MeasurementSheetTemplateStatus,
+    // WP-B1/B-205: de PWA-referentiesync heeft de volledige templates nodig
+    // (sections + velden) zonder N+1 op de detail-route.
+    @Query('include') include?: string,
   ) {
     const data = await this.templatesService.findAll({
       normType,
       assetType,
       status,
+      includeSections: include === 'sections',
     });
     return { success: true, data };
   }

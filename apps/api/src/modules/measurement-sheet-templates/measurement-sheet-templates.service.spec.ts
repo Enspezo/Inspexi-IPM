@@ -92,6 +92,40 @@ describe('MeasurementSheetTemplates module', () => {
 
   // ── CRUD + gating ────────────────────────────────────
 
+  describe('findAll', () => {
+    it('levert standaard alleen _count (geen sections) — bestaand lijstcontract', async () => {
+      mockPrisma.measurementSheetTemplate.findMany.mockResolvedValue([]);
+
+      await templatesService.findAll({
+        status: MeasurementSheetTemplateStatus.ACTIEF,
+      });
+
+      const args = mockPrisma.measurementSheetTemplate.findMany.mock.calls[0][0];
+      expect(args.include).toEqual({ _count: { select: { sections: true } } });
+      expect(args.where).toEqual({
+        AND: [{ status: MeasurementSheetTemplateStatus.ACTIEF }],
+      });
+    });
+
+    it('includeSections=true (WP-B1/B-205): secties + velden komen mee in de lijst', async () => {
+      mockPrisma.measurementSheetTemplate.findMany.mockResolvedValue([]);
+
+      await templatesService.findAll({
+        status: MeasurementSheetTemplateStatus.ACTIEF,
+        includeSections: true,
+      });
+
+      const args = mockPrisma.measurementSheetTemplate.findMany.mock.calls[0][0];
+      expect(args.include).toEqual({
+        _count: { select: { sections: true } },
+        sections: {
+          include: { fields: { orderBy: { sortOrder: 'asc' } } },
+          orderBy: { sortOrder: 'asc' },
+        },
+      });
+    });
+  });
+
   describe('create', () => {
     it('lets a SUPERUSER create a CONCEPT template + initial history', async () => {
       mockPrisma.normTypeDefinition.findUnique.mockResolvedValue({

@@ -5,19 +5,24 @@ import { useSelectableUsers } from '@/pages/users/hooks/use-users';
 import { useResolvedAvailability } from '@/pages/availability/hooks/use-availability';
 import { dateKeyFromISO } from '@/components/availability/format-availability';
 import { useAssignInspectors } from '../hooks/use-planning';
+import { useAssignSessionInspectors } from '../hooks/use-planning-sessions';
 import { useAvailabilityOverride } from '../hooks/use-availability-override';
 
 /**
- * Inspecteurs toewijzen aan een (enkeldaagse) planregel (PRD-12 §12.9).
+ * Inspecteurs toewijzen aan een (enkeldaagse) planregel óf — met `sessionId` —
+ * aan één sessie van een meerdaagse planregel (PRD-12 §12.9, B-310).
  *
  * Per inspecteur een "Niet beschikbaar"-badge wanneer de resolved beschikbaarheid
  * voor de geplande datum negatief is (freelancers zonder beschikbaarheid dus
  * standaard). De badges komen uit één batched `useResolvedAvailability`-call voor
  * álle getoonde inspecteurs op die datum — geen N losse checks. Bij het opslaan
- * vangt de override-flow een 409-met-warnings af en vraagt om bevestiging.
+ * vangt de override-flow een 409-met-warnings af en vraagt om bevestiging; de
+ * sessie-variant (`POST /planning/:id/sessions/:sessionId/assign`) deelt exact
+ * dezelfde payload en beschikbaarheids-409.
  */
 export function InspectorAssignModal({
   planningItemId,
+  sessionId,
   isOpen,
   onClose,
   scheduledDate,
@@ -25,6 +30,8 @@ export function InspectorAssignModal({
   currentPrimaryId,
 }: {
   planningItemId: string;
+  /** Sessie van een meerdaagse planregel; zonder sessionId geldt de planregel zelf. */
+  sessionId?: string;
   isOpen: boolean;
   onClose: () => void;
   scheduledDate: string | null;
@@ -32,7 +39,18 @@ export function InspectorAssignModal({
   currentPrimaryId: string | null;
 }) {
   const { showToast } = useToast();
-  const assign = useAssignInspectors(planningItemId);
+  // Beide hooks onvoorwaardelijk aanroepen (rules of hooks); alleen de gekozen
+  // variant wordt daadwerkelijk uitgevoerd. Beide delen dezelfde payload-shape.
+  const assignItem = useAssignInspectors(planningItemId);
+  const assignSession = useAssignSessionInspectors(planningItemId, sessionId ?? '');
+  const assign: {
+    mutateAsync: (payload: {
+      inspectorIds: string[];
+      primaryInspectorId?: string;
+      overrideAvailabilityWarnings?: boolean;
+    }) => Promise<unknown>;
+    isPending: boolean;
+  } = sessionId ? assignSession : assignItem;
   const withAvailabilityOverride = useAvailabilityOverride();
 
   const { data: inspectors, isLoading } = useSelectableUsers(Role.INSPECTEUR, { enabled: isOpen });
@@ -108,7 +126,9 @@ export function InspectorAssignModal({
           </p>
         ) : (
           <p className="text-sm text-amber-600">
-            Deze planregel heeft nog geen datum — de beschikbaarheid wordt niet getoetst.
+            {sessionId
+              ? 'Deze sessie heeft nog geen datum — de beschikbaarheid wordt niet getoetst.'
+              : 'Deze planregel heeft nog geen datum — de beschikbaarheid wordt niet getoetst.'}
           </p>
         )}
 

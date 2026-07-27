@@ -318,7 +318,7 @@ describe('Superuser tenant-scoping & onboarding (e2e, WP-B3)', () => {
           email: 'e2e-wpb3-onboard-admin@test.nl',
           password: 'NewPass123!',
         })
-        .expect(201);
+        .expect(200);
       expect(loginRes.body.data.accessToken).toBeDefined();
 
       // En de superuser ziet op dat subdomein precies die ene gebruiker

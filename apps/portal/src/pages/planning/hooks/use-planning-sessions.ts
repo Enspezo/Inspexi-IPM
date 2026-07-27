@@ -89,6 +89,9 @@ export function useAssignSessionInspectors(planningItemId: string, sessionId: st
       apiClient.post<PlanningSession>(`${sessionBase(planningItemId, sessionId)}/assign`, payload),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: planningKeys.detail(planningItemId) });
+      // De backend upsert ook PlanningInspector-rijen op de parent-planregel;
+      // die zijn zichtbaar in het overzicht/kalender — dus ook de lijst verversen.
+      void qc.invalidateQueries({ queryKey: planningKeys.all });
     },
     // Beschikbaarheids-409 wordt via de override-flow afgehandeld.
     onError: makeAvailabilityAwareOnError(showToast),

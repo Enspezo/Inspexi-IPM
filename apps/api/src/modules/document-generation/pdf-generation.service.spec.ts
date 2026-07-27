@@ -1,5 +1,7 @@
 import { ConfigService } from '@nestjs/config';
+import { Logger } from '@nestjs/common';
 import { PdfGenerationService, isRenderRequestAllowed } from './pdf-generation.service';
+import { buildSampleContext } from './sample-context';
 
 /**
  * Unit-test voor de render-concurrency-semafoor (M5). We stubben `getBrowser` zodat
@@ -80,6 +82,135 @@ describe('PdfGenerationService — render concurrency', () => {
     await flush();
     h.releaseAll();
     await Promise.all(renders);
+  });
+});
+
+/**
+ * B-311: header/footer-formatting — Puppeteer-tokens blijven werken, datalaag-
+ * placeholders gaan door dezelfde Handlebars-resolver als de body, en het
+ * vangnet stript onoplosbare `{{…}}`-tokens met een waarschuwing (mét template-id).
+ */
+describe('PdfGenerationService — header/footer placeholders (B-311)', () => {
+  const makeConfig = () => ({ get: () => undefined }) as unknown as ConfigService;
+
+  /** Service met gestubde browser die de page.pdf-opties vastlegt. */
+  function buildCapturingService() {
+    const service = new PdfGenerationService(makeConfig());
+    const pdfCalls: Array<Record<string, unknown>> = [];
+
+    const fakePage = {
+      setJavaScriptEnabled: jest.fn().mockResolvedValue(undefined),
+      setRequestInterception: jest.fn().mockResolvedValue(undefined),
+      on: jest.fn(),
+      setContent: jest.fn().mockResolvedValue(undefined),
+      pdf: jest.fn().mockImplementation(async (opts: Record<string, unknown>) => {
+        pdfCalls.push(opts);
+        return Buffer.from('pdf');
+      }),
+      close: jest.fn().mockResolvedValue(undefined),
+    };
+    (service as unknown as { getBrowser: () => Promise<unknown> }).getBrowser = jest
+      .fn()
+      .mockResolvedValue({ newPage: jest.fn().mockResolvedValue(fakePage) });
+
+    return { service, pdfCalls };
+  }
+
+  let warnSpy: jest.SpyInstance;
+
+  beforeEach(() => {
+    warnSpy = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+  });
+
+  afterEach(() => {
+    warnSpy.mockRestore();
+  });
+
+  it('vertaalt de vijf Puppeteer-tokens naar hun <span>-vorm', async () => {
+    const { service, pdfCalls } = buildCapturingService();
+    await service.renderPdf('<p>x</p>', {
+      footerHtml: 'Pagina {{pageNumber}} van {{totalPages}} — {{date}} {{title}} {{url}}',
+    });
+
+    const footer = pdfCalls[0].footerTemplate as string;
+    expect(footer).toContain('<span class="pageNumber"></span>');
+    expect(footer).toContain('<span class="totalPages"></span>');
+    expect(footer).toContain('<span class="date"></span>');
+    expect(footer).toContain('<span class="title"></span>');
+    expect(footer).toContain('<span class="url"></span>');
+    expect(warnSpy).not.toHaveBeenCalled();
+  });
+
+  it('lost datalaag-placeholders op via de gedeelde Handlebars-resolver (headerFooterContext)', async () => {
+    const { service, pdfCalls } = buildCapturingService();
+    const context = buildSampleContext();
+    await service.renderPdf('<p>x</p>', {
+      headerHtml: '<div>{{organization.name}} — Inspectieplan</div>',
+      footerHtml: '<div>{{client.name}} · Pagina {{pageNumber}} van {{totalPages}}</div>',
+      headerFooterContext: context,
+      templateId: 'tpl-1',
+    });
+
+    const header = pdfCalls[0].headerTemplate as string;
+    const footer = pdfCalls[0].footerTemplate as string;
+    expect(header).toContain('InspeXi Demo B.V. — Inspectieplan');
+    expect(header).not.toContain('{{organization.name}}');
+    // Puppeteer-tokens overleven de Handlebars-pass (eerst naar spans omgezet).
+    expect(footer).toContain('Voorbeeld Klant N.V.');
+    expect(footer).toContain('<span class="pageNumber"></span>');
+    expect(footer).toContain('<span class="totalPages"></span>');
+    expect(warnSpy).not.toHaveBeenCalled();
+  });
+
+  it('HTML-escapet opgeloste waarden (zelfde escaping als de body-resolver)', async () => {
+    const { service, pdfCalls } = buildCapturingService();
+    const context = buildSampleContext();
+    context.organization.name = 'A&B <Installaties>';
+    await service.renderPdf('<p>x</p>', {
+      headerHtml: '<div>{{organization.name}}</div>',
+      headerFooterContext: context,
+    });
+
+    const header = pdfCalls[0].headerTemplate as string;
+    expect(header).toContain('A&amp;B &lt;Installaties&gt;');
+    expect(header).not.toContain('<Installaties>');
+  });
+
+  it('stript onoplosbare placeholders (geen context) en waarschuwt mét template-id', async () => {
+    const { service, pdfCalls } = buildCapturingService();
+    await service.renderPdf('<p>x</p>', {
+      headerHtml: '<div>{{organization.name}} — Inspectieplan</div>',
+      templateId: 'tpl-311',
+    });
+
+    const header = pdfCalls[0].headerTemplate as string;
+    expect(header).not.toContain('{{organization.name}}');
+    expect(header).toContain('— Inspectieplan');
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining('{{organization.name}}'),
+    );
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('tpl-311'));
+  });
+
+  it('stript een mét context nog steeds onbekende (niet-parsebare) placeholder en waarschuwt', async () => {
+    const { service, pdfCalls } = buildCapturingService();
+    await service.renderPdf('<p>x</p>', {
+      // `{{#if}}` zonder sluitblok compileert niet → resolver-pass faalt →
+      // vangnet stript het token alsnog.
+      headerHtml: '<div>{{#if kapot}}</div>',
+      headerFooterContext: buildSampleContext(),
+      templateId: 'tpl-312',
+    });
+
+    const header = pdfCalls[0].headerTemplate as string;
+    expect(header).not.toContain('{{');
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('tpl-312'));
+  });
+
+  it('wikkelt header/footer in een container met CJK-font in de stack (B-312)', async () => {
+    const { service, pdfCalls } = buildCapturingService();
+    await service.renderPdf('<p>x</p>', { headerHtml: '<div>Kop</div>' });
+    expect(pdfCalls[0].headerTemplate as string).toContain("'Noto Sans CJK SC'");
   });
 });
 

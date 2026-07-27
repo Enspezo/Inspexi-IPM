@@ -396,10 +396,12 @@ export class BlockHtmlRendererService {
 
     *, *::before, *::after { box-sizing: border-box; }
 
+    /* B-312: 'Noto Sans CJK SC' in de stack zodat CJK-tekens niet stil wegvallen
+       (Chromium tekent geen glyph zonder font; fonts-noto-cjk hoort in de render-image). */
     html, body {
       margin: 0;
       padding: 0;
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Noto Sans CJK SC', sans-serif;
       font-size: 14px;
       line-height: 1.6;
       color: #111827;
@@ -458,16 +460,21 @@ export class BlockHtmlRendererService {
       margin: 16px 0;
     }
 
+    /* B-312: fixed layout + breekbare celinhoud — een lange waarde zonder spaties
+       mag een tabel nooit voorbij de paginabreedte duwen. */
     table {
       width: 100%;
       border-collapse: collapse;
       margin-bottom: 12px;
+      table-layout: fixed;
     }
 
     th, td {
       border: 1px solid #e5e7eb;
       padding: 8px 12px;
       text-align: left;
+      word-break: break-word;
+      overflow-wrap: anywhere;
     }
 
     th {

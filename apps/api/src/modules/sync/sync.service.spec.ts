@@ -540,6 +540,12 @@ describe('SyncService', () => {
           data: expect.objectContaining({ syncedAt: expect.any(Date) }),
         }),
       );
+      // syncedAt en updatedAt moeten uit exact dezelfde stempel komen — anders
+      // stempelt @updatedAt ms later en geeft elke volgende push vanaf een vers
+      // apparaat een vals zelf-conflict (ms-skew, ontdekt in WP-A1).
+      const written = mockPrisma.inspectionPlan.update.mock.calls[0][0].data;
+      expect(written.updatedAt).toBeInstanceOf(Date);
+      expect(written.updatedAt).toEqual(written.syncedAt);
       expect(result.processed.inspectionPlans).toBe(1);
       expect(result.conflicts).toHaveLength(0);
     });

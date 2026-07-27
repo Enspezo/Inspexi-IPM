@@ -141,6 +141,11 @@ export class SyncService {
       contactPerson: this.prisma.contactPerson,
       contact: this.prisma.contact,
       project: this.prisma.project,
+      // WP-A2 (B-206): finding.visualInspectionId/measurementRecordId worden nu
+      // vooraf gevalideerd → nette NL-400 i.p.v. een rauwe Prisma-P2003, en
+      // geen cross-tenant koppeling aan andermans uitvoeringsrecords.
+      visualInspection: this.prisma.visualInspection,
+      measurementRecord: this.prisma.measurementRecord,
     };
     return delegates[model] as SyncDelegate;
   }
@@ -510,6 +515,15 @@ export class SyncService {
       }
       await this.assertPlanReviewGate(key, fields, null, orgId);
       await this.computeFindingCriticalField(key, fields, null, data, criticalModelCache);
+
+      // Verplichte create-velden (WP-A2 · B-207): een ontbrekende verplichte
+      // kolom zou anders pas bij Prisma stranden, met een rauwe Engelstalige
+      // driver-melding in errors[]. Hier → nette NL-melding.
+      for (const req of cfg.requiredOnCreate ?? []) {
+        if (fields[req.field] === undefined || fields[req.field] === null) {
+          throw new BadRequestException(`${req.label} ontbreekt`);
+        }
+      }
 
       const createData: Record<string, unknown> = { ...fields, id, orgId };
       // createdBy is server-owned: altijd de pushende gebruiker, nooit de client-waarde.

@@ -602,8 +602,11 @@ export class QuotesService {
 
   // Price resolution
   async resolvePrice(productId: string, contactId: string, quantity: number, user: User) {
-    const product = assertFound(await this.prisma.product.findUnique({ where: { id: productId } }), 'Product');
-    if (!user.roles.includes(Role.SUPERUSER) && product.orgId !== user.orgId) throw new ForbiddenException();
+    // WP-C1 (B-105): org-scope in de query — cross-tenant id → zelfde 404.
+    const product = assertFound(
+      await this.prisma.product.findFirst({ where: { id: productId, ...orgScope(user) } }),
+      'Product',
+    );
     const contactTables = await this.prisma.contactPriceTable.findMany({
       where: { contactId },
       include: { priceTable: { include: { items: { where: { productId }, include: { tiers: { orderBy: { fromQty: 'asc' } } } } } } },
@@ -641,9 +644,11 @@ export class QuotesService {
   }
 
   async createFromRequest(requestId: string, user: User) {
-    const request = await this.prisma.request.findUnique({ where: { id: requestId } });
+    // WP-C1 (B-105): org-scope in de query — cross-tenant id → zelfde 404.
+    const request = await this.prisma.request.findFirst({
+      where: { id: requestId, ...orgScope(user) },
+    });
     if (!request || request.isDeleted) throw new NotFoundException('Aanvraag niet gevonden');
-    if (!user.roles.includes(Role.SUPERUSER) && request.orgId !== user.orgId) throw new ForbiddenException();
     const org = await this.prisma.organization.findUnique({ where: { id: request.orgId } });
     const validUntil = new Date();
     validUntil.setDate(validUntil.getDate() + (org?.defaultValidityDays ?? 30));

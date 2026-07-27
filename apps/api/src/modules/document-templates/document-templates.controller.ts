@@ -11,7 +11,6 @@ import {
   UseInterceptors,
   UploadedFile,
   BadRequestException,
-  ParseUUIDPipe,
 } from '@nestjs/common';
 import { RequiresFeature } from '@/common/decorators/requires-feature.decorator';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiConsumes } from '@nestjs/swagger';
@@ -28,6 +27,7 @@ import {
   UpdateDocumentSectionDto,
   ReorderSectionsDto,
 } from './dto';
+import { ParseUuidPipe } from '@/common';
 
 const READ_ROLES = ALL_STAFF;
 const WRITE_ROLES = ORG_ADMINS;
@@ -61,7 +61,7 @@ export class DocumentTemplatesController {
   @Get('inspection-templates/:id/plan-template')
   @Roles(...READ_ROLES)
   @ApiOperation({ summary: 'Plan-document-template ophalen (get-or-create)' })
-  async getPlanTemplate(@CurrentUser() user: User, @Param('id', ParseUUIDPipe) id: string) {
+  async getPlanTemplate(@CurrentUser() user: User, @Param('id', ParseUuidPipe) id: string) {
     return {
       success: true,
       data: await this.service.getDocumentTemplate(id, DocumentType.PLAN, user),
@@ -73,7 +73,7 @@ export class DocumentTemplatesController {
   @ApiOperation({ summary: 'Plan-document-template instellingen bijwerken' })
   async updatePlanTemplate(
     @CurrentUser() user: User,
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @Body() dto: UpdateDocumentTemplateDto,
   ) {
     return {
@@ -85,7 +85,7 @@ export class DocumentTemplatesController {
   @Get('inspection-templates/:id/report-template')
   @Roles(...READ_ROLES)
   @ApiOperation({ summary: 'Rapport-document-template ophalen (get-or-create)' })
-  async getReportTemplate(@CurrentUser() user: User, @Param('id', ParseUUIDPipe) id: string) {
+  async getReportTemplate(@CurrentUser() user: User, @Param('id', ParseUuidPipe) id: string) {
     return {
       success: true,
       data: await this.service.getDocumentTemplate(id, DocumentType.REPORT, user),
@@ -97,7 +97,7 @@ export class DocumentTemplatesController {
   @ApiOperation({ summary: 'Rapport-document-template instellingen bijwerken' })
   async updateReportTemplate(
     @CurrentUser() user: User,
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @Body() dto: UpdateDocumentTemplateDto,
   ) {
     return {
@@ -115,7 +115,7 @@ export class DocumentTemplatesController {
   @ApiOperation({ summary: 'HTML-preview van het plan-template (voorbeelddata)' })
   async previewPlanTemplate(
     @CurrentUser() user: User,
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @Res() res: Response,
   ) {
     const html = await this.service.renderPreview(id, DocumentType.PLAN, user);
@@ -127,7 +127,7 @@ export class DocumentTemplatesController {
   @ApiOperation({ summary: 'HTML-preview van het rapport-template (voorbeelddata)' })
   async previewReportTemplate(
     @CurrentUser() user: User,
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @Res() res: Response,
   ) {
     const html = await this.service.renderPreview(id, DocumentType.REPORT, user);
@@ -141,7 +141,7 @@ export class DocumentTemplatesController {
   @Get('document-templates/:id/sections')
   @Roles(...READ_ROLES)
   @ApiOperation({ summary: 'Secties van een document-template' })
-  async getSections(@CurrentUser() user: User, @Param('id', ParseUUIDPipe) id: string) {
+  async getSections(@CurrentUser() user: User, @Param('id', ParseUuidPipe) id: string) {
     return { success: true, data: await this.service.getSections(id, user) };
   }
 
@@ -150,7 +150,7 @@ export class DocumentTemplatesController {
   @ApiOperation({ summary: 'Sectie toevoegen' })
   async createSection(
     @CurrentUser() user: User,
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @Body() dto: CreateDocumentSectionDto,
   ) {
     return { success: true, data: await this.service.createSection(id, user, dto) };
@@ -162,7 +162,7 @@ export class DocumentTemplatesController {
   @ApiOperation({ summary: 'Secties herordenen' })
   async reorderSections(
     @CurrentUser() user: User,
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @Body() dto: ReorderSectionsDto,
   ) {
     return { success: true, data: await this.service.reorderSections(id, user, dto.sectionIds) };
@@ -173,8 +173,8 @@ export class DocumentTemplatesController {
   @ApiOperation({ summary: 'Sectie bijwerken' })
   async updateSection(
     @CurrentUser() user: User,
-    @Param('id', ParseUUIDPipe) id: string,
-    @Param('sectionId', ParseUUIDPipe) sectionId: string,
+    @Param('id', ParseUuidPipe) id: string,
+    @Param('sectionId', ParseUuidPipe) sectionId: string,
     @Body() dto: UpdateDocumentSectionDto,
   ) {
     return { success: true, data: await this.service.updateSection(id, sectionId, user, dto) };
@@ -185,8 +185,8 @@ export class DocumentTemplatesController {
   @ApiOperation({ summary: 'Sectie verwijderen' })
   async deleteSection(
     @CurrentUser() user: User,
-    @Param('id', ParseUUIDPipe) id: string,
-    @Param('sectionId', ParseUUIDPipe) sectionId: string,
+    @Param('id', ParseUuidPipe) id: string,
+    @Param('sectionId', ParseUuidPipe) sectionId: string,
   ) {
     return { success: true, data: await this.service.deleteSection(id, sectionId, user) };
   }
@@ -208,7 +208,7 @@ export class DocumentTemplatesController {
   )
   async uploadDocx(
     @CurrentUser() user: User,
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @UploadedFile() file: Express.Multer.File,
   ) {
     if (!file) {
@@ -220,7 +220,7 @@ export class DocumentTemplatesController {
   @Get('document-templates/:id/docx/revisions')
   @Roles(...READ_ROLES)
   @ApiOperation({ summary: 'DOCX-revisies lijst' })
-  async listDocxRevisions(@CurrentUser() user: User, @Param('id', ParseUUIDPipe) id: string) {
+  async listDocxRevisions(@CurrentUser() user: User, @Param('id', ParseUuidPipe) id: string) {
     return { success: true, data: await this.service.listDocxRevisions(id, user) };
   }
 
@@ -229,8 +229,8 @@ export class DocumentTemplatesController {
   @ApiOperation({ summary: 'DOCX-revisie downloaden (authenticated stream)' })
   async downloadDocxRevision(
     @CurrentUser() user: User,
-    @Param('id', ParseUUIDPipe) id: string,
-    @Param('revisionId', ParseUUIDPipe) revisionId: string,
+    @Param('id', ParseUuidPipe) id: string,
+    @Param('revisionId', ParseUuidPipe) revisionId: string,
     @Res() res: Response,
   ) {
     const { buffer, fileName } = await this.service.downloadDocxRevision(id, revisionId, user);
@@ -247,8 +247,8 @@ export class DocumentTemplatesController {
   @ApiOperation({ summary: 'DOCX-revisie verwijderen' })
   async deleteDocxRevision(
     @CurrentUser() user: User,
-    @Param('id', ParseUUIDPipe) id: string,
-    @Param('revisionId', ParseUUIDPipe) revisionId: string,
+    @Param('id', ParseUuidPipe) id: string,
+    @Param('revisionId', ParseUuidPipe) revisionId: string,
   ) {
     return { success: true, data: await this.service.deleteDocxRevision(id, revisionId, user) };
   }
@@ -260,7 +260,7 @@ export class DocumentTemplatesController {
   @Post('document-templates/:id/migrate-to-blocks')
   @Roles(...WRITE_ROLES)
   @ApiOperation({ summary: 'Secties migreren naar BLOCKS-modus' })
-  async migrateToBlocks(@CurrentUser() user: User, @Param('id', ParseUUIDPipe) id: string) {
+  async migrateToBlocks(@CurrentUser() user: User, @Param('id', ParseUuidPipe) id: string) {
     return { success: true, data: await this.service.migrateSectionsToBlocks(id, user) };
   }
 }

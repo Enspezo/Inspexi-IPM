@@ -1,9 +1,8 @@
 import {
   Injectable,
   Logger,
-  ForbiddenException,
 } from '@nestjs/common';
-import { User, Role, Prisma } from '@prisma/client';
+import { User, Prisma } from '@prisma/client';
 import { PrismaService } from '@/prisma';
 import { paginate, buildOrderBy, orgScope, assertFound, assertSameOrg, requireOrg } from '@/common';
 import { NumberingService } from '@/modules/numbering/numbering.service';
@@ -60,21 +59,16 @@ export class ProductsService {
   }
 
   async findOne(id: string, user: User) {
-    const product = assertFound(
-      await this.prisma.product.findUnique({
-        where: { id },
+    // WP-C1 (B-105): org-scope in de query — cross-tenant id → zelfde 404.
+    return assertFound(
+      await this.prisma.product.findFirst({
+        where: { id, ...orgScope(user) },
         include: {
           productGroup: { select: { id: true, name: true } },
         },
       }),
       'Product',
     );
-
-    if (!user.roles.includes(Role.SUPERUSER) && product.orgId !== user.orgId) {
-      throw new ForbiddenException();
-    }
-
-    return product;
   }
 
   async create(dto: CreateProductDto, user: User) {

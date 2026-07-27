@@ -78,6 +78,7 @@ describe('ContactsService', () => {
   const mockPrismaService = {
     contact: {
       findMany: jest.fn(),
+      findFirst: jest.fn(),
       findUnique: jest.fn(),
       create: jest.fn(),
       update: jest.fn(),
@@ -264,14 +265,14 @@ describe('ContactsService', () => {
 
   describe('findOne()', () => {
     it('should return contact with all relations', async () => {
-      mockPrismaService.contact.findUnique.mockResolvedValue(mockContact);
+      mockPrismaService.contact.findFirst.mockResolvedValue(mockContact);
 
       const result = await service.findOne('contact-1', mockUser);
 
       expect(result).toEqual(mockContact);
-      expect(mockPrismaService.contact.findUnique).toHaveBeenCalledWith(
+      expect(mockPrismaService.contact.findFirst).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: { id: 'contact-1' },
+          where: { id: 'contact-1', orgId: 'org-1' },
           include: expect.objectContaining({
             addresses: true,
             owner: { select: { id: true, firstName: true, lastName: true } },
@@ -296,7 +297,7 @@ describe('ContactsService', () => {
     });
 
     it('should throw NotFoundException for non-existent contact', async () => {
-      mockPrismaService.contact.findUnique.mockResolvedValue(null);
+      mockPrismaService.contact.findFirst.mockResolvedValue(null);
 
       await expect(
         service.findOne('non-existent', mockUser),
@@ -307,7 +308,7 @@ describe('ContactsService', () => {
     });
 
     it('should throw NotFoundException for soft-deleted contact', async () => {
-      mockPrismaService.contact.findUnique.mockResolvedValue({
+      mockPrismaService.contact.findFirst.mockResolvedValue({
         ...mockContact,
         isDeleted: true,
       });
@@ -320,16 +321,23 @@ describe('ContactsService', () => {
       ).rejects.toThrow('Relatie niet gevonden');
     });
 
-    it('should throw ForbiddenException when different org (non-SUPERUSER)', async () => {
-      mockPrismaService.contact.findUnique.mockResolvedValue(mockContact);
+    it('should throw NotFoundException when different org (WP-C1: 404-oracle, geen 403)', async () => {
+      // De org-scope zit in de where-clausule: voor een andere org komt het
+      // record simpelweg niet terug — zelfde 404 als "bestaat niet".
+      mockPrismaService.contact.findFirst.mockResolvedValue(null);
 
       await expect(
         service.findOne('contact-1', mockOtherOrgUser),
-      ).rejects.toThrow(ForbiddenException);
+      ).rejects.toThrow('Relatie niet gevonden');
+      expect(mockPrismaService.contact.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ orgId: 'org-2' }),
+        }),
+      );
     });
 
     it('should allow SUPERUSER to access any org contact', async () => {
-      mockPrismaService.contact.findUnique.mockResolvedValue(mockContact);
+      mockPrismaService.contact.findFirst.mockResolvedValue(mockContact);
 
       const result = await service.findOne('contact-1', mockSuperuser);
 
@@ -413,7 +421,7 @@ describe('ContactsService', () => {
         companyName: 'Updated BV',
         phone: '+31 20 111 2222',
       };
-      mockPrismaService.contact.findUnique.mockResolvedValue(mockContact);
+      mockPrismaService.contact.findFirst.mockResolvedValue(mockContact);
       mockPrismaService.contact.update.mockResolvedValue(updatedContact);
 
       const result = await service.update('contact-1', updateDto, mockUser);
@@ -430,12 +438,12 @@ describe('ContactsService', () => {
     });
 
     it('should call findOne first to verify access', async () => {
-      mockPrismaService.contact.findUnique.mockResolvedValue(mockContact);
+      mockPrismaService.contact.findFirst.mockResolvedValue(mockContact);
       mockPrismaService.contact.update.mockResolvedValue(mockContact);
 
       await service.update('contact-1', updateDto, mockUser);
 
-      expect(mockPrismaService.contact.findUnique).toHaveBeenCalledTimes(1);
+      expect(mockPrismaService.contact.findFirst).toHaveBeenCalledTimes(1);
       expect(mockPrismaService.contact.update).toHaveBeenCalledTimes(1);
     });
   });
@@ -444,7 +452,7 @@ describe('ContactsService', () => {
 
   describe('softDelete()', () => {
     it('should set isDeleted to true', async () => {
-      mockPrismaService.contact.findUnique.mockResolvedValue(mockContact);
+      mockPrismaService.contact.findFirst.mockResolvedValue(mockContact);
       mockPrismaService.contact.update.mockResolvedValue({
         ...mockContact,
         isDeleted: true,
@@ -459,7 +467,7 @@ describe('ContactsService', () => {
     });
 
     it('should call findOne first to verify access', async () => {
-      mockPrismaService.contact.findUnique.mockResolvedValue(mockContact);
+      mockPrismaService.contact.findFirst.mockResolvedValue(mockContact);
       mockPrismaService.contact.update.mockResolvedValue({
         ...mockContact,
         isDeleted: true,
@@ -467,7 +475,7 @@ describe('ContactsService', () => {
 
       await service.softDelete('contact-1', mockUser);
 
-      expect(mockPrismaService.contact.findUnique).toHaveBeenCalledTimes(1);
+      expect(mockPrismaService.contact.findFirst).toHaveBeenCalledTimes(1);
       expect(mockPrismaService.contact.update).toHaveBeenCalledTimes(1);
     });
   });
@@ -495,7 +503,7 @@ describe('ContactsService', () => {
         createdAt: new Date(),
         user: { firstName: 'Admin', lastName: 'User' },
       };
-      mockPrismaService.contact.findUnique.mockResolvedValue(mockContact);
+      mockPrismaService.contact.findFirst.mockResolvedValue(mockContact);
       mockPrismaService.contactLog.create.mockResolvedValue(createdLog);
 
       const result = await service.addLog('contact-1', logDto, mockUser);
@@ -529,7 +537,7 @@ describe('ContactsService', () => {
         loggedAt: new Date('2026-02-22T14:00:00Z'),
         user: { firstName: 'Admin', lastName: 'User' },
       };
-      mockPrismaService.contact.findUnique.mockResolvedValue(mockContact);
+      mockPrismaService.contact.findFirst.mockResolvedValue(mockContact);
       mockPrismaService.contactLog.create.mockResolvedValue(createdLog);
 
       await service.addLog('contact-1', logDto, mockUser);
@@ -559,7 +567,7 @@ describe('ContactsService', () => {
         loggedAt: new Date(),
         user: { firstName: 'Admin', lastName: 'User' },
       };
-      mockPrismaService.contact.findUnique.mockResolvedValue(mockContact);
+      mockPrismaService.contact.findFirst.mockResolvedValue(mockContact);
       mockPrismaService.contactLog.create.mockResolvedValue(createdLog);
 
       await service.addLog('contact-1', logDtoNoDate, mockUser);
@@ -594,7 +602,7 @@ describe('ContactsService', () => {
           user: { firstName: 'Admin', lastName: 'User' },
         },
       ];
-      mockPrismaService.contact.findUnique.mockResolvedValue(mockContact);
+      mockPrismaService.contact.findFirst.mockResolvedValue(mockContact);
       mockPrismaService.contactLog.findMany.mockResolvedValue(logs);
 
       const result = await service.findLogs('contact-1', mockUser);
@@ -630,7 +638,7 @@ describe('ContactsService', () => {
         sentAt: new Date(),
         user: { firstName: 'Admin', lastName: 'User' },
       };
-      mockPrismaService.contact.findUnique.mockResolvedValue(mockContact);
+      mockPrismaService.contact.findFirst.mockResolvedValue(mockContact);
       mockPrismaService.organization.findUnique.mockResolvedValue({
         senderName: null,
         senderEmail: null,
@@ -664,7 +672,7 @@ describe('ContactsService', () => {
 
     it('should throw BadRequestException when contact has no email', async () => {
       const contactNoEmail = { ...mockContact, email: null };
-      mockPrismaService.contact.findUnique.mockResolvedValue(contactNoEmail);
+      mockPrismaService.contact.findFirst.mockResolvedValue(contactNoEmail);
 
       await expect(
         service.sendEmail('contact-1', emailDto, mockUser),
@@ -675,7 +683,7 @@ describe('ContactsService', () => {
     });
 
     it('should throw BadRequestException when email sending fails', async () => {
-      mockPrismaService.contact.findUnique.mockResolvedValue(mockContact);
+      mockPrismaService.contact.findFirst.mockResolvedValue(mockContact);
       mockEmailService.sendContactEmail.mockRejectedValue(
         new Error('SMTP error'),
       );

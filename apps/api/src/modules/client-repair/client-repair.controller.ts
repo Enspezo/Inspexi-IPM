@@ -14,7 +14,6 @@ import {
   Get,
   Ip,
   Param,
-  ParseUUIDPipe,
   Post,
   Res,
   StreamableFile,
@@ -45,6 +44,7 @@ import {
   SignRepairDto,
   StartRepairSessionDto,
 } from './dto';
+import { ParseUuidPipe } from '@/common';
 
 const photoFileFilter = (
   _req: unknown,
@@ -101,7 +101,7 @@ export class ClientRepairController {
   @Throttle({ default: { limit: 20, ttl: 60000 } })
   @ApiOperation({ summary: 'Herstel melden op een constatering (first-wins claim)' })
   async resolve(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @Body() dto: RepairResolveDto,
     @CurrentRepairSession() session: RepairSession,
   ) {
@@ -122,7 +122,7 @@ export class ClientRepairController {
     }),
   )
   async uploadPhotos(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @UploadedFiles() files: Express.Multer.File[],
     @CurrentRepairSession() session: RepairSession,
   ) {
@@ -137,7 +137,7 @@ export class ClientRepairController {
   @RequiresFeature('ONLINE_HERSTEL')
   @ApiOperation({ summary: 'Foto-stream (constatering- en resolutiefoto’s binnen het plan)' })
   async photo(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @CurrentRepairSession() session: RepairSession,
     @Res({ passthrough: true }) res: Response,
   ): Promise<StreamableFile> {

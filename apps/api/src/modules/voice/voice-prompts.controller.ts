@@ -1,7 +1,7 @@
 // Template-prompts (org-admin, per org via user.orgId) + user-prompts (eigen) + combined-preview.
 
 import {
-  Controller, Get, Put, Delete, Param, Body, Query, ParseUUIDPipe, BadRequestException,
+  Controller, Get, Put, Delete, Param, Body, Query, BadRequestException,
 } from '@nestjs/common';
 import { RequiresFeature } from '@/common/decorators/requires-feature.decorator';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
@@ -10,6 +10,7 @@ import { Roles, CurrentUser } from '@/common/decorators';
 import { ALL_STAFF, ORG_ADMINS } from '@/common/auth/roles';
 import { VoicePromptService } from './voice-prompt.service';
 import { UpsertTemplatePromptDto, UpsertUserPromptDto } from './dto';
+import { ParseUuidPipe } from '@/common';
 
 const VOICE_USERS = ALL_STAFF;
 
@@ -47,14 +48,14 @@ export class VoicePromptsController {
 
   @Get('template/:templateId')
   @Roles(...ORG_ADMINS)
-  async getTemplate(@Param('templateId', ParseUUIDPipe) templateId: string, @CurrentUser() user: User) {
+  async getTemplate(@Param('templateId', ParseUuidPipe) templateId: string, @CurrentUser() user: User) {
     return { success: true, data: await this.prompts.getTemplatePrompt(templateId, this.orgOf(user)) };
   }
 
   @Put('template/:templateId')
   @Roles(...ORG_ADMINS)
   async upsertTemplate(
-    @Param('templateId', ParseUUIDPipe) templateId: string,
+    @Param('templateId', ParseUuidPipe) templateId: string,
     @CurrentUser() user: User,
     @Body() dto: UpsertTemplatePromptDto,
   ) {
@@ -63,7 +64,7 @@ export class VoicePromptsController {
 
   @Delete('template/:templateId')
   @Roles(...ORG_ADMINS)
-  async deleteTemplate(@Param('templateId', ParseUUIDPipe) templateId: string, @CurrentUser() user: User) {
+  async deleteTemplate(@Param('templateId', ParseUuidPipe) templateId: string, @CurrentUser() user: User) {
     await this.prompts.deleteTemplatePrompt(templateId, this.orgOf(user));
     return { success: true };
   }
@@ -83,7 +84,7 @@ export class VoicePromptsController {
 
   @Delete('user/:id')
   @Roles(...VOICE_USERS)
-  async deleteUser(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: User) {
+  async deleteUser(@Param('id', ParseUuidPipe) id: string, @CurrentUser() user: User) {
     await this.prompts.deleteUserPrompt(id, user.id);
     return { success: true };
   }

@@ -1,11 +1,12 @@
 // Base-prompts (laag 1) — alleen SUPERUSER.
 
-import { Controller, Get, Post, Patch, Delete, Param, Body, ParseUUIDPipe } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Param, Body} from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { Role } from '@prisma/client';
 import { Roles } from '@/common/decorators';
 import { VoicePromptService } from './voice-prompt.service';
 import { CreateBasePromptDto, UpdateBasePromptDto } from './dto';
+import { ParseUuidPipe } from '@/common';
 
 @ApiTags('Voice Prompts (admin)')
 @ApiBearerAuth()
@@ -26,18 +27,18 @@ export class VoicePromptAdminController {
   }
 
   @Patch('base/:id')
-  async update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateBasePromptDto) {
+  async update(@Param('id', ParseUuidPipe) id: string, @Body() dto: UpdateBasePromptDto) {
     return { success: true, data: await this.prompts.updateBasePrompt(id, dto) };
   }
 
   @Post('base/:id/activate')
   @ApiOperation({ summary: 'Eén base-prompt activeren (de rest wordt gedeactiveerd)' })
-  async activate(@Param('id', ParseUUIDPipe) id: string) {
+  async activate(@Param('id', ParseUuidPipe) id: string) {
     return { success: true, data: await this.prompts.activateBasePrompt(id) };
   }
 
   @Delete('base/:id')
-  async remove(@Param('id', ParseUUIDPipe) id: string) {
+  async remove(@Param('id', ParseUuidPipe) id: string) {
     await this.prompts.deleteBasePrompt(id);
     return { success: true };
   }

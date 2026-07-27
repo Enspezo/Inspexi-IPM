@@ -208,9 +208,10 @@ export class LocationsService {
   }
 
   async findLocation(locationId: string, user: User) {
-    const location = assertFound(
-      await this.prisma.location.findUnique({
-        where: { id: locationId },
+    // WP-C1 (B-105): org-scope in de query — cross-tenant id → zelfde 404.
+    return assertFound(
+      await this.prisma.location.findFirst({
+        where: { id: locationId, ...orgScope(user) },
         include: {
           contact: {
             select: {
@@ -226,12 +227,6 @@ export class LocationsService {
       }),
       'Locatie',
     );
-
-    if (!user.roles.includes(Role.SUPERUSER) && location.orgId !== user.orgId) {
-      throw new ForbiddenException();
-    }
-
-    return location;
   }
 
   async findLocations(contactId: string, user: User) {
@@ -245,17 +240,13 @@ export class LocationsService {
   }
 
   async updateLocation(locationId: string, dto: UpdateLocationDto, user: User) {
+    // WP-C1 (B-105): org-scope in de query — cross-tenant id → zelfde 404.
     const location = assertFound(
-      await this.prisma.location.findUnique({
-        where: { id: locationId },
+      await this.prisma.location.findFirst({
+        where: { id: locationId, ...orgScope(user) },
       }),
       'Locatie',
     );
-
-    // Verify org scoping
-    if (!user.roles.includes(Role.SUPERUSER) && location.orgId !== user.orgId) {
-      throw new ForbiddenException();
-    }
 
     if (dto.locationTypeId) {
       await this.assertLocationTypeUsable(dto.locationTypeId, location.orgId);
@@ -347,15 +338,11 @@ export class LocationsService {
    *   (de audit-middleware legt de wijziging vast).
    */
   async pdokRefresh(locationId: string, confirm: boolean, user: User) {
+    // Org-scope in de query (zelfde patroon als de overige locatie-methodes).
     const location = assertFound(
-      await this.prisma.location.findUnique({ where: { id: locationId } }),
+      await this.prisma.location.findFirst({ where: { id: locationId, ...orgScope(user) } }),
       'Locatie',
     );
-
-    // Org-scope / ownership (zelfde patroon als de overige locatie-methodes).
-    if (!user.roles.includes(Role.SUPERUSER) && location.orgId !== user.orgId) {
-      throw new ForbiddenException();
-    }
 
     const logCtx = {
       operation: 'REFRESH' as const,
@@ -452,8 +439,10 @@ export class LocationsService {
       throw new NotFoundException('Contactpersoon niet gevonden');
     }
 
+    // FK-injectie (SEC-08-semantiek): id komt als invoer uit de DTO — bewust
+    // een 403 mét NL-melding, conform assertSameOrg.
     if (!user.roles.includes(Role.SUPERUSER) && contactPerson.orgId !== user.orgId) {
-      throw new ForbiddenException();
+      throw new ForbiddenException('Contactpersoon hoort niet bij uw organisatie');
     }
 
     return this.prisma.locationContactPerson.create({
@@ -496,16 +485,14 @@ export class LocationsService {
   }
 
   async updateLocationContactPerson(linkId: string, dto: UpdateLocationContactPersonDto, user: User) {
-    const link = assertFound(
-      await this.prisma.locationContactPerson.findUnique({
-        where: { id: linkId },
+    // WP-C1 (B-105): org-scope in de query — cross-tenant id → zelfde 404.
+    assertFound(
+      await this.prisma.locationContactPerson.findFirst({
+        where: { id: linkId, ...orgScope(user) },
+        select: { id: true },
       }),
       'Koppeling',
     );
-
-    if (!user.roles.includes(Role.SUPERUSER) && link.orgId !== user.orgId) {
-      throw new ForbiddenException();
-    }
 
     return this.prisma.locationContactPerson.update({
       where: { id: linkId },
@@ -524,32 +511,27 @@ export class LocationsService {
   }
 
   async removeLocationContactPerson(linkId: string, user: User) {
-    const link = assertFound(
-      await this.prisma.locationContactPerson.findUnique({
-        where: { id: linkId },
+    // WP-C1 (B-105): org-scope in de query — cross-tenant id → zelfde 404.
+    assertFound(
+      await this.prisma.locationContactPerson.findFirst({
+        where: { id: linkId, ...orgScope(user) },
+        select: { id: true },
       }),
       'Koppeling',
     );
-
-    if (!user.roles.includes(Role.SUPERUSER) && link.orgId !== user.orgId) {
-      throw new ForbiddenException();
-    }
 
     await this.prisma.locationContactPerson.delete({ where: { id: linkId } });
   }
 
   async deleteLocation(locationId: string, user: User) {
-    const location = assertFound(
-      await this.prisma.location.findUnique({
-        where: { id: locationId },
+    // WP-C1 (B-105): org-scope in de query — cross-tenant id → zelfde 404.
+    assertFound(
+      await this.prisma.location.findFirst({
+        where: { id: locationId, ...orgScope(user) },
+        select: { id: true },
       }),
       'Locatie',
     );
-
-    // Verify org scoping
-    if (!user.roles.includes(Role.SUPERUSER) && location.orgId !== user.orgId) {
-      throw new ForbiddenException();
-    }
 
     await this.prisma.location.delete({
       where: { id: locationId },

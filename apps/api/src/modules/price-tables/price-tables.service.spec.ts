@@ -89,6 +89,7 @@ describe('PriceTablesService', () => {
       findMany: jest.fn(),
     },
     contact: {
+      findFirst: jest.fn(),
       findUnique: jest.fn(),
     },
     contactPriceTable: {
@@ -185,13 +186,13 @@ describe('PriceTablesService', () => {
 
   describe('findOne()', () => {
     it('should return price table with items, tiers and contacts', async () => {
-      mockPrismaService.priceTable.findUnique.mockResolvedValue(mockPriceTable);
+      mockPrismaService.priceTable.findFirst.mockResolvedValue(mockPriceTable);
 
       const result = await service.findOne('pt-1', mockUser);
 
       expect(result).toEqual(mockPriceTable);
-      expect(mockPrismaService.priceTable.findUnique).toHaveBeenCalledWith({
-        where: { id: 'pt-1' },
+      expect(mockPrismaService.priceTable.findFirst).toHaveBeenCalledWith({
+        where: { id: 'pt-1', orgId: 'org-1' },
         include: {
           items: {
             include: {
@@ -219,7 +220,7 @@ describe('PriceTablesService', () => {
     });
 
     it('should throw NotFoundException when not found', async () => {
-      mockPrismaService.priceTable.findUnique.mockResolvedValue(null);
+      mockPrismaService.priceTable.findFirst.mockResolvedValue(null);
 
       await expect(
         service.findOne('non-existent', mockUser),
@@ -229,12 +230,18 @@ describe('PriceTablesService', () => {
       ).rejects.toThrow('Prijstabel niet gevonden');
     });
 
-    it('should throw ForbiddenException when different org', async () => {
-      mockPrismaService.priceTable.findUnique.mockResolvedValue(mockPriceTable);
+    it('should throw the same NotFound when different org (WP-C1: 404-oracle)', async () => {
+      // Org-scope in de where-clausule: andermans prijstabel komt niet terug.
+      mockPrismaService.priceTable.findFirst.mockResolvedValue(null);
 
       await expect(
         service.findOne('pt-1', mockOtherOrgUser),
-      ).rejects.toThrow(ForbiddenException);
+      ).rejects.toThrow('Prijstabel niet gevonden');
+      expect(mockPrismaService.priceTable.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ orgId: 'org-2' }),
+        }),
+      );
     });
   });
 
@@ -319,7 +326,7 @@ describe('PriceTablesService', () => {
     it('should update basic fields', async () => {
       const updateDto = { name: 'Updated naam' };
       const updated = { ...mockPriceTable, name: 'Updated naam' };
-      mockPrismaService.priceTable.findUnique.mockResolvedValue(mockPriceTable);
+      mockPrismaService.priceTable.findFirst.mockResolvedValue(mockPriceTable);
       mockPrismaService.priceTable.update.mockResolvedValue(updated);
 
       const result = await service.update('pt-1', updateDto, mockUser);
@@ -334,7 +341,7 @@ describe('PriceTablesService', () => {
     it('should use transaction when isDefault is true', async () => {
       const updateDto = { name: 'Now default', isDefault: true };
       const updated = { ...mockPriceTable, name: 'Now default', isDefault: true };
-      mockPrismaService.priceTable.findUnique.mockResolvedValue(mockPriceTable);
+      mockPrismaService.priceTable.findFirst.mockResolvedValue(mockPriceTable);
       mockPrismaService.priceTable.updateMany.mockResolvedValue({ count: 1 });
       mockPrismaService.priceTable.update.mockResolvedValue(updated);
 
@@ -377,7 +384,7 @@ describe('PriceTablesService', () => {
         ],
       };
 
-      mockPrismaService.priceTable.findUnique.mockResolvedValue(mockPriceTable);
+      mockPrismaService.priceTable.findFirst.mockResolvedValue(mockPriceTable);
       // Both referenced products belong to the caller's org (assertAllSameOrg).
       mockPrismaService.product.findMany.mockResolvedValue([
         { id: 'prod-1' },
@@ -387,13 +394,9 @@ describe('PriceTablesService', () => {
       mockPrismaService.priceTableItem.deleteMany.mockResolvedValue({ count: 0 });
       mockPrismaService.priceTableItem.create.mockResolvedValue({});
 
-      // After the for-loop, findUnique is called again to return the full table
-      // The first call is from findOne, subsequent from the transaction
-      // We need findUnique to return the price table on first call (findOne)
-      // and resultTable on second call (inside transaction at the end)
-      mockPrismaService.priceTable.findUnique
-        .mockResolvedValueOnce(mockPriceTable) // findOne
-        .mockResolvedValueOnce(resultTable); // final return in transaction
+      // findOne leest nu via findFirst (org-scoped); de tx-herlees aan het
+      // einde van setItems gebruikt nog steeds findUnique.
+      mockPrismaService.priceTable.findUnique.mockResolvedValue(resultTable);
 
       const result = await service.setItems('pt-1', setItemsDto, mockUser);
 
@@ -415,7 +418,7 @@ describe('PriceTablesService', () => {
         contact: { id: 'contact-1' },
         priceTable: mockPriceTable,
       };
-      mockPrismaService.priceTable.findUnique.mockResolvedValue(mockPriceTable);
+      mockPrismaService.priceTable.findFirst.mockResolvedValue(mockPriceTable);
       mockPrismaService.contact.findUnique.mockResolvedValue(mockContact);
       mockPrismaService.contactPriceTable.findUnique.mockResolvedValue(null);
       mockPrismaService.contactPriceTable.create.mockResolvedValue(assignment);
@@ -444,7 +447,7 @@ describe('PriceTablesService', () => {
     });
 
     it('should throw BadRequestException when already assigned (duplicate)', async () => {
-      mockPrismaService.priceTable.findUnique.mockResolvedValue(mockPriceTable);
+      mockPrismaService.priceTable.findFirst.mockResolvedValue(mockPriceTable);
       mockPrismaService.contact.findUnique.mockResolvedValue(mockContact);
       mockPrismaService.contactPriceTable.findUnique.mockResolvedValue({
         contactId: 'contact-1',
@@ -460,7 +463,7 @@ describe('PriceTablesService', () => {
     });
 
     it('should throw NotFoundException when contact not found', async () => {
-      mockPrismaService.priceTable.findUnique.mockResolvedValue(mockPriceTable);
+      mockPrismaService.priceTable.findFirst.mockResolvedValue(mockPriceTable);
       mockPrismaService.contact.findUnique.mockResolvedValue(null);
 
       await expect(
@@ -476,7 +479,7 @@ describe('PriceTablesService', () => {
 
   describe('removeFromContact()', () => {
     it('should remove assignment successfully', async () => {
-      mockPrismaService.priceTable.findUnique.mockResolvedValue(mockPriceTable);
+      mockPrismaService.priceTable.findFirst.mockResolvedValue(mockPriceTable);
       mockPrismaService.contactPriceTable.findUnique.mockResolvedValue({
         contactId: 'contact-1',
         priceTableId: 'pt-1',
@@ -496,7 +499,7 @@ describe('PriceTablesService', () => {
     });
 
     it('should throw NotFoundException when assignment not found', async () => {
-      mockPrismaService.priceTable.findUnique.mockResolvedValue(mockPriceTable);
+      mockPrismaService.priceTable.findFirst.mockResolvedValue(mockPriceTable);
       mockPrismaService.contactPriceTable.findUnique.mockResolvedValue(null);
 
       await expect(
@@ -515,7 +518,7 @@ describe('PriceTablesService', () => {
       const assignments = [
         { priceTable: { ...mockPriceTable, items: [] } },
       ];
-      mockPrismaService.contact.findUnique.mockResolvedValue(mockContact);
+      mockPrismaService.contact.findFirst.mockResolvedValue(mockContact);
       mockPrismaService.contactPriceTable.findMany.mockResolvedValue(assignments);
 
       const result = await service.findForContact('contact-1', mockUser);

@@ -5,7 +5,6 @@ import {
   Post,
   Param,
   Query,
-  ParseUUIDPipe,
   Res,
 } from '@nestjs/common';
 import { RequiresFeature } from '@/common/decorators/requires-feature.decorator';
@@ -21,6 +20,7 @@ import { ALL_STAFF } from '@/common/auth/roles';
 import { NotificationsService } from './notifications.service';
 import { ListNotificationsQueryDto } from './dto';
 import { Roles, CurrentUser, Public } from '@/common/decorators';
+import { ParseUuidPipe } from '@/common';
 
 @ApiTags('Notifications')
 @ApiBearerAuth()
@@ -55,7 +55,7 @@ export class NotificationsController {
   @ApiOperation({ summary: 'Notificatie als gelezen markeren' })
   @ApiResponse({ status: 200, description: 'Notificatie bijgewerkt' })
   async markRead(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @CurrentUser() user: User,
   ) {
     const data = await this.notificationsService.markRead(id, user);

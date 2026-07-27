@@ -1,7 +1,7 @@
 // @Public() (staf-guards uit) + ClientJwtAuthGuard (klant-auth) + @CurrentTenant (org-subdomein).
 // Patroon voor alle client-* endpoints. Specifieke routes (dashboard) vóór param-routes (:id).
 
-import { Controller, Get, Param, UseGuards, ParseUUIDPipe } from '@nestjs/common';
+import { Controller, Get, Param, UseGuards} from '@nestjs/common';
 import { RequiresFeature } from '@/common/decorators/requires-feature.decorator';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { Public, CurrentTenant } from '@/common/decorators';
@@ -11,6 +11,7 @@ import {
   type CurrentClientUserData,
 } from '@/common/decorators/current-client-user.decorator';
 import { ClientInspectionsService } from './client-inspections.service';
+import { ParseUuidPipe } from '@/common';
 
 @ApiTags('Client Inspections')
 @Public()
@@ -41,7 +42,7 @@ export class ClientInspectionsController {
   @Get(':id')
   @ApiOperation({ summary: 'Inspectie-detail (klant)' })
   async detail(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @CurrentClientUser() user: CurrentClientUserData,
     @CurrentTenant('orgId') orgId: string | null,
   ) {
@@ -51,7 +52,7 @@ export class ClientInspectionsController {
   @Get(':id/documents')
   @ApiOperation({ summary: 'Documenten van een inspectie (klant)' })
   async documents(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @CurrentClientUser() user: CurrentClientUserData,
     @CurrentTenant('orgId') orgId: string | null,
   ) {
@@ -61,7 +62,7 @@ export class ClientInspectionsController {
   @Get(':id/findings')
   @ApiOperation({ summary: 'Constateringen van een inspectie (klant)' })
   async findings(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @CurrentClientUser() user: CurrentClientUserData,
     @CurrentTenant('orgId') orgId: string | null,
   ) {

@@ -415,12 +415,12 @@ describe('Client Portal (e2e)', () => {
     expect(res.body.data).toEqual([]);
   });
 
-  it('CROSS-TENANT: detail van org-A-plan op org B → 403', async () => {
+  it('CROSS-TENANT: detail van org-A-plan op org B → 404 (WP-C1/B-151: geen existence-oracle)', async () => {
     await request(app.getHttpServer())
       .get(`/api/v1/client/inspections/${planId}`)
       .set('Host', HOST_B)
       .set(bearer(tokenA))
-      .expect(403);
+      .expect(404);
   });
 
   // ── Constateringen ──

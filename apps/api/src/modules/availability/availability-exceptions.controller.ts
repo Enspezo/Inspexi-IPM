@@ -7,7 +7,6 @@ import {
   Param,
   Body,
   Query,
-  ParseUUIDPipe,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { User } from '@prisma/client';
@@ -19,6 +18,7 @@ import {
   UpdateAvailabilityExceptionDto,
   ListAvailabilityExceptionsQueryDto,
 } from './dto';
+import { ParseUuidPipe } from '@/common';
 
 /**
  * Uitzonderingen — beheerd door de inspecteur zelf (eigen) én MANAGEMENT_ROLES
@@ -57,7 +57,7 @@ export class AvailabilityExceptionsController {
   @ApiOperation({ summary: 'Uitzondering bijwerken' })
   @ApiResponse({ status: 200, description: 'Uitzondering bijgewerkt' })
   async update(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @Body() dto: UpdateAvailabilityExceptionDto,
     @CurrentUser() user: User,
   ) {
@@ -69,7 +69,7 @@ export class AvailabilityExceptionsController {
   @ApiOperation({ summary: 'Uitzondering verwijderen (soft-delete)' })
   @ApiResponse({ status: 200, description: 'Uitzondering verwijderd' })
   async remove(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @CurrentUser() user: User,
   ) {
     await this.service.remove(id, user);

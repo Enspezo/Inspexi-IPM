@@ -7,7 +7,6 @@ import {
   Param,
   Body,
   Query,
-  ParseUUIDPipe,
 } from '@nestjs/common';
 import { RequiresFeature } from '@/common/decorators/requires-feature.decorator';
 import {
@@ -25,6 +24,7 @@ import {
   ListDocumentTagsQueryDto,
 } from './dto';
 import { Roles, CurrentUser } from '@/common/decorators';
+import { ParseUuidPipe } from '@/common';
 
 @ApiTags('Document Tags')
 @ApiBearerAuth()
@@ -57,7 +57,7 @@ export class DocumentTagsController {
   @Roles(...ALL_STAFF)
   @ApiOperation({ summary: 'Document-tag detail ophalen' })
   async findOne(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @CurrentUser() user: User,
   ) {
     const tag = await this.documentTagsService.findOne(id, user);
@@ -80,7 +80,7 @@ export class DocumentTagsController {
   @Roles(...ORG_ADMINS)
   @ApiOperation({ summary: 'Document-tag bijwerken' })
   async update(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @Body() dto: UpdateDocumentTagDto,
     @CurrentUser() user: User,
   ) {
@@ -92,7 +92,7 @@ export class DocumentTagsController {
   @Roles(...ORG_ADMINS)
   @ApiOperation({ summary: 'Document-tag verwijderen (soft delete)' })
   async remove(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @CurrentUser() user: User,
   ) {
     await this.documentTagsService.softDelete(id, user);

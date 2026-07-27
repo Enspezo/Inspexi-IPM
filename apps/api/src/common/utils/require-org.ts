@@ -1,6 +1,6 @@
 import {
   BadRequestException,
-  ForbiddenException,
+  NotFoundException,
 } from '@nestjs/common';
 import { Role, User } from '@prisma/client';
 import { TenantOrgContext } from './org-scope';
@@ -43,9 +43,14 @@ export function requireOrg(user: User): string {
  * Assert that a user may act within a given organization. SUPERUSER bypasses the
  * check; any other user must belong to `orgId`. Replaces the per-service
  * `private checkOrgAccess(user, orgId)` copies.
+ *
+ * WP-C1 (B-105/B-106): gooit een 404 met dezelfde melding als `assertFound`,
+ * zodat "bestaat niet" en "hoort bij een andere org" op id-routes
+ * ononderscheidbaar zijn (geen existence-oracle). Geef hetzelfde entiteitslabel
+ * mee als de omliggende `assertFound`/`NotFoundException`.
  */
-export function assertOrgAccess(user: User, orgId: string): void {
+export function assertOrgAccess(user: User, orgId: string, entityName = 'Gegevens'): void {
   if (!user.roles.includes(Role.SUPERUSER) && user.orgId !== orgId) {
-    throw new ForbiddenException();
+    throw new NotFoundException(`${entityName} niet gevonden`);
   }
 }

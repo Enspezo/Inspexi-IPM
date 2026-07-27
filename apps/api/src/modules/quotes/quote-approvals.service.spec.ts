@@ -72,7 +72,7 @@ describe('QuoteApprovalsService', () => {
   };
 
   const mockPrismaService = {
-    quote: { findUnique: jest.fn(), update: jest.fn() },
+    quote: { findFirst: jest.fn(), update: jest.fn() },
     organization: { findUnique: jest.fn() },
     user: { findMany: jest.fn(), findUnique: jest.fn() },
     quoteApprovalRequest: {
@@ -108,7 +108,7 @@ describe('QuoteApprovalsService', () => {
 
   describe('submitForApproval()', () => {
     it('creates a THRESHOLD request with the org required role and sets TER_GOEDKEURING', async () => {
-      mockPrismaService.quote.findUnique.mockResolvedValue(
+      mockPrismaService.quote.findFirst.mockResolvedValue(
         quoteWithIncludes({ templateId: 'template-1', total: 20000 }),
       );
       mockTx.quoteApprovalRequest.create.mockResolvedValue({});
@@ -136,7 +136,7 @@ describe('QuoteApprovalsService', () => {
         quoteApprovalThreshold: null,
         quoteApprovalRequiredRole: null,
       });
-      mockPrismaService.quote.findUnique.mockResolvedValue(
+      mockPrismaService.quote.findFirst.mockResolvedValue(
         quoteWithIncludes({ templateId: 'template-1', requiresApproval: true, total: 100 }),
       );
       mockTx.quoteApprovalRequest.create.mockResolvedValue({});
@@ -151,7 +151,7 @@ describe('QuoteApprovalsService', () => {
     });
 
     it('throws when approval is not required (below threshold, no requiresApproval)', async () => {
-      mockPrismaService.quote.findUnique.mockResolvedValue(
+      mockPrismaService.quote.findFirst.mockResolvedValue(
         quoteWithIncludes({ templateId: 'template-1', total: 100 }),
       );
 
@@ -162,7 +162,7 @@ describe('QuoteApprovalsService', () => {
     });
 
     it('blocks submit of a quote without lines (B-315, NL-melding)', async () => {
-      mockPrismaService.quote.findUnique.mockResolvedValue(
+      mockPrismaService.quote.findFirst.mockResolvedValue(
         quoteWithIncludes({ templateId: 'template-1', requiresApproval: true, lines: [] }),
       );
       await expect(service.submitForApproval('quote-1', {}, adminUser)).rejects.toThrow(
@@ -172,7 +172,7 @@ describe('QuoteApprovalsService', () => {
     });
 
     it('blocks submit without a linked template (REQ26 guard)', async () => {
-      mockPrismaService.quote.findUnique.mockResolvedValue(
+      mockPrismaService.quote.findFirst.mockResolvedValue(
         quoteWithIncludes({ requiresApproval: true }),
       );
       await expect(service.submitForApproval('quote-1', {}, adminUser)).rejects.toThrow(
@@ -197,7 +197,7 @@ describe('QuoteApprovalsService', () => {
     };
 
     it('approves and sets GOEDGEKEURD when approver has the required role', async () => {
-      mockPrismaService.quote.findUnique.mockResolvedValue(
+      mockPrismaService.quote.findFirst.mockResolvedValue(
         quoteWithIncludes({ status: QuoteStatus.TER_GOEDKEURING }),
       );
       mockPrismaService.quoteApprovalRequest.findFirst.mockResolvedValue(pending);
@@ -214,7 +214,7 @@ describe('QuoteApprovalsService', () => {
     });
 
     it('rejects approval by a user lacking the required role', async () => {
-      mockPrismaService.quote.findUnique.mockResolvedValue(
+      mockPrismaService.quote.findFirst.mockResolvedValue(
         quoteWithIncludes({ status: QuoteStatus.TER_GOEDKEURING }),
       );
       mockPrismaService.quoteApprovalRequest.findFirst.mockResolvedValue(pending);
@@ -228,7 +228,7 @@ describe('QuoteApprovalsService', () => {
     // ─── Vier-ogen / self-approval (B-307) ─────────────────────────────
 
     it('forbids the requester from approving their own request (B-307, NL-melding)', async () => {
-      mockPrismaService.quote.findUnique.mockResolvedValue(
+      mockPrismaService.quote.findFirst.mockResolvedValue(
         quoteWithIncludes({ status: QuoteStatus.TER_GOEDKEURING }),
       );
       mockPrismaService.quoteApprovalRequest.findFirst.mockResolvedValue({
@@ -248,7 +248,7 @@ describe('QuoteApprovalsService', () => {
         quoteApprovalRequiredRole: Role.MANAGER,
         quoteApprovalSelfApprovalAllowed: true,
       });
-      mockPrismaService.quote.findUnique.mockResolvedValue(
+      mockPrismaService.quote.findFirst.mockResolvedValue(
         quoteWithIncludes({ status: QuoteStatus.TER_GOEDKEURING }),
       );
       mockPrismaService.quoteApprovalRequest.findFirst.mockResolvedValue({
@@ -264,7 +264,7 @@ describe('QuoteApprovalsService', () => {
     });
 
     it('still lets a different approver with the required role approve (four-eyes happy path)', async () => {
-      mockPrismaService.quote.findUnique.mockResolvedValue(
+      mockPrismaService.quote.findFirst.mockResolvedValue(
         quoteWithIncludes({ status: QuoteStatus.TER_GOEDKEURING }),
       );
       mockPrismaService.quoteApprovalRequest.findFirst.mockResolvedValue(pending); // requestedBy user-1
@@ -280,7 +280,7 @@ describe('QuoteApprovalsService', () => {
 
   describe('reject()', () => {
     it('sets CONCEPT back and records rejection (with required role)', async () => {
-      mockPrismaService.quote.findUnique.mockResolvedValue(
+      mockPrismaService.quote.findFirst.mockResolvedValue(
         quoteWithIncludes({ status: QuoteStatus.TER_GOEDKEURING }),
       );
       mockPrismaService.quoteApprovalRequest.findFirst.mockResolvedValue({
@@ -305,7 +305,7 @@ describe('QuoteApprovalsService', () => {
     });
 
     it('accepts a rejection without a note (B-314: note is optioneel)', async () => {
-      mockPrismaService.quote.findUnique.mockResolvedValue(
+      mockPrismaService.quote.findFirst.mockResolvedValue(
         quoteWithIncludes({ status: QuoteStatus.TER_GOEDKEURING }),
       );
       mockPrismaService.quoteApprovalRequest.findFirst.mockResolvedValue({
@@ -327,7 +327,7 @@ describe('QuoteApprovalsService', () => {
     });
 
     it('forbids the requester from rejecting their own request (B-307)', async () => {
-      mockPrismaService.quote.findUnique.mockResolvedValue(
+      mockPrismaService.quote.findFirst.mockResolvedValue(
         quoteWithIncludes({ status: QuoteStatus.TER_GOEDKEURING }),
       );
       mockPrismaService.quoteApprovalRequest.findFirst.mockResolvedValue({
@@ -352,7 +352,7 @@ describe('QuoteApprovalsService', () => {
 
   describe('requestTeamApproval()', () => {
     it('creates a VOLUNTARY_TEAM request for the requester own (single) role, no status change', async () => {
-      mockPrismaService.quote.findUnique.mockResolvedValue(quoteWithIncludes());
+      mockPrismaService.quote.findFirst.mockResolvedValue(quoteWithIncludes());
       mockPrismaService.quoteApprovalRequest.create.mockResolvedValue({ id: 'req-1' });
 
       await service.requestTeamApproval('quote-1', {}, backofficeUser);
@@ -371,7 +371,7 @@ describe('QuoteApprovalsService', () => {
     });
 
     it('requires an explicit role when the requester has multiple roles', async () => {
-      mockPrismaService.quote.findUnique.mockResolvedValue(quoteWithIncludes());
+      mockPrismaService.quote.findFirst.mockResolvedValue(quoteWithIncludes());
       const multi = makeUser([Role.MANAGER, Role.BACKOFFICE], 'multi-1');
 
       await expect(service.requestTeamApproval('quote-1', {}, multi)).rejects.toThrow(
@@ -380,7 +380,7 @@ describe('QuoteApprovalsService', () => {
     });
 
     it('rejects requesting approval from a team the requester is not part of', async () => {
-      mockPrismaService.quote.findUnique.mockResolvedValue(quoteWithIncludes());
+      mockPrismaService.quote.findFirst.mockResolvedValue(quoteWithIncludes());
 
       await expect(
         service.requestTeamApproval('quote-1', { role: Role.MANAGER }, backofficeUser),
@@ -392,7 +392,7 @@ describe('QuoteApprovalsService', () => {
 
   describe('requestPersonApproval()', () => {
     it('creates a VOLUNTARY_PERSON request for an org-mate', async () => {
-      mockPrismaService.quote.findUnique.mockResolvedValue(quoteWithIncludes());
+      mockPrismaService.quote.findFirst.mockResolvedValue(quoteWithIncludes());
       mockPrismaService.user.findUnique.mockResolvedValue({ orgId: 'org-1' }); // assertSameOrg
       mockPrismaService.quoteApprovalRequest.create.mockResolvedValue({ id: 'req-1' });
 
@@ -410,7 +410,7 @@ describe('QuoteApprovalsService', () => {
     });
 
     it('rejects a person from another org (cross-tenant)', async () => {
-      mockPrismaService.quote.findUnique.mockResolvedValue(quoteWithIncludes());
+      mockPrismaService.quote.findFirst.mockResolvedValue(quoteWithIncludes());
       mockPrismaService.user.findUnique.mockResolvedValue({ orgId: 'org-2' });
 
       await expect(
@@ -420,7 +420,7 @@ describe('QuoteApprovalsService', () => {
     });
 
     it('rejects asking yourself', async () => {
-      mockPrismaService.quote.findUnique.mockResolvedValue(quoteWithIncludes());
+      mockPrismaService.quote.findFirst.mockResolvedValue(quoteWithIncludes());
 
       await expect(
         service.requestPersonApproval('quote-1', { approverUserId: 'backoffice-1' }, backofficeUser),
@@ -432,7 +432,7 @@ describe('QuoteApprovalsService', () => {
 
   describe('reviewVoluntary()', () => {
     it('lets the targeted person approve without changing quote status', async () => {
-      mockPrismaService.quote.findUnique.mockResolvedValue(quoteWithIncludes());
+      mockPrismaService.quote.findFirst.mockResolvedValue(quoteWithIncludes());
       mockPrismaService.quoteApprovalRequest.findUnique.mockResolvedValue({
         id: 'req-1',
         quoteId: 'quote-1',
@@ -458,7 +458,7 @@ describe('QuoteApprovalsService', () => {
     });
 
     it('forbids a non-targeted user from reviewing a person request', async () => {
-      mockPrismaService.quote.findUnique.mockResolvedValue(quoteWithIncludes());
+      mockPrismaService.quote.findFirst.mockResolvedValue(quoteWithIncludes());
       mockPrismaService.quoteApprovalRequest.findUnique.mockResolvedValue({
         id: 'req-1',
         quoteId: 'quote-1',
@@ -476,7 +476,7 @@ describe('QuoteApprovalsService', () => {
     });
 
     it('refuses to review a mandatory (THRESHOLD) request via the voluntary route', async () => {
-      mockPrismaService.quote.findUnique.mockResolvedValue(quoteWithIncludes());
+      mockPrismaService.quote.findFirst.mockResolvedValue(quoteWithIncludes());
       mockPrismaService.quoteApprovalRequest.findUnique.mockResolvedValue({
         id: 'req-1',
         quoteId: 'quote-1',
@@ -496,7 +496,7 @@ describe('QuoteApprovalsService', () => {
 
   describe('cancelVoluntary()', () => {
     it('lets the requester cancel a pending voluntary request', async () => {
-      mockPrismaService.quote.findUnique.mockResolvedValue(quoteWithIncludes());
+      mockPrismaService.quote.findFirst.mockResolvedValue(quoteWithIncludes());
       mockPrismaService.quoteApprovalRequest.findUnique.mockResolvedValue({
         id: 'req-1',
         quoteId: 'quote-1',
@@ -518,7 +518,7 @@ describe('QuoteApprovalsService', () => {
     });
 
     it('forbids cancelling someone else\'s request', async () => {
-      mockPrismaService.quote.findUnique.mockResolvedValue(quoteWithIncludes());
+      mockPrismaService.quote.findFirst.mockResolvedValue(quoteWithIncludes());
       mockPrismaService.quoteApprovalRequest.findUnique.mockResolvedValue({
         id: 'req-1',
         quoteId: 'quote-1',

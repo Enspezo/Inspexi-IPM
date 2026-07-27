@@ -110,7 +110,7 @@ export class ProjectsService {
       include: PROJECT_INCLUDE,
     });
     if (!project || project.isDeleted) throw new NotFoundException('Project niet gevonden');
-    assertOrgAccess(user, project.orgId);
+    assertOrgAccess(user, project.orgId, 'Project');
     return project;
   }
 
@@ -546,7 +546,7 @@ export class ProjectsService {
       }),
       'Aanvraag',
     );
-    assertOrgAccess(user, request.orgId);
+    assertOrgAccess(user, request.orgId, 'Aanvraag');
     if (request.projectId) throw new BadRequestException('Aanvraag is al gekoppeld aan een project');
 
     const contactName = request.contact?.companyName ||

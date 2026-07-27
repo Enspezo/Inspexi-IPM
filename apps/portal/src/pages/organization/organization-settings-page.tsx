@@ -3,7 +3,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useAuth } from '@/providers/auth-provider';
-import { Card, Input, Button, Select, Spinner, Tabs, Checkbox, useToast } from '@/components/ui';
+import { Card, ErrorBox, Input, Button, Select, Spinner, Tabs, Checkbox, useToast } from '@/components/ui';
 import {
   useOrganization,
   useUpdateOrganization,
@@ -266,7 +266,7 @@ function GroupNotificationPrefsCard() {
 export default function OrganizationSettingsPage() {
   const { user } = useAuth();
   const { showToast } = useToast();
-  const { data: organization, isLoading } = useOrganization(user?.orgId);
+  const { data: organization, isLoading, error: loadError } = useOrganization(user?.orgId);
   const updateMutation = useUpdateOrganization(user?.orgId);
   const uploadLogoMutation = useUploadLogo(user?.orgId);
   const deleteLogoMutation = useDeleteLogo(user?.orgId);
@@ -428,6 +428,22 @@ export default function OrganizationSettingsPage() {
     return (
       <div className="flex h-64 items-center justify-center">
         <Spinner size="lg" />
+      </div>
+    );
+  }
+
+  // WP-C1 (B-509): bij een mislukte load (bv. 403 voor een rol zonder toegang)
+  // GEEN leeg-maar-bewerkbaar formulier renderen, maar een nette errorstate.
+  if (loadError || !organization) {
+    return (
+      <div>
+        <h1 className="mb-6 text-2xl font-bold text-gray-900">
+          Organisatie-instellingen
+        </h1>
+        <ErrorBox>
+          De organisatiegegevens konden niet geladen worden. Controleer of u de juiste
+          rechten heeft of probeer het later opnieuw.
+        </ErrorBox>
       </div>
     );
   }

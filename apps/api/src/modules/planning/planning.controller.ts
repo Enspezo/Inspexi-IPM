@@ -7,7 +7,6 @@ import {
   Body,
   Param,
   Query,
-  ParseUUIDPipe,
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
@@ -35,6 +34,7 @@ import {
   RescheduleSessionDto,
   UpdatePlanningStatusDto,
 } from './dto';
+import { ParseUuidPipe } from '@/common';
 
 @ApiTags('Planning')
 @ApiBearerAuth()
@@ -72,7 +72,7 @@ export class PlanningController {
   @Get(':id/sessions')
   @Roles(...ALL_STAFF)
   @ApiOperation({ summary: 'Sessies van een planregel ophalen' })
-  async findSessions(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: User) {
+  async findSessions(@Param('id', ParseUuidPipe) id: string, @CurrentUser() user: User) {
     const data = await this.sessionsService.findSessions(id, user);
     return { success: true, data };
   }
@@ -82,7 +82,7 @@ export class PlanningController {
   @ApiOperation({ summary: 'Extra sessie toevoegen aan planregel' })
   @ApiResponse({ status: 201, description: 'Sessie aangemaakt' })
   async addSession(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @Body() dto: CreateSessionDto,
     @CurrentUser() user: User,
   ) {
@@ -94,8 +94,8 @@ export class PlanningController {
   @Roles(...CRM_ROLES)
   @ApiOperation({ summary: 'Sessie bijwerken (datum/duur/notitie)' })
   async updateSession(
-    @Param('id', ParseUUIDPipe) id: string,
-    @Param('sessionId', ParseUUIDPipe) sessionId: string,
+    @Param('id', ParseUuidPipe) id: string,
+    @Param('sessionId', ParseUuidPipe) sessionId: string,
     @Body() dto: UpdateSessionDto,
     @CurrentUser() user: User,
   ) {
@@ -108,8 +108,8 @@ export class PlanningController {
   @ApiOperation({ summary: 'Sessie annuleren (VERVALLEN)' })
   @HttpCode(HttpStatus.OK)
   async cancelSession(
-    @Param('id', ParseUUIDPipe) id: string,
-    @Param('sessionId', ParseUUIDPipe) sessionId: string,
+    @Param('id', ParseUuidPipe) id: string,
+    @Param('sessionId', ParseUuidPipe) sessionId: string,
     @CurrentUser() user: User,
   ) {
     await this.sessionsService.cancelSession(id, sessionId, user);
@@ -121,8 +121,8 @@ export class PlanningController {
   @ApiOperation({ summary: 'Inspecteurs toewijzen aan sessie' })
   @HttpCode(HttpStatus.OK)
   async assignSessionInspectors(
-    @Param('id', ParseUUIDPipe) id: string,
-    @Param('sessionId', ParseUUIDPipe) sessionId: string,
+    @Param('id', ParseUuidPipe) id: string,
+    @Param('sessionId', ParseUuidPipe) sessionId: string,
     @Body() dto: AssignSessionInspectorsDto,
     @CurrentUser() user: User,
   ) {
@@ -135,8 +135,8 @@ export class PlanningController {
   @ApiOperation({ summary: 'Sessie accepteren (inspecteur)' })
   @HttpCode(HttpStatus.OK)
   async acceptSession(
-    @Param('id', ParseUUIDPipe) id: string,
-    @Param('sessionId', ParseUUIDPipe) sessionId: string,
+    @Param('id', ParseUuidPipe) id: string,
+    @Param('sessionId', ParseUuidPipe) sessionId: string,
     @CurrentUser() user: User,
   ) {
     await this.sessionsService.acceptSession(id, sessionId, user);
@@ -148,8 +148,8 @@ export class PlanningController {
   @ApiOperation({ summary: 'Sessie weigeren (inspecteur)' })
   @HttpCode(HttpStatus.OK)
   async rejectSession(
-    @Param('id', ParseUUIDPipe) id: string,
-    @Param('sessionId', ParseUUIDPipe) sessionId: string,
+    @Param('id', ParseUuidPipe) id: string,
+    @Param('sessionId', ParseUuidPipe) sessionId: string,
     @Body() dto: RejectSessionDto,
     @CurrentUser() user: User,
   ) {
@@ -162,8 +162,8 @@ export class PlanningController {
   @ApiOperation({ summary: 'Sessie handmatig bevestigen als DEFINITIEF (planner override)' })
   @HttpCode(HttpStatus.OK)
   async confirmSession(
-    @Param('id', ParseUUIDPipe) id: string,
-    @Param('sessionId', ParseUUIDPipe) sessionId: string,
+    @Param('id', ParseUuidPipe) id: string,
+    @Param('sessionId', ParseUuidPipe) sessionId: string,
     @CurrentUser() user: User,
   ) {
     await this.sessionsService.confirmSession(id, sessionId, user);
@@ -175,8 +175,8 @@ export class PlanningController {
   @ApiOperation({ summary: 'Sessie verzetten (vervangt huidige sessie)' })
   @HttpCode(HttpStatus.OK)
   async rescheduleSession(
-    @Param('id', ParseUUIDPipe) id: string,
-    @Param('sessionId', ParseUUIDPipe) sessionId: string,
+    @Param('id', ParseUuidPipe) id: string,
+    @Param('sessionId', ParseUuidPipe) sessionId: string,
     @Body() dto: RescheduleSessionDto,
     @CurrentUser() user: User,
   ) {
@@ -189,8 +189,8 @@ export class PlanningController {
   @ApiOperation({ summary: 'Sessie afronden (AFGEROND)' })
   @HttpCode(HttpStatus.OK)
   async completeSession(
-    @Param('id', ParseUUIDPipe) id: string,
-    @Param('sessionId', ParseUUIDPipe) sessionId: string,
+    @Param('id', ParseUuidPipe) id: string,
+    @Param('sessionId', ParseUuidPipe) sessionId: string,
     @CurrentUser() user: User,
   ) {
     await this.sessionsService.completeSession(id, sessionId, user);
@@ -202,7 +202,7 @@ export class PlanningController {
   @Get(':id')
   @Roles(...ALL_STAFF)
   @ApiOperation({ summary: 'Planregel ophalen' })
-  async findOne(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: User) {
+  async findOne(@Param('id', ParseUuidPipe) id: string, @CurrentUser() user: User) {
     const data = await this.service.findOne(id, user);
     return { success: true, data };
   }
@@ -211,7 +211,7 @@ export class PlanningController {
   @Roles(...CRM_ROLES)
   @ApiOperation({ summary: 'Status van planregel direct wijzigen' })
   async updateStatus(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @Body() dto: UpdatePlanningStatusDto,
     @CurrentUser() user: User,
   ) {
@@ -223,7 +223,7 @@ export class PlanningController {
   @Roles(...CRM_ROLES)
   @ApiOperation({ summary: 'Planregel bijwerken' })
   async update(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @Body() dto: UpdatePlanningItemDto,
     @CurrentUser() user: User,
   ) {
@@ -237,7 +237,7 @@ export class PlanningController {
   @Roles(...CRM_ROLES)
   @ApiOperation({ summary: 'Inspecteurs toewijzen' })
   async assignInspectors(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @Body() dto: AssignInspectorsDto,
     @CurrentUser() user: User,
   ) {
@@ -249,7 +249,7 @@ export class PlanningController {
   @Roles(Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.INSPECTEUR)
   @ApiOperation({ summary: 'Afspraak accepteren (inspecteur)' })
   @HttpCode(HttpStatus.OK)
-  async accept(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: User) {
+  async accept(@Param('id', ParseUuidPipe) id: string, @CurrentUser() user: User) {
     await this.service.acceptPlanning(id, user);
     return { success: true, message: 'Afspraak geaccepteerd' };
   }
@@ -259,7 +259,7 @@ export class PlanningController {
   @ApiOperation({ summary: 'Afspraak weigeren (inspecteur)' })
   @HttpCode(HttpStatus.OK)
   async reject(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @Body() dto: RejectPlanningDto,
     @CurrentUser() user: User,
   ) {
@@ -271,7 +271,7 @@ export class PlanningController {
   @Roles(...CRM_ROLES)
   @ApiOperation({ summary: 'Afspraak afronden' })
   @HttpCode(HttpStatus.OK)
-  async complete(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: User) {
+  async complete(@Param('id', ParseUuidPipe) id: string, @CurrentUser() user: User) {
     await this.service.completePlanning(id, user);
     return { success: true, message: 'Afspraak afgerond' };
   }
@@ -281,7 +281,7 @@ export class PlanningController {
   @ApiOperation({ summary: 'Afspraak verzetten (maakt nieuwe planregel)' })
   @HttpCode(HttpStatus.OK)
   async reschedule(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @Body() dto: ReschedulePlanningDto,
     @CurrentUser() user: User,
   ) {
@@ -293,7 +293,7 @@ export class PlanningController {
   @Roles(...CRM_ROLES)
   @ApiOperation({ summary: 'Bevestigings-e-mail opnieuw versturen' })
   @HttpCode(HttpStatus.OK)
-  async sendConfirmation(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: User) {
+  async sendConfirmation(@Param('id', ParseUuidPipe) id: string, @CurrentUser() user: User) {
     await this.service.sendConfirmation(id, user);
     return { success: true, message: 'Bevestiging verstuurd' };
   }
@@ -303,7 +303,7 @@ export class PlanningController {
   @Get(':id/questions')
   @Roles(...ALL_STAFF)
   @ApiOperation({ summary: 'Vragen & antwoorden ophalen' })
-  async getQuestions(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: User) {
+  async getQuestions(@Param('id', ParseUuidPipe) id: string, @CurrentUser() user: User) {
     const data = await this.service.getQuestions(id, user);
     return { success: true, data };
   }
@@ -312,7 +312,7 @@ export class PlanningController {
   @Roles(...ALL_STAFF)
   @ApiOperation({ summary: 'Vraag of antwoord toevoegen' })
   async addQuestion(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @Body() dto: AddQuestionDto,
     @CurrentUser() user: User,
   ) {
@@ -325,7 +325,7 @@ export class PlanningController {
   @Get(':id/followers')
   @Roles(...CRM_ROLES)
   @ApiOperation({ summary: 'Volgers ophalen' })
-  async getFollowers(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: User) {
+  async getFollowers(@Param('id', ParseUuidPipe) id: string, @CurrentUser() user: User) {
     const data = await this.followersService.getFollowers(id, user);
     return { success: true, data };
   }
@@ -334,7 +334,7 @@ export class PlanningController {
   @Roles(...CRM_ROLES)
   @ApiOperation({ summary: 'Volger toevoegen' })
   async addFollower(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @Body() dto: AddFollowerDto,
     @CurrentUser() user: User,
   ) {
@@ -346,8 +346,8 @@ export class PlanningController {
   @Roles(...CRM_ROLES)
   @ApiOperation({ summary: 'Volger verwijderen' })
   async removeFollower(
-    @Param('id', ParseUUIDPipe) id: string,
-    @Param('followerId', ParseUUIDPipe) followerId: string,
+    @Param('id', ParseUuidPipe) id: string,
+    @Param('followerId', ParseUuidPipe) followerId: string,
     @CurrentUser() user: User,
   ) {
     await this.followersService.removeFollower(id, followerId, user);

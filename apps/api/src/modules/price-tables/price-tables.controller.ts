@@ -8,7 +8,6 @@ import {
   Param,
   Body,
   Query,
-  ParseUUIDPipe,
 } from '@nestjs/common';
 import { RequiresFeature } from '@/common/decorators/requires-feature.decorator';
 import {
@@ -27,6 +26,7 @@ import {
   ListPriceTablesQueryDto,
 } from './dto';
 import { Roles, CurrentUser } from '@/common/decorators';
+import { ParseUuidPipe } from '@/common';
 
 @ApiTags('Price Tables')
 @ApiBearerAuth()
@@ -61,7 +61,7 @@ export class PriceTablesController {
   @ApiOperation({ summary: 'Prijstabel(len) voor relatie ophalen' })
   @ApiResponse({ status: 200, description: 'Prijstabellen van relatie' })
   async findForContact(
-    @Param('contactId', ParseUUIDPipe) contactId: string,
+    @Param('contactId', ParseUuidPipe) contactId: string,
     @CurrentUser() user: User,
   ) {
     const tables = await this.priceTablesService.findForContact(contactId, user);
@@ -73,7 +73,7 @@ export class PriceTablesController {
   @ApiOperation({ summary: 'Prijstabel detail ophalen' })
   @ApiResponse({ status: 200, description: 'Prijstabel details' })
   async findOne(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @CurrentUser() user: User,
   ) {
     const priceTable = await this.priceTablesService.findOne(id, user);
@@ -85,7 +85,7 @@ export class PriceTablesController {
   @ApiOperation({ summary: 'Prijstabel bijwerken' })
   @ApiResponse({ status: 200, description: 'Prijstabel bijgewerkt' })
   async update(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @Body() dto: UpdatePriceTableDto,
     @CurrentUser() user: User,
   ) {
@@ -98,7 +98,7 @@ export class PriceTablesController {
   @ApiOperation({ summary: 'Producten en prijzen instellen' })
   @ApiResponse({ status: 200, description: 'Items bijgewerkt' })
   async setItems(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @Body() dto: SetPriceTableItemsDto,
     @CurrentUser() user: User,
   ) {
@@ -111,8 +111,8 @@ export class PriceTablesController {
   @ApiOperation({ summary: 'Prijstabel aan relatie koppelen' })
   @ApiResponse({ status: 201, description: 'Koppeling aangemaakt' })
   async assignToContact(
-    @Param('id', ParseUUIDPipe) id: string,
-    @Param('contactId', ParseUUIDPipe) contactId: string,
+    @Param('id', ParseUuidPipe) id: string,
+    @Param('contactId', ParseUuidPipe) contactId: string,
     @CurrentUser() user: User,
   ) {
     const result = await this.priceTablesService.assignToContact(id, contactId, user);
@@ -124,8 +124,8 @@ export class PriceTablesController {
   @ApiOperation({ summary: 'Prijstabel ontkoppelen van relatie' })
   @ApiResponse({ status: 200, description: 'Koppeling verwijderd' })
   async removeFromContact(
-    @Param('id', ParseUUIDPipe) id: string,
-    @Param('contactId', ParseUUIDPipe) contactId: string,
+    @Param('id', ParseUuidPipe) id: string,
+    @Param('contactId', ParseUuidPipe) contactId: string,
     @CurrentUser() user: User,
   ) {
     await this.priceTablesService.removeFromContact(id, contactId, user);

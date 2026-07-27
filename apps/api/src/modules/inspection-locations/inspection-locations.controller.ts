@@ -8,7 +8,6 @@ import {
   Body,
   Query,
   Headers,
-  ParseUUIDPipe,
 } from '@nestjs/common';
 import { RequiresFeature } from '@/common/decorators/requires-feature.decorator';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
@@ -22,6 +21,7 @@ import {
   MoveLocationDto,
   ReorderLocationsDto,
 } from './dto';
+import { ParseUuidPipe } from '@/common';
 
 const ALL = ALL_STAFF;
 
@@ -36,7 +36,7 @@ export class InspectionLocationsController {
   @Roles(...ALL)
   @ApiOperation({ summary: 'Locaties per inspectieplan (boom of plat)' })
   async findAllByPlan(
-    @Param('planId', ParseUUIDPipe) planId: string,
+    @Param('planId', ParseUuidPipe) planId: string,
     @CurrentUser() user: User,
     @Query('parentId') parentId?: string,
     @Query('flat') flat?: string,
@@ -51,7 +51,7 @@ export class InspectionLocationsController {
   @Roles(...ALL)
   @ApiOperation({ summary: 'Hiërarchische boom van locaties' })
   async getTree(
-    @Param('planId', ParseUUIDPipe) planId: string,
+    @Param('planId', ParseUuidPipe) planId: string,
     @CurrentUser() user: User,
   ) {
     return { success: true, data: await this.service.getTree(planId, user) };
@@ -61,7 +61,7 @@ export class InspectionLocationsController {
   @Roles(...ALL)
   @ApiOperation({ summary: 'Aantal locaties voor een plan' })
   async getCount(
-    @Param('planId', ParseUUIDPipe) planId: string,
+    @Param('planId', ParseUuidPipe) planId: string,
     @CurrentUser() user: User,
   ) {
     return { success: true, data: await this.service.getCountByPlan(planId, user) };
@@ -71,7 +71,7 @@ export class InspectionLocationsController {
   @Roles(...ALL)
   @ApiOperation({ summary: 'Locatie aanmaken onder een plan' })
   async create(
-    @Param('planId', ParseUUIDPipe) planId: string,
+    @Param('planId', ParseUuidPipe) planId: string,
     @CurrentUser() user: User,
     @Body() dto: CreateLocationDto,
     @Headers('x-device-id') deviceId?: string,
@@ -83,7 +83,7 @@ export class InspectionLocationsController {
   @Roles(...ALL)
   @ApiOperation({ summary: 'Locaties herordenen' })
   async reorder(
-    @Param('planId', ParseUUIDPipe) planId: string,
+    @Param('planId', ParseUuidPipe) planId: string,
     @CurrentUser() user: User,
     @Body() dto: ReorderLocationsDto,
   ) {
@@ -93,7 +93,7 @@ export class InspectionLocationsController {
   @Get('locations/:id')
   @Roles(...ALL)
   @ApiOperation({ summary: 'Locatie detail' })
-  async findById(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: User) {
+  async findById(@Param('id', ParseUuidPipe) id: string, @CurrentUser() user: User) {
     return { success: true, data: await this.service.findById(id, user) };
   }
 
@@ -101,7 +101,7 @@ export class InspectionLocationsController {
   @Roles(...ALL)
   @ApiOperation({ summary: 'Locatie bijwerken' })
   async update(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @CurrentUser() user: User,
     @Body() dto: UpdateLocationDto,
   ) {
@@ -112,7 +112,7 @@ export class InspectionLocationsController {
   @Roles(...ALL)
   @ApiOperation({ summary: 'Locatie verplaatsen in de boom' })
   async move(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @CurrentUser() user: User,
     @Body() dto: MoveLocationDto,
   ) {
@@ -122,7 +122,7 @@ export class InspectionLocationsController {
   @Delete('locations/:id')
   @Roles(...ALL)
   @ApiOperation({ summary: 'Locatie verwijderen (soft-delete, incl. kinderen)' })
-  async delete(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: User) {
+  async delete(@Param('id', ParseUuidPipe) id: string, @CurrentUser() user: User) {
     return { success: true, data: await this.service.delete(id, user) };
   }
 }

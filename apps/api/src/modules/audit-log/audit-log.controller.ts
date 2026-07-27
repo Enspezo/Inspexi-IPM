@@ -3,7 +3,6 @@ import {
   Get,
   Param,
   Query,
-  ParseUUIDPipe,
 } from '@nestjs/common';
 import { RequiresFeature } from '@/common/decorators/requires-feature.decorator';
 import {
@@ -16,6 +15,7 @@ import { ALL_STAFF, OFFICE_ROLES } from '@/common/auth/roles';
 import { AuditLogService } from './audit-log.service';
 import { ListAuditLogsQueryDto, ListMyActivityQueryDto } from './dto';
 import { Roles, CurrentUser } from '@/common/decorators';
+import { ParseUuidPipe } from '@/common';
 
 @ApiTags('Audit Logs')
 @ApiBearerAuth()
@@ -52,7 +52,7 @@ export class AuditLogController {
   @ApiOperation({ summary: 'List audit logs for an entity' })
   async findByEntity(
     @Param('entityType') entityType: string,
-    @Param('entityId', ParseUUIDPipe) entityId: string,
+    @Param('entityId', ParseUuidPipe) entityId: string,
     @Query() query: ListAuditLogsQueryDto,
     @CurrentUser() user: User,
   ) {

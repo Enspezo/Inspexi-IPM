@@ -7,7 +7,6 @@ import {
   Param,
   Body,
   Query,
-  ParseUUIDPipe,
 } from '@nestjs/common';
 import { RequiresFeature } from '@/common/decorators/requires-feature.decorator';
 import {
@@ -25,6 +24,7 @@ import {
   ListProductGroupsQueryDto,
 } from './dto';
 import { Roles, CurrentUser } from '@/common/decorators';
+import { ParseUuidPipe } from '@/common';
 
 @ApiTags('Product Groups')
 @ApiBearerAuth()
@@ -57,7 +57,7 @@ export class ProductGroupsController {
   @Roles(...CRM_ROLES)
   @ApiOperation({ summary: 'Productgroep detail ophalen' })
   async findOne(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @CurrentUser() user: User,
   ) {
     const group = await this.productGroupsService.findOne(id, user);
@@ -80,7 +80,7 @@ export class ProductGroupsController {
   @Roles(...ORG_ADMINS)
   @ApiOperation({ summary: 'Productgroep bijwerken' })
   async update(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @Body() dto: UpdateProductGroupDto,
     @CurrentUser() user: User,
   ) {
@@ -92,7 +92,7 @@ export class ProductGroupsController {
   @Roles(...ORG_ADMINS)
   @ApiOperation({ summary: 'Productgroep verwijderen (soft delete)' })
   async remove(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @CurrentUser() user: User,
   ) {
     await this.productGroupsService.softDelete(id, user);
@@ -105,7 +105,7 @@ export class ProductGroupsController {
   @Roles(...ORG_ADMINS)
   @ApiOperation({ summary: 'Product toevoegen aan productgroep' })
   async addProduct(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @Body() body: { productId: string },
     @CurrentUser() user: User,
   ) {
@@ -117,8 +117,8 @@ export class ProductGroupsController {
   @Roles(...ORG_ADMINS)
   @ApiOperation({ summary: 'Product verwijderen uit productgroep' })
   async removeProduct(
-    @Param('id', ParseUUIDPipe) id: string,
-    @Param('productId', ParseUUIDPipe) productId: string,
+    @Param('id', ParseUuidPipe) id: string,
+    @Param('productId', ParseUuidPipe) productId: string,
     @CurrentUser() user: User,
   ) {
     const data = await this.productGroupsService.removeProduct(id, productId, user);

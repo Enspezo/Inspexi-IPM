@@ -749,14 +749,14 @@ describe('Cross-tenant FK isolation (e2e)', () => {
         .expect(403);
     });
 
-    it("rejects PDOK-refreshing another org's location (403)", async () => {
-      // Org-ownership wordt vóór elke PDOK-call gecontroleerd, dus dit raakt
-      // nooit het externe PDOK en schrijft geen PdokApiLog-rij.
+    it("rejects PDOK-refreshing another org's location (WP-C1: 404, geen existence-oracle)", async () => {
+      // Org-ownership zit in de org-gescopete query vóór elke PDOK-call, dus dit
+      // raakt nooit het externe PDOK en schrijft geen PdokApiLog-rij.
       await request(app.getHttpServer())
         .post(`/api/v1/contacts/locations/${locationBId}/pdok-refresh`)
         .set('Authorization', `Bearer ${tokenA}`)
         .send({ confirm: false })
-        .expect(403);
+        .expect(404);
 
       const logs = await prisma.pdokApiLog.count({ where: { locationId: locationBId } });
       expect(logs).toBe(0);
@@ -786,11 +786,12 @@ describe('Cross-tenant FK isolation (e2e)', () => {
     });
   });
 
-  // ─── Contactpersoon → locatie koppeling (body FK → 403) ───
-  // addContactPersonLocation weigert een locatie van een andere org (403) en
-  // weigert een contactpersoon van een andere org (404/403 via findContactPerson).
+  // ─── Contactpersoon → locatie koppeling ───
+  // addContactPersonLocation weigert een locatie van een andere org (FK-injectie
+  // in de body → 403 mét NL-melding) en een contactpersoon van een andere org
+  // (id-route → zelfde 404 als "bestaat niet", WP-C1).
   describe('POST /api/v1/contacts/contact-persons/:personId/locations — cross-tenant', () => {
-    it("rejects linking another org's location to an own contact person (403)", async () => {
+    it("rejects linking another org's location to an own contact person (403, FK-injectie)", async () => {
       await request(app.getHttpServer())
         .post(`/api/v1/contacts/contact-persons/${contactPersonAId}/locations`)
         .set('Authorization', `Bearer ${tokenA}`)
@@ -798,12 +799,12 @@ describe('Cross-tenant FK isolation (e2e)', () => {
         .expect(403);
     });
 
-    it("rejects linking a location to another org's contact person (403)", async () => {
+    it("rejects linking a location to another org's contact person (404-oracle)", async () => {
       await request(app.getHttpServer())
         .post(`/api/v1/contacts/contact-persons/${contactPersonBId}/locations`)
         .set('Authorization', `Bearer ${tokenA}`)
         .send({ locationId: locationAId })
-        .expect(403);
+        .expect(404);
     });
 
     it('allows linking an own location to an own contact person (positive control)', async () => {

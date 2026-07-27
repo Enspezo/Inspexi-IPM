@@ -297,7 +297,7 @@ export class PlanningService {
       }),
       'Planregel',
     );
-    assertOrgAccess(user, item.orgId);
+    assertOrgAccess(user, item.orgId, 'Planregel');
     return item;
   }
 
@@ -915,7 +915,7 @@ export class PlanningService {
       }),
       'Planregel',
     );
-    assertOrgAccess(user, item.orgId);
+    assertOrgAccess(user, item.orgId, 'Planregel');
     await this.doSendConfirmationEmails(item);
     await this.addHistoryEntry(id, user.id, 'BEVESTIGING_VERSTUURD', 'Bevestigings-e-mail handmatig verstuurd');
   }

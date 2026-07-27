@@ -98,8 +98,10 @@ export class ContactsService {
   }
 
   async findOne(id: string, user: User) {
-    const contact = await this.prisma.contact.findUnique({
-      where: { id },
+    // WP-C1 (B-105): org-scope in de query zelf — een relatie van een andere
+    // org valt buiten het filter en geeft dezelfde 404 als "bestaat niet".
+    const contact = await this.prisma.contact.findFirst({
+      where: { id, ...orgScope(user) },
       include: {
         addresses: true,
         owner: { select: { id: true, firstName: true, lastName: true } },
@@ -148,11 +150,6 @@ export class ContactsService {
 
     if (!contact || contact.isDeleted) {
       throw new NotFoundException('Relatie niet gevonden');
-    }
-
-    // Check org scoping
-    if (!user.roles.includes(Role.SUPERUSER) && contact.orgId !== user.orgId) {
-      throw new ForbiddenException();
     }
 
     return contact;

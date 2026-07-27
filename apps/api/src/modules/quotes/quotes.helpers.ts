@@ -1,8 +1,8 @@
-import { BadRequestException, ForbiddenException } from '@nestjs/common';
+import { BadRequestException } from '@nestjs/common';
 import { Role, User, QuoteStatus, QuoteTemplate } from '@prisma/client';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '@/prisma';
-import { assertFound } from '@/common';
+import { assertFound, orgScope } from '@/common';
 
 /**
  * The subset of template fields that gets applied onto a quote when a template
@@ -176,9 +176,11 @@ export const QUOTE_INCLUDE = {
 
 /** Org-scoped quote lookup with full includes (shared by all quote services). */
 export async function findQuoteForUser(prisma: PrismaService, id: string, user: User) {
-  const quote = assertFound(await prisma.quote.findUnique({ where: { id }, include: QUOTE_INCLUDE }), 'Offerte');
-  if (!user.roles.includes(Role.SUPERUSER) && quote.orgId !== user.orgId) throw new ForbiddenException();
-  return quote;
+  // WP-C1 (B-105): org-scope in de query — cross-tenant id → zelfde 404.
+  return assertFound(
+    await prisma.quote.findFirst({ where: { id, ...orgScope(user) }, include: QUOTE_INCLUDE }),
+    'Offerte',
+  );
 }
 
 /**

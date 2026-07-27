@@ -119,11 +119,13 @@ describe('ClientInspectionsService (tenant + ClientAccess scoping)', () => {
   });
 
   describe('detail (forbidden / happy)', () => {
-    it('gooit Forbidden wanneer de klant geen toegang heeft (cross-tenant)', async () => {
+    it('gooit dezelfde 404 wanneer de klant geen toegang heeft (WP-C1/B-151: geen existence-oracle)', async () => {
       mockPrisma.clientAccess.findMany.mockResolvedValue([]);
       mockPrisma.inspectionClientAccess.findMany.mockResolvedValue([]);
 
-      await expect(service.detail(user, 'org-B', 'plan-1')).rejects.toThrow(ForbiddenException);
+      await expect(service.detail(user, 'org-B', 'plan-1')).rejects.toThrow(
+        'Inspectie niet gevonden',
+      );
     });
 
     it('geeft het plan met finding-counts bij toegang', async () => {

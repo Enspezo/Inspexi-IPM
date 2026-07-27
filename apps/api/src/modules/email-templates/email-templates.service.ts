@@ -3,11 +3,10 @@ import {
   Inject,
   Logger,
   NotFoundException,
-  ForbiddenException,
   BadRequestException,
 } from '@nestjs/common';
 import { randomUUID } from 'crypto';
-import { User, Role, Prisma, EmailTemplateType } from '@prisma/client';
+import { User, Prisma, EmailTemplateType } from '@prisma/client';
 import { PrismaService } from '@/prisma';
 import { STORAGE_PROVIDER, type StorageProvider } from '@/common/services/storage/storage.interface';
 import { paginate, orgScope, assertFound, sanitizeStorageFilename, requireOrg } from '@/common';
@@ -59,9 +58,10 @@ export class EmailTemplatesService {
   }
 
   async findOne(id: string, user: User) {
-    const template = assertFound(
-      await this.prisma.emailTemplate.findUnique({
-        where: { id },
+    // WP-C1 (B-105): org-scope in de query — cross-tenant id → zelfde 404.
+    return assertFound(
+      await this.prisma.emailTemplate.findFirst({
+        where: { id, ...orgScope(user) },
         include: {
           creator: { select: { id: true, firstName: true, lastName: true } },
           attachments: { orderBy: { sortOrder: 'asc' } },
@@ -69,12 +69,6 @@ export class EmailTemplatesService {
       }),
       'E-mailsjabloon',
     );
-
-    if (!user.roles.includes(Role.SUPERUSER) && template.orgId !== user.orgId) {
-      throw new ForbiddenException();
-    }
-
-    return template;
   }
 
   async create(dto: CreateEmailTemplateDto, user: User) {

@@ -54,6 +54,7 @@ describe('LocationsService', () => {
   const mockPrismaService = {
     contact: {
       findMany: jest.fn(),
+      findFirst: jest.fn(),
       findUnique: jest.fn(),
       create: jest.fn(),
       update: jest.fn(),
@@ -62,6 +63,7 @@ describe('LocationsService', () => {
     location: {
       create: jest.fn(),
       findMany: jest.fn(),
+      findFirst: jest.fn(),
       findUnique: jest.fn(),
       update: jest.fn(),
     },
@@ -139,7 +141,7 @@ describe('LocationsService', () => {
         ...locationDto,
         createdAt: new Date(),
       };
-      mockPrismaService.contact.findUnique.mockResolvedValue(mockContact);
+      mockPrismaService.contact.findFirst.mockResolvedValue(mockContact);
       // Own-org location type → usable
       mockPrismaService.locationTypeDefinition.findUnique.mockResolvedValue({
         orgId: 'org-1',
@@ -177,7 +179,7 @@ describe('LocationsService', () => {
     });
 
     it('should enrich BAG fields server-side from pdokData on create', async () => {
-      mockPrismaService.contact.findUnique.mockResolvedValue(mockContact);
+      mockPrismaService.contact.findFirst.mockResolvedValue(mockContact);
       mockPrismaService.locationTypeDefinition.findUnique.mockResolvedValue({
         orgId: 'org-1', deletedAt: null, scope: 'CRM', isActive: true,
       });
@@ -210,7 +212,7 @@ describe('LocationsService', () => {
     });
 
     it('should not block create when BAG enrichment fails', async () => {
-      mockPrismaService.contact.findUnique.mockResolvedValue(mockContact);
+      mockPrismaService.contact.findFirst.mockResolvedValue(mockContact);
       mockPrismaService.locationTypeDefinition.findUnique.mockResolvedValue({
         orgId: 'org-1', deletedAt: null, scope: 'CRM', isActive: true,
       });
@@ -233,7 +235,7 @@ describe('LocationsService', () => {
     });
 
     it('should reject a location type owned by another org with Forbidden', async () => {
-      mockPrismaService.contact.findUnique.mockResolvedValue(mockContact);
+      mockPrismaService.contact.findFirst.mockResolvedValue(mockContact);
       mockPrismaService.locationTypeDefinition.findUnique.mockResolvedValue({
         orgId: 'org-2',
         deletedAt: null,
@@ -246,7 +248,7 @@ describe('LocationsService', () => {
     });
 
     it('should allow a system location type (orgId null)', async () => {
-      mockPrismaService.contact.findUnique.mockResolvedValue(mockContact);
+      mockPrismaService.contact.findFirst.mockResolvedValue(mockContact);
       mockPrismaService.locationTypeDefinition.findUnique.mockResolvedValue({
         orgId: null,
         deletedAt: null,
@@ -359,7 +361,7 @@ describe('LocationsService', () => {
           createdAt: new Date(),
         },
       ];
-      mockPrismaService.contact.findUnique.mockResolvedValue(mockContact);
+      mockPrismaService.contact.findFirst.mockResolvedValue(mockContact);
       mockPrismaService.location.findMany.mockResolvedValue(locations);
 
       const result = await service.findLocations('contact-1', mockUser);
@@ -404,21 +406,25 @@ describe('LocationsService', () => {
       pdokData: { id: 'adr-1', adresseerbaarobject_id: '0363010000000001' },
     };
 
-    it('should reject a location from another org with Forbidden', async () => {
-      mockPrismaService.location.findUnique.mockResolvedValue({
-        ...baseLocation,
-        orgId: 'org-2',
-      });
+    it('should reject a location from another org with the same 404 as not-found (WP-C1)', async () => {
+      // Org-scope zit in de where-clausule: het record van een andere org komt
+      // simpelweg niet terug — geen 403-existence-oracle meer.
+      mockPrismaService.location.findFirst.mockResolvedValue(null);
 
       await expect(service.pdokRefresh('loc-1', false, mockUser)).rejects.toThrow(
-        ForbiddenException,
+        'Locatie niet gevonden',
+      );
+      expect(mockPrismaService.location.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ id: 'loc-1', orgId: 'org-1' }),
+        }),
       );
       expect(mockGeocodingService.lookup).not.toHaveBeenCalled();
       expect(mockPrismaService.location.update).not.toHaveBeenCalled();
     });
 
     it('should throw NotFound when the location does not exist', async () => {
-      mockPrismaService.location.findUnique.mockResolvedValue(null);
+      mockPrismaService.location.findFirst.mockResolvedValue(null);
 
       await expect(service.pdokRefresh('missing', false, mockUser)).rejects.toThrow(
         NotFoundException,
@@ -426,7 +432,7 @@ describe('LocationsService', () => {
     });
 
     it('should save directly when there was no prior data (no confirm needed)', async () => {
-      mockPrismaService.location.findUnique.mockResolvedValue(baseLocation);
+      mockPrismaService.location.findFirst.mockResolvedValue(baseLocation);
       mockGeocodingService.lookup.mockResolvedValue(freshAddress);
       mockGeocodingService.extractAdresseerbaarObjectId.mockReturnValue('0363010000000001');
       mockGeocodingService.bagEnrich.mockResolvedValue({
@@ -451,7 +457,7 @@ describe('LocationsService', () => {
     });
 
     it('should return the diff WITHOUT saving when data differs and confirm is false', async () => {
-      mockPrismaService.location.findUnique.mockResolvedValue({
+      mockPrismaService.location.findFirst.mockResolvedValue({
         ...baseLocation,
         gebruiksfunctie: 'kantoorfunctie',
         bouwjaar: 2000,
@@ -475,7 +481,7 @@ describe('LocationsService', () => {
     });
 
     it('should overwrite when confirm is true', async () => {
-      mockPrismaService.location.findUnique.mockResolvedValue({
+      mockPrismaService.location.findFirst.mockResolvedValue({
         ...baseLocation,
         gebruiksfunctie: 'kantoorfunctie',
         bouwjaar: 2000,
@@ -496,7 +502,7 @@ describe('LocationsService', () => {
     });
 
     it('should fall back to address lookup when there is no stored pdok id', async () => {
-      mockPrismaService.location.findUnique.mockResolvedValue({
+      mockPrismaService.location.findFirst.mockResolvedValue({
         ...baseLocation,
         pdokData: null,
       });
@@ -515,7 +521,7 @@ describe('LocationsService', () => {
     });
 
     it('should throw NotFound when PDOK returns no result for the address', async () => {
-      mockPrismaService.location.findUnique.mockResolvedValue({
+      mockPrismaService.location.findFirst.mockResolvedValue({
         ...baseLocation,
         pdokData: null,
       });

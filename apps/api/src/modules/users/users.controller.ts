@@ -7,8 +7,6 @@ import {
   Param,
   Body,
   Query,
-  ParseUUIDPipe,
-  ForbiddenException,
   NotFoundException,
   UseInterceptors,
   UploadedFile,
@@ -27,7 +25,7 @@ import { Response } from 'express';
 import { createHash } from 'crypto';
 import { User, Role } from '@prisma/client';
 import { ORG_ADMINS, MANAGEMENT_ROLES, ALL_STAFF } from '@/common/auth/roles';
-import { setBinaryResponseHeaders } from '@/common';
+import { setBinaryResponseHeaders, ParseUuidPipe } from '@/common';
 import { UsersService } from './users.service';
 import {
   InviteUserDto,
@@ -221,7 +219,7 @@ export class UsersController {
   @ApiOperation({ summary: 'Aantal records van een gebruiker ophalen voor overdracht' })
   @ApiResponse({ status: 200, description: 'Record counts' })
   async getRecordCounts(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @CurrentUser() user: User,
   ) {
     const counts = await this.usersService.getRecordCounts(id, user);
@@ -233,7 +231,7 @@ export class UsersController {
   @ApiOperation({ summary: 'Gebruiker verwijderen (soft delete met overdracht)' })
   @ApiResponse({ status: 200, description: 'Gebruiker verwijderd' })
   async softDelete(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @Body() dto: DeleteUserDto,
     @CurrentUser() user: User,
   ) {
@@ -247,12 +245,13 @@ export class UsersController {
   @ApiResponse({ status: 200, description: 'Gebruiker details' })
   @ApiResponse({ status: 404, description: 'Niet gevonden' })
   async findOne(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @CurrentUser() user: User,
   ) {
     const found = await this.usersService.findOne(id);
+    // Tenant-isolatie (WP-C1 / B-105): cross-tenant id → zelfde 404 als "bestaat niet".
     if (!user.roles.includes(Role.SUPERUSER) && found.orgId !== user.orgId) {
-      throw new ForbiddenException();
+      throw new NotFoundException('Gebruiker niet gevonden');
     }
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { passwordHash, ...rest } = found;
@@ -264,7 +263,7 @@ export class UsersController {
   @ApiOperation({ summary: 'Gebruiker deactiveren (soft delete)' })
   @ApiResponse({ status: 200, description: 'Gebruiker gedeactiveerd' })
   async deactivate(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @CurrentUser() user: User,
   ) {
     await this.usersService.deactivate(id, user);
@@ -276,7 +275,7 @@ export class UsersController {
   @ApiOperation({ summary: 'Gebruiker heractiveren' })
   @ApiResponse({ status: 200, description: 'Gebruiker geactiveerd' })
   async activate(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @CurrentUser() user: User,
   ) {
     await this.usersService.activate(id, user);
@@ -288,7 +287,7 @@ export class UsersController {
   @ApiOperation({ summary: 'Gebruikersrol wijzigen' })
   @ApiResponse({ status: 200, description: 'Rol gewijzigd' })
   async changeRole(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @Body() dto: ChangeRoleDto,
     @CurrentUser() user: User,
   ) {
@@ -302,7 +301,7 @@ export class UsersController {
   @ApiResponse({ status: 200, description: 'Wachtwoord gereset' })
   @ApiResponse({ status: 403, description: 'Geen bevoegdheid' })
   async adminResetPassword(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @Body() dto: AdminResetPasswordDto,
     @CurrentUser() user: User,
   ) {
@@ -314,7 +313,7 @@ export class UsersController {
   @ApiOperation({ summary: 'Inspecteurkleur instellen (eigen profiel of ORG_ADMIN)' })
   @ApiResponse({ status: 200, description: 'Kleur bijgewerkt' })
   async updateColor(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @Body() dto: UpdateColorDto,
     @CurrentUser() user: User,
   ) {
@@ -331,7 +330,7 @@ export class UsersController {
   @ApiOperation({ summary: 'Gebruikersgegevens bijwerken (admin / manager: alleen dienstvorm)' })
   @ApiResponse({ status: 200, description: 'Gebruiker bijgewerkt' })
   async adminUpdate(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @Body() dto: AdminUpdateUserDto,
     @CurrentUser() user: User,
   ) {

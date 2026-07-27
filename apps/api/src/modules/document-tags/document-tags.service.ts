@@ -58,17 +58,14 @@ export class DocumentTagsService {
   }
 
   async findOne(id: string, user: User) {
-    const tag = await this.prisma.documentTag.findUnique({
-      where: { id },
+    // WP-C1 (B-105): org-scope in de query — cross-tenant id → zelfde 404.
+    const tag = await this.prisma.documentTag.findFirst({
+      where: { id, ...orgScope(user) },
       include: { _count: { select: { documents: { where: { document: { isDeleted: false } } } } } },
     });
 
     if (!tag || tag.isDeleted) {
       throw new NotFoundException('Document-tag niet gevonden');
-    }
-
-    if (!user.roles.includes(Role.SUPERUSER) && tag.orgId !== user.orgId) {
-      throw new ForbiddenException();
     }
 
     return tag;

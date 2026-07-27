@@ -159,37 +159,40 @@ describe('EmailTemplatesService', () => {
 
   describe('findOne', () => {
     it('should return a template for the owning org user', async () => {
-      mockPrismaService.emailTemplate.findUnique.mockResolvedValue(mockTemplate);
+      mockPrismaService.emailTemplate.findFirst.mockResolvedValue(mockTemplate);
 
       const result = await service.findOne('tmpl-1', mockUser);
 
       expect(result.id).toBe('tmpl-1');
-      expect(mockPrismaService.emailTemplate.findUnique).toHaveBeenCalledWith(
-        expect.objectContaining({ where: { id: 'tmpl-1' } }),
+      expect(mockPrismaService.emailTemplate.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: 'tmpl-1', orgId: 'org-1' } }),
       );
     });
 
     it('should throw NotFoundException when template does not exist', async () => {
-      mockPrismaService.emailTemplate.findUnique.mockResolvedValue(null);
+      mockPrismaService.emailTemplate.findFirst.mockResolvedValue(null);
 
       await expect(service.findOne('nonexistent', mockUser)).rejects.toThrow(
         NotFoundException,
       );
     });
 
-    it('should throw ForbiddenException for cross-org access', async () => {
-      mockPrismaService.emailTemplate.findUnique.mockResolvedValue({
-        ...mockTemplate,
-        orgId: 'other-org',
-      });
+    it('should throw the same NotFound for cross-org access (WP-C1: 404-oracle)', async () => {
+      // Org-scope in de where-clausule: andermans sjabloon komt niet terug.
+      mockPrismaService.emailTemplate.findFirst.mockResolvedValue(null);
 
       await expect(service.findOne('tmpl-1', mockUser)).rejects.toThrow(
-        ForbiddenException,
+        'E-mailsjabloon niet gevonden',
+      );
+      expect(mockPrismaService.emailTemplate.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ id: 'tmpl-1', orgId: 'org-1' }),
+        }),
       );
     });
 
     it('should allow SUPERUSER to access any org template', async () => {
-      mockPrismaService.emailTemplate.findUnique.mockResolvedValue({
+      mockPrismaService.emailTemplate.findFirst.mockResolvedValue({
         ...mockTemplate,
         orgId: 'other-org',
       });
@@ -271,7 +274,7 @@ describe('EmailTemplatesService', () => {
 
   describe('update', () => {
     it('should update a template', async () => {
-      mockPrismaService.emailTemplate.findUnique.mockResolvedValue(mockTemplate);
+      mockPrismaService.emailTemplate.findFirst.mockResolvedValue(mockTemplate);
       const updated = { ...mockTemplate, name: 'Bijgewerkt' };
       mockPrismaService.emailTemplate.update.mockResolvedValue(updated);
 
@@ -282,7 +285,7 @@ describe('EmailTemplatesService', () => {
     });
 
     it('should deactivate other active templates when activating', async () => {
-      mockPrismaService.emailTemplate.findUnique.mockResolvedValue(mockTemplate);
+      mockPrismaService.emailTemplate.findFirst.mockResolvedValue(mockTemplate);
       mockPrismaService.emailTemplate.updateMany.mockResolvedValue({ count: 1 });
       mockPrismaService.emailTemplate.update.mockResolvedValue({ ...mockTemplate, isActive: true });
 
@@ -302,7 +305,7 @@ describe('EmailTemplatesService', () => {
     });
 
     it('should NOT call updateMany when not activating', async () => {
-      mockPrismaService.emailTemplate.findUnique.mockResolvedValue(mockTemplate);
+      mockPrismaService.emailTemplate.findFirst.mockResolvedValue(mockTemplate);
       mockPrismaService.emailTemplate.update.mockResolvedValue({ ...mockTemplate, name: 'Ander' });
 
       await service.update('tmpl-1', { name: 'Ander' }, mockUser);
@@ -311,28 +314,25 @@ describe('EmailTemplatesService', () => {
     });
 
     it('should throw NotFoundException for missing template', async () => {
-      mockPrismaService.emailTemplate.findUnique.mockResolvedValue(null);
+      mockPrismaService.emailTemplate.findFirst.mockResolvedValue(null);
 
       await expect(service.update('nonexistent', { name: 'X' }, mockUser)).rejects.toThrow(
         NotFoundException,
       );
     });
 
-    it('should throw ForbiddenException for cross-org update', async () => {
-      mockPrismaService.emailTemplate.findUnique.mockResolvedValue({
-        ...mockTemplate,
-        orgId: 'other-org',
-      });
+    it('should throw NotFound for cross-org update (WP-C1: 404-oracle)', async () => {
+      mockPrismaService.emailTemplate.findFirst.mockResolvedValue(null);
 
       await expect(service.update('tmpl-1', { name: 'X' }, mockUser)).rejects.toThrow(
-        ForbiddenException,
+        NotFoundException,
       );
     });
   });
 
   describe('deactivate', () => {
     it('should set isActive to false', async () => {
-      mockPrismaService.emailTemplate.findUnique.mockResolvedValue(mockTemplate);
+      mockPrismaService.emailTemplate.findFirst.mockResolvedValue(mockTemplate);
       mockPrismaService.emailTemplate.update.mockResolvedValue({ ...mockTemplate, isActive: false });
 
       await service.deactivate('tmpl-1', mockUser);
@@ -346,7 +346,7 @@ describe('EmailTemplatesService', () => {
     });
 
     it('should throw NotFoundException when template does not exist', async () => {
-      mockPrismaService.emailTemplate.findUnique.mockResolvedValue(null);
+      mockPrismaService.emailTemplate.findFirst.mockResolvedValue(null);
 
       await expect(service.deactivate('nonexistent', mockUser)).rejects.toThrow(
         NotFoundException,
@@ -367,7 +367,7 @@ describe('EmailTemplatesService', () => {
     };
 
     it('should create a copy of the template with "(kopie)" suffix', async () => {
-      mockPrismaService.emailTemplate.findUnique
+      mockPrismaService.emailTemplate.findFirst
         .mockResolvedValueOnce(mockTemplate) // findOne call inside duplicate
         .mockResolvedValueOnce({ ...mockTemplate, id: 'tmpl-copy', name: 'Offerte template (kopie)', attachments: [] }); // findOne call at end
 
@@ -394,7 +394,7 @@ describe('EmailTemplatesService', () => {
     it('should copy attachments when present', async () => {
       const templateWithAttachments = { ...mockTemplate, attachments: [mockAttachment] };
 
-      mockPrismaService.emailTemplate.findUnique
+      mockPrismaService.emailTemplate.findFirst
         .mockResolvedValueOnce(templateWithAttachments) // findOne inside duplicate
         .mockResolvedValueOnce({ ...mockTemplate, id: 'tmpl-copy', attachments: [] }); // findOne at end
 
@@ -418,7 +418,7 @@ describe('EmailTemplatesService', () => {
     it('should continue even if attachment copy fails', async () => {
       const templateWithAttachments = { ...mockTemplate, attachments: [mockAttachment] };
 
-      mockPrismaService.emailTemplate.findUnique
+      mockPrismaService.emailTemplate.findFirst
         .mockResolvedValueOnce(templateWithAttachments)
         .mockResolvedValueOnce({ ...mockTemplate, id: 'tmpl-copy', attachments: [] });
 
@@ -583,7 +583,7 @@ describe('EmailTemplatesService', () => {
   describe('getAttachments', () => {
     it('should return attachments for a template', async () => {
       const attachments = [{ id: 'att-1', originalName: 'doc.pdf', emailTemplateId: 'tmpl-1' }];
-      mockPrismaService.emailTemplate.findUnique.mockResolvedValue(mockTemplate);
+      mockPrismaService.emailTemplate.findFirst.mockResolvedValue(mockTemplate);
       mockPrismaService.emailTemplateAttachment.findMany.mockResolvedValue(attachments);
 
       const result = await service.getAttachments('tmpl-1', mockUser);
@@ -592,21 +592,18 @@ describe('EmailTemplatesService', () => {
       expect(result[0].originalName).toBe('doc.pdf');
     });
 
-    it('should throw ForbiddenException for cross-org template', async () => {
-      mockPrismaService.emailTemplate.findUnique.mockResolvedValue({
-        ...mockTemplate,
-        orgId: 'other-org',
-      });
+    it('should throw NotFound for cross-org template (WP-C1: 404-oracle)', async () => {
+      mockPrismaService.emailTemplate.findFirst.mockResolvedValue(null);
 
       await expect(service.getAttachments('tmpl-1', mockUser)).rejects.toThrow(
-        ForbiddenException,
+        NotFoundException,
       );
     });
   });
 
   describe('uploadAttachment', () => {
     it('should upload an attachment and create a record', async () => {
-      mockPrismaService.emailTemplate.findUnique.mockResolvedValue(mockTemplate);
+      mockPrismaService.emailTemplate.findFirst.mockResolvedValue(mockTemplate);
       mockStorageProvider.upload.mockResolvedValue(undefined);
       mockPrismaService.emailTemplateAttachment.aggregate.mockResolvedValue({ _max: { sortOrder: 0 } });
       const createdAtt = { id: 'att-new', originalName: 'test.pdf', emailTemplateId: 'tmpl-1' };
@@ -636,7 +633,7 @@ describe('EmailTemplatesService', () => {
     });
 
     it('should throw BadRequestException for disallowed MIME type', async () => {
-      mockPrismaService.emailTemplate.findUnique.mockResolvedValue(mockTemplate);
+      mockPrismaService.emailTemplate.findFirst.mockResolvedValue(mockTemplate);
 
       const file = {
         originalname: 'script.exe',
@@ -651,7 +648,7 @@ describe('EmailTemplatesService', () => {
     });
 
     it('should assign sortOrder 0 when no existing attachments', async () => {
-      mockPrismaService.emailTemplate.findUnique.mockResolvedValue(mockTemplate);
+      mockPrismaService.emailTemplate.findFirst.mockResolvedValue(mockTemplate);
       mockStorageProvider.upload.mockResolvedValue(undefined);
       mockPrismaService.emailTemplateAttachment.aggregate.mockResolvedValue({ _max: { sortOrder: null } });
       mockPrismaService.emailTemplateAttachment.create.mockResolvedValue({ id: 'att-1' });
@@ -682,7 +679,7 @@ describe('EmailTemplatesService', () => {
         originalName: 'file.pdf',
         mimeType: 'application/pdf',
       };
-      mockPrismaService.emailTemplate.findUnique.mockResolvedValue(mockTemplate);
+      mockPrismaService.emailTemplate.findFirst.mockResolvedValue(mockTemplate);
       mockPrismaService.emailTemplateAttachment.findUnique.mockResolvedValue(attachment);
       mockStorageProvider.download.mockResolvedValue(Buffer.from('pdf content'));
 
@@ -693,7 +690,7 @@ describe('EmailTemplatesService', () => {
     });
 
     it('should throw NotFoundException when attachment does not exist', async () => {
-      mockPrismaService.emailTemplate.findUnique.mockResolvedValue(mockTemplate);
+      mockPrismaService.emailTemplate.findFirst.mockResolvedValue(mockTemplate);
       mockPrismaService.emailTemplateAttachment.findUnique.mockResolvedValue(null);
 
       await expect(service.downloadAttachment('tmpl-1', 'nonexistent', mockUser)).rejects.toThrow(
@@ -702,7 +699,7 @@ describe('EmailTemplatesService', () => {
     });
 
     it('should throw NotFoundException when attachment belongs to different template', async () => {
-      mockPrismaService.emailTemplate.findUnique.mockResolvedValue(mockTemplate);
+      mockPrismaService.emailTemplate.findFirst.mockResolvedValue(mockTemplate);
       mockPrismaService.emailTemplateAttachment.findUnique.mockResolvedValue({
         id: 'att-1',
         emailTemplateId: 'other-tmpl',
@@ -721,7 +718,7 @@ describe('EmailTemplatesService', () => {
         emailTemplateId: 'tmpl-1',
         storageKey: 'org-1/et/tmpl-1/file.pdf',
       };
-      mockPrismaService.emailTemplate.findUnique.mockResolvedValue(mockTemplate);
+      mockPrismaService.emailTemplate.findFirst.mockResolvedValue(mockTemplate);
       mockPrismaService.emailTemplateAttachment.findUnique.mockResolvedValue(attachment);
       mockStorageProvider.delete.mockResolvedValue(undefined);
       mockPrismaService.emailTemplateAttachment.delete.mockResolvedValue({});
@@ -740,7 +737,7 @@ describe('EmailTemplatesService', () => {
         emailTemplateId: 'tmpl-1',
         storageKey: 'org-1/et/tmpl-1/file.pdf',
       };
-      mockPrismaService.emailTemplate.findUnique.mockResolvedValue(mockTemplate);
+      mockPrismaService.emailTemplate.findFirst.mockResolvedValue(mockTemplate);
       mockPrismaService.emailTemplateAttachment.findUnique.mockResolvedValue(attachment);
       mockStorageProvider.delete.mockRejectedValue(new Error('Storage error'));
       mockPrismaService.emailTemplateAttachment.delete.mockResolvedValue({});
@@ -751,7 +748,7 @@ describe('EmailTemplatesService', () => {
     });
 
     it('should throw NotFoundException when attachment does not exist', async () => {
-      mockPrismaService.emailTemplate.findUnique.mockResolvedValue(mockTemplate);
+      mockPrismaService.emailTemplate.findFirst.mockResolvedValue(mockTemplate);
       mockPrismaService.emailTemplateAttachment.findUnique.mockResolvedValue(null);
 
       await expect(service.deleteAttachment('tmpl-1', 'nonexistent', mockUser)).rejects.toThrow(

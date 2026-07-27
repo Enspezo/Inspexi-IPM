@@ -9,6 +9,7 @@ describe('ProductGroupsService', () => {
 
   const mockPrismaService = {
     productGroup: {
+      findFirst: jest.fn(),
       findMany: jest.fn(),
       findUnique: jest.fn(),
       create: jest.fn(),
@@ -16,6 +17,7 @@ describe('ProductGroupsService', () => {
       count: jest.fn(),
     },
     product: {
+      findFirst: jest.fn(),
       findUnique: jest.fn(),
       update: jest.fn(),
       count: jest.fn(),
@@ -83,7 +85,7 @@ describe('ProductGroupsService', () => {
 
   describe('findOne', () => {
     it('should return a product group with products', async () => {
-      mockPrismaService.productGroup.findUnique.mockResolvedValue({
+      mockPrismaService.productGroup.findFirst.mockResolvedValue({
         id: 'pg-1',
         orgId: 'org-1',
         name: 'Inspections',
@@ -98,7 +100,7 @@ describe('ProductGroupsService', () => {
     });
 
     it('should throw NotFoundException for missing group', async () => {
-      mockPrismaService.productGroup.findUnique.mockResolvedValue(null);
+      mockPrismaService.productGroup.findFirst.mockResolvedValue(null);
 
       await expect(service.findOne('nonexistent', mockUser)).rejects.toThrow(
         NotFoundException,
@@ -106,7 +108,7 @@ describe('ProductGroupsService', () => {
     });
 
     it('should throw NotFoundException for soft-deleted group', async () => {
-      mockPrismaService.productGroup.findUnique.mockResolvedValue({
+      mockPrismaService.productGroup.findFirst.mockResolvedValue({
         id: 'pg-1',
         isDeleted: true,
       });
@@ -116,17 +118,17 @@ describe('ProductGroupsService', () => {
       );
     });
 
-    it('should throw ForbiddenException for cross-org access', async () => {
-      mockPrismaService.productGroup.findUnique.mockResolvedValue({
-        id: 'pg-1',
-        orgId: 'other-org',
-        isDeleted: false,
-        products: [],
-        _count: { products: 0 },
-      });
+    it('should throw NotFoundException for cross-org access (WP-C1: 404-oracle)', async () => {
+      // Org-scope in de where-clausule: andermans groep komt niet terug.
+      mockPrismaService.productGroup.findFirst.mockResolvedValue(null);
 
       await expect(service.findOne('pg-1', mockUser)).rejects.toThrow(
-        ForbiddenException,
+        'Productgroep niet gevonden',
+      );
+      expect(mockPrismaService.productGroup.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ id: 'pg-1', orgId: 'org-1' }),
+        }),
       );
     });
   });
@@ -156,7 +158,7 @@ describe('ProductGroupsService', () => {
 
   describe('softDelete', () => {
     it('should soft-delete a group without active products', async () => {
-      mockPrismaService.productGroup.findUnique.mockResolvedValue({
+      mockPrismaService.productGroup.findFirst.mockResolvedValue({
         id: 'pg-1',
         orgId: 'org-1',
         isDeleted: false,
@@ -175,7 +177,7 @@ describe('ProductGroupsService', () => {
     });
 
     it('should throw ConflictException when group has active products', async () => {
-      mockPrismaService.productGroup.findUnique.mockResolvedValue({
+      mockPrismaService.productGroup.findFirst.mockResolvedValue({
         id: 'pg-1',
         orgId: 'org-1',
         isDeleted: false,
@@ -192,7 +194,7 @@ describe('ProductGroupsService', () => {
 
   describe('addProduct', () => {
     it('should add a product to the group', async () => {
-      mockPrismaService.productGroup.findUnique
+      mockPrismaService.productGroup.findFirst
         .mockResolvedValueOnce({
           id: 'pg-1',
           orgId: 'org-1',
@@ -222,7 +224,7 @@ describe('ProductGroupsService', () => {
     });
 
     it('should throw NotFoundException for missing product', async () => {
-      mockPrismaService.productGroup.findUnique.mockResolvedValue({
+      mockPrismaService.productGroup.findFirst.mockResolvedValue({
         id: 'pg-1',
         orgId: 'org-1',
         isDeleted: false,
@@ -239,7 +241,7 @@ describe('ProductGroupsService', () => {
 
   describe('removeProduct', () => {
     it('should remove a product from the group', async () => {
-      mockPrismaService.productGroup.findUnique
+      mockPrismaService.productGroup.findFirst
         .mockResolvedValueOnce({
           id: 'pg-1',
           orgId: 'org-1',
@@ -254,7 +256,7 @@ describe('ProductGroupsService', () => {
           products: [],
           _count: { products: 0 },
         });
-      mockPrismaService.product.findUnique.mockResolvedValue({
+      mockPrismaService.product.findFirst.mockResolvedValue({
         id: 'p-1',
         orgId: 'org-1',
         productGroupId: 'pg-1',
@@ -270,14 +272,14 @@ describe('ProductGroupsService', () => {
     });
 
     it('should throw NotFoundException for product not in group', async () => {
-      mockPrismaService.productGroup.findUnique.mockResolvedValue({
+      mockPrismaService.productGroup.findFirst.mockResolvedValue({
         id: 'pg-1',
         orgId: 'org-1',
         isDeleted: false,
         products: [],
         _count: { products: 0 },
       });
-      mockPrismaService.product.findUnique.mockResolvedValue({
+      mockPrismaService.product.findFirst.mockResolvedValue({
         id: 'p-1',
         orgId: 'org-1',
         productGroupId: 'pg-other',

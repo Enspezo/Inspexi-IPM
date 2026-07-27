@@ -10,6 +10,7 @@ describe('CustomerGroupsService', () => {
   const mockPrismaService = {
     customerGroup: {
       findMany: jest.fn(),
+      findFirst: jest.fn(),
       findUnique: jest.fn(),
       create: jest.fn(),
       update: jest.fn(),
@@ -102,7 +103,7 @@ describe('CustomerGroupsService', () => {
         contacts: [],
         _count: { contacts: 0 },
       };
-      mockPrismaService.customerGroup.findUnique.mockResolvedValue(mockGroup);
+      mockPrismaService.customerGroup.findFirst.mockResolvedValue(mockGroup);
 
       const result = await service.findOne('g-1', mockUser);
 
@@ -110,7 +111,7 @@ describe('CustomerGroupsService', () => {
     });
 
     it('should throw NotFoundException for missing group', async () => {
-      mockPrismaService.customerGroup.findUnique.mockResolvedValue(null);
+      mockPrismaService.customerGroup.findFirst.mockResolvedValue(null);
 
       await expect(service.findOne('nonexistent', mockUser)).rejects.toThrow(
         NotFoundException,
@@ -118,7 +119,7 @@ describe('CustomerGroupsService', () => {
     });
 
     it('should throw NotFoundException for soft-deleted group', async () => {
-      mockPrismaService.customerGroup.findUnique.mockResolvedValue({
+      mockPrismaService.customerGroup.findFirst.mockResolvedValue({
         id: 'g-1',
         isDeleted: true,
       });
@@ -128,17 +129,17 @@ describe('CustomerGroupsService', () => {
       );
     });
 
-    it('should throw ForbiddenException for cross-org access', async () => {
-      mockPrismaService.customerGroup.findUnique.mockResolvedValue({
-        id: 'g-1',
-        orgId: 'other-org',
-        isDeleted: false,
-        contacts: [],
-        _count: { contacts: 0 },
-      });
+    it('should throw NotFoundException for cross-org access (WP-C1: 404-oracle)', async () => {
+      // Org-scope in de where-clausule: andermans groep komt niet terug.
+      mockPrismaService.customerGroup.findFirst.mockResolvedValue(null);
 
       await expect(service.findOne('g-1', mockUser)).rejects.toThrow(
-        ForbiddenException,
+        'Klantgroep niet gevonden',
+      );
+      expect(mockPrismaService.customerGroup.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ id: 'g-1', orgId: 'org-1' }),
+        }),
       );
     });
   });
@@ -159,7 +160,7 @@ describe('CustomerGroupsService', () => {
 
   describe('update', () => {
     it('should update a customer group', async () => {
-      mockPrismaService.customerGroup.findUnique.mockResolvedValue({
+      mockPrismaService.customerGroup.findFirst.mockResolvedValue({
         id: 'g-1',
         orgId: 'org-1',
         isDeleted: false,
@@ -179,7 +180,7 @@ describe('CustomerGroupsService', () => {
 
   describe('softDelete', () => {
     it('should soft-delete a customer group', async () => {
-      mockPrismaService.customerGroup.findUnique.mockResolvedValue({
+      mockPrismaService.customerGroup.findFirst.mockResolvedValue({
         id: 'g-1',
         orgId: 'org-1',
         isDeleted: false,
@@ -199,7 +200,7 @@ describe('CustomerGroupsService', () => {
 
   describe('addContact', () => {
     it('should add a contact to the group', async () => {
-      mockPrismaService.customerGroup.findUnique
+      mockPrismaService.customerGroup.findFirst
         .mockResolvedValueOnce({
           id: 'g-1',
           orgId: 'org-1',
@@ -228,7 +229,7 @@ describe('CustomerGroupsService', () => {
     });
 
     it('should throw NotFoundException for missing contact', async () => {
-      mockPrismaService.customerGroup.findUnique.mockResolvedValue({
+      mockPrismaService.customerGroup.findFirst.mockResolvedValue({
         id: 'g-1',
         orgId: 'org-1',
         isDeleted: false,
@@ -243,7 +244,7 @@ describe('CustomerGroupsService', () => {
     });
 
     it('should throw ForbiddenException for cross-org contact', async () => {
-      mockPrismaService.customerGroup.findUnique.mockResolvedValue({
+      mockPrismaService.customerGroup.findFirst.mockResolvedValue({
         id: 'g-1',
         orgId: 'org-1',
         isDeleted: false,
@@ -264,7 +265,7 @@ describe('CustomerGroupsService', () => {
 
   describe('removeContact', () => {
     it('should remove a contact from the group', async () => {
-      mockPrismaService.customerGroup.findUnique
+      mockPrismaService.customerGroup.findFirst
         .mockResolvedValueOnce({
           id: 'g-1',
           orgId: 'org-1',

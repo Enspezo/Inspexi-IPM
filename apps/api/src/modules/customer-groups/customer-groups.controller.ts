@@ -7,7 +7,6 @@ import {
   Param,
   Body,
   Query,
-  ParseUUIDPipe,
 } from '@nestjs/common';
 import { RequiresFeature } from '@/common/decorators/requires-feature.decorator';
 import {
@@ -25,6 +24,7 @@ import {
   ListCustomerGroupsQueryDto,
 } from './dto';
 import { Roles, CurrentUser } from '@/common/decorators';
+import { ParseUuidPipe } from '@/common';
 
 @ApiTags('Customer Groups')
 @ApiBearerAuth()
@@ -57,7 +57,7 @@ export class CustomerGroupsController {
   @Roles(...CRM_ROLES)
   @ApiOperation({ summary: 'Klantgroep detail ophalen' })
   async findOne(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @CurrentUser() user: User,
   ) {
     const group = await this.customerGroupsService.findOne(id, user);
@@ -80,7 +80,7 @@ export class CustomerGroupsController {
   @Roles(...ORG_ADMINS)
   @ApiOperation({ summary: 'Klantgroep bijwerken' })
   async update(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @Body() dto: UpdateCustomerGroupDto,
     @CurrentUser() user: User,
   ) {
@@ -92,7 +92,7 @@ export class CustomerGroupsController {
   @Roles(...ORG_ADMINS)
   @ApiOperation({ summary: 'Klantgroep verwijderen (soft delete)' })
   async remove(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @CurrentUser() user: User,
   ) {
     await this.customerGroupsService.softDelete(id, user);
@@ -106,7 +106,7 @@ export class CustomerGroupsController {
   @ApiOperation({ summary: 'Relatie toevoegen aan klantgroep' })
   @ApiResponse({ status: 201, description: 'Relatie toegevoegd aan groep' })
   async addContact(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @Body() body: { contactId: string },
     @CurrentUser() user: User,
   ) {
@@ -123,8 +123,8 @@ export class CustomerGroupsController {
   @ApiOperation({ summary: 'Relatie verwijderen uit klantgroep' })
   @ApiResponse({ status: 200, description: 'Relatie verwijderd uit groep' })
   async removeContact(
-    @Param('id', ParseUUIDPipe) id: string,
-    @Param('contactId', ParseUUIDPipe) contactId: string,
+    @Param('id', ParseUuidPipe) id: string,
+    @Param('contactId', ParseUuidPipe) contactId: string,
     @CurrentUser() user: User,
   ) {
     const group = await this.customerGroupsService.removeContact(

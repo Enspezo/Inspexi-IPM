@@ -1,12 +1,11 @@
 import {
   Injectable,
   NotFoundException,
-  ForbiddenException,
   BadRequestException,
   Inject,
   Logger,
 } from '@nestjs/common';
-import { User, Role, Prisma } from '@prisma/client';
+import { User, Prisma } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import * as mammoth from 'mammoth';
 import { PrismaService } from '@/prisma';
@@ -86,8 +85,9 @@ export class QuoteTemplatesService {
   }
 
   async findOne(id: string, user: User) {
-    const template = assertFound(await this.prisma.quoteTemplate.findUnique({
-      where: { id },
+    // WP-C1 (B-105): org-scope in de query — cross-tenant id → zelfde 404.
+    const template = assertFound(await this.prisma.quoteTemplate.findFirst({
+      where: { id, ...orgScope(user) },
       include: {
         attachments: { orderBy: { sortOrder: 'asc' } },
         docxRevisions: {
@@ -118,10 +118,6 @@ export class QuoteTemplatesService {
         },
       },
     }), 'Template');
-
-    if (!user.roles.includes(Role.SUPERUSER) && template.orgId !== user.orgId) {
-      throw new ForbiddenException();
-    }
 
     return template;
   }

@@ -10,7 +10,7 @@ import { User, Role, Prisma } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import * as mammoth from 'mammoth';
 import { PrismaService } from '@/prisma';
-import { paginate, buildOrderBy, orgScope, assertFound, assertSameOrg, sanitizeStorageFilename } from '@/common';
+import { paginate, buildOrderBy, orgScope, assertFound, assertSameOrg, sanitizeStorageFilename, requireOrg } from '@/common';
 import {
   STORAGE_PROVIDER,
   StorageProvider,
@@ -127,14 +127,13 @@ export class QuoteTemplatesService {
   }
 
   async create(dto: CreateQuoteTemplateDto, user: User) {
-    const orgId = user.orgId;
-    if (!orgId && !user.roles.includes(Role.SUPERUSER)) {
-      throw new ForbiddenException('Geen organisatie gekoppeld');
-    }
+    // WP-B3 (B-503): effectieve org (SUPERUSER op org-subdomein → tenant-org);
+    // zonder org een nette NL-400 i.p.v. een Prisma-fout (500).
+    const orgId = requireOrg(user);
 
     return this.prisma.quoteTemplate.create({
       data: {
-        orgId: orgId!,
+        orgId,
         name: dto.name,
         description: dto.description ?? null,
         templateType: dto.templateType ?? 'BLOCKS',

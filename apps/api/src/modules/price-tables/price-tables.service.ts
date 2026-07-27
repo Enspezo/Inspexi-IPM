@@ -7,7 +7,7 @@ import {
 } from '@nestjs/common';
 import { User, Role, Prisma } from '@prisma/client';
 import { PrismaService } from '@/prisma';
-import { paginate, orgScope, assertFound, assertAllSameOrg } from '@/common';
+import { paginate, orgScope, assertFound, assertAllSameOrg, requireOrg } from '@/common';
 import {
   CreatePriceTableDto,
   UpdatePriceTableDto,
@@ -99,22 +99,21 @@ export class PriceTablesService {
   }
 
   async create(dto: CreatePriceTableDto, user: User) {
-    const orgId = user.orgId;
-    if (!orgId && !user.roles.includes(Role.SUPERUSER)) {
-      throw new ForbiddenException('Geen organisatie gekoppeld');
-    }
+    // WP-B3 (B-503): effectieve org (SUPERUSER op org-subdomein → tenant-org);
+    // zonder org een nette NL-400 i.p.v. een Prisma-fout (500).
+    const orgId = requireOrg(user);
 
     // If setting as default, unset other defaults in a transaction
     if (dto.isDefault) {
       return this.prisma.$transaction(async (tx) => {
         await tx.priceTable.updateMany({
-          where: { orgId: orgId!, isDefault: true },
+          where: { orgId, isDefault: true },
           data: { isDefault: false },
         });
 
         return tx.priceTable.create({
           data: {
-            orgId: orgId!,
+            orgId,
             name: dto.name,
             description: dto.description,
             isDefault: true,
@@ -125,7 +124,7 @@ export class PriceTablesService {
 
     return this.prisma.priceTable.create({
       data: {
-        orgId: orgId!,
+        orgId,
         name: dto.name,
         description: dto.description,
         isDefault: dto.isDefault ?? false,

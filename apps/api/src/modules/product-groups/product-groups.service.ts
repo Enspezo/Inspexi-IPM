@@ -7,7 +7,7 @@ import {
 } from '@nestjs/common';
 import { User, Role, Prisma } from '@prisma/client';
 import { PrismaService } from '@/prisma';
-import { paginate, orgScope, assertFound } from '@/common';
+import { paginate, orgScope, assertFound, requireOrg } from '@/common';
 import { CreateProductGroupDto, UpdateProductGroupDto, ListProductGroupsQueryDto } from './dto';
 
 const PRODUCT_SELECT = {
@@ -85,13 +85,13 @@ export class ProductGroupsService {
   }
 
   async create(dto: CreateProductGroupDto, user: User) {
-    if (!user.orgId && !user.roles.includes(Role.SUPERUSER)) {
-      throw new ForbiddenException('Geen organisatie gekoppeld');
-    }
+    // WP-B3 (B-503): effectieve org (SUPERUSER op org-subdomein → tenant-org);
+    // zonder org een nette NL-400 i.p.v. een Prisma-fout (500).
+    const orgId = requireOrg(user);
 
     return this.prisma.productGroup.create({
       data: {
-        orgId: user.orgId!,
+        orgId,
         name: dto.name,
         notes: dto.notes,
       },

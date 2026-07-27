@@ -8,7 +8,7 @@ import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { User, Role, NotificationType, Prisma } from '@prisma/client';
 import { PrismaService } from '@/prisma';
-import { paginate, assertFound } from '@/common';
+import { paginate, assertFound, requireOrg } from '@/common';
 import { EmailService } from '@/common/services/email.service';
 import {
   ListNotificationsQueryDto,
@@ -265,13 +265,12 @@ export class NotificationsService {
   }
 
   async saveGroupPrefs(user: User, dto: SaveGroupPrefsDto) {
-    const orgId = user.orgId;
-    if (!orgId && !user.roles.includes(Role.SUPERUSER)) {
-      throw new ForbiddenException('Geen organisatie gekoppeld');
-    }
+    // WP-B3 (B-503): effectieve org (SUPERUSER op org-subdomein → tenant-org);
+    // zonder org een nette NL-400 i.p.v. een Prisma-fout (500).
+    const orgId = requireOrg(user);
 
     for (const item of dto.prefs) {
-      const targetOrgId = orgId!;
+      const targetOrgId = orgId;
       await this.prisma.notificationGroupPref.upsert({
         where: {
           orgId_role_notificationType: {

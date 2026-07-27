@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { Modal, Input, Select, Button, useToast } from '@/components/ui';
+import { Modal, Input, QueryErrorNotice, Select, Button, useToast } from '@/components/ui';
 import { useContacts, useAddContactPerson, useContactPersonRoles } from '../hooks/use-contacts';
 
 const schema = z.object({
@@ -28,7 +28,11 @@ export function CreateContactPersonModal({ isOpen, onClose, onCreated }: Props) 
   const [selectedContactId, setSelectedContactId] = useState('');
   const [contactIdError, setContactIdError] = useState('');
 
-  const { data: contactsData } = useContacts({ limit: 200 });
+  const {
+    data: contactsData,
+    error: contactsError,
+    refetch: refetchContacts,
+  } = useContacts({ limit: 200 });
   const contacts = contactsData?.data ?? [];
   const contactOptions = [
     { value: '', label: 'Selecteer een relatie...' },
@@ -103,6 +107,7 @@ export function CreateContactPersonModal({ isOpen, onClose, onCreated }: Props) 
           onChange={handleContactChange}
           error={contactIdError}
         />
+        <QueryErrorNotice error={contactsError} label="Relaties" onRetry={refetchContacts} />
 
         <div className="grid grid-cols-2 gap-4">
           <Input

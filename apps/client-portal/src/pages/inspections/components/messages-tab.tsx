@@ -51,7 +51,7 @@ export function MessagesTab({ inspectionId }: { inspectionId: string }) {
             <svg className="mb-2 h-8 w-8 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.86 9.86 0 01-4-.8L3 20l1.3-3.9A7.96 7.96 0 013 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
             </svg>
-            Nog geen berichten. Stel hier uw vraag aan de inspecteur.
+            Nog geen berichten.
           </div>
         ) : (
           (messages ?? []).map((message) => (
@@ -80,6 +80,12 @@ export function MessagesTab({ inspectionId }: { inspectionId: string }) {
             Verstuur
           </Button>
         </div>
+        {/* B-402 (WP-B9): geen valse belofte dat de organisatie meeleest — berichten
+            worden bewaard bij het dossier; de staf-zijde van dit kanaal is Epic 1. */}
+        <p className="mt-2 text-xs text-gray-500">
+          Uw bericht wordt opgeslagen bij het inspectiedossier. Neem voor vragen die een
+          reactie vereisen rechtstreeks contact op met de organisatie.
+        </p>
       </div>
     </div>
   );

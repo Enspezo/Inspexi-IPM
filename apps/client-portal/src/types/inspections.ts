@@ -51,4 +51,9 @@ export interface InspectionDetail extends InspectionListItem {
   assets: AssetSummary[];
   generatedDocuments: GeneratedDocumentSummary[];
   findingCounts: { total: number; open: number; resolved: number };
+  /**
+   * B-412 (WP-B9): false zolang het rapport nog niet gereviewd is (vier-ogen-gate
+   * van de org aan) — constateringen en documenten zijn dan nog niet zichtbaar.
+   */
+  contentReleased: boolean;
 }

@@ -34,6 +34,10 @@ describe('Client Portal (e2e)', () => {
   let assetId: string;
   let findingId: string;
   let documentId: string;
+  // WP-B9 (B-412/B-406a): plan in pending_review — inhoud niet klant-zichtbaar.
+  let gatedPlanId: string;
+  let gatedFindingId: string;
+  let gatedDocumentId: string;
 
   // client realm
   let clientUserId: string;
@@ -197,6 +201,61 @@ describe('Client Portal (e2e)', () => {
     await prisma.documentSignature.create({
       data: {
         generatedDocumentId: doc.id,
+        signerRoleCode: 'CLIENT',
+        signerName: 'Opdrachtgever',
+        status: 'PENDING',
+      },
+    });
+
+    // ── WP-B9 (B-412/B-406a): tweede plan in pending_review, zelfde contact ──
+    // Inhoud (finding + document) mag NIET klant-zichtbaar zijn zolang de org
+    // vier-ogen-review aan heeft staan. Bewust GEEN InspectionClientAccess-rij:
+    // toegang loopt via het contact (metadata zichtbaar), zonder canSign-grant.
+    const gatedPlan = await prisma.inspectionPlan.create({
+      data: {
+        orgId: orgA.id,
+        contactId: contactA.id,
+        locationId: crmLocation.id,
+        projectName: 'E2E Gated inspectie',
+        referenceNumber: 'E2E-CP-0002',
+        normTypeCode: normCode,
+        inspectionTypeCode: 'initial',
+        statusCode: 'pending_review',
+        inspectionTemplateId: it.id,
+        addressStreet: 'Reviewstraat',
+        addressHouseNumber: '9',
+        addressCity: 'Utrecht',
+        createdBy: staffA.id,
+      },
+    });
+    gatedPlanId = gatedPlan.id;
+    const gatedFinding = await prisma.finding.create({
+      data: {
+        orgId: orgA.id,
+        assetNodeId: asset.id,
+        inspectionPlanId: gatedPlan.id,
+        inspectionType: 'visual',
+        shortDescription: 'Nog niet gereviewde constatering',
+        statusCode: 'open',
+        createdBy: staffA.id,
+      },
+    });
+    gatedFindingId = gatedFinding.id;
+    const gatedDoc = await prisma.generatedDocument.create({
+      data: {
+        orgId: orgA.id,
+        documentTemplateId: docTemplate.id,
+        inspectionPlanId: gatedPlan.id,
+        documentType: 'PLAN',
+        htmlContent: '<html><body><p>E2E-CP-0002 conceptrapport</p></body></html>',
+        status: 'PENDING_SIGNATURES',
+        generatedBy: staffA.id,
+      },
+    });
+    gatedDocumentId = gatedDoc.id;
+    await prisma.documentSignature.create({
+      data: {
+        generatedDocumentId: gatedDoc.id,
         signerRoleCode: 'CLIENT',
         signerName: 'Opdrachtgever',
         status: 'PENDING',
@@ -526,6 +585,165 @@ describe('Client Portal (e2e)', () => {
 
     // Na logout is het ingetrokken token niet meer inwisselbaar.
     await postA('/api/v1/client/auth/refresh').set('Cookie', cookie).expect(401);
+  });
+
+  // ── WP-B9: review-gate op klant-zichtbaarheid + canSign-vlag ──
+  // B-412: metadata van een pending_review-plan blijft zichtbaar, maar
+  // constateringen/documenten pas vanaf reviewed/approved/completed — tenzij de
+  // org de vier-ogen-review (inspectionReviewEnabled) uit heeft staan.
+  // B-406a: de API stuurt per document het per-plan teken-recht (canSign) mee.
+  describe('REVIEW-GATE + canSign (WP-B9: B-412/B-406a)', () => {
+    it('B-412: lijst blijft het pending_review-plan tonen (metadata altijd zichtbaar)', async () => {
+      const res = await onA('/api/v1/client/inspections').set(bearer(tokenA)).expect(200);
+      const gated = res.body.data.find((p: { id: string }) => p.id === gatedPlanId);
+      expect(gated).toBeDefined();
+      expect(gated.statusCode).toBe('pending_review');
+      expect(gated.projectName).toBe('E2E Gated inspectie');
+    });
+
+    it('B-412: detail verbergt inhoud van een pending_review-plan (contentReleased=false)', async () => {
+      const res = await onA(`/api/v1/client/inspections/${gatedPlanId}`)
+        .set(bearer(tokenA))
+        .expect(200);
+      expect(res.body.data.contentReleased).toBe(false);
+      // Metadata blijft staan…
+      expect(res.body.data.projectName).toBe('E2E Gated inspectie');
+      expect(res.body.data.statusCode).toBe('pending_review');
+      // …maar inhoud niet.
+      expect(res.body.data.assets).toEqual([]);
+      expect(res.body.data.generatedDocuments).toEqual([]);
+      expect(res.body.data.findingCounts).toEqual({ total: 0, open: 0, resolved: 0 });
+    });
+
+    it('B-412: findings- en documents-routes geven [] voor een pending_review-plan', async () => {
+      const findings = await onA(`/api/v1/client/inspections/${gatedPlanId}/findings`)
+        .set(bearer(tokenA))
+        .expect(200);
+      expect(findings.body.data).toEqual([]);
+
+      const documents = await onA(`/api/v1/client/inspections/${gatedPlanId}/documents`)
+        .set(bearer(tokenA))
+        .expect(200);
+      expect(documents.body.data).toEqual([]);
+    });
+
+    it('B-412: document-detail/-download van een niet-vrijgegeven rapport → 404', async () => {
+      await onA(`/api/v1/client/documents/${gatedDocumentId}`).set(bearer(tokenA)).expect(404);
+      await onA(`/api/v1/client/documents/${gatedDocumentId}/download`)
+        .set(bearer(tokenA))
+        .expect(404);
+    });
+
+    it('B-412: finding-detail van een niet-vrijgegeven rapport → 404', async () => {
+      await onA(`/api/v1/client/findings/${gatedFindingId}`).set(bearer(tokenA)).expect(404);
+    });
+
+    it('B-412/B-406a: dashboard telt alleen vrijgegeven inhoud en filtert actie-items op canSign', async () => {
+      const res = await onA('/api/v1/client/inspections/dashboard').set(bearer(tokenA)).expect(200);
+      // Alleen de open finding van het vrijgegeven (completed) plan telt mee;
+      // de open finding van het pending_review-plan niet.
+      expect(res.body.data.openFindingsCount).toBe(1);
+      // De PENDING-handtekening van het gated plan (zonder canSign-grant)
+      // verschijnt niet als actie-item.
+      expect(res.body.data.pendingSignatures).toEqual([]);
+      // Metadata: beide plannen tellen mee in het totaal.
+      expect(res.body.data.totalInspections).toBe(2);
+    });
+
+    it('B-406a: dashboard toont het actie-item wél voor een vrijgegeven plan mét canSign', async () => {
+      // Extra document + open CLIENT-handtekening op het vrijgegeven hoofdplan
+      // (daar heeft de klant een canSign-grant).
+      const doc2 = await prisma.generatedDocument.create({
+        data: {
+          orgId: orgAId,
+          documentTemplateId: docTemplateId,
+          inspectionPlanId: planId,
+          documentType: 'PLAN',
+          htmlContent: '<html><body><p>Tweede document</p></body></html>',
+          status: 'PENDING_SIGNATURES',
+          generatedBy: staffAId,
+        },
+      });
+      await prisma.documentSignature.create({
+        data: {
+          generatedDocumentId: doc2.id,
+          signerRoleCode: 'CLIENT',
+          signerName: 'Opdrachtgever',
+          status: 'PENDING',
+        },
+      });
+
+      const res = await onA('/api/v1/client/inspections/dashboard').set(bearer(tokenA)).expect(200);
+      expect(
+        res.body.data.pendingSignatures.map((s: { documentId: string }) => s.documentId),
+      ).toContain(doc2.id);
+
+      // Opruimen zodat latere assertions niet verschuiven.
+      await prisma.documentSignature.deleteMany({ where: { generatedDocumentId: doc2.id } });
+      await prisma.generatedDocument.delete({ where: { id: doc2.id } });
+    });
+
+    it('B-406a: documenten van het vrijgegeven plan dragen canSign=true', async () => {
+      const list = await onA(`/api/v1/client/inspections/${planId}/documents`)
+        .set(bearer(tokenA))
+        .expect(200);
+      expect(list.body.data.length).toBeGreaterThanOrEqual(1);
+      for (const doc of list.body.data) expect(doc.canSign).toBe(true);
+
+      const detail = await onA(`/api/v1/client/documents/${documentId}`)
+        .set(bearer(tokenA))
+        .expect(200);
+      expect(detail.body.data.canSign).toBe(true);
+    });
+
+    it('B-412: org met review UIT ziet alles ongewijzigd; canSign blijft eerlijk false', async () => {
+      await prisma.organization.update({
+        where: { id: orgAId },
+        data: { inspectionReviewEnabled: false },
+      });
+      try {
+        const detail = await onA(`/api/v1/client/inspections/${gatedPlanId}`)
+          .set(bearer(tokenA))
+          .expect(200);
+        expect(detail.body.data.contentReleased).toBe(true);
+        expect(detail.body.data.findingCounts.total).toBe(1);
+        expect(detail.body.data.generatedDocuments).toHaveLength(1);
+
+        const findings = await onA(`/api/v1/client/inspections/${gatedPlanId}/findings`)
+          .set(bearer(tokenA))
+          .expect(200);
+        expect(findings.body.data.map((f: { id: string }) => f.id)).toContain(gatedFindingId);
+
+        // Documenten zichtbaar, maar zonder per-plan grant blijft canSign=false…
+        const documents = await onA(`/api/v1/client/inspections/${gatedPlanId}/documents`)
+          .set(bearer(tokenA))
+          .expect(200);
+        expect(documents.body.data).toHaveLength(1);
+        expect(documents.body.data[0].canSign).toBe(false);
+
+        const docDetail = await onA(`/api/v1/client/documents/${gatedDocumentId}`)
+          .set(bearer(tokenA))
+          .expect(200);
+        expect(docDetail.body.data.canSign).toBe(false);
+
+        // …en de autorisatie zelf is onveranderd: tekenen zonder grant → 403.
+        await postA(`/api/v1/client/documents/${gatedDocumentId}/sign`)
+          .set(bearer(tokenA))
+          .send({ signatureImage: 'data:image/png;base64,iVBORw0KGgo=' })
+          .expect(403);
+
+        // Beide open findings tellen nu mee.
+        const dashboard = await onA('/api/v1/client/inspections/dashboard')
+          .set(bearer(tokenA))
+          .expect(200);
+        expect(dashboard.body.data.openFindingsCount).toBe(2);
+      } finally {
+        await prisma.organization.update({
+          where: { id: orgAId },
+          data: { inspectionReviewEnabled: true },
+        });
+      }
+    });
   });
 
   // ── B4: realm-kruising ──

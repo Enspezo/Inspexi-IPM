@@ -463,11 +463,15 @@ describe('Client Portal (e2e)', () => {
       .expect(400);
     expect(JSON.stringify(res.body)).toContain('data-afbeelding');
 
-    // Ook een te grote (>5 MB gedecodeerd) payload wordt geweigerd.
+    // Ook een data-URL met een niet-image-type wordt geweigerd.
     await postA(`/api/v1/client/documents/${documentId}/sign`)
       .set(bearer(tokenA))
-      .send({ signatureImage: `data:image/png;base64,${'A'.repeat(7_000_000)}` })
+      .send({ signatureImage: 'data:text/html;base64,PGI+' })
       .expect(400);
+
+    // NB: de >5 MB-weigering wordt in signature-image.dto.spec.ts afgedekt —
+    // deze e2e-harnas mist de 10 MB-bodylimiet van main.ts, waardoor zo'n
+    // payload hier al vóór de validator op een 413 van body-parser strandt.
 
     // Niets opgeslagen: de handtekening staat nog op PENDING.
     const sig = await prisma.documentSignature.findFirst({

@@ -130,6 +130,13 @@ describe('Feature entitlements (e2e)', () => {
       await prisma.organizationFeature.deleteMany({
         where: { orgId: { in: [basisOrgId, compleetOrgId] } },
       });
+      // De custom-fields-module maakt lazily definities aan voor deze orgs;
+      // zonder deze regel faalt organization.deleteMany op de org-FK en laat
+      // een gefaalde run e2efeat*-fixtures achter (duplicate-slug bij de
+      // volgende run) — zie WP-C1-runlog.
+      await prisma.customFieldDefinition.deleteMany({
+        where: { orgId: { in: [basisOrgId, compleetOrgId] } },
+      });
       await prisma.user.deleteMany({ where: { id: { in: userIds } } });
       await prisma.organization.deleteMany({
         where: { id: { in: [basisOrgId, compleetOrgId] } },
@@ -233,9 +240,12 @@ describe('Feature entitlements (e2e)', () => {
     });
 
     it('POST → 400 met NL-melding i.p.v. 500', async () => {
+      // Bewust ZONDER org-Host: sinds WP-B3 (D2: subdomein bepaalt de scope)
+      // krijgt een SUPERUSER op een org-subdomein een effectieve org en zou een
+      // POST dáár legitiem aanmaken (201). Het "geen org-context"-pad bestaat
+      // alleen nog op een onbekende host / mijn-domein.
       const res = await request(app.getHttpServer())
         .post('/api/v1/custom-fields')
-        .set('Host', COMPLEET_HOST)
         .set('Authorization', `Bearer ${superToken}`)
         .send({ entityType: 'CONTACT', label: 'Test', fieldType: 'TEXT' });
       expect(res.status).toBe(400);

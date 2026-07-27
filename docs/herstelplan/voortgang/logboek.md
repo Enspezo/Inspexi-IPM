@@ -19,7 +19,7 @@ Conform `docs/testprogramma/00-master-testplan.md` §5: API `:3001` (`NODE_ENV=t
 | WP | Branch | PR | Status | Bevindingen | Tests toegevoegd |
 |---|---|---|---|---|---|
 | A1 | `fix/wp-a1-sync-errors-visible` (PWA) | [InspeXi #30](https://github.com/Enspezo/InspeXi/pull/30) | ✅ gemerged + browser-geverifieerd | B-211 ✔, B-208 ✔, B-223b ✔ (+ z-index-bannerbug, succes-banner-fix, tellerdekking alle entiteiten) | 7 SyncContext-Vitest (fake-indexeddb), Playwright sync-errors 2× met echte setOffline |
-| A2 | — | — | open | B-210, B-206, B-207, B-223d | — |
+| A2 | `fix/wp-a2-data-loss-stop` (PWA) + `fix/wp-a2-sync-contract-tests` (Beheer) | [InspeXi #31](https://github.com/Enspezo/InspeXi/pull/31) + [#149](https://github.com/Enspezo/Inspexi-IPM/pull/149) | ✅ gemerged + Playwright-keten live groen | B-206 ✔, B-207 ✔, B-210 ✔, B-223d ✔ (+ Dexie v15-repair, client-FK-check, push-volgorde ouder→kind) | sync-contract-e2e 10, PWA-Vitest 165 (23 nieuw), Playwright data-loss-keten |
 | A3 | `fix/wp-a3-document-chain` | [#133](https://github.com/Enspezo/Inspexi-IPM/pull/133) | ✅ gemerged + browser/curl-geverifieerd | B-101 ✔, B-102 ✔, B-103 ✔ (rolmatrix vastgelegd), B-104 ✔ (deels achterhaald — statuscheck bestond al, handtekeningcheck toegevoegd) | e2e-rolmatrix 21 tests, unit-specs sign/delete/patch |
 | A4 | `fix/wp-a4-client-portal-assetnode` | [#132](https://github.com/Enspezo/Inspexi-IPM/pull/132) | ✅ gemerged + browser-geverifieerd | B-401 ✔ | 9 Vitest-componenttests (exacte servershape) + TabErrorBoundary |
 | B4 | `fix/wp-b4-upload-security` | [#136](https://github.com/Enspezo/Inspexi-IPM/pull/136) | ✅ gemerged + live geverifieerd | B-507 ✔ (magic bytes, SVG eruit, headers, helmet, avatar mee) | 13 unit validator + 6 service, 15 e2e upload/download |
@@ -29,13 +29,27 @@ Conform `docs/testprogramma/00-master-testplan.md` §5: API `:3001` (`NODE_ENV=t
 | B3 | `fix/wp-b3-superuser-scoping` | [#141](https://github.com/Enspezo/Inspexi-IPM/pull/141) | ✅ gemerged + browser-geverifieerd (volledige onboardingketen) | B-502 ✔, B-503 ✔, B-504 ✔, B-511§1 ✔ | tenant-matrix unit, superuser-scoping e2e 14, regressie 151 |
 | B5 | `fix/wp-b5-quote-chain` | [#142](https://github.com/Enspezo/Inspexi-IPM/pull/142) | ✅ gemerged + live geverifieerd | B-302 ✔, B-303 ✔, B-304 ✔, B-307 ✔, B-308 ✔, B-309 ✔, B-314 ✔, B-315-B ✔ | Promise.all-send-race, tiergrenzen, DTO-grenzen, self-approval, P2020/overflow; e2e 213 |
 | B9 | `fix/wp-b9-client-portal-mitigations` | [#139](https://github.com/Enspezo/Inspexi-IPM/pull/139) | ✅ gemerged + browser-geverifieerd (gate + canSign op originele repro-plannen) | B-412 ✔, B-402 △ mitigatie, B-403 △ mitigatie, B-406a ✔ | review-gate e2e 10, client-portal vitest 36 |
-| B1, B2, B10 | — | — | open (PWA-spoor, na A2) | — | — |
+| B1 | — | — | in uitvoering | B-202, B-204, B-205a | — |
+| B2, B10 | — | — | open (na B1) | — | — |
+| C2 | `fix/wp-c2-client-hygiene` | [#147](https://github.com/Enspezo/Inspexi-IPM/pull/147) | ✅ gemerged + live geverifieerd | B-404 ✔, B-405 ✔, B-407 ✔, B-408 ✔, B-410 ✔, B-411 ✔; B-409 → beslispunt A4 | gedeelde SignatureImageDto-afdwinging, magic-link-race, 18+8 tests; fixte ook de kapotte feature-entitlements-e2e |
+| C3 | `fix/wp-c3-sync-hardening` | [#150](https://github.com/Enspezo/Inspexi-IPM/pull/150) | ✅ gemerged (A2+C3 samen: 119 sync-unit + 28 e2e groen) | B-203 ✔, B-212 ✔, B-216 ✔, B-217 ✔ (A6: rol-guard — PWA stuurt velden mee), B-218 ✔; B-223a → beslispunt A3 | sync-errors-mapper, sync-hardening-e2e 9 |
+| C4 | `fix/wp-c4-docgen-overflow` | [#148](https://github.com/Enspezo/Inspexi-IPM/pull/148) | ✅ gemerged + visueel geverifieerd (vóór/ná-PDF's + portal-tabellen) | B-311 ✔, B-312 ✔ (CJK = deploy-vereiste), B-301 ✔ | header-resolver-tests, table.test.tsx 9 |
 | C1–C5 | — | — | open (golf 3) | — | — |
 | D1–D3 | — | — | open (golf 4) | — | — |
 
 ---
 
 ## Chronologisch logboek
+
+### 28 juli 2026 — GOLF 1 VOLLEDIG AF + C2/C3/C4 gemerged
+
+- **WP-A2 gemerged** (InspeXi #31 + #149): alle vier bevindingen bevestigd en opgelost; volledige keten live bewezen (Playwright: checklist → wegnavigeren → antwoorden blijven → NOK → constatering → sync zonder errors, 3/3 groen tegen de gemergde stack). Dexie v15-repairhook voor bestaande toestellen zit erin.
+- **Golf 1-terugkoppeling:** 12 bevindingen opgelost — **alle 5 S1's** (B-101, B-102, B-206, B-207, B-401), 5 S2 (B-103, B-104, B-208, B-210, B-211), 2 S3-subitems (B-223b/d). Risicogebieden: **R8 Documenten/tekenen → GO** (A3-rolmatrix + sign-validatie), **R4 Sync/offline → GO voor de kernfunctie** (zichtbare fouten + dataverlies-stop + contracttests + skew-hotfix; referentiedata volgt in B1/B2).
+- **WP-C2 gemerged** (#147): incl. structurele afdwinging dat élke sign-route de veilige image-validator gebruikt; bonus: feature-entitlements-e2e-rootcause (kapot sinds B3-semantiek) gevonden en gefixt — volledige e2e-suite weer 1107/1107.
+- **WP-C3 gemerged** (#150): A6 beantwoord (PWA stuurt reviewerId/assignedTo mee → echo-veilige rol-guard); sync-side-effects bij pending_review gedelegeerd (notificatie + AI-run); `assigned[]`-contractuitbreiding vastgelegd in FASE3-SYNC §9.
+- **WP-C4 gemerged** (#148): header-placeholders opgelost (vóór/ná-PDF-bewijs), tabeloverflow + CJK-fontstacks (⚠️ deploy-vereiste `fonts-noto-cjk` in de Chromium-image), portal-truncatie live geverifieerd op de 223-tekens-relatie.
+- Observatie (geen bug): PWA- en portal-logins delen de host-cookie `refresh_token` (zelfde staf-realm) — inloggen in de PWA vervangt de portal-sessie; de B6-foutzichtbaarheid maakte dat direct zichtbaar i.p.v. een leeg scherm.
+- WP-B1 gestart (PWA-spoor).
 
 ### 28 juli 2026 — A1 gemerged + syncedAt-skew-hotfix; A2 gestart
 

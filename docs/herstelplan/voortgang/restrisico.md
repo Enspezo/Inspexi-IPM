@@ -20,6 +20,8 @@
 | B-305 (nasleep) | B6 | Dropdowns cappen op 200: >200 records → stil afgekapt; ongebonden `limit` op /help/articles + /support-tickets (pre-existing) | Follow-up: server-side search/typeahead; losse kleine PR |
 | B-507 (nasleep) | B4 | Overige uploadroutes (documents/photos/location-images/certificates, quote-templates serveert nog SVG authenticated) valideren op file.mimetype; helmet-CSP dempt platformbreed. Prod: SVG-logo-datacheck vóór uitrol | Vervolgtaak-chip aangemaakt door agent; pre-deploy-stap in PR #136 |
 | syncedAt-skew (nieuw, uit A1) | — | Vals zelf-conflict bij elke re-edit; code gefixt in PR #144. **Pre-deploy prod: `scripts/backfill-synced-at-skew.ts` draaien** (aanvulling op de §8-datachecks) | PR #144 |
+| B-203 (nasleep) | C3 | Testomgeving bevat nog `-0033`/`-0034`-nodenummers (data-opruiming); datacheck aanbevolen op typedefinities zonder shortCode vóór prod | B-203.md |
+| B-312 (deploy) | C4 | CJK blijft stuk tot `fonts-noto-cjk` in de Puppeteer/Chromium-image zit — zelfde release als de code | PR #148 + FASE4-DOCGEN.md |
 | B-211 (nasleep) | A1 | Auto-sync triggert alleen op reconnect/mount (online muteren vergt de sync-pill — bewuste scope); bottom-nav overlapt sheet-submit op desktop (pre-existing, cosmetica-kandidaat) | InspeXi PR #30-body |
 
 _Deze tabel wordt per golf bijgewerkt; bevindingen die tijdens uitvoering achterhaald blijken komen hier ook te staan._

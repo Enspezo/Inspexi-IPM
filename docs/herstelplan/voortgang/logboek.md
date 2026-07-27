@@ -38,11 +38,17 @@ Conform `docs/testprogramma/00-master-testplan.md` §5: API `:3001` (`NODE_ENV=t
 | C3 | `fix/wp-c3-sync-hardening` | [#150](https://github.com/Enspezo/Inspexi-IPM/pull/150) | ✅ gemerged (A2+C3 samen: 119 sync-unit + 28 e2e groen) | B-203 ✔, B-212 ✔, B-216 ✔, B-217 ✔ (A6: rol-guard — PWA stuurt velden mee), B-218 ✔; B-223a → beslispunt A3 | sync-errors-mapper, sync-hardening-e2e 9 |
 | C4 | `fix/wp-c4-docgen-overflow` | [#148](https://github.com/Enspezo/Inspexi-IPM/pull/148) | ✅ gemerged + visueel geverifieerd (vóór/ná-PDF's + portal-tabellen) | B-311 ✔, B-312 ✔ (CJK = deploy-vereiste), B-301 ✔ | header-resolver-tests, table.test.tsx 9 |
 | C1–C5 | — | — | open (golf 3) | — | — |
-| D1–D3 | — | — | open (golf 4) | — | — |
+| D3 | `fix/wp-d3-offline-shell` (PWA) | [InspeXi #33](https://github.com/Enspezo/InspeXi/pull/33) | ✅ gemerged + eigen prod-e2e-run groen | B-219 ✔ **definitief S3** (dev-server-artefact; prod-denylist-gat wél gedicht); B-220 → beslispunt A5 | offline-shell-Playwright tegen productiebuild (CI-verankerd), 8 unit |
+| D1, D2 | — | — | geblokkeerd op beslispunten A1/A2 | B-209, B-223e, B-205b | — |
 
 ---
 
 ## Chronologisch logboek
+
+### 28 juli 2026 — D3 vooruitgehaald en af: B-219 géén S1
+
+- **WP-D3 gemerged** (InspeXi #33): de gevreesde S1-escalatie is van tafel — op de productiebuild werken offline reload, deeplink én chunk-navigatie (58 precache-entries; bewijs met dubbele offline-canary + screenshots). De bevinding was een dev-server-artefact. Wél reëel prod-gat gevonden en gedicht: geen navigateFallback-denylist → /api/v1-GET-navigaties kregen de HTML-shell. Fixes: expliciete fallback+denylist, chunk-retry met NL-fallbackscherm, route-prefetch, en een CI-verankerde offline-e2e tegen de productiebuild (orkestrator zelf nagedraaid: 1 passed).
+- B-220 wacht op beslispunt A5; nuance vastgelegd (niet-uitloggen-pad werkt op prod wél offline).
 
 ### 28 juli 2026 — GOLF 3 VOLLEDIG AF (C1–C5) + herseed gevalideerd
 

@@ -713,7 +713,11 @@ export class SyncService {
       return { ...ref, status: 'conflict', serverVersion, clientData: data, serverData };
     }
 
-    const updateData: Record<string, unknown> = { ...fields, syncedAt: new Date() };
+    // syncedAt en updatedAt uit één stempel: Prisma's @updatedAt krijgt anders een
+    // eigen, enkele ms later tijdstip → rij met `updatedAt > syncedAt` → vals
+    // zelf-conflict bij de eerstvolgende push vanaf een vers apparaat (WP-A1).
+    const stamp = new Date();
+    const updateData: Record<string, unknown> = { ...fields, syncedAt: stamp, updatedAt: stamp };
     // replace-on-write: alleen als de client het kind-veld meestuurde.
     if (cfg.nestedChild && childRows) {
       updateData[cfg.nestedChild.relation] = { deleteMany: {}, create: childRows };
@@ -789,9 +793,12 @@ export class SyncService {
         // leest entityId/orgId én de nieuwe veldwaarden uit het update-resultaat.
         // Met `select: { updatedAt: true }` ontbrak result.id → de UPDATE-audit-row
         // van elke conflict-resolve faalde stil op entity_id NOT NULL (23502).
+        // Zelfde gedeelde stempel als in applyUpdate: voorkom de syncedAt/updatedAt
+        // ms-skew die valse zelf-conflicten veroorzaakt.
+        const stamp = new Date();
         const updated = await delegate.update({
           where: { id: r.entityId },
-          data: { ...fields, syncedAt: new Date() },
+          data: { ...fields, syncedAt: stamp, updatedAt: stamp },
         });
         await this.prisma.syncQueue.update({
           where: { id: queueItem.id },

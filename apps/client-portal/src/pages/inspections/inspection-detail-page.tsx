@@ -36,11 +36,26 @@ export default function InspectionDetailPage() {
     );
   }
 
+  // B-412 (WP-B9): zolang het rapport nog niet gereviewd is (contentReleased
+  // expliciet false) zijn constateringen en documenten niet zichtbaar — de
+  // server stuurt ze dan ook niet mee; hier verdwijnen de bijbehorende tabs.
+  const contentReleased = inspection.contentReleased !== false;
+
   const tabs: TabDef<InspectionTabKey>[] = [
     { key: 'overview', label: 'Overzicht' },
-    { key: 'findings', label: 'Constateringen', count: inspection.findingCounts.total },
+    ...(contentReleased
+      ? [
+          {
+            key: 'findings',
+            label: 'Constateringen',
+            count: inspection.findingCounts.total,
+          } as TabDef<InspectionTabKey>,
+        ]
+      : []),
     { key: 'messages', label: 'Berichten' },
-    { key: 'documents', label: 'Documenten' },
+    ...(contentReleased
+      ? [{ key: 'documents', label: 'Documenten' } as TabDef<InspectionTabKey>]
+      : []),
   ];
 
   return (
@@ -67,7 +82,7 @@ export default function InspectionDetailPage() {
           <OverviewTab inspection={inspection} onNavigateTab={setTab} />
         </TabErrorBoundary>
       )}
-      {tab === 'findings' && (
+      {tab === 'findings' && contentReleased && (
         <TabErrorBoundary>
           <FindingsTab
             inspectionId={inspection.id}
@@ -80,7 +95,7 @@ export default function InspectionDetailPage() {
           <MessagesTab inspectionId={inspection.id} />
         </TabErrorBoundary>
       )}
-      {tab === 'documents' && (
+      {tab === 'documents' && contentReleased && (
         <TabErrorBoundary>
           <DocumentsTab inspectionId={inspection.id} inspectionName={inspection.projectName} />
         </TabErrorBoundary>

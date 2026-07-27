@@ -29,6 +29,7 @@ describe('ClientFindingsService', () => {
   const mockInspections = {
     requireOrg: jest.fn(),
     assertInspectionAccess: jest.fn(),
+    isPlanContentReleased: jest.fn(),
   };
 
   const clientUser = {
@@ -76,7 +77,19 @@ describe('ClientFindingsService', () => {
 
     mockInspections.requireOrg.mockReturnValue('org-1');
     mockInspections.assertInspectionAccess.mockResolvedValue(undefined);
+    // Default: rapport vrijgegeven — de B-412-gate heeft z'n eigen test hieronder.
+    mockInspections.isPlanContentReleased.mockResolvedValue(true);
     mockPrisma.finding.findFirst.mockResolvedValue(accessCheckFinding);
+  });
+
+  describe('content-gate (B-412, WP-B9)', () => {
+    it('gooit 404 wanneer het rapport nog niet is vrijgegeven (pending_review + gate aan)', async () => {
+      mockInspections.isPlanContentReleased.mockResolvedValue(false);
+      await expect(service.getDetail(clientUser, 'org-1', 'f-1')).rejects.toThrow(
+        NotFoundException,
+      );
+      expect(mockInspections.isPlanContentReleased).toHaveBeenCalledWith('org-1', 'plan-1');
+    });
   });
 
   describe('getDetail — anonimiteit herstel-flow (review #2)', () => {

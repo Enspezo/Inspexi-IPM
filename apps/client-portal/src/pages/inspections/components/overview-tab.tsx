@@ -36,6 +36,8 @@ export function OverviewTab({ inspection, onNavigateTab }: OverviewTabProps) {
   const isCancelled = inspection.statusCode === 'cancelled';
   const counts = inspection.findingCounts;
   const hasOpenFindings = counts.open > 0;
+  // B-412 (WP-B9): rapport-inhoud pas zichtbaar ná review (vier-ogen-gate).
+  const contentReleased = inspection.contentReleased !== false;
   // Online herstel (PRD-14 §14.9.5): alleen bij de add-on én de per-plan vlag.
   const onlineRepair = inspection.onlineRepairEnabled && hasFeature('ONLINE_HERSTEL');
 
@@ -151,7 +153,17 @@ export function OverviewTab({ inspection, onNavigateTab }: OverviewTabProps) {
         )}
       </Card>
 
-      {counts.total > 0 && (
+      {!contentReleased && !isCancelled && (
+        <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+          <h3 className="text-sm font-semibold text-gray-900">Rapport wordt nog gecontroleerd</h3>
+          <p className="mt-1 text-sm text-gray-700">
+            Het inspectierapport wordt nog gecontroleerd door de organisatie. Constateringen en
+            documenten zijn beschikbaar zodra het rapport is vrijgegeven.
+          </p>
+        </div>
+      )}
+
+      {contentReleased && counts.total > 0 && (
         <div
           className={clsx(
             'rounded-xl border p-4',

@@ -57,8 +57,11 @@ export function ReinspectionRequestModal({
           </div>
           <div>
             <h3 className="text-base font-semibold text-gray-900">Verzoek ingediend</h3>
+            {/* B-403 (WP-B9): eerlijke bevestiging — het verzoek wordt per e-mail aan
+                de organisatie gemeld (stafwachtrij bestaat nog niet, Epic 2). */}
             <p className="mt-1 text-sm text-gray-600">
-              Uw herinspectie-aanvraag voor {projectName} is ontvangen.
+              Uw herinspectie-aanvraag voor {projectName} is ontvangen en per e-mail aan de
+              organisatie doorgegeven. Wij nemen contact met u op.
             </p>
           </div>
           <Button className="w-full" onClick={onClose}>

@@ -74,8 +74,11 @@ export default function NewRequestPage() {
           </svg>
         </div>
         <h1 className="text-xl font-bold text-gray-900">Opdracht aangevraagd</h1>
+        {/* B-403 (WP-B9): eerlijke bevestiging — het verzoek wordt per e-mail aan de
+            organisatie gemeld (er is nog geen wachtrij in het stafportaal, Epic 2). */}
         <p className="text-sm text-gray-600">
-          Uw aanvraag is ontvangen. De organisatie neemt deze in behandeling en koppelt terug.
+          Uw aanvraag is ontvangen en per e-mail aan de organisatie doorgegeven. Wij nemen
+          contact met u op.
         </p>
         <div className="flex justify-center gap-3">
           <Link

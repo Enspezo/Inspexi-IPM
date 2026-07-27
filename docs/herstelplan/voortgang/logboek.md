@@ -20,8 +20,8 @@ Conform `docs/testprogramma/00-master-testplan.md` §5: API `:3001` (`NODE_ENV=t
 |---|---|---|---|---|---|
 | A1 | — | — | open | B-211, B-208, B-223b | — |
 | A2 | — | — | open | B-210, B-206, B-207, B-223d | — |
-| A3 | — | — | open | B-101, B-102, B-103, B-104 | — |
-| A4 | — | — | open | B-401 | — |
+| A3 | `fix/wp-a3-document-chain` | [#133](https://github.com/Enspezo/Inspexi-IPM/pull/133) | ✅ gemerged + browser/curl-geverifieerd | B-101 ✔, B-102 ✔, B-103 ✔ (rolmatrix vastgelegd), B-104 ✔ (deels achterhaald — statuscheck bestond al, handtekeningcheck toegevoegd) | e2e-rolmatrix 21 tests, unit-specs sign/delete/patch |
+| A4 | `fix/wp-a4-client-portal-assetnode` | [#132](https://github.com/Enspezo/Inspexi-IPM/pull/132) | ✅ gemerged + browser-geverifieerd | B-401 ✔ | 9 Vitest-componenttests (exacte servershape) + TabErrorBoundary |
 | B1–B10 | — | — | open (golf 2) | — | — |
 | C1–C5 | — | — | open (golf 3) | — | — |
 | D1–D3 | — | — | open (golf 4) | — | — |
@@ -29,6 +29,13 @@ Conform `docs/testprogramma/00-master-testplan.md` §5: API `:3001` (`NODE_ENV=t
 ---
 
 ## Chronologisch logboek
+
+### 27 juli 2026 — Golf 1 (deels) + Golf 2 gestart
+
+- **WP-A4 gemerged** (PR #132): B-401 opgelost; browserverificatie: Constateringen-tab + detailmodal renderen op het demo-plan, console schoon.
+- **WP-A3 gemerged** (PR #133): volledige acceptatiematrix live nagedraaid via curl (403/400/201/403/403/400 — alle zes conform) + portal-check (verwijderknop verborgen op getekende documenten als MANAGER). Migratie `20260727194732` (signed_by_user_id) op de dev-DB. Let op: na de merge moest de orkestrator-worktree `prisma generate` + API-herstart doen — de eerste 201-check gaf een 500 door een stale Prisma-client (omgevingsartefact, geen codefout).
+- Restpunt uit A3 (voor het PWA-spoor): de PWA post `{signerRole}` i.p.v. `signerRoleCode` en krijgt al 400 — meenemen bij de PWA-cutover.
+- Golf 2 gestart: B3 t/m B9 parallel als subagents (B5 = enige migrator, e2e-runs geserialiseerd via lock).
 
 ### 27 juli 2026 — Fase 0
 

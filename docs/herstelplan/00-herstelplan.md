@@ -58,16 +58,16 @@ GOLF 4  Gecoördineerd contractwerk            3 WP    ~3-4 dagen  (na stabilisa
 |---|---|---|---|---|---|---|
 | **A1** | Sync-fouten zichtbaar maken | PWA | B-211, B-208, B-223b | S2 | — | open |
 | **A2** | Dataverlies-stop: findings + meetstaten | PWA | B-210, B-206, B-207, B-223d | **S1** | A1 | open |
-| **A3** | Documentketen-integriteit | API | B-101, B-102, B-103, B-104 | **S1** | — | open |
-| **A4** | Klantportaal-crash (AssetNode) | client-portal | B-401 | **S1** | — | open |
+| **A3** | Documentketen-integriteit | API | B-101, B-102, B-103, B-104 | **S1** | — | ✅ gemerged (PR #133) |
+| **A4** | Klantportaal-crash (AssetNode) | client-portal | B-401 | **S1** | — | ✅ gemerged (PR #132) |
 | **B1** | Referentiedata-sync herstellen | PWA | B-202, B-204, B-205a | S2 | A1 | open |
 | **B2** | Assetboom + dode UI | PWA | B-201, B-213, B-214, B-215, B-223c/f/g, B-221 | S2/S3 | B1 | open |
 | **B3** | Superuser-scoping & onboarding | API + portal | B-502, B-503, B-504, B-511§1 | S2 | — | open |
-| **B4** | Upload-security (logo + avatar) | API | B-507 | S2 | — | open |
+| **B4** | Upload-security (logo + avatar) | API | B-507 | S2 | — | ✅ gemerged (PR #136) |
 | **B5** | Offerte-keten: gate, bedragen, idempotentie | API + portal | B-302, B-303, B-304, B-307, B-308, B-309, B-314, B-315-B | S2 | — | open |
-| **B6** | Paginatie-contract + zichtbare queryfouten | API + portal | B-305 | S2 | — | open |
-| **B7** | Publieke endpoints: allowlist + tenantbinding | API | B-306, B-152 | S2 | — | open |
-| **B8** | Planning: sessies toewijzen (UI) | portal | B-310 | S2 | — | open |
+| **B6** | Paginatie-contract + zichtbare queryfouten | API + portal | B-305 | S2 | — | ✅ gemerged (PR #137) |
+| **B7** | Publieke endpoints: allowlist + tenantbinding | API | B-306, B-152 | S2 | — | ✅ gemerged (PR #138) |
+| **B8** | Planning: sessies toewijzen (UI) | portal | B-310 | S2 | — | ✅ gemerged (PR #135) |
 | **B9** | Klantportaal: zichtbaarheid + mitigaties | API + beide portals | B-412, B-402*, B-403*, B-406a | S2/S3 | A4 | open |
 | **B10** | Constatering-classificatie uit het model | PWA + API | B-222 | S2 | B1 | open |
 | **C1** | Foutcontract: NL-meldingen + 404-oracle | API + portal | B-105, B-106, B-151, B-155, B-501, B-509, B-601 | S3/S4 | — | open |

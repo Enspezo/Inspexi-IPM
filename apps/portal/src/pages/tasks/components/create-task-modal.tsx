@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { Modal, Input, Select, Button, useToast } from '@/components/ui';
+import { Modal, Input, QueryErrorNotice, Select, Button, useToast } from '@/components/ui';
 import { useAuth } from '@/providers/auth-provider';
 import { useUsers } from '@/pages/users/hooks/use-users';
 import { useContacts } from '@/pages/contacts/hooks/use-contacts';
@@ -68,16 +68,32 @@ export function CreateTaskModal({
   const { showToast } = useToast();
   const { user } = useAuth();
   const createMutation = useCreateTask();
-  const { data: users } = useUsers();
+  const usersQuery = useUsers();
+  const users = usersQuery.data;
 
   const isStandalone = !fixedEntityType || !fixedEntityId;
   const [selectedEntityType, setSelectedEntityType] = useState('');
   const [selectedEntityId, setSelectedEntityId] = useState('');
 
   // Fetch entity lists for standalone mode
-  const { data: contactsData } = useContacts({ limit: 200 });
-  const { data: requestsData } = useRequests({ limit: 200 });
-  const { data: quotesData } = useQuotes({ limit: 200 });
+  const contactsQuery = useContacts({ limit: 200 });
+  const requestsQuery = useRequests({ limit: 200 });
+  const quotesQuery = useQuotes({ limit: 200 });
+  const contactsData = contactsQuery.data;
+  const requestsData = requestsQuery.data;
+  const quotesData = quotesQuery.data;
+
+  // Query achter de gekozen entiteitslijst → zichtbare foutstate bij de dropdown.
+  const activeEntityQuery =
+    selectedEntityType === TaskEntityType.CONTACT
+      ? contactsQuery
+      : selectedEntityType === TaskEntityType.REQUEST
+        ? requestsQuery
+        : selectedEntityType === TaskEntityType.QUOTE
+          ? quotesQuery
+          : selectedEntityType === TaskEntityType.USER
+            ? usersQuery
+            : null;
 
   const {
     register,
@@ -186,20 +202,26 @@ export function CreateTaskModal({
               }}
             />
             {selectedEntityType && (
-              <Select
-                label={
-                  selectedEntityType === TaskEntityType.CONTACT
-                    ? 'Relatie'
-                    : selectedEntityType === TaskEntityType.REQUEST
-                      ? 'Aanvraag'
-                      : selectedEntityType === TaskEntityType.USER
-                        ? 'Gebruiker'
-                        : 'Offerte'
-                }
-                options={entityOptions}
-                value={selectedEntityId}
-                onChange={(e) => setSelectedEntityId(e.target.value)}
-              />
+              <>
+                <Select
+                  label={
+                    selectedEntityType === TaskEntityType.CONTACT
+                      ? 'Relatie'
+                      : selectedEntityType === TaskEntityType.REQUEST
+                        ? 'Aanvraag'
+                        : selectedEntityType === TaskEntityType.USER
+                          ? 'Gebruiker'
+                          : 'Offerte'
+                  }
+                  options={entityOptions}
+                  value={selectedEntityId}
+                  onChange={(e) => setSelectedEntityId(e.target.value)}
+                />
+                <QueryErrorNotice
+                  error={activeEntityQuery?.error}
+                  onRetry={activeEntityQuery?.refetch}
+                />
+              </>
             )}
           </>
         )}

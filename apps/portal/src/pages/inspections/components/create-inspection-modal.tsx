@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { Modal, Input, Select, Button, useToast } from '@/components/ui';
+import { Modal, Input, QueryErrorNotice, Select, Button, useToast } from '@/components/ui';
 import { getErrorMessage } from '@/lib/api-client';
 import { useContacts } from '@/pages/contacts/hooks/use-contacts';
 import { useNormTypes } from '@/pages/norm-types/hooks/use-norm-types';
@@ -53,7 +53,11 @@ export function CreateInspectionModal({ isOpen, onClose }: Props) {
   // Inspecteurs krijgen zichzelf voorgeselecteerd als toegewezen inspecteur.
   const defaultAssignedTo = user?.roles.includes(Role.INSPECTEUR) ? user.id : '';
 
-  const { data: contactsData } = useContacts({ limit: 200 });
+  const {
+    data: contactsData,
+    error: contactsError,
+    refetch: refetchContacts,
+  } = useContacts({ limit: 200 });
   const { data: normTypes } = useNormTypes();
   const { data: inspectionTypes } = useLookups('inspection-types');
   const { data: inspectors } = useSelectableUsers(Role.INSPECTEUR, { enabled: isOpen });
@@ -166,6 +170,11 @@ export function CreateInspectionModal({ isOpen, onClose }: Props) {
           options={contactOptions}
           error={errors.contactId?.message}
           {...register('contactId')}
+        />
+        <QueryErrorNotice
+          error={contactsError}
+          label="Opdrachtgevers"
+          onRetry={refetchContacts}
         />
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">

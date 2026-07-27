@@ -525,13 +525,9 @@ export default function PlanningPublicPage() {
           </div>
         )}
 
-        {/* Notes */}
-        {data.internalNotes && (
-          <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
-            <h2 className="mb-3 text-base font-semibold text-gray-900">Opmerkingen</h2>
-            <p className="whitespace-pre-wrap text-sm text-gray-700">{data.internalNotes}</p>
-          </div>
-        )}
+        {/* B-306: interne notities (`internalNotes`) worden bewust NIET meer getoond —
+            het veld zit ook niet meer in de publieke API-payload. Een klantgerichte
+            toelichting vereist een apart `clientNotes`-veld (follow-up). */}
 
         {/* Shared documents */}
         {sharedDocuments.length > 0 && (

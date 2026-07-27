@@ -137,14 +137,25 @@ export class GeneratedDocumentsService {
     return this.findScoped(id, user);
   }
 
+  /** WP-A3: ≥1 handtekening met status SIGNED onder dit document? */
+  private async hasSignedSignature(documentId: string): Promise<boolean> {
+    const signed = await this.prisma.documentSignature.count({
+      where: { generatedDocumentId: documentId, status: SignatureStatus.SIGNED },
+    });
+    return signed > 0;
+  }
+
   async updateEditedContent(id: string, user: User, editedContent: string) {
     const doc = await this.findScoped(id, user);
-    // Once (fully) SIGNED the content is locked — editing it would change the
-    // document out from under the collected signatures (SYNC-5). FINALIZED is
-    // likewise immutable.
+    // Once signed the content is locked — editing it would change the document
+    // out from under the collected signatures (SYNC-5). FINALIZED is likewise
+    // immutable. B-104: the gate is the existence of a SIGNED signature row,
+    // not just the document status — at PENDING_SIGNATURES a first signature
+    // may already be present while the status has not flipped yet.
     if (
       doc.status === GeneratedDocumentStatus.SIGNED ||
-      doc.status === GeneratedDocumentStatus.FINALIZED
+      doc.status === GeneratedDocumentStatus.FINALIZED ||
+      (await this.hasSignedSignature(doc.id))
     ) {
       throw new ForbiddenException('Een ondertekend document kan niet meer bewerkt worden');
     }
@@ -158,6 +169,14 @@ export class GeneratedDocumentsService {
     const doc = await this.findScoped(id, user);
     if (doc.status === GeneratedDocumentStatus.FINALIZED) {
       throw new ForbiddenException('Gefinaliseerd document kan niet verwijderd worden');
+    }
+    // B-102: een document waar al een handtekening onder staat is bewijsmateriaal
+    // — verwijderen zou de handtekeningrijen mee-casceren (buiten de audit-
+    // middleware om). Intrekken/hergenereren is dan de aangewezen route.
+    if (await this.hasSignedSignature(doc.id)) {
+      throw new BadRequestException(
+        'Dit document is al (deels) ondertekend en kan niet meer verwijderd worden',
+      );
     }
     // Best-effort opruimen van geëxporteerde bestanden.
     for (const key of [doc.pdfUrl, doc.wordUrl]) {

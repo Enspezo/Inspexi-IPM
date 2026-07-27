@@ -13,4 +13,9 @@
 | B-205b (canonieke datavorm) | D2 | Wacht op beslispunt A2 | `03-beslispunten-backlog.md` §A A2 |
 | B-223a (pull-scope inspecteur) | C3 | Wacht op beslispunt A3 | `03-beslispunten-backlog.md` §A A3 |
 
+| B-152 (apex-domein) | B7 | Gemailde offerte-links gebruiken een generiek `PUBLIC_URL`-host (DEP-6): tenantbinding op org-subdomeinen is dicht, apex bewust open — anders breken alle verzonden links | Eigenaarsbeslissing: PUBLIC_URL subdomein-bewust maken, daarna apex dichtzetten (één regel in `publicTenantWhere()`) |
+| B-306 (nasleep) | B7 | Interne notities stonden al publiek achter mogelijk gedeelde tokens; tokenrotatie geadviseerd, niet uitgevoerd. Publieke planning-routes dragen nog een klasse-brede feature-gate met verkeerde-org-semantiek (follow-up) | PR #138-body |
+| B-305 (nasleep) | B6 | Dropdowns cappen op 200: >200 records → stil afgekapt; ongebonden `limit` op /help/articles + /support-tickets (pre-existing) | Follow-up: server-side search/typeahead; losse kleine PR |
+| B-507 (nasleep) | B4 | Overige uploadroutes (documents/photos/location-images/certificates, quote-templates serveert nog SVG authenticated) valideren op file.mimetype; helmet-CSP dempt platformbreed. Prod: SVG-logo-datacheck vóór uitrol | Vervolgtaak-chip aangemaakt door agent; pre-deploy-stap in PR #136 |
+
 _Deze tabel wordt per golf bijgewerkt; bevindingen die tijdens uitvoering achterhaald blijken komen hier ook te staan._

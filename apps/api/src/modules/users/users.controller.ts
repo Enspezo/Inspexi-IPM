@@ -24,8 +24,10 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { Response } from 'express';
+import { createHash } from 'crypto';
 import { User, Role } from '@prisma/client';
 import { ORG_ADMINS, MANAGEMENT_ROLES, ALL_STAFF } from '@/common/auth/roles';
+import { setBinaryResponseHeaders } from '@/common';
 import { UsersService } from './users.service';
 import {
   InviteUserDto,
@@ -127,11 +129,18 @@ export class UsersController {
     @CurrentUser() user: User,
     @Res() res: Response,
   ) {
-    const { buffer, mimeType } = await this.usersService.downloadAvatar(user.id);
-    res.set({
-      'Content-Type': mimeType,
-      'Content-Length': buffer.length.toString(),
-      'Cache-Control': 'private, max-age=3600',
+    const { buffer, mimeType, filename, disposition, storageKey } =
+      await this.usersService.downloadAvatar(user.id);
+    // WP-B4: dezelfde harde headers als bij het organisatielogo. De ETag volgt de
+    // opslagsleutel (nieuwe UUID per upload) zodat vervangen/verwijderen de
+    // cache-key breekt.
+    setBinaryResponseHeaders(res, {
+      mimeType,
+      contentLength: buffer.length,
+      filename,
+      disposition,
+      cacheControl: 'private, max-age=300, must-revalidate',
+      etag: `"${createHash('sha256').update(storageKey).digest('hex').slice(0, 32)}"`,
     });
     res.send(buffer);
   }

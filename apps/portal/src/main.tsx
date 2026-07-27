@@ -6,6 +6,8 @@ import { TenantProvider } from '@/providers/tenant-provider';
 import { AuthProvider } from '@/providers/auth-provider';
 import { FeatureProvider } from '@/providers/feature-provider';
 import { ConfirmProvider, ToastProvider } from '@/components/ui';
+import { QueryErrorToastBridge } from '@/components/query-error-toast-bridge';
+import { createAppQueryCache } from '@/lib/query-error-toast';
 import { QuickCreateProvider } from '@/providers/quick-create-provider';
 import { WindowTabsProvider } from '@/providers/window-tabs';
 import { ChatProvider } from '@/providers/chat-provider';
@@ -17,6 +19,9 @@ import './styles/index.css';
 registerGlobalErrorReporter();
 
 const queryClient = new QueryClient({
+  // Query-fouten nooit stil laten falen: console.error + (gededupte) toast
+  // via de bridge in de ToastProvider (WP-B6 / B-305).
+  queryCache: createAppQueryCache(),
   defaultOptions: {
     queries: {
       retry: 1,
@@ -34,6 +39,7 @@ createRoot(document.getElementById('root')!).render(
           <AuthProvider>
             <FeatureProvider>
               <ToastProvider>
+                <QueryErrorToastBridge />
                 <ConfirmProvider>
                   <ChatProvider>
                     <HelpProvider>

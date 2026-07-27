@@ -2,7 +2,9 @@ import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/commo
 import { User, QuoteStatus, NotificationType } from '@prisma/client';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '@/prisma';
-import { assertFound } from '@/common';
+import { assertFound, publicTenantWhere } from '@/common';
+import { TenantContext } from '@/common/interfaces/tenant-context.interface';
+import { EntitlementsService } from '@/modules/entitlements/entitlements.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { EmailService } from '@/common/services/email.service';
 import { AddQuestionDto } from './dto';
@@ -15,6 +17,7 @@ export class QuoteQuestionsService {
     private notifications: NotificationsService,
     private emailService: EmailService,
     private config: ConfigService,
+    private entitlements: EntitlementsService,
   ) {}
 
   // Q&A (medewerker)
@@ -53,11 +56,13 @@ export class QuoteQuestionsService {
   }
 
   // Publieke webviewer
-  async addClientQuestion(token: string, dto: AddQuestionDto) {
-    const quote = assertFound(await this.prisma.quote.findUnique({
-      where: { publicToken: token },
+  async addClientQuestion(token: string, dto: AddQuestionDto, tenant?: TenantContext) {
+    // B-152 (WP-B7): tenantbinding + entitlement tegen de eigenaar-org.
+    const quote = assertFound(await this.prisma.quote.findFirst({
+      where: { publicToken: token, ...publicTenantWhere(tenant, this.config, 'Offerte') },
       select: { id: true, orgId: true, quoteNumber: true, createdBy: true, status: true },
     }), 'Offerte');
+    await this.entitlements.assertFeature(quote.orgId, 'CRM_COMPLEET');
     const unavailableStatuses: QuoteStatus[] = [QuoteStatus.CONCEPT, QuoteStatus.TER_GOEDKEURING, QuoteStatus.GOEDGEKEURD];
     if (unavailableStatuses.includes(quote.status)) throw new ForbiddenException('Offerte is niet beschikbaar');
     const question = await this.prisma.quoteQuestion.create({ data: { quoteId: quote.id, userId: null, message: dto.message, isFromClient: true } });

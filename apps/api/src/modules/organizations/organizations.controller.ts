@@ -29,6 +29,8 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { Response } from 'express';
+import { createHash } from 'crypto';
+import { setBinaryResponseHeaders } from '@/common';
 import { User, Role } from '@prisma/client';
 import { ORG_ADMINS } from '@/common/auth/roles';
 import { OrganizationsService } from './organizations.service';
@@ -325,12 +327,21 @@ export class OrganizationsController {
     @Param('id', ParseUUIDPipe) id: string,
     @Res() res: Response,
   ) {
-    const { buffer, mimeType } =
+    const { buffer, mimeType, filename, disposition, storageKey } =
       await this.organizationsService.downloadLogo(id);
-    res.set({
-      'Content-Type': mimeType,
-      'Content-Length': buffer.length.toString(),
-      'Cache-Control': 'public, max-age=86400',
+    // WP-B4: publieke route, dus altijd nosniff + sandbox-CSP + expliciete
+    // disposition. Cache-Control was 24 uur op een URL die nooit verandert —
+    // een kwaadaardig logo bleef daardoor een dag in caches hangen. De ETag
+    // volgt de opslagsleutel (nieuwe UUID per upload), dus vervangen of
+    // verwijderen breekt de cache-key meteen; de korte max-age begrenst het
+    // venster waarin een client zonder revalidatie oude bytes toont.
+    setBinaryResponseHeaders(res, {
+      mimeType,
+      contentLength: buffer.length,
+      filename,
+      disposition,
+      cacheControl: 'public, max-age=300, must-revalidate',
+      etag: `"${createHash('sha256').update(storageKey).digest('hex').slice(0, 32)}"`,
     });
     res.send(buffer);
   }

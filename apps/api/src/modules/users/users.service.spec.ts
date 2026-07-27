@@ -23,6 +23,13 @@ describe('UsersService', () => {
   let service: UsersService;
   let prisma: PrismaService;
 
+  const mockStorage = {
+    upload: jest.fn(),
+    download: jest.fn(),
+    delete: jest.fn(),
+    exists: jest.fn(),
+  };
+
   const mockOrganization = {
     id: 'org-1',
     name: 'Test Org',
@@ -107,15 +114,7 @@ describe('UsersService', () => {
         { provide: PrismaService, useValue: mockPrismaService },
         { provide: EmailService, useValue: mockEmailService },
         { provide: ConfigService, useValue: mockConfigService },
-        {
-          provide: STORAGE_PROVIDER,
-          useValue: {
-            upload: jest.fn(),
-            download: jest.fn(),
-            delete: jest.fn(),
-            exists: jest.fn(),
-          },
-        },
+        { provide: STORAGE_PROVIDER, useValue: mockStorage },
         { provide: NotificationsService, useValue: { dispatch: jest.fn() } },
       ],
     }).compile();
@@ -594,6 +593,56 @@ describe('UsersService', () => {
       );
       expect(result.firstName).toBe('Jan');
       expect(mockPrismaService.user.update).toHaveBeenCalled();
+    });
+  });
+
+  // B-507 / WP-B4 — avatar krijgt dezelfde behandeling als het organisatielogo.
+  describe('uploadAvatar() / downloadAvatar()', () => {
+    const jpegBuffer = Buffer.concat([
+      Buffer.from([0xff, 0xd8, 0xff, 0xe0]),
+      Buffer.from([0x00, 0x10, 0x4a, 0x46, 0x49, 0x46, 0x00, 0x01]),
+    ]);
+    const svgBuffer = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"><script/></svg>');
+
+    beforeEach(() => {
+      mockPrismaService.user.findUnique.mockResolvedValue(mockUser);
+      mockPrismaService.user.update.mockResolvedValue(mockUser);
+    });
+
+    it('leidt sleutel én opgeslagen mimetype af uit de bytes, niet uit de bestandsnaam', async () => {
+      const key = await service.uploadAvatar('user-1', {
+        buffer: jpegBuffer,
+        mimetype: 'image/png',
+        originalname: 'evil.svg',
+      } as Express.Multer.File);
+
+      expect(key).toMatch(/^avatars\/user-1\/.+\.jpg$/);
+      expect(mockStorage.upload).toHaveBeenCalledWith(key, jpegBuffer, 'image/jpeg');
+    });
+
+    it('weigert inhoud die geen PNG/JPEG/WebP is en raakt de opslag niet aan', async () => {
+      await expect(
+        service.uploadAvatar('user-1', {
+          buffer: svgBuffer,
+          mimetype: 'image/png',
+          originalname: 'evil.svg',
+        } as Express.Multer.File),
+      ).rejects.toThrow(/geen geldige PNG-, JPEG- of WebP-afbeelding/);
+
+      expect(mockStorage.upload).not.toHaveBeenCalled();
+    });
+
+    it('serveert een legacy .svg-sleutel als octet-stream, nooit als image/svg+xml', async () => {
+      mockPrismaService.user.findUnique.mockResolvedValue({
+        ...mockUser,
+        avatarUrl: 'avatars/user-1/legacy.svg',
+      });
+      mockStorage.download.mockResolvedValue(svgBuffer);
+
+      const result = await service.downloadAvatar('user-1');
+
+      expect(result.mimeType).toBe('application/octet-stream');
+      expect(result.disposition).toBe('attachment');
     });
   });
 });

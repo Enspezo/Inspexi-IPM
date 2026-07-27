@@ -12,6 +12,7 @@ import {
 } from '../hooks/use-planning-sessions';
 import { toDatetimeLocal } from './planning-detail-shared';
 import { useAvailabilityOverride } from '../hooks/use-availability-override';
+import { InspectorAssignModal } from './planning-inspector-assign-modal';
 
 export function SessionsTab({
   sessions,
@@ -34,6 +35,12 @@ export function SessionsTab({
 }) {
   const totalSessions = sessions.length;
 
+  // B-310: per sessie inspecteurs toewijzen via de bestaande toewijzingsmodal
+  // (incl. beschikbaarheidscheck + 409/override-dialoog). Eén modal op tab-
+  // niveau; het id bepaalt voor welke sessie hij openstaat.
+  const [assignSessionId, setAssignSessionId] = useState<string | null>(null);
+  const assignSession = sessions.find((s) => s.id === assignSessionId) ?? null;
+
   return (
     <div className="space-y-4">
       {sessions.length === 0 ? (
@@ -48,6 +55,7 @@ export function SessionsTab({
             userCanWrite={userCanWrite}
             onOpenReject={() => onOpenReject(session.id)}
             onOpenReschedule={() => onOpenReschedule(session.id)}
+            onOpenAssign={() => setAssignSessionId(session.id)}
             planningItemId={planningItemId}
           />
         ))
@@ -58,6 +66,19 @@ export function SessionsTab({
             + Sessie toevoegen
           </Button>
         </div>
+      )}
+      {assignSession && (
+        <InspectorAssignModal
+          planningItemId={planningItemId}
+          sessionId={assignSession.id}
+          isOpen
+          onClose={() => setAssignSessionId(null)}
+          scheduledDate={assignSession.scheduledDate}
+          currentInspectorIds={(assignSession.sessionInspectors ?? []).map((si) => si.userId)}
+          currentPrimaryId={
+            (assignSession.sessionInspectors ?? []).find((si) => si.isPrimary)?.userId ?? null
+          }
+        />
       )}
     </div>
   );
@@ -70,6 +91,7 @@ function SessionCard({
   userCanWrite,
   onOpenReject,
   onOpenReschedule,
+  onOpenAssign,
   planningItemId,
 }: {
   session: PlanningSession;
@@ -78,6 +100,7 @@ function SessionCard({
   userCanWrite: boolean;
   onOpenReject: () => void;
   onOpenReschedule: () => void;
+  onOpenAssign: () => void;
   planningItemId: string;
 }) {
   const [notesOpen, setNotesOpen] = useState(false);
@@ -95,6 +118,17 @@ function SessionCard({
 
   const mySessionInspector = session.sessionInspectors?.find(si => si.userId === userId);
   const canActAsInspector = mySessionInspector?.acceptanceStatus === AcceptanceStatus.PENDING;
+
+  // B-310: bij NOG_TE_PLANNEN tonen we "Bevestigen" wél, maar disabled met een
+  // tooltip die uitlegt wat er nog ontbreekt. Toewijzen zet de sessie op
+  // CONCEPT; daarna wordt de knop actief.
+  const hasInspectors = (session.sessionInspectors ?? []).length > 0;
+  const confirmBlockedReason =
+    !session.scheduledDate && !hasInspectors
+      ? 'Wijs eerst een inspecteur toe en kies een datum'
+      : !session.scheduledDate
+        ? 'Stel eerst een datum in voor deze sessie'
+        : 'Wijs eerst een inspecteur toe om deze sessie te kunnen bevestigen';
 
   const { classes: statusColor, label: statusLabel } = getStatusConfig(SESSION_STATUS, session.status);
 
@@ -298,8 +332,16 @@ function SessionCard({
           )}
 
           {/* Planner actions */}
+          {userCanWrite && (session.status === SessionStatus.NOG_TE_PLANNEN || session.status === SessionStatus.CONCEPT) && (
+            <Button size="sm" variant="secondary" onClick={onOpenAssign}>Inspecteurs toewijzen</Button>
+          )}
           {userCanWrite && session.status === SessionStatus.CONCEPT && (
             <Button size="sm" variant="secondary" onClick={handleConfirm} disabled={confirmSessionMut.isPending}>Bevestigen</Button>
+          )}
+          {userCanWrite && session.status === SessionStatus.NOG_TE_PLANNEN && (
+            <span title={confirmBlockedReason} className="inline-flex">
+              <Button size="sm" variant="secondary" disabled>Bevestigen</Button>
+            </span>
           )}
           {userCanWrite && (session.status === SessionStatus.NOG_TE_PLANNEN || session.status === SessionStatus.CONCEPT || session.status === SessionStatus.DEFINITIEF) && (
             <Button size="sm" variant="secondary" onClick={onOpenReschedule}>Verzetten</Button>

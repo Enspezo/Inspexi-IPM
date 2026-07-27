@@ -1,7 +1,7 @@
 // @Public() (staf-guards uit) + ClientJwtAuthGuard + @CurrentTenant (org-subdomein).
 // Berichten hangen onder een inspectie: /client/inspections/:id/messages.
 
-import { Controller, Get, Post, Param, Body, UseGuards, ParseUUIDPipe } from '@nestjs/common';
+import { Controller, Get, Post, Param, Body, UseGuards} from '@nestjs/common';
 import { RequiresFeature } from '@/common/decorators/requires-feature.decorator';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { Public, CurrentTenant } from '@/common/decorators';
@@ -12,6 +12,7 @@ import {
 } from '@/common/decorators/current-client-user.decorator';
 import { ClientMessagesService } from './client-messages.service';
 import { SendMessageDto } from './dto';
+import { ParseUuidPipe } from '@/common';
 
 @ApiTags('Client Messages')
 @Public()
@@ -24,7 +25,7 @@ export class ClientMessagesController {
   @Get(':id/messages')
   @ApiOperation({ summary: 'Berichten van een inspectie (klant)' })
   async list(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @CurrentClientUser() user: CurrentClientUserData,
     @CurrentTenant('orgId') orgId: string | null,
   ) {
@@ -34,7 +35,7 @@ export class ClientMessagesController {
   @Post(':id/messages')
   @ApiOperation({ summary: 'Bericht plaatsen bij een inspectie (klant)' })
   async send(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @Body() dto: SendMessageDto,
     @CurrentClientUser() user: CurrentClientUserData,
     @CurrentTenant('orgId') orgId: string | null,
@@ -45,8 +46,8 @@ export class ClientMessagesController {
   @Post(':id/messages/:messageId/read')
   @ApiOperation({ summary: 'Staf-bericht als gelezen markeren' })
   async markRead(
-    @Param('id', ParseUUIDPipe) id: string,
-    @Param('messageId', ParseUUIDPipe) messageId: string,
+    @Param('id', ParseUuidPipe) id: string,
+    @Param('messageId', ParseUuidPipe) messageId: string,
     @CurrentClientUser() user: CurrentClientUserData,
     @CurrentTenant('orgId') orgId: string | null,
   ) {

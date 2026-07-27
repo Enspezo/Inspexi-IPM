@@ -7,7 +7,6 @@ import {
   Param,
   Body,
   Query,
-  ParseUUIDPipe,
 } from '@nestjs/common';
 import { RequiresFeature } from '@/common/decorators/requires-feature.decorator';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
@@ -16,6 +15,7 @@ import { Roles, CurrentUser } from '@/common/decorators';
 import { ALL_STAFF, ORG_ADMINS } from '@/common/auth/roles';
 import { ChecklistItemsService } from './checklist-items.service';
 import { CreateChecklistItemDto, UpdateChecklistItemDto } from './dto';
+import { ParseUuidPipe } from '@/common';
 
 const READ_ROLES = ALL_STAFF;
 const WRITE_ROLES = ORG_ADMINS;
@@ -54,7 +54,7 @@ export class ChecklistItemsController {
   @Get(':id')
   @Roles(...READ_ROLES)
   @ApiOperation({ summary: 'Checklist-item detail' })
-  async findById(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: User) {
+  async findById(@Param('id', ParseUuidPipe) id: string, @CurrentUser() user: User) {
     return { success: true, data: await this.service.findById(id, user) };
   }
 
@@ -69,7 +69,7 @@ export class ChecklistItemsController {
   @Roles(...WRITE_ROLES)
   @ApiOperation({ summary: 'Checklist-item bijwerken' })
   async update(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @CurrentUser() user: User,
     @Body() dto: UpdateChecklistItemDto,
   ) {
@@ -79,7 +79,7 @@ export class ChecklistItemsController {
   @Delete(':id')
   @Roles(...WRITE_ROLES)
   @ApiOperation({ summary: 'Checklist-item verwijderen (soft-delete)' })
-  async delete(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: User) {
+  async delete(@Param('id', ParseUuidPipe) id: string, @CurrentUser() user: User) {
     return { success: true, data: await this.service.delete(id, user) };
   }
 }

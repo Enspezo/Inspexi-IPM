@@ -3,7 +3,6 @@ import {
   Controller,
   Get,
   Param,
-  ParseUUIDPipe,
   Post,
   Query,
 } from '@nestjs/common';
@@ -20,6 +19,7 @@ import {
   SearchChatUsersQueryDto,
   SendMessageDto,
 } from './dto';
+import { ParseUuidPipe } from '@/common';
 
 @ApiTags('Chat')
 @ApiBearerAuth()
@@ -71,7 +71,7 @@ export class ChatController {
   @Get('threads/:id')
   @ApiOperation({ summary: 'Eén chat ophalen' })
   @ApiResponse({ status: 200, description: 'Chat' })
-  async getThread(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: User) {
+  async getThread(@Param('id', ParseUuidPipe) id: string, @CurrentUser() user: User) {
     const data = await this.chat.getThread(id, user);
     return { success: true, data };
   }
@@ -80,7 +80,7 @@ export class ChatController {
   @ApiOperation({ summary: 'Berichten van een chat ophalen (poll met ?since=)' })
   @ApiResponse({ status: 200, description: 'Berichten' })
   async listMessages(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @CurrentUser() user: User,
     @Query() query: ListMessagesQueryDto,
   ) {
@@ -92,7 +92,7 @@ export class ChatController {
   @ApiOperation({ summary: 'Bericht plaatsen (incl. @-mentions en record-referentie)' })
   @ApiResponse({ status: 201, description: 'Bericht geplaatst' })
   async sendMessage(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @CurrentUser() user: User,
     @Body() dto: SendMessageDto,
   ) {
@@ -103,7 +103,7 @@ export class ChatController {
   @Post('threads/:id/read')
   @ApiOperation({ summary: 'Chat als gelezen markeren' })
   @ApiResponse({ status: 201, description: 'Gelezen-status bijgewerkt' })
-  async markRead(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: User) {
+  async markRead(@Param('id', ParseUuidPipe) id: string, @CurrentUser() user: User) {
     const data = await this.threads.markRead(id, user);
     return { success: true, data };
   }
@@ -111,7 +111,7 @@ export class ChatController {
   @Post('threads/:id/close')
   @ApiOperation({ summary: 'Chat afronden (transcript-notitie bij gekoppeld record)' })
   @ApiResponse({ status: 201, description: 'Chat afgerond' })
-  async closeThread(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: User) {
+  async closeThread(@Param('id', ParseUuidPipe) id: string, @CurrentUser() user: User) {
     const data = await this.transcripts.closeThread(id, user);
     return { success: true, data };
   }

@@ -7,7 +7,6 @@ import {
   Param,
   Body,
   Query,
-  ParseUUIDPipe,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { User } from '@prisma/client';
@@ -19,6 +18,7 @@ import {
   UpdateAvailabilityTemplateDto,
   ListAvailabilityTemplatesQueryDto,
 } from './dto';
+import { ParseUuidPipe } from '@/common';
 
 @ApiTags('Availability templates')
 @ApiBearerAuth()
@@ -51,7 +51,7 @@ export class AvailabilityTemplatesController {
   @ApiOperation({ summary: 'Template ophalen' })
   @ApiResponse({ status: 200, description: 'Template details' })
   @ApiResponse({ status: 404, description: 'Niet gevonden' })
-  async findOne(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: User) {
+  async findOne(@Param('id', ParseUuidPipe) id: string, @CurrentUser() user: User) {
     const data = await this.service.findOne(id, user);
     return { success: true, data };
   }
@@ -60,7 +60,7 @@ export class AvailabilityTemplatesController {
   @ApiOperation({ summary: 'Template bijwerken (slots worden integraal vervangen)' })
   @ApiResponse({ status: 200, description: 'Template bijgewerkt' })
   async update(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @Body() dto: UpdateAvailabilityTemplateDto,
     @CurrentUser() user: User,
   ) {
@@ -72,7 +72,7 @@ export class AvailabilityTemplatesController {
   @ApiOperation({ summary: 'Template verwijderen (soft; geblokkeerd bij actieve toewijzingen)' })
   @ApiResponse({ status: 200, description: 'Template verwijderd' })
   @ApiResponse({ status: 409, description: 'Actieve toewijzingen aanwezig' })
-  async remove(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: User) {
+  async remove(@Param('id', ParseUuidPipe) id: string, @CurrentUser() user: User) {
     await this.service.remove(id, user);
     return { success: true, message: 'Template verwijderd' };
   }

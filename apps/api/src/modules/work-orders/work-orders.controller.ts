@@ -8,7 +8,6 @@ import {
   Body,
   Param,
   Query,
-  ParseUUIDPipe,
 } from '@nestjs/common';
 import { RequiresFeature } from '@/common/decorators/requires-feature.decorator';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
@@ -24,6 +23,7 @@ import {
   SetWorkOrderLinesDto,
   ListWorkOrdersQueryDto,
 } from './dto';
+import { ParseUuidPipe } from '@/common';
 
 @ApiTags('work-orders')
 @RequiresFeature('UITVOERING_COMPLEET')
@@ -56,7 +56,7 @@ export class WorkOrdersController {
   @ApiOperation({ summary: 'Werkbon status wijzigen' })
   async updateStatus(
     @CurrentUser() user: User,
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @Body() dto: UpdateWorkOrderStatusDto,
   ) {
     const data = await this.service.updateStatus(id, dto, user);
@@ -68,7 +68,7 @@ export class WorkOrdersController {
   @ApiOperation({ summary: 'Werkbon meerwerk regels instellen' })
   async setLines(
     @CurrentUser() user: User,
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @Body() dto: SetWorkOrderLinesDto,
   ) {
     const data = await this.service.setLines(id, dto, user);
@@ -80,7 +80,7 @@ export class WorkOrdersController {
   @ApiOperation({ summary: 'Werkbon details' })
   async findOne(
     @CurrentUser() user: User,
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
   ) {
     const data = await this.service.findOne(id, user);
     return { success: true, data };
@@ -91,7 +91,7 @@ export class WorkOrdersController {
   @ApiOperation({ summary: 'Werkbon bijwerken' })
   async update(
     @CurrentUser() user: User,
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @Body() dto: UpdateWorkOrderDto,
   ) {
     const data = await this.service.update(id, dto, user);
@@ -103,7 +103,7 @@ export class WorkOrdersController {
   @ApiOperation({ summary: 'Werkbon verwijderen' })
   async remove(
     @CurrentUser() user: User,
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
   ) {
     await this.service.remove(id, user);
     return { success: true };

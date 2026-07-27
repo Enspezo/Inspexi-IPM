@@ -8,7 +8,6 @@ import {
   Body,
   Headers,
   Res,
-  ParseUUIDPipe,
   UseInterceptors,
   UploadedFile,
   ParseFilePipe,
@@ -37,6 +36,7 @@ import {
   QuickCreateMeasurementDto,
   QuickCreateFindingDto,
 } from './dto';
+import { ParseUuidPipe } from '@/common';
 
 /**
  * Image-only MIME validator (zie documents.controller MimeTypeValidator).
@@ -75,7 +75,7 @@ export class LocationImagesController {
   @Roles(...ALL)
   @ApiOperation({ summary: 'Locatie-afbeelding ophalen (incl. markers)' })
   async getImage(
-    @Param('locationId', ParseUUIDPipe) locationId: string,
+    @Param('locationId', ParseUuidPipe) locationId: string,
     @CurrentUser() user: User,
   ) {
     return { success: true, data: await this.service.getImageByLocation(locationId, user) };
@@ -85,7 +85,7 @@ export class LocationImagesController {
   @Roles(...ALL)
   @ApiOperation({ summary: 'Locatie-afbeelding (bytes) streamen voor preview/download' })
   async getImageFile(
-    @Param('locationId', ParseUUIDPipe) locationId: string,
+    @Param('locationId', ParseUuidPipe) locationId: string,
     @CurrentUser() user: User,
     @Res() res: Response,
   ) {
@@ -111,7 +111,7 @@ export class LocationImagesController {
   @ApiConsumes('multipart/form-data')
   @ApiOperation({ summary: 'Locatie-afbeelding uploaden (één per locatie)' })
   async uploadImage(
-    @Param('locationId', ParseUUIDPipe) locationId: string,
+    @Param('locationId', ParseUuidPipe) locationId: string,
     @UploadedFile(
       new ParseFilePipe({
         errorHttpStatusCode: HttpStatus.UNPROCESSABLE_ENTITY,
@@ -135,7 +135,7 @@ export class LocationImagesController {
   @Roles(...ALL)
   @ApiOperation({ summary: 'Locatie-afbeelding verwijderen (markers cascaden mee)' })
   async deleteImage(
-    @Param('locationId', ParseUUIDPipe) locationId: string,
+    @Param('locationId', ParseUuidPipe) locationId: string,
     @CurrentUser() user: User,
   ) {
     return { success: true, data: await this.service.deleteImage(locationId, user) };
@@ -147,7 +147,7 @@ export class LocationImagesController {
   @Roles(...ALL)
   @ApiOperation({ summary: 'Markers van een afbeelding ophalen' })
   async listMarkers(
-    @Param('imageId', ParseUUIDPipe) imageId: string,
+    @Param('imageId', ParseUuidPipe) imageId: string,
     @CurrentUser() user: User,
   ) {
     return { success: true, data: await this.service.listMarkers(imageId, user) };
@@ -157,7 +157,7 @@ export class LocationImagesController {
   @Roles(...ALL)
   @ApiOperation({ summary: 'Marker aanmaken' })
   async createMarker(
-    @Param('imageId', ParseUUIDPipe) imageId: string,
+    @Param('imageId', ParseUuidPipe) imageId: string,
     @CurrentUser() user: User,
     @Body() dto: CreateMarkerDto,
     @Headers('x-device-id') deviceId?: string,
@@ -169,8 +169,8 @@ export class LocationImagesController {
   @Roles(...ALL)
   @ApiOperation({ summary: 'Marker bijwerken' })
   async updateMarker(
-    @Param('imageId', ParseUUIDPipe) imageId: string,
-    @Param('markerId', ParseUUIDPipe) markerId: string,
+    @Param('imageId', ParseUuidPipe) imageId: string,
+    @Param('markerId', ParseUuidPipe) markerId: string,
     @CurrentUser() user: User,
     @Body() dto: UpdateMarkerDto,
   ) {
@@ -184,8 +184,8 @@ export class LocationImagesController {
   @Roles(...ALL)
   @ApiOperation({ summary: 'Marker verwijderen' })
   async deleteMarker(
-    @Param('imageId', ParseUUIDPipe) imageId: string,
-    @Param('markerId', ParseUUIDPipe) markerId: string,
+    @Param('imageId', ParseUuidPipe) imageId: string,
+    @Param('markerId', ParseUuidPipe) markerId: string,
     @CurrentUser() user: User,
   ) {
     return { success: true, data: await this.service.deleteMarker(imageId, markerId, user) };
@@ -197,7 +197,7 @@ export class LocationImagesController {
   @Roles(...ALL)
   @ApiOperation({ summary: 'Asset + marker aanmaken vanaf de afbeelding' })
   async quickCreateAsset(
-    @Param('imageId', ParseUUIDPipe) imageId: string,
+    @Param('imageId', ParseUuidPipe) imageId: string,
     @CurrentUser() user: User,
     @Body() dto: QuickCreateAssetDto,
     @Headers('x-device-id') deviceId?: string,
@@ -212,7 +212,7 @@ export class LocationImagesController {
   @Roles(...ALL)
   @ApiOperation({ summary: 'Meting + marker aanmaken vanaf de afbeelding' })
   async quickCreateMeasurement(
-    @Param('imageId', ParseUUIDPipe) imageId: string,
+    @Param('imageId', ParseUuidPipe) imageId: string,
     @CurrentUser() user: User,
     @Body() dto: QuickCreateMeasurementDto,
     @Headers('x-device-id') deviceId?: string,
@@ -227,7 +227,7 @@ export class LocationImagesController {
   @Roles(...ALL)
   @ApiOperation({ summary: 'Constatering + marker aanmaken vanaf de afbeelding' })
   async quickCreateFinding(
-    @Param('imageId', ParseUUIDPipe) imageId: string,
+    @Param('imageId', ParseUuidPipe) imageId: string,
     @CurrentUser() user: User,
     @Body() dto: QuickCreateFindingDto,
     @Headers('x-device-id') deviceId?: string,

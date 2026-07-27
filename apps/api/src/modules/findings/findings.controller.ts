@@ -3,7 +3,7 @@
 // (NestJS route-volgorde).
 
 import {
-  Controller, Get, Post, Patch, Delete, Param, Body, Headers, ParseUUIDPipe,
+  Controller, Get, Post, Patch, Delete, Param, Body, Headers,
   Res, StreamableFile,
 } from '@nestjs/common';
 import type { Response } from 'express';
@@ -14,6 +14,7 @@ import { Roles, CurrentUser } from '@/common/decorators';
 import { ALL_STAFF } from '@/common/auth/roles';
 import { FindingsService } from './findings.service';
 import { CreateFindingDto, UpdateFindingDto } from './dto';
+import { ParseUuidPipe } from '@/common';
 
 const ALL = ALL_STAFF;
 
@@ -27,7 +28,7 @@ export class FindingsController {
   @Get('assets/:assetId/findings')
   @Roles(...ALL)
   @ApiOperation({ summary: 'Constateringen per asset' })
-  async findAllByAsset(@Param('assetId', ParseUUIDPipe) assetId: string, @CurrentUser() user: User) {
+  async findAllByAsset(@Param('assetId', ParseUuidPipe) assetId: string, @CurrentUser() user: User) {
     return { success: true, data: await this.service.findAllByAsset(assetId, user) };
   }
 
@@ -35,7 +36,7 @@ export class FindingsController {
   @Roles(...ALL)
   @ApiOperation({ summary: 'Constatering aanmaken op een asset' })
   async create(
-    @Param('assetId', ParseUUIDPipe) assetId: string,
+    @Param('assetId', ParseUuidPipe) assetId: string,
     @CurrentUser() user: User,
     @Body() dto: CreateFindingDto,
     @Headers('x-device-id') deviceId?: string,
@@ -47,7 +48,7 @@ export class FindingsController {
   @Roles(...ALL)
   @ApiOperation({ summary: 'Herstel-resolutiefoto downloaden (staf, org-scoped)' })
   async resolutionPhoto(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @CurrentUser() user: User,
     @Res({ passthrough: true }) res: Response,
   ): Promise<StreamableFile> {
@@ -59,7 +60,7 @@ export class FindingsController {
   @Get('findings/:id')
   @Roles(...ALL)
   @ApiOperation({ summary: 'Constatering detail' })
-  async findById(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: User) {
+  async findById(@Param('id', ParseUuidPipe) id: string, @CurrentUser() user: User) {
     return { success: true, data: await this.service.findById(id, user) };
   }
 
@@ -67,7 +68,7 @@ export class FindingsController {
   @Roles(...ALL)
   @ApiOperation({ summary: 'Constatering bijwerken (incl. afhandelen)' })
   async update(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @CurrentUser() user: User,
     @Body() dto: UpdateFindingDto,
   ) {
@@ -77,7 +78,7 @@ export class FindingsController {
   @Delete('findings/:id')
   @Roles(...ALL)
   @ApiOperation({ summary: 'Constatering verwijderen (soft-delete)' })
-  async delete(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: User) {
+  async delete(@Param('id', ParseUuidPipe) id: string, @CurrentUser() user: User) {
     return { success: true, data: await this.service.delete(id, user) };
   }
 }

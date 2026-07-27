@@ -10,7 +10,6 @@ import {
   Query,
   Ip,
   Headers,
-  ParseUUIDPipe,
   ForbiddenException,
   NotFoundException,
   HttpException,
@@ -30,7 +29,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { Response } from 'express';
 import { createHash } from 'crypto';
-import { setBinaryResponseHeaders } from '@/common';
+import { setBinaryResponseHeaders, ParseUuidPipe } from '@/common';
 import { User, Role } from '@prisma/client';
 import { ORG_ADMINS } from '@/common/auth/roles';
 import { OrganizationsService } from './organizations.service';
@@ -153,7 +152,7 @@ export class OrganizationsController {
   @Roles(Role.SUPERUSER)
   @ApiOperation({ summary: 'Gebruikers van een organisatie ophalen (Superuser)' })
   @ApiResponse({ status: 200, description: 'Lijst van gebruikers' })
-  async findUsers(@Param('id', ParseUUIDPipe) id: string) {
+  async findUsers(@Param('id', ParseUuidPipe) id: string) {
     const users = await this.organizationsService.findUsers(id);
     return { success: true, data: users };
   }
@@ -168,7 +167,7 @@ export class OrganizationsController {
   @ApiResponse({ status: 404, description: 'Organisatie niet gevonden' })
   @ApiResponse({ status: 409, description: 'Gebruiker of uitnodiging bestaat al' })
   async inviteUser(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @Body() dto: InviteUserDto,
     @CurrentUser() user: User,
   ) {
@@ -189,7 +188,7 @@ export class OrganizationsController {
     status: 200,
     description: 'Plan, plan-features, overrides, effectieve set + waarschuwingen',
   })
-  async getEntitlements(@Param('id', ParseUUIDPipe) id: string) {
+  async getEntitlements(@Param('id', ParseUuidPipe) id: string) {
     const data = await this.organizationsService.getEntitlements(id);
     return { success: true, data };
   }
@@ -204,7 +203,7 @@ export class OrganizationsController {
   @ApiResponse({ status: 403, description: 'Geen toegang tot deze organisatie' })
   async getSupportAccess(
     @CurrentUser() user: User,
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
   ) {
     return { success: true, data: await this.supportAccess.getStatus(user, id) };
   }
@@ -216,7 +215,7 @@ export class OrganizationsController {
   @ApiResponse({ status: 403, description: 'Geen toegang tot deze organisatie' })
   async setSupportAccess(
     @CurrentUser() user: User,
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @Body() dto: SetSupportAccessDto,
     @Ip() ip: string,
     @Headers('user-agent') userAgent: string,
@@ -234,7 +233,7 @@ export class OrganizationsController {
   @ApiResponse({ status: 403, description: 'Geen toegang tot deze organisatie' })
   async supportAccessLogs(
     @CurrentUser() user: User,
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
   ) {
@@ -255,7 +254,7 @@ export class OrganizationsController {
   @ApiResponse({ status: 200, description: 'Organisatie details' })
   @ApiResponse({ status: 404, description: 'Niet gevonden' })
   async findOne(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @CurrentUser() user: User,
   ) {
     if (!user.roles.includes(Role.SUPERUSER) && user.orgId !== id) {
@@ -271,7 +270,7 @@ export class OrganizationsController {
   @ApiResponse({ status: 200, description: 'Organisatie bijgewerkt' })
   @ApiResponse({ status: 404, description: 'Niet gevonden' })
   async update(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @Body() dto: UpdateOrganizationDto,
     @CurrentUser() user: User,
   ) {
@@ -288,7 +287,7 @@ export class OrganizationsController {
   @ApiResponse({ status: 200, description: 'Entitlement-staat na wijziging' })
   @ApiResponse({ status: 404, description: 'Organisatie of abonnement niet gevonden' })
   async assignPlan(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @Body() dto: AssignPlanDto,
   ) {
     const data = await this.organizationsService.assignPlan(id, dto.planId);
@@ -303,7 +302,7 @@ export class OrganizationsController {
   @ApiResponse({ status: 200, description: 'Entitlement-staat na wijziging' })
   @ApiResponse({ status: 400, description: 'Onbekende feature-key' })
   async setFeatureOverride(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @Param('featureKey') featureKey: string,
     @Body() dto: SetOrganizationFeatureDto,
     @CurrentUser() user: User,
@@ -329,7 +328,7 @@ export class OrganizationsController {
   @ApiOperation({ summary: 'Logo uploaden voor organisatie' })
   @ApiResponse({ status: 200, description: 'Logo geüpload' })
   async uploadLogo(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @UploadedFile() file: Express.Multer.File,
     @CurrentUser() user: User,
   ) {
@@ -349,7 +348,7 @@ export class OrganizationsController {
   @ApiResponse({ status: 200, description: 'Logo afbeelding' })
   @ApiResponse({ status: 404, description: 'Geen logo gevonden' })
   async getLogo(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @Res() res: Response,
   ) {
     const { buffer, mimeType, filename, disposition, storageKey } =
@@ -376,7 +375,7 @@ export class OrganizationsController {
   @ApiOperation({ summary: 'Logo verwijderen van organisatie' })
   @ApiResponse({ status: 200, description: 'Logo verwijderd' })
   async deleteLogo(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @CurrentUser() user: User,
   ) {
     if (!user.roles.includes(Role.SUPERUSER) && user.orgId !== id) {

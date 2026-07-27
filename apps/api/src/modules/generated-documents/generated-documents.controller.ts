@@ -12,7 +12,6 @@ import {
   Query,
   Res,
   Ip,
-  ParseUUIDPipe,
   StreamableFile,
 } from '@nestjs/common';
 import { RequiresFeature } from '@/common/decorators/requires-feature.decorator';
@@ -31,6 +30,7 @@ import {
   SignDocumentDto,
   PublicSignDto,
 } from './dto';
+import { ParseUuidPipe } from '@/common';
 
 // ── Rolmatrix documentketen (WP-A3 — B-101/B-102/B-103/B-104) ──────────────
 // STAFF (= ALL_STAFF, incl. INSPECTEUR):
@@ -65,7 +65,7 @@ export class GeneratedDocumentsController {
   @Roles(...STAFF)
   @ApiOperation({ summary: 'Inspectieplan-document genereren' })
   async generatePlan(
-    @Param('planId', ParseUUIDPipe) planId: string,
+    @Param('planId', ParseUuidPipe) planId: string,
     @CurrentUser() user: User,
     @Body() _dto: GenerateDocumentDto,
   ) {
@@ -76,7 +76,7 @@ export class GeneratedDocumentsController {
   @Roles(...STAFF)
   @ApiOperation({ summary: 'Inspectierapport genereren' })
   async generateReport(
-    @Param('planId', ParseUUIDPipe) planId: string,
+    @Param('planId', ParseUuidPipe) planId: string,
     @CurrentUser() user: User,
     @Body() _dto: GenerateDocumentDto,
   ) {
@@ -88,20 +88,20 @@ export class GeneratedDocumentsController {
 
   @Get('inspection-plans/:planId/documents')
   @Roles(...STAFF)
-  async forPlan(@Param('planId', ParseUUIDPipe) planId: string, @CurrentUser() user: User) {
+  async forPlan(@Param('planId', ParseUuidPipe) planId: string, @CurrentUser() user: User) {
     return { success: true, data: await this.service.findByInspectionPlan(planId, user) };
   }
 
   @Get('generated-documents/:id')
   @Roles(...STAFF)
-  async findById(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: User) {
+  async findById(@Param('id', ParseUuidPipe) id: string, @CurrentUser() user: User) {
     return { success: true, data: await this.service.findById(id, user) };
   }
 
   @Patch('generated-documents/:id')
   @Roles(...STAFF)
   async update(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @CurrentUser() user: User,
     @Body() dto: UpdateGeneratedDocumentDto,
   ) {
@@ -113,7 +113,7 @@ export class GeneratedDocumentsController {
   // B-102: verwijderen is gelijkgetrokken met finalize (APPROVERS) — de service
   // weigert daarnaast elk document met een reeds gezette handtekening.
   @Roles(...APPROVERS)
-  async remove(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: User) {
+  async remove(@Param('id', ParseUuidPipe) id: string, @CurrentUser() user: User) {
     await this.service.delete(id, user);
     return { success: true };
   }
@@ -122,7 +122,7 @@ export class GeneratedDocumentsController {
   @Roles(...STAFF)
   @ApiOperation({ summary: 'PDF-preview (niet opgeslagen)' })
   async preview(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @CurrentUser() user: User,
     @Res({ passthrough: true }) res: Response,
   ): Promise<StreamableFile> {
@@ -133,20 +133,20 @@ export class GeneratedDocumentsController {
 
   @Post('generated-documents/:id/export-pdf')
   @Roles(...STAFF)
-  async exportPdf(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: User) {
+  async exportPdf(@Param('id', ParseUuidPipe) id: string, @CurrentUser() user: User) {
     return { success: true, data: { pdfUrl: await this.service.exportToPdf(id, user) } };
   }
 
   @Post('generated-documents/:id/export-word')
   @Roles(...STAFF)
-  async exportWord(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: User) {
+  async exportWord(@Param('id', ParseUuidPipe) id: string, @CurrentUser() user: User) {
     return { success: true, data: { wordUrl: await this.service.exportToWord(id, user) } };
   }
 
   @Get('generated-documents/:id/html')
   @Roles(...STAFF)
   async html(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @CurrentUser() user: User,
     @Res({ passthrough: true }) res: Response,
   ) {
@@ -158,7 +158,7 @@ export class GeneratedDocumentsController {
   @Roles(...STAFF)
   @ApiOperation({ summary: 'Geëxporteerd bestand downloaden (format=pdf|word)' })
   async download(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @CurrentUser() user: User,
     @Res({ passthrough: true }) res: Response,
     @Query('format') format?: string,
@@ -171,14 +171,14 @@ export class GeneratedDocumentsController {
 
   @Post('generated-documents/:id/finalize')
   @Roles(...APPROVERS)
-  async finalize(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: User) {
+  async finalize(@Param('id', ParseUuidPipe) id: string, @CurrentUser() user: User) {
     return { success: true, data: await this.service.finalizeDocument(id, user) };
   }
 
   @Post('generated-documents/:id/request-signature')
   @Roles(...STAFF)
   async requestSignature(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @CurrentUser() user: User,
     @Body() dto: RequestSignatureDto,
   ) {
@@ -190,7 +190,7 @@ export class GeneratedDocumentsController {
   // stafrol→signer-rol-mapping af (zie rolmatrix bovenaan dit bestand).
   @Roles(...STAFF)
   async sign(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @CurrentUser() user: User,
     @Body() dto: SignDocumentDto,
     @Ip() ip: string,
@@ -210,7 +210,7 @@ export class SignatureRequestsController {
   @Public()
   @Throttle({ default: { limit: 20, ttl: 60000 } })
   @ApiOperation({ summary: 'Ondertekenverzoek ophalen (publiek)' })
-  async get(@Param('requestId', ParseUUIDPipe) requestId: string) {
+  async get(@Param('requestId', ParseUuidPipe) requestId: string) {
     return { success: true, data: await this.signing.getSignatureRequest(requestId) };
   }
 
@@ -218,7 +218,7 @@ export class SignatureRequestsController {
   @Public()
   @Throttle({ default: { limit: 10, ttl: 60000 } })
   @ApiOperation({ summary: 'Document ondertekenen via publieke link' })
-  async sign(@Param('requestId', ParseUUIDPipe) requestId: string, @Body() dto: PublicSignDto) {
+  async sign(@Param('requestId', ParseUuidPipe) requestId: string, @Body() dto: PublicSignDto) {
     await this.signing.signViaRequest(requestId, dto);
     return { success: true };
   }

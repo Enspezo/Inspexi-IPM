@@ -8,7 +8,6 @@ import {
   Param,
   Body,
   Query,
-  ParseUUIDPipe,
 } from '@nestjs/common';
 import { RequiresFeature } from '@/common/decorators/requires-feature.decorator';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
@@ -32,6 +31,7 @@ import {
   UpdateMeasurementSheetFieldDto,
   ReorderFieldsDto,
 } from './dto';
+import { ParseUuidPipe } from '@/common';
 
 // Globaal: iedereen leest, alleen SUPERUSER schrijft.
 const READ_ROLES = ALL_STAFF;
@@ -72,7 +72,7 @@ export class MeasurementSheetTemplatesController {
   @Roles(Role.SUPERUSER)
   @ApiOperation({ summary: 'Secties herordenen (SUPERUSER)' })
   async reorderSections(
-    @Param('templateId', ParseUUIDPipe) templateId: string,
+    @Param('templateId', ParseUuidPipe) templateId: string,
     @CurrentUser() user: User,
     @Body() dto: ReorderSectionsDto,
   ) {
@@ -89,8 +89,8 @@ export class MeasurementSheetTemplatesController {
   @Roles(Role.SUPERUSER)
   @ApiOperation({ summary: 'Velden herordenen (SUPERUSER)' })
   async reorderFields(
-    @Param('templateId', ParseUUIDPipe) _templateId: string,
-    @Param('sectionId', ParseUUIDPipe) sectionId: string,
+    @Param('templateId', ParseUuidPipe) _templateId: string,
+    @Param('sectionId', ParseUuidPipe) sectionId: string,
     @CurrentUser() user: User,
     @Body() dto: ReorderFieldsDto,
   ) {
@@ -107,8 +107,8 @@ export class MeasurementSheetTemplatesController {
   @Roles(...READ_ROLES)
   @ApiOperation({ summary: 'Velden van een sectie' })
   async getFields(
-    @Param('templateId', ParseUUIDPipe) _templateId: string,
-    @Param('sectionId', ParseUUIDPipe) sectionId: string,
+    @Param('templateId', ParseUuidPipe) _templateId: string,
+    @Param('sectionId', ParseUuidPipe) sectionId: string,
   ) {
     return { success: true, data: await this.fieldsService.getFields(sectionId) };
   }
@@ -117,8 +117,8 @@ export class MeasurementSheetTemplatesController {
   @Roles(Role.SUPERUSER)
   @ApiOperation({ summary: 'Veld toevoegen aan sectie (SUPERUSER)' })
   async addField(
-    @Param('templateId', ParseUUIDPipe) _templateId: string,
-    @Param('sectionId', ParseUUIDPipe) sectionId: string,
+    @Param('templateId', ParseUuidPipe) _templateId: string,
+    @Param('sectionId', ParseUuidPipe) sectionId: string,
     @CurrentUser() user: User,
     @Body() dto: CreateMeasurementSheetFieldDto,
   ) {
@@ -130,9 +130,9 @@ export class MeasurementSheetTemplatesController {
   @Roles(Role.SUPERUSER)
   @ApiOperation({ summary: 'Veld bijwerken (SUPERUSER)' })
   async updateField(
-    @Param('templateId', ParseUUIDPipe) _templateId: string,
-    @Param('sectionId', ParseUUIDPipe) _sectionId: string,
-    @Param('fieldId', ParseUUIDPipe) fieldId: string,
+    @Param('templateId', ParseUuidPipe) _templateId: string,
+    @Param('sectionId', ParseUuidPipe) _sectionId: string,
+    @Param('fieldId', ParseUuidPipe) fieldId: string,
     @CurrentUser() user: User,
     @Body() dto: UpdateMeasurementSheetFieldDto,
   ) {
@@ -144,9 +144,9 @@ export class MeasurementSheetTemplatesController {
   @Roles(Role.SUPERUSER)
   @ApiOperation({ summary: 'Veld verwijderen (SUPERUSER)' })
   async deleteField(
-    @Param('templateId', ParseUUIDPipe) _templateId: string,
-    @Param('sectionId', ParseUUIDPipe) _sectionId: string,
-    @Param('fieldId', ParseUUIDPipe) fieldId: string,
+    @Param('templateId', ParseUuidPipe) _templateId: string,
+    @Param('sectionId', ParseUuidPipe) _sectionId: string,
+    @Param('fieldId', ParseUuidPipe) fieldId: string,
     @CurrentUser() user: User,
   ) {
     const data = await this.fieldsService.delete(fieldId, user.id);
@@ -157,7 +157,7 @@ export class MeasurementSheetTemplatesController {
   @Get(':id/sections')
   @Roles(...READ_ROLES)
   @ApiOperation({ summary: 'Secties van een template' })
-  async getSections(@Param('id', ParseUUIDPipe) id: string) {
+  async getSections(@Param('id', ParseUuidPipe) id: string) {
     return { success: true, data: await this.sectionsService.getSections(id) };
   }
 
@@ -165,7 +165,7 @@ export class MeasurementSheetTemplatesController {
   @Roles(Role.SUPERUSER)
   @ApiOperation({ summary: 'Sectie toevoegen aan template (SUPERUSER)' })
   async addSection(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @CurrentUser() user: User,
     @Body() dto: CreateMeasurementSheetSectionDto,
   ) {
@@ -177,8 +177,8 @@ export class MeasurementSheetTemplatesController {
   @Roles(Role.SUPERUSER)
   @ApiOperation({ summary: 'Sectie bijwerken (SUPERUSER)' })
   async updateSection(
-    @Param('templateId', ParseUUIDPipe) _templateId: string,
-    @Param('sectionId', ParseUUIDPipe) sectionId: string,
+    @Param('templateId', ParseUuidPipe) _templateId: string,
+    @Param('sectionId', ParseUuidPipe) sectionId: string,
     @CurrentUser() user: User,
     @Body() dto: UpdateMeasurementSheetSectionDto,
   ) {
@@ -190,8 +190,8 @@ export class MeasurementSheetTemplatesController {
   @Roles(Role.SUPERUSER)
   @ApiOperation({ summary: 'Sectie verwijderen (SUPERUSER)' })
   async deleteSection(
-    @Param('templateId', ParseUUIDPipe) _templateId: string,
-    @Param('sectionId', ParseUUIDPipe) sectionId: string,
+    @Param('templateId', ParseUuidPipe) _templateId: string,
+    @Param('sectionId', ParseUuidPipe) sectionId: string,
     @CurrentUser() user: User,
   ) {
     const data = await this.sectionsService.delete(sectionId, user.id);
@@ -202,7 +202,7 @@ export class MeasurementSheetTemplatesController {
   @Get(':id/history')
   @Roles(...READ_ROLES)
   @ApiOperation({ summary: 'Versiegeschiedenis van een template' })
-  async getHistory(@Param('id', ParseUUIDPipe) id: string) {
+  async getHistory(@Param('id', ParseUuidPipe) id: string) {
     return { success: true, data: await this.templatesService.getHistory(id) };
   }
 
@@ -210,7 +210,7 @@ export class MeasurementSheetTemplatesController {
   @Roles(Role.SUPERUSER)
   @ApiOperation({ summary: 'Template publiceren CONCEPT→ACTIEF (SUPERUSER)' })
   async publish(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @CurrentUser() user: User,
     @Body() dto: PublishMeasurementSheetTemplateDto,
   ) {
@@ -221,7 +221,7 @@ export class MeasurementSheetTemplatesController {
   @Roles(Role.SUPERUSER)
   @ApiOperation({ summary: 'Template laten vervallen ACTIEF→VERVALLEN (SUPERUSER)' })
   async retire(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @CurrentUser() user: User,
     @Body() dto: RetireMeasurementSheetTemplateDto,
   ) {
@@ -232,7 +232,7 @@ export class MeasurementSheetTemplatesController {
   @Roles(Role.SUPERUSER)
   @ApiOperation({ summary: 'Nieuwe versie maken (clone → CONCEPT) (SUPERUSER)' })
   async createNewVersion(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @CurrentUser() user: User,
     @Body() dto: NewVersionDto,
   ) {
@@ -245,7 +245,7 @@ export class MeasurementSheetTemplatesController {
   @Get(':id/final-check-rules')
   @Roles(...READ_ROLES)
   @ApiOperation({ summary: 'Final-check-regels ophalen' })
-  async getFinalCheckRules(@Param('id', ParseUUIDPipe) id: string) {
+  async getFinalCheckRules(@Param('id', ParseUuidPipe) id: string) {
     return {
       success: true,
       data: await this.templatesService.getFinalCheckRules(id),
@@ -256,7 +256,7 @@ export class MeasurementSheetTemplatesController {
   @Roles(Role.SUPERUSER)
   @ApiOperation({ summary: 'Final-check-regels vervangen (SUPERUSER)' })
   async updateFinalCheckRules(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @CurrentUser() user: User,
     @Body() dto: UpdateFinalCheckRulesDto,
   ) {
@@ -289,7 +289,7 @@ export class MeasurementSheetTemplatesController {
   @Get(':id')
   @Roles(...READ_ROLES)
   @ApiOperation({ summary: 'Template detail (met secties + velden)' })
-  async findById(@Param('id', ParseUUIDPipe) id: string) {
+  async findById(@Param('id', ParseUuidPipe) id: string) {
     return { success: true, data: await this.templatesService.findById(id) };
   }
 
@@ -307,7 +307,7 @@ export class MeasurementSheetTemplatesController {
   @Roles(Role.SUPERUSER)
   @ApiOperation({ summary: 'Template bijwerken (SUPERUSER, alleen CONCEPT)' })
   async update(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @CurrentUser() user: User,
     @Body() dto: UpdateMeasurementSheetTemplateDto,
   ) {
@@ -318,7 +318,7 @@ export class MeasurementSheetTemplatesController {
   @Roles(Role.SUPERUSER)
   @ApiOperation({ summary: 'Template verwijderen (SUPERUSER, alleen CONCEPT)' })
   async delete(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @CurrentUser() user: User,
   ) {
     return { success: true, data: await this.templatesService.delete(id, user) };

@@ -7,7 +7,6 @@ import {
   Param,
   Body,
   Query,
-  ParseUUIDPipe,
 } from '@nestjs/common';
 import { RequiresFeature } from '@/common/decorators/requires-feature.decorator';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
@@ -26,6 +25,7 @@ import {
   AddMeasurementSheetLinkDto,
   QueryInspectionTemplatesDto,
 } from './dto';
+import { ParseUuidPipe } from '@/common';
 
 const READ_ROLES = ALL_STAFF;
 const WRITE_ROLES = ORG_ADMINS;
@@ -58,7 +58,7 @@ export class InspectionTemplatesController {
   @Roles(...WRITE_ROLES)
   @ApiOperation({ summary: 'Systeemtemplate naar eigen org forken (als CONCEPT)' })
   async fork(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @CurrentUser() user: User,
     @Body() dto: ForkInspectionTemplateDto,
   ) {
@@ -69,7 +69,7 @@ export class InspectionTemplatesController {
   @Roles(...WRITE_ROLES)
   @ApiOperation({ summary: 'Template publiceren (CONCEPT → ACTIEF)' })
   async publish(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @CurrentUser() user: User,
     @Body() dto: PublishInspectionTemplateDto,
   ) {
@@ -80,7 +80,7 @@ export class InspectionTemplatesController {
   @Roles(...WRITE_ROLES)
   @ApiOperation({ summary: 'Template laten vervallen (ACTIEF → VERVALLEN)' })
   async retire(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @CurrentUser() user: User,
     @Body() dto: RetireInspectionTemplateDto,
   ) {
@@ -91,7 +91,7 @@ export class InspectionTemplatesController {
   @Roles(...WRITE_ROLES)
   @ApiOperation({ summary: 'Nieuwe versie maken (kloon naar CONCEPT)' })
   async createNewVersion(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @CurrentUser() user: User,
     @Body() dto: NewVersionDto,
   ) {
@@ -101,7 +101,7 @@ export class InspectionTemplatesController {
   @Get(':id/history')
   @Roles(...READ_ROLES)
   @ApiOperation({ summary: 'Versiegeschiedenis' })
-  async getHistory(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: User) {
+  async getHistory(@Param('id', ParseUuidPipe) id: string, @CurrentUser() user: User) {
     return { success: true, data: await this.service.getHistory(id, user) };
   }
 
@@ -111,7 +111,7 @@ export class InspectionTemplatesController {
   @Roles(...READ_ROLES)
   @ApiOperation({ summary: 'Gekoppelde checklists' })
   async getChecklistLinks(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @CurrentUser() user: User,
   ) {
     return { success: true, data: await this.service.getChecklistLinks(id, user) };
@@ -121,7 +121,7 @@ export class InspectionTemplatesController {
   @Roles(...WRITE_ROLES)
   @ApiOperation({ summary: 'Checklist koppelen' })
   async addChecklistLink(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @CurrentUser() user: User,
     @Body() dto: AddChecklistLinkDto,
   ) {
@@ -132,8 +132,8 @@ export class InspectionTemplatesController {
   @Roles(...WRITE_ROLES)
   @ApiOperation({ summary: 'Checklist ontkoppelen' })
   async removeChecklistLink(
-    @Param('id', ParseUUIDPipe) id: string,
-    @Param('linkId', ParseUUIDPipe) linkId: string,
+    @Param('id', ParseUuidPipe) id: string,
+    @Param('linkId', ParseUuidPipe) linkId: string,
     @CurrentUser() user: User,
   ) {
     return {
@@ -148,7 +148,7 @@ export class InspectionTemplatesController {
   @Roles(...READ_ROLES)
   @ApiOperation({ summary: 'Gekoppelde meetstaten' })
   async getMeasurementSheetLinks(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @CurrentUser() user: User,
   ) {
     return {
@@ -161,7 +161,7 @@ export class InspectionTemplatesController {
   @Roles(...WRITE_ROLES)
   @ApiOperation({ summary: 'Meetstaat koppelen' })
   async addMeasurementSheetLink(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @CurrentUser() user: User,
     @Body() dto: AddMeasurementSheetLinkDto,
   ) {
@@ -175,8 +175,8 @@ export class InspectionTemplatesController {
   @Roles(...WRITE_ROLES)
   @ApiOperation({ summary: 'Meetstaat ontkoppelen' })
   async removeMeasurementSheetLink(
-    @Param('id', ParseUUIDPipe) id: string,
-    @Param('linkId', ParseUUIDPipe) linkId: string,
+    @Param('id', ParseUuidPipe) id: string,
+    @Param('linkId', ParseUuidPipe) linkId: string,
     @CurrentUser() user: User,
   ) {
     return {
@@ -190,7 +190,7 @@ export class InspectionTemplatesController {
   @Get(':id')
   @Roles(...READ_ROLES)
   @ApiOperation({ summary: 'Inspectie-template detail (met links + versies)' })
-  async findById(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: User) {
+  async findById(@Param('id', ParseUuidPipe) id: string, @CurrentUser() user: User) {
     return { success: true, data: await this.service.findById(id, user) };
   }
 
@@ -205,7 +205,7 @@ export class InspectionTemplatesController {
   @Roles(...WRITE_ROLES)
   @ApiOperation({ summary: 'Inspectie-template bijwerken (alleen CONCEPT)' })
   async update(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @CurrentUser() user: User,
     @Body() dto: UpdateInspectionTemplateDto,
   ) {
@@ -215,7 +215,7 @@ export class InspectionTemplatesController {
   @Delete(':id')
   @Roles(...WRITE_ROLES)
   @ApiOperation({ summary: 'Inspectie-template verwijderen (alleen CONCEPT)' })
-  async delete(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: User) {
+  async delete(@Param('id', ParseUuidPipe) id: string, @CurrentUser() user: User) {
     return { success: true, data: await this.service.delete(id, user) };
   }
 }

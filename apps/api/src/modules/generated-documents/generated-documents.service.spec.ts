@@ -300,6 +300,7 @@ describe('GeneratedDocumentsService', () => {
       id: 'gd-1',
       orgId: 'org-1',
       documentTemplateId: 'tpl-1',
+      inspectionPlanId: 'plan-1',
       isEdited: false,
       editedContent: null,
       htmlContent: '<html>body</html>',
@@ -342,6 +343,78 @@ describe('GeneratedDocumentsService', () => {
         expect.stringContaining('wordprocessingml'),
       );
       expect(url).toBe('/api/v1/generated-documents/gd-1/download?format=word');
+    });
+
+    // B-311: header/footer met datalaag-placeholders krijgen bij preview/export
+    // de (lichte) header-context + template-id mee naar de PDF-laag.
+    it('geeft headerFooterContext + templateId mee wanneer header/footer data-placeholders bevatten', async () => {
+      mockPrisma.generatedDocument.findUnique.mockResolvedValue({ orgId: 'org-1' });
+      mockPrisma.generatedDocument.findFirst.mockResolvedValue(doc);
+      mockPrisma.documentSignature.findMany.mockResolvedValue([]);
+      mockPrisma.documentTemplate.findUnique.mockResolvedValue({
+        ...renderTemplate,
+        headerHtml: '<div>{{organization.name}} — Inspectieplan</div>',
+        footerHtml: '<div>Pagina {{pageNumber}} van {{totalPages}}</div>',
+      });
+      mockPrisma.inspectionPlan.findFirst.mockResolvedValue(fullPlan());
+      mockPrisma.normTypeDefinition.findFirst.mockResolvedValue({ label: 'NEN 1010' });
+      mockPdf.renderPdf.mockResolvedValue(Buffer.from('%PDF'));
+
+      await service.generatePreview('gd-1', user);
+
+      expect(mockPdf.renderPdf).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({
+          headerHtml: '<div>{{organization.name}} — Inspectieplan</div>',
+          templateId: 'tpl-1',
+          headerFooterContext: expect.objectContaining({
+            organization: expect.objectContaining({ name: 'Org 1' }),
+            client: expect.objectContaining({ name: 'Klant BV' }),
+          }),
+        }),
+      );
+      // De header-context is de lichte variant (header-only query).
+      expect(mockPrisma.inspectionPlan.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({ where: expect.objectContaining({ id: 'plan-1', orgId: 'org-1' }) }),
+      );
+    });
+
+    it('slaat de context-query over wanneer header/footer alleen Puppeteer-tokens bevatten', async () => {
+      mockPrisma.generatedDocument.findUnique.mockResolvedValue({ orgId: 'org-1' });
+      mockPrisma.generatedDocument.findFirst.mockResolvedValue(doc);
+      mockPrisma.documentSignature.findMany.mockResolvedValue([]);
+      mockPrisma.documentTemplate.findUnique.mockResolvedValue({
+        ...renderTemplate,
+        footerHtml: '<div>Pagina {{pageNumber}} van {{totalPages}}</div>',
+      });
+      mockPdf.renderPdf.mockResolvedValue(Buffer.from('%PDF'));
+
+      await service.generatePreview('gd-1', user);
+
+      expect(mockPrisma.inspectionPlan.findFirst).not.toHaveBeenCalled();
+      expect(mockPdf.renderPdf).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({ headerFooterContext: undefined, templateId: 'tpl-1' }),
+      );
+    });
+
+    it('levert bruikbare PdfOptions zonder context wanneer het plan verdwenen is (vangnet strips)', async () => {
+      mockPrisma.generatedDocument.findUnique.mockResolvedValue({ orgId: 'org-1' });
+      mockPrisma.generatedDocument.findFirst.mockResolvedValue(doc);
+      mockPrisma.documentSignature.findMany.mockResolvedValue([]);
+      mockPrisma.documentTemplate.findUnique.mockResolvedValue({
+        ...renderTemplate,
+        headerHtml: '<div>{{organization.name}}</div>',
+      });
+      mockPrisma.inspectionPlan.findFirst.mockResolvedValue(null);
+      mockPdf.renderPdf.mockResolvedValue(Buffer.from('%PDF'));
+
+      await service.generatePreview('gd-1', user);
+
+      expect(mockPdf.renderPdf).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({ headerFooterContext: undefined }),
+      );
     });
   });
 

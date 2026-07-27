@@ -8,6 +8,7 @@
 import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import puppeteer, { Browser } from 'puppeteer';
+import { handlebars } from './handlebars-setup';
 import type { PdfOptions } from './types';
 
 /** Harde timeout (ms) voor setContent én page.pdf — voorkomt onbegrensd wachten. */
@@ -123,8 +124,8 @@ export class PdfGenerationService implements OnModuleDestroy {
       // Externe requests worden toch geblokkeerd → 'load' i.p.v. 'networkidle0'.
       await page.setContent(html, { waitUntil: 'load', timeout: RENDER_TIMEOUT_MS });
       const mm = (n?: number) => `${n ?? 20}mm`;
-      const headerHtml = this.formatHeaderFooter(opts.headerHtml);
-      const footerHtml = this.formatHeaderFooter(opts.footerHtml);
+      const headerHtml = this.formatHeaderFooter(opts.headerHtml, opts);
+      const footerHtml = this.formatHeaderFooter(opts.footerHtml, opts);
       const pdf = await page.pdf({
         format: opts.format ?? 'A4',
         landscape: opts.landscape ?? false,
@@ -149,19 +150,50 @@ export class PdfGenerationService implements OnModuleDestroy {
 
   /**
    * Zet onze header/footer-placeholders om naar Puppeteer's `<span class="...">`
-   * tokens en wikkel in een minimale container met klein lettertype.
+   * tokens, lost datalaag-placeholders (`{{organization.name}}`, …) op via
+   * dezelfde Handlebars-resolver als de body (B-311), en wikkelt het geheel in
+   * een minimale container met klein lettertype.
+   *
+   * Volgorde is belangrijk: de vijf Puppeteer-tokens moeten éérst naar hun
+   * `<span>`-vorm — anders zou de Handlebars-pass ze als (lege) datavelden
+   * opeten en verdwijnt bv. de paginanummering.
    */
-  private formatHeaderFooter(template: string | undefined): string {
+  private formatHeaderFooter(template: string | undefined, opts: PdfOptions = {}): string {
     if (!template) return '<span></span>';
 
-    const formatted = template
+    let formatted = template
       .replace(/\{\{pageNumber\}\}/g, '<span class="pageNumber"></span>')
       .replace(/\{\{totalPages\}\}/g, '<span class="totalPages"></span>')
       .replace(/\{\{date\}\}/g, '<span class="date"></span>')
       .replace(/\{\{title\}\}/g, '<span class="title"></span>')
       .replace(/\{\{url\}\}/g, '<span class="url"></span>');
 
-    return `<div style="font-size: 8pt; width: 100%; padding: 0 10mm; font-family: Arial, sans-serif;">${formatted}</div>`;
+    // B-311: datalaag-placeholders door dezelfde variabelenresolver als de body
+    // (gedeelde Handlebars-instance incl. helpers zoals formatDate).
+    if (opts.headerFooterContext) {
+      try {
+        formatted = handlebars.compile(formatted)(opts.headerFooterContext);
+      } catch (error) {
+        this.logger.warn(
+          `Header/footer-template compileert niet (template ${opts.templateId ?? 'onbekend'}): ${(error as Error).message}`,
+        );
+      }
+    }
+
+    // Vangnet (B-311): wat er nu nog aan {{…}} staat is onoplosbaar — strippen
+    // in plaats van letterlijk op elk gegenereerd document tonen, mét waarschuwing.
+    const leftoverRegex = /\{\{[^{}]*\}\}/g;
+    const leftovers = formatted.match(leftoverRegex);
+    if (leftovers?.length) {
+      this.logger.warn(
+        `Onopgeloste placeholder(s) ${[...new Set(leftovers)].join(', ')} verwijderd uit header/footer (template ${opts.templateId ?? 'onbekend'})`,
+      );
+      formatted = formatted.replace(leftoverRegex, '');
+    }
+
+    // B-312: CJK-font in de stack zodat een organisatie-/projectnaam met bv.
+    // Chinese tekens niet stil wegvalt (vereist fonts-noto-cjk in de render-image).
+    return `<div style="font-size: 8pt; width: 100%; padding: 0 10mm; font-family: Arial, 'Noto Sans CJK SC', sans-serif;">${formatted}</div>`;
   }
 
   async onModuleDestroy() {

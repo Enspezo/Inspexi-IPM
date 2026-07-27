@@ -47,13 +47,15 @@ const TEMPLATE = `<!DOCTYPE html>
 <title>Herstelverklaring {{plan.referenceNumber}}</title>
 <style>
   * { box-sizing: border-box; }
-  body { font-family: Helvetica, Arial, sans-serif; color: #111827; font-size: 12px; margin: 0; padding: 32px; }
+  /* B-312: 'Noto Sans CJK SC' in de stack zodat CJK-tekens niet stil wegvallen. */
+  body { font-family: Helvetica, Arial, 'Noto Sans CJK SC', sans-serif; color: #111827; font-size: 12px; margin: 0; padding: 32px; }
   h1 { font-size: 22px; margin: 0 0 4px; color: {{org.primaryColor}}; }
   h2 { font-size: 14px; margin: 24px 0 8px; border-bottom: 2px solid {{org.primaryColor}}; padding-bottom: 4px; }
   .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 24px; }
   .logo { max-height: 60px; max-width: 200px; }
-  .meta-table { width: 100%; border-collapse: collapse; margin: 8px 0 16px; }
-  .meta-table td { padding: 3px 8px 3px 0; vertical-align: top; }
+  /* B-312: fixed layout + breekbare celinhoud tegen paginabrede uitloop. */
+  .meta-table { width: 100%; border-collapse: collapse; margin: 8px 0 16px; table-layout: fixed; }
+  .meta-table td { padding: 3px 8px 3px 0; vertical-align: top; word-break: break-word; overflow-wrap: anywhere; }
   .meta-table td:first-child { color: #6b7280; width: 160px; }
   .finding { border: 1px solid #e5e7eb; border-radius: 6px; padding: 12px; margin-bottom: 14px; page-break-inside: avoid; }
   .finding-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 6px; }

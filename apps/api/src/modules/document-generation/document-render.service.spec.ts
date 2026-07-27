@@ -169,4 +169,28 @@ describe('DocumentRenderService', () => {
       expect(html).toContain('InspeXi Demo B.V.');
     });
   });
+
+  // B-312: tabellen mogen nooit voorbij de paginabreedte groeien en CJK-tekens
+  // mogen niet stil wegvallen — beide wrappers dragen de fix in hun print-CSS.
+  describe('render-CSS — tabeloverflow + CJK-fontstack (B-312)', () => {
+    it('SECTIONS-wrapper bevat table-layout: fixed + breekbare cellen + CJK-font', () => {
+      const html = service.renderHtml(baseTemplate(), [], buildSampleContext());
+      expect(html).toContain('table-layout: fixed');
+      expect(html).toContain('word-break: break-word');
+      expect(html).toContain('overflow-wrap: anywhere');
+      expect(html).toContain("'Noto Sans CJK SC'");
+    });
+
+    it('BLOCKS-wrapper bevat table-layout: fixed + breekbare cellen + CJK-font', () => {
+      const html = service.renderHtml(
+        baseTemplate({ templateMode: TemplateMode.BLOCKS, contentBlocks: [] }),
+        [],
+        buildSampleContext(),
+      );
+      expect(html).toContain('table-layout: fixed');
+      expect(html).toContain('word-break: break-word');
+      expect(html).toContain('overflow-wrap: anywhere');
+      expect(html).toContain("'Noto Sans CJK SC'");
+    });
+  });
 });

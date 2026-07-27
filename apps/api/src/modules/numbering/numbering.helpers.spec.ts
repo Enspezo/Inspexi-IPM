@@ -8,6 +8,7 @@ import {
   sampleContext,
   sanitizePlaceholderValue,
   schemeNeedsContext,
+  typecodeResolvesEmpty,
   validateAffix,
   zeroPad,
 } from './numbering.helpers';
@@ -242,6 +243,31 @@ describe('numbering.helpers', () => {
     it('is false for only [jaar]/literal text', () => {
       expect(schemeNeedsContext('OFF-[jaar]-', '')).toBe(false);
       expect(schemeNeedsContext('PRD-', '')).toBe(false);
+    });
+  });
+
+  // WP-C3 (B-203): detectie van een leeg-resolvende [typecode] — de service
+  // weigert de generatie dan i.p.v. een misvormd `-0033`-nummer te componeren.
+  describe('typecodeResolvesEmpty', () => {
+    it('is true when the scheme uses [typecode] and the shortcode is missing/empty', () => {
+      expect(typecodeResolvesEmpty({ prefix: '[typecode]-', suffix: '' }, {})).toBe(true);
+      expect(
+        typecodeResolvesEmpty({ prefix: '[typecode]-', suffix: '' }, { typeShortCode: null }),
+      ).toBe(true);
+      expect(
+        typecodeResolvesEmpty({ prefix: '[typecode]-', suffix: '' }, { typeShortCode: '––' }),
+      ).toBe(true); // sanitize strips alles niet-alfanumeriek → leeg
+    });
+
+    it('is false when the shortcode resolves to a real token', () => {
+      expect(
+        typecodeResolvesEmpty({ prefix: '[typecode]-', suffix: '' }, { typeShortCode: 'EI' }),
+      ).toBe(false);
+    });
+
+    it('is false when the scheme does not use [typecode] at all', () => {
+      expect(typecodeResolvesEmpty({ prefix: 'LOC-', suffix: '' }, {})).toBe(false);
+      expect(typecodeResolvesEmpty({ prefix: 'A-', suffix: '' }, { typeShortCode: null })).toBe(false);
     });
   });
 

@@ -113,12 +113,16 @@ describe('Assets (e2e)', () => {
     });
     testPlanId = plan.id;
 
-    // Org asset-type definition (no constraints → any parent allowed)
+    // Org asset-type definition (no constraints → any parent allowed).
+    // WP-C3 (B-203): een shortCode is nu vereist zodra het ASSET_NODE-schema de
+    // [typecode]-placeholder gebruikt (default) — zonder shortcode weigert de
+    // nummering de create i.p.v. een misvormd `-0033`-nummer te genereren.
     testAssetTypeCode = 'e2econtainer';
     await prisma.assetTypeDefinition.create({
       data: {
         orgId: org.id,
         code: testAssetTypeCode,
+        shortCode: 'CONT',
         name: 'Container',
         isSystem: false,
       },

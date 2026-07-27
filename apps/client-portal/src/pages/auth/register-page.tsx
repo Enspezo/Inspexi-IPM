@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react';
-import { Link, Navigate, useSearchParams } from 'react-router-dom';
+import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -54,6 +54,7 @@ type RegisterFormData = z.infer<typeof registerSchema>;
 
 export default function RegisterPage() {
   const { register: registerAccount, isAuthenticated } = useClientAuth();
+  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const magicLinkToken = searchParams.get('token') ?? '';
   const prefillEmail = searchParams.get('email') ?? '';
@@ -70,7 +71,14 @@ export default function RegisterPage() {
     defaultValues: { email: prefillEmail },
   });
 
-  if (isAuthenticated) {
+  // B-411 (WP-C2): alléén redirecten wanneer iemand zonder uitnodigingstoken op
+  // /register belandt. Mét token is dit een uitnodigingsflow: een nog-actieve
+  // sessie is dan van een ándere gebruiker (het uitgenodigde adres heeft nog
+  // geen account) en mag de uitgenodigde NIET stilzwijgend het dashboard van de
+  // vorige gebruiker in sturen. De magic-link-pagina heeft die sessie in de
+  // normale flow al beëindigd; na een geslaagde registratie navigeert onSubmit
+  // zelf expliciet naar het dashboard.
+  if (isAuthenticated && !magicLinkToken) {
     return <Navigate to="/dashboard" replace />;
   }
 
@@ -96,7 +104,6 @@ export default function RegisterPage() {
     setError(null);
     setSubmitting(true);
     try {
-      // De provider zet de user → de isAuthenticated-guard hierboven redirect naar /dashboard.
       await registerAccount({
         magicLinkToken,
         email: data.email,
@@ -104,6 +111,9 @@ export default function RegisterPage() {
         firstName: data.firstName,
         lastName: data.lastName,
       });
+      // Expliciet navigeren: de guard hierboven redirect (bewust) niet meer
+      // wanneer er een uitnodigingstoken in de URL staat (B-411).
+      navigate('/dashboard', { replace: true });
     } catch (err) {
       setError(getErrorMessage(err, 'Registreren mislukt'));
     } finally {

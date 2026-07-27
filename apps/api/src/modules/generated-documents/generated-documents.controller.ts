@@ -218,8 +218,15 @@ export class SignatureRequestsController {
   @Public()
   @Throttle({ default: { limit: 10, ttl: 60000 } })
   @ApiOperation({ summary: 'Document ondertekenen via publieke link' })
-  async sign(@Param('requestId', ParseUuidPipe) requestId: string, @Body() dto: PublicSignDto) {
-    await this.signing.signViaRequest(requestId, dto);
+  // B-408 (WP-C2): juist het publieke kanaal (zwakste identiteitsvaststelling)
+  // moet het IP vastleggen — @Ip() respecteert de trust-proxy-config uit main.ts
+  // (WP-A3), identiek aan de staf- en klantportaal-ondertekenroutes.
+  async sign(
+    @Param('requestId', ParseUuidPipe) requestId: string,
+    @Body() dto: PublicSignDto,
+    @Ip() ip: string,
+  ) {
+    await this.signing.signViaRequest(requestId, dto, ip);
     return { success: true };
   }
 }

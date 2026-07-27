@@ -130,10 +130,8 @@ describe('Feature entitlements (e2e)', () => {
       await prisma.organizationFeature.deleteMany({
         where: { orgId: { in: [basisOrgId, compleetOrgId] } },
       });
-      // De custom-fields-module maakt lazily definities aan voor deze orgs;
-      // zonder deze regel faalt organization.deleteMany op de org-FK en laat
-      // een gefaalde run e2efeat*-fixtures achter (duplicate-slug bij de
-      // volgende run) — zie WP-C1-runlog.
+      // Defensief: een (per ongeluk) aangemaakt custom field RESTRICT't de
+      // org-delete en liet vroeger de plans achter → P2002 bij de vólgende run.
       await prisma.customFieldDefinition.deleteMany({
         where: { orgId: { in: [basisOrgId, compleetOrgId] } },
       });
@@ -228,22 +226,26 @@ describe('Feature entitlements (e2e)', () => {
     });
   });
 
-  // Een SUPERUSER heeft geen org-context (orgId = null). Vroeger gaf dat een
+  // Een SUPERUSER heeft geen eigen org (orgId = null). Vroeger gaf dat een
   // onhandelbare 500 op de null-orgId-query van /custom-fields; nu is dat een
   // nette status (lege lijst bij lezen, 400 bij schrijven).
+  //
+  // NB (WP-B3, beslissing D2): het subdomein bepaalt sindsdien de effectieve
+  // org — een SUPERUSER op een órg-host schrijft dus legitiem in die org. De
+  // "zonder org-context"-situatie bestaat alleen nog zónder org-subdomein
+  // (unknown host, zoals 127.0.0.1 hier), dus deze tests sturen bewust géén
+  // Host-header meer mee.
   describe('/custom-fields zonder org-context (SUPERUSER)', () => {
     it('GET → 200 met lege lijst i.p.v. 500', async () => {
-      const res = await get('/api/v1/custom-fields', COMPLEET_HOST, superToken);
+      const res = await request(app.getHttpServer())
+        .get('/api/v1/custom-fields')
+        .set('Authorization', `Bearer ${superToken}`);
       expect(res.status).toBe(200);
       // /custom-fields levert de lijst rauw terug (niet in {success,data}).
       expect(res.body).toEqual([]);
     });
 
     it('POST → 400 met NL-melding i.p.v. 500', async () => {
-      // Bewust ZONDER org-Host: sinds WP-B3 (D2: subdomein bepaalt de scope)
-      // krijgt een SUPERUSER op een org-subdomein een effectieve org en zou een
-      // POST dáár legitiem aanmaken (201). Het "geen org-context"-pad bestaat
-      // alleen nog op een onbekende host / mijn-domein.
       const res = await request(app.getHttpServer())
         .post('/api/v1/custom-fields')
         .set('Authorization', `Bearer ${superToken}`)

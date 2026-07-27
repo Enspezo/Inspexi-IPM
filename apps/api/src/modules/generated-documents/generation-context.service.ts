@@ -124,6 +124,21 @@ export class GenerationContextService {
     return this.buildHeaderContext(plan);
   }
 
+  /**
+   * Lichte header-context voor het oplossen van `{{…}}`-placeholders in
+   * header/footer bij preview/export (B-311). Geeft `undefined` (géén 404) als
+   * het plan er niet meer is: een export mag daar niet op stukgaan — het
+   * placeholder-vangnet in de PDF-laag ruimt de tokens dan op.
+   */
+  async buildHeaderContextForPlan(planId: string, orgId: string): Promise<DocumentData | undefined> {
+    const plan = await this.prisma.inspectionPlan.findFirst({
+      where: { id: planId, orgId, deletedAt: null },
+      include: PLAN_HEADER_INCLUDE,
+    });
+    if (!plan) return undefined;
+    return this.buildHeaderContext(plan);
+  }
+
   // ── Header (gedeeld door beide modes) ──────────────────
   private async buildPlanHeader(plan: PlanHeader): Promise<{
     organization: OrganizationData;

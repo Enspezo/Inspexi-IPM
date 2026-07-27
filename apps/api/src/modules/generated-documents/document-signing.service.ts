@@ -231,7 +231,7 @@ export class DocumentSigningService {
     };
   }
 
-  async signViaRequest(requestId: string, dto: PublicSignDto) {
+  async signViaRequest(requestId: string, dto: PublicSignDto, ipAddress?: string) {
     const sig = assertFound(
       await this.prisma.documentSignature.findFirst({ where: { signatureRequestId: requestId } }),
       'Ondertekenverzoek',
@@ -256,6 +256,8 @@ export class DocumentSigningService {
         signatureImage: dto.signatureImage,
         signerName: dto.signerName ?? sig.signerName,
         signedAt: new Date(),
+        // B-408: audit trail — zelfde vastlegging als de staf-/klantportaal-routes.
+        signedIpAddress: ipAddress ?? null,
         status: SignatureStatus.SIGNED,
       },
     });

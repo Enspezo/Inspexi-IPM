@@ -119,7 +119,8 @@ export const DEFAULT_SCHEMES: Record<NumberingModel, DefaultScheme> = {
     allowManualEntry: false,
   },
   ASSET_NODE: {
-    // `[typecode]` valt terug op '' wanneer het type geen shortcode heeft (veilig).
+    // WP-C3 (B-203): een leeg-resolvende `[typecode]` wordt sinds de guard in
+    // `generateCandidate` geweigerd (gaf misvormde nummers als `-0033`).
     prefix: '[typecode]-',
     suffix: '',
     mode: 'SEQUENTIAL',
@@ -156,6 +157,19 @@ export interface NumberingContext {
   groep?: string | null;
   /** Shortcode of the asset-/location-type definition (`[typecode]`). */
   typeShortCode?: string | null;
+}
+
+/**
+ * WP-C3 (B-203): true when the scheme uses the `[typecode]` placeholder but the
+ * context resolves it to an empty token. Composing would then yield a malformed
+ * — yet org-unique — number like `-0033`; generation must be refused instead.
+ */
+export function typecodeResolvesEmpty(
+  scheme: { prefix: string; suffix: string },
+  ctx: NumberingContext,
+): boolean {
+  const usesTypecode = /\[typecode\]/i.test(`${scheme.prefix}${scheme.suffix}`);
+  return usesTypecode && sanitizePlaceholderValue(ctx.typeShortCode) === '';
 }
 
 /** Reduce a free-text placeholder value to a number-safe token (UPPER, alphanumeric). */

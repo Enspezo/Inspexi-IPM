@@ -12,6 +12,7 @@ import { PrismaService } from '@/prisma';
 import { ChatSyncService } from '../chat/chat-sync.service';
 import { NumberingService } from '../numbering/numbering.service';
 import { AssetNodesService } from '../asset-nodes/asset-nodes.service';
+import { InspectionPlansService } from '../inspection-plans/inspection-plans.service';
 
 describe('SyncService — finding isCritical (PRD-14)', () => {
   let service: SyncService;
@@ -59,6 +60,12 @@ describe('SyncService — finding isCritical (PRD-14)', () => {
 
   const mockAssetNodes = {
     assertNodeInPlanTree: jest.fn().mockResolvedValue({ id: 'node-a', nodeType: 'ASSET' }),
+    assertDepthForWrite: jest.fn().mockResolvedValue(undefined),
+  };
+
+  // WP-C3 (B-218): submit-side-effects worden aan InspectionPlansService gedelegeerd.
+  const mockInspectionPlans = {
+    dispatchSubmitSideEffects: jest.fn().mockResolvedValue(undefined),
   };
 
   const user = { id: 'user-1', orgId: 'org-1', roles: [Role.INSPECTEUR] } as any;
@@ -111,6 +118,7 @@ describe('SyncService — finding isCritical (PRD-14)', () => {
         { provide: ChatSyncService, useValue: mockChat },
         { provide: NumberingService, useValue: mockNumbering },
         { provide: AssetNodesService, useValue: mockAssetNodes },
+        { provide: InspectionPlansService, useValue: mockInspectionPlans },
       ],
     }).compile();
 

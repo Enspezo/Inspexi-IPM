@@ -56,7 +56,7 @@ GOLF 4  Gecoördineerd contractwerk            3 WP    ~3-4 dagen  (na stabilisa
 
 | WP | Titel | Repo | Bevindingen | Sev | Afhankelijk van | Status |
 |---|---|---|---|---|---|---|
-| **A1** | Sync-fouten zichtbaar maken | PWA | B-211, B-208, B-223b | S2 | — | open |
+| **A1** | Sync-fouten zichtbaar maken | PWA | B-211, B-208, B-223b | S2 | — | ✅ gemerged (InspeXi PR #30) |
 | **A2** | Dataverlies-stop: findings + meetstaten | PWA | B-210, B-206, B-207, B-223d | **S1** | A1 | open |
 | **A3** | Documentketen-integriteit | API | B-101, B-102, B-103, B-104 | **S1** | — | ✅ gemerged (PR #133) |
 | **A4** | Klantportaal-crash (AssetNode) | client-portal | B-401 | **S1** | — | ✅ gemerged (PR #132) |

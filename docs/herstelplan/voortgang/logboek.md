@@ -18,7 +18,7 @@ Conform `docs/testprogramma/00-master-testplan.md` §5: API `:3001` (`NODE_ENV=t
 
 | WP | Branch | PR | Status | Bevindingen | Tests toegevoegd |
 |---|---|---|---|---|---|
-| A1 | — | — | open | B-211, B-208, B-223b | — |
+| A1 | `fix/wp-a1-sync-errors-visible` (PWA) | [InspeXi #30](https://github.com/Enspezo/InspeXi/pull/30) | ✅ gemerged + browser-geverifieerd | B-211 ✔, B-208 ✔, B-223b ✔ (+ z-index-bannerbug, succes-banner-fix, tellerdekking alle entiteiten) | 7 SyncContext-Vitest (fake-indexeddb), Playwright sync-errors 2× met echte setOffline |
 | A2 | — | — | open | B-210, B-206, B-207, B-223d | — |
 | A3 | `fix/wp-a3-document-chain` | [#133](https://github.com/Enspezo/Inspexi-IPM/pull/133) | ✅ gemerged + browser/curl-geverifieerd | B-101 ✔, B-102 ✔, B-103 ✔ (rolmatrix vastgelegd), B-104 ✔ (deels achterhaald — statuscheck bestond al, handtekeningcheck toegevoegd) | e2e-rolmatrix 21 tests, unit-specs sign/delete/patch |
 | A4 | `fix/wp-a4-client-portal-assetnode` | [#132](https://github.com/Enspezo/Inspexi-IPM/pull/132) | ✅ gemerged + browser-geverifieerd | B-401 ✔ | 9 Vitest-componenttests (exacte servershape) + TabErrorBoundary |
@@ -36,6 +36,13 @@ Conform `docs/testprogramma/00-master-testplan.md` §5: API `:3001` (`NODE_ENV=t
 ---
 
 ## Chronologisch logboek
+
+### 28 juli 2026 — A1 gemerged + syncedAt-skew-hotfix; A2 gestart
+
+- **Computerherstart** onderbrak de A1-agent en alle dev-servers; werk bleek volledig gepusht (3 commits), stack + agent hervat zonder verlies.
+- **WP-A1 gemerged** (InspeXi PR #30). Browserverificatie orkestrator: teller direct op 1 bij mutatie (B-223b), rode banner "Synchronisatie mislukt" + "Probeer opnieuw" blijft staan bij gestopte API en rendert bóven de header (B-211), herstel via retry werkt; auto-sync bij reconnect Playwright-bewezen met echte setOffline (B-208).
+- **Nieuwe bevinding uit A1 → direct gefixt** ([PR #144](https://github.com/Enspezo/Inspexi-IPM/pull/144)): `sync.service.ts` stempelde `syncedAt` ms vóór Prisma's `@updatedAt` → elk ooit gepusht record gaf bij de eerstvolgende edit vanaf een vers apparaat een vals zelf-conflict (trad live op tijdens de verificatie). Fix: één gedeelde stempel voor beide velden in push- én resolve-pad + regressietest + `scripts/backfill-synced-at-skew.ts` (dev: 2 rijen gerepareerd; **pre-deploy-stap voor productie, zie §8-lijst**). Tegenproef in de browser: tweede edit → sync → géén conflict.
+- **WP-A2 gestart** (PWA + Beheer, twee PR's) op de verse basis mét A1 en de skew-fix.
 
 ### 27 juli 2026 — Golf 2: B3/B5/B9 gemerged (API/portal-kant compleet)
 

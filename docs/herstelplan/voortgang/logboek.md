@@ -22,13 +22,26 @@ Conform `docs/testprogramma/00-master-testplan.md` §5: API `:3001` (`NODE_ENV=t
 | A2 | — | — | open | B-210, B-206, B-207, B-223d | — |
 | A3 | `fix/wp-a3-document-chain` | [#133](https://github.com/Enspezo/Inspexi-IPM/pull/133) | ✅ gemerged + browser/curl-geverifieerd | B-101 ✔, B-102 ✔, B-103 ✔ (rolmatrix vastgelegd), B-104 ✔ (deels achterhaald — statuscheck bestond al, handtekeningcheck toegevoegd) | e2e-rolmatrix 21 tests, unit-specs sign/delete/patch |
 | A4 | `fix/wp-a4-client-portal-assetnode` | [#132](https://github.com/Enspezo/Inspexi-IPM/pull/132) | ✅ gemerged + browser-geverifieerd | B-401 ✔ | 9 Vitest-componenttests (exacte servershape) + TabErrorBoundary |
-| B1–B10 | — | — | open (golf 2) | — | — |
+| B4 | `fix/wp-b4-upload-security` | [#136](https://github.com/Enspezo/Inspexi-IPM/pull/136) | ✅ gemerged + live geverifieerd | B-507 ✔ (magic bytes, SVG eruit, headers, helmet, avatar mee) | 13 unit validator + 6 service, 15 e2e upload/download |
+| B6 | `fix/wp-b6-pagination-contract` | [#137](https://github.com/Enspezo/Inspexi-IPM/pull/137) | ✅ gemerged + browser-geverifieerd | B-305 ✔ (cap 200, 14 call-sites in 9 bestanden — assets-page bleek níet kapot; systemische query-foutstate) | parametrische e2e 32 endpoints, 14 portal-tests |
+| B7 | `fix/wp-b7-public-endpoints` | [#138](https://github.com/Enspezo/Inspexi-IPM/pull/138) | ✅ gemerged + live geverifieerd | B-306 ✔ (select-allowlist), B-152 ✔ (tenantbinding + service-gate) | key-snapshot-tests + 17 e2e public-endpoints |
+| B8 | `fix/wp-b8-session-assign` | [#135](https://github.com/Enspezo/Inspexi-IPM/pull/135) | ✅ gemerged + browser-geverifieerd (BO-40 volledig) | B-310 ✔ | 8 portal-Vitest (assign/409-override/tooltip) |
+| B3, B5, B9 | — | — | in uitvoering | — | — |
+| B1, B2, B10 | — | — | open (PWA-spoor, na A2) | — | — |
 | C1–C5 | — | — | open (golf 3) | — | — |
 | D1–D3 | — | — | open (golf 4) | — | — |
 
 ---
 
 ## Chronologisch logboek
+
+### 27 juli 2026 — Golf 2: B4/B6/B7/B8 gemerged
+
+- **WP-B8** (PR #135): BO-40-pad volledig in de browser doorlopen — toewijzen (met PRD-12-beschikbaarheidsbadges) → bevestigen → DEFINITIEF (2/2).
+- **WP-B4** (PR #136): live matrix — evil.svg/%PDF-als-PNG → 400 NL, echte PNG → 201, download-headers nosniff/CSP/inline, Swagger + doc-preview werken onder helmet. Datacheck dev: 0 SVG-logo's. Pre-deploy-stap prod in PR-body.
+- **WP-B6** (PR #137): live — /contacts|/quotes|/assets|/tasks|/products?limit=200 → 200, limit=201 → 400; "Nieuwe inspectie"-modal toont 9 opdrachtgevers (was leeg). Correcties op de bevinding: 14 kapotte call-sites in 9 bestanden; assets-page was níet kapot. Nieuw pre-existing punt: ongebonden limit op /help/articles en /support-tickets.
+- **WP-B7** (PR #138): live — publieke planning-payload = exacte allowlist zónder internalNotes (op een regel mét notities), verstuurde offerte eigen subdomein 200 / testbedrijf-subdomein 404 (ook PDF); publieke afspraakpagina rendert zonder Opmerkingen-blok. **PUBLIC_URL-bevinding**: gemailde links zijn generiek (apex) → apex-binding bewust open gelaten (één-regel-omkeerbaar in `publicTenantWhere()`); zie restrisico.
+- Golf 1-restant: A1 (PWA) loopt nog; A2 in wachtrij.
 
 ### 27 juli 2026 — Golf 1 (deels) + Golf 2 gestart
 

@@ -454,6 +454,28 @@ describe('Client Portal (e2e)', () => {
   });
 
   // ── Documenten + ondertekening ──
+  it('B-404: weigert een niet-afbeelding als handtekening met een NL-melding (400)', async () => {
+    // Vóór WP-C2 accepteerde de klantportaal-route élke string ("javascript:…",
+    // 7 MB base64) en ging het document zelfs naar SIGNED.
+    const res = await postA(`/api/v1/client/documents/${documentId}/sign`)
+      .set(bearer(tokenA))
+      .send({ signatureImage: 'javascript:alert(1)' })
+      .expect(400);
+    expect(JSON.stringify(res.body)).toContain('data-afbeelding');
+
+    // Ook een te grote (>5 MB gedecodeerd) payload wordt geweigerd.
+    await postA(`/api/v1/client/documents/${documentId}/sign`)
+      .set(bearer(tokenA))
+      .send({ signatureImage: `data:image/png;base64,${'A'.repeat(7_000_000)}` })
+      .expect(400);
+
+    // Niets opgeslagen: de handtekening staat nog op PENDING.
+    const sig = await prisma.documentSignature.findFirst({
+      where: { generatedDocumentId: documentId, signerRoleCode: 'CLIENT' },
+    });
+    expect(sig?.status).toBe('PENDING');
+  });
+
   it('toont een document en ondertekent het', async () => {
     const detail = await onA(`/api/v1/client/documents/${documentId}`).set(bearer(tokenA)).expect(200);
     expect(detail.body.data.htmlContent).toContain('E2E-CP-0001');
@@ -513,8 +535,40 @@ describe('Client Portal (e2e)', () => {
       .post('/api/v1/client/requests/new-assignment')
       .set('Host', HOST_B)
       .set(bearer(tokenA))
-      .send({ contactId: contactAId, subject: 'X', description: 'Y' })
+      // Payload voldoet aan de B-407-lengtegrenzen zodat dit de 403 (en niet
+      // een validatie-400) blijft testen.
+      .send({ contactId: contactAId, subject: 'Nieuwe locatie', description: 'Inspectie nieuwe vestiging' })
       .expect(403);
+  });
+
+  // ── B-407 (WP-C2): lengtegrenzen op klantportaal-invoer ──
+  it('B-407: weigert een omschrijving van 4001 tekens met een NL-melding (400)', async () => {
+    const tooLong = 'A'.repeat(4001);
+
+    const resolve = await postA(`/api/v1/client/findings/${findingId}/resolve`)
+      .set(bearer(tokenA))
+      .send({ description: tooLong })
+      .expect(400);
+    expect(JSON.stringify(resolve.body)).toContain('maximaal 4000 tekens');
+
+    const reinspection = await postA('/api/v1/client/requests/reinspection')
+      .set(bearer(tokenA))
+      .send({ inspectionPlanId: planId, description: tooLong })
+      .expect(400);
+    expect(JSON.stringify(reinspection.body)).toContain('maximaal 4000 tekens');
+  });
+
+  it('B-407: weigert een te korte verzoek-omschrijving (backend spiegelt de UI-regel van 10 tekens)', async () => {
+    const res = await postA('/api/v1/client/requests/reinspection')
+      .set(bearer(tokenA))
+      .send({ inspectionPlanId: planId, description: 'x' })
+      .expect(400);
+    expect(JSON.stringify(res.body)).toContain('minimaal 10 tekens');
+
+    await postA('/api/v1/client/requests/new-assignment')
+      .set(bearer(tokenA))
+      .send({ contactId: contactAId, subject: 'Nieuwe locatie', description: 'kort' })
+      .expect(400);
   });
 
   // ── Magic-link registratie (grant ClientAccess + InspectionClientAccess) ──
@@ -540,6 +594,47 @@ describe('Client Portal (e2e)', () => {
     // De nieuwe klant ziet dankzij de auto-grant direct de gekoppelde inspectie.
     const list = await onA('/api/v1/client/inspections').set(bearer(newToken)).expect(200);
     expect(list.body.data.map((p: { id: string }) => p.id)).toContain(planId);
+  });
+
+  // ── B-405 (WP-C2): eenmalige magic-link is ook onder gelijktijdigheid eenmalig ──
+  it('B-405: gelijktijdige verzilvering van één magic-link levert precies één sessie (TOCTOU-race)', async () => {
+    // Verse login-link voor de bestaande klant (clientUserId gezet → login-flow).
+    const raceToken = 'e2e-magic-token-race-flow';
+    await prisma.clientMagicLink.create({
+      data: {
+        email: clientEmail,
+        clientUserId,
+        token: raceToken,
+        expiresAt: new Date(Date.now() + 3600_000),
+        createdBy: staffAId,
+      },
+    });
+    try {
+      // Drie ECHT gelijktijdige verzilveringen (StrictMode-dubbelvuur/aanvaller).
+      const results = await Promise.all(
+        [1, 2, 3].map(() =>
+          postA('/api/v1/client/auth/magic-link').send({ token: raceToken }),
+        ),
+      );
+
+      const winners = results.filter((r) => r.status === 201);
+      const losers = results.filter((r) => r.status === 400);
+      // Vóór WP-C2: drie keer 201 (drie geldige sessies op één eenmalige link).
+      expect(winners).toHaveLength(1);
+      expect(losers).toHaveLength(2);
+      expect(winners[0].body.data.accessToken).toBeDefined();
+      for (const loser of losers) {
+        expect(loser.body.message).toBe('Magic link ongeldig of verlopen');
+      }
+
+      // En sequentieel hergebruik blijft uiteraard ook geweigerd.
+      await postA('/api/v1/client/auth/magic-link').send({ token: raceToken }).expect(400);
+
+      const link = await prisma.clientMagicLink.findUnique({ where: { token: raceToken } });
+      expect(link?.usedAt).not.toBeNull();
+    } finally {
+      await prisma.clientMagicLink.deleteMany({ where: { token: raceToken } });
+    }
   });
 
   // Haal de refresh-cookie-waarde uit een Set-Cookie-header (voor hergebruik als Cookie).

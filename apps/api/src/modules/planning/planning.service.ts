@@ -371,10 +371,12 @@ export class PlanningService {
     quoteNumber: string;
     projectId?: string;
   }) {
-    if (!quote.locationId) {
-      this.logger.warn(`Skipping planning item for quote ${quote.id}: no location`);
-      return;
-    }
+    // B-315: een offerte zonder locatie leverde eerder stilzwijgend GÉÉN planregel op
+    // (logger.warn + return) — werk verdween onzichtbaar uit de pipeline. locationId is
+    // nullable op PlanningItem (net als bij handmatige planregels), dus we maken de
+    // planregel gewoon aan; de ontbrekende locatie wordt zichtbaar vastgelegd in de
+    // planninghistorie en kan bij het inplannen alsnog gekozen worden.
+    const missingLocation = !quote.locationId;
 
     // Fetch first line for product name
     const firstLine = await this.prisma.quoteLine.findFirst({
@@ -400,7 +402,17 @@ export class PlanningService {
       },
     });
 
-    await this.addHistoryEntry(item.id, quote.createdBy, 'AANGEMAAKT', `Planregel automatisch aangemaakt na acceptatie offerte ${quote.quoteNumber}`);
+    await this.addHistoryEntry(
+      item.id,
+      quote.createdBy,
+      'AANGEMAAKT',
+      missingLocation
+        ? `Planregel automatisch aangemaakt na acceptatie offerte ${quote.quoteNumber} — let op: de offerte heeft geen locatie; kies een locatie bij het inplannen`
+        : `Planregel automatisch aangemaakt na acceptatie offerte ${quote.quoteNumber}`,
+    );
+    if (missingLocation) {
+      this.logger.warn(`Planning item for quote ${quote.id} created without location`);
+    }
     this.logger.log(`Planning item created for quote ${quote.quoteNumber}`);
   }
 

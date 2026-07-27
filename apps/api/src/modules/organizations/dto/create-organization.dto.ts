@@ -11,6 +11,7 @@ import {
   IsInt,
   IsEmail,
   IsEnum,
+  IsBoolean,
   ValidateIf,
 } from 'class-validator';
 
@@ -126,4 +127,13 @@ export class CreateOrganizationDto {
   @ValidateIf((o) => o.quoteApprovalRequiredRole !== null)
   @IsEnum(Role)
   quoteApprovalRequiredRole?: Role | null;
+
+  @ApiPropertyOptional({
+    example: false,
+    description:
+      'Vier-ogen op offertes (B-307): mag de aanvrager zijn eigen goedkeuringsverzoek afhandelen? Alleen aanzetten voor kleine organisaties met één goedkeurder.',
+  })
+  @IsOptional()
+  @IsBoolean()
+  quoteApprovalSelfApprovalAllowed?: boolean;
 }

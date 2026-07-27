@@ -95,6 +95,8 @@ describe('AllExceptionsFilter', () => {
     ['P2025', HttpStatus.NOT_FOUND, 'Gegevens niet gevonden'],
     ['P2003', HttpStatus.BAD_REQUEST, 'Verwijzing naar niet-bestaande gegevens'],
     ['P2011', HttpStatus.BAD_REQUEST, 'Verplicht veld ontbreekt'],
+    // B-303: waarde buiten kolomtype-bereik (bv. numeric overflow) → 400 i.p.v. 500
+    ['P2020', HttpStatus.BAD_REQUEST, 'Een waarde valt buiten het toegestane bereik'],
   ])('should map Prisma %s to %s', (code, status, message) => {
     const exception = new Prisma.PrismaClientKnownRequestError('db error', {
       code,
@@ -137,6 +139,32 @@ describe('AllExceptionsFilter', () => {
       message: 'Ongeldige gegevens',
       statusCode: HttpStatus.BAD_REQUEST,
     });
+  });
+
+  it('should map a Postgres numeric field overflow (unknown request error) to 400 NL (B-303)', () => {
+    const exception = new Prisma.PrismaClientUnknownRequestError(
+      'Error occurred during query execution: numeric field overflow',
+      { clientVersion: 'test' },
+    );
+
+    filter.catch(exception, mockHost);
+
+    expect(mockStatus).toHaveBeenCalledWith(HttpStatus.BAD_REQUEST);
+    expect(mockJson).toHaveBeenCalledWith({
+      success: false,
+      message: 'Een bedrag of aantal is te groot om op te slaan',
+      statusCode: HttpStatus.BAD_REQUEST,
+    });
+  });
+
+  it('should keep other unknown Prisma request errors as 500', () => {
+    const exception = new Prisma.PrismaClientUnknownRequestError('something else broke', {
+      clientVersion: 'test',
+    });
+
+    filter.catch(exception, mockHost);
+
+    expect(mockStatus).toHaveBeenCalledWith(HttpStatus.INTERNAL_SERVER_ERROR);
   });
 
   it('should handle ForbiddenException', () => {

@@ -85,6 +85,11 @@ export class AllExceptionsFilter implements ExceptionFilter {
           status = HttpStatus.BAD_REQUEST;
           message = 'Verplicht veld ontbreekt';
           break;
+        case 'P2020':
+          // Waarde buiten het kolomtype-bereik (bv. Postgres numeric overflow) — B-303.
+          status = HttpStatus.BAD_REQUEST;
+          message = 'Een waarde valt buiten het toegestane bereik';
+          break;
       }
       if (status !== HttpStatus.INTERNAL_SERVER_ERROR) {
         // P2011 wijst vrijwel altijd op een codefout (verplichte kolom niet
@@ -106,6 +111,17 @@ export class AllExceptionsFilter implements ExceptionFilter {
       message = 'Ongeldige gegevens';
       this.logger.error(
         `PrismaClientValidationError on ${request.method} ${request.url}${requestIdSuffix}: ${exception.message.split('\n').pop()}`,
+      );
+    } else if (
+      exception instanceof Prisma.PrismaClientUnknownRequestError &&
+      /numeric field overflow/i.test(exception.message)
+    ) {
+      // Postgres `numeric field overflow` (SQLSTATE 22003) komt niet altijd als P2020
+      // terug maar soms als "unknown" Prisma-fout — óók 400 i.p.v. 500 (B-303).
+      status = HttpStatus.BAD_REQUEST;
+      message = 'Een bedrag of aantal is te groot om op te slaan';
+      this.logger.warn(
+        `Prisma numeric overflow on ${request.method} ${request.url}${requestIdSuffix}`,
       );
     } else if (isHttpErrorLike(exception)) {
       // Express body-parser-fouten (PayloadTooLargeError → 413, kapotte JSON → 400)

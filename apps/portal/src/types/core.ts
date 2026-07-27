@@ -41,6 +41,8 @@ export interface Organization {
   inspectorStaticEmail: string | null;
   quoteApprovalThreshold: number | null;
   quoteApprovalRequiredRole: Role | null;
+  /** Vier-ogen op offertes (B-307): mag de aanvrager zijn eigen verzoek afhandelen? */
+  quoteApprovalSelfApprovalAllowed?: boolean;
   isActive: boolean;
   chatEnabled: boolean;
   /** Vier-ogen-controle verplicht op inspectieplannen (PRD-13). */

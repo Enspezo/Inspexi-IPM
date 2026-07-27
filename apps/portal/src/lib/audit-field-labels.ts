@@ -227,6 +227,7 @@ const entityLabels: Record<string, Record<string, string>> = {
     inspectorStaticEmail: 'Statisch e-mailadres klantportaal',
     quoteApprovalThreshold: 'Goedkeuringsgrens offertes',
     quoteApprovalRequiredRole: 'Vereiste goedkeur-rol offertes',
+    quoteApprovalSelfApprovalAllowed: 'Self-approval offertes toegestaan',
     planId: 'Abonnement',
     supportAccessEnabled: 'Support-toegang',
     supportAccessExpiresAt: 'Support-toegang verloopt op',

@@ -1,4 +1,4 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { ApiPropertyOptional } from '@nestjs/swagger';
 import { IsString, IsOptional } from 'class-validator';
 
 export class ApproveQuoteDto {
@@ -14,7 +14,9 @@ export class ApproveQuoteDto {
 }
 
 export class RejectQuoteDto {
-  @ApiProperty({ description: 'Verplichte reden voor afwijzing' })
-  @IsString()
-  note: string;
+  // B-314: de UI biedt de notitie als optioneel aan — de DTO moet dat ook zijn.
+  @ApiPropertyOptional({ description: 'Optionele reden voor afwijzing' })
+  @IsOptional()
+  @IsString({ message: 'Reden voor afwijzing moet tekst zijn' })
+  note?: string;
 }

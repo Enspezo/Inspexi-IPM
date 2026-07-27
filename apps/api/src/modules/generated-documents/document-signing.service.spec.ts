@@ -294,5 +294,61 @@ describe('DocumentSigningService', () => {
         expect.objectContaining({ data: { status: GeneratedDocumentStatus.SIGNED } }),
       );
     });
+
+    // B-408 (WP-C2): juist het publieke kanaal moet het IP vastleggen.
+    it('signViaRequest records the signer IP (audit trail, B-408)', async () => {
+      mockPrisma.documentSignature.findFirst.mockResolvedValue({
+        id: 'sig-1',
+        status: SignatureStatus.REQUESTED,
+        signatureRequestSentAt: new Date(),
+        generatedDocumentId: 'gd-1',
+        signerName: 'Jan Klant',
+      });
+      mockPrisma.documentSignature.update.mockResolvedValue({ id: 'sig-1', status: 'SIGNED' });
+      mockPrisma.documentSignature.findMany.mockResolvedValue([{ status: SignatureStatus.SIGNED }]);
+      mockPrisma.generatedDocument.findUnique.mockResolvedValue({
+        id: 'gd-1',
+        status: GeneratedDocumentStatus.PENDING_SIGNATURES,
+      });
+      mockPrisma.generatedDocument.update.mockResolvedValue({ id: 'gd-1' });
+
+      await service.signViaRequest(
+        'req-1',
+        { signatureImage: 'data:image/png;base64,AAA' } as any,
+        '203.0.113.7',
+      );
+
+      expect(mockPrisma.documentSignature.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            status: SignatureStatus.SIGNED,
+            signedIpAddress: '203.0.113.7',
+          }),
+        }),
+      );
+    });
+
+    it('signViaRequest stores null (not undefined) when no IP is available', async () => {
+      mockPrisma.documentSignature.findFirst.mockResolvedValue({
+        id: 'sig-1',
+        status: SignatureStatus.REQUESTED,
+        signatureRequestSentAt: new Date(),
+        generatedDocumentId: 'gd-1',
+        signerName: 'Jan Klant',
+      });
+      mockPrisma.documentSignature.update.mockResolvedValue({ id: 'sig-1', status: 'SIGNED' });
+      mockPrisma.documentSignature.findMany.mockResolvedValue([{ status: SignatureStatus.SIGNED }]);
+      mockPrisma.generatedDocument.findUnique.mockResolvedValue({
+        id: 'gd-1',
+        status: GeneratedDocumentStatus.PENDING_SIGNATURES,
+      });
+      mockPrisma.generatedDocument.update.mockResolvedValue({ id: 'gd-1' });
+
+      await service.signViaRequest('req-1', { signatureImage: 'data:image/png;base64,AAA' } as any);
+
+      expect(mockPrisma.documentSignature.update).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ signedIpAddress: null }) }),
+      );
+    });
   });
 });

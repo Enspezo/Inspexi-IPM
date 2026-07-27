@@ -63,10 +63,11 @@ describe('getMainClassification', () => {
 
   it('matcht de severity-key case-insensitief (fallback-pad zonder model)', () => {
     // Lowercase 'risico' wordt als severity-key herkend; zonder model levert de
-    // bekende code 'A' de default-kleur.
+    // bekende code 'A' de default-kleur. isCritical is dan ONBEKEND (null) —
+    // de caller valt terug op Finding.isCritical (B-410).
     const result = getMainClassification({ eerste: 'x', risico: 'A' }, null);
 
-    expect(result).toEqual({ code: 'A', name: 'A', color: '#dc2626', isCritical: false });
+    expect(result).toEqual({ code: 'A', name: 'A', color: '#dc2626', isCritical: null });
   });
 
   it("valt terug op default-kleuren voor bekende codes zonder model ('A' → '#dc2626')", () => {
@@ -74,17 +75,23 @@ describe('getMainClassification', () => {
     expect(getMainClassification({ SEVERITY: '4' }, null).color).toBe('#16a34a');
   });
 
-  it('valt terug op grijs + code-als-label voor onbekende codes', () => {
+  it('valt terug op grijs + code-als-label voor onbekende codes (isCritical onbekend → null)', () => {
     const result = getMainClassification({ SEVERITY: 'ZZZ' }, null);
 
-    expect(result).toEqual({ code: 'ZZZ', name: 'ZZZ', color: '#666666', isCritical: false });
+    expect(result).toEqual({ code: 'ZZZ', name: 'ZZZ', color: '#666666', isCritical: null });
   });
 
-  it('valt terug op de default-kleur wanneer het model de optie niet kent', () => {
+  it('valt terug op de default-kleur wanneer het model de optie niet kent (isCritical null)', () => {
     // Model aanwezig, maar code 'B' zit niet in de SEVERITY-opties → fallback-pad.
     const result = getMainClassification({ SEVERITY: 'B' }, model);
 
-    expect(result).toEqual({ code: 'B', name: 'B', color: '#ea580c', isCritical: false });
+    expect(result).toEqual({ code: 'B', name: 'B', color: '#ea580c', isCritical: null });
+  });
+
+  it('hardcodet isCritical NOOIT op false in het fallback-pad (B-410)', () => {
+    // Zonder model mag de resolver niet beweren dat een constatering niet
+    // kritiek is — de caller moet op Finding.isCritical kunnen terugvallen.
+    expect(getMainClassification({ SEVERITY: 'C1' }, null).isCritical).toBeNull();
   });
 
   it("geeft 'Niet geclassificeerd' voor lege of ontbrekende values", () => {
@@ -92,7 +99,7 @@ describe('getMainClassification', () => {
       code: '-',
       name: 'Niet geclassificeerd',
       color: '#666666',
-      isCritical: false,
+      isCritical: null,
     };
     expect(getMainClassification({}, model)).toEqual(expected);
     expect(getMainClassification(null, model)).toEqual(expected);

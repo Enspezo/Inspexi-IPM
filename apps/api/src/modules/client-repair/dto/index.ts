@@ -1,6 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { ArrayNotEmpty, IsArray, IsEmail, IsNotEmpty, IsOptional, IsString, IsUUID, MaxLength } from 'class-validator';
-import { IsSafeDataImage } from '@/common';
+import { SignatureImageDto } from '@/common';
 
 /** Anonieme toegang: rapportnummer + postcode (PRD-14 §14.6). */
 export class RepairLookupDto {
@@ -60,11 +60,8 @@ export class CompleteRepairDto {
   email?: string;
 }
 
-/** Ondertekenen van de herstelverklaring (fase 3). */
-export class SignRepairDto {
-  @ApiProperty({ description: 'Handtekening als data-URL (base64 PNG)' })
-  @IsString({ message: 'Handtekening is verplicht' })
-  @IsNotEmpty({ message: 'Handtekening is verplicht' })
-  @IsSafeDataImage()
-  signatureImage!: string;
-}
+/**
+ * Ondertekenen van de herstelverklaring (fase 3). Het signatureImage-veld
+ * (incl. @IsSafeDataImage) komt uit de gedeelde SignatureImageDto (B-404).
+ */
+export class SignRepairDto extends SignatureImageDto {}

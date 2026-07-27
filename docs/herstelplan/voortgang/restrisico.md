@@ -13,6 +13,9 @@
 | B-205b (canonieke datavorm) | D2 | Wacht op beslispunt A2 | `03-beslispunten-backlog.md` §A A2 |
 | B-223a (pull-scope inspecteur) | C3 | Wacht op beslispunt A3 | `03-beslispunten-backlog.md` §A A3 |
 
+| B-402/B-403 (dead-end blijft) | B9 | Alleen mitigatie: klant wordt niet meer misleid + org krijgt e-mail; stafzijde = Epic 1/2 | `03-beslispunten-backlog.md` §C |
+| B-315 (lines.0.-prefix) | B5 | Geneste DTO-fouten dragen ValidationPipe-prefix voor directe API-callers; ontprefixing hoort bij WP-C1 | WP-C1 (golf 3) |
+| B-502 (nav-items) | B3 | Platform-brede superuser-schermen (error-reports, help-admin, ticketconsole) blijven benaderbaar op org-subdomeinen (roles-based); aanbeveling: nav verbergen/labelen | Follow-up klein |
 | B-152 (apex-domein) | B7 | Gemailde offerte-links gebruiken een generiek `PUBLIC_URL`-host (DEP-6): tenantbinding op org-subdomeinen is dicht, apex bewust open — anders breken alle verzonden links | Eigenaarsbeslissing: PUBLIC_URL subdomein-bewust maken, daarna apex dichtzetten (één regel in `publicTenantWhere()`) |
 | B-306 (nasleep) | B7 | Interne notities stonden al publiek achter mogelijk gedeelde tokens; tokenrotatie geadviseerd, niet uitgevoerd. Publieke planning-routes dragen nog een klasse-brede feature-gate met verkeerde-org-semantiek (follow-up) | PR #138-body |
 | B-305 (nasleep) | B6 | Dropdowns cappen op 200: >200 records → stil afgekapt; ongebonden `limit` op /help/articles + /support-tickets (pre-existing) | Follow-up: server-side search/typeahead; losse kleine PR |

@@ -26,7 +26,9 @@ Conform `docs/testprogramma/00-master-testplan.md` §5: API `:3001` (`NODE_ENV=t
 | B6 | `fix/wp-b6-pagination-contract` | [#137](https://github.com/Enspezo/Inspexi-IPM/pull/137) | ✅ gemerged + browser-geverifieerd | B-305 ✔ (cap 200, 14 call-sites in 9 bestanden — assets-page bleek níet kapot; systemische query-foutstate) | parametrische e2e 32 endpoints, 14 portal-tests |
 | B7 | `fix/wp-b7-public-endpoints` | [#138](https://github.com/Enspezo/Inspexi-IPM/pull/138) | ✅ gemerged + live geverifieerd | B-306 ✔ (select-allowlist), B-152 ✔ (tenantbinding + service-gate) | key-snapshot-tests + 17 e2e public-endpoints |
 | B8 | `fix/wp-b8-session-assign` | [#135](https://github.com/Enspezo/Inspexi-IPM/pull/135) | ✅ gemerged + browser-geverifieerd (BO-40 volledig) | B-310 ✔ | 8 portal-Vitest (assign/409-override/tooltip) |
-| B3, B5, B9 | — | — | in uitvoering | — | — |
+| B3 | `fix/wp-b3-superuser-scoping` | [#141](https://github.com/Enspezo/Inspexi-IPM/pull/141) | ✅ gemerged + browser-geverifieerd (volledige onboardingketen) | B-502 ✔, B-503 ✔, B-504 ✔, B-511§1 ✔ | tenant-matrix unit, superuser-scoping e2e 14, regressie 151 |
+| B5 | `fix/wp-b5-quote-chain` | [#142](https://github.com/Enspezo/Inspexi-IPM/pull/142) | ✅ gemerged + live geverifieerd | B-302 ✔, B-303 ✔, B-304 ✔, B-307 ✔, B-308 ✔, B-309 ✔, B-314 ✔, B-315-B ✔ | Promise.all-send-race, tiergrenzen, DTO-grenzen, self-approval, P2020/overflow; e2e 213 |
+| B9 | `fix/wp-b9-client-portal-mitigations` | [#139](https://github.com/Enspezo/Inspexi-IPM/pull/139) | ✅ gemerged + browser-geverifieerd (gate + canSign op originele repro-plannen) | B-412 ✔, B-402 △ mitigatie, B-403 △ mitigatie, B-406a ✔ | review-gate e2e 10, client-portal vitest 36 |
 | B1, B2, B10 | — | — | open (PWA-spoor, na A2) | — | — |
 | C1–C5 | — | — | open (golf 3) | — | — |
 | D1–D3 | — | — | open (golf 4) | — | — |
@@ -34,6 +36,13 @@ Conform `docs/testprogramma/00-master-testplan.md` §5: API `:3001` (`NODE_ENV=t
 ---
 
 ## Chronologisch logboek
+
+### 27 juli 2026 — Golf 2: B3/B5/B9 gemerged (API/portal-kant compleet)
+
+- **WP-B9** (PR #139): gate browser-geverifieerd op de originele repro's — demo-plan (draft) en TP Plan C (pending_review) tonen placeholder zónder Constateringen/Documenten-tabs; TP-RAP-005 (approved) toont alles mét "Ondertekening verloopt via de link in uw e-mail" bij canSign=false; dashboardtellers gefilterd.
+- **WP-B3** (PR #141): volledige onboardingketen door de UI — org "Nieuwe Klant BV" aangemaakt, "Eerste beheerder uitnodigen", invite geaccepteerd op nieuweklantbv.localhost, ingelogd op /dashboard. Curl: SU op mijn.* ziet 19 users/7 orgs, op testbedrijf.* alleen die 2; POST /contacts als SU op org-subdomein → 201 (was 500). Bewuste afwijking: fix in TenantGuard (effectieve orgId) i.p.v. 92+90+200 callsite-migraties; helpers wél geleverd.
+- **WP-B5** (PR #142): staffelgrenzen live exact (9→12,50 / 10→10,00 / 50→7,50 — was altijd tier 1); NL-grenzen op bedragen; approvalRequired geserialiseerd; "Ter goedkeuring" in het actiemenu (B-304-dead-end weg); migratie `quote_approval_self_approval_allowed` via drift-workaround (psql + migrate resolve) op de dev-DB. Merge-conflict in exception-filter (B3×B5) inhoudelijk opgelost: P2011- én P2020-tak, gecombineerde spec 20/20 groen. Drie agents fixten onafhankelijk dezelfde pre-existing quotes-e2e (TP-seed-manager-collision).
+- Restpunt B5: DB bevat nog de oude TP-OFF-010-waarden (seedbestand is aangepast; herseed volgt bij golf-afronding). NB: sessie-invalidatie na herseed.
 
 ### 27 juli 2026 — Golf 2: B4/B6/B7/B8 gemerged
 

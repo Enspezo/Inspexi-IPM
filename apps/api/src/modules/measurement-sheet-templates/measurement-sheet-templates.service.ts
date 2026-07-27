@@ -46,9 +46,18 @@ export class MeasurementSheetTemplatesService {
   // TEMPLATE CRUD
   // =====================================================
 
-  /** Alle meetstaat-templates (globaal, zichtbaar voor iedereen). */
-  async findAll(options?: QueryMeasurementSheetTemplatesDto) {
-    const { normType, assetType, status } = options || {};
+  /**
+   * Alle meetstaat-templates (globaal, zichtbaar voor iedereen).
+   *
+   * `includeSections` (WP-B1/B-205): de kale lijst gaf alleen `_count.sections`
+   * terug, waardoor de PWA-referentiecache templates zonder invoervelden
+   * opsloeg. Met `?include=sections` komen de secties + velden volledig mee en
+   * vervalt de N+1 op de detail-route.
+   */
+  async findAll(
+    options?: QueryMeasurementSheetTemplatesDto & { includeSections?: boolean },
+  ) {
+    const { normType, assetType, status, includeSections = false } = options || {};
 
     const andConditions: Prisma.MeasurementSheetTemplateWhereInput[] = [];
 
@@ -66,6 +75,14 @@ export class MeasurementSheetTemplatesService {
       where: andConditions.length > 0 ? { AND: andConditions } : {},
       include: {
         _count: { select: { sections: true } },
+        ...(includeSections
+          ? {
+              sections: {
+                include: { fields: { orderBy: { sortOrder: 'asc' as const } } },
+                orderBy: { sortOrder: 'asc' as const },
+              },
+            }
+          : {}),
       },
       orderBy: [{ status: 'asc' }, { name: 'asc' }, { version: 'desc' }],
     });

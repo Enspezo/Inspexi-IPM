@@ -356,6 +356,39 @@ describe('Measurement Sheet Templates (e2e)', () => {
     });
   });
 
+  // ── Lijst mét sections (WP-B1/B-205: PWA-referentiecache) ──
+
+  describe('GET /api/v1/measurement-sheet-templates?include=sections', () => {
+    it('levert de lijst mét sections + velden (geordend) voor de PWA-cache', async () => {
+      const res = await request(app.getHttpServer())
+        .get('/api/v1/measurement-sheet-templates?include=sections')
+        .set('Authorization', `Bearer ${orgAdminToken}`)
+        .expect(200);
+
+      expect(res.body.success).toBe(true);
+      const template = res.body.data.find((t: any) => t.id === templateId);
+      expect(template).toBeDefined();
+      expect(Array.isArray(template.sections)).toBe(true);
+      expect(template.sections).toHaveLength(1);
+      const section = template.sections[0];
+      expect(section.code).toBe('algemeen');
+      // Velden komen mee, in sortOrder (na de reorder: B vóór A).
+      expect(section.fields.map((f: any) => f.id)).toEqual([fieldBId, fieldAId]);
+    });
+
+    it('laat sections weg zonder include-param (bestaand lijstcontract)', async () => {
+      const res = await request(app.getHttpServer())
+        .get('/api/v1/measurement-sheet-templates')
+        .set('Authorization', `Bearer ${orgAdminToken}`)
+        .expect(200);
+
+      const template = res.body.data.find((t: any) => t.id === templateId);
+      expect(template).toBeDefined();
+      expect(template.sections).toBeUndefined();
+      expect(template._count?.sections).toBe(1);
+    });
+  });
+
   // ── Final-check-rules ─────────────────────────────────
 
   describe('final-check-rules', () => {

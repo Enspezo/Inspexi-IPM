@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { User, AssetNodeType } from '@prisma/client';
+import { User, AssetNodeType, Role } from '@prisma/client';
 import { PrismaService } from '@/prisma';
 import {
   orgScope,
@@ -9,6 +9,7 @@ import {
   STATUS_COMPLETED,
   STATUS_OPEN,
 } from '@/common';
+import { EntitlementsService } from '@/modules/entitlements/entitlements.service';
 
 /** PWA-dashboard samenvatting (org-scoped, read-only). */
 export interface DashboardStats {
@@ -18,6 +19,17 @@ export interface DashboardStats {
   criticalFindings: number;
   totalAssets: number;
   totalLocations: number;
+}
+
+/**
+ * B-001: KPI-tegels van het staf-dashboard. Inspectiedomein-tellingen zijn
+ * `null` wanneer de org het BASIS_INSPECTIES-entitlement mist — de portal
+ * verbergt die tegels dan (zelfde gating als de sidebar).
+ */
+export interface StaffDashboardStats {
+  activeInspections: number | null;
+  activeUsers: number;
+  reports: number | null;
 }
 
 export interface ChartDataPoint {
@@ -47,7 +59,52 @@ export interface ActivityItem {
  */
 @Injectable()
 export class PortalStatsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly entitlements: EntitlementsService,
+  ) {}
+
+  /**
+   * B-001: tellingen voor de KPI-tegels van het staf-dashboard (portal).
+   *
+   * - `activeInspections`: lopende inspectieplannen (nog niet approved/completed;
+   *   `cancelled` telt evenmin mee) — org-scoped, exclusief soft-deleted.
+   * - `activeUsers`: actieve gebruikers van de org.
+   * - `reports`: gegenereerde documenten (rapporten) van de org.
+   *
+   * Feature-gating conform de sidebar: zonder BASIS_INSPECTIES zijn de
+   * inspectiedomein-tellingen `null` (de portal verbergt die tegels).
+   * SUPERUSER (orgId null) krijgt via orgScope alle organisaties én — net als
+   * bij `GET /organizations/me/features` — impliciet alle features.
+   */
+  async getStaffDashboardStats(user: User): Promise<StaffDashboardStats> {
+    const scope = orgScope(user);
+
+    const hasInspections =
+      !user.orgId || user.roles.includes(Role.SUPERUSER)
+        ? true
+        : (await this.entitlements.getEnabledFeatures(user.orgId)).includes(
+            'BASIS_INSPECTIES',
+          );
+
+    const [activeUsers, activeInspections, reports] = await Promise.all([
+      this.prisma.user.count({ where: { ...scope, isActive: true } }),
+      hasInspections
+        ? this.prisma.inspectionPlan.count({
+            where: {
+              ...scope,
+              deletedAt: null,
+              statusCode: { notIn: [STATUS_APPROVED, STATUS_COMPLETED, 'cancelled'] },
+            },
+          })
+        : Promise.resolve(null),
+      hasInspections
+        ? this.prisma.generatedDocument.count({ where: { ...scope } })
+        : Promise.resolve(null),
+    ]);
+
+    return { activeInspections, activeUsers, reports };
+  }
 
   /**
    * Dashboard-samenvatting: tellingen voor de huidige maand/week, openstaande

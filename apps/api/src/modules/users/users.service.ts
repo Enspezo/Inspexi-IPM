@@ -210,6 +210,38 @@ export class UsersService {
     return updated;
   }
 
+  /**
+   * B-511 §7: valideer een uitnodigingstoken vóórdat de invite-pagina het
+   * registratieformulier toont — voorheen ontdekte de gebruiker pas ná het
+   * invullen van naam + wachtwoord dat de uitnodiging verlopen of al gebruikt
+   * was. Zelfde checks en meldingen als acceptInvitation(); het token is een
+   * hoog-entropie geheim, dus de e-mail/organisatie teruggeven aan de houder
+   * ervan lekt niets.
+   */
+  async getInvitationByToken(token: string) {
+    const invitation = await this.prisma.invitation.findUnique({
+      where: { token },
+      include: { organization: { select: { name: true } } },
+    });
+
+    if (!invitation) {
+      throw new BadRequestException('Ongeldige uitnodiging');
+    }
+    if (invitation.acceptedAt) {
+      throw new BadRequestException('Uitnodiging is al geaccepteerd');
+    }
+    if (invitation.expiresAt < new Date()) {
+      throw new BadRequestException('Uitnodiging is verlopen');
+    }
+
+    return {
+      email: invitation.email,
+      role: invitation.role,
+      organizationName: invitation.organization.name,
+      expiresAt: invitation.expiresAt,
+    };
+  }
+
   async acceptInvitation(dto: AcceptInvitationDto) {
     const invitation = await this.prisma.invitation.findUnique({
       where: { token: dto.token },

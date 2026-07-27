@@ -303,9 +303,12 @@ describe('Quotes API (e2e)', () => {
 
   describe('GET /api/v1/quotes/:id', () => {
     it('detail contains lines, contact, approvalRequests', async () => {
-      // Use the seeded GOEDGEKEURD quote (OFF-2026-0001) which has 3 lines
+      // Use the seeded GOEDGEKEURD quote (OFF-2026-0001) which has 3 lines.
+      // limit=200 (portal-contract, WP-B6): de gedeelde dev-DB bevat naast de
+      // seed ook TP-/e2e-offertes, waardoor de seed-offerte anders van pagina 1
+      // (default 20) valt en de lookup breekt.
       const listRes = await request(app.getHttpServer())
-        .get('/api/v1/quotes')
+        .get('/api/v1/quotes?limit=200')
         .set('Authorization', `Bearer ${org1AdminToken}`)
         .expect(200);
 
@@ -371,9 +374,9 @@ describe('Quotes API (e2e)', () => {
     });
 
     it('update fails when not CONCEPT (GOEDGEKEURD quote)', async () => {
-      // Use the seeded GOEDGEKEURD quote (OFF-2026-0001)
+      // Use the seeded GOEDGEKEURD quote (OFF-2026-0001); limit=200 zoals hierboven.
       const listRes = await request(app.getHttpServer())
-        .get('/api/v1/quotes')
+        .get('/api/v1/quotes?limit=200')
         .set('Authorization', `Bearer ${org1AdminToken}`)
         .expect(200);
 

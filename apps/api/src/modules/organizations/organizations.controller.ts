@@ -32,6 +32,8 @@ import { Response } from 'express';
 import { User, Role } from '@prisma/client';
 import { ORG_ADMINS } from '@/common/auth/roles';
 import { OrganizationsService } from './organizations.service';
+import { UsersService } from '@/modules/users/users.service';
+import { InviteUserDto } from '@/modules/users/dto';
 import { SupportAccessService } from './support-access.service';
 import {
   CreateOrganizationDto,
@@ -52,6 +54,7 @@ import { FEATURE_KEYS } from '@inspexi/entitlements';
 export class OrganizationsController {
   constructor(
     private organizationsService: OrganizationsService,
+    private usersService: UsersService,
     private supportAccess: SupportAccessService,
     private prisma: PrismaService,
     private entitlements: EntitlementsService,
@@ -151,6 +154,28 @@ export class OrganizationsController {
   async findUsers(@Param('id', ParseUUIDPipe) id: string) {
     const users = await this.organizationsService.findUsers(id);
     return { success: true, data: users };
+  }
+
+  @Post(':id/invite')
+  @Roles(Role.SUPERUSER)
+  @ApiOperation({
+    summary:
+      'Gebruiker uitnodigen voor een organisatie (Superuser-onboarding, WP-B3/B-504)',
+  })
+  @ApiResponse({ status: 201, description: 'Uitnodiging verstuurd' })
+  @ApiResponse({ status: 404, description: 'Organisatie niet gevonden' })
+  @ApiResponse({ status: 409, description: 'Gebruiker of uitnodiging bestaat al' })
+  async inviteUser(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: InviteUserDto,
+    @CurrentUser() user: User,
+  ) {
+    // Nette 404 vóór de invite-flow; daarna exact dezelfde invite-logica en
+    // rolhiërarchie-check als POST /users/invite (B-504: eerste beheerder van
+    // een verse organisatie uitnodigen vanaf het superuser-domein).
+    await this.organizationsService.findOne(id);
+    const invitation = await this.usersService.invite(id, dto, user);
+    return { success: true, data: invitation };
   }
 
   @Get(':id/entitlements')

@@ -129,11 +129,13 @@ export function FindingDetailModal({
             )}
           </div>
 
+          {/* B-401: server levert `assetNode` ({id, name, description}); `asset` en
+              `locationDescription`-op-de-node bestaan niet meer. Defensief lezen. */}
           <div className="rounded-lg bg-gray-50 p-3 text-sm text-gray-700">
-            <p className="font-medium text-gray-900">{finding.asset.name}</p>
-            {(finding.locationDescription || finding.asset.locationDescription) && (
+            <p className="font-medium text-gray-900">{finding.assetNode?.name ?? '—'}</p>
+            {(finding.locationDescription ?? finding.assetNode?.description) && (
               <p className="text-xs text-gray-500">
-                {finding.locationDescription || finding.asset.locationDescription}
+                {finding.locationDescription ?? finding.assetNode?.description}
               </p>
             )}
           </div>

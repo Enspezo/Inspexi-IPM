@@ -8,6 +8,7 @@ import { OverviewTab } from './components/overview-tab';
 import { FindingsTab } from './components/findings-tab';
 import { MessagesTab } from './components/messages-tab';
 import { DocumentsTab } from './components/documents-tab';
+import { TabErrorBoundary } from './components/tab-error-boundary';
 
 export type InspectionTabKey = 'overview' | 'findings' | 'messages' | 'documents';
 
@@ -60,16 +61,29 @@ export default function InspectionDetailPage() {
 
       <Tabs tabs={tabs} active={tab} onChange={setTab} />
 
-      {tab === 'overview' && <OverviewTab inspection={inspection} onNavigateTab={setTab} />}
-      {tab === 'findings' && (
-        <FindingsTab
-          inspectionId={inspection.id}
-          onlineRepairEnabled={inspection.onlineRepairEnabled}
-        />
+      {/* B-401: elke tab in een eigen boundary — één kapotte tab sloopt nooit de pagina. */}
+      {tab === 'overview' && (
+        <TabErrorBoundary>
+          <OverviewTab inspection={inspection} onNavigateTab={setTab} />
+        </TabErrorBoundary>
       )}
-      {tab === 'messages' && <MessagesTab inspectionId={inspection.id} />}
+      {tab === 'findings' && (
+        <TabErrorBoundary>
+          <FindingsTab
+            inspectionId={inspection.id}
+            onlineRepairEnabled={inspection.onlineRepairEnabled}
+          />
+        </TabErrorBoundary>
+      )}
+      {tab === 'messages' && (
+        <TabErrorBoundary>
+          <MessagesTab inspectionId={inspection.id} />
+        </TabErrorBoundary>
+      )}
       {tab === 'documents' && (
-        <DocumentsTab inspectionId={inspection.id} inspectionName={inspection.projectName} />
+        <TabErrorBoundary>
+          <DocumentsTab inspectionId={inspection.id} inspectionName={inspection.projectName} />
+        </TabErrorBoundary>
       )}
     </div>
   );

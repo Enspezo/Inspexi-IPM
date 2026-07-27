@@ -80,7 +80,11 @@ function FindingCard({
 }) {
   const resolution = finding.resolutions[0];
   const chips = Object.entries(finding.classificationValues ?? {});
-  const location = finding.locationDescription || finding.asset.locationDescription;
+  // B-401: de server levert `assetNode` ({id, name, description}) — er is geen `asset`
+  // meer en geen `locationDescription` op de node. Defensief lezen: een ontbrekende
+  // node mag de kaart nooit laten crashen.
+  const location = finding.locationDescription ?? finding.assetNode?.description ?? null;
+  const locationLine = [location, finding.assetNode?.name].filter(Boolean).join(' · ');
 
   return (
     <button
@@ -106,13 +110,13 @@ function FindingCard({
               ))}
             </div>
           )}
-          {location && (
+          {locationLine && (
             <p className="mt-1 flex items-center gap-1 text-xs text-gray-500">
               <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
               </svg>
-              {location} · {finding.asset.name}
+              {locationLine}
             </p>
           )}
         </div>

@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { DocumentType, GeneratedDocumentStatus, SignatureStatus, Role } from '@prisma/client';
 import { DocumentSigningService } from './document-signing.service';
@@ -104,6 +104,129 @@ describe('DocumentSigningService', () => {
         } as any),
       ).rejects.toThrow(BadRequestException);
       expect(mockPrisma.documentSignature.create).not.toHaveBeenCalled();
+    });
+  });
+
+  // WP-A3 (B-101): interne ondertekenroute — rolcode-validatie, stafrol-mapping,
+  // claim van de bestaande open rij en herleidbaarheid (signedByUserId/IP).
+  describe('signDocument', () => {
+    const doc = { id: 'gd-1', orgId: 'org-1', status: GeneratedDocumentStatus.PENDING_SIGNATURES };
+    const inspecteur = { ...user, id: 'user-insp', roles: [Role.INSPECTEUR] };
+    const backoffice = { ...user, id: 'user-bo', roles: [Role.BACKOFFICE] };
+    const signDto = (signerRoleCode: string) =>
+      ({ signerRoleCode, signatureImage: 'data:image/png;base64,AAA' }) as any;
+
+    beforeEach(() => {
+      mockDocuments.findById.mockResolvedValue(doc);
+      mockPrisma.documentSignature.findMany.mockResolvedValue([]);
+      mockPrisma.documentSignature.create.mockImplementation(({ data }: any) => ({ id: 'sig-new', ...data }));
+      mockPrisma.documentSignature.update.mockImplementation(({ data }: any) => ({ id: 'sig-upd', ...data }));
+    });
+
+    it('rejects an unknown signer role code (400)', async () => {
+      mockLookups.resolveLookup.mockResolvedValue(null);
+      await expect(service.signDocument('gd-1', inspecteur, signDto('BESTAAT-NIET'))).rejects.toThrow(
+        BadRequestException,
+      );
+      expect(mockLookups.resolveLookup).toHaveBeenCalledWith('signer-roles', 'BESTAAT-NIET', 'org-1');
+      expect(mockPrisma.documentSignature.create).not.toHaveBeenCalled();
+    });
+
+    it('rejects an INSPECTEUR signing as CLIENT — external roles only via a signature request (403)', async () => {
+      mockLookups.resolveLookup.mockResolvedValue({ code: 'CLIENT', label: 'Opdrachtgever' });
+      await expect(service.signDocument('gd-1', inspecteur, signDto('CLIENT'))).rejects.toThrow(
+        ForbiddenException,
+      );
+      await expect(service.signDocument('gd-1', inspecteur, signDto('CLIENT'))).rejects.toThrow(
+        /ondertekenverzoek/,
+      );
+      expect(mockPrisma.documentSignature.create).not.toHaveBeenCalled();
+    });
+
+    it('rejects an INSPECTEUR signing as REVIEWER (vier-ogen) (403)', async () => {
+      mockLookups.resolveLookup.mockResolvedValue({ code: 'REVIEWER', label: 'Beoordelaar' });
+      await expect(service.signDocument('gd-1', inspecteur, signDto('REVIEWER'))).rejects.toThrow(
+        ForbiddenException,
+      );
+      expect(mockPrisma.documentSignature.create).not.toHaveBeenCalled();
+    });
+
+    it('rejects BACKOFFICE for any internal signer role (403)', async () => {
+      mockLookups.resolveLookup.mockResolvedValue({ code: 'INSPECTOR', label: 'Inspecteur' });
+      await expect(service.signDocument('gd-1', backoffice, signDto('INSPECTOR'))).rejects.toThrow(
+        ForbiddenException,
+      );
+    });
+
+    it('lets an INSPECTEUR sign as INSPECTOR and records userId + IP', async () => {
+      mockLookups.resolveLookup.mockResolvedValue({ code: 'INSPECTOR', label: 'Inspecteur' });
+
+      const sig = await service.signDocument('gd-1', inspecteur, signDto('INSPECTOR'), '10.0.0.7');
+
+      expect(mockPrisma.documentSignature.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            generatedDocumentId: 'gd-1',
+            signerRoleCode: 'INSPECTOR',
+            status: SignatureStatus.SIGNED,
+            signedByUserId: 'user-insp',
+            signedIpAddress: '10.0.0.7',
+            signerEmail: inspecteur.email,
+          }),
+        }),
+      );
+      expect(sig.status).toBe(SignatureStatus.SIGNED);
+    });
+
+    it('lets a MANAGER (REVIEW_ROLES) sign as REVIEWER', async () => {
+      mockLookups.resolveLookup.mockResolvedValue({ code: 'REVIEWER', label: 'Beoordelaar' });
+      await service.signDocument('gd-1', user, signDto('REVIEWER'));
+      expect(mockPrisma.documentSignature.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ signerRoleCode: 'REVIEWER', status: SignatureStatus.SIGNED }),
+        }),
+      );
+    });
+
+    it('claims the existing REQUESTED row instead of inserting a second one', async () => {
+      mockLookups.resolveLookup.mockResolvedValue({ code: 'INSPECTOR', label: 'Inspecteur' });
+      mockPrisma.documentSignature.findMany.mockResolvedValue([
+        { id: 'sig-open', status: SignatureStatus.REQUESTED, signerRoleCode: 'INSPECTOR' },
+      ]);
+
+      await service.signDocument('gd-1', inspecteur, signDto('INSPECTOR'), '10.0.0.7');
+
+      expect(mockPrisma.documentSignature.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'sig-open' },
+          data: expect.objectContaining({
+            status: SignatureStatus.SIGNED,
+            signedByUserId: 'user-insp',
+          }),
+        }),
+      );
+      expect(mockPrisma.documentSignature.create).not.toHaveBeenCalled();
+    });
+
+    it('rejects a second signature for an already SIGNED role (400)', async () => {
+      mockLookups.resolveLookup.mockResolvedValue({ code: 'INSPECTOR', label: 'Inspecteur' });
+      mockPrisma.documentSignature.findMany.mockResolvedValue([
+        { id: 'sig-done', status: SignatureStatus.SIGNED, signerRoleCode: 'INSPECTOR' },
+      ]);
+
+      await expect(service.signDocument('gd-1', inspecteur, signDto('INSPECTOR'))).rejects.toThrow(
+        BadRequestException,
+      );
+      expect(mockPrisma.documentSignature.create).not.toHaveBeenCalled();
+      expect(mockPrisma.documentSignature.update).not.toHaveBeenCalled();
+    });
+
+    it('rejects signing a FINALIZED document (400)', async () => {
+      mockDocuments.findById.mockResolvedValue({ ...doc, status: GeneratedDocumentStatus.FINALIZED });
+      await expect(service.signDocument('gd-1', user, signDto('INSPECTOR'))).rejects.toThrow(
+        BadRequestException,
+      );
+      expect(mockLookups.resolveLookup).not.toHaveBeenCalled();
     });
   });
 

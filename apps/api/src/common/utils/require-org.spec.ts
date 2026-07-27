@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { Role, User } from '@prisma/client';
 import { requireOrg, requireOrgFor, assertOrgAccess } from './require-org';
 
@@ -56,9 +56,12 @@ describe('assertOrgAccess', () => {
     expect(() => assertOrgAccess(orgAdmin, 'org-a')).not.toThrow();
   });
 
-  it('blokkeert een org-user buiten de eigen org', () => {
+  it('blokkeert een org-user buiten de eigen org met een 404 (WP-C1: geen existence-oracle)', () => {
     expect(() => assertOrgAccess(orgAdmin, 'org-b')).toThrow(
-      ForbiddenException,
+      NotFoundException,
+    );
+    expect(() => assertOrgAccess(orgAdmin, 'org-b', 'Project')).toThrow(
+      'Project niet gevonden',
     );
   });
 });

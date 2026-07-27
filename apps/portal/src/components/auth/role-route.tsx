@@ -1,49 +1,34 @@
 import { Outlet } from 'react-router-dom';
-import type { Role } from '@/types';
+import { Spinner } from '@/components/ui';
 import { useAuth } from '@/providers/auth-provider';
-import { hasRole } from '@/lib/has-role';
-import { PageHeader } from '@/components/layout/page-header';
-import { Card } from '@/components/ui';
+import type { Role } from '@/types';
+import NoAccessPage from '@/pages/no-access-page';
 
 /**
- * B-315 §7: route-guard op rol, analoog aan {@link FeatureRoute}. Zonder deze
- * guard rendert bijv. /contacts voor een INSPECTEUR een lege lijst ("Geen
- * relaties gevonden") terwijl de API terecht 403 geeft — een expliciet
- * "Geen toegang"-scherm is eerlijker. Gebruikt als pathless layout-route rond
- * een groep routes; werkt ook bij deeplink/refresh.
+ * Route-guard die een minimale rol afdwingt (WP-C1 / B-509), naar analogie van
+ * `FeatureRoute`. Gebruikt als pathless layout-route rond een groep routes;
+ * rendert:
+ *  - een loader zolang de auth-state nog laadt (geen "geen toegang"-flits),
+ *  - de `NoAccessPage` wanneer de gebruiker geen van de vereiste rollen heeft,
+ *  - anders de geneste route (`<Outlet />`).
+ *
+ * Dit is UX — de RolesGuard op de API blijft de echte grens. Werkt ook bij
+ * deeplink/refresh en oude bladwijzers: de guard zit op routeniveau, niet
+ * enkel in de sidebar-filtering.
  */
 export function RoleRoute({ roles }: { roles: Role[] }) {
-  const { user } = useAuth();
+  const { user, isLoading } = useAuth();
 
-  if (!hasRole(user, roles)) {
+  if (isLoading) {
     return (
-      <div>
-        <PageHeader title="Geen toegang" />
-        <Card>
-          <div className="flex flex-col items-center justify-center px-6 py-16 text-center">
-            <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-gray-100">
-              <svg
-                className="h-7 w-7 text-gray-400"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={1.5}
-                  d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
-                />
-              </svg>
-            </div>
-            <p className="max-w-md text-base text-gray-700">
-              U heeft geen toegang tot dit onderdeel. Neem contact op met uw
-              beheerder als u denkt dat dit niet klopt.
-            </p>
-          </div>
-        </Card>
+      <div className="flex h-64 items-center justify-center">
+        <Spinner size="lg" />
       </div>
     );
+  }
+
+  if (!user || !user.roles.some((role) => roles.includes(role))) {
+    return <NoAccessPage />;
   }
 
   return <Outlet />;

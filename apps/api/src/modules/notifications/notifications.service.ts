@@ -195,16 +195,15 @@ export class NotificationsService {
   }
 
   async markRead(id: string, user: User) {
-    const notification = assertFound(
-      await this.prisma.notification.findUnique({
-        where: { id },
+    // WP-C1 (B-105): eigenaarschap in de query — andermans notificatie-id geeft
+    // dezelfde 404 als een niet-bestaande (geen existence-oracle).
+    assertFound(
+      await this.prisma.notification.findFirst({
+        where: { id, userId: user.id },
+        select: { id: true },
       }),
       'Notificatie',
     );
-
-    if (notification.userId !== user.id) {
-      throw new ForbiddenException();
-    }
 
     return this.prisma.notification.update({
       where: { id },

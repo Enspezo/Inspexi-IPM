@@ -1,4 +1,4 @@
-import { Injectable, CanActivate, ExecutionContext } from '@nestjs/common';
+import { Injectable, CanActivate, ExecutionContext, ForbiddenException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { Role } from '@prisma/client';
 import { ROLES_KEY } from '../decorators/roles.decorator';
@@ -18,10 +18,12 @@ export class RolesGuard implements CanActivate {
     }
 
     const { user } = context.switchToHttp().getRequest();
-    if (!user) {
-      return false;
+    // WP-C1 (B-106): expliciet gooien i.p.v. `return false`, anders vult Nest de
+    // Engelse default "Forbidden resource" in.
+    if (!user || !requiredRoles.some((required) => user.roles.includes(required))) {
+      throw new ForbiddenException('U heeft niet de juiste rol voor deze actie');
     }
 
-    return requiredRoles.some((required) => user.roles.includes(required));
+    return true;
   }
 }

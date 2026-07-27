@@ -197,3 +197,65 @@ Aparte PR in de PWA-repo.
 > **PWA-cutover (aparte repo):** zie **`docs/fase3/PWA-CUTOVER-ASSET-NODE.md`** — nieuw
 > contract, Dexie v9→v10 (merge assets+locations → `assetNodes`), offline aanmaken zonder
 > plan-link, en de cutover-volgorde met rollback.
+
+## 9. WP-C3 — sync-hardening serverzijde (additief, geen contract-bump)
+
+> Wijzigingen uit het herstelplan (B-203/B-212/B-216/B-217/B-218). Alles hieronder is
+> **additief of server-side afdwingend** binnen contract v3 — geen versie-bump; een oude
+> PWA blijft werken (onbekende keys negeren, extra validatie uit zich als bestaande
+> `errors[]`-records).
+
+### 9.1 Push-respons: `assigned[]` (B-203 — server-toegekende waarden)
+De push-respons draagt een **nieuwe top-level key** naast `processed`/`conflicts`/`errors`:
+
+```jsonc
+{ "success": true, "data": {
+  "processed": { ... },
+  "assigned": [
+    { "entityType": "assetNode", "entityId": "<client-UUID>", "nodeNumber": "EI-0035" }
+  ],
+  "conflicts": [ ... ], "errors": [ ... ], "serverTime": "ISO"
+} }
+```
+
+- Eén record per **succesvolle** assetNode-write waarvoor de server een waarde heeft
+  toegekend: bij `create` het vers gegenereerde `nodeNumber`, bij een idempotente
+  create-retry of `update` het bestaande server-nummer.
+- **Clientafspraak:** neem `nodeNumber` direct over in het lokale record (vervang
+  "concept") — wacht niet op de volgende pull; de pull-cursor ligt ná de push en levert
+  het record niet opnieuw.
+- De set server-toegekende velden kan later additief groeien; onbekende velden in een
+  `assigned`-record negeren.
+
+### 9.2 Per-record fouten zijn functioneel NL (B-212)
+`errors[].error` (push én resolve) bevat nooit meer implementatiedetails (serverpad,
+broncoderegels, payload, constraintnamen). Eigen validatiefouten blijven ongewijzigde
+NL-meldingen; onverwachte fouten worden gemapt (bv. P2003 → "Verwijzing naar
+niet-bestaande gegevens", P2002 → "Deze waarde bestaat al") met een suffix
+`(referentie <id>)` dat aan de serverlog koppelt. De PWA kan `errors[].error` dus
+onbewerkt in `syncRetryMeta.lastError` bewaren.
+
+### 9.3 Serverzijdige validaties (uiten zich als `errors[]`-records)
+- **`typeCode` gevalideerd (B-203):** een assetNode-`create` (en een `update` die
+  `typeCode` wijzigt) vereist een bestaande `AssetTypeDefinition`
+  (ASSET) of `LocationTypeDefinition` (LOCATION), org-eigen of systeem. Lege/onbekende
+  waarde → `Geen assettype opgegeven…` / `Onbekend assettype "…"`. Een ongewijzigde
+  echo van legacy records blijft werken. Nummering weigert bovendien een
+  leeg-resolvende `[typecode]`-placeholder (geen `-0033`-nummers meer).
+- **Dieptegrens (B-216):** `MAX_ASSET_DEPTH = 10` (wortel = diepte 0) wordt op **nieuwe**
+  creates en re-parents gehandhaafd (`Maximale nestdiepte (10) bereikt`); bestaande te
+  diepe bomen blijven leesbaar/bewerkbaar.
+- **Toewijzings-rolguard (B-217, beslispunt A6-optie b):** `assignedTo`/`reviewerId` op
+  een inspectieplan mogen alleen door REVIEW_ROLES (SUPERUSER/ORG_ADMIN/MANAGER/
+  WERKVOORBEREIDER) **gewijzigd** worden. Een ongewijzigde echo (de PWA pusht volledige
+  records) passeert altijd; een INSPECTEUR mag een zelf offline aangemaakt plan wel aan
+  zichzelf toewijzen. Geweigerde wijziging → `errors[]` met NL-melding; de velden blijven
+  in de whitelist (geen contractversmalling).
+- Al deze guards gelden ook voor `resolve` (client/merge-resoluties).
+
+### 9.4 Submit-side-effects via sync (B-218)
+Een push (of resolve) die een plan naar `pending_review` brengt start server-side
+dezelfde keten als de REST-submit: notificatie `INSPECTIEPLAN_TER_REVIEW` aan
+reviewer → project-PM → toegewezen inspecteur (indiener uitgesloten) + de automatische
+AI-voorcontrole (PRD-13, guards in `startRun`). Ontbreekt `submittedAt` in de payload,
+dan vult de server hem in dezelfde write. Fire-and-forget: kan de push nooit laten falen.

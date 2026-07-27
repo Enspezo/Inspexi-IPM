@@ -5,7 +5,6 @@ import {
   Param,
   Query,
   Body,
-  ParseUUIDPipe,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { User } from '@prisma/client';
@@ -13,6 +12,7 @@ import { ALL_STAFF } from '@/common/auth/roles';
 import { Roles, CurrentUser } from '@/common/decorators';
 import { HelpService } from './help.service';
 import { ListHelpArticlesDto, HelpFeedbackDto, ContextualHelpDto } from './dto';
+import { ParseUuidPipe } from '@/common';
 
 @ApiTags('Help')
 @ApiBearerAuth()
@@ -59,7 +59,7 @@ export class HelpController {
   @Roles(...ALL_STAFF)
   async feedback(
     @CurrentUser() user: User,
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @Body() dto: HelpFeedbackDto,
   ) {
     return {

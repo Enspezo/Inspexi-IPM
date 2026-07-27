@@ -1,7 +1,7 @@
 // @Public() (staf-guards uit) + ClientJwtAuthGuard + @CurrentTenant (org-subdomein).
 // Statische routes (reinspection/new-assignment) vóór de param-route (:id).
 
-import { Controller, Get, Post, Param, Body, UseGuards, ParseUUIDPipe } from '@nestjs/common';
+import { Controller, Get, Post, Param, Body, UseGuards} from '@nestjs/common';
 import { RequiresFeature } from '@/common/decorators/requires-feature.decorator';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { Public, CurrentTenant } from '@/common/decorators';
@@ -12,6 +12,7 @@ import {
 } from '@/common/decorators/current-client-user.decorator';
 import { ClientRequestsService } from './client-requests.service';
 import { ReinspectionRequestDto, NewAssignmentRequestDto } from './dto';
+import { ParseUuidPipe } from '@/common';
 
 @ApiTags('Client Requests')
 @Public()
@@ -53,7 +54,7 @@ export class ClientRequestsController {
   @Get(':id')
   @ApiOperation({ summary: 'Verzoek-detail (klant)' })
   async getOne(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @CurrentClientUser() user: CurrentClientUserData,
     @CurrentTenant('orgId') orgId: string | null,
   ) {

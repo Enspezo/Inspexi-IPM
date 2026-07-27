@@ -6,7 +6,6 @@ import {
   Delete,
   Param,
   Body,
-  ParseUUIDPipe,
   BadRequestException,
 } from '@nestjs/common';
 import { RequiresFeature } from '@/common/decorators/requires-feature.decorator';
@@ -16,6 +15,7 @@ import { ALL_STAFF, ORG_ADMINS } from '@/common/auth/roles';
 import { Roles, CurrentUser } from '@/common/decorators';
 import { LookupService, LOOKUP_KINDS, LookupKind } from './lookup.service';
 import { CreateLookupDto, UpdateLookupDto } from './dto';
+import { ParseUuidPipe } from '@/common';
 
 @ApiTags('Lookups')
 @ApiBearerAuth()
@@ -75,7 +75,7 @@ export class LookupController {
   @ApiOperation({ summary: 'Lookup-waarde bijwerken (label/kleur/volgorde/actief)' })
   async update(
     @Param('kind') kind: string,
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @Body() dto: UpdateLookupDto,
     @CurrentUser() user: User,
   ) {
@@ -88,7 +88,7 @@ export class LookupController {
   @ApiOperation({ summary: 'Lookup-waarde verwijderen (alleen eigen org-rijen / superuser-defaults)' })
   async remove(
     @Param('kind') kind: string,
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @CurrentUser() user: User,
   ) {
     await this.lookups.remove(this.assertKind(kind), id, user);

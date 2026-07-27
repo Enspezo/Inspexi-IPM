@@ -20,7 +20,7 @@ import {
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
-import { ClientUserStatus } from '@prisma/client';
+import { ClientUserStatus, Prisma } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { createHash, randomBytes, randomUUID } from 'crypto';
 import { PrismaService } from '@/prisma';
@@ -54,6 +54,31 @@ export class ClientAuthService {
   private requireOrg(orgId: string | null): string {
     if (!orgId) throw new BadRequestException('Gebruik het subdomein van uw organisatie');
     return orgId;
+  }
+
+  /**
+   * Consumeert een magic-/reset-link ATOMISCH (B-405, WP-C2): één conditionele
+   * `updateMany` markeert de link als gebruikt, alléén als hij op dat moment nog
+   * ongebruikt en niet verlopen is. Bij gelijktijdige verzilvering (StrictMode-
+   * dubbelvuur, dubbelklik, of een aanvaller met dezelfde link) wint er precies
+   * één request — de database serialiseert de row-update; verliezers zien
+   * `count === 0` en horen de generieke foutmelding te krijgen. Een losse
+   * `findUnique`-check vóór een onvoorwaardelijke `update` is hier NIET genoeg:
+   * de transactie beschermt dan alleen het schrijven, niet de check (TOCTOU).
+   *
+   * `client` accepteert een transactie-client zodat resetPassword() het
+   * consumeren en het wachtwoord-schrijven in één transactie kan doen.
+   */
+  private async consumeMagicLink(
+    linkId: string,
+    extra: { clientUserId?: string } = {},
+    client: Pick<PrismaService, 'clientMagicLink'> | Prisma.TransactionClient = this.prisma,
+  ): Promise<boolean> {
+    const { count } = await client.clientMagicLink.updateMany({
+      where: { id: linkId, usedAt: null, expiresAt: { gt: new Date() } },
+      data: { usedAt: new Date(), ...extra },
+    });
+    return count === 1;
   }
 
   /**
@@ -199,18 +224,22 @@ export class ClientAuthService {
     }
 
     // Bestaand account: een nieuwe plan-uitnodiging kent direct toegang toe.
+    // (Idempotente upserts + org-check vóór het consumeren: een gefaalde
+    // toegangscheck mag de link niet verbranden.)
     if (link.inspectionPlanId) {
       await this.grantPlanAccess(link.clientUser.id, org, link.inspectionPlanId, link.createdBy);
     }
     await this.assertOrgAccess(link.clientUser.id, org);
 
-    await this.prisma.$transaction([
-      this.prisma.clientMagicLink.update({ where: { id: link.id }, data: { usedAt: new Date() } }),
-      this.prisma.clientUser.update({
-        where: { id: link.clientUser.id },
-        data: { lastLoginAt: new Date() },
-      }),
-    ]);
+    // B-405: atomisch consumeren — bij gelijktijdige verzilvering krijgt precies
+    // één request een sessie; de rest krijgt dezelfde generieke 400.
+    if (!(await this.consumeMagicLink(link.id))) {
+      throw new BadRequestException('Magic link ongeldig of verlopen');
+    }
+    await this.prisma.clientUser.update({
+      where: { id: link.clientUser.id },
+      data: { lastLoginAt: new Date() },
+    });
 
     return {
       requiresRegistration: false,
@@ -272,10 +301,14 @@ export class ClientAuthService {
     if (link.inspectionPlanId) {
       await this.grantPlanAccess(user.id, org, link.inspectionPlanId, link.createdBy);
     }
-    await this.prisma.clientMagicLink.update({
-      where: { id: link.id },
-      data: { usedAt: new Date(), clientUserId: user.id },
-    });
+    // B-405: de link blijft BEWUST open tussen validateMagicLink() (die bij
+    // requiresRegistration niet consumeert) en dit definitieve moment — maar het
+    // consumeren zelf is atomisch. Verliest dit request de race (StrictMode/
+    // dubbelklik), dan is het account door de winnaar al identiek aangemaakt en
+    // krijgt alléén de winnaar een sessie.
+    if (!(await this.consumeMagicLink(link.id, { clientUserId: user.id }))) {
+      throw new BadRequestException('Registratie vereist een geldige uitnodiging');
+    }
 
     return { ...(await this.issueTokens(user.id, user.email, meta)), user: this.publicUser(user) };
   }
@@ -369,16 +402,23 @@ export class ClientAuthService {
     if (!link || link.usedAt || link.expiresAt < new Date() || !link.clientUserId) {
       throw new BadRequestException('Reset-token ongeldig of verlopen');
     }
+    const clientUserId = link.clientUserId;
     const passwordHash = await bcrypt.hash(dto.password, 10);
-    await this.prisma.$transaction([
-      this.prisma.clientUser.update({ where: { id: link.clientUserId }, data: { passwordHash } }),
-      this.prisma.clientMagicLink.update({ where: { id: link.id }, data: { usedAt: new Date() } }),
+    // B-405 (zwaarste plek): het token atomisch consumeren ÍN dezelfde transactie
+    // als het wachtwoord-schrijven. Twee gelijktijdige resets kunnen zo nooit
+    // allebei een wachtwoord zetten; en faalt het schrijven, dan rolt ook het
+    // consumeren terug (het token blijft dan bruikbaar voor een nieuwe poging).
+    await this.prisma.$transaction(async (tx) => {
+      if (!(await this.consumeMagicLink(link.id, {}, tx))) {
+        throw new BadRequestException('Reset-token ongeldig of verlopen');
+      }
+      await tx.clientUser.update({ where: { id: clientUserId }, data: { passwordHash } });
       // Trek alle bestaande sessies in — een wachtwoordwijziging beëindigt lopende sessies.
-      this.prisma.clientRefreshToken.updateMany({
-        where: { clientUserId: link.clientUserId, revokedAt: null },
+      await tx.clientRefreshToken.updateMany({
+        where: { clientUserId, revokedAt: null },
         data: { revokedAt: new Date() },
-      }),
-    ]);
+      });
+    });
     return { message: 'Wachtwoord succesvol gewijzigd' };
   }
 

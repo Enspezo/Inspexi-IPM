@@ -64,8 +64,9 @@ export class PriceTablesService {
   }
 
   async findOne(id: string, user: User) {
-    const priceTable = assertFound(await this.prisma.priceTable.findUnique({
-      where: { id },
+    // WP-C1 (B-105): org-scope in de query — cross-tenant id → zelfde 404.
+    const priceTable = assertFound(await this.prisma.priceTable.findFirst({
+      where: { id, ...orgScope(user) },
       include: {
         items: {
           include: {
@@ -90,10 +91,6 @@ export class PriceTablesService {
         },
       },
     }), 'Prijstabel');
-
-    if (!user.roles.includes(Role.SUPERUSER) && priceTable.orgId !== user.orgId) {
-      throw new ForbiddenException();
-    }
 
     return this.serializePriceTable(priceTable);
   }
@@ -237,8 +234,10 @@ export class PriceTablesService {
       throw new NotFoundException('Relatie niet gevonden');
     }
 
+    // FK-injectie (SEC-08-semantiek): de contact-id is invoer van de caller —
+    // bewust een 403 mét NL-melding, conform assertSameOrg.
     if (!user.roles.includes(Role.SUPERUSER) && contact.orgId !== user.orgId) {
-      throw new ForbiddenException();
+      throw new ForbiddenException('Relatie hoort niet bij uw organisatie');
     }
 
     // Check if already assigned
@@ -301,17 +300,14 @@ export class PriceTablesService {
   }
 
   async findForContact(contactId: string, user: User) {
-    // Verify contact access
-    const contact = await this.prisma.contact.findUnique({
-      where: { id: contactId },
+    // Verify contact access — WP-C1 (B-105): org-scope in de query, zodat een
+    // cross-tenant contact-id dezelfde 404 geeft als een niet-bestaande.
+    const contact = await this.prisma.contact.findFirst({
+      where: { id: contactId, ...orgScope(user) },
     });
 
     if (!contact || contact.isDeleted) {
       throw new NotFoundException('Relatie niet gevonden');
-    }
-
-    if (!user.roles.includes(Role.SUPERUSER) && contact.orgId !== user.orgId) {
-      throw new ForbiddenException();
     }
 
     // Get assigned price tables

@@ -48,6 +48,7 @@ describe('ContactAddressesService', () => {
   const mockPrismaService = {
     contact: {
       findMany: jest.fn(),
+      findFirst: jest.fn(),
       findUnique: jest.fn(),
       create: jest.fn(),
       update: jest.fn(),
@@ -104,7 +105,7 @@ describe('ContactAddressesService', () => {
         ...addressDto,
         country: 'NL',
       };
-      mockPrismaService.contact.findUnique.mockResolvedValue(mockContact);
+      mockPrismaService.contact.findFirst.mockResolvedValue(mockContact);
       mockPrismaService.contactAddress.create.mockResolvedValue(createdAddress);
 
       const result = await service.addAddress(
@@ -140,7 +141,7 @@ describe('ContactAddressesService', () => {
         country: 'NL',
       };
 
-      mockPrismaService.contact.findUnique.mockResolvedValue(mockContact);
+      mockPrismaService.contact.findFirst.mockResolvedValue(mockContact);
       mockPrismaService.$transaction.mockImplementation(async (fn) => {
         const tx = {
           contactAddress: {
@@ -168,7 +169,7 @@ describe('ContactAddressesService', () => {
         ...addressDto,
         country: 'NL',
       };
-      mockPrismaService.contact.findUnique.mockResolvedValue(mockContact);
+      mockPrismaService.contact.findFirst.mockResolvedValue(mockContact);
       mockPrismaService.contactAddress.create.mockResolvedValue(createdAddress);
 
       await service.addAddress('contact-1', addressDto, mockUser);

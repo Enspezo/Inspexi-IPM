@@ -8,7 +8,6 @@ import {
   Param,
   Body,
   Query,
-  ParseUUIDPipe,
 } from '@nestjs/common';
 import { RequiresFeature } from '@/common/decorators/requires-feature.decorator';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
@@ -25,6 +24,7 @@ import {
   ReorderFieldsDto,
   ValidateParentDto,
 } from './dto';
+import { ParseUuidPipe } from '@/common';
 
 const READ_ROLES = ALL_STAFF;
 const WRITE_ROLES = ORG_ADMINS;
@@ -72,7 +72,7 @@ export class AssetTypesController {
   @Get(':id')
   @Roles(...READ_ROLES)
   @ApiOperation({ summary: 'Asset-type detail (met velden + constraints)' })
-  async findById(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: User) {
+  async findById(@Param('id', ParseUuidPipe) id: string, @CurrentUser() user: User) {
     return { success: true, data: await this.service.findById(id, user) };
   }
 
@@ -87,7 +87,7 @@ export class AssetTypesController {
   @Roles(...WRITE_ROLES)
   @ApiOperation({ summary: 'Asset-type bijwerken' })
   async update(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @CurrentUser() user: User,
     @Body() dto: UpdateAssetTypeDto,
   ) {
@@ -97,14 +97,14 @@ export class AssetTypesController {
   @Delete(':id')
   @Roles(...WRITE_ROLES)
   @ApiOperation({ summary: 'Asset-type verwijderen (soft-delete)' })
-  async delete(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: User) {
+  async delete(@Param('id', ParseUuidPipe) id: string, @CurrentUser() user: User) {
     return { success: true, data: await this.service.delete(id, user) };
   }
 
   @Post(':id/duplicate')
   @Roles(...WRITE_ROLES)
   @ApiOperation({ summary: 'Systeemtype naar eigen org dupliceren' })
-  async duplicate(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: User) {
+  async duplicate(@Param('id', ParseUuidPipe) id: string, @CurrentUser() user: User) {
     return { success: true, data: await this.service.duplicate(id, user) };
   }
 
@@ -112,7 +112,7 @@ export class AssetTypesController {
   @Get(':id/fields')
   @Roles(...READ_ROLES)
   @ApiOperation({ summary: 'Velden van een asset-type' })
-  async getFields(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: User) {
+  async getFields(@Param('id', ParseUuidPipe) id: string, @CurrentUser() user: User) {
     return { success: true, data: await this.service.getFields(id, user) };
   }
 
@@ -120,7 +120,7 @@ export class AssetTypesController {
   @Roles(...WRITE_ROLES)
   @ApiOperation({ summary: 'Veld toevoegen aan asset-type' })
   async addField(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @CurrentUser() user: User,
     @Body() dto: CreateAssetTypeFieldDto,
   ) {
@@ -131,7 +131,7 @@ export class AssetTypesController {
   @Roles(...WRITE_ROLES)
   @ApiOperation({ summary: 'Velden herordenen' })
   async reorderFields(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @CurrentUser() user: User,
     @Body() dto: ReorderFieldsDto,
   ) {
@@ -142,7 +142,7 @@ export class AssetTypesController {
   @Roles(...WRITE_ROLES)
   @ApiOperation({ summary: 'Veld bijwerken' })
   async updateField(
-    @Param('fieldId', ParseUUIDPipe) fieldId: string,
+    @Param('fieldId', ParseUuidPipe) fieldId: string,
     @CurrentUser() user: User,
     @Body() dto: UpdateAssetTypeFieldDto,
   ) {
@@ -153,7 +153,7 @@ export class AssetTypesController {
   @Roles(...WRITE_ROLES)
   @ApiOperation({ summary: 'Veld verwijderen (soft-delete)' })
   async deleteField(
-    @Param('fieldId', ParseUUIDPipe) fieldId: string,
+    @Param('fieldId', ParseUuidPipe) fieldId: string,
     @CurrentUser() user: User,
   ) {
     return { success: true, data: await this.service.deleteField(fieldId, user) };
@@ -163,7 +163,7 @@ export class AssetTypesController {
   @Get(':id/constraints')
   @Roles(...READ_ROLES)
   @ApiOperation({ summary: 'Parent-constraints van een asset-type' })
-  async getConstraints(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: User) {
+  async getConstraints(@Param('id', ParseUuidPipe) id: string, @CurrentUser() user: User) {
     return { success: true, data: await this.service.getConstraints(id, user) };
   }
 
@@ -171,7 +171,7 @@ export class AssetTypesController {
   @Roles(...WRITE_ROLES)
   @ApiOperation({ summary: 'Parent-constraints instellen (vervangt bestaande)' })
   async setConstraints(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @CurrentUser() user: User,
     @Body() dto: SetConstraintsDto,
   ) {

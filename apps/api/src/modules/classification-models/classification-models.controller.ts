@@ -7,7 +7,6 @@ import {
   Param,
   Body,
   Query,
-  ParseUUIDPipe,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { User, Role } from '@prisma/client';
@@ -24,6 +23,7 @@ import {
   ReorderCharacteristicsDto,
   ReorderOptionsDto,
 } from './dto';
+import { ParseUuidPipe } from '@/common';
 
 const READ_ROLES = ALL_STAFF;
 const WRITE_ROLES = [Role.SUPERUSER] as const;
@@ -60,7 +60,7 @@ export class ClassificationModelsController {
   @Get(':id')
   @Roles(...READ_ROLES)
   @ApiOperation({ summary: 'Classificatiemodel detail (met kenmerken + opties)' })
-  async findById(@Param('id', ParseUUIDPipe) id: string) {
+  async findById(@Param('id', ParseUuidPipe) id: string) {
     return { success: true, data: await this.service.findById(id) };
   }
 
@@ -78,7 +78,7 @@ export class ClassificationModelsController {
   @Roles(...WRITE_ROLES)
   @ApiOperation({ summary: 'Classificatiemodel bijwerken' })
   async update(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @Body() dto: UpdateClassificationModelDto,
   ) {
     return { success: true, data: await this.service.update(id, dto) };
@@ -87,7 +87,7 @@ export class ClassificationModelsController {
   @Delete(':id')
   @Roles(...WRITE_ROLES)
   @ApiOperation({ summary: 'Classificatiemodel verwijderen (soft-delete)' })
-  async delete(@Param('id', ParseUUIDPipe) id: string) {
+  async delete(@Param('id', ParseUuidPipe) id: string) {
     return { success: true, data: await this.service.delete(id) };
   }
 
@@ -97,7 +97,7 @@ export class ClassificationModelsController {
   @Roles(...WRITE_ROLES)
   @ApiOperation({ summary: 'Kenmerk toevoegen aan model' })
   async addCharacteristic(
-    @Param('modelId', ParseUUIDPipe) modelId: string,
+    @Param('modelId', ParseUuidPipe) modelId: string,
     @Body() dto: CreateCharacteristicStandaloneDto,
   ) {
     return { success: true, data: await this.service.addCharacteristic(modelId, dto) };
@@ -107,7 +107,7 @@ export class ClassificationModelsController {
   @Roles(...WRITE_ROLES)
   @ApiOperation({ summary: 'Kenmerken herordenen' })
   async reorderCharacteristics(
-    @Param('modelId', ParseUUIDPipe) modelId: string,
+    @Param('modelId', ParseUuidPipe) modelId: string,
     @Body() dto: ReorderCharacteristicsDto,
   ) {
     return {
@@ -120,7 +120,7 @@ export class ClassificationModelsController {
   @Roles(...WRITE_ROLES)
   @ApiOperation({ summary: 'Kenmerk bijwerken' })
   async updateCharacteristic(
-    @Param('charId', ParseUUIDPipe) charId: string,
+    @Param('charId', ParseUuidPipe) charId: string,
     @Body() dto: UpdateCharacteristicDto,
   ) {
     return {
@@ -133,7 +133,7 @@ export class ClassificationModelsController {
   @Roles(...WRITE_ROLES)
   @ApiOperation({ summary: 'Kenmerk verwijderen (opties cascaden mee)' })
   async deleteCharacteristic(
-    @Param('charId', ParseUUIDPipe) charId: string,
+    @Param('charId', ParseUuidPipe) charId: string,
     @Query('confirm') confirm?: string,
   ) {
     return {
@@ -148,7 +148,7 @@ export class ClassificationModelsController {
   @Roles(...WRITE_ROLES)
   @ApiOperation({ summary: 'Optie toevoegen aan kenmerk' })
   async addOption(
-    @Param('charId', ParseUUIDPipe) charId: string,
+    @Param('charId', ParseUuidPipe) charId: string,
     @Body() dto: CreateOptionStandaloneDto,
   ) {
     return { success: true, data: await this.service.addOption(charId, dto) };
@@ -158,7 +158,7 @@ export class ClassificationModelsController {
   @Roles(...WRITE_ROLES)
   @ApiOperation({ summary: 'Opties herordenen' })
   async reorderOptions(
-    @Param('charId', ParseUUIDPipe) charId: string,
+    @Param('charId', ParseUuidPipe) charId: string,
     @Body() dto: ReorderOptionsDto,
   ) {
     return {
@@ -171,7 +171,7 @@ export class ClassificationModelsController {
   @Roles(...WRITE_ROLES)
   @ApiOperation({ summary: 'Optie bijwerken' })
   async updateOption(
-    @Param('optionId', ParseUUIDPipe) optionId: string,
+    @Param('optionId', ParseUuidPipe) optionId: string,
     @Body() dto: UpdateOptionDto,
   ) {
     return { success: true, data: await this.service.updateOption(optionId, dto) };
@@ -181,7 +181,7 @@ export class ClassificationModelsController {
   @Roles(...WRITE_ROLES)
   @ApiOperation({ summary: 'Optie verwijderen' })
   async deleteOption(
-    @Param('optionId', ParseUUIDPipe) optionId: string,
+    @Param('optionId', ParseUuidPipe) optionId: string,
     @Query('confirm') confirm?: string,
   ) {
     return {

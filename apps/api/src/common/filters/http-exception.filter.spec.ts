@@ -206,7 +206,7 @@ describe('AllExceptionsFilter', () => {
     expect(mockStatus).toHaveBeenCalledWith(HttpStatus.INTERNAL_SERVER_ERROR);
     expect(mockJson).toHaveBeenCalledWith({
       success: false,
-      message: 'Internal server error',
+      message: 'Er is een onverwachte fout opgetreden',
       requestId: 'req-test-123',
       statusCode: HttpStatus.INTERNAL_SERVER_ERROR,
     });
@@ -255,7 +255,7 @@ describe('AllExceptionsFilter', () => {
     expect(mockStatus).toHaveBeenCalledWith(HttpStatus.INTERNAL_SERVER_ERROR);
     expect(mockJson).toHaveBeenCalledWith({
       success: false,
-      message: 'Internal server error',
+      message: 'Er is een onverwachte fout opgetreden',
       requestId: 'req-test-123',
       statusCode: HttpStatus.INTERNAL_SERVER_ERROR,
     });

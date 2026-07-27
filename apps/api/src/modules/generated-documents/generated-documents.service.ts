@@ -194,7 +194,7 @@ export class GeneratedDocumentsService {
   async generatePreview(id: string, user: User): Promise<Buffer> {
     const doc = await this.findScoped(id, user);
     const html = await this.injectSignaturesIntoHtml(doc.id, this.contentOf(doc));
-    return this.pdf.renderPdf(html, await this.pdfOptionsFor(doc.documentTemplateId));
+    return this.pdf.renderPdf(html, await this.pdfOptionsFor(doc));
   }
 
   async getHtmlContent(id: string, user: User): Promise<string> {
@@ -204,7 +204,7 @@ export class GeneratedDocumentsService {
   async exportToPdf(id: string, user: User): Promise<string> {
     const doc = await this.findScoped(id, user);
     const html = await this.injectSignaturesIntoHtml(doc.id, this.contentOf(doc));
-    const buffer = await this.pdf.renderPdf(html, await this.pdfOptionsFor(doc.documentTemplateId));
+    const buffer = await this.pdf.renderPdf(html, await this.pdfOptionsFor(doc));
     const key = `${doc.orgId}/documents/${doc.id}.pdf`;
     await this.storage.upload(key, buffer, 'application/pdf');
     await this.prisma.generatedDocument.update({ where: { id: doc.id }, data: { pdfUrl: key } });
@@ -260,12 +260,34 @@ export class GeneratedDocumentsService {
     return `/api/v1/generated-documents/${docId}/download?format=${format}`;
   }
 
-  private async pdfOptionsFor(documentTemplateId: string | null): Promise<PdfOptions> {
+  /** Puppeteer's eigen header/footer-tokens — die vult de PDF-laag zelf in. */
+  private static readonly PUPPETEER_TOKENS = /\{\{(pageNumber|totalPages|date|title|url)\}\}/g;
+
+  /** Staat er ná het wegdenken van de Puppeteer-tokens nog een `{{…}}`-dataplaceholder? */
+  private hasDataPlaceholders(...htmls: Array<string | null | undefined>): boolean {
+    return htmls.some(
+      (h) => h && h.replace(GeneratedDocumentsService.PUPPETEER_TOKENS, '').includes('{{'),
+    );
+  }
+
+  private async pdfOptionsFor(doc: {
+    documentTemplateId: string | null;
+    inspectionPlanId: string;
+    orgId: string;
+  }): Promise<PdfOptions> {
     // PRD-14: code-based documenten (herstelverklaring) hebben geen DocumentTemplate → defaults.
-    if (!documentTemplateId) return {};
-    const t = await this.prisma.documentTemplate.findUnique({ where: { id: documentTemplateId } });
+    if (!doc.documentTemplateId) return {};
+    const t = await this.prisma.documentTemplate.findUnique({
+      where: { id: doc.documentTemplateId },
+    });
     if (!t) return {};
     const format = t.pageSize === 'A3' || t.pageSize === 'Letter' ? t.pageSize : 'A4';
+    // B-311: header/footer gaan bij het renderen door dezelfde variabelenresolver
+    // als de body; de (lichte) header-context dekt organization/client/plan/….
+    // Alleen ophalen als er daadwerkelijk data-placeholders in staan.
+    const headerFooterContext = this.hasDataPlaceholders(t.headerHtml, t.footerHtml)
+      ? await this.context.buildHeaderContextForPlan(doc.inspectionPlanId, doc.orgId)
+      : undefined;
     return {
       format,
       landscape: t.orientation === 'landscape',
@@ -275,6 +297,8 @@ export class GeneratedDocumentsService {
       marginRightMm: t.marginRight,
       headerHtml: t.headerHtml || undefined,
       footerHtml: t.footerHtml || undefined,
+      headerFooterContext,
+      templateId: t.id,
     };
   }
 

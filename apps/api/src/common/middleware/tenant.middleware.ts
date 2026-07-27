@@ -61,9 +61,11 @@ export class TenantMiddleware implements NestMiddleware {
 
     if (org) {
       if (!org.isActive) {
+        // WP-C1 (B-601): zelfde body-shape (`success: false`) als filter-fouten.
         res.status(404).json({
-          statusCode: 404,
+          success: false,
           message: `Organisatie '${result.slug}' niet gevonden`,
+          statusCode: 404,
         });
         return;
       }
@@ -74,9 +76,12 @@ export class TenantMiddleware implements NestMiddleware {
     const blockedSeconds = this.enumerationGuard.isBlocked(clientIp);
     if (blockedSeconds > 0) {
       res.setHeader('Retry-After', String(blockedSeconds));
+      // WP-C1 (B-601): zelfde body-shape (`success: false`) als de guard-429's
+      // die via de AllExceptionsFilter lopen.
       res.status(429).json({
-        statusCode: 429,
+        success: false,
         message: 'Te veel pogingen, probeer later opnieuw',
+        statusCode: 429,
       });
       return;
     }
@@ -84,9 +89,11 @@ export class TenantMiddleware implements NestMiddleware {
     // Tel alleen mislukte lookups van onbekende slugs — een geslaagde
     // resolutie hierboven raakt de teller nooit aan.
     this.enumerationGuard.recordFailure(clientIp);
+    // WP-C1 (B-601): zelfde body-shape (`success: false`) als filter-fouten.
     res.status(404).json({
-      statusCode: 404,
+      success: false,
       message: `Organisatie '${result.slug}' niet gevonden`,
+      statusCode: 404,
     });
     return;
   }

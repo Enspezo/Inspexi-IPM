@@ -57,6 +57,7 @@ describe('NotificationsService', () => {
     notification: {
       create: jest.fn(),
       createMany: jest.fn(),
+      findFirst: jest.fn(),
       findUnique: jest.fn(),
       findMany: jest.fn(),
       count: jest.fn(),
@@ -254,7 +255,7 @@ describe('NotificationsService', () => {
 
   describe('markRead()', () => {
     it('should mark notification as read', async () => {
-      mockPrismaService.notification.findUnique.mockResolvedValue(mockNotification);
+      mockPrismaService.notification.findFirst.mockResolvedValue(mockNotification);
       const readNotif = { ...mockNotification, isRead: true, readAt: new Date() };
       mockPrismaService.notification.update.mockResolvedValue(readNotif);
 
@@ -268,20 +269,25 @@ describe('NotificationsService', () => {
     });
 
     it('should throw NotFoundException for non-existent notification', async () => {
-      mockPrismaService.notification.findUnique.mockResolvedValue(null);
+      mockPrismaService.notification.findFirst.mockResolvedValue(null);
 
       await expect(
         service.markRead('non-existent', mockUser),
       ).rejects.toThrow(NotFoundException);
     });
 
-    it('should throw ForbiddenException for other user notification', async () => {
-      const otherNotif = { ...mockNotification, userId: 'user-other' };
-      mockPrismaService.notification.findUnique.mockResolvedValue(otherNotif);
+    it('should throw the same NotFound for another user\'s notification (WP-C1: 404-oracle)', async () => {
+      // Eigenaarschap zit in de where-clausule: andermans notificatie komt niet terug.
+      mockPrismaService.notification.findFirst.mockResolvedValue(null);
 
       await expect(
         service.markRead('notif-1', mockUser),
-      ).rejects.toThrow(ForbiddenException);
+      ).rejects.toThrow('Notificatie niet gevonden');
+      expect(mockPrismaService.notification.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'notif-1', userId: 'user-1' },
+        }),
+      );
     });
   });
 

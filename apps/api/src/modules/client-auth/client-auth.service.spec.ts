@@ -17,7 +17,12 @@ describe('ClientAuthService (2e auth-realm, org-scoped)', () => {
   const mockPrisma = {
     clientUser: { findUnique: jest.fn(), update: jest.fn(), create: jest.fn() },
     clientAccess: { findFirst: jest.fn(), findMany: jest.fn(), upsert: jest.fn() },
-    clientMagicLink: { findUnique: jest.fn(), update: jest.fn(), create: jest.fn() },
+    clientMagicLink: {
+      findUnique: jest.fn(),
+      update: jest.fn(),
+      updateMany: jest.fn(),
+      create: jest.fn(),
+    },
     clientRefreshToken: {
       create: jest.fn().mockResolvedValue({ id: 'rt-new' }),
       findFirst: jest.fn(),
@@ -26,7 +31,13 @@ describe('ClientAuthService (2e auth-realm, org-scoped)', () => {
     },
     inspectionPlan: { findFirst: jest.fn() },
     inspectionClientAccess: { upsert: jest.fn() },
-    $transaction: jest.fn((ops: Promise<unknown>[]) => Promise.all(ops)),
+    // Polymorf: array-vorm → Promise.all; callback-vorm (resetPassword, B-405)
+    // → voer de callback direct uit op mockPrisma als transactie-client.
+    $transaction: jest.fn(async (arg: unknown): Promise<unknown> =>
+      typeof arg === 'function'
+        ? (arg as (tx: unknown) => Promise<unknown>)(mockPrisma)
+        : Promise.all(arg as Promise<unknown>[]),
+    ),
   };
   const mockJwt = { signAsync: jest.fn().mockResolvedValue('token'), verifyAsync: jest.fn() };
   const mockConfig = {
@@ -174,6 +185,139 @@ describe('ClientAuthService (2e auth-realm, org-scoped)', () => {
 
     it('gooit BadRequest zonder org-subdomein', async () => {
       await expect(service.refresh('t', null)).rejects.toThrow(BadRequestException);
+    });
+  });
+
+  // ── B-405 (WP-C2): magic-/reset-links atomisch consumeren (TOCTOU) ──
+  describe('magic-link consumptie (B-405, atomisch)', () => {
+    const validLink = (overrides: Record<string, unknown> = {}) => ({
+      id: 'link-1',
+      token: 'tok-1',
+      email: 'k@klant.nl',
+      usedAt: null,
+      expiresAt: new Date(Date.now() + 3600_000),
+      inspectionPlanId: null,
+      clientUserId: 'cu-1',
+      createdBy: null,
+      clientUser: activeUser,
+      ...overrides,
+    });
+
+    it('validateMagicLink consumeert via een conditionele updateMany (usedAt null + niet verlopen)', async () => {
+      mockPrisma.clientMagicLink.findUnique.mockResolvedValue(validLink());
+      mockPrisma.clientAccess.findFirst.mockResolvedValue({ id: 'access-1' });
+      mockPrisma.clientMagicLink.updateMany.mockResolvedValue({ count: 1 });
+      mockPrisma.clientUser.update.mockResolvedValue(activeUser);
+
+      const res = await service.validateMagicLink('tok-1', 'org-A');
+      expect(res.requiresRegistration).toBe(false);
+      expect((res as { accessToken?: string }).accessToken).toBe('token');
+      // De consume beslist op de rijen-teller, niet op een eerdere read.
+      expect(mockPrisma.clientMagicLink.updateMany).toHaveBeenCalledWith({
+        where: { id: 'link-1', usedAt: null, expiresAt: { gt: expect.any(Date) } },
+        data: { usedAt: expect.any(Date) },
+      });
+      expect(mockPrisma.clientMagicLink.update).not.toHaveBeenCalled();
+    });
+
+    it('validateMagicLink: verliezer van de race (count 0) krijgt de generieke 400 en GEEN tokens', async () => {
+      mockPrisma.clientMagicLink.findUnique.mockResolvedValue(validLink());
+      mockPrisma.clientAccess.findFirst.mockResolvedValue({ id: 'access-1' });
+      mockPrisma.clientMagicLink.updateMany.mockResolvedValue({ count: 0 });
+
+      await expect(service.validateMagicLink('tok-1', 'org-A')).rejects.toThrow(
+        'Magic link ongeldig of verlopen',
+      );
+      // Geen sessie voor de verliezer: geen refresh-token aangemaakt.
+      expect(mockPrisma.clientRefreshToken.create).not.toHaveBeenCalled();
+    });
+
+    it('validateMagicLink consumeert NIET bij requiresRegistration (register() doet dat)', async () => {
+      mockPrisma.clientMagicLink.findUnique.mockResolvedValue(
+        validLink({ clientUser: null, clientUserId: null }),
+      );
+
+      const res = await service.validateMagicLink('tok-1', 'org-A');
+      expect(res.requiresRegistration).toBe(true);
+      expect(mockPrisma.clientMagicLink.updateMany).not.toHaveBeenCalled();
+      expect(mockPrisma.clientMagicLink.update).not.toHaveBeenCalled();
+    });
+
+    it('register consumeert atomisch op het definitieve moment (mét clientUserId)', async () => {
+      mockPrisma.clientMagicLink.findUnique.mockResolvedValue(
+        validLink({ clientUser: null, clientUserId: null }),
+      );
+      mockPrisma.clientUser.findUnique.mockResolvedValue(null);
+      mockPrisma.clientUser.create.mockResolvedValue({ ...activeUser, id: 'cu-new' });
+      mockPrisma.clientMagicLink.updateMany.mockResolvedValue({ count: 1 });
+
+      const res = await service.register(
+        {
+          magicLinkToken: 'tok-1',
+          email: 'k@klant.nl',
+          password: 'NieuwWachtwoord1!',
+          firstName: 'Klaas',
+          lastName: 'Klant',
+        } as never,
+        'org-A',
+      );
+      expect(res.accessToken).toBe('token');
+      expect(mockPrisma.clientMagicLink.updateMany).toHaveBeenCalledWith({
+        where: { id: 'link-1', usedAt: null, expiresAt: { gt: expect.any(Date) } },
+        data: { usedAt: expect.any(Date), clientUserId: 'cu-new' },
+      });
+    });
+
+    it('register: verliezer van de race (count 0) krijgt 400 en geen sessie', async () => {
+      mockPrisma.clientMagicLink.findUnique.mockResolvedValue(
+        validLink({ clientUser: null, clientUserId: null }),
+      );
+      mockPrisma.clientUser.findUnique.mockResolvedValue(null);
+      mockPrisma.clientUser.create.mockResolvedValue({ ...activeUser, id: 'cu-new' });
+      mockPrisma.clientMagicLink.updateMany.mockResolvedValue({ count: 0 });
+
+      await expect(
+        service.register(
+          {
+            magicLinkToken: 'tok-1',
+            email: 'k@klant.nl',
+            password: 'NieuwWachtwoord1!',
+            firstName: 'Klaas',
+            lastName: 'Klant',
+          } as never,
+          'org-A',
+        ),
+      ).rejects.toThrow('Registratie vereist een geldige uitnodiging');
+      expect(mockPrisma.clientRefreshToken.create).not.toHaveBeenCalled();
+    });
+
+    it('resetPassword consumeert het token in de transactie vóór het wachtwoord-schrijven', async () => {
+      mockPrisma.clientMagicLink.findUnique.mockResolvedValue(validLink());
+      mockPrisma.clientMagicLink.updateMany.mockResolvedValue({ count: 1 });
+      mockPrisma.clientUser.update.mockResolvedValue(activeUser);
+
+      const res = await service.resetPassword({ token: 'tok-1', password: 'NieuwWachtwoord1!' } as never);
+      expect(res.message).toContain('succesvol');
+      expect(mockPrisma.clientMagicLink.updateMany).toHaveBeenCalledWith({
+        where: { id: 'link-1', usedAt: null, expiresAt: { gt: expect.any(Date) } },
+        data: { usedAt: expect.any(Date) },
+      });
+      // Sessies ingetrokken na de wissel.
+      expect(mockPrisma.clientRefreshToken.updateMany).toHaveBeenCalledWith({
+        where: { clientUserId: 'cu-1', revokedAt: null },
+        data: { revokedAt: expect.any(Date) },
+      });
+    });
+
+    it('resetPassword: tweede gelijktijdige reset (count 0) zet GEEN wachtwoord', async () => {
+      mockPrisma.clientMagicLink.findUnique.mockResolvedValue(validLink());
+      mockPrisma.clientMagicLink.updateMany.mockResolvedValue({ count: 0 });
+
+      await expect(
+        service.resetPassword({ token: 'tok-1', password: 'AanvallerWachtwoord1!' } as never),
+      ).rejects.toThrow('Reset-token ongeldig of verlopen');
+      expect(mockPrisma.clientUser.update).not.toHaveBeenCalled();
+      expect(mockPrisma.clientRefreshToken.updateMany).not.toHaveBeenCalled();
     });
   });
 

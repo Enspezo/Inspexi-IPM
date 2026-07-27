@@ -8,7 +8,6 @@ import {
   Body,
   Query,
   Res,
-  ParseUUIDPipe,
   UseInterceptors,
   UploadedFile,
   ParseFilePipe,
@@ -37,6 +36,7 @@ import {
   ListInspectorCertificatesQueryDto,
   CertificateSuggestionsQueryDto,
 } from './dto';
+import { ParseUuidPipe } from '@/common';
 
 const MAX_FILE_SIZE = 25 * 1024 * 1024; // 25 MB
 
@@ -114,7 +114,7 @@ export class InspectorCertificatesController {
   @ApiResponse({ status: 200, description: 'Bestand gedownload' })
   @ApiResponse({ status: 404, description: 'Geen document gekoppeld' })
   async downloadDocument(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @CurrentUser() user: User,
     @Res() res: Response,
   ) {
@@ -132,7 +132,7 @@ export class InspectorCertificatesController {
   @ApiResponse({ status: 200, description: 'Certificaat details' })
   @ApiResponse({ status: 404, description: 'Niet gevonden' })
   async findOne(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @CurrentUser() user: User,
   ) {
     const data = await this.service.findOne(id, user);
@@ -161,7 +161,7 @@ export class InspectorCertificatesController {
   @ApiOperation({ summary: 'Certificaat bijwerken (optioneel bestand vervangen)' })
   @ApiResponse({ status: 200, description: 'Certificaat bijgewerkt' })
   async update(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @UploadedFile(optionalFilePipe) file: Express.Multer.File | undefined,
     @Body() dto: UpdateInspectorCertificateDto,
     @CurrentUser() user: User,
@@ -174,7 +174,7 @@ export class InspectorCertificatesController {
   @ApiOperation({ summary: 'Alleen het gekoppelde document verwijderen' })
   @ApiResponse({ status: 200, description: 'Document verwijderd' })
   async removeDocument(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @CurrentUser() user: User,
   ) {
     const data = await this.service.removeDocument(id, user);
@@ -185,7 +185,7 @@ export class InspectorCertificatesController {
   @ApiOperation({ summary: 'Certificaat verwijderen' })
   @ApiResponse({ status: 200, description: 'Certificaat verwijderd' })
   async remove(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @CurrentUser() user: User,
   ) {
     await this.service.remove(id, user);

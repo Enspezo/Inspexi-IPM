@@ -8,7 +8,6 @@ import {
   Body,
   Query,
   Headers,
-  ParseUUIDPipe,
 } from '@nestjs/common';
 import { RequiresFeature } from '@/common/decorators/requires-feature.decorator';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
@@ -23,6 +22,7 @@ import {
   LinkAssetDto,
   ListQueryDto,
 } from './dto';
+import { ParseUuidPipe } from '@/common';
 
 const ALL = ALL_STAFF;
 
@@ -37,7 +37,7 @@ export class StandaloneMeasurementsController {
   @Roles(...ALL)
   @ApiOperation({ summary: 'Ad-hoc metingen onder een inspectieplan' })
   async findAllByPlan(
-    @Param('planId', ParseUUIDPipe) planId: string,
+    @Param('planId', ParseUuidPipe) planId: string,
     @CurrentUser() user: User,
     @Query() query: ListQueryDto,
   ) {
@@ -51,7 +51,7 @@ export class StandaloneMeasurementsController {
   @Roles(...ALL)
   @ApiOperation({ summary: 'Ad-hoc meting aanmaken onder een plan' })
   async create(
-    @Param('planId', ParseUUIDPipe) planId: string,
+    @Param('planId', ParseUuidPipe) planId: string,
     @CurrentUser() user: User,
     @Body() dto: CreateStandaloneMeasurementDto,
     @Headers('x-device-id') deviceId?: string,
@@ -63,7 +63,7 @@ export class StandaloneMeasurementsController {
   @Roles(...ALL)
   @ApiOperation({ summary: 'Meetwaarde toevoegen aan een meting' })
   async addValue(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @CurrentUser() user: User,
     @Body() dto: AddValueDto,
   ) {
@@ -74,7 +74,7 @@ export class StandaloneMeasurementsController {
   @Roles(...ALL)
   @ApiOperation({ summary: 'Asset koppelen aan een meting' })
   async linkAsset(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @CurrentUser() user: User,
     @Body() dto: LinkAssetDto,
   ) {
@@ -84,7 +84,7 @@ export class StandaloneMeasurementsController {
   @Get('standalone-measurements/:id')
   @Roles(...ALL)
   @ApiOperation({ summary: 'Meting detail' })
-  async findById(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: User) {
+  async findById(@Param('id', ParseUuidPipe) id: string, @CurrentUser() user: User) {
     return { success: true, data: await this.service.findById(id, user) };
   }
 
@@ -92,7 +92,7 @@ export class StandaloneMeasurementsController {
   @Roles(...ALL)
   @ApiOperation({ summary: 'Meting bijwerken' })
   async update(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @CurrentUser() user: User,
     @Body() dto: UpdateStandaloneMeasurementDto,
   ) {
@@ -102,7 +102,7 @@ export class StandaloneMeasurementsController {
   @Delete('standalone-measurements/:id')
   @Roles(...ALL)
   @ApiOperation({ summary: 'Meting verwijderen (soft-delete)' })
-  async delete(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: User) {
+  async delete(@Param('id', ParseUuidPipe) id: string, @CurrentUser() user: User) {
     return { success: true, data: await this.service.delete(id, user) };
   }
 }

@@ -43,8 +43,9 @@ export class CustomerGroupsService {
   }
 
   async findOne(id: string, user: User) {
-    const group = await this.prisma.customerGroup.findUnique({
-      where: { id },
+    // WP-C1 (B-105): org-scope in de query — cross-tenant id → zelfde 404.
+    const group = await this.prisma.customerGroup.findFirst({
+      where: { id, ...orgScope(user) },
       include: {
         contacts: {
           include: {
@@ -68,10 +69,6 @@ export class CustomerGroupsService {
 
     if (!group || group.isDeleted) {
       throw new NotFoundException('Klantgroep niet gevonden');
-    }
-
-    if (!user.roles.includes(Role.SUPERUSER) && group.orgId !== user.orgId) {
-      throw new ForbiddenException();
     }
 
     return group;
@@ -120,8 +117,10 @@ export class CustomerGroupsService {
     if (!contact || contact.isDeleted) {
       throw new NotFoundException('Relatie niet gevonden');
     }
+    // FK-injectie (SEC-08-semantiek): de contact-id is invoer van de caller —
+    // bewust een 403 mét NL-melding, conform assertSameOrg.
     if (!user.roles.includes(Role.SUPERUSER) && contact.orgId !== user.orgId) {
-      throw new ForbiddenException();
+      throw new ForbiddenException('Relatie hoort niet bij uw organisatie');
     }
 
     // Upsert to avoid duplicate errors

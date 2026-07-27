@@ -97,10 +97,16 @@ export class ClientInspectionsService {
     return !!plan;
   }
 
-  /** 403 als de klant geen toegang heeft (hergebruikt door sub-services). */
+  /**
+   * 404 als de klant geen toegang heeft (hergebruikt door sub-services).
+   * WP-C1 (B-151): 404 conform de statuscode-conventie ("bestaan niet
+   * onthullen"), net als de staf-realm; "bestaat niet", "andere org" en "geen
+   * grant" blijven bewust ononderscheidbaar. `assertSignAccess` hieronder geeft
+   * wél 403 — daar is het bestaan al bevestigd en ontbreekt alleen het recht.
+   */
   async assertInspectionAccess(clientUserId: string, orgId: string, planId: string): Promise<void> {
     if (!(await this.hasAccessToInspection(clientUserId, orgId, planId))) {
-      throw new ForbiddenException('Geen toegang tot deze inspectie');
+      throw new NotFoundException('Inspectie niet gevonden');
     }
   }
 

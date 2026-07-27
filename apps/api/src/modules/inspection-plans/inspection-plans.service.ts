@@ -610,24 +610,62 @@ export class InspectionPlansService {
       },
     });
 
-    if (reviewerId && reviewerId !== user.id) {
-      this.notify(NotificationType.INSPECTIEPLAN_TER_REVIEW, updated, [
-        reviewerId,
-      ]);
-    }
-
-    // AI-voorcontrole (PRD-13 §13.3 besluit 2): fire-and-forget; de guard-checks
-    // (AI_REVIEW-entitlement, org-toggle, API-key, concurrency) zitten in
-    // startRun zelf. Een geweigerde of mislukte start mag de submit nooit raken.
-    this.aiReview.startRun(updated.id, user).catch((e) => {
-      if (e instanceof HttpException) {
-        this.logger.debug(`AI-review niet gestart voor plan ${updated.id}: ${e.message}`);
-      } else {
-        this.logger.error(`AI-review starten mislukt voor plan ${updated.id}: ${e?.message}`, e?.stack);
-      }
-    });
+    await this.dispatchSubmitSideEffects(updated.id, user);
 
     return updated;
+  }
+
+  /**
+   * Kern-side-effects van een indiening ter review, gedeeld door {@link submit}
+   * (REST) en het `/sync`-pad (WP-C3 / B-218): een PWA-indiening naar
+   * `pending_review` moet dezelfde keten starten als de REST-submit.
+   *
+   * - Notificatie `INSPECTIEPLAN_TER_REVIEW` naar de reviewer, met fallback
+   *   reviewer → project-PM → toegewezen inspecteur (zelfde keten als de
+   *   PRD-14 PM-resolutie) zodat er altijd een geadresseerde is; de indiener
+   *   zelf wordt overgeslagen.
+   * - AI-voorcontrole (PRD-13 §13.3 besluit 2): fire-and-forget; de
+   *   guard-checks (AI_REVIEW-entitlement, org-toggle, API-key, concurrency)
+   *   zitten in startRun zelf.
+   *
+   * Gooit nooit richting de caller — een falende notificatie/AI-start mag de
+   * submit of de sync-push niet raken.
+   */
+  async dispatchSubmitSideEffects(planId: string, submitter: User): Promise<void> {
+    try {
+      const plan = await this.prisma.inspectionPlan.findFirst({
+        where: { id: planId, deletedAt: null },
+        select: {
+          id: true,
+          orgId: true,
+          projectName: true,
+          reviewerId: true,
+          assignedTo: true,
+          project: { select: { projectManagerId: true } },
+        },
+      });
+      if (!plan) return;
+
+      const recipient =
+        plan.reviewerId ?? plan.project?.projectManagerId ?? plan.assignedTo;
+      if (recipient && recipient !== submitter.id) {
+        this.notify(NotificationType.INSPECTIEPLAN_TER_REVIEW, plan, [recipient]);
+      }
+
+      this.aiReview.startRun(plan.id, submitter).catch((e) => {
+        if (e instanceof HttpException) {
+          this.logger.debug(`AI-review niet gestart voor plan ${plan.id}: ${e.message}`);
+        } else {
+          this.logger.error(`AI-review starten mislukt voor plan ${plan.id}: ${e?.message}`, e?.stack);
+        }
+      });
+    } catch (e) {
+      const err = e as Error;
+      this.logger.error(
+        `Submit-side-effects mislukt voor plan ${planId}: ${err?.message}`,
+        err?.stack,
+      );
+    }
   }
 
   /**

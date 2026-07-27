@@ -8,7 +8,6 @@ import {
   Param,
   Query,
   Res,
-  ParseUUIDPipe,
   UseInterceptors,
   UploadedFile,
   BadRequestException,
@@ -30,6 +29,7 @@ import {
   CreateFollowUpDto,
   UpdateFollowUpDto,
 } from './dto';
+import { ParseUuidPipe } from '@/common';
 
 @ApiTags('quote-templates')
 @RequiresFeature('CRM_COMPLEET')
@@ -73,7 +73,7 @@ export class QuoteTemplatesController {
   @ApiConsumes('multipart/form-data')
   async uploadDocx(
     @CurrentUser() user: User,
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @UploadedFile() file: Express.Multer.File,
   ) {
     if (!file) {
@@ -88,7 +88,7 @@ export class QuoteTemplatesController {
   @Roles(...OFFICE_ROLES)
   async downloadDocx(
     @CurrentUser() user: User,
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @Res() res: Response,
   ) {
     const { buffer, fileName, mimeType } =
@@ -106,7 +106,7 @@ export class QuoteTemplatesController {
   @Roles(...OFFICE_ROLES)
   async getDocxRevisions(
     @CurrentUser() user: User,
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
   ) {
     const data = await this.service.getDocxRevisions(id, user);
     return { success: true, data };
@@ -117,8 +117,8 @@ export class QuoteTemplatesController {
   @Roles(...OFFICE_ROLES)
   async downloadDocxRevision(
     @CurrentUser() user: User,
-    @Param('id', ParseUUIDPipe) id: string,
-    @Param('revisionId', ParseUUIDPipe) revisionId: string,
+    @Param('id', ParseUuidPipe) id: string,
+    @Param('revisionId', ParseUuidPipe) revisionId: string,
     @Res() res: Response,
   ) {
     const { buffer, fileName, mimeType } =
@@ -145,7 +145,7 @@ export class QuoteTemplatesController {
   @ApiConsumes('multipart/form-data')
   async uploadImage(
     @CurrentUser() user: User,
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @UploadedFile() file: Express.Multer.File,
   ) {
     if (!file) {
@@ -160,7 +160,7 @@ export class QuoteTemplatesController {
   @Roles(...OFFICE_ROLES)
   async getImage(
     @CurrentUser() user: User,
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @Param('key') key: string,
     @Res() res: Response,
   ) {
@@ -185,7 +185,7 @@ export class QuoteTemplatesController {
   @Roles(...OFFICE_ROLES)
   async getAttachments(
     @CurrentUser() user: User,
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
   ) {
     const data = await this.service.getAttachments(id, user);
     return { success: true, data };
@@ -203,7 +203,7 @@ export class QuoteTemplatesController {
   @ApiConsumes('multipart/form-data')
   async uploadAttachment(
     @CurrentUser() user: User,
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @UploadedFile() file: Express.Multer.File,
   ) {
     if (!file) {
@@ -218,7 +218,7 @@ export class QuoteTemplatesController {
   @Roles(...ORG_ADMINS)
   async reorderAttachments(
     @CurrentUser() user: User,
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @Body() body: { attachmentIds: string[] },
   ) {
     const data = await this.service.reorderAttachments(
@@ -234,8 +234,8 @@ export class QuoteTemplatesController {
   @Roles(...OFFICE_ROLES)
   async downloadAttachment(
     @CurrentUser() user: User,
-    @Param('id', ParseUUIDPipe) id: string,
-    @Param('attachmentId', ParseUUIDPipe) attachmentId: string,
+    @Param('id', ParseUuidPipe) id: string,
+    @Param('attachmentId', ParseUuidPipe) attachmentId: string,
     @Res() res: Response,
   ) {
     const { buffer, attachment } = await this.service.downloadAttachment(
@@ -256,8 +256,8 @@ export class QuoteTemplatesController {
   @Roles(...ORG_ADMINS)
   async deleteAttachment(
     @CurrentUser() user: User,
-    @Param('id', ParseUUIDPipe) id: string,
-    @Param('attachmentId', ParseUUIDPipe) attachmentId: string,
+    @Param('id', ParseUuidPipe) id: string,
+    @Param('attachmentId', ParseUuidPipe) attachmentId: string,
   ) {
     await this.service.deleteAttachment(id, attachmentId, user);
     return { success: true };
@@ -270,7 +270,7 @@ export class QuoteTemplatesController {
   @Roles(...OFFICE_ROLES)
   async getFollowUpRules(
     @CurrentUser() user: User,
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
   ) {
     const data = await this.service.getFollowUpRules(id, user);
     return { success: true, data };
@@ -281,7 +281,7 @@ export class QuoteTemplatesController {
   @Roles(...ORG_ADMINS)
   async createFollowUp(
     @CurrentUser() user: User,
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @Body() dto: CreateFollowUpDto,
   ) {
     const data = await this.service.createFollowUp(id, dto, user);
@@ -293,8 +293,8 @@ export class QuoteTemplatesController {
   @Roles(...ORG_ADMINS)
   async updateFollowUp(
     @CurrentUser() user: User,
-    @Param('id', ParseUUIDPipe) id: string,
-    @Param('followUpId', ParseUUIDPipe) followUpId: string,
+    @Param('id', ParseUuidPipe) id: string,
+    @Param('followUpId', ParseUuidPipe) followUpId: string,
     @Body() dto: UpdateFollowUpDto,
   ) {
     const data = await this.service.updateFollowUp(id, followUpId, dto, user);
@@ -306,8 +306,8 @@ export class QuoteTemplatesController {
   @Roles(...ORG_ADMINS)
   async deleteFollowUp(
     @CurrentUser() user: User,
-    @Param('id', ParseUUIDPipe) id: string,
-    @Param('followUpId', ParseUUIDPipe) followUpId: string,
+    @Param('id', ParseUuidPipe) id: string,
+    @Param('followUpId', ParseUuidPipe) followUpId: string,
   ) {
     await this.service.deleteFollowUp(id, followUpId, user);
     return { success: true };
@@ -320,7 +320,7 @@ export class QuoteTemplatesController {
   @Roles(...OFFICE_ROLES)
   async findOne(
     @CurrentUser() user: User,
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
   ) {
     const data = await this.service.findOne(id, user);
     return { success: true, data };
@@ -331,7 +331,7 @@ export class QuoteTemplatesController {
   @Roles(...ORG_ADMINS)
   async update(
     @CurrentUser() user: User,
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @Body() dto: UpdateQuoteTemplateDto,
   ) {
     const data = await this.service.update(id, dto, user);
@@ -343,7 +343,7 @@ export class QuoteTemplatesController {
   @Roles(...ORG_ADMINS)
   async deactivate(
     @CurrentUser() user: User,
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
   ) {
     const data = await this.service.deactivate(id, user);
     return { success: true, data };

@@ -200,6 +200,7 @@ describe('QuotesService', () => {
   const mockPrismaService = {
     quote: {
       findMany: jest.fn(),
+      findFirst: jest.fn(),
       findUnique: jest.fn(),
       create: jest.fn(),
       update: jest.fn(),
@@ -227,6 +228,7 @@ describe('QuotesService', () => {
       findUnique: jest.fn(),
     },
     product: {
+      findFirst: jest.fn(),
       findUnique: jest.fn(),
     },
     contactPriceTable: {
@@ -236,6 +238,7 @@ describe('QuotesService', () => {
       findFirst: jest.fn(),
     },
     request: {
+      findFirst: jest.fn(),
       findUnique: jest.fn(),
     },
     user: {
@@ -465,7 +468,7 @@ describe('QuotesService', () => {
 
   describe('findOne()', () => {
     it('should return quote with all includes', async () => {
-      mockPrismaService.quote.findUnique.mockResolvedValue(
+      mockPrismaService.quote.findFirst.mockResolvedValue(
         mockQuoteWithIncludes,
       );
       mockPrismaService.organization.findUnique.mockResolvedValue({
@@ -477,8 +480,8 @@ describe('QuotesService', () => {
 
       // B-304: findOne serialiseert de effectieve goedkeuringsplicht mee.
       expect(result).toEqual({ ...mockQuoteWithIncludes, approvalRequired: false });
-      expect(mockPrismaService.quote.findUnique).toHaveBeenCalledWith({
-        where: { id: 'quote-1' },
+      expect(mockPrismaService.quote.findFirst).toHaveBeenCalledWith({
+        where: { id: 'quote-1', orgId: 'org-1' },
         include: expect.objectContaining({
           contact: expect.any(Object),
           location: expect.any(Object),
@@ -492,7 +495,7 @@ describe('QuotesService', () => {
     });
 
     it('should throw NotFoundException when quote not found', async () => {
-      mockPrismaService.quote.findUnique.mockResolvedValue(null);
+      mockPrismaService.quote.findFirst.mockResolvedValue(null);
 
       await expect(
         service.findOne('non-existent', mockUser),
@@ -502,18 +505,22 @@ describe('QuotesService', () => {
       ).rejects.toThrow('Offerte niet gevonden');
     });
 
-    it('should throw ForbiddenException when different org (non-SUPERUSER)', async () => {
-      mockPrismaService.quote.findUnique.mockResolvedValue(
-        mockQuoteWithIncludes,
-      );
+    it('should throw the same NotFound when different org (WP-C1: 404-oracle)', async () => {
+      // Org-scope in de where-clausule: andermans offerte komt niet terug.
+      mockPrismaService.quote.findFirst.mockResolvedValue(null);
 
       await expect(
         service.findOne('quote-1', mockOtherOrgUser),
-      ).rejects.toThrow(ForbiddenException);
+      ).rejects.toThrow('Offerte niet gevonden');
+      expect(mockPrismaService.quote.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ orgId: 'org-2' }),
+        }),
+      );
     });
 
     it('serializes approvalRequired=true when the total exceeds the org threshold (B-304)', async () => {
-      mockPrismaService.quote.findUnique.mockResolvedValue({
+      mockPrismaService.quote.findFirst.mockResolvedValue({
         ...mockQuoteWithIncludes,
         total: 30250,
         requiresApproval: false, // template-vlag uit — de drempel alleen is de trigger
@@ -639,7 +646,7 @@ describe('QuotesService', () => {
         ...mockQuoteWithIncludes,
         status: QuoteStatus.GOEDGEKEURD,
       };
-      mockPrismaService.quote.findUnique.mockResolvedValue(nonConceptQuote);
+      mockPrismaService.quote.findFirst.mockResolvedValue(nonConceptQuote);
 
       await expect(
         service.update('quote-1', { subject: 'Nieuwe titel' }, mockUser),
@@ -657,7 +664,7 @@ describe('QuotesService', () => {
         ...mockQuoteWithIncludes,
         status: QuoteStatus.VERSTUURD,
       };
-      mockPrismaService.quote.findUnique.mockResolvedValue(nonConceptQuote);
+      mockPrismaService.quote.findFirst.mockResolvedValue(nonConceptQuote);
       mockPrismaService.projectPhase.findUnique.mockResolvedValue({
         orgId: mockUser.orgId,
         projectId: 'project-1',
@@ -678,7 +685,7 @@ describe('QuotesService', () => {
     });
 
     it('should allow unlinking the phase (projectPhaseId: null) on a non-CONCEPT quote', async () => {
-      mockPrismaService.quote.findUnique.mockResolvedValue({
+      mockPrismaService.quote.findFirst.mockResolvedValue({
         ...mockQuoteWithIncludes,
         status: QuoteStatus.GEACCEPTEERD,
         projectPhaseId: 'phase-1',
@@ -699,7 +706,7 @@ describe('QuotesService', () => {
     });
 
     it('should still block other fields alongside projectPhaseId on a non-CONCEPT quote', async () => {
-      mockPrismaService.quote.findUnique.mockResolvedValue({
+      mockPrismaService.quote.findFirst.mockResolvedValue({
         ...mockQuoteWithIncludes,
         status: QuoteStatus.VERSTUURD,
       });
@@ -715,7 +722,7 @@ describe('QuotesService', () => {
     });
 
     it('should update fields when status is CONCEPT', async () => {
-      mockPrismaService.quote.findUnique.mockResolvedValue(
+      mockPrismaService.quote.findFirst.mockResolvedValue(
         mockQuoteWithIncludes,
       );
       const updatedQuote = {
@@ -745,7 +752,7 @@ describe('QuotesService', () => {
     // ─── template switch (REQ26) ──────────────────────────────────────
 
     it('should switch to a BLOCKS template: re-apply blocks + requiresApproval + templateId', async () => {
-      mockPrismaService.quote.findUnique.mockResolvedValue(mockQuoteWithIncludes);
+      mockPrismaService.quote.findFirst.mockResolvedValue(mockQuoteWithIncludes);
       mockPrismaService.quoteTemplate.findUnique.mockResolvedValue({
         ...mockTemplate,
         templateType: 'BLOCKS',
@@ -767,7 +774,7 @@ describe('QuotesService', () => {
     });
 
     it('should switch to a DOCX template: clear blocks + apply requiresApproval', async () => {
-      mockPrismaService.quote.findUnique.mockResolvedValue(mockQuoteWithIncludes);
+      mockPrismaService.quote.findFirst.mockResolvedValue(mockQuoteWithIncludes);
       mockPrismaService.quoteTemplate.findUnique.mockResolvedValue({
         ...mockTemplate,
         templateType: 'DOCX',
@@ -790,7 +797,7 @@ describe('QuotesService', () => {
     });
 
     it('should unlink the template (templateId null) without touching blocks', async () => {
-      mockPrismaService.quote.findUnique.mockResolvedValue({
+      mockPrismaService.quote.findFirst.mockResolvedValue({
         ...mockQuoteWithIncludes,
         templateId: 'template-1',
       });
@@ -807,7 +814,7 @@ describe('QuotesService', () => {
     });
 
     it('should be a no-op when templateId is unchanged', async () => {
-      mockPrismaService.quote.findUnique.mockResolvedValue({
+      mockPrismaService.quote.findFirst.mockResolvedValue({
         ...mockQuoteWithIncludes,
         templateId: 'template-1',
       });
@@ -823,7 +830,7 @@ describe('QuotesService', () => {
     });
 
     it('should reject a cross-org template (Forbidden)', async () => {
-      mockPrismaService.quote.findUnique.mockResolvedValue(mockQuoteWithIncludes);
+      mockPrismaService.quote.findFirst.mockResolvedValue(mockQuoteWithIncludes);
       mockPrismaService.quoteTemplate.findUnique.mockResolvedValue({
         ...mockTemplate,
         orgId: 'org-2',
@@ -837,7 +844,7 @@ describe('QuotesService', () => {
     });
 
     it('should reject an inactive/missing template (NotFound)', async () => {
-      mockPrismaService.quote.findUnique.mockResolvedValue(mockQuoteWithIncludes);
+      mockPrismaService.quote.findFirst.mockResolvedValue(mockQuoteWithIncludes);
       mockPrismaService.quoteTemplate.findUnique.mockResolvedValue({
         ...mockTemplate,
         isActive: false,
@@ -850,7 +857,7 @@ describe('QuotesService', () => {
     });
 
     it('should not allow switching templates outside CONCEPT', async () => {
-      mockPrismaService.quote.findUnique.mockResolvedValue({
+      mockPrismaService.quote.findFirst.mockResolvedValue({
         ...mockQuoteWithIncludes,
         status: QuoteStatus.GOEDGEKEURD,
       });
@@ -866,7 +873,7 @@ describe('QuotesService', () => {
 
   describe('updateStatus()', () => {
     it('should block leaving CONCEPT without a linked template', async () => {
-      mockPrismaService.quote.findUnique.mockResolvedValue({
+      mockPrismaService.quote.findFirst.mockResolvedValue({
         ...mockQuoteWithIncludes,
         templateId: null,
         status: QuoteStatus.CONCEPT,
@@ -879,7 +886,7 @@ describe('QuotesService', () => {
     });
 
     it('should allow leaving CONCEPT when a template is linked', async () => {
-      mockPrismaService.quote.findUnique.mockResolvedValue({
+      mockPrismaService.quote.findFirst.mockResolvedValue({
         ...mockQuoteWithIncludes,
         templateId: 'template-1',
         status: QuoteStatus.CONCEPT,
@@ -919,7 +926,7 @@ describe('QuotesService', () => {
         senderName: null,
         senderEmail: null,
       });
-      mockPrismaService.quote.findUnique.mockResolvedValue(sendableQuote);
+      mockPrismaService.quote.findFirst.mockResolvedValue(sendableQuote);
       mockPrismaService.quote.update.mockResolvedValue({
         ...mockQuote,
         status: QuoteStatus.VERSTUURD,
@@ -927,7 +934,7 @@ describe('QuotesService', () => {
     });
 
     it('rejects when the quote was already sent (sentAt set)', async () => {
-      mockPrismaService.quote.findUnique.mockResolvedValue({
+      mockPrismaService.quote.findFirst.mockResolvedValue({
         ...sendableQuote,
         sentAt: new Date('2026-07-01'),
         status: QuoteStatus.VERSTUURD,
@@ -940,7 +947,7 @@ describe('QuotesService', () => {
     });
 
     it('rejects a quote without lines (B-315, NL-melding)', async () => {
-      mockPrismaService.quote.findUnique.mockResolvedValue({
+      mockPrismaService.quote.findFirst.mockResolvedValue({
         ...sendableQuote,
         lines: [],
       });
@@ -1052,7 +1059,7 @@ describe('QuotesService', () => {
     };
 
     it('should calculate lineTotal per line (qty * unitPrice * (1 - discountPct/100))', async () => {
-      mockPrismaService.quote.findUnique.mockResolvedValue(
+      mockPrismaService.quote.findFirst.mockResolvedValue(
         mockQuoteWithIncludes,
       );
       mockTx.quoteLine.deleteMany.mockResolvedValue({ count: 0 });
@@ -1069,7 +1076,7 @@ describe('QuotesService', () => {
     });
 
     it('should recalculate quote totals (subtotal, vatTotal, discountTotal, total)', async () => {
-      mockPrismaService.quote.findUnique.mockResolvedValue(
+      mockPrismaService.quote.findFirst.mockResolvedValue(
         mockQuoteWithIncludes,
       );
       mockTx.quoteLine.deleteMany.mockResolvedValue({ count: 0 });
@@ -1103,7 +1110,7 @@ describe('QuotesService', () => {
         ...mockQuoteWithIncludes,
         status: QuoteStatus.VERSTUURD,
       };
-      mockPrismaService.quote.findUnique.mockResolvedValue(nonConceptQuote);
+      mockPrismaService.quote.findFirst.mockResolvedValue(nonConceptQuote);
 
       await expect(
         service.setLines('quote-1', linesDto, mockUser),
@@ -1116,7 +1123,7 @@ describe('QuotesService', () => {
     });
 
     it('rejects a line total beyond numeric(12,2) with a Dutch 400 (B-303)', async () => {
-      mockPrismaService.quote.findUnique.mockResolvedValue(mockQuoteWithIncludes);
+      mockPrismaService.quote.findFirst.mockResolvedValue(mockQuoteWithIncludes);
 
       // 9.999.999 × 9.999 ≈ € 99,99 mld → boven de kolomgrens van € 9.999.999.999,99
       await expect(
@@ -1130,7 +1137,7 @@ describe('QuotesService', () => {
     });
 
     it('rejects an aggregate quote total beyond numeric(12,2) with a Dutch 400 (B-303)', async () => {
-      mockPrismaService.quote.findUnique.mockResolvedValue(mockQuoteWithIncludes);
+      mockPrismaService.quote.findFirst.mockResolvedValue(mockQuoteWithIncludes);
 
       // Twee regels van elk ± € 9,99 mld: per regel geldig, som > € 9.999.999.999,99
       const bigLine = { description: 'Groot', quantity: 999_999, unit: 'stuks', unitPrice: 9_999, vatRate: 21, discountPct: 0 };
@@ -1145,7 +1152,7 @@ describe('QuotesService', () => {
 
   describe('resolvePrice()', () => {
     it('should return FIXED price from price table', async () => {
-      mockPrismaService.product.findUnique.mockResolvedValue(mockProduct);
+      mockPrismaService.product.findFirst.mockResolvedValue(mockProduct);
       mockPrismaService.contactPriceTable.findMany.mockResolvedValue([
         {
           priceTable: {
@@ -1178,7 +1185,7 @@ describe('QuotesService', () => {
     });
 
     it('should return TIERED price with fallback to default table', async () => {
-      mockPrismaService.product.findUnique.mockResolvedValue(mockProduct);
+      mockPrismaService.product.findFirst.mockResolvedValue(mockProduct);
       // No contact-specific price table
       mockPrismaService.contactPriceTable.findMany.mockResolvedValue([]);
       // Default table with tiered pricing
@@ -1215,7 +1222,7 @@ describe('QuotesService', () => {
     // B-309: staffelgrenzen — de tier moet exact op de overgang wisselen.
     describe('tier boundaries (B-309)', () => {
       beforeEach(() => {
-        mockPrismaService.product.findUnique.mockResolvedValue(mockProduct);
+        mockPrismaService.product.findFirst.mockResolvedValue(mockProduct);
         mockPrismaService.contactPriceTable.findMany.mockResolvedValue([
           {
             priceTable: {
@@ -1255,7 +1262,7 @@ describe('QuotesService', () => {
 
   describe('createFromRequest()', () => {
     it('should create quote from request data', async () => {
-      mockPrismaService.request.findUnique.mockResolvedValue(mockRequest);
+      mockPrismaService.request.findFirst.mockResolvedValue(mockRequest);
       mockTx.quote.findFirst.mockResolvedValue(null);
       mockTx.organization.findUnique.mockResolvedValue(mockOrganization);
       const createdQuote = {
@@ -1286,7 +1293,7 @@ describe('QuotesService', () => {
     });
 
     it('should update request status to OFFERTE_GEMAAKT', async () => {
-      mockPrismaService.request.findUnique.mockResolvedValue(mockRequest);
+      mockPrismaService.request.findFirst.mockResolvedValue(mockRequest);
       mockTx.quote.findFirst.mockResolvedValue(null);
       mockTx.organization.findUnique.mockResolvedValue(mockOrganization);
       mockTx.quote.create.mockResolvedValue(mockQuote);
@@ -1318,7 +1325,7 @@ describe('QuotesService', () => {
         ...mockQuoteWithIncludes,
         status: QuoteStatus.VERSTUURD,
       };
-      mockPrismaService.quote.findUnique.mockResolvedValue(nonConceptQuote);
+      mockPrismaService.quote.findFirst.mockResolvedValue(nonConceptQuote);
 
       await expect(
         service.remove('quote-1', mockUser),

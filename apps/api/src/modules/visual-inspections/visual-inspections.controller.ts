@@ -2,7 +2,7 @@
 // INSPECTEUR mag schrijven (PWA). Globale guards — geen @UseGuards.
 
 import {
-  Controller, Get, Post, Patch, Delete, Param, Body, Headers, ParseUUIDPipe,
+  Controller, Get, Post, Patch, Delete, Param, Body, Headers,
 } from '@nestjs/common';
 import { RequiresFeature } from '@/common/decorators/requires-feature.decorator';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
@@ -11,6 +11,7 @@ import { Roles, CurrentUser } from '@/common/decorators';
 import { ALL_STAFF } from '@/common/auth/roles';
 import { VisualInspectionsService } from './visual-inspections.service';
 import { CreateVisualInspectionDto, UpdateVisualInspectionDto } from './dto';
+import { ParseUuidPipe } from '@/common';
 
 const ALL = ALL_STAFF;
 
@@ -25,7 +26,7 @@ export class VisualInspectionsController {
   @Roles(...ALL)
   @ApiOperation({ summary: 'Visuele inspecties per asset' })
   async findAllByAsset(
-    @Param('assetId', ParseUUIDPipe) assetId: string,
+    @Param('assetId', ParseUuidPipe) assetId: string,
     @CurrentUser() user: User,
   ) {
     return { success: true, data: await this.service.findAllByAsset(assetId, user) };
@@ -35,7 +36,7 @@ export class VisualInspectionsController {
   @Roles(...ALL)
   @ApiOperation({ summary: 'Visuele inspectie aanmaken op een asset' })
   async create(
-    @Param('assetId', ParseUUIDPipe) assetId: string,
+    @Param('assetId', ParseUuidPipe) assetId: string,
     @CurrentUser() user: User,
     @Body() dto: CreateVisualInspectionDto,
     @Headers('x-device-id') deviceId?: string,
@@ -46,7 +47,7 @@ export class VisualInspectionsController {
   @Get('visual-inspections/:id')
   @Roles(...ALL)
   @ApiOperation({ summary: 'Visuele inspectie detail' })
-  async findById(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: User) {
+  async findById(@Param('id', ParseUuidPipe) id: string, @CurrentUser() user: User) {
     return { success: true, data: await this.service.findById(id, user) };
   }
 
@@ -54,7 +55,7 @@ export class VisualInspectionsController {
   @Roles(...ALL)
   @ApiOperation({ summary: 'Visuele inspectie bijwerken (status/checklist)' })
   async update(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @CurrentUser() user: User,
     @Body() dto: UpdateVisualInspectionDto,
   ) {
@@ -64,21 +65,21 @@ export class VisualInspectionsController {
   @Post('visual-inspections/:id/start')
   @Roles(...ALL)
   @ApiOperation({ summary: 'Visuele inspectie starten (status → in uitvoering)' })
-  async start(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: User) {
+  async start(@Param('id', ParseUuidPipe) id: string, @CurrentUser() user: User) {
     return { success: true, data: await this.service.start(id, user) };
   }
 
   @Post('visual-inspections/:id/complete')
   @Roles(...ALL)
   @ApiOperation({ summary: 'Visuele inspectie afronden (status → voltooid)' })
-  async complete(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: User) {
+  async complete(@Param('id', ParseUuidPipe) id: string, @CurrentUser() user: User) {
     return { success: true, data: await this.service.complete(id, user) };
   }
 
   @Delete('visual-inspections/:id')
   @Roles(...ALL)
   @ApiOperation({ summary: 'Visuele inspectie verwijderen (hard delete)' })
-  async delete(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: User) {
+  async delete(@Param('id', ParseUuidPipe) id: string, @CurrentUser() user: User) {
     return { success: true, data: await this.service.delete(id, user) };
   }
 }

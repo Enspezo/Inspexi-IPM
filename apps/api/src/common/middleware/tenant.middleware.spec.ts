@@ -151,6 +151,7 @@ describe('TenantMiddleware', () => {
       expect(res.status).toHaveBeenCalledWith(404);
       expect(res.json).toHaveBeenCalledWith({
         statusCode: 404,
+        success: false,
         message: "Organisatie 'nonexistent' niet gevonden",
       });
       expect(next).not.toHaveBeenCalled();
@@ -172,6 +173,7 @@ describe('TenantMiddleware', () => {
       expect(res.status).toHaveBeenCalledWith(404);
       expect(res.json).toHaveBeenCalledWith({
         statusCode: 404,
+        success: false,
         message: "Organisatie 'inactiveorg' niet gevonden",
       });
       expect(next).not.toHaveBeenCalled();
@@ -266,6 +268,7 @@ describe('TenantMiddleware', () => {
       expect(res.status).toHaveBeenCalledWith(429);
       expect(res.json).toHaveBeenCalledWith({
         statusCode: 429,
+        success: false,
         message: 'Te veel pogingen, probeer later opnieuw',
       });
       expect(res.setHeader).toHaveBeenCalledWith('Retry-After', expect.any(String));

@@ -99,23 +99,29 @@ describe('DocumentTagsService', () => {
 
   describe('findOne', () => {
     it('throws NotFound for a missing/deleted tag', async () => {
-      mockPrisma.documentTag.findUnique.mockResolvedValue(null);
+      mockPrisma.documentTag.findFirst.mockResolvedValue(null);
       await expect(service.findOne('nope', orgUser)).rejects.toBeInstanceOf(
         NotFoundException,
       );
     });
 
-    it('throws Forbidden for a tag from another org', async () => {
-      mockPrisma.documentTag.findUnique.mockResolvedValue(otherOrgTag);
-      await expect(service.findOne('tag-x', orgUser)).rejects.toBeInstanceOf(
-        ForbiddenException,
+    it('throws the same NotFound for a tag from another org (WP-C1: 404-oracle)', async () => {
+      // Org-scope in de where-clausule: andermans tag komt niet terug.
+      mockPrisma.documentTag.findFirst.mockResolvedValue(null);
+      await expect(service.findOne('tag-x', orgUser)).rejects.toThrow(
+        'Document-tag niet gevonden',
+      );
+      expect(mockPrisma.documentTag.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ id: 'tag-x', orgId: 'org-1' }),
+        }),
       );
     });
   });
 
   describe('softDelete', () => {
     it('drops assignments and marks the tag deleted', async () => {
-      mockPrisma.documentTag.findUnique.mockResolvedValue({
+      mockPrisma.documentTag.findFirst.mockResolvedValue({
         id: 'tag-1',
         orgId: 'org-1',
         isDeleted: false,

@@ -549,6 +549,49 @@ describe('Client Repair — online herstel (e2e)', () => {
     });
   });
 
+  // ── B-410 (WP-C2): plan zonder inspectietemplate → geen model, wél kritiek ──
+  describe('classificatie-fallback zonder inspectietemplate (B-410)', () => {
+    it('valt terug op Finding.isCritical wanneer het plan geen template/classificatiemodel heeft', async () => {
+      // Zelfde structurele situatie als seed-plan RAP-TEST-100: inspectionTemplateId NULL.
+      const before = await prisma.inspectionPlan.findUnique({
+        where: { id: planA1Id },
+        select: { inspectionTemplateId: true },
+      });
+      await prisma.inspectionPlan.update({
+        where: { id: planA1Id },
+        data: { inspectionTemplateId: null },
+      });
+      try {
+        const res = await postA('/api/v1/client/repair/lookup')
+          .send({ referenceNumber: 'E2E-Herstel-001', postalCode: '1234 AB' })
+          .expect(201);
+        const data = res.body.data;
+
+        // F2 (SEVERITY C1, Finding.isCritical = true): de classificatie mag
+        // zonder model niet `isCritical: false` beweren — labels/kleuren
+        // degraderen naar de code-defaults, de kritikaliteit volgt de finding.
+        const f2 = data.findings.find((f: { id: string }) => f.id === findingF2Id);
+        expect(f2.isCritical).toBe(true);
+        expect(f2.classification).toMatchObject({ code: 'C1', isCritical: true });
+
+        // F1 (SEVERITY C3, niet kritiek) blijft niet-kritiek.
+        const f1 = data.findings.find((f: { id: string }) => f.id === findingF1Id);
+        expect(f1.classification).toMatchObject({ code: 'C3', isCritical: false });
+
+        // En de samenvatting markeert de C1-groep als kritiek (vóór WP-C2: false).
+        const c1 = data.summary.find((g: { code: string }) => g.code === 'C1');
+        const c3 = data.summary.find((g: { code: string }) => g.code === 'C3');
+        expect(c1).toMatchObject({ isCritical: true });
+        expect(c3).toMatchObject({ isCritical: false });
+      } finally {
+        await prisma.inspectionPlan.update({
+          where: { id: planA1Id },
+          data: { inspectionTemplateId: before?.inspectionTemplateId ?? null },
+        });
+      }
+    });
+  });
+
   describe('lookup-throttling (5/min per IP)', () => {
     it('geeft 429 op de 6e lookup binnen een minuut', async () => {
       // De AppThrottlerGuard slaat throttling over wanneer NODE_ENV=test (de

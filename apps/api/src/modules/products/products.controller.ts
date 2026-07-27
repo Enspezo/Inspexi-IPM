@@ -6,7 +6,6 @@ import {
   Param,
   Body,
   Query,
-  ParseUUIDPipe,
 } from '@nestjs/common';
 import { RequiresFeature } from '@/common/decorators/requires-feature.decorator';
 import {
@@ -20,6 +19,7 @@ import { CRM_ROLES, ORG_ADMINS } from '@/common/auth/roles';
 import { ProductsService } from './products.service';
 import { CreateProductDto, UpdateProductDto, ListProductsQueryDto } from './dto';
 import { Roles, CurrentUser } from '@/common/decorators';
+import { ParseUuidPipe } from '@/common';
 
 @ApiTags('Products')
 @ApiBearerAuth()
@@ -45,7 +45,7 @@ export class ProductsController {
   @ApiOperation({ summary: 'Product detail ophalen' })
   @ApiResponse({ status: 200, description: 'Product gevonden' })
   async findOne(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @CurrentUser() user: User,
   ) {
     const product = await this.productsService.findOne(id, user);
@@ -66,7 +66,7 @@ export class ProductsController {
   @ApiOperation({ summary: 'Product bijwerken' })
   @ApiResponse({ status: 200, description: 'Product bijgewerkt' })
   async update(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @Body() dto: UpdateProductDto,
     @CurrentUser() user: User,
   ) {

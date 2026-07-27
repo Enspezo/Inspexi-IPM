@@ -2,7 +2,7 @@
 
 import {
   Controller, Post, Get, Param, Body, Query, UploadedFile,
-  ParseFilePipe, MaxFileSizeValidator, ParseUUIDPipe, Headers, Res, StreamableFile,
+  ParseFilePipe, MaxFileSizeValidator, Headers, Res, StreamableFile,
 } from '@nestjs/common';
 import { RequiresFeature } from '@/common/decorators/requires-feature.decorator';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -14,6 +14,7 @@ import { Roles, CurrentUser } from '@/common/decorators';
 import { ALL_STAFF } from '@/common/auth/roles';
 import { PhotosService } from './photos.service';
 import { PhotoUploadDto } from './dto';
+import { ParseUuidPipe } from '@/common';
 
 const ALL = ALL_STAFF;
 
@@ -49,7 +50,7 @@ export class PhotosController {
   @Roles(...ALL)
   @ApiOperation({ summary: 'Foto downloaden (org-scoped stream)' })
   async download(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @CurrentUser() user: User,
     @Res({ passthrough: true }) res: Response,
     @Query('thumb') thumb?: string,

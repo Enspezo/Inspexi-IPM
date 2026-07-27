@@ -9,11 +9,12 @@ export class ListCustomerGroupsQueryDto extends BasePaginationQueryDto {
   @IsString()
   search?: string;
 
-  @ApiPropertyOptional({ default: 50 })
+  // Override alléén voor de default van 50; de cap volgt de basiscap (200).
+  @ApiPropertyOptional({ default: 50, maximum: 200 })
   @IsOptional()
   @Type(() => Number)
   @IsInt()
   @Min(1)
-  @Max(100)
+  @Max(200)
   override limit?: number = 50;
 }

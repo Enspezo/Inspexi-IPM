@@ -5,6 +5,7 @@ export * from '@inspexi/ui';
 
 // App-specifieke componenten (blijven lokaal — koppelen aan portal-lib of zijn portal-only):
 export { ActionMenu, DropdownMenu, type ActionMenuItem, type DropdownMenuProps } from './action-menu';
+export { QueryErrorNotice } from './query-error-notice';
 export { StatusBadge } from './status-badge';
 export { TagPill, readableTextColor } from './tag-pill';
 export { TagSelect } from './tag-select';

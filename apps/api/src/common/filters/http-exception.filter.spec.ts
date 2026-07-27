@@ -94,6 +94,7 @@ describe('AllExceptionsFilter', () => {
     ['P2002', HttpStatus.CONFLICT, 'Deze waarde bestaat al'],
     ['P2025', HttpStatus.NOT_FOUND, 'Gegevens niet gevonden'],
     ['P2003', HttpStatus.BAD_REQUEST, 'Verwijzing naar niet-bestaande gegevens'],
+    ['P2011', HttpStatus.BAD_REQUEST, 'Verplicht veld ontbreekt'],
   ])('should map Prisma %s to %s', (code, status, message) => {
     const exception = new Prisma.PrismaClientKnownRequestError('db error', {
       code,
@@ -119,6 +120,23 @@ describe('AllExceptionsFilter', () => {
     filter.catch(exception, mockHost);
 
     expect(mockStatus).toHaveBeenCalledWith(HttpStatus.INTERNAL_SERVER_ERROR);
+  });
+
+  it('should map PrismaClientValidationError to 400 (WP-B3, B-503)', () => {
+    // Bv. `orgId: null` in een verplichte FK-kolom — ongeldige invoer, geen 500.
+    const exception = new Prisma.PrismaClientValidationError(
+      'Argument `orgId` must not be null.',
+      { clientVersion: 'test' },
+    );
+
+    filter.catch(exception, mockHost);
+
+    expect(mockStatus).toHaveBeenCalledWith(HttpStatus.BAD_REQUEST);
+    expect(mockJson).toHaveBeenCalledWith({
+      success: false,
+      message: 'Ongeldige gegevens',
+      statusCode: HttpStatus.BAD_REQUEST,
+    });
   });
 
   it('should handle ForbiddenException', () => {

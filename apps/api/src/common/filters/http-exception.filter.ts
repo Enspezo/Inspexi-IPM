@@ -24,6 +24,31 @@ function isHttpErrorLike(err: unknown): err is HttpErrorLike {
   return typeof code === 'number' && code >= 400 && code <= 599;
 }
 
+/**
+ * WP-C1 (B-106/B-155/B-601): vangnet dat bekende Engelse framework-defaults
+ * naar het Nederlands mapt. Alleen exacte matches worden vervangen — eigen
+ * (Nederlandse) meldingen passeren ongewijzigd. De structurele fixes zitten in
+ * de guards/pipes zelf; dit vangt exceptions af die daar omheen ontstaan
+ * (bv. een kale `throw new ForbiddenException()` in nieuwe code).
+ */
+const NL_FRAMEWORK_MESSAGES: Record<string, string> = {
+  'Forbidden resource': 'U heeft niet de juiste rol voor deze actie',
+  Forbidden: 'Geen toegang',
+  Unauthorized: 'Niet ingelogd of uw sessie is verlopen',
+  'Not Found': 'Niet gevonden',
+  'Bad Request': 'Ongeldige aanvraag',
+  Conflict: 'Conflict met de huidige gegevens',
+  'Too Many Requests': 'Te veel pogingen, probeer later opnieuw',
+  'ThrottlerException: Too Many Requests': 'Te veel pogingen, probeer later opnieuw',
+  'Validation failed (uuid is expected)': 'Ongeldige identificatie',
+  'Internal server error': 'Er is een onverwachte fout opgetreden',
+  'Internal Server Error': 'Er is een onverwachte fout opgetreden',
+};
+
+function toDutchMessage(message: string): string {
+  return NL_FRAMEWORK_MESSAGES[message] ?? message;
+}
+
 @Catch()
 export class AllExceptionsFilter implements ExceptionFilter {
   private readonly logger = new Logger('AllExceptionsFilter');
@@ -145,6 +170,9 @@ export class AllExceptionsFilter implements ExceptionFilter {
         exception instanceof Error ? exception.stack : String(exception),
       );
     }
+
+    // NL-vangnet voor bekende Engelse framework-teksten (WP-C1).
+    message = Array.isArray(message) ? message.map(toDutchMessage) : toDutchMessage(message);
 
     response.status(status).json({
       success: false,

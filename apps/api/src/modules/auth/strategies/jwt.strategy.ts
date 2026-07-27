@@ -32,7 +32,8 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     });
 
     if (!user || !user.isActive) {
-      throw new UnauthorizedException('User not found or inactive');
+      // WP-C1 (B-155): NL i.p.v. het Engelse "User not found or inactive".
+      throw new UnauthorizedException('Account bestaat niet meer of is gedeactiveerd');
     }
 
     return user;

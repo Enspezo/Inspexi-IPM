@@ -53,9 +53,12 @@ export class TenantMiddleware implements NestMiddleware {
     const blockedSeconds = this.enumerationGuard.isBlocked(clientIp);
     if (blockedSeconds > 0) {
       res.setHeader('Retry-After', String(blockedSeconds));
+      // WP-C1 (B-601): zelfde body-shape (`success: false`) als de guard-429's
+      // die via de AllExceptionsFilter lopen.
       res.status(429).json({
-        statusCode: 429,
+        success: false,
         message: 'Te veel pogingen, probeer later opnieuw',
+        statusCode: 429,
       });
       return;
     }
@@ -66,8 +69,9 @@ export class TenantMiddleware implements NestMiddleware {
       // raakt de teller nooit aan, zodat legitiem verkeer nooit blokkeert.
       this.enumerationGuard.recordFailure(clientIp);
       res.status(404).json({
-        statusCode: 404,
+        success: false,
         message: `Organisatie '${result.slug}' niet gevonden`,
+        statusCode: 404,
       });
       return;
     }

@@ -306,8 +306,10 @@ describe('Cross-tenant FK isolation (e2e)', () => {
     });
     findingBId = findingB.id;
     // Org B's asset-type (config-isolatie GET/PATCH /asset-types/:id → 404).
+    // WP-C3 (B-203): shortCode is vereist voor node-creates zolang het default
+    // ASSET_NODE-schema de [typecode]-placeholder gebruikt.
     const assetTypeB = await prisma.assetTypeDefinition.create({
-      data: { orgId: orgB.id, code: 'e2extatb', name: 'XTenant AssetType B', isSystem: false },
+      data: { orgId: orgB.id, code: 'e2extatb', shortCode: 'XTB', name: 'XTenant AssetType B', isSystem: false },
     });
     assetTypeBId = assetTypeB.id;
     // Org B's constatering-template (body-FK findingTemplateId aanval). CM's zijn globaal.
@@ -325,7 +327,7 @@ describe('Cross-tenant FK isolation (e2e)', () => {
 
     // ─── Stream B: org A-fixtures (positieve controles + read-isolatie) ──
     const assetTypeA = await prisma.assetTypeDefinition.create({
-      data: { orgId: orgA.id, code: 'e2extata', name: 'XTenant AssetType A', isSystem: false },
+      data: { orgId: orgA.id, code: 'e2extata', shortCode: 'XTA', name: 'XTenant AssetType A', isSystem: false },
     });
     assetTypeAId = assetTypeA.id;
     // Plan A heeft een hoofdlocatie (locationA = boom-wortel), zodat asset A in de

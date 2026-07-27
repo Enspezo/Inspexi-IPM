@@ -29,9 +29,13 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { Response } from 'express';
+import { createHash } from 'crypto';
+import { setBinaryResponseHeaders } from '@/common';
 import { User, Role } from '@prisma/client';
 import { ORG_ADMINS } from '@/common/auth/roles';
 import { OrganizationsService } from './organizations.service';
+import { UsersService } from '@/modules/users/users.service';
+import { InviteUserDto } from '@/modules/users/dto';
 import { SupportAccessService } from './support-access.service';
 import {
   CreateOrganizationDto,
@@ -52,6 +56,7 @@ import { FEATURE_KEYS } from '@inspexi/entitlements';
 export class OrganizationsController {
   constructor(
     private organizationsService: OrganizationsService,
+    private usersService: UsersService,
     private supportAccess: SupportAccessService,
     private prisma: PrismaService,
     private entitlements: EntitlementsService,
@@ -151,6 +156,28 @@ export class OrganizationsController {
   async findUsers(@Param('id', ParseUUIDPipe) id: string) {
     const users = await this.organizationsService.findUsers(id);
     return { success: true, data: users };
+  }
+
+  @Post(':id/invite')
+  @Roles(Role.SUPERUSER)
+  @ApiOperation({
+    summary:
+      'Gebruiker uitnodigen voor een organisatie (Superuser-onboarding, WP-B3/B-504)',
+  })
+  @ApiResponse({ status: 201, description: 'Uitnodiging verstuurd' })
+  @ApiResponse({ status: 404, description: 'Organisatie niet gevonden' })
+  @ApiResponse({ status: 409, description: 'Gebruiker of uitnodiging bestaat al' })
+  async inviteUser(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: InviteUserDto,
+    @CurrentUser() user: User,
+  ) {
+    // Nette 404 vóór de invite-flow; daarna exact dezelfde invite-logica en
+    // rolhiërarchie-check als POST /users/invite (B-504: eerste beheerder van
+    // een verse organisatie uitnodigen vanaf het superuser-domein).
+    await this.organizationsService.findOne(id);
+    const invitation = await this.usersService.invite(id, dto, user);
+    return { success: true, data: invitation };
   }
 
   @Get(':id/entitlements')
@@ -325,12 +352,21 @@ export class OrganizationsController {
     @Param('id', ParseUUIDPipe) id: string,
     @Res() res: Response,
   ) {
-    const { buffer, mimeType } =
+    const { buffer, mimeType, filename, disposition, storageKey } =
       await this.organizationsService.downloadLogo(id);
-    res.set({
-      'Content-Type': mimeType,
-      'Content-Length': buffer.length.toString(),
-      'Cache-Control': 'public, max-age=86400',
+    // WP-B4: publieke route, dus altijd nosniff + sandbox-CSP + expliciete
+    // disposition. Cache-Control was 24 uur op een URL die nooit verandert —
+    // een kwaadaardig logo bleef daardoor een dag in caches hangen. De ETag
+    // volgt de opslagsleutel (nieuwe UUID per upload), dus vervangen of
+    // verwijderen breekt de cache-key meteen; de korte max-age begrenst het
+    // venster waarin een client zonder revalidatie oude bytes toont.
+    setBinaryResponseHeaders(res, {
+      mimeType,
+      contentLength: buffer.length,
+      filename,
+      disposition,
+      cacheControl: 'public, max-age=300, must-revalidate',
+      etag: `"${createHash('sha256').update(storageKey).digest('hex').slice(0, 32)}"`,
     });
     res.send(buffer);
   }

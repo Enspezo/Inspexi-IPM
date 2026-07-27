@@ -296,7 +296,7 @@ describe('PriceTablesService', () => {
       });
     });
 
-    it('should throw ForbiddenException if no orgId and not SUPERUSER', async () => {
+    it('should throw BadRequestException if no orgId (WP-B3)', async () => {
       const userNoOrg = {
         ...mockUser,
         id: 'user-no-org',
@@ -306,10 +306,10 @@ describe('PriceTablesService', () => {
 
       await expect(
         service.create({ name: 'Test' }, userNoOrg),
-      ).rejects.toThrow(ForbiddenException);
+      ).rejects.toThrow(BadRequestException);
       await expect(
         service.create({ name: 'Test' }, userNoOrg),
-      ).rejects.toThrow('Geen organisatie gekoppeld');
+      ).rejects.toThrow('Selecteer eerst een organisatie');
     });
   });
 

@@ -5,7 +5,7 @@ import {
 } from '@nestjs/common';
 import { User, Role, Prisma } from '@prisma/client';
 import { PrismaService } from '@/prisma';
-import { paginate, buildOrderBy, orgScope, assertFound, assertSameOrg } from '@/common';
+import { paginate, buildOrderBy, orgScope, assertFound, assertSameOrg, requireOrg } from '@/common';
 import { NumberingService } from '@/modules/numbering/numbering.service';
 import { CustomFieldsValidator } from '@/modules/custom-fields/custom-fields.validator';
 import {
@@ -78,13 +78,12 @@ export class ProductsService {
   }
 
   async create(dto: CreateProductDto, user: User) {
-    const orgId = user.orgId;
-    if (!orgId && !user.roles.includes(Role.SUPERUSER)) {
-      throw new ForbiddenException('Geen organisatie gekoppeld');
-    }
+    // WP-B3 (B-503): effectieve org (SUPERUSER op org-subdomein → tenant-org);
+    // zonder org een nette NL-400 i.p.v. een Prisma-fout (500).
+    const orgId = requireOrg(user);
 
     const customFields = dto.customFields
-      ? await this.customFieldsValidator.validateAndSanitize(orgId!, 'PRODUCT', dto.customFields)
+      ? await this.customFieldsValidator.validateAndSanitize(orgId, 'PRODUCT', dto.customFields)
       : null;
 
     // The product group is read back through the include — verify it belongs to
@@ -93,7 +92,7 @@ export class ProductsService {
 
     return this.numbering.runWithGeneratedNumber(
       'PRODUCT',
-      orgId!,
+      orgId,
       {
         manual: dto.productCode,
         loadContext: async () => ({
@@ -110,7 +109,7 @@ export class ProductsService {
       (tx, productCode) =>
         tx.product.create({
           data: {
-            orgId: orgId!,
+            orgId,
             productCode,
             name: dto.name,
             unit: dto.unit,

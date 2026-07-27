@@ -8,5 +8,8 @@ export * from './config-guards';
 export * from './resolve-inspector-contact';
 export * from './html-safe';
 export * from './storage-key.util';
+export * from './image-signature.util';
+export * from './binary-response-headers.util';
 export * from './finding-critical';
 export * from './classification-severity';
+export * from './public-tenant';

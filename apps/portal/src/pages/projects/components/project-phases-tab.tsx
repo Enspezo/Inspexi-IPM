@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Button, SortableList, useToast } from '@/components/ui';
+import { Button, QueryErrorNotice, SortableList, useToast } from '@/components/ui';
 import { getErrorMessage } from '@/lib/api-client';
 import { useContactLocations } from '@/pages/contacts/hooks/use-locations';
 import { useContactPersons } from '@/pages/contacts/hooks/use-contact-persons';
@@ -39,10 +39,12 @@ export function ProjectPhasesTab({
   const [localOrder, setLocalOrder] = useState<string[] | null>(null);
 
   // Dropdown-data voor de fase-context (locatie + contactpersoon van het projectcontact).
-  const { data: contactLocations } = useContactLocations(contactId ?? '');
-  const { data: contactPersonsPage } = useContactPersons(
-    contactId ? { contactId, limit: 200 } : {},
-  );
+  const { data: contactLocations, error: locationsError } = useContactLocations(contactId ?? '');
+  const {
+    data: contactPersonsPage,
+    error: contactPersonsError,
+    refetch: refetchContactPersons,
+  } = useContactPersons(contactId ? { contactId, limit: 200 } : {});
 
   const locationOptions: SelectOption[] = useMemo(
     () => (contactLocations ?? []).map((l) => ({ value: l.id, label: l.name })),
@@ -90,6 +92,13 @@ export function ProjectPhasesTab({
           <Button onClick={() => setCreateOpen(true)}>+ Fase</Button>
         )}
       </div>
+
+      <QueryErrorNotice
+        error={contactPersonsError}
+        label="Contactpersonen"
+        onRetry={refetchContactPersons}
+      />
+      <QueryErrorNotice error={locationsError} label="Locaties" />
 
       <SortableList
         items={orderedPhases}

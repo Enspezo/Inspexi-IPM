@@ -10,15 +10,23 @@ export class BasePaginationQueryDto {
   @Min(1)
   page?: number = 1;
 
-  // Basis-cap is 100. Endpoints die bewust meer nodig hebben overriden dit veld
-  // in hun eigen DTO met @Max(200) — o.a. ListPlanningQueryDto (kalenderweergave
-  // laadt ~6 weken in één request).
-  @ApiPropertyOptional({ default: 20 })
+  // Basis-cap is 200 — hét paginatie-contract met de portal, die voor
+  // dropdown-/lijstdata overal `limit: 200` hanteert (B-305/WP-B6: met de oude
+  // cap van 100 faalden 14 dropdown-call-sites stil met een 400).
+  // Afwijken mag alleen bewust, met een comment in de eigen DTO. Huidige
+  // gedocumenteerde afwijkingen:
+  //   hoger : ListLocationsQueryDto (1000, kaartweergave),
+  //           ListProjectsQueryDto & ListRequestsQueryDto (500, kanban)
+  //   lager : ListAuditLogsQueryDto (50), SearchQueryDto (20),
+  //           ContextualHelpDto (50)
+  // De parametrische e2e (test/pagination-limit.e2e-spec.ts) bewaakt dat elk
+  // gepagineerd endpoint `?limit=200` accepteert; afwijkingen staan daar expliciet.
+  @ApiPropertyOptional({ default: 20, maximum: 200 })
   @IsOptional()
   @Type(() => Number)
   @IsInt()
   @Min(1)
-  @Max(100)
+  @Max(200)
   limit?: number = 20;
 
   @ApiPropertyOptional({ description: 'Sorteerveld' })

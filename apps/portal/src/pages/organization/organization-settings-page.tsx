@@ -367,9 +367,11 @@ export default function OrganizationSettingsPage() {
   };
 
   const handleFileSelected = async (file: File) => {
-    const allowed = ['image/png', 'image/jpeg', 'image/svg+xml', 'image/webp'];
+    // SVG is bewust geschrapt (WP-B4/B-507): een SVG kan scripts bevatten en werd
+    // vanaf het app-origin teruggeserveerd. De API weigert het type ook.
+    const allowed = ['image/png', 'image/jpeg', 'image/webp'];
     if (!allowed.includes(file.type)) {
-      showToast('Alleen PNG, JPEG, SVG en WebP zijn toegestaan', 'error');
+      showToast('Alleen PNG, JPEG en WebP zijn toegestaan', 'error');
       return;
     }
     if (file.size > 5 * 1024 * 1024) {
@@ -482,7 +484,7 @@ export default function OrganizationSettingsPage() {
               Organisatielogo
             </h3>
             <p className="mt-1 text-sm text-gray-500">
-              Upload een logo in PNG, JPEG, SVG of WebP formaat (max 5 MB).
+              Upload een logo in PNG, JPEG of WebP formaat (max 5 MB).
               Het logo wordt getoond op de loginpagina en in offertes.
             </p>
           </div>
@@ -566,12 +568,12 @@ export default function OrganizationSettingsPage() {
                   of sleep een bestand hierheen
                 </p>
                 <p className="mt-1 text-xs text-gray-400">
-                  PNG, JPEG, SVG, WebP — max 5 MB
+                  PNG, JPEG, WebP — max 5 MB
                 </p>
                 <input
                   ref={fileInputRef}
                   type="file"
-                  accept="image/png,image/jpeg,image/svg+xml,image/webp"
+                  accept="image/png,image/jpeg,image/webp"
                   className="hidden"
                   onChange={handleInputChange}
                 />

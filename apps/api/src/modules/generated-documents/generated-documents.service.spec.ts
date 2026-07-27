@@ -29,6 +29,7 @@ describe('GeneratedDocumentsService', () => {
       findFirst: jest.fn(),
       findMany: jest.fn(),
       update: jest.fn(),
+      count: jest.fn(),
     },
     photo: { findMany: jest.fn() },
     normTypeDefinition: { findFirst: jest.fn() },
@@ -107,6 +108,8 @@ describe('GeneratedDocumentsService', () => {
     mockPrisma.finding.findMany.mockResolvedValue([]);
     mockPrisma.measurementSheetRecord.findMany.mockResolvedValue([]);
     mockPrisma.measurementInstrument.findMany.mockResolvedValue([]);
+    // WP-A3: default géén SIGNED-handtekeningen (hasSignedSignature → false).
+    mockPrisma.documentSignature.count.mockResolvedValue(0);
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -192,6 +195,86 @@ describe('GeneratedDocumentsService', () => {
         ForbiddenException,
       );
       expect(mockPrisma.generatedDocument.update).not.toHaveBeenCalled();
+    });
+
+    // WP-A3 (B-104): de poort is het bestaan van een SIGNED-handtekeningrij,
+    // niet alleen de documentstatus — PENDING_SIGNATURES met een eerste
+    // handtekening is óók bevroren.
+    it('blocks editing at PENDING_SIGNATURES once a SIGNED signature row exists (B-104)', async () => {
+      mockPrisma.generatedDocument.findUnique.mockResolvedValue({ orgId: 'org-1' });
+      mockPrisma.generatedDocument.findFirst.mockResolvedValue({
+        id: 'gd-1',
+        status: GeneratedDocumentStatus.PENDING_SIGNATURES,
+      });
+      mockPrisma.documentSignature.count.mockResolvedValue(1);
+
+      await expect(service.updateEditedContent('gd-1', user, '<p>x</p>')).rejects.toThrow(
+        ForbiddenException,
+      );
+      expect(mockPrisma.documentSignature.count).toHaveBeenCalledWith({
+        where: { generatedDocumentId: 'gd-1', status: SignatureStatus.SIGNED },
+      });
+      expect(mockPrisma.generatedDocument.update).not.toHaveBeenCalled();
+    });
+
+    it('allows editing at PENDING_SIGNATURES while no signature is SIGNED yet', async () => {
+      mockPrisma.generatedDocument.findUnique.mockResolvedValue({ orgId: 'org-1' });
+      mockPrisma.generatedDocument.findFirst.mockResolvedValue({
+        id: 'gd-1',
+        status: GeneratedDocumentStatus.PENDING_SIGNATURES,
+      });
+      mockPrisma.generatedDocument.update.mockResolvedValue({ id: 'gd-1', isEdited: true });
+
+      await service.updateEditedContent('gd-1', user, '<p>x</p>');
+
+      expect(mockPrisma.generatedDocument.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'gd-1' },
+          data: expect.objectContaining({ isEdited: true, editedBy: 'user-1' }),
+        }),
+      );
+    });
+  });
+
+  // WP-A3 (B-102): verwijderen — FINALIZED → 403; ≥1 SIGNED-handtekening → 400.
+  describe('delete', () => {
+    it('blocks deleting a finalized document (403)', async () => {
+      mockPrisma.generatedDocument.findUnique.mockResolvedValue({ orgId: 'org-1' });
+      mockPrisma.generatedDocument.findFirst.mockResolvedValue({
+        id: 'gd-1',
+        status: GeneratedDocumentStatus.FINALIZED,
+      });
+      await expect(service.delete('gd-1', user)).rejects.toThrow(ForbiddenException);
+      expect(mockPrisma.generatedDocument.delete).not.toHaveBeenCalled();
+    });
+
+    it('blocks deleting a document with a SIGNED signature (400, B-102)', async () => {
+      mockPrisma.generatedDocument.findUnique.mockResolvedValue({ orgId: 'org-1' });
+      mockPrisma.generatedDocument.findFirst.mockResolvedValue({
+        id: 'gd-1',
+        status: GeneratedDocumentStatus.PENDING_SIGNATURES,
+        pdfUrl: null,
+        wordUrl: null,
+      });
+      mockPrisma.documentSignature.count.mockResolvedValue(1);
+
+      await expect(service.delete('gd-1', user)).rejects.toThrow(BadRequestException);
+      expect(mockPrisma.generatedDocument.delete).not.toHaveBeenCalled();
+    });
+
+    it('deletes an unsigned document', async () => {
+      mockPrisma.generatedDocument.findUnique.mockResolvedValue({ orgId: 'org-1' });
+      mockPrisma.generatedDocument.findFirst.mockResolvedValue({
+        id: 'gd-1',
+        status: GeneratedDocumentStatus.DRAFT,
+        pdfUrl: null,
+        wordUrl: null,
+      });
+      mockPrisma.generatedDocument.delete.mockResolvedValue({ id: 'gd-1' });
+
+      await service.delete('gd-1', user);
+
+      expect(mockPrisma.generatedDocument.delete).toHaveBeenCalledWith({ where: { id: 'gd-1' } });
     });
   });
 

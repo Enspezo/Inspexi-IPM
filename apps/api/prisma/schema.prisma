@@ -3701,6 +3701,9 @@ model DocumentSignature {
   signatureImage  String?   @map("signature_image") @db.Text
   signedAt        DateTime? @map("signed_at")
   signedIpAddress String?   @map("signed_ip_address")
+  // WP-A3 (B-101): herleidbaarheid — de staf-gebruiker die intern ondertekende.
+  // Plain uuid zonder FK-relatie, consistent met generatedBy/editedBy op GeneratedDocument.
+  signedByUserId  String?   @map("signed_by_user_id") @db.Uuid
 
   signatureRequestId     String?         @map("signature_request_id")
   signatureRequestSentAt DateTime?       @map("signature_request_sent_at")

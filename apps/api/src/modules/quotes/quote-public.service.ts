@@ -1,16 +1,19 @@
 import { Injectable, Logger, ForbiddenException, BadRequestException, Inject } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { Role, QuoteStatus, NotificationType } from '@prisma/client';
 import { PrismaService } from '@/prisma';
-import { assertFound } from '@/common';
+import { assertFound, publicTenantWhere } from '@/common';
+import { TenantContext } from '@/common/interfaces/tenant-context.interface';
 import { NotificationsService } from '../notifications/notifications.service';
 import { EmailService } from '@/common/services/email.service';
 import { StorageProvider, STORAGE_PROVIDER } from '@/common/services/storage/storage.interface';
+import { EntitlementsService } from '@/modules/entitlements/entitlements.service';
 import { PlanningService } from '../planning/planning.service';
 import { ProjectsService } from '../projects/projects.service';
 import { EmailTemplatesService } from '../email-templates/email-templates.service';
 import { PdfService } from './pdf.service';
 import { SignQuoteDto } from './dto';
-import { QUOTE_INCLUDE, serializeQuote } from './quotes.helpers';
+import { PUBLIC_QUOTE_SELECT, serializeQuote } from './quotes.helpers';
 
 @Injectable()
 export class QuotePublicService {
@@ -18,9 +21,11 @@ export class QuotePublicService {
 
   constructor(
     private prisma: PrismaService,
+    private config: ConfigService,
     private notifications: NotificationsService,
     private emailService: EmailService,
     @Inject(STORAGE_PROVIDER) private storage: StorageProvider,
+    private entitlements: EntitlementsService,
     private planningService: PlanningService,
     private projectsService: ProjectsService,
     private pdfService: PdfService,
@@ -28,14 +33,21 @@ export class QuotePublicService {
   ) {}
 
   // Publieke webviewer
-  async findByPublicToken(token: string) {
-    const quote = assertFound(await this.prisma.quote.findUnique({
-      where: { publicToken: token },
-      include: {
-        ...QUOTE_INCLUDE,
-        organization: { select: { id: true, name: true, logoUrl: true, primaryColor: true } },
+  async findByPublicToken(token: string, tenant?: TenantContext) {
+    // B-152 (WP-B7): token gebonden aan de bezochte tenant; op een vreemd
+    // subdomein resolvet hij niet (generieke 404, geen oracle).
+    const quote = assertFound(await this.prisma.quote.findFirst({
+      where: { publicToken: token, ...publicTenantWhere(tenant, this.config, 'Offerte') },
+      select: {
+        ...PUBLIC_QUOTE_SELECT,
+        // Server-side nodig (entitlement/notificatie/first-view) — hieronder gestript.
+        orgId: true,
+        createdBy: true,
+        viewedAt: true,
       },
     }), 'Offerte');
+    // Entitlement tegen de EIGENAAR van de offerte (niet de bezoekende tenant).
+    await this.entitlements.assertFeature(quote.orgId, 'CRM_COMPLEET');
     const notSentStatuses: QuoteStatus[] = [QuoteStatus.CONCEPT, QuoteStatus.TER_GOEDKEURING, QuoteStatus.GOEDGEKEURD];
     if (notSentStatuses.includes(quote.status)) {
       throw new ForbiddenException('Offerte is nog niet verstuurd');
@@ -46,21 +58,24 @@ export class QuotePublicService {
         data: { viewedAt: new Date(), status: quote.status === QuoteStatus.VERSTUURD ? QuoteStatus.BEKEKEN : quote.status },
       });
       this.notifications.dispatch({ type: NotificationType.OFFERTE_BEKEKEN, orgId: quote.orgId, recipientUserIds: [quote.createdBy], title: 'Offerte bekeken', body: `Klant heeft offerte ${quote.quoteNumber} voor het eerst geopend.`, entityType: 'quote', entityId: quote.id });
-      quote.viewedAt = updated.viewedAt;
       quote.status = updated.status;
     }
-    return serializeQuote(quote);
+    // Interne stuurvelden nooit teruggeven (B-306-klasse: allowlist, geen spread).
+    const { orgId: _orgId, createdBy: _createdBy, viewedAt: _viewedAt, ...publicQuote } = quote;
+    return serializeQuote(publicQuote);
   }
 
-  async signQuote(token: string, dto: SignQuoteDto, clientIp?: string, userAgent?: string) {
-    const quote = assertFound(await this.prisma.quote.findUnique({
-      where: { publicToken: token },
+  async signQuote(token: string, dto: SignQuoteDto, tenant?: TenantContext, clientIp?: string, userAgent?: string) {
+    // B-152 (WP-B7): ondertekenen is statuswijzigend — zelfde tenantbinding als lezen.
+    const quote = assertFound(await this.prisma.quote.findFirst({
+      where: { publicToken: token, ...publicTenantWhere(tenant, this.config, 'Offerte') },
       include: {
         organization: { select: { name: true, senderName: true, senderEmail: true } },
         contact: { select: { id: true, email: true, companyName: true, firstName: true, lastName: true } },
         template: { select: { acceptedEmailTemplateId: true, acceptedEmailEnabled: true } },
       },
     }), 'Offerte');
+    await this.entitlements.assertFeature(quote.orgId, 'CRM_COMPLEET');
     if (quote.status !== QuoteStatus.VERSTUURD && quote.status !== QuoteStatus.BEKEKEN) throw new BadRequestException('Offerte kan niet worden ondertekend in de huidige status');
     if (quote.signedAt) throw new BadRequestException('Offerte is al ondertekend');
     const signedAt = new Date();

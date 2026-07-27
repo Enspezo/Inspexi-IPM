@@ -8,7 +8,7 @@ import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { Modal, Input, Select, Checkbox, Button, useToast } from '@/components/ui';
+import { Modal, Input, QueryErrorNotice, Select, Checkbox, Button, useToast } from '@/components/ui';
 import { getErrorMessage } from '@/lib/api-client';
 import {
   MeasurementSheetFieldType,
@@ -121,7 +121,11 @@ export function FieldModal({ isOpen, onClose, templateId, section, field }: Prop
   const isEdit = !!field;
 
   // Finding-templates voor de auto-constatering Select (PAGINATED → .data).
-  const { data: findingTemplatesPage } = useFindingTemplates({ limit: 200 });
+  const {
+    data: findingTemplatesPage,
+    error: findingTemplatesError,
+    refetch: refetchFindingTemplates,
+  } = useFindingTemplates({ limit: 200 });
   const findingTemplateOptions = (findingTemplatesPage?.data ?? []).map((ft) => ({
     value: ft.id,
     label: ft.code ? `${ft.code} — ${ft.shortDescription}` : ft.shortDescription,
@@ -534,12 +538,19 @@ export function FieldModal({ isOpen, onClose, templateId, section, field }: Prop
           <legend className="px-1 text-sm font-medium text-gray-700">Auto-constatering</legend>
           <Checkbox label="Automatisch constatering aanmaken bij fail" {...register('autoFindingEnabled')} />
           {autoFindingEnabled && (
-            <Select
-              label="Constatering-sjabloon"
-              placeholder="Kies een sjabloon"
-              options={findingTemplateOptions}
-              {...register('autoFindingTemplateId')}
-            />
+            <>
+              <Select
+                label="Constatering-sjabloon"
+                placeholder="Kies een sjabloon"
+                options={findingTemplateOptions}
+                {...register('autoFindingTemplateId')}
+              />
+              <QueryErrorNotice
+                error={findingTemplatesError}
+                label="Constatering-sjablonen"
+                onRetry={refetchFindingTemplates}
+              />
+            </>
           )}
         </fieldset>
 

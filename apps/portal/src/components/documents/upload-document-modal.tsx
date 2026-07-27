@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react';
-import { Button, Input, Modal, Select, TagSelect, useToast } from '@/components/ui';
+import { Button, Input, Modal, QueryErrorNotice, Select, TagSelect, useToast } from '@/components/ui';
 import { useUploadDocument } from '@/pages/documents/hooks/use-documents';
 import { useDocumentTagsCompact } from '@/pages/organization/hooks/use-document-tags';
 import { DocumentEntityType, ContactType } from '@/types';
@@ -109,10 +109,12 @@ export function UploadDocumentModal({
   // project) en zit daarom niet in DOCUMENT_ENTITY_LINK_TYPES — Partial dekt dat.
   const recordSources: Partial<Record<
     DocumentEntityType,
-    { isLoading: boolean; options: RecordOption[] }
+    { isLoading: boolean; error: unknown; refetch: () => void; options: RecordOption[] }
   >> = {
     [DocumentEntityType.CONTACT]: {
       isLoading: contacts.isLoading,
+      error: contacts.error,
+      refetch: contacts.refetch,
       options: (contacts.data?.data ?? []).map((c) => ({
         value: c.id,
         label: getContactDisplayName(c),
@@ -120,6 +122,8 @@ export function UploadDocumentModal({
     },
     [DocumentEntityType.LOCATION]: {
       isLoading: locations.isLoading,
+      error: locations.error,
+      refetch: locations.refetch,
       options: (locations.data?.data ?? []).map((l) => ({
         value: l.id,
         label: l.name,
@@ -127,6 +131,8 @@ export function UploadDocumentModal({
     },
     [DocumentEntityType.REQUEST]: {
       isLoading: requests.isLoading,
+      error: requests.error,
+      refetch: requests.refetch,
       options: (requests.data?.data ?? []).map((r) => ({
         value: r.id,
         label: r.title,
@@ -134,6 +140,8 @@ export function UploadDocumentModal({
     },
     [DocumentEntityType.QUOTE]: {
       isLoading: quotes.isLoading,
+      error: quotes.error,
+      refetch: quotes.refetch,
       options: (quotes.data?.data ?? []).map((q) => ({
         value: q.id,
         label: q.quoteNumber,
@@ -141,6 +149,8 @@ export function UploadDocumentModal({
     },
     [DocumentEntityType.PROJECT]: {
       isLoading: projects.isLoading,
+      error: projects.error,
+      refetch: projects.refetch,
       options: (projects.data?.data ?? []).map((p) => ({
         value: p.id,
         label: `${p.projectNumber} — ${p.title}`,
@@ -148,6 +158,8 @@ export function UploadDocumentModal({
     },
     [DocumentEntityType.TASK]: {
       isLoading: tasks.isLoading,
+      error: tasks.error,
+      refetch: tasks.refetch,
       options: (tasks.data?.data ?? []).map((t) => ({
         value: t.id,
         label: t.title,
@@ -155,6 +167,8 @@ export function UploadDocumentModal({
     },
     [DocumentEntityType.PRODUCT]: {
       isLoading: products.isLoading,
+      error: products.error,
+      refetch: products.refetch,
       options: (products.data?.data ?? []).map((p) => ({
         value: p.id,
         label: p.name,
@@ -162,6 +176,8 @@ export function UploadDocumentModal({
     },
     [DocumentEntityType.PLANNING]: {
       isLoading: planning.isLoading,
+      error: planning.error,
+      refetch: planning.refetch,
       options: (planning.data?.data ?? []).map((p) => ({
         value: p.id,
         label: p.productName,
@@ -169,6 +185,8 @@ export function UploadDocumentModal({
     },
     [DocumentEntityType.WORK_ORDER]: {
       isLoading: workOrders.isLoading,
+      error: workOrders.error,
+      refetch: workOrders.refetch,
       options: (workOrders.data?.data ?? []).map((w) => ({
         value: w.id,
         label: w.workOrderNumber,
@@ -176,6 +194,8 @@ export function UploadDocumentModal({
     },
     [DocumentEntityType.USER]: {
       isLoading: users.isLoading,
+      error: users.error,
+      refetch: users.refetch,
       options: (users.data ?? []).map((u) => ({
         value: u.id,
         label: [u.firstName, u.lastName].filter(Boolean).join(' ') || u.email,
@@ -260,12 +280,19 @@ export function UploadDocumentModal({
               }}
             />
             {selectedEntityType && (
-              <Select
-                label={DOCUMENT_ENTITY_LABELS[selectedEntityType] || 'Entiteit'}
-                options={recordOptions}
-                value={selectedEntityId}
-                onChange={(e) => setSelectedEntityId(e.target.value)}
-              />
+              <>
+                <Select
+                  label={DOCUMENT_ENTITY_LABELS[selectedEntityType] || 'Entiteit'}
+                  options={recordOptions}
+                  value={selectedEntityId}
+                  onChange={(e) => setSelectedEntityId(e.target.value)}
+                />
+                <QueryErrorNotice
+                  error={activeSource?.error}
+                  label={DOCUMENT_ENTITY_LABELS[selectedEntityType] || 'Records'}
+                  onRetry={activeSource?.refetch}
+                />
+              </>
             )}
           </>
         )}

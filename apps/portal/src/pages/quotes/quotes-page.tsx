@@ -7,6 +7,7 @@ import {
   ActionMenu,
   Button,
   ErrorBox,
+  QueryErrorNotice,
   Spinner,
   StatusBadge,
   Table,
@@ -66,7 +67,11 @@ export default function QuotesPage() {
   // Fase-kolomfilter (PRD-12): opties uit de zichtbare data, gevuld zodra die geladen is.
   const [phaseFilterOptions, setPhaseFilterOptions] = useState<{ value: string; label: string }[]>([]);
 
-  const { data: templatesData } = useQuoteTemplates({ limit: 200 });
+  const {
+    data: templatesData,
+    error: templatesError,
+    refetch: refetchTemplates,
+  } = useQuoteTemplates({ limit: 200 });
   const templates = templatesData?.data ?? [];
 
   // Prominent filterbar Select: server-side via templateId param ('none' → no template)
@@ -333,6 +338,11 @@ export default function QuotesPage() {
       />
 
       {/* Filters */}
+      <QueryErrorNotice
+        error={templatesError}
+        label="Offertesjablonen"
+        onRetry={refetchTemplates}
+      />
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
         <div className="flex-1">
           <Input

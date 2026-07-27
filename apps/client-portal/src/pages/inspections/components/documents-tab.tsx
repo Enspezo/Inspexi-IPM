@@ -9,9 +9,9 @@ import { documentTypeLabel } from '@/lib/labels';
 import { downloadClientDocument } from '@/lib/download';
 import { getErrorMessage } from '@/lib/api-client';
 import { SignatureModal } from '@/components/signature-modal';
-import type { GeneratedDocumentSummary } from '@/types';
+import type { InspectionDocumentListItem } from '@/types';
 
-function hasPendingClientSignature(doc: GeneratedDocumentSummary): boolean {
+function hasPendingClientSignature(doc: InspectionDocumentListItem): boolean {
   return doc.signatures.some(
     (s) => s.signerRoleCode === 'CLIENT' && (s.status === 'PENDING' || s.status === 'REQUESTED'),
   );
@@ -25,7 +25,7 @@ export function DocumentsTab({
   inspectionName: string;
 }) {
   const { data, isLoading, error } = useInspectionDocuments(inspectionId);
-  const [signingDoc, setSigningDoc] = useState<GeneratedDocumentSummary | null>(null);
+  const [signingDoc, setSigningDoc] = useState<InspectionDocumentListItem | null>(null);
   const documents = data ?? [];
 
   return (
@@ -64,10 +64,13 @@ export function DocumentsTab({
   );
 }
 
-function DocumentCard({ doc, onSign }: { doc: GeneratedDocumentSummary; onSign: () => void }) {
+function DocumentCard({ doc, onSign }: { doc: InspectionDocumentListItem; onSign: () => void }) {
   const { showToast } = useToast();
   const [downloading, setDownloading] = useState(false);
   const pending = hasPendingClientSignature(doc);
+  // B-406a (WP-B9): ondertekenen vereist een per-plan canSign-grant; zonder dat
+  // recht geen knop of "vereist"-melding (voorheen: tekenen → pas dán een 403).
+  const canSign = doc.canSign !== false;
 
   const handleDownload = async () => {
     setDownloading(true);
@@ -84,7 +87,7 @@ function DocumentCard({ doc, onSign }: { doc: GeneratedDocumentSummary; onSign: 
     <div
       className={clsx(
         'rounded-xl border bg-white p-4 shadow-sm',
-        pending ? 'border-warning-500/40 ring-1 ring-warning-500/20' : 'border-gray-200',
+        pending && canSign ? 'border-warning-500/40 ring-1 ring-warning-500/20' : 'border-gray-200',
       )}
     >
       <div className="flex items-start justify-between gap-3">
@@ -95,7 +98,14 @@ function DocumentCard({ doc, onSign }: { doc: GeneratedDocumentSummary; onSign: 
         <StatusBadge map={GENERATED_DOCUMENT_STATUS} status={doc.status} />
       </div>
 
-      {pending && <p className="mt-2 text-xs font-medium text-warning-600">Uw handtekening is vereist</p>}
+      {pending && canSign && (
+        <p className="mt-2 text-xs font-medium text-warning-600">Uw handtekening is vereist</p>
+      )}
+      {pending && !canSign && (
+        <p className="mt-2 text-xs text-gray-500">
+          Ondertekening verloopt via de link in uw e-mail.
+        </p>
+      )}
 
       {doc.signatures.length > 0 && (
         <ul className="mt-3 space-y-1.5">
@@ -125,7 +135,7 @@ function DocumentCard({ doc, onSign }: { doc: GeneratedDocumentSummary; onSign: 
             Download PDF
           </Button>
         )}
-        {pending && (
+        {pending && canSign && (
           <Button size="sm" onClick={onSign}>
             Ondertekenen
           </Button>

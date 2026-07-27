@@ -1,9 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import {
-  NotFoundException,
-  ForbiddenException,
-  ConflictException,
-} from '@nestjs/common';
+import { NotFoundException, ForbiddenException, ConflictException, BadRequestException } from '@nestjs/common';
 import { Role } from '@prisma/client';
 import { ProductGroupsService } from './product-groups.service';
 import { PrismaService } from '@/prisma';
@@ -149,12 +145,12 @@ describe('ProductGroupsService', () => {
       expect(result.name).toBe('New Group');
     });
 
-    it('should throw ForbiddenException when user has no orgId', async () => {
+    it('should throw BadRequestException when user has no orgId (WP-B3)', async () => {
       const userNoOrg = { id: 'u-1', orgId: null, roles: [Role.BACKOFFICE] } as any;
 
       await expect(
         service.create({ name: 'Test' } as any, userNoOrg),
-      ).rejects.toThrow(ForbiddenException);
+      ).rejects.toThrow(BadRequestException);
     });
   });
 

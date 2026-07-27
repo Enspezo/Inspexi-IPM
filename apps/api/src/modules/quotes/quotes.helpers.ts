@@ -181,6 +181,63 @@ export async function findQuoteForUser(prisma: PrismaService, id: string, user: 
   return quote;
 }
 
+/**
+ * WP-B7 (B-152/B-306-klasse): expliciete allowlist voor de PUBLIEKE offerte-payload.
+ *
+ * `QUOTE_INCLUDE` + record-spread serveerde voorheen élk kolomveld publiek —
+ * inclusief `internalNotes`, `clientIp`/`clientUserAgent`, `customFields`,
+ * interne `approvalRequests` (met stafnamen/-e-mails en afkeurnotities),
+ * `createdByUser` (staf-e-mail) en storage-keys. De publieke webviewer
+ * (`/offerte/:token`) leest uitsluitend onderstaande velden; iets toevoegen is
+ * een bewuste, geteste beslissing (key-snapshot-e2e in
+ * test/public-endpoints.e2e-spec.ts).
+ *
+ * NB: `pdfStorageKey` blijft erin — de pagina gebruikt de aanwezigheid ervan om
+ * tussen DOCX-weergave (embedded PDF) en blokkenweergave te kiezen. Vragen
+ * (`questions`) gaan zonder `user`-relatie mee: de pagina toont voor
+ * stafantwoorden de organisatienaam, nooit de individuele medewerker.
+ */
+export const PUBLIC_QUOTE_SELECT = {
+  id: true,
+  quoteNumber: true,
+  status: true,
+  subject: true,
+  contentBlocks: true,
+  subtotal: true,
+  discountTotal: true,
+  vatTotal: true,
+  total: true,
+  validUntil: true,
+  createdAt: true,
+  signedAt: true,
+  clientName: true,
+  pdfStorageKey: true,
+  contact: { select: { id: true, type: true, companyName: true, firstName: true, lastName: true } },
+  organization: { select: { id: true, name: true, logoUrl: true, primaryColor: true } },
+  lines: {
+    select: {
+      id: true,
+      description: true,
+      quantity: true,
+      unit: true,
+      unitPrice: true,
+      vatRate: true,
+      discountPct: true,
+      lineTotal: true,
+      sortOrder: true,
+    },
+    orderBy: { sortOrder: 'asc' as const },
+  },
+  attachments: {
+    select: { id: true, fileName: true, mimeType: true, fileSize: true, sortOrder: true },
+    orderBy: { sortOrder: 'asc' as const },
+  },
+  questions: {
+    select: { id: true, message: true, isFromClient: true, createdAt: true },
+    orderBy: { createdAt: 'asc' as const },
+  },
+};
+
 export function getPublicUrl(config: ConfigService, path: string): string {
   const baseUrl = config.get<string>('PUBLIC_URL', 'http://localhost:5173');
   return `${baseUrl}${path}`;

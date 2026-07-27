@@ -32,6 +32,8 @@ export class AllExceptionsFilter implements ExceptionFilter {
     const ctx = host.switchToHttp();
     const response = ctx.getResponse<Response>();
     const request = ctx.getRequest<Request>();
+    const requestId = (request as any).requestId as string | undefined;
+    const requestIdSuffix = requestId ? ` [requestId=${requestId}]` : '';
 
     let status = HttpStatus.INTERNAL_SERVER_ERROR;
     let message: string | string[] = 'Internal server error';
@@ -77,6 +79,12 @@ export class AllExceptionsFilter implements ExceptionFilter {
           status = HttpStatus.BAD_REQUEST;
           message = 'Verwijzing naar niet-bestaande gegevens';
           break;
+        // WP-B3 (B-503): null in een NOT NULL-kolom (bv. orgId zonder
+        // tenantcontext) is ongeldige invoer, geen serverfout.
+        case 'P2011':
+          status = HttpStatus.BAD_REQUEST;
+          message = 'Verplicht veld ontbreekt';
+          break;
         case 'P2020':
           // Waarde buiten het kolomtype-bereik (bv. Postgres numeric overflow) — B-303.
           status = HttpStatus.BAD_REQUEST;
@@ -84,10 +92,26 @@ export class AllExceptionsFilter implements ExceptionFilter {
           break;
       }
       if (status !== HttpStatus.INTERNAL_SERVER_ERROR) {
-        this.logger.warn(
-          `Prisma ${exception.code} on ${request.method} ${request.url}: ${exception.message.split('\n').pop()}`,
-        );
+        // P2011 wijst vrijwel altijd op een codefout (verplichte kolom niet
+        // gevuld) — log op error-niveau mét requestId zodat de bug niet uit
+        // beeld verdwijnt achter de nette 400.
+        const logLine = `Prisma ${exception.code} on ${request.method} ${request.url}${requestIdSuffix}: ${exception.message.split('\n').pop()}`;
+        if (exception.code === 'P2011') {
+          this.logger.error(logLine);
+        } else {
+          this.logger.warn(logLine);
+        }
       }
+    } else if (exception instanceof Prisma.PrismaClientValidationError) {
+      // WP-B3 (B-503): ongeldige query-input (bv. `orgId: null` in een
+      // verplichte FK-kolom) → 400 i.p.v. 500. Wel op error-niveau loggen mét
+      // requestId: dit duidt vrijwel altijd op een codefout die zichtbaar
+      // moet blijven in de serverlogs.
+      status = HttpStatus.BAD_REQUEST;
+      message = 'Ongeldige gegevens';
+      this.logger.error(
+        `PrismaClientValidationError on ${request.method} ${request.url}${requestIdSuffix}: ${exception.message.split('\n').pop()}`,
+      );
     } else if (
       exception instanceof Prisma.PrismaClientUnknownRequestError &&
       /numeric field overflow/i.test(exception.message)
@@ -97,7 +121,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
       status = HttpStatus.BAD_REQUEST;
       message = 'Een bedrag of aantal is te groot om op te slaan';
       this.logger.warn(
-        `Prisma numeric overflow on ${request.method} ${request.url}`,
+        `Prisma numeric overflow on ${request.method} ${request.url}${requestIdSuffix}`,
       );
     } else if (isHttpErrorLike(exception)) {
       // Express body-parser-fouten (PayloadTooLargeError → 413, kapotte JSON → 400)
@@ -112,13 +136,12 @@ export class AllExceptionsFilter implements ExceptionFilter {
             : message;
     }
 
-    const requestId = (request as any).requestId as string | undefined;
     const isServerError = status === HttpStatus.INTERNAL_SERVER_ERROR;
 
     // Log non-HTTP exceptions (500s) for debugging
     if (isServerError) {
       this.logger.error(
-        `500 on ${request.method} ${request.url}${requestId ? ` [requestId=${requestId}]` : ''}`,
+        `500 on ${request.method} ${request.url}${requestIdSuffix}`,
         exception instanceof Error ? exception.stack : String(exception),
       );
     }

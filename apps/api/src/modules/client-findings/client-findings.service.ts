@@ -46,6 +46,11 @@ export class ClientFindingsService {
     });
     if (!finding) throw new NotFoundException('Constatering niet gevonden');
     await this.inspections.assertInspectionAccess(user.id, org, finding.inspectionPlanId);
+    // B-412 (WP-B9): constateringen van een nog niet gereviewd rapport zijn niet
+    // klant-zichtbaar — zelfde 404 als een onbekende constatering (geen oracle).
+    if (!(await this.inspections.isPlanContentReleased(org, finding.inspectionPlanId))) {
+      throw new NotFoundException('Constatering niet gevonden');
+    }
     return finding;
   }
 
@@ -195,6 +200,15 @@ export class ClientFindingsService {
       org,
       photo.resolution.finding.inspectionPlanId,
     );
+    // B-412: resolutie-foto's horen bij de constatering-inhoud → zelfde gate.
+    if (
+      !(await this.inspections.isPlanContentReleased(
+        org,
+        photo.resolution.finding.inspectionPlanId,
+      ))
+    ) {
+      throw new NotFoundException('Foto niet gevonden');
+    }
     const buffer = await this.storage.download(photo.photoUrl);
     return { buffer, mimeType: photo.photoUrl.endsWith('.png') ? 'image/png' : 'image/jpeg' };
   }

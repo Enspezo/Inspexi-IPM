@@ -90,6 +90,27 @@ const schema = z.object({
   // Herhalende sectie
   copyValueOnNewRow: z.boolean().optional(),
   allowBulkEdit: z.boolean().optional(),
+}).superRefine((d, ctx) => {
+  // B-506: min > max maakt het veld oninvulbaar in de PWA — weiger de
+  // combinatie hier al in de builder (de API weigert hem ook).
+  const min = num(d.minValue);
+  const max = num(d.maxValue);
+  if (min !== undefined && max !== undefined && max < min) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['maxValue'],
+      message: 'Maximum moet groter of gelijk zijn aan het minimum',
+    });
+  }
+  const pfMin = num(d.passFailMinValue);
+  const pfMax = num(d.passFailMaxValue);
+  if (pfMin !== undefined && pfMax !== undefined && pfMax < pfMin) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['passFailMaxValue'],
+      message: 'Maximum moet groter of gelijk zijn aan het minimum',
+    });
+  }
 });
 type FormData = z.infer<typeof schema>;
 
@@ -348,7 +369,12 @@ export function FieldModal({ isOpen, onClose, templateId, section, field }: Prop
               <Input label="Eenheid" placeholder="bijv. A, V" {...register('unit')} />
               <Input label="Decimalen" type="number" min={0} {...register('decimals')} />
               <Input label="Min" type="number" {...register('minValue')} />
-              <Input label="Max" type="number" {...register('maxValue')} />
+              <Input
+                label="Max"
+                type="number"
+                error={errors.maxValue?.message}
+                {...register('maxValue')}
+              />
             </div>
           </fieldset>
         )}
@@ -475,7 +501,12 @@ export function FieldModal({ isOpen, onClose, templateId, section, field }: Prop
                 {isRangeOp ? (
                   <div className="grid grid-cols-2 gap-4">
                     <Input label="Min (pass)" type="number" {...register('passFailMinValue')} />
-                    <Input label="Max (pass)" type="number" {...register('passFailMaxValue')} />
+                    <Input
+                      label="Max (pass)"
+                      type="number"
+                      error={errors.passFailMaxValue?.message}
+                      {...register('passFailMaxValue')}
+                    />
                   </div>
                 ) : isInOp ? (
                   <div>

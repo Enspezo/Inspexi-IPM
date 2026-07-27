@@ -2,10 +2,10 @@ import { tenantStorage } from '@/lib/storage';
 import { useState, useRef, useCallback } from 'react';
 import { RequestStatus } from '@/types';
 import type { Priority, Request } from '@/types';
-import { ErrorBox, Spinner } from '@/components/ui';
+import { Button, ErrorBox, Input, Modal, Select, Spinner } from '@/components/ui';
 import { useWindowTabs } from '@/providers/window-tabs';
 import { getStatusConfig, PRIORITY, REQUEST_STATUS } from '@/lib/status';
-import { useAllRequests } from '../hooks/use-requests';
+import { useAllRequests, useLostReasons } from '../hooks/use-requests';
 import { useQueryClient } from '@tanstack/react-query';
 import { useApiMutation } from '@/hooks/use-api-mutation';
 import { apiClient } from '@/lib/api-client';
@@ -318,13 +318,39 @@ export function RequestsKanban({ search, priorityFilter, assignedTo }: RequestsK
 
   // Generieke status-update mutation — id wordt meegegeven in mutationFn
   const updateStatusMutation = useApiMutation({
-    mutationFn: ({ id, status }: { id: string; status: RequestStatus }) =>
-      apiClient.patch(`/requests/${id}/status`, { status }),
+    mutationFn: ({
+      id,
+      status,
+      lostReasonId,
+      lostNote,
+    }: {
+      id: string;
+      status: RequestStatus;
+      lostReasonId?: string;
+      lostNote?: string;
+    }) =>
+      apiClient.patch(`/requests/${id}/status`, {
+        status,
+        ...(lostReasonId ? { lostReasonId } : {}),
+        ...(lostNote ? { lostNote } : {}),
+      }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: requestKeys.all });
       queryClient.invalidateQueries({ queryKey: requestsAllKeys.all });
     },
   });
+
+  // B-315 §1: VERLOREN vereist een reden — een drop op die kolom opent eerst
+  // een dialoog; de mutatie (en de optimistische override) volgen pas na
+  // bevestiging.
+  const [pendingLostId, setPendingLostId] = useState<string | null>(null);
+  const [lostReasonId, setLostReasonId] = useState('');
+  const [lostNote, setLostNote] = useState('');
+  const { data: lostReasons } = useLostReasons();
+  const lostReasonOptions = [
+    { value: '', label: 'Kies een reden…' },
+    ...(lostReasons ?? []).map((r) => ({ value: r.id, label: r.label })),
+  ];
 
   const handleDragStart = useCallback((id: string) => {
     draggingId.current = id;
@@ -354,6 +380,14 @@ export function RequestsKanban({ search, priorityFilter, assignedTo }: RequestsK
       const currentStatus = localOverrides[id] ?? request?.status;
       if (!request || currentStatus === targetStatus) return;
 
+      // B-315 §1: VERLOREN vraagt eerst om een reden via de dialoog.
+      if (targetStatus === RequestStatus.VERLOREN) {
+        setLostReasonId('');
+        setLostNote('');
+        setPendingLostId(id);
+        return;
+      }
+
       // Optimistisch updaten in de UI
       setLocalOverrides((prev) => ({ ...prev, [id]: targetStatus }));
 
@@ -376,6 +410,33 @@ export function RequestsKanban({ search, priorityFilter, assignedTo }: RequestsK
     },
     [data, localOverrides, updateStatusMutation],
   );
+
+  const confirmLost = useCallback(async () => {
+    const id = pendingLostId;
+    if (!id || !lostReasonId) return;
+
+    setPendingLostId(null);
+    setLocalOverrides((prev) => ({ ...prev, [id]: RequestStatus.VERLOREN }));
+    try {
+      await updateStatusMutation.mutateAsync({
+        id,
+        status: RequestStatus.VERLOREN,
+        lostReasonId,
+        lostNote: lostNote.trim() || undefined,
+      });
+      setLocalOverrides((prev) => {
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      });
+    } catch {
+      setLocalOverrides((prev) => {
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      });
+    }
+  }, [pendingLostId, lostReasonId, lostNote, updateStatusMutation]);
 
   if (isLoading) {
     return (
@@ -430,6 +491,44 @@ export function RequestsKanban({ search, priorityFilter, assignedTo }: RequestsK
           Geen aanvragen gevonden
         </p>
       )}
+
+      {/* B-315 §1: reden verplicht bij het verplaatsen naar VERLOREN */}
+      <Modal
+        isOpen={pendingLostId !== null}
+        onClose={() => setPendingLostId(null)}
+        title="Aanvraag verloren"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-gray-600">
+            Kies een reden waarom deze aanvraag verloren is gegaan. De reden is
+            verplicht; de toelichting is optioneel.
+          </p>
+          <Select
+            label="Reden verloren"
+            options={lostReasonOptions}
+            value={lostReasonId}
+            onChange={(e) => setLostReasonId(e.target.value)}
+          />
+          <Input
+            label="Toelichting (optioneel)"
+            placeholder="Bijv. gekozen voor een concurrent..."
+            value={lostNote}
+            onChange={(e) => setLostNote(e.target.value)}
+          />
+          <div className="flex justify-end gap-2 border-t border-gray-200 pt-4">
+            <Button variant="secondary" onClick={() => setPendingLostId(null)}>
+              Annuleren
+            </Button>
+            <Button
+              onClick={confirmLost}
+              disabled={!lostReasonId}
+              isLoading={updateStatusMutation.isPending}
+            >
+              Verloren markeren
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }

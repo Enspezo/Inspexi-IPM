@@ -132,6 +132,16 @@ describe('Auth (e2e)', () => {
       expect(res.body.success).toBe(true);
       expect(res.body.data.accessToken).toBeDefined();
     });
+
+    it('B-153: zonder refresh-cookie → 401 met statusCode (geen 200 met success:false)', async () => {
+      const res = await request(app.getHttpServer())
+        .post('/api/v1/auth/refresh')
+        .expect(401);
+
+      expect(res.body.success).toBe(false);
+      expect(res.body.statusCode).toBe(401);
+      expect(res.body.message).toBe('Geen refresh token');
+    });
   });
 
   describe('GET /api/v1/auth/me', () => {

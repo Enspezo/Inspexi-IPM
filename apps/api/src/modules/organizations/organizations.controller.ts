@@ -93,18 +93,12 @@ export class OrganizationsController {
     @Ip() ip: string,
     @Res({ passthrough: true }) res: Response,
   ) {
-    // Bescherm tegen brute-force enumeratie van geldige slugs. Deelt dezelfde
-    // per-IP teller als TenantMiddleware, zodat beide enumeratie-vectoren
-    // (controller + middleware-404) samen tellen.
-    const blockedSeconds = this.enumerationGuard.isBlocked(ip);
-    if (blockedSeconds > 0) {
-      res.setHeader('Retry-After', String(blockedSeconds));
-      throw new HttpException(
-        'Te veel pogingen, probeer later opnieuw',
-        HttpStatus.TOO_MANY_REQUESTS,
-      );
-    }
-
+    // B-511 §3: lookup vóór de blokkade-check — de branding van een bestaande
+    // organisatie mag nooit collateral zijn van de enumeratieblokkade (gedeeld
+    // kantoor-IP). Alleen écht onbekende slugs tellen mee en krijgen bij een
+    // actieve blokkade een 429; een bestaande-maar-inactieve org geeft 404
+    // (offboarding) zonder de per-IP-teller te raken. Deelt dezelfde teller
+    // als TenantMiddleware, zodat beide enumeratie-vectoren samen tellen.
     const org = await this.prisma.organization.findUnique({
       where: { slug },
       select: {
@@ -114,6 +108,7 @@ export class OrganizationsController {
         logoUrl: true,
         primaryColor: true,
         chatEnabled: true,
+        isActive: true,
         // PRD-13: workflow-vlaggen die de portal-UI voor álle stafrollen nodig
         // heeft (GET /organizations/:id is ORG_ADMIN-only) — zelfde precedent
         // als chatEnabled, niet gevoelig.
@@ -122,15 +117,29 @@ export class OrganizationsController {
       },
     });
     if (!org) {
-      // Tel alleen mislukte lookups (404); een geslaagde 200 hieronder niet.
+      const blockedSeconds = this.enumerationGuard.isBlocked(ip);
+      if (blockedSeconds > 0) {
+        res.setHeader('Retry-After', String(blockedSeconds));
+        throw new HttpException(
+          'Te veel pogingen, probeer later opnieuw',
+          HttpStatus.TOO_MANY_REQUESTS,
+        );
+      }
+      // Tel alleen mislukte lookups van onbekende slugs.
       this.enumerationGuard.recordFailure(ip);
+      throw new NotFoundException('Organisatie niet gevonden');
+    }
+    if (!org.isActive) {
+      // Offboarding: inactieve orgs zijn publiek onzichtbaar, maar tellen niet
+      // mee als enumeratie-failure (de slug bestaat immers).
       throw new NotFoundException('Organisatie niet gevonden');
     }
     // Effectieve feature-keys meeleveren (PRD §5.1) zodat het klantportaal — dat
     // een eigen auth-realm heeft en `me/features` niet kan aanroepen — de gating
     // al vóór login (realm-onafhankelijk) kan toepassen.
     const features = await this.entitlements.getEnabledFeatures(org.id);
-    return { success: true, data: { ...org, features } };
+    const { isActive: _isActive, ...publicOrg } = org;
+    return { success: true, data: { ...publicOrg, features } };
   }
 
   @Get('me/features')

@@ -1,5 +1,11 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { ConflictException, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { OrganizationsService } from './organizations.service';
 import { STORAGE_PROVIDER } from '@/common/services/storage/storage.interface';
 import { TenantCacheService } from '@/common/services/tenant-cache.service';
@@ -39,6 +45,12 @@ describe('OrganizationsService', () => {
     exists: jest.fn(),
   };
 
+  const mockEntitlements = {
+    invalidate: jest.fn(),
+    clear: jest.fn(),
+    assertFeature: jest.fn(),
+  };
+
   beforeEach(async () => {
     jest.clearAllMocks();
 
@@ -48,9 +60,11 @@ describe('OrganizationsService', () => {
         { provide: PrismaService, useValue: mockPrismaService },
         { provide: STORAGE_PROVIDER, useValue: mockStorage },
         TenantCacheService,
+        { provide: EntitlementsService, useValue: mockEntitlements },
         {
-          provide: EntitlementsService,
-          useValue: { invalidate: jest.fn(), clear: jest.fn() },
+          // B-505: assertSlugAllowed leest het geconfigureerde SUPERUSER_SUBDOMAIN.
+          provide: ConfigService,
+          useValue: { get: jest.fn((_key: string, def?: string) => def ?? 'mijn') },
         },
       ],
     }).compile();
@@ -203,6 +217,117 @@ describe('OrganizationsService', () => {
       await expect(
         service.update('org-1', { slug: 'taken-slug' }),
       ).rejects.toThrow('Slug is al in gebruik');
+    });
+  });
+
+  // B-505 — gereserveerde slugs (statische lijst + runtime SUPERUSER_SUBDOMAIN).
+  describe('reserved slugs (B-505)', () => {
+    it.each(['mijn', 'www', 'api', 'admin', 'mail'])(
+      'weigert create met gereserveerde slug "%s" met een NL 400',
+      async (slug) => {
+        await expect(service.create({ name: 'X BV', slug })).rejects.toThrow(
+          BadRequestException,
+        );
+        await expect(service.create({ name: 'X BV', slug })).rejects.toThrow(
+          'Deze slug is gereserveerd',
+        );
+        expect(mockPrismaService.organization.create).not.toHaveBeenCalled();
+      },
+    );
+
+    it('weigert óók een slug-wijziging naar een gereserveerde waarde', async () => {
+      mockPrismaService.organization.findUnique.mockResolvedValue(mockOrganization);
+
+      await expect(service.update('org-1', { slug: 'mijn' })).rejects.toThrow(
+        BadRequestException,
+      );
+      expect(mockPrismaService.organization.update).not.toHaveBeenCalled();
+    });
+
+    it('staat een gewone slug gewoon toe', async () => {
+      mockPrismaService.organization.findUnique.mockResolvedValue(null);
+      mockPrismaService.organization.create.mockResolvedValue({
+        id: 'org-2',
+        slug: 'gewoonbedrijf',
+      });
+
+      await expect(
+        service.create({ name: 'Gewoon Bedrijf', slug: 'gewoonbedrijf' }),
+      ).resolves.toBeDefined();
+    });
+  });
+
+  // B-510 — entitlement-gate op de true-transitie van aiReviewEnabled/onlineRepairDefault.
+  describe('entitlement-gated org flags (B-510)', () => {
+    it('gate-t aiReviewEnabled false→true via assertFeature (403 zonder abonnement)', async () => {
+      mockPrismaService.organization.findUnique.mockResolvedValue({
+        ...mockOrganization,
+        aiReviewEnabled: false,
+      });
+      mockEntitlements.assertFeature.mockRejectedValue(
+        new ForbiddenException('AI-voorcontrole zit niet in uw abonnement'),
+      );
+
+      await expect(
+        service.update('org-1', { aiReviewEnabled: true }),
+      ).rejects.toThrow(ForbiddenException);
+      expect(mockEntitlements.assertFeature).toHaveBeenCalledWith(
+        'org-1',
+        'AI_REVIEW',
+        expect.any(String),
+      );
+      expect(mockPrismaService.organization.update).not.toHaveBeenCalled();
+    });
+
+    it('gate-t onlineRepairDefault false→true via assertFeature (ONLINE_HERSTEL)', async () => {
+      mockPrismaService.organization.findUnique.mockResolvedValue({
+        ...mockOrganization,
+        onlineRepairDefault: false,
+      });
+      mockEntitlements.assertFeature.mockRejectedValue(
+        new ForbiddenException('Online herstel zit niet in uw abonnement'),
+      );
+
+      await expect(
+        service.update('org-1', { onlineRepairDefault: true }),
+      ).rejects.toThrow(ForbiddenException);
+      expect(mockEntitlements.assertFeature).toHaveBeenCalledWith(
+        'org-1',
+        'ONLINE_HERSTEL',
+        expect.any(String),
+      );
+    });
+
+    it('uitzetten mag altijd — geen assertFeature bij true→false', async () => {
+      mockPrismaService.organization.findUnique.mockResolvedValue({
+        ...mockOrganization,
+        aiReviewEnabled: true,
+        onlineRepairDefault: true,
+      });
+      mockPrismaService.organization.update.mockResolvedValue({
+        ...mockOrganization,
+        aiReviewEnabled: false,
+      });
+
+      await service.update('org-1', {
+        aiReviewEnabled: false,
+        onlineRepairDefault: false,
+      });
+      expect(mockEntitlements.assertFeature).not.toHaveBeenCalled();
+    });
+
+    it('true→true (al aan) triggert de gate niet (idempotente PATCH blijft werken)', async () => {
+      mockPrismaService.organization.findUnique.mockResolvedValue({
+        ...mockOrganization,
+        aiReviewEnabled: true,
+      });
+      mockPrismaService.organization.update.mockResolvedValue({
+        ...mockOrganization,
+        aiReviewEnabled: true,
+      });
+
+      await service.update('org-1', { aiReviewEnabled: true });
+      expect(mockEntitlements.assertFeature).not.toHaveBeenCalled();
     });
   });
 

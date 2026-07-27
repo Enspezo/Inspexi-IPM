@@ -40,13 +40,18 @@ export class AuthService {
       throw new UnauthorizedException('Ongeldige inloggegevens');
     }
 
-    if (!user.isActive) {
-      throw new UnauthorizedException('Account is gedeactiveerd');
-    }
-
+    // B-511 §4: verifieer het wachtwoord VÓÓR de isActive-check. Andersom is
+    // "Account is gedeactiveerd" bij een fout wachtwoord een account-oracle:
+    // zonder geldige credentials valt dan vast te stellen dát het account
+    // bestaat. De deactiveringsmelding is nu alleen zichtbaar voor wie het
+    // juiste wachtwoord kent (en de bcrypt-vergelijking normaliseert de timing).
     const passwordValid = await bcrypt.compare(dto.password, user.passwordHash);
     if (!passwordValid) {
       throw new UnauthorizedException('Ongeldige inloggegevens');
+    }
+
+    if (!user.isActive) {
+      throw new UnauthorizedException('Account is gedeactiveerd');
     }
 
     // Tenant-aware login checks

@@ -246,6 +246,10 @@ describe('Feature entitlements (e2e)', () => {
     });
 
     it('POST → 400 met NL-melding i.p.v. 500', async () => {
+      // Sinds WP-B3 (#141) krijgt een SUPERUSER op een org-subdomein een
+      // effectieve orgId en slaagt een schrijf dáár bewust (201). De échte
+      // "zonder org-context"-situatie is een host zonder tenant (127.0.0.1)
+      // — daar moet de nette 400 blijven staan (was ooit een 500).
       const res = await request(app.getHttpServer())
         .post('/api/v1/custom-fields')
         .set('Authorization', `Bearer ${superToken}`)

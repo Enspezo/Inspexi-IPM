@@ -8,6 +8,7 @@ import {
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { AllExceptionsFilter } from './http-exception.filter';
+import { StorageObjectNotFoundError } from '../services/storage/storage.interface';
 
 describe('AllExceptionsFilter', () => {
   let filter: AllExceptionsFilter;
@@ -55,6 +56,23 @@ describe('AllExceptionsFilter', () => {
       message: 'Document niet gevonden',
       statusCode: HttpStatus.NOT_FOUND,
     });
+  });
+
+  // B-154: ontbrekend storage-object → centrale NL 404 (nooit een Engelse 500).
+  it('B-154: maps StorageObjectNotFoundError to a Dutch 404 without leaking the key', () => {
+    const exception = new StorageObjectNotFoundError('org-1/documents/weg.pdf');
+
+    filter.catch(exception, mockHost);
+
+    expect(mockStatus).toHaveBeenCalledWith(HttpStatus.NOT_FOUND);
+    expect(mockJson).toHaveBeenCalledWith({
+      success: false,
+      message: 'Het opgevraagde bestand is niet (meer) beschikbaar',
+      statusCode: HttpStatus.NOT_FOUND,
+    });
+    // De storage-key hoort in de logs, nooit in de response-body.
+    const body = mockJson.mock.calls[0][0];
+    expect(JSON.stringify(body)).not.toContain('org-1/documents/weg.pdf');
   });
 
   it('should handle BadRequestException with validation errors (array message)', () => {

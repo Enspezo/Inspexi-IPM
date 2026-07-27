@@ -8,6 +8,7 @@ import {
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { Response, Request } from 'express';
+import { StorageObjectNotFoundError } from '../services/storage/storage.interface';
 
 /** Fout met een numerieke HTTP-status (bv. Express body-parser's PayloadTooLargeError). */
 interface HttpErrorLike {
@@ -90,6 +91,16 @@ export class AllExceptionsFilter implements ExceptionFilter {
       ) {
         warnings = (exceptionResponse as { warnings?: unknown }).warnings;
       }
+    } else if (exception instanceof StorageObjectNotFoundError) {
+      // B-154: ontbrekend storage-object → nette NL 404 op álle download-routes
+      // (documenten, PDF's, foto's, avatars, logo's) in één centrale mapping.
+      // Warn (geen error): verwachtbare toestand, maar wél met de storage-key
+      // zodat de dangling verwijzing in de logs terug te vinden is.
+      status = HttpStatus.NOT_FOUND;
+      message = 'Het opgevraagde bestand is niet (meer) beschikbaar';
+      this.logger.warn(
+        `Storage object missing on ${request.method} ${request.url}${requestIdSuffix}: key=${exception.key}`,
+      );
     } else if (exception instanceof Prisma.PrismaClientKnownRequestError) {
       switch (exception.code) {
         case 'P2002':

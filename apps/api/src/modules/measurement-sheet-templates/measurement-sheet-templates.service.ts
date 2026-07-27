@@ -258,6 +258,32 @@ export class MeasurementSheetTemplatesService {
       }
     }
 
+    // B-506: publish-gate op inconsistente grenzen. Vangt óók templates die
+    // vóór de veld-validatie zijn aangemaakt (bestaande foute data): een veld
+    // met min > max is in de PWA oninvulbaar en mag nooit actief worden.
+    for (const section of template.sections) {
+      for (const field of section.fields) {
+        if (
+          field.minValue != null &&
+          field.maxValue != null &&
+          Number(field.minValue) > Number(field.maxValue)
+        ) {
+          throw new BadRequestException(
+            `Veld "${field.name}" in sectie "${section.name}" heeft een minimum (${Number(field.minValue)}) dat groter is dan het maximum (${Number(field.maxValue)}) — corrigeer de grenzen voordat u publiceert`,
+          );
+        }
+        if (
+          field.passFailMinValue != null &&
+          field.passFailMaxValue != null &&
+          Number(field.passFailMinValue) > Number(field.passFailMaxValue)
+        ) {
+          throw new BadRequestException(
+            `Veld "${field.name}" in sectie "${section.name}" heeft een pass/fail-minimum (${Number(field.passFailMinValue)}) dat groter is dan het pass/fail-maximum (${Number(field.passFailMaxValue)}) — corrigeer de grenzen voordat u publiceert`,
+          );
+        }
+      }
+    }
+
     const snapshot = this.createSnapshot(template);
 
     const [updatedTemplate] = await this.prisma.$transaction([

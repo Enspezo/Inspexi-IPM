@@ -274,6 +274,175 @@ describe('MeasurementSheetTemplates module', () => {
         }),
       ).rejects.toBeInstanceOf(ForbiddenException);
     });
+
+    // ── B-506: publish-gate op inconsistente grenzen ──
+    it('B-506: weigert publiceren van een veld met min > max (bestaande foute data)', async () => {
+      mockPrisma.measurementSheetTemplate.findUnique.mockResolvedValue({
+        id: 't-1',
+        version: '1.0',
+        status: MeasurementSheetTemplateStatus.CONCEPT,
+        sections: [
+          {
+            name: 'Algemene metingen',
+            fields: [
+              {
+                id: 'f-1',
+                name: 'SU18 omgekeerde grenzen',
+                minValue: 100,
+                maxValue: 0,
+                passFailMinValue: null,
+                passFailMaxValue: null,
+              },
+            ],
+          },
+        ],
+      });
+
+      await expect(
+        templatesService.publish('t-1', superuser, {
+          changeDescription: 'SU-18 repro',
+        }),
+      ).rejects.toThrow(
+        'Veld "SU18 omgekeerde grenzen" in sectie "Algemene metingen" heeft een minimum (100) dat groter is dan het maximum (0)',
+      );
+      expect(mockPrisma.measurementSheetTemplate.update).not.toHaveBeenCalled();
+    });
+
+    it('B-506: weigert publiceren bij pass/fail-min > pass/fail-max', async () => {
+      mockPrisma.measurementSheetTemplate.findUnique.mockResolvedValue({
+        id: 't-1',
+        version: '1.0',
+        status: MeasurementSheetTemplateStatus.CONCEPT,
+        sections: [
+          {
+            name: 'S1',
+            fields: [
+              {
+                id: 'f-1',
+                name: 'Meting',
+                minValue: null,
+                maxValue: null,
+                passFailMinValue: 10,
+                passFailMaxValue: 1,
+              },
+            ],
+          },
+        ],
+      });
+
+      await expect(
+        templatesService.publish('t-1', superuser, { changeDescription: 'x' }),
+      ).rejects.toThrow('pass/fail-minimum (10)');
+    });
+
+    it('B-506: gelijke grenzen (min == max) mogen wél gepubliceerd worden', async () => {
+      mockPrisma.measurementSheetTemplate.findUnique.mockResolvedValue({
+        id: 't-1',
+        version: '1.0',
+        status: MeasurementSheetTemplateStatus.CONCEPT,
+        normTypeCode: 'NEN1010',
+        sections: [
+          {
+            name: 'S1',
+            fields: [
+              { id: 'f-1', name: 'Vast', minValue: 5, maxValue: 5, passFailMinValue: null, passFailMaxValue: null },
+            ],
+          },
+        ],
+      });
+      mockPrisma.measurementSheetTemplate.update.mockResolvedValue({
+        id: 't-1',
+        status: MeasurementSheetTemplateStatus.ACTIEF,
+      });
+      mockPrisma.measurementSheetVersionHistory.create.mockResolvedValue({});
+
+      const result = await templatesService.publish('t-1', superuser, {
+        changeDescription: 'randgeval',
+      });
+      expect(result.status).toBe(MeasurementSheetTemplateStatus.ACTIEF);
+    });
+  });
+
+  // ── B-506: veld-validatie (create + update, effectieve grenzen) ──
+  describe('fields — consistente grenzen (B-506)', () => {
+    const conceptTemplate = {
+      id: 't-1',
+      status: MeasurementSheetTemplateStatus.CONCEPT,
+    };
+    const section = { id: 's-1', templateId: 't-1' };
+
+    beforeEach(() => {
+      mockPrisma.measurementSheetSection.findUnique.mockResolvedValue(section);
+      mockPrisma.measurementSheetTemplate.findUnique.mockResolvedValue(conceptTemplate);
+    });
+
+    it('weigert create met min > max met een NL 400', async () => {
+      mockPrisma.measurementSheetField.findFirst.mockResolvedValue(null);
+
+      await expect(
+        fieldsService.create('s-1', 'super-1', {
+          code: 'su18_omgekeerd',
+          name: 'SU18',
+          fieldType: 'NUMBER',
+          minValue: 100,
+          maxValue: 0,
+        } as any),
+      ).rejects.toThrow('Maximum (0) moet groter of gelijk zijn aan het minimum (100)');
+      expect(mockPrisma.measurementSheetField.create).not.toHaveBeenCalled();
+    });
+
+    it('weigert een update die de EFFECTIEVE combinatie fout maakt (alleen max meegestuurd)', async () => {
+      mockPrisma.measurementSheetField.findUnique.mockResolvedValue({
+        id: 'f-1',
+        sectionId: 's-1',
+        code: 'x',
+        name: 'X',
+        minValue: 50,
+        maxValue: 100,
+        passFailMinValue: null,
+        passFailMaxValue: null,
+      });
+
+      await expect(
+        fieldsService.update('f-1', 'super-1', { maxValue: 10 } as any),
+      ).rejects.toThrow('Maximum (10) moet groter of gelijk zijn aan het minimum (50)');
+      expect(mockPrisma.measurementSheetField.update).not.toHaveBeenCalled();
+    });
+
+    it('staat een geldige update toe (min en max samen gecorrigeerd)', async () => {
+      mockPrisma.measurementSheetField.findUnique.mockResolvedValue({
+        id: 'f-1',
+        sectionId: 's-1',
+        code: 'x',
+        name: 'X',
+        minValue: 100,
+        maxValue: 0,
+        passFailMinValue: null,
+        passFailMaxValue: null,
+      });
+      mockPrisma.measurementSheetField.update.mockResolvedValue({ id: 'f-1' });
+      mockPrisma.measurementSheetTemplate.update.mockResolvedValue({});
+
+      await expect(
+        fieldsService.update('f-1', 'super-1', { minValue: 0, maxValue: 100 } as any),
+      ).resolves.toBeDefined();
+    });
+
+    it('weigert pass/fail-min > pass/fail-max bij create', async () => {
+      mockPrisma.measurementSheetField.findFirst.mockResolvedValue(null);
+
+      await expect(
+        fieldsService.create('s-1', 'super-1', {
+          code: 'pf',
+          name: 'PF',
+          fieldType: 'NUMBER',
+          passFailEnabled: true,
+          passFailOperator: 'BETWEEN',
+          passFailMinValue: 10,
+          passFailMaxValue: 1,
+        } as any),
+      ).rejects.toThrow('Pass/fail-maximum (1) moet groter of gelijk zijn aan het pass/fail-minimum (10)');
+    });
   });
 
   describe('retire', () => {

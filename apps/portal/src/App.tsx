@@ -6,7 +6,7 @@ import { FeatureRoute } from '@/components/auth/feature-route';
 import { RoleRoute } from '@/components/auth/role-route';
 import { AppLayout } from '@/components/layout/app-layout';
 import { Spinner } from '@/components/ui';
-import { ADMIN_ROLES } from '@/lib/roles';
+import { ADMIN_ROLES, CRM_ROLES } from '@/lib/roles';
 import { Role } from '@/types';
 
 // Lazy-loaded pages
@@ -236,14 +236,18 @@ export default function App() {
               <Route path="/admin/voice-prompts" element={<VoiceBasePromptsPage />} />
             </Route>
 
-            {/* BASIS_CRM — relaties, contactpersonen, locaties */}
+            {/* BASIS_CRM — relaties, contactpersonen, locaties.
+                B-315 §7: rol-gate (CRM_ROLES) — een INSPECTEUR kreeg hier een
+                lege lijst te zien terwijl de API 403 gaf. */}
             <Route element={<FeatureRoute feature="BASIS_CRM" />}>
-              <Route path="/contacts" element={<ContactsPage />} />
-              <Route path="/contacts/persons" element={<ContactPersonsPage />} />
-              <Route path="/contacts/persons/:personId" element={<ContactPersonDetailPage />} />
-              <Route path="/contacts/locations" element={<LocationsPage />} />
-              <Route path="/contacts/locations/:locationId" element={<LocationDetailPage />} />
-              <Route path="/contacts/:id" element={<ContactDetailPage />} />
+              <Route element={<RoleRoute roles={CRM_ROLES} />}>
+                <Route path="/contacts" element={<ContactsPage />} />
+                <Route path="/contacts/persons" element={<ContactPersonsPage />} />
+                <Route path="/contacts/persons/:personId" element={<ContactPersonDetailPage />} />
+                <Route path="/contacts/locations" element={<LocationsPage />} />
+                <Route path="/contacts/locations/:locationId" element={<LocationDetailPage />} />
+                <Route path="/contacts/:id" element={<ContactDetailPage />} />
+              </Route>
             </Route>
 
             {/* CRM_COMPLEET — klantgroepen, aanvragen, offertes, producten, prijstabellen */}

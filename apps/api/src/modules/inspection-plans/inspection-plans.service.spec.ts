@@ -47,7 +47,16 @@ describe('InspectionPlansService', () => {
       count: jest.fn(),
       upsert: jest.fn(),
     },
+    $transaction: undefined as unknown as jest.Mock,
   };
+  // B-107: create()/update() draaien in een interactieve transactie; de
+  // callback krijgt in de test gewoon dezelfde mock als tx-client. (Buiten het
+  // object-literal gezet om een circulaire type-inferentie te vermijden.)
+  mockPrismaService.$transaction = jest.fn((arg: unknown) =>
+    typeof arg === 'function'
+      ? (arg as (tx: typeof mockPrismaService) => unknown)(mockPrismaService)
+      : Promise.all(arg as Promise<unknown>[]),
+  );
 
   const mockLookupService = {
     resolveLookup: jest.fn().mockResolvedValue({ code: 'x' }),
@@ -321,6 +330,77 @@ describe('InspectionPlansService', () => {
         ),
       ).rejects.toThrow(ForbiddenException);
     });
+
+    // ── B-107: afgewezen create mag geen weesplan achterlaten ──
+    it('B-107: valideert scope-locaties VÓÓR de write — bij afkeuring wordt het plan nooit aangemaakt', async () => {
+      mockAssetNodesService.assertValidScopeLocation.mockRejectedValue(
+        new NotFoundException('Scope-locatie niet gevonden'),
+      );
+
+      await expect(
+        service.create(
+          {
+            contactId: 'c-1',
+            projectName: 'SEC08 scope-injectie',
+            normTypeCode: 'NEN1010',
+            locationId: 'loc-1',
+            scopeLocationIds: ['vreemde-node'],
+          } as any,
+          mockUser,
+        ),
+      ).rejects.toThrow(NotFoundException);
+
+      // De kern van B-107: géén plan-create, géén scope-write.
+      expect(mockPrismaService.inspectionPlan.create).not.toHaveBeenCalled();
+      expect(mockPrismaService.inspectionPlanLocation.create).not.toHaveBeenCalled();
+    });
+
+    it('B-107: scopeLocationIds zonder locationId → 400 vóór élke write', async () => {
+      await expect(
+        service.create(
+          {
+            contactId: 'c-1',
+            projectName: 'X',
+            normTypeCode: 'NEN1010',
+            scopeLocationIds: ['node-1'],
+          } as any,
+          mockUser,
+        ),
+      ).rejects.toThrow(BadRequestException);
+      expect(mockPrismaService.inspectionPlan.create).not.toHaveBeenCalled();
+    });
+
+    it('B-107: plan + scope-rijen worden binnen één $transaction geschreven', async () => {
+      const mockPlan = {
+        id: 'plan-new',
+        orgId: 'org-1',
+        projectName: 'Met scope',
+        statusCode: STATUS_DRAFT,
+        locationId: 'loc-1',
+        assignedTo: null,
+      };
+      mockPrismaService.inspectionPlan.create.mockResolvedValue(mockPlan);
+      mockAssetNodesService.assertValidScopeLocation.mockResolvedValue(undefined);
+
+      await service.create(
+        {
+          contactId: 'c-1',
+          projectName: 'Met scope',
+          normTypeCode: 'NEN1010',
+          locationId: 'loc-1',
+          scopeLocationIds: ['node-1', 'node-2'],
+        } as any,
+        mockUser,
+      );
+
+      expect(mockPrismaService.$transaction).toHaveBeenCalledTimes(1);
+      expect(mockPrismaService.inspectionPlanLocation.create).toHaveBeenCalledTimes(2);
+      expect(mockPrismaService.inspectionPlanLocation.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ assetNodeId: 'node-1', isPrimary: true }),
+        }),
+      );
+    });
   });
 
   describe('update', () => {
@@ -529,6 +609,127 @@ describe('InspectionPlansService', () => {
           data: expect.objectContaining({ onlineRepairEnabled: false }),
         }),
       );
+    });
+  });
+
+  // ── B-313: inspectionTemplateId werd gevalideerd maar nooit gemapt ──
+  describe('update — inspectionTemplateId (B-313)', () => {
+    beforeEach(() => {
+      mockPrismaService.inspectionPlan.findFirst.mockResolvedValue({
+        id: 'plan-1',
+        orgId: 'org-1',
+        projectName: 'Test',
+        assignedTo: null,
+        locationId: null,
+        projectId: null,
+        onlineRepairEnabled: false,
+        referenceNumber: null,
+      });
+      mockPrismaService.inspectionPlan.update.mockResolvedValue({
+        id: 'plan-1',
+        orgId: 'org-1',
+        projectName: 'Test',
+      });
+    });
+
+    it('koppelt de template daadwerkelijk (connect) — geen stille no-op meer', async () => {
+      await service.update(
+        'plan-1',
+        { inspectionTemplateId: 'tpl-1' } as any,
+        mockUser,
+      );
+
+      expect(mockPrismaService.inspectionPlan.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            inspectionTemplate: { connect: { id: 'tpl-1' } },
+          }),
+        }),
+      );
+    });
+
+    it('ontkoppelt met null (disconnect)', async () => {
+      await service.update(
+        'plan-1',
+        { inspectionTemplateId: null } as any,
+        mockUser,
+      );
+
+      expect(mockPrismaService.inspectionPlan.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            inspectionTemplate: { disconnect: true },
+          }),
+        }),
+      );
+    });
+
+    /**
+     * Generiek vangnet (advies B-313): elk veld van UpdateInspectionPlanDto
+     * moet in de Prisma-write belanden óf expliciet in de uitsluitlijst staan
+     * (met de reden waarom het buiten `data` om gaat). Een nieuw DTO-veld dat
+     * vergeten wordt te mappen laat deze test direct falen — precies de stille
+     * no-op-klasse van B-313.
+     */
+    it('DTO↔mapping-regressie: elk DTO-veld belandt in de write of is expliciet uitgesloten', async () => {
+      // Velden die bewust NIET (direct) in `data` terechtkomen:
+      const EXCLUDED: Record<string, string> = {
+        scopeLocationIds: 'geschreven via inspectionPlanLocation-rijen in dezelfde transactie',
+      };
+
+      const fullDto: Record<string, unknown> = {
+        contactId: 'c-1',
+        projectId: 'p-1',
+        locationId: 'loc-1',
+        scopeLocationIds: ['node-1'],
+        inspectionTemplateId: 'tpl-1',
+        projectName: 'Alles gezet',
+        description: 'desc',
+        referenceNumber: 'REF-1',
+        normTypeCode: 'NEN1010',
+        inspectionTypeCode: 'initial',
+        addressStreet: 'Straat',
+        addressHouseNumber: '1',
+        addressPostalCode: '1234AB',
+        addressCity: 'Stad',
+        gpsLatitude: 52.1,
+        gpsLongitude: 4.9,
+        plannedDate: '2026-08-01',
+        deadline: '2026-09-01',
+        assignedTo: 'user-2',
+        reviewerId: 'user-3',
+        installationResponsibleId: 'cp-1',
+        notes: 'noot',
+        statusCode: STATUS_IN_PROGRESS,
+        startedAt: '2026-08-01T08:00:00Z',
+        internalNotes: 'intern',
+        projectPhaseId: null,
+        metadata: { vrij: 'veld' },
+        onlineRepairEnabled: false,
+      };
+
+      // Map DTO-veld → sleutel in het Prisma-`data`-object (relaties wijken af).
+      const DATA_KEY: Record<string, string> = {
+        contactId: 'contact',
+        projectId: 'project',
+        locationId: 'location',
+        inspectionTemplateId: 'inspectionTemplate',
+        assignedTo: 'assignedUser',
+        reviewerId: 'reviewer',
+        installationResponsibleId: 'installationResponsible',
+        projectPhaseId: 'projectPhase',
+      };
+
+      await service.update('plan-1', fullDto as any, mockUser);
+
+      const updateCall = mockPrismaService.inspectionPlan.update.mock.calls.at(-1)![0];
+      const dataKeys = Object.keys(updateCall.data);
+
+      const missing = Object.keys(fullDto)
+        .filter((key) => !(key in EXCLUDED))
+        .filter((key) => !dataKeys.includes(DATA_KEY[key] ?? key));
+
+      expect(missing).toEqual([]);
     });
   });
 
@@ -1053,9 +1254,10 @@ describe('InspectionPlansService', () => {
         createdBy: 'user-3',
       });
 
+      // B-315 §8: afkeuren vereist een toelichting.
       const result = await service.review(
         'plan-1',
-        { decision: 'reject' } as any,
+        { decision: 'reject', notes: 'Meetstaat sectie 2 is onvolledig' } as any,
         mockUser,
       );
 
@@ -1063,6 +1265,64 @@ describe('InspectionPlansService', () => {
       expect(mockNotificationsService.dispatch).toHaveBeenCalledWith(
         expect.objectContaining({
           type: NotificationType.INSPECTIEPLAN_AFGEKEURD,
+        }),
+      );
+      // B-315 §9: de daadwerkelijke beoordelaar wordt op het plan vastgelegd.
+      expect(mockPrismaService.inspectionPlan.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            reviewer: { connect: { id: mockUser.id } },
+          }),
+        }),
+      );
+    });
+
+    // ── B-315 §8: afkeuren zonder toelichting wordt geweigerd ──
+    it('B-315 §8: reject zonder notes → 400 met NL-melding', async () => {
+      mockPrismaService.inspectionPlan.findFirst.mockResolvedValue({
+        id: 'plan-1',
+        orgId: 'org-1',
+        projectName: 'Test',
+        statusCode: STATUS_PENDING_REVIEW,
+        assignedTo: 'user-2',
+        createdBy: 'user-3',
+        internalNotes: null,
+      });
+
+      await expect(
+        service.review('plan-1', { decision: 'reject' } as any, mockUser),
+      ).rejects.toThrow(BadRequestException);
+      await expect(
+        service.review('plan-1', { decision: 'reject', notes: '   ' } as any, mockUser),
+      ).rejects.toThrow('Geef een toelichting bij het afkeuren');
+      expect(mockPrismaService.inspectionPlan.update).not.toHaveBeenCalled();
+    });
+
+    it('B-315 §9: ook bij goedkeuren wordt de beoordelaar vastgelegd (zonder verplichte notes)', async () => {
+      mockPrismaService.inspectionPlan.findFirst.mockResolvedValue({
+        id: 'plan-1',
+        orgId: 'org-1',
+        projectName: 'Test',
+        statusCode: STATUS_PENDING_REVIEW,
+        assignedTo: 'user-2',
+        createdBy: 'user-3',
+        internalNotes: null,
+      });
+      mockPrismaService.inspectionPlan.update.mockResolvedValue({
+        id: 'plan-1',
+        orgId: 'org-1',
+        projectName: 'Test',
+        statusCode: STATUS_APPROVED,
+      });
+
+      await service.review('plan-1', { decision: 'approve' } as any, mockUser);
+
+      expect(mockPrismaService.inspectionPlan.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            statusCode: STATUS_APPROVED,
+            reviewer: { connect: { id: mockUser.id } },
+          }),
         }),
       );
     });

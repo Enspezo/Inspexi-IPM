@@ -258,7 +258,9 @@ describe('TenantMiddleware', () => {
         expect(res.status).toHaveBeenCalledWith(404);
       }
 
-      // 4e lookup vanaf hetzelfde IP → 429 + Retry-After, geen DB-call meer
+      // 4e lookup van een ONBEKENDE slug vanaf hetzelfde IP → 429 + Retry-After.
+      // B-511 §3: de slug-lookup gebeurt tegenwoordig vóór de blokkade-check
+      // (bestaande orgs mogen nooit collateral zijn), dus er is wél één DB-call.
       mockPrismaService.organization.findUnique.mockClear();
       const res = createRes();
       await middleware.use(createReq('gok4.localhost', ATTACKER_IP), res, next);
@@ -273,9 +275,51 @@ describe('TenantMiddleware', () => {
       const retryAfter = Number(res.setHeader.mock.calls[0][1]);
       expect(retryAfter).toBeGreaterThan(0);
       expect(retryAfter).toBeLessThanOrEqual(300);
-      // Geblokkeerd IP raakt de database niet meer aan.
-      expect(mockPrismaService.organization.findUnique).not.toHaveBeenCalled();
       expect(next).not.toHaveBeenCalled();
+    });
+
+    it('B-511 §3: laat een BESTAANDE org door terwijl het IP geblokkeerd is (branding geen collateral)', async () => {
+      // Blokkade opbouwen met 3 onbekende slugs.
+      mockPrismaService.organization.findUnique.mockResolvedValue(null);
+      for (let i = 0; i < 3; i++) {
+        await middleware.use(createReq(`gok${i}.localhost`, ATTACKER_IP), createRes(), next);
+      }
+
+      // Geblokkeerd voor onbekende slugs...
+      const blockedRes = createRes();
+      await middleware.use(createReq('nogeengok.localhost', ATTACKER_IP), blockedRes, next);
+      expect(blockedRes.status).toHaveBeenCalledWith(429);
+
+      // ...maar een bestaand subdomein blijft gewoon bereikbaar vanaf dat IP.
+      const mockOrg = { id: 'org-9', slug: 'kantoor', name: 'Kantoor', isActive: true };
+      mockPrismaService.organization.findUnique.mockResolvedValue(mockOrg);
+      const okRes = createRes();
+      const req = createReq('kantoor.localhost', ATTACKER_IP);
+      await middleware.use(req, okRes, next);
+
+      expect(okRes.status).not.toHaveBeenCalled();
+      expect(next).toHaveBeenCalled();
+      expect(req.tenant?.orgId).toBe('org-9');
+    });
+
+    it('B-511 §3: een bestaande maar inactieve org geeft 404 zonder de enumeratieteller te raken', async () => {
+      const inactiveOrg = { id: 'org-8', slug: 'weg', name: 'Weg', isActive: false };
+      mockPrismaService.organization.findUnique.mockResolvedValue(inactiveOrg);
+
+      // 5× dezelfde inactieve org opvragen — telt niet mee, dus nooit een block.
+      for (let i = 0; i < 5; i++) {
+        const res = createRes();
+        await middleware.use(createReq('weg.localhost', ATTACKER_IP), res, next);
+        expect(res.status).toHaveBeenCalledWith(404);
+        expect(res.status).not.toHaveBeenCalledWith(429);
+      }
+
+      // En een geldige org vanaf hetzelfde IP werkt nog steeds.
+      const mockOrg = { id: 'org-7', slug: 'oke', name: 'Oke', isActive: true };
+      mockPrismaService.organization.findUnique.mockResolvedValue(mockOrg);
+      const okRes = createRes();
+      await middleware.use(createReq('oke.localhost', ATTACKER_IP), okRes, next);
+      expect(next).toHaveBeenCalled();
     });
 
     it('does NOT count a successful (200) lookup towards the block', async () => {

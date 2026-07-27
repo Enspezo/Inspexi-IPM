@@ -175,6 +175,20 @@ export class UsersController {
   }
 
   @Public()
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
+  @Get('invitation/:token')
+  @ApiOperation({
+    summary:
+      'Uitnodiging valideren vóór het tonen van het registratieformulier (B-511 §7)',
+  })
+  @ApiResponse({ status: 200, description: 'Uitnodiging is geldig' })
+  @ApiResponse({ status: 400, description: 'Ongeldige, verlopen of al geaccepteerde uitnodiging' })
+  async getInvitation(@Param('token') token: string) {
+    const data = await this.usersService.getInvitationByToken(token);
+    return { success: true, data };
+  }
+
+  @Public()
   @Throttle({ default: { limit: 5, ttl: 60000 } })
   @Post('accept-invitation')
   @ApiOperation({ summary: 'Uitnodiging accepteren en account aanmaken' })

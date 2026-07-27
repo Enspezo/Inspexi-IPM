@@ -40,6 +40,8 @@ describe('AssetNodesService', () => {
       locationTypeDefinition: { findUnique: jest.fn(), findMany: jest.fn().mockResolvedValue([]) },
       assetTypeDefinition: { findMany: jest.fn().mockResolvedValue([]) },
       $executeRaw: jest.fn().mockResolvedValue(1),
+      // subtreeMaxDepth (WP-C3/B-216): default = diepte van de diepste fixture.
+      $queryRaw: jest.fn().mockResolvedValue([{ max: 3 }]),
     };
     tree = new TreeService(
       { validateParentConstraint: jest.fn().mockResolvedValue({ valid: true }) } as never,
@@ -217,6 +219,82 @@ describe('AssetNodesService', () => {
 
       expect(prisma.assetNode.create).toHaveBeenCalledWith(
         expect.objectContaining({ data: expect.objectContaining({ nodeNumber: 'EIGEN-1' }) }),
+      );
+    });
+  });
+
+  // ── WP-C3 (B-216): dieptegrens — alleen op nieuwe writes/moves ───────────
+  describe('depth limit (B-216)', () => {
+    it('assertDepthWithinLimit allows depth 10 and rejects depth 11', () => {
+      expect(() => service.assertDepthWithinLimit(10)).not.toThrow();
+      expect(() => service.assertDepthWithinLimit(11)).toThrow(/Maximale nestdiepte \(10\)/);
+    });
+
+    it('create allows a child AT the limit (parent depth 9 → child 10)', async () => {
+      nodes.locA = { ...LOC_A, depth: 9 };
+      prisma.assetNode.create.mockResolvedValue({ id: 'newAsset' });
+
+      await expect(
+        service.create(user, {
+          parentId: 'locA',
+          nodeType: AssetNodeType.ASSET,
+          typeCode: 'verdeler',
+          name: 'Diepte 10',
+        }),
+      ).resolves.toBeDefined();
+      expect(prisma.assetNode.create).toHaveBeenCalled();
+    });
+
+    it('create rejects a child BEYOND the limit (parent depth 10 → child 11)', async () => {
+      nodes.locA = { ...LOC_A, depth: 10 };
+
+      await expect(
+        service.create(user, {
+          parentId: 'locA',
+          nodeType: AssetNodeType.ASSET,
+          typeCode: 'verdeler',
+          name: 'Diepte 11',
+        }),
+      ).rejects.toThrow(/Maximale nestdiepte \(10\) bereikt/);
+      expect(prisma.assetNode.create).not.toHaveBeenCalled();
+    });
+
+    it('move rejects when the deepest descendant would cross the limit', async () => {
+      // assetChild (depth 3, subtree max 3 via $queryRaw) → onder parent op
+      // diepte 10 zou 10+1+(3-3)=11 worden → geweigerd, geen raw UPDATE.
+      nodes.assetY = { ...ASSET_Y, depth: 10 };
+
+      await expect(service.move('assetChild', user, { newParentId: 'assetY' })).rejects.toThrow(
+        /Maximale nestdiepte \(10\)/,
+      );
+      expect(prisma.$executeRaw).not.toHaveBeenCalled();
+    });
+
+    it('move allows a subtree that lands exactly on the limit', async () => {
+      // Subtree van assetX: max diepte 3 (assetChild); assetX zelf diepte 2.
+      // Nieuwe parent op diepte 8 → 8+1+(3-2)=10 → precies op de grens.
+      nodes.assetY = { ...ASSET_Y, depth: 8 };
+
+      await service.move('assetX', user, { newParentId: 'assetY' });
+
+      expect(prisma.$executeRaw).toHaveBeenCalledTimes(1);
+    });
+
+    it('assertDepthForWrite (sync-pad) checks a create against the parent depth', async () => {
+      nodes.locA = { ...LOC_A, depth: 10 };
+      await expect(service.assertDepthForWrite('locA', 'org1')).rejects.toThrow(
+        /Maximale nestdiepte/,
+      );
+      // Onvindbare parent → geen check (bestaande foutpaden vangen dat af).
+      await expect(service.assertDepthForWrite('bestaat-niet', 'org1')).resolves.toBeUndefined();
+    });
+
+    it('assertDepthForWrite (sync-pad) checks a reparent including the moving subtree', async () => {
+      // Parent diepte 9; te verplaatsen node assetX (diepte 2) met subtree max 3
+      // → 9+1+(3-2)=11 → geweigerd.
+      nodes.locB = { ...LOC_B, depth: 9 };
+      await expect(service.assertDepthForWrite('locB', 'org1', 'assetX')).rejects.toThrow(
+        /Maximale nestdiepte/,
       );
     });
   });

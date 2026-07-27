@@ -8,13 +8,16 @@
 // geïnjecteerd (elke entiteit heeft een eigen orgId-kolom), FK's met assertSameOrg
 // gecontroleerd (cross-tenant). Conflict: optimistic — server.updatedAt > client.syncedAt.
 
-import { Injectable, BadRequestException } from '@nestjs/common';
+import { Injectable, BadRequestException, Logger } from '@nestjs/common';
 import { AssetNodeType, User, Prisma, NumberingModel, SyncStatus } from '@prisma/client';
 import { PrismaService } from '@/prisma';
 import {
   orgScope,
   assertSameOrg,
   requireOrg,
+  hasRole,
+  REVIEW_ROLES,
+  STATUS_PENDING_REVIEW,
   STATUS_RESOLVED,
   computeFindingIsCritical,
   loadPlanCriticalModel,
@@ -25,12 +28,25 @@ import {
   SYNC_ENTITIES, SyncEntityKey, SyncModelName, FkCheckModel, SyncRecordData,
   SYNC_CONTRACT_VERSION, toDbData, toChildRows, toWire,
 } from './sync-mapper';
+import { toClientSyncError } from './sync-errors';
 import { ChatSyncService } from '../chat/chat-sync.service';
 import { NumberingService } from '../numbering/numbering.service';
 import { AssetNodesService } from '../asset-nodes/asset-nodes.service';
+import { InspectionPlansService } from '../inspection-plans/inspection-plans.service';
 
 type OpResult =
-  | { entityType: string; entityId: string; status: 'success' }
+  | {
+      entityType: string;
+      entityId: string;
+      status: 'success';
+      /**
+       * Additief (WP-C3/B-203, contractafspraak zonder versie-bump):
+       * server-toegekende waarden die de client lokaal moet overnemen. Nu
+       * alleen `nodeNumber` voor assetNodes; de push-respons bundelt deze
+       * records onder de top-level `assigned`-key.
+       */
+      assigned?: { nodeNumber: string };
+    }
   | {
       entityType: string;
       entityId: string;
@@ -110,11 +126,14 @@ export function orderAssetNodesParentFirst(changes: EntityChangeDto[]): EntityCh
 
 @Injectable()
 export class SyncService {
+  private readonly logger = new Logger(SyncService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly chat: ChatSyncService,
     private readonly numbering: NumberingService,
     private readonly assetNodes: AssetNodesService,
+    private readonly inspectionPlans: InspectionPlansService,
   ) {}
 
   /** Expliciete map model-naam → Prisma-delegate, i.p.v. een dynamische `this.prisma[name]`. */
@@ -151,28 +170,202 @@ export class SyncService {
   }
 
   /**
-   * Shortcode (`[typecode]`) van het type-def dat bij `typeCode` hoort, voor de
-   * server-toegekende nodeNumber-generatie. Org-specifiek wint van systeem/globaal
-   * (orgId null); `null` als er geen match/shortcode is (placeholder → '').
+   * Type-definitie (AssetTypeDefinition voor ASSET, LocationTypeDefinition voor
+   * LOCATION) die bij `typeCode` hoort. Org-specifiek wint van systeem/globaal
+   * (orgId null); `null` als er geen match is. De shortCode voedt de
+   * `[typecode]`-placeholder van de nodeNumber-generatie.
    */
-  private async resolveTypeShortCode(
+  private async resolveTypeDefinition(
     orgId: string,
     nodeType: AssetNodeType,
     typeCode: string,
-  ): Promise<string | null> {
+  ): Promise<{ shortCode: string | null } | null> {
     if (!typeCode) return null;
-    if (nodeType === AssetNodeType.ASSET) {
-      const defs = await this.prisma.assetTypeDefinition.findMany({
-        where: { code: typeCode, OR: [{ orgId }, { orgId: null }], deletedAt: null },
-        select: { orgId: true, shortCode: true },
-      });
-      return (defs.find((d) => d.orgId === orgId) ?? defs[0])?.shortCode ?? null;
+    const where = { code: typeCode, OR: [{ orgId }, { orgId: null }], deletedAt: null };
+    const select = { orgId: true, shortCode: true };
+    const defs =
+      nodeType === AssetNodeType.ASSET
+        ? await this.prisma.assetTypeDefinition.findMany({ where, select })
+        : await this.prisma.locationTypeDefinition.findMany({ where, select });
+    return defs.find((d) => d.orgId === orgId) ?? defs[0] ?? null;
+  }
+
+  /**
+   * WP-C3 (B-203): `typeCode` is een vrije tekstkolom zonder FK — valideer hem
+   * tegen de type-definities (org-eigen én systeem) vóór de write. Een lege of
+   * onbekende waarde leverde eerder misvormde nodenummers (`-0033`) en
+   * datavervuiling op. Geeft de definitie terug (voor de shortcode).
+   */
+  private async assertValidTypeCode(
+    orgId: string,
+    nodeType: AssetNodeType,
+    typeCode: string,
+  ): Promise<{ shortCode: string | null }> {
+    const label = nodeType === AssetNodeType.ASSET ? 'assettype' : 'locatietype';
+    if (!typeCode.trim()) {
+      throw new BadRequestException(`Geen ${label} opgegeven: kies een geldig type`);
     }
-    const defs = await this.prisma.locationTypeDefinition.findMany({
-      where: { code: typeCode, OR: [{ orgId }, { orgId: null }], deletedAt: null },
-      select: { orgId: true, shortCode: true },
+    const def = await this.resolveTypeDefinition(orgId, nodeType, typeCode);
+    if (!def) {
+      throw new BadRequestException(`Onbekend ${label} "${typeCode}"`);
+    }
+    return def;
+  }
+
+  /**
+   * B-203 (update-pad): een typeCode-wijziging op een bestaande node wordt
+   * gevalideerd; een ongewijzigde echo (ook van legacy records met een inmiddels
+   * verwijderd type) blijft werken.
+   */
+  private async assertTypeCodeChangeValid(
+    key: SyncEntityKey,
+    fields: Record<string, unknown>,
+    existing: SyncRow,
+    orgId: string,
+  ): Promise<void> {
+    if (key !== 'assetNodes') return;
+    if (fields.typeCode === undefined || fields.typeCode === existing.typeCode) return;
+    const nodeType =
+      String(fields.nodeType ?? existing.nodeType) === AssetNodeType.LOCATION
+        ? AssetNodeType.LOCATION
+        : AssetNodeType.ASSET;
+    await this.assertValidTypeCode(orgId, nodeType, String(fields.typeCode ?? ''));
+  }
+
+  /**
+   * WP-C3 (B-216): een sync-update die `parentId` wijzigt is een move — de
+   * dieptegrens geldt dan voor de meeschuivende subtree. Een ongewijzigde echo
+   * van `parentId` wordt niet gecheckt (bestaande diepe bomen blijven bewerkbaar).
+   */
+  private async assertReparentDepth(
+    key: SyncEntityKey,
+    fields: Record<string, unknown>,
+    existing: SyncRow,
+    orgId: string,
+    nodeId: string,
+  ): Promise<void> {
+    if (key !== 'assetNodes') return;
+    const newParentId = fields.parentId;
+    if (typeof newParentId !== 'string' || !newParentId) return;
+    if (newParentId === existing.parentId) return;
+    await this.assetNodes.assertDepthForWrite(newParentId, orgId, nodeId);
+  }
+
+  /**
+   * WP-C3 (B-217, beslispunt A6-optie b): `assignedTo`/`reviewerId` zijn
+   * management-beslissingen. De PWA echoot het volledige plan-record in elke
+   * push, dus alleen een WIJZIGING t.o.v. de serverstaat wordt geguard: pushers
+   * zonder review-rol (REVIEW_ROLES) mogen de waarde niet veranderen.
+   * Uitzonderingen:
+   * - een offline aangemaakt plan mag door de maker aan zichzelf toegewezen
+   *   worden (`assignedTo === user.id` bij create) — eigenaarschap, geen routing;
+   * - `reviewerId === user.id` wordt bewust NIET apart geweigerd voor
+   *   review-rollen (beslispunt-materie, zie A6) — alleen de rol telt.
+   */
+  private assertPlanAssignmentRole(
+    key: SyncEntityKey,
+    fields: Record<string, unknown>,
+    existing: SyncRow | null,
+    user: User,
+  ): void {
+    if (key !== 'inspectionPlans') return;
+    if (hasRole(user, REVIEW_ROLES)) return;
+    for (const field of ['assignedTo', 'reviewerId'] as const) {
+      if (fields[field] === undefined) continue;
+      const incoming = (fields[field] ?? null) as string | null;
+      const current = (existing?.[field] ?? null) as string | null;
+      if (incoming === current) continue; // echo van de serverstaat
+      if (!existing && field === 'assignedTo' && incoming === user.id) continue;
+      throw new BadRequestException(
+        'Alleen management- of werkvoorbereidingsrollen mogen de toewijzing of beoordelaar van een inspectieplan wijzigen',
+      );
+    }
+  }
+
+  /**
+   * WP-C3 (B-218): statusovergang → `pending_review`, gedetecteerd op de oude
+   * serverstaat. `existing === null` = record dat direct als pending_review
+   * binnenkomt (volledig offline ingediend).
+   */
+  private planBecamePendingReview(
+    key: SyncEntityKey,
+    fields: Record<string, unknown>,
+    existing: SyncRow | null,
+  ): boolean {
+    return (
+      key === 'inspectionPlans' &&
+      fields.statusCode === STATUS_PENDING_REVIEW &&
+      (existing?.statusCode ?? null) !== STATUS_PENDING_REVIEW
+    );
+  }
+
+  /**
+   * B-218: `submittedAt` server-side vullen wanneer de client hem bij het
+   * indienen niet meestuurde (spiegel van `submit()`) — zelfde write, dus geen
+   * extra updatedAt-bump die valse zelf-conflicten zou veroorzaken.
+   */
+  private enrichPlanSubmit(
+    key: SyncEntityKey,
+    fields: Record<string, unknown>,
+    existing: SyncRow | null,
+  ): void {
+    if (!this.planBecamePendingReview(key, fields, existing)) return;
+    if (fields.submittedAt === undefined && !existing?.submittedAt) {
+      fields.submittedAt = new Date();
+    }
+  }
+
+  /**
+   * B-218: dezelfde submit-side-effects als het REST-pad (notificatie
+   * INSPECTIEPLAN_TER_REVIEW met reviewer→PM→inspecteur-fallback + AI-voorcontrole),
+   * fire-and-forget ná een geslaagde write — mag de push nooit laten falen.
+   */
+  private firePlanSubmittedSideEffects(
+    key: SyncEntityKey,
+    fields: Record<string, unknown>,
+    existing: SyncRow | null,
+    user: User,
+    planId: string,
+  ): void {
+    if (!this.planBecamePendingReview(key, fields, existing)) return;
+    this.inspectionPlans.dispatchSubmitSideEffects(planId, user).catch((e) => {
+      this.logger.error(
+        `Submit-side-effects (sync) mislukt voor plan ${planId}: ${(e as Error)?.message}`,
+      );
     });
-    return (defs.find((d) => d.orgId === orgId) ?? defs[0])?.shortCode ?? null;
+  }
+
+  /**
+   * B-203: pre-write-guards die alleen zinvol zijn wanneer de update ook echt
+   * toegepast gaat worden. Conflict-bound updates (server nieuwer dan de
+   * client-baseline) slaan we over: applyUpdate schrijft dan niets en
+   * `resolve()` draait dezelfde guards opnieuw over de gekozen data.
+   */
+  private async assertUpdateGuards(
+    key: SyncEntityKey,
+    data: SyncRecordData,
+    fields: Record<string, unknown>,
+    existing: SyncRow,
+    orgId: string,
+    user: User,
+  ): Promise<void> {
+    const clientSynced = data.syncedAt ? new Date(data.syncedAt) : null;
+    if (clientSynced && existing.updatedAt > clientSynced) return; // → conflictpad
+    this.assertPlanAssignmentRole(key, fields, existing, user);
+    await this.assertTypeCodeChangeValid(key, fields, existing, orgId);
+    await this.assertReparentDepth(key, fields, existing, orgId, String(data.id ?? ''));
+  }
+
+  /** B-203: server-toegekend nodeNumber meegeven op het adopt-/update-pad. */
+  private withAssignedNodeNumber(
+    key: SyncEntityKey,
+    result: OpResult,
+    row: SyncRow,
+  ): OpResult {
+    if (key !== 'assetNodes' || result.status !== 'success') return result;
+    const nodeNumber = row.nodeNumber;
+    if (typeof nodeNumber !== 'string' || !nodeNumber) return result;
+    return { ...result, assigned: { nodeNumber } };
   }
 
   /** Valideer dat alle aanwezige FK-waarden bij de eigen org horen (no-op voor superuser). */
@@ -384,16 +577,21 @@ export class SyncService {
           ? orderAssetNodesParentFirst(dto.changes[key] ?? [])
           : dto.changes[key] ?? [];
       for (const change of group) {
+        // B-212: nooit de rauwe exception-message (Prisma lekt pad/regels/payload)
+        // naar de client — map naar NL, log volledig server-side met referentie.
+        const ref = {
+          entityType: SYNC_ENTITIES[key].singular,
+          entityId: String(change.data.id ?? ''),
+        };
         try {
           const r = await this.processChange(key, change.operation, change.data, user, orgId, dto.deviceId, criticalModelCache);
           results.push(r);
           if (r.status === 'success') processed[key]++;
-        } catch (e: any) {
+        } catch (e: unknown) {
           results.push({
-            entityType: SYNC_ENTITIES[key].singular,
-            entityId: String(change.data.id ?? ''),
+            ...ref,
             status: 'failed',
-            error: e?.message ?? 'Onbekende fout',
+            error: toClientSyncError(e, this.logger, ref),
           });
         }
       }
@@ -405,17 +603,13 @@ export class SyncService {
     // zodat een in dezelfde push aangemaakte thread bestaat als z'n berichten
     // worden toegepast.
     for (const change of dto.changes.chatThreads ?? []) {
+      const ref = { entityType: 'chatThread', entityId: String(change.data.id ?? '') };
       try {
         const r = await this.chat.applySyncThread(user, change.operation, change.data);
         results.push({ entityType: 'chatThread', entityId: r.id, status: 'success' });
         processed.chatThreads++;
-      } catch (e: any) {
-        results.push({
-          entityType: 'chatThread',
-          entityId: String(change.data.id ?? ''),
-          status: 'failed',
-          error: e?.message ?? 'Onbekende fout',
-        });
+      } catch (e: unknown) {
+        results.push({ ...ref, status: 'failed', error: toClientSyncError(e, this.logger, ref) });
       }
     }
 
@@ -423,39 +617,43 @@ export class SyncService {
     // ze vereisen membership-autorisatie + notificatie-dispatch — dus delegeren we
     // naar ChatService (idempotent op client-id).
     for (const change of dto.changes.chatMessages ?? []) {
+      const ref = { entityType: 'chatMessage', entityId: String(change.data.id ?? '') };
       try {
         const r = await this.chat.applySyncMessage(user, change.operation, change.data);
         results.push({ entityType: 'chatMessage', entityId: r.id, status: 'success' });
         processed.chatMessages++;
-      } catch (e: any) {
-        results.push({
-          entityType: 'chatMessage',
-          entityId: String(change.data.id ?? ''),
-          status: 'failed',
-          error: e?.message ?? 'Onbekende fout',
-        });
+      } catch (e: unknown) {
+        results.push({ ...ref, status: 'failed', error: toClientSyncError(e, this.logger, ref) });
       }
     }
 
     // Additief: presence. De gebruiker komt uit de JWT; de payload bepaalt enkel
     // status + notitie.
     for (const change of dto.changes.presence ?? []) {
+      const ref = { entityType: 'presence', entityId: String(change.data.id ?? '') };
       try {
         const r = await this.chat.applySyncPresence(user, change.data);
         results.push({ entityType: 'presence', entityId: r.id, status: 'success' });
         processed.presence++;
-      } catch (e: any) {
-        results.push({
-          entityType: 'presence',
-          entityId: String(change.data.id ?? ''),
-          status: 'failed',
-          error: e?.message ?? 'Onbekende fout',
-        });
+      } catch (e: unknown) {
+        results.push({ ...ref, status: 'failed', error: toClientSyncError(e, this.logger, ref) });
+      }
+    }
+
+    // Additief (WP-C3/B-203, contractafspraak zonder bump): server-toegekende
+    // waarden per succesvol record — nu alleen assetNode.nodeNumber. De client
+    // neemt deze lokaal over zodat "concept" het echte nummer wordt zonder op
+    // de volgende pull-cursor te hoeven wachten. Oude PWA's negeren de key.
+    const assigned: Array<{ entityType: string; entityId: string; nodeNumber: string }> = [];
+    for (const r of results) {
+      if (r.status === 'success' && r.assigned) {
+        assigned.push({ entityType: r.entityType, entityId: r.entityId, ...r.assigned });
       }
     }
 
     return {
       processed,
+      assigned,
       conflicts: results.filter((r) => r.status === 'conflict'),
       errors: results.filter((r) => r.status === 'failed'),
       serverTime: new Date().toISOString(),
@@ -504,17 +702,26 @@ export class SyncService {
       const dup = await model.findFirst({ where: { id, ...orgScope(user) } });
       if (dup) {
         await this.assertPlanReviewGate(key, fields, dup, orgId);
+        // WP-C3: rol-/typeCode-/dieptechecks op het adopt-pad (update-semantiek).
+        await this.assertUpdateGuards(key, data, fields, dup, orgId, user);
         await this.computeFindingCriticalField(key, fields, dup, data, criticalModelCache);
+        this.enrichPlanSubmit(key, fields, dup);
         const adopted = await this.applyUpdate(cfg, model, id, ref, data, fields, childRows, dup, user, deviceId);
         // Reset pas ná een geslaagde write (review #5): een LWW-conflict mag de
         // herinspectie-trigger niet her-armen op basis van stale PWA-data.
         if (adopted.status === 'success') {
           await this.resetCriticalRepairNotified(key, fields, dup);
+          this.firePlanSubmittedSideEffects(key, fields, dup, user, id);
+          return this.withAssignedNodeNumber(key, adopted, dup);
         }
         return adopted;
       }
+      // B-217: toewijzingsvelden op een nieuw plan alleen met review-rol
+      // (uitzondering: assignedTo === maker zelf).
+      this.assertPlanAssignmentRole(key, fields, null, user);
       await this.assertPlanReviewGate(key, fields, null, orgId);
       await this.computeFindingCriticalField(key, fields, null, data, criticalModelCache);
+      this.enrichPlanSubmit(key, fields, null);
 
       // Verplichte create-velden (WP-A2 · B-207): een ontbrekende verplichte
       // kolom zou anders pas bij Prisma stranden, met een rauwe Engelstalige
@@ -538,28 +745,37 @@ export class SyncService {
           String(data.nodeType) === AssetNodeType.LOCATION
             ? AssetNodeType.LOCATION
             : AssetNodeType.ASSET;
-        const typeCode = String(data.typeCode ?? '');
-        await this.numbering.runWithGeneratedNumber(
+        // B-203: typeCode valideren tegen de type-definities; de gevonden
+        // shortcode voedt de [typecode]-placeholder van de nummering.
+        const typeDef = await this.assertValidTypeCode(orgId, nodeType, String(data.typeCode ?? ''));
+        // B-216: dieptegrens op nieuwe child-nodes (wortels zitten op diepte 0).
+        if (typeof data.parentId === 'string' && data.parentId) {
+          await this.assetNodes.assertDepthForWrite(data.parentId, orgId);
+        }
+        const created = await this.numbering.runWithGeneratedNumber(
           nodeType === AssetNodeType.LOCATION
             ? NumberingModel.LOCATION_NODE
             : NumberingModel.ASSET_NODE,
           orgId,
-          {
-            loadContext: async () => ({
-              typeShortCode: await this.resolveTypeShortCode(orgId, nodeType, typeCode),
-            }),
-          },
+          { context: { typeShortCode: typeDef.shortCode } },
           (tx, nodeNumber) =>
             tx.assetNode.create({
               data: { ...createData, nodeNumber } as unknown as Prisma.AssetNodeUncheckedCreateInput,
             }),
         );
-        return { ...ref, status: 'success' };
+        // B-203: server-toegekende waarden direct terug in de push-respons.
+        const assignedNumber = (created as { nodeNumber?: string | null } | null)?.nodeNumber;
+        return assignedNumber
+          ? { ...ref, status: 'success', assigned: { nodeNumber: assignedNumber } }
+          : { ...ref, status: 'success' };
       }
 
       await model.create({ data: createData });
       // Nieuwe open kritieke constatering via de push → trigger her-armen (review #7).
       await this.resetCriticalRepairNotified(key, fields, null);
+      // B-218: een plan dat direct als pending_review binnenkomt (volledig
+      // offline ingediend) start dezelfde submit-keten.
+      this.firePlanSubmittedSideEffects(key, fields, null, user, id);
       return { ...ref, status: 'success' };
     }
 
@@ -567,12 +783,17 @@ export class SyncService {
     const existing = await model.findFirst({ where: { id, ...orgScope(user) } });
     if (!existing) throw new BadRequestException('Record niet gevonden');
     await this.assertPlanReviewGate(key, fields, existing, orgId);
+    // WP-C3: rol-/typeCode-/dieptechecks (conflict-bound updates slaan over).
+    await this.assertUpdateGuards(key, data, fields, existing, orgId, user);
     await this.computeFindingCriticalField(key, fields, existing, data, criticalModelCache);
+    this.enrichPlanSubmit(key, fields, existing);
     const result = await this.applyUpdate(cfg, model, id, ref, data, fields, childRows, existing, user, deviceId);
     // Reset pas ná een geslaagde write (review #5): een LWW-conflict mag de
     // herinspectie-trigger niet her-armen op basis van stale PWA-data.
     if (result.status === 'success') {
       await this.resetCriticalRepairNotified(key, fields, existing);
+      this.firePlanSubmittedSideEffects(key, fields, existing, user, id);
+      return this.withAssignedNodeNumber(key, result, existing);
     }
     return result;
   }
@@ -802,6 +1023,12 @@ export class SyncService {
         const fields = toDbData(key, chosen);
         const gateOrgId = (existing as { orgId?: string | null }).orgId ?? user.orgId!;
         await this.assertPlanReviewGate(key, fields, existing as Record<string, unknown>, gateOrgId);
+        // WP-C3: dezelfde harde guards als het push-pad. Een resolution is een
+        // definitieve write, dus hier géén conflict-skip (B-217/B-203/B-216).
+        this.assertPlanAssignmentRole(key, fields, existing, user);
+        await this.assertTypeCodeChangeValid(key, fields, existing, gateOrgId);
+        await this.assertReparentDepth(key, fields, existing, gateOrgId, r.entityId);
+        this.enrichPlanSubmit(key, fields, existing);
 
         // Bewust GEEN narrow select: de audit-$use-middleware (prisma.service)
         // leest entityId/orgId én de nieuwe veldwaarden uit het update-resultaat.
@@ -818,14 +1045,19 @@ export class SyncService {
           where: { id: queueItem.id },
           data: { status: SyncStatus.completed, resolvedAt: new Date(), resolvedBy: user.id },
         });
+        // B-218: een resolution die het plan alsnog op pending_review zet
+        // start dezelfde submit-keten als push/REST (fire-and-forget).
+        this.firePlanSubmittedSideEffects(key, fields, existing, user, r.entityId);
         results.push({
           entityType: r.entityType,
           entityId: r.entityId,
           serverVersion: updated.updatedAt.toISOString(),
         });
         resolved++;
-      } catch (e: any) {
-        errors.push({ entityType: r.entityType, entityId: r.entityId, error: e?.message ?? 'Onbekende fout' });
+      } catch (e: unknown) {
+        // B-212: geen rauwe exception-messages naar de client.
+        const ref = { entityType: r.entityType, entityId: r.entityId };
+        errors.push({ ...ref, error: toClientSyncError(e, this.logger, ref) });
       }
     }
     return { resolved, results, errors };

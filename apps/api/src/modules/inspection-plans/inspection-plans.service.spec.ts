@@ -902,6 +902,90 @@ describe('InspectionPlansService', () => {
     });
   });
 
+  // WP-C3 (B-218): gedeelde submit-side-effects — ook het /sync-pad roept dit
+  // aan zodat een PWA-indiening dezelfde keten start als de REST-submit.
+  describe('dispatchSubmitSideEffects', () => {
+    const basePlan = {
+      id: 'plan-1',
+      orgId: 'org-1',
+      projectName: 'Test',
+      reviewerId: null as string | null,
+      assignedTo: null as string | null,
+      project: null as { projectManagerId: string | null } | null,
+    };
+
+    it('notifies the reviewer when set', async () => {
+      mockPrismaService.inspectionPlan.findFirst.mockResolvedValue({
+        ...basePlan,
+        reviewerId: 'user-2',
+      });
+
+      await service.dispatchSubmitSideEffects('plan-1', mockUser);
+
+      expect(mockNotificationsService.dispatch).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: NotificationType.INSPECTIEPLAN_TER_REVIEW,
+          recipientUserIds: ['user-2'],
+        }),
+      );
+      expect(mockAiReviewService.startRun).toHaveBeenCalledWith('plan-1', mockUser);
+    });
+
+    it('falls back to the project manager when no reviewer is set (B-218)', async () => {
+      mockPrismaService.inspectionPlan.findFirst.mockResolvedValue({
+        ...basePlan,
+        project: { projectManagerId: 'pm-1' },
+        assignedTo: 'user-9',
+      });
+
+      await service.dispatchSubmitSideEffects('plan-1', mockUser);
+
+      expect(mockNotificationsService.dispatch).toHaveBeenCalledWith(
+        expect.objectContaining({ recipientUserIds: ['pm-1'] }),
+      );
+    });
+
+    it('falls back to assignedTo when neither reviewer nor PM is set', async () => {
+      mockPrismaService.inspectionPlan.findFirst.mockResolvedValue({
+        ...basePlan,
+        assignedTo: 'user-9',
+      });
+
+      await service.dispatchSubmitSideEffects('plan-1', mockUser);
+
+      expect(mockNotificationsService.dispatch).toHaveBeenCalledWith(
+        expect.objectContaining({ recipientUserIds: ['user-9'] }),
+      );
+    });
+
+    it('skips the notification when the recipient is the submitter, but still starts the AI run', async () => {
+      mockPrismaService.inspectionPlan.findFirst.mockResolvedValue({
+        ...basePlan,
+        reviewerId: mockUser.id,
+      });
+
+      await service.dispatchSubmitSideEffects('plan-1', mockUser);
+
+      expect(mockNotificationsService.dispatch).not.toHaveBeenCalled();
+      expect(mockAiReviewService.startRun).toHaveBeenCalledWith('plan-1', mockUser);
+    });
+
+    it('does nothing (and never throws) for an unknown plan', async () => {
+      mockPrismaService.inspectionPlan.findFirst.mockResolvedValue(null);
+
+      await expect(service.dispatchSubmitSideEffects('gone', mockUser)).resolves.toBeUndefined();
+
+      expect(mockNotificationsService.dispatch).not.toHaveBeenCalled();
+      expect(mockAiReviewService.startRun).not.toHaveBeenCalled();
+    });
+
+    it('never throws when the plan lookup fails (fire-and-forget contract)', async () => {
+      mockPrismaService.inspectionPlan.findFirst.mockRejectedValue(new Error('db weg'));
+
+      await expect(service.dispatchSubmitSideEffects('plan-1', mockUser)).resolves.toBeUndefined();
+    });
+  });
+
   describe('review', () => {
     it('should throw BadRequest when not pending_review', async () => {
       mockPrismaService.inspectionPlan.findFirst.mockResolvedValue({

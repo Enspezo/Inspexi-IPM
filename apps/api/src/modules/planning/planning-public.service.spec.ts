@@ -142,14 +142,33 @@ describe('PlanningPublicService', () => {
   // ─── findByPublicToken ──────────────────────────────────────
 
   describe('findByPublicToken', () => {
+    // Select-vormig resultaat zoals Prisma dat met de B-306-allowlist teruggeeft.
+    const selectShapedItem = {
+      id: 'plan-1',
+      orgId: 'org-1',
+      status: PlanningStatus.NOG_TE_PLANNEN,
+      productName: 'NEN1010 Inspectie',
+      scheduledDate: new Date('2026-04-01T09:00:00Z'),
+      durationHours: 2,
+      isMultiDay: false,
+      labels: [],
+      contact: { id: 'contact-1', type: 'COMPANY', companyName: 'ACME BV', firstName: null, lastName: null },
+      location: {
+        id: 'location-1',
+        name: 'Hoofdkantoor',
+        street: 'Hoofdstraat',
+        houseNumber: '1',
+        city: 'Amsterdam',
+        postalCode: '1000AA',
+      },
+      inspectors: [],
+      organization: { id: 'org-1', name: 'Test', logoUrl: null, primaryColor: null },
+      sessions: [],
+    };
+
     it('should return a planning item by public token with documents', async () => {
-      const itemWithOrg = {
-        ...mockPlanningItem,
-        quoteId: null,
-        organization: { id: 'org-1', name: 'Test', logoUrl: null, primaryColor: null },
-      };
       mockPrismaService.planningItem.findUnique
-        .mockResolvedValueOnce(itemWithOrg)  // findByPublicToken
+        .mockResolvedValueOnce(selectShapedItem)  // findByPublicToken
         .mockResolvedValueOnce({ id: 'plan-1', quoteId: null }); // getSharedDocuments
       // Org-modus voor inspecteur-contactresolutie (apart opgehaald, lekt niet naar de response).
       mockPrismaService.organization.findUnique.mockResolvedValue({
@@ -162,8 +181,36 @@ describe('PlanningPublicService', () => {
 
       const result = await service.findByPublicToken('token-abc');
 
-      expect(result.publicToken).toBe('token-abc');
+      expect(result.id).toBe('plan-1');
       expect(result.documents).toEqual([]);
+    });
+
+    it('B-306: gebruikt een expliciete select-allowlist zonder internalNotes en stript orgId', async () => {
+      mockPrismaService.planningItem.findUnique
+        .mockResolvedValueOnce(selectShapedItem)
+        .mockResolvedValueOnce({ id: 'plan-1', quoteId: null });
+      mockPrismaService.organization.findUnique.mockResolvedValue({
+        inspectorPhoneDisplay: 'NONE',
+        inspectorEmailDisplay: 'NONE',
+        inspectorStaticPhone: null,
+        inspectorStaticEmail: null,
+      });
+      mockPrismaService.document.findMany.mockResolvedValue([]);
+
+      const result = await service.findByPublicToken('token-abc');
+
+      // De query moet een select-allowlist gebruiken (geen include+spread meer)
+      // en mag interne velden zoals internalNotes nooit opvragen.
+      const queryArg = mockPrismaService.planningItem.findUnique.mock.calls[0][0];
+      expect(queryArg.include).toBeUndefined();
+      expect(queryArg.select).toBeDefined();
+      expect(queryArg.select.internalNotes).toBeUndefined();
+      expect(queryArg.select.createdBy).toBeUndefined();
+      expect(queryArg.select.cancelReason).toBeUndefined();
+
+      // orgId is intern (contactresolutie) en wordt uit de response gestript.
+      expect(result).not.toHaveProperty('orgId');
+      expect(result).not.toHaveProperty('internalNotes');
     });
 
     it('should throw NotFoundException for unknown token', async () => {

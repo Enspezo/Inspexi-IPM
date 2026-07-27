@@ -17,7 +17,7 @@ export function useOrganization(orgId: string | null | undefined) {
   });
 }
 
-interface UpdateOrganizationDto {
+export interface UpdateOrganizationDto {
   name?: string;
   primaryColor?: string | null;
   defaultVat?: number;

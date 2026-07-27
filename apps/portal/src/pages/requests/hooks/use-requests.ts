@@ -114,6 +114,9 @@ export function useUpdateRequest(id: string) {
 interface UpdateRequestStatusDto {
   status: string;
   note?: string;
+  /** B-315 §1: verplicht wanneer status VERLOREN wordt. */
+  lostReasonId?: string;
+  lostNote?: string;
 }
 
 export function useUpdateRequestStatus(id: string) {

@@ -1,9 +1,12 @@
 import { Link } from 'react-router-dom';
+import type { ReactNode } from 'react';
 import { useAuth } from '@/providers/auth-provider';
 import { Card, Spinner } from '@/components/ui';
 import { DetailPageLayout } from '@/components/layout/detail-page-layout';
 import { useMyActivity } from '@/hooks/use-my-activity';
 import { useTasks } from '@/pages/tasks/hooks/use-tasks';
+import { useDashboardStats } from './hooks/use-dashboard-stats';
+import { useFeatures } from '@/providers/feature-provider';
 import { AUDIT_ACTION, getStatusConfig, TASK_STATUS } from '@/lib/status';
 import { TaskStatus } from '@/types';
 import type { AuditLogEntry, Task } from '@/types';
@@ -13,10 +16,22 @@ import {
   getEntityDisplayName,
 } from '@/lib/audit-entity-helpers';
 
-const stats = [
+// B-001: statische tegel-definities (label/icoon/kleur); de waarden komen
+// runtime uit /portal/stats/staff-dashboard resp. de al opgehaalde taken.
+interface StatTileDef {
+  key: 'activeInspections' | 'users' | 'openTasks' | 'reports';
+  label: string;
+  icon: ReactNode;
+  bg: string;
+  /** SaaS-feature die deze tegel vereist (zelfde gating als de sidebar). */
+  feature?: 'BASIS_INSPECTIES';
+}
+
+const STAT_TILES: StatTileDef[] = [
   {
+    key: 'activeInspections',
     label: 'Actieve inspecties',
-    value: '--',
+    feature: 'BASIS_INSPECTIES',
     icon: (
       <svg className="h-6 w-6 text-primary-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
@@ -25,8 +40,8 @@ const stats = [
     bg: 'bg-primary-50',
   },
   {
+    key: 'users',
     label: 'Gebruikers',
-    value: '--',
     icon: (
       <svg className="h-6 w-6 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
@@ -35,8 +50,8 @@ const stats = [
     bg: 'bg-green-50',
   },
   {
-    label: 'Openstaande taken',
-    value: '--',
+    key: 'openTasks',
+    label: 'Mijn openstaande taken',
     icon: (
       <svg className="h-6 w-6 text-orange-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -45,8 +60,9 @@ const stats = [
     bg: 'bg-orange-50',
   },
   {
+    key: 'reports',
     label: 'Rapporten',
-    value: '--',
+    feature: 'BASIS_INSPECTIES',
     icon: (
       <svg className="h-6 w-6 text-purple-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
@@ -177,12 +193,41 @@ function DashboardTaskRow({ task }: { task: Task }) {
 
 export default function DashboardPage() {
   const { user } = useAuth();
+  const { hasFeature } = useFeatures();
   const { data: activityData, isLoading: activityLoading } = useMyActivity({ limit: 5 });
-  const { data: myTasksData } = useTasks({ onlyMine: true, limit: 100 });
+  const { data: myTasksData, isLoading: tasksLoading } = useTasks({ onlyMine: true, limit: 100 });
+  const { data: statsData, isLoading: statsLoading } = useDashboardStats();
 
   const myTasks = myTasksData?.data ?? [];
   const allTodayTasks = filterTodayTasks(myTasks);
   const allUpcomingTasks = filterUpcomingTasks(myTasks);
+
+  // B-001: "Mijn openstaande taken" komt uit de al opgehaalde taken-respons;
+  // de overige tellingen uit /portal/stats/staff-dashboard.
+  // 'loading' → spinner, 'error' → em-dash, null → tegel verbergen (geen
+  // entitlement volgens de backend), number → waarde tonen.
+  const openTaskCount = myTasks.filter((t) => t.status !== TaskStatus.VOLTOOID).length;
+  const tileValue = (tile: StatTileDef): number | null | 'loading' | 'error' => {
+    if (tile.key === 'openTasks') {
+      if (tasksLoading) return 'loading';
+      return myTasksData ? openTaskCount : 'error';
+    }
+    if (statsLoading) return 'loading';
+    if (!statsData) return 'error';
+    switch (tile.key) {
+      case 'activeInspections':
+        return statsData.activeInspections;
+      case 'users':
+        return statsData.activeUsers;
+      case 'reports':
+        return statsData.reports;
+    }
+  };
+  // Zelfde gating als de sidebar: tegel weg zonder feature; ook weg wanneer de
+  // backend `null` teruggeeft (org zonder inspectie-entitlement).
+  const visibleTiles = STAT_TILES.filter(
+    (tile) => !tile.feature || hasFeature(tile.feature),
+  ).filter((tile) => tileValue(tile) !== null);
 
   // Max 10 total — today tasks get priority
   const DISPLAY_LIMIT = 10;
@@ -204,21 +249,32 @@ export default function DashboardPage() {
           </p>
         </div>
 
-        {/* Stats grid */}
+        {/* Stats grid (B-001: echte tellingen, spinner tijdens laden) */}
         <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
-          {stats.map((stat) => (
-            <Card key={stat.label}>
-              <div className="flex items-center gap-4">
-                <div className={`flex h-12 w-12 items-center justify-center rounded-lg ${stat.bg}`}>
-                  {stat.icon}
+          {visibleTiles.map((tile) => {
+            const value = tileValue(tile);
+            return (
+              <Card key={tile.key}>
+                <div className="flex items-center gap-4">
+                  <div className={`flex h-12 w-12 items-center justify-center rounded-lg ${tile.bg}`}>
+                    {tile.icon}
+                  </div>
+                  <div>
+                    {value === 'loading' ? (
+                      <div className="flex h-8 items-center">
+                        <Spinner size="sm" />
+                      </div>
+                    ) : (
+                      <p className="text-2xl font-bold text-gray-900">
+                        {value === 'error' ? '—' : value}
+                      </p>
+                    )}
+                    <p className="text-sm text-gray-500">{tile.label}</p>
+                  </div>
                 </div>
-                <div>
-                  <p className="text-2xl font-bold text-gray-900">{stat.value}</p>
-                  <p className="text-sm text-gray-500">{stat.label}</p>
-                </div>
-              </div>
-            </Card>
-          ))}
+              </Card>
+            );
+          })}
         </div>
 
         {/* Bottom sections */}

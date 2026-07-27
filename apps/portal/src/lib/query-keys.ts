@@ -406,6 +406,10 @@ export const myActivityKeys = {
   list: (params: ListParams) => [...myActivityKeys.all, params] as const,
 };
 
+export const dashboardStatsKeys = {
+  all: ['dashboard-stats'] as const,
+};
+
 export const lookupKeys = {
   all: ['lookups'] as const,
   byKind: (kind: string) => [...lookupKeys.all, kind] as const,

@@ -183,8 +183,14 @@ export default function InspectionDetailPage() {
   };
 
   const handleReview = async (decision: 'approve' | 'reject') => {
+    // B-315 §8: afkeuren vereist een toelichting — anders weet de inspecteur
+    // niet wat er aangepast moet worden (de backend weigert het ook met 400).
+    if (decision === 'reject' && !reviewNotes.trim()) {
+      showToast('Geef een toelichting bij het afkeuren', 'error');
+      return;
+    }
     try {
-      await reviewMutation.mutateAsync({ id: id!, decision, notes: reviewNotes || undefined });
+      await reviewMutation.mutateAsync({ id: id!, decision, notes: reviewNotes.trim() || undefined });
       showToast(decision === 'approve' ? 'Inspectie goedgekeurd' : 'Inspectie afgekeurd', 'success');
       setReviewNotes('');
     } catch {
@@ -284,7 +290,7 @@ export default function InspectionDetailPage() {
                   <textarea
                     value={reviewNotes}
                     onChange={(e) => setReviewNotes(e.target.value)}
-                    placeholder="Opmerkingen (optioneel)"
+                    placeholder="Opmerkingen (verplicht bij afkeuren)"
                     rows={2}
                     className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:ring-primary-500"
                   />

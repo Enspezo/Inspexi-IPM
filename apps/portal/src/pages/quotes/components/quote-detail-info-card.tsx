@@ -224,7 +224,9 @@ export function QuoteInfoCard({
             <dd className="mt-1 text-sm text-gray-900">{formatDate(quote.viewedAt)}</dd>
           </div>
         )}
-        {quote.publicToken && (
+        {/* B-315 §3: de publieke link werkt pas ná versturen (403 ervoor) —
+            toon hem dus niet op een CONCEPT-/ongeadresseerde offerte. */}
+        {quote.publicToken && quote.sentAt && (
           <div>
             <dt className="text-sm font-medium text-gray-500">Publieke link</dt>
             <dd className="mt-1 text-sm">

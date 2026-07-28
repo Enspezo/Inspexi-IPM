@@ -1494,11 +1494,11 @@ describe('Cross-tenant FK isolation (e2e)', () => {
 
   // ─── Support-tickets — cross-tenant read/mutate isolatie ─────────────
   describe('Support tickets — cross-tenant isolatie', () => {
-    it('rejects reading another org\'s ticket (403)', async () => {
+    it('rejects reading another org\'s ticket (404 — B-105, geen existence-oracle)', async () => {
       await request(app.getHttpServer())
         .get(`/api/v1/support-tickets/${ticketBId}`)
         .set('Authorization', `Bearer ${tokenA}`)
-        .expect(403);
+        .expect(404);
     });
 
     it('does not leak another org\'s ticket in the org list', async () => {
@@ -1510,20 +1510,20 @@ describe('Cross-tenant FK isolation (e2e)', () => {
       expect(ids).not.toContain(ticketBId);
     });
 
-    it('rejects posting a message to another org\'s ticket (403)', async () => {
+    it('rejects posting a message to another org\'s ticket (404 — B-105)', async () => {
       await request(app.getHttpServer())
         .post(`/api/v1/support-tickets/${ticketBId}/messages`)
         .set('Authorization', `Bearer ${tokenA}`)
         .send({ body: 'inject' })
-        .expect(403);
+        .expect(404);
     });
 
-    it('rejects mutating another org\'s ticket (403)', async () => {
+    it('rejects mutating another org\'s ticket (404 — B-105)', async () => {
       await request(app.getHttpServer())
         .patch(`/api/v1/support-tickets/${ticketBId}`)
         .set('Authorization', `Bearer ${tokenA}`)
         .send({ status: 'OPGELOST' })
-        .expect(403);
+        .expect(404);
     });
   });
 

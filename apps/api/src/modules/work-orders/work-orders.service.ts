@@ -1,10 +1,9 @@
 import {
   Injectable,
   Logger,
-  ForbiddenException,
   BadRequestException,
 } from '@nestjs/common';
-import { User, Role, Prisma, WorkOrderStatus } from '@prisma/client';
+import { User, Prisma, WorkOrderStatus } from '@prisma/client';
 import { PrismaService } from '@/prisma';
 import { paginate, orgScope, assertFound, assertAllSameOrg, resolvePhaseLink, PROJECT_FASEN_FEATURE, PROJECT_FASEN_REQUIRED_MESSAGE } from '@/common';
 import { EntitlementsService } from '@/modules/entitlements/entitlements.service';
@@ -231,20 +230,15 @@ export class WorkOrdersService {
   }
 
   async findOne(id: string, user: User) {
+    // Org-scoped lookup: een vreemde-org-id is niet te onderscheiden van een
+    // niet-bestaand id (zelfde 404) — geen existence-oracle (B-105).
     const workOrder = assertFound(
-      await this.prisma.workOrder.findUnique({
-        where: { id },
+      await this.prisma.workOrder.findFirst({
+        where: { id, ...orgScope(user) },
         include: WORK_ORDER_INCLUDE,
       }),
       'Werkbon',
     );
-
-    if (
-      !user.roles.includes(Role.SUPERUSER) &&
-      workOrder.orgId !== user.orgId
-    ) {
-      throw new ForbiddenException('Geen toegang tot deze werkbon');
-    }
 
     return serializeWorkOrder(workOrder);
   }
@@ -253,24 +247,19 @@ export class WorkOrdersService {
     let postalCode: string | null = null;
     let houseNumber: string | null = null;
 
-    // If planning item is provided, verify it exists and belongs to org
+    // If planning item is provided, verify it exists and belongs to org.
+    // Org-scoped: een vreemde-org-id geeft dezelfde 404 als een niet-bestaand
+    // id — geen existence-oracle (B-105).
     if (dto.planningItemId) {
       const planningItem = assertFound(
-        await this.prisma.planningItem.findUnique({
-          where: { id: dto.planningItemId },
+        await this.prisma.planningItem.findFirst({
+          where: { id: dto.planningItemId, ...orgScope(user) },
           include: {
             location: { select: { postalCode: true, houseNumber: true } },
           },
         }),
         'Planregel',
       );
-
-      if (
-        !user.roles.includes(Role.SUPERUSER) &&
-        planningItem.orgId !== user.orgId
-      ) {
-        throw new ForbiddenException('Geen toegang tot deze planregel');
-      }
 
       if (planningItem.location) {
         postalCode = planningItem.location.postalCode;
@@ -307,16 +296,15 @@ export class WorkOrdersService {
     const workOrder = await this.findOne(id, user);
 
     // If linking to a planning item, verify it exists and belongs to org
+    // (org-scoped: vreemde-org-id ⇒ zelfde 404 als niet-bestaand, B-105).
     if (dto.planningItemId) {
-      const planningItem = assertFound(
-        await this.prisma.planningItem.findUnique({
-          where: { id: dto.planningItemId },
+      assertFound(
+        await this.prisma.planningItem.findFirst({
+          where: { id: dto.planningItemId, ...orgScope(user) },
+          select: { id: true },
         }),
         'Planregel',
       );
-      if (!user.roles.includes(Role.SUPERUSER) && planningItem.orgId !== user.orgId) {
-        throw new ForbiddenException('Geen toegang tot deze planregel');
-      }
     }
 
     // Manual renumber — gated on the scheme's allowManualEntry + uniqueness check.

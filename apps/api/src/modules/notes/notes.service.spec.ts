@@ -11,6 +11,7 @@ describe('NotesService', () => {
     note: {
       findMany: jest.fn(),
       findUnique: jest.fn(),
+      findFirst: jest.fn(),
       create: jest.fn(),
       update: jest.fn(),
       count: jest.fn(),
@@ -296,7 +297,7 @@ describe('NotesService', () => {
         isDeleted: false,
         createdBy: { id: 'user-1', firstName: 'Jan', lastName: 'Jansen' },
       };
-      mockPrismaService.note.findUnique.mockResolvedValue(mockNote);
+      mockPrismaService.note.findFirst.mockResolvedValue(mockNote);
 
       const result = await service.findOne('note-1', mockUser);
 
@@ -305,34 +306,39 @@ describe('NotesService', () => {
     });
 
     it('should throw NotFoundException when note does not exist', async () => {
-      mockPrismaService.note.findUnique.mockResolvedValue(null);
+      mockPrismaService.note.findFirst.mockResolvedValue(null);
 
       await expect(service.findOne('nonexistent', mockUser)).rejects.toThrow(
         NotFoundException,
       );
     });
 
-    it('should throw NotFoundException when note is soft-deleted', async () => {
-      mockPrismaService.note.findUnique.mockResolvedValue({
-        id: 'note-1',
-        orgId: 'org-1',
-        isDeleted: true,
-      });
+    it('should throw NotFoundException when note is soft-deleted (scoped query)', async () => {
+      // De where-clause filtert isDeleted weg — de scoped query levert null.
+      mockPrismaService.note.findFirst.mockResolvedValue(null);
 
       await expect(service.findOne('note-1', mockUser)).rejects.toThrow(
         NotFoundException,
       );
+      expect(mockPrismaService.note.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ isDeleted: false }),
+        }),
+      );
     });
 
-    it('should throw ForbiddenException for cross-org access', async () => {
-      mockPrismaService.note.findUnique.mockResolvedValue({
-        id: 'note-1',
-        orgId: 'other-org',
-        isDeleted: false,
-      });
+    it('should throw the same NotFoundException for cross-org access (B-105: geen oracle)', async () => {
+      // Org-scoped query: een vreemde-org-id levert null, identiek aan een
+      // niet-bestaand id — cross-org "bestaat niet".
+      mockPrismaService.note.findFirst.mockResolvedValue(null);
 
       await expect(service.findOne('note-1', mockUser)).rejects.toThrow(
-        ForbiddenException,
+        'Notitie niet gevonden',
+      );
+      expect(mockPrismaService.note.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ orgId: 'org-1' }),
+        }),
       );
     });
 
@@ -344,7 +350,7 @@ describe('NotesService', () => {
         isDeleted: false,
         createdBy: { id: 'user-2', firstName: 'Piet', lastName: 'Pietersen' },
       };
-      mockPrismaService.note.findUnique.mockResolvedValue(mockNote);
+      mockPrismaService.note.findFirst.mockResolvedValue(mockNote);
 
       const result = await service.findOne('note-1', mockSuperuser);
 
@@ -397,7 +403,7 @@ describe('NotesService', () => {
         orgId: 'org-1',
         isDeleted: false,
       };
-      mockPrismaService.note.findUnique.mockResolvedValue(mockParent);
+      mockPrismaService.note.findFirst.mockResolvedValue(mockParent);
 
       const mockReply = {
         id: 'note-reply',
@@ -427,7 +433,7 @@ describe('NotesService', () => {
     });
 
     it('should throw NotFoundException when parent note does not exist', async () => {
-      mockPrismaService.note.findUnique.mockResolvedValue(null);
+      mockPrismaService.note.findFirst.mockResolvedValue(null);
 
       await expect(
         service.create(
@@ -442,13 +448,9 @@ describe('NotesService', () => {
       ).rejects.toThrow(NotFoundException);
     });
 
-    it('should throw NotFoundException when parent note is soft-deleted', async () => {
-      mockPrismaService.note.findUnique.mockResolvedValue({
-        id: 'note-parent',
-        parentId: null,
-        orgId: 'org-1',
-        isDeleted: true,
-      });
+    it('should throw NotFoundException when parent note is soft-deleted (scoped query)', async () => {
+      // De where-clause filtert isDeleted weg — de scoped query levert null.
+      mockPrismaService.note.findFirst.mockResolvedValue(null);
 
       await expect(
         service.create(
@@ -463,13 +465,10 @@ describe('NotesService', () => {
       ).rejects.toThrow(NotFoundException);
     });
 
-    it('should throw ForbiddenException when replying to cross-org parent', async () => {
-      mockPrismaService.note.findUnique.mockResolvedValue({
-        id: 'note-parent',
-        parentId: null,
-        orgId: 'other-org',
-        isDeleted: false,
-      });
+    it('should throw the same NotFoundException when replying to cross-org parent (B-105)', async () => {
+      // Org-scoped query: een vreemde-org-parent levert null → zelfde 404 als
+      // een niet-bestaande parent.
+      mockPrismaService.note.findFirst.mockResolvedValue(null);
 
       await expect(
         service.create(
@@ -481,11 +480,16 @@ describe('NotesService', () => {
           } as any,
           mockUser,
         ),
-      ).rejects.toThrow(ForbiddenException);
+      ).rejects.toThrow('Parent notitie niet gevonden');
+      expect(mockPrismaService.note.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ orgId: 'org-1', isDeleted: false }),
+        }),
+      );
     });
 
     it('should throw BadRequestException when replying to a reply (depth > 1)', async () => {
-      mockPrismaService.note.findUnique.mockResolvedValue({
+      mockPrismaService.note.findFirst.mockResolvedValue({
         id: 'note-reply',
         parentId: 'note-root',
         orgId: 'org-1',
@@ -516,7 +520,7 @@ describe('NotesService', () => {
         createdById: 'user-1',
         isDeleted: false,
       };
-      mockPrismaService.note.findUnique.mockResolvedValue(existing);
+      mockPrismaService.note.findFirst.mockResolvedValue(existing);
 
       const updated = {
         ...existing,
@@ -543,7 +547,7 @@ describe('NotesService', () => {
         createdById: 'other-user',
         isDeleted: false,
       };
-      mockPrismaService.note.findUnique.mockResolvedValue(existing);
+      mockPrismaService.note.findFirst.mockResolvedValue(existing);
       mockPrismaService.note.update.mockResolvedValue({
         ...existing,
         content: 'Admin edited',
@@ -560,7 +564,7 @@ describe('NotesService', () => {
     });
 
     it('should throw ForbiddenException when non-owner, non-admin tries to update', async () => {
-      mockPrismaService.note.findUnique.mockResolvedValue({
+      mockPrismaService.note.findFirst.mockResolvedValue({
         id: 'note-1',
         orgId: 'org-1',
         createdById: 'other-user',
@@ -573,37 +577,28 @@ describe('NotesService', () => {
     });
 
     it('should throw NotFoundException when note does not exist', async () => {
-      mockPrismaService.note.findUnique.mockResolvedValue(null);
+      mockPrismaService.note.findFirst.mockResolvedValue(null);
 
       await expect(
         service.update('nonexistent', { content: 'Update' } as any, mockUser),
       ).rejects.toThrow(NotFoundException);
     });
 
-    it('should throw NotFoundException when note is soft-deleted', async () => {
-      mockPrismaService.note.findUnique.mockResolvedValue({
-        id: 'note-1',
-        orgId: 'org-1',
-        createdById: 'user-1',
-        isDeleted: true,
-      });
+    it('should throw NotFoundException when note is soft-deleted (scoped query)', async () => {
+      mockPrismaService.note.findFirst.mockResolvedValue(null);
 
       await expect(
         service.update('note-1', { content: 'Update' } as any, mockUser),
       ).rejects.toThrow(NotFoundException);
     });
 
-    it('should throw ForbiddenException for cross-org update', async () => {
-      mockPrismaService.note.findUnique.mockResolvedValue({
-        id: 'note-1',
-        orgId: 'other-org',
-        createdById: 'user-1',
-        isDeleted: false,
-      });
+    it('should throw the same NotFoundException for cross-org update (B-105)', async () => {
+      mockPrismaService.note.findFirst.mockResolvedValue(null);
 
       await expect(
         service.update('note-1', { content: 'Update' } as any, mockUser),
-      ).rejects.toThrow(ForbiddenException);
+      ).rejects.toThrow('Notitie niet gevonden');
+      expect(mockPrismaService.note.update).not.toHaveBeenCalled();
     });
   });
 
@@ -611,7 +606,7 @@ describe('NotesService', () => {
 
   describe('remove', () => {
     it('should soft-delete a note when user is the creator', async () => {
-      mockPrismaService.note.findUnique.mockResolvedValue({
+      mockPrismaService.note.findFirst.mockResolvedValue({
         id: 'note-1',
         orgId: 'org-1',
         createdById: 'user-1',
@@ -628,7 +623,7 @@ describe('NotesService', () => {
     });
 
     it('should allow ORG_ADMIN to delete any note in their org', async () => {
-      mockPrismaService.note.findUnique.mockResolvedValue({
+      mockPrismaService.note.findFirst.mockResolvedValue({
         id: 'note-1',
         orgId: 'org-1',
         createdById: 'other-user',
@@ -645,41 +640,32 @@ describe('NotesService', () => {
     });
 
     it('should throw NotFoundException when note does not exist', async () => {
-      mockPrismaService.note.findUnique.mockResolvedValue(null);
+      mockPrismaService.note.findFirst.mockResolvedValue(null);
 
       await expect(service.remove('nonexistent', mockUser)).rejects.toThrow(
         NotFoundException,
       );
     });
 
-    it('should throw NotFoundException when note is soft-deleted', async () => {
-      mockPrismaService.note.findUnique.mockResolvedValue({
-        id: 'note-1',
-        orgId: 'org-1',
-        createdById: 'user-1',
-        isDeleted: true,
-      });
+    it('should throw NotFoundException when note is soft-deleted (scoped query)', async () => {
+      mockPrismaService.note.findFirst.mockResolvedValue(null);
 
       await expect(service.remove('note-1', mockUser)).rejects.toThrow(
         NotFoundException,
       );
     });
 
-    it('should throw ForbiddenException for cross-org delete', async () => {
-      mockPrismaService.note.findUnique.mockResolvedValue({
-        id: 'note-1',
-        orgId: 'other-org',
-        createdById: 'user-1',
-        isDeleted: false,
-      });
+    it('should throw the same NotFoundException for cross-org delete (B-105)', async () => {
+      mockPrismaService.note.findFirst.mockResolvedValue(null);
 
       await expect(service.remove('note-1', mockUser)).rejects.toThrow(
-        ForbiddenException,
+        'Notitie niet gevonden',
       );
+      expect(mockPrismaService.note.update).not.toHaveBeenCalled();
     });
 
     it('should throw ForbiddenException when non-owner, non-admin tries to delete', async () => {
-      mockPrismaService.note.findUnique.mockResolvedValue({
+      mockPrismaService.note.findFirst.mockResolvedValue({
         id: 'note-1',
         orgId: 'org-1',
         createdById: 'other-user',
@@ -692,7 +678,7 @@ describe('NotesService', () => {
     });
 
     it('should allow SUPERUSER to delete any note cross-org', async () => {
-      mockPrismaService.note.findUnique.mockResolvedValue({
+      mockPrismaService.note.findFirst.mockResolvedValue({
         id: 'note-1',
         orgId: 'other-org',
         createdById: 'other-user',

@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { BadRequestException, ForbiddenException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import {
   Role,
   User,
@@ -218,27 +218,33 @@ describe('SupportTicketsService', () => {
       expect(result.messages).toHaveLength(2);
     });
 
-    it('weigert toegang tot een ticket van een andere org (403)', async () => {
+    it('geeft voor een ticket van een andere org dezelfde 404 als niet-bestaand (B-105)', async () => {
       mockPrisma.supportTicket.findUnique.mockResolvedValue({
         id: 't1',
         orgId: 'orgB',
         createdById: 'someone',
         messages: [],
       });
+      await expect(service.findOne(orgAdmin, 't1')).rejects.toThrow(
+        'Ticket niet gevonden',
+      );
       await expect(service.findOne(orgAdmin, 't1')).rejects.toBeInstanceOf(
-        ForbiddenException,
+        NotFoundException,
       );
     });
 
-    it('weigert een niet-management gebruiker een ticket van een collega (403)', async () => {
+    it('geeft een niet-management gebruiker voor andermans ticket dezelfde 404 (B-105)', async () => {
       mockPrisma.supportTicket.findUnique.mockResolvedValue({
         id: 't1',
         orgId: 'orgA',
         createdById: 'andere-collega',
         messages: [],
       });
+      await expect(service.findOne(inspecteur, 't1')).rejects.toThrow(
+        'Ticket niet gevonden',
+      );
       await expect(service.findOne(inspecteur, 't1')).rejects.toBeInstanceOf(
-        ForbiddenException,
+        NotFoundException,
       );
     });
   });
@@ -341,14 +347,17 @@ describe('SupportTicketsService', () => {
       ).rejects.toBeInstanceOf(ForbiddenException);
     });
 
-    it('weigert ORG_ADMIN van een andere org', async () => {
+    it('geeft ORG_ADMIN van een andere org dezelfde 404 als niet-bestaand (B-105)', async () => {
       mockPrisma.supportTicket.findUnique.mockResolvedValue({
         ...baseTicket,
         orgId: 'orgB',
       });
       await expect(
         service.update(orgAdmin, 't1', { status: SupportTicketStatus.OPGELOST }),
-      ).rejects.toBeInstanceOf(ForbiddenException);
+      ).rejects.toThrow('Ticket niet gevonden');
+      await expect(
+        service.update(orgAdmin, 't1', { status: SupportTicketStatus.OPGELOST }),
+      ).rejects.toBeInstanceOf(NotFoundException);
     });
 
     it('ORG_ADMIN zet status OPGELOST + resolvedAt en notificeert de aanmaker', async () => {

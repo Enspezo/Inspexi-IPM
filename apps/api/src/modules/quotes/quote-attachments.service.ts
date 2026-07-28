@@ -1,8 +1,11 @@
 import { Injectable, NotFoundException, ForbiddenException, Inject } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { User, QuoteStatus } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import { PrismaService } from '@/prisma';
-import { assertFound, sanitizeStorageFilename, assertAllowedAttachmentUpload } from '@/common';
+import { assertFound, publicTenantWhere, sanitizeStorageFilename, assertAllowedAttachmentUpload } from '@/common';
+import { TenantContext } from '@/common/interfaces/tenant-context.interface';
+import { EntitlementsService } from '@/modules/entitlements/entitlements.service';
 import { StorageProvider, STORAGE_PROVIDER } from '@/common/services/storage/storage.interface';
 import { findQuoteForUser } from './quotes.helpers';
 
@@ -10,7 +13,9 @@ import { findQuoteForUser } from './quotes.helpers';
 export class QuoteAttachmentsService {
   constructor(
     private prisma: PrismaService,
+    private config: ConfigService,
     @Inject(STORAGE_PROVIDER) private storage: StorageProvider,
+    private entitlements: EntitlementsService,
   ) {}
 
   // Bijlagen (intern)
@@ -50,8 +55,13 @@ export class QuoteAttachmentsService {
     return { deleted: true };
   }
 
-  async downloadPublicAttachment(token: string, attachmentId: string) {
-    const quote = assertFound(await this.prisma.quote.findUnique({ where: { publicToken: token }, select: { id: true, status: true } }), 'Offerte');
+  async downloadPublicAttachment(token: string, attachmentId: string, tenant?: TenantContext) {
+    // B-152 (WP-B7): tenantbinding + entitlement tegen de eigenaar-org.
+    const quote = assertFound(await this.prisma.quote.findFirst({
+      where: { publicToken: token, ...publicTenantWhere(tenant, this.config, 'Offerte') },
+      select: { id: true, orgId: true, status: true },
+    }), 'Offerte');
+    await this.entitlements.assertFeature(quote.orgId, 'CRM_COMPLEET');
     const unavailableStatusesForDownload: QuoteStatus[] = [QuoteStatus.CONCEPT, QuoteStatus.TER_GOEDKEURING, QuoteStatus.GOEDGEKEURD];
     if (unavailableStatusesForDownload.includes(quote.status)) throw new ForbiddenException('Offerte is niet beschikbaar');
     const attachment = await this.prisma.quoteAttachment.findUnique({ where: { id: attachmentId } });

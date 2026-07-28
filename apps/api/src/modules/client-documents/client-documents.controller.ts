@@ -8,7 +8,6 @@ import {
   Param,
   Body,
   UseGuards,
-  ParseUUIDPipe,
   Res,
   Ip,
   StreamableFile,
@@ -24,6 +23,7 @@ import {
 } from '@/common/decorators/current-client-user.decorator';
 import { ClientDocumentsService } from './client-documents.service';
 import { ClientSignDocumentDto } from './dto';
+import { ParseUuidPipe } from '@/common';
 
 @ApiTags('Client Documents')
 @Public()
@@ -36,7 +36,7 @@ export class ClientDocumentsController {
   @Get(':id')
   @ApiOperation({ summary: 'Document-detail met HTML-preview (klant)' })
   async detail(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @CurrentClientUser() user: CurrentClientUserData,
     @CurrentTenant('orgId') orgId: string | null,
   ) {
@@ -46,7 +46,7 @@ export class ClientDocumentsController {
   @Get(':id/download')
   @ApiOperation({ summary: 'Document-PDF downloaden (org + ClientAccess gescoped)' })
   async download(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @CurrentClientUser() user: CurrentClientUserData,
     @CurrentTenant('orgId') orgId: string | null,
     @Res({ passthrough: true }) res: Response,
@@ -62,7 +62,7 @@ export class ClientDocumentsController {
   @Post(':id/sign')
   @ApiOperation({ summary: 'Document ondertekenen als klant' })
   async sign(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @Body() dto: ClientSignDocumentDto,
     @CurrentClientUser() user: CurrentClientUserData,
     @CurrentTenant('orgId') orgId: string | null,

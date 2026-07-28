@@ -1,8 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import {
-  NotFoundException,
-  ForbiddenException,
-} from '@nestjs/common';
+import { NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
 import { Role, User } from '@prisma/client';
 import { ProductsService } from './products.service';
 import { CustomFieldsValidator } from '@/modules/custom-fields/custom-fields.validator';
@@ -68,6 +65,7 @@ describe('ProductsService', () => {
   const mockPrismaService = {
     product: {
       findMany: jest.fn(),
+      findFirst: jest.fn(),
       findUnique: jest.fn(),
       create: jest.fn(),
       update: jest.fn(),
@@ -217,13 +215,13 @@ describe('ProductsService', () => {
 
   describe('findOne()', () => {
     it('should return product when found', async () => {
-      mockPrismaService.product.findUnique.mockResolvedValue(mockProduct);
+      mockPrismaService.product.findFirst.mockResolvedValue(mockProduct);
 
       const result = await service.findOne('product-1', mockUser);
 
       expect(result).toEqual(mockProduct);
-      expect(mockPrismaService.product.findUnique).toHaveBeenCalledWith({
-        where: { id: 'product-1' },
+      expect(mockPrismaService.product.findFirst).toHaveBeenCalledWith({
+        where: { id: 'product-1', orgId: 'org-1' },
         include: {
           productGroup: { select: { id: true, name: true } },
         },
@@ -231,7 +229,7 @@ describe('ProductsService', () => {
     });
 
     it('should throw NotFoundException when product not found', async () => {
-      mockPrismaService.product.findUnique.mockResolvedValue(null);
+      mockPrismaService.product.findFirst.mockResolvedValue(null);
 
       await expect(
         service.findOne('non-existent', mockUser),
@@ -241,16 +239,22 @@ describe('ProductsService', () => {
       ).rejects.toThrow('Product niet gevonden');
     });
 
-    it('should throw ForbiddenException when different org (non-SUPERUSER)', async () => {
-      mockPrismaService.product.findUnique.mockResolvedValue(mockProduct);
+    it('should throw NotFoundException when different org (WP-C1: 404-oracle, geen 403)', async () => {
+      // Org-scope in de where-clausule: andermans product komt niet terug.
+      mockPrismaService.product.findFirst.mockResolvedValue(null);
 
       await expect(
         service.findOne('product-1', mockOtherOrgUser),
-      ).rejects.toThrow(ForbiddenException);
+      ).rejects.toThrow('Product niet gevonden');
+      expect(mockPrismaService.product.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ orgId: 'org-2' }),
+        }),
+      );
     });
 
     it('should allow SUPERUSER to access any org product', async () => {
-      mockPrismaService.product.findUnique.mockResolvedValue(mockProduct);
+      mockPrismaService.product.findFirst.mockResolvedValue(mockProduct);
 
       const result = await service.findOne('product-1', mockSuperuser);
 
@@ -301,7 +305,7 @@ describe('ProductsService', () => {
       });
     });
 
-    it('should throw ForbiddenException if no orgId and not SUPERUSER', async () => {
+    it('should throw BadRequestException if no orgId (WP-B3)', async () => {
       const userNoOrg = {
         ...mockUser,
         id: 'user-no-org',
@@ -311,10 +315,10 @@ describe('ProductsService', () => {
 
       await expect(
         service.create(createDto, userNoOrg),
-      ).rejects.toThrow(ForbiddenException);
+      ).rejects.toThrow(BadRequestException);
       await expect(
         service.create(createDto, userNoOrg),
-      ).rejects.toThrow('Geen organisatie gekoppeld');
+      ).rejects.toThrow('Selecteer eerst een organisatie');
     });
   });
 
@@ -332,7 +336,7 @@ describe('ProductsService', () => {
         name: 'Updated product',
         isActive: false,
       };
-      mockPrismaService.product.findUnique.mockResolvedValue(mockProduct);
+      mockPrismaService.product.findFirst.mockResolvedValue(mockProduct);
       mockPrismaService.product.update.mockResolvedValue(updatedProduct);
 
       const result = await service.update('product-1', updateDto, mockUser);
@@ -352,12 +356,12 @@ describe('ProductsService', () => {
     });
 
     it('should call findOne first for access check', async () => {
-      mockPrismaService.product.findUnique.mockResolvedValue(mockProduct);
+      mockPrismaService.product.findFirst.mockResolvedValue(mockProduct);
       mockPrismaService.product.update.mockResolvedValue(mockProduct);
 
       await service.update('product-1', updateDto, mockUser);
 
-      expect(mockPrismaService.product.findUnique).toHaveBeenCalledTimes(1);
+      expect(mockPrismaService.product.findFirst).toHaveBeenCalledTimes(1);
       expect(mockPrismaService.product.update).toHaveBeenCalledTimes(1);
     });
   });

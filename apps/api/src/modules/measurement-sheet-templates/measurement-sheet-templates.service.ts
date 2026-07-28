@@ -46,9 +46,18 @@ export class MeasurementSheetTemplatesService {
   // TEMPLATE CRUD
   // =====================================================
 
-  /** Alle meetstaat-templates (globaal, zichtbaar voor iedereen). */
-  async findAll(options?: QueryMeasurementSheetTemplatesDto) {
-    const { normType, assetType, status } = options || {};
+  /**
+   * Alle meetstaat-templates (globaal, zichtbaar voor iedereen).
+   *
+   * `includeSections` (WP-B1/B-205): de kale lijst gaf alleen `_count.sections`
+   * terug, waardoor de PWA-referentiecache templates zonder invoervelden
+   * opsloeg. Met `?include=sections` komen de secties + velden volledig mee en
+   * vervalt de N+1 op de detail-route.
+   */
+  async findAll(
+    options?: QueryMeasurementSheetTemplatesDto & { includeSections?: boolean },
+  ) {
+    const { normType, assetType, status, includeSections = false } = options || {};
 
     const andConditions: Prisma.MeasurementSheetTemplateWhereInput[] = [];
 
@@ -66,6 +75,14 @@ export class MeasurementSheetTemplatesService {
       where: andConditions.length > 0 ? { AND: andConditions } : {},
       include: {
         _count: { select: { sections: true } },
+        ...(includeSections
+          ? {
+              sections: {
+                include: { fields: { orderBy: { sortOrder: 'asc' as const } } },
+                orderBy: { sortOrder: 'asc' as const },
+              },
+            }
+          : {}),
       },
       orderBy: [{ status: 'asc' }, { name: 'asc' }, { version: 'desc' }],
     });
@@ -255,6 +272,32 @@ export class MeasurementSheetTemplatesService {
     for (const section of template.sections) {
       if (section.fields.length === 0) {
         throw new BadRequestException(`Sectie "${section.name}" heeft geen velden`);
+      }
+    }
+
+    // B-506: publish-gate op inconsistente grenzen. Vangt óók templates die
+    // vóór de veld-validatie zijn aangemaakt (bestaande foute data): een veld
+    // met min > max is in de PWA oninvulbaar en mag nooit actief worden.
+    for (const section of template.sections) {
+      for (const field of section.fields) {
+        if (
+          field.minValue != null &&
+          field.maxValue != null &&
+          Number(field.minValue) > Number(field.maxValue)
+        ) {
+          throw new BadRequestException(
+            `Veld "${field.name}" in sectie "${section.name}" heeft een minimum (${Number(field.minValue)}) dat groter is dan het maximum (${Number(field.maxValue)}) — corrigeer de grenzen voordat u publiceert`,
+          );
+        }
+        if (
+          field.passFailMinValue != null &&
+          field.passFailMaxValue != null &&
+          Number(field.passFailMinValue) > Number(field.passFailMaxValue)
+        ) {
+          throw new BadRequestException(
+            `Veld "${field.name}" in sectie "${section.name}" heeft een pass/fail-minimum (${Number(field.passFailMinValue)}) dat groter is dan het pass/fail-maximum (${Number(field.passFailMaxValue)}) — corrigeer de grenzen voordat u publiceert`,
+          );
+        }
       }
     }
 

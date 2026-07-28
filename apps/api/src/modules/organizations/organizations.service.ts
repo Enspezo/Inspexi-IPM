@@ -7,11 +7,13 @@ import {
   Inject,
 } from '@nestjs/common';
 import { randomUUID } from 'crypto';
+import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '@/prisma';
 import {
   assertFound,
   assertAllowedImageUpload,
   resolveImageResponseType,
+  ONLINE_HERSTEL_FEATURE,
 } from '@/common';
 import { TenantCacheService } from '@/common/services/tenant-cache.service';
 import {
@@ -25,6 +27,7 @@ import {
 } from '@/common/services/storage/storage.interface';
 import { EntitlementsService } from '@/modules/entitlements/entitlements.service';
 import { analyzeEntitlements, isFeatureKey } from '@inspexi/entitlements';
+import { RESERVED_SLUGS } from './reserved-slugs';
 
 @Injectable()
 export class OrganizationsService {
@@ -35,9 +38,26 @@ export class OrganizationsService {
     @Inject(STORAGE_PROVIDER) private storage: StorageProvider,
     private tenantCache: TenantCacheService,
     private entitlements: EntitlementsService,
+    private config: ConfigService,
   ) {}
 
+  /**
+   * B-505: weiger slugs die nooit als org-subdomein kunnen dienen. De statische
+   * lijst dekt infrastructuurnamen; runtime komt het geconfigureerde
+   * SUPERUSER_SUBDOMAIN erbij (de middleware kortsluit dat subdomein vóór de
+   * slug-lookup, dus zo'n org zou permanent onbereikbaar zijn).
+   */
+  private assertSlugAllowed(slug: string): void {
+    const superuserSubdomain = this.config.get<string>('SUPERUSER_SUBDOMAIN', 'mijn');
+    if (slug === superuserSubdomain || RESERVED_SLUGS.has(slug)) {
+      throw new BadRequestException(
+        `Deze slug is gereserveerd en kan niet als subdomein gebruikt worden`,
+      );
+    }
+  }
+
   async create(dto: CreateOrganizationDto) {
+    this.assertSlugAllowed(dto.slug);
     const existing = await this.prisma.organization.findUnique({
       where: { slug: dto.slug },
     });
@@ -94,12 +114,35 @@ export class OrganizationsService {
     const current = await this.findOne(id);
 
     if (dto.slug) {
+      this.assertSlugAllowed(dto.slug);
       const existing = await this.prisma.organization.findFirst({
         where: { slug: dto.slug, NOT: { id } },
       });
       if (existing) {
         throw new ConflictException('Slug is al in gebruik');
       }
+    }
+
+    // B-510: entitlement-afhankelijke vlaggen mogen alleen AAN gezet worden
+    // mét het bijbehorende abonnement — anders ontstaat een tegenstrijdige
+    // toestand ("aangevinkt" naast "Niet beschikbaar in uw abonnement") die
+    // via de publieke by-slug-branding doorwerkt in de portal-UI. Alleen de
+    // false→true-transitie wordt gegate: uitzetten (en aan laten staan na een
+    // plan-downgrade) mag altijd. Automatisch terugzetten bij een downgrade is
+    // beslispunt B6.
+    if (dto.aiReviewEnabled === true && !current.aiReviewEnabled) {
+      await this.entitlements.assertFeature(
+        id,
+        'AI_REVIEW',
+        'AI-voorcontrole zit niet in uw abonnement',
+      );
+    }
+    if (dto.onlineRepairDefault === true && !current.onlineRepairDefault) {
+      await this.entitlements.assertFeature(
+        id,
+        ONLINE_HERSTEL_FEATURE,
+        'Online herstel zit niet in uw abonnement',
+      );
     }
 
     const updated = await this.prisma.organization.update({

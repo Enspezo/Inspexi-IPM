@@ -7,7 +7,7 @@ import {
 } from '@nestjs/common';
 import { User, Role, Prisma } from '@prisma/client';
 import { PrismaService } from '@/prisma';
-import { paginate, orgScope, assertFound } from '@/common';
+import { paginate, orgScope, assertFound, requireOrg } from '@/common';
 import { CreateProductGroupDto, UpdateProductGroupDto, ListProductGroupsQueryDto } from './dto';
 
 const PRODUCT_SELECT = {
@@ -52,8 +52,9 @@ export class ProductGroupsService {
   }
 
   async findOne(id: string, user: User) {
-    const group = await this.prisma.productGroup.findUnique({
-      where: { id },
+    // WP-C1 (B-105): org-scope in de query — cross-tenant id → zelfde 404.
+    const group = await this.prisma.productGroup.findFirst({
+      where: { id, ...orgScope(user) },
       include: {
         products: {
           where: { isActive: true },
@@ -66,10 +67,6 @@ export class ProductGroupsService {
 
     if (!group || group.isDeleted) {
       throw new NotFoundException('Productgroep niet gevonden');
-    }
-
-    if (!user.roles.includes(Role.SUPERUSER) && group.orgId !== user.orgId) {
-      throw new ForbiddenException();
     }
 
     return group;
@@ -85,13 +82,13 @@ export class ProductGroupsService {
   }
 
   async create(dto: CreateProductGroupDto, user: User) {
-    if (!user.orgId && !user.roles.includes(Role.SUPERUSER)) {
-      throw new ForbiddenException('Geen organisatie gekoppeld');
-    }
+    // WP-B3 (B-503): effectieve org (SUPERUSER op org-subdomein → tenant-org);
+    // zonder org een nette NL-400 i.p.v. een Prisma-fout (500).
+    const orgId = requireOrg(user);
 
     return this.prisma.productGroup.create({
       data: {
-        orgId: user.orgId!,
+        orgId,
         name: dto.name,
         notes: dto.notes,
       },
@@ -149,8 +146,10 @@ export class ProductGroupsService {
       await this.prisma.product.findUnique({ where: { id: productId } }),
       'Product',
     );
+    // FK-injectie (SEC-08-semantiek): de product-id is invoer van de caller —
+    // bewust een 403 mét NL-melding, conform assertSameOrg.
     if (!user.roles.includes(Role.SUPERUSER) && product.orgId !== user.orgId) {
-      throw new ForbiddenException();
+      throw new ForbiddenException('Product hoort niet bij uw organisatie');
     }
 
     await this.prisma.product.update({
@@ -164,12 +163,13 @@ export class ProductGroupsService {
   async removeProduct(groupId: string, productId: string, user: User) {
     const group = await this.findOne(groupId, user);
 
-    const product = await this.prisma.product.findUnique({ where: { id: productId } });
+    // WP-C1 (B-105): org-scope in de query — een product van een andere org is
+    // per definitie "niet in deze groep" en geeft dus dezelfde 404.
+    const product = await this.prisma.product.findFirst({
+      where: { id: productId, ...orgScope(user) },
+    });
     if (!product || product.productGroupId !== group.id) {
       throw new NotFoundException('Product niet in deze groep gevonden');
-    }
-    if (!user.roles.includes(Role.SUPERUSER) && product.orgId !== user.orgId) {
-      throw new ForbiddenException();
     }
 
     await this.prisma.product.update({

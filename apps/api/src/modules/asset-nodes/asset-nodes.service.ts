@@ -8,7 +8,15 @@ import { CreateAssetNodeDto, MoveAssetNodeDto, UpdateAssetNodeDto } from './dto'
 import { technicalDataSchema, TECHNICAL_DATA_LABEL } from './schemas/technical-data.schema';
 
 /** Default type-code voor een lazily aangemaakte wortel-LOCATION-node. */
-const DEFAULT_ROOT_TYPE_CODE = 'locatie';
+export const DEFAULT_ROOT_TYPE_CODE = 'locatie';
+
+/**
+ * WP-C3 (B-216): maximale nestdiepte van de AssetNode-boom (wortel = diepte 0).
+ * Gespiegeld aan `MAX_ASSET_DEPTH` in `packages/shared` van de PWA-repo; wordt
+ * alléén op nieuwe writes/moves gehandhaafd zodat bestaande (te) diepe bomen
+ * leesbaar en bewerkbaar blijven.
+ */
+export const MAX_ASSET_DEPTH = 10;
 
 /** Raw projectie van een AssetNode incl. de niet-Prisma-selecteerbare ltree `path`. */
 export interface AssetNodeRow {
@@ -133,6 +141,7 @@ export class AssetNodesService {
       { nodeType: parent.nodeType, typeCode: parent.typeCode },
       user,
     );
+    this.assertDepthWithinLimit(parent.depth + 1);
 
     const sortOrder = dto.sortOrder ?? (await this.nextSortOrder(parent.id));
 
@@ -225,6 +234,9 @@ export class AssetNodesService {
       { nodeType: newParent.nodeType, typeCode: newParent.typeCode },
       user,
     );
+    // B-216: de hele subtree schuift mee — de diepste afstammeling bepaalt de
+    // nieuwe maximale diepte.
+    await this.assertMoveDepthWithinLimit(newParent, node);
 
     const sortOrder = dto.sortOrder ?? (await this.nextSortOrder(newParent.id));
     // Triggers onderhouden path + depth voor de node én alle afstammelingen.
@@ -358,6 +370,70 @@ export class AssetNodesService {
         'De scope-locatie hoort niet bij de hoofdlocatie van dit inspectieplan',
       );
     }
+  }
+
+  // ── Dieptegrens (WP-C3 / B-216) ───────────────────────────
+
+  /**
+   * Handhaaft {@link MAX_ASSET_DEPTH} op een nieuwe write: de diepte die de
+   * nieuwe/verplaatste node zou krijgen mag de grens niet overschrijden.
+   * Bewust alleen op nieuwe writes/moves — bestaande te diepe bomen blijven
+   * volledig leesbaar en bewerkbaar.
+   */
+  assertDepthWithinLimit(newDepth: number): void {
+    if (newDepth > MAX_ASSET_DEPTH) {
+      throw new BadRequestException(
+        `Maximale nestdiepte (${MAX_ASSET_DEPTH}) bereikt`,
+      );
+    }
+  }
+
+  /**
+   * Dieptecheck voor een move: de hele subtree schuift mee, dus de diepste
+   * afstammeling van de te verplaatsen node bepaalt de nieuwe maximale diepte
+   * (`newParent.depth + 1 + (diepste - node.depth)`).
+   */
+  async assertMoveDepthWithinLimit(
+    newParent: { depth: number },
+    node: { path: string; depth: number },
+  ): Promise<void> {
+    const deepest = await this.subtreeMaxDepth(node.path);
+    this.assertDepthWithinLimit(newParent.depth + 1 + (deepest - node.depth));
+  }
+
+  /**
+   * Sync-facing dieptecheck (B-216, `/sync/push`): valideer een create onder
+   * `parentId`, of — met `movingNodeId` — een reparent (update met gewijzigde
+   * parent). Onvindbare rijen (bv. soft-deleted parent) worden hier bewust
+   * overgeslagen: de bestaande FK-/integriteitspaden handelen die gevallen af.
+   */
+  async assertDepthForWrite(
+    parentId: string,
+    orgId: string | null,
+    movingNodeId?: string,
+  ): Promise<void> {
+    const parent = await this.getNodeRaw(parentId, orgId);
+    if (!parent) return;
+    if (!movingNodeId) {
+      this.assertDepthWithinLimit(parent.depth + 1);
+      return;
+    }
+    const moving = await this.getNodeRaw(movingNodeId, orgId);
+    if (!moving) {
+      this.assertDepthWithinLimit(parent.depth + 1);
+      return;
+    }
+    await this.assertMoveDepthWithinLimit(parent, moving);
+  }
+
+  /** Diepste `depth` binnen de subtree van `path` (incl. de node zelf). */
+  private async subtreeMaxDepth(path: string): Promise<number> {
+    const rows = await this.prisma.$queryRaw<{ max: number | null }[]>(Prisma.sql`
+      SELECT MAX(depth)::int AS max
+      FROM imp_asset_nodes
+      WHERE deleted_at IS NULL AND path <@ ${path}::ltree
+    `);
+    return rows[0]?.max ?? 0;
   }
 
   /**

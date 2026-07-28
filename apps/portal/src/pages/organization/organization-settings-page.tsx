@@ -3,13 +3,14 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useAuth } from '@/providers/auth-provider';
-import { Card, Input, Button, Select, Spinner, Tabs, Checkbox, useToast } from '@/components/ui';
+import { Card, ErrorBox, Input, Button, Select, Spinner, Tabs, Checkbox, useToast } from '@/components/ui';
 import {
   useOrganization,
   useUpdateOrganization,
   useUploadLogo,
   useDeleteLogo,
   getLogoUrl,
+  type UpdateOrganizationDto,
 } from './hooks/use-organization';
 import { CustomFieldsManagement } from './components/custom-fields-management';
 import { DocumentTagsManagement } from './components/document-tags-management';
@@ -32,7 +33,21 @@ const CONTACT_DISPLAY_OPTIONS = [
   { value: ContactDisplayMode.INSPECTOR, label: 'Inspecteur (met statische terugval)' },
 ];
 
-const orgSchema = z.object({
+/**
+ * B-508: een optioneel numeriek veld mag NOOIT als
+ * `z.union([z.coerce.number(), z.literal('')])` gemodelleerd worden —
+ * `z.coerce.number()` maakt van `''` een `0` (Number('') === 0) vóórdat de
+ * union ooit bij `z.literal('')` komt, dus de lege-veld-tak is dode code en
+ * "leeg" wordt stilzwijgend `0`. Deze preprocess mapt leeg expliciet naar
+ * `null` zodat "geen drempel" (null) en "drempel 0" (0) twee verschillende,
+ * ronde-tripbare toestanden zijn.
+ */
+const optionalAmount = z.preprocess(
+  (v) => (v === '' || v === null || v === undefined ? null : v),
+  z.coerce.number().min(0, 'Bedrag moet minimaal 0 zijn').nullable(),
+);
+
+export const orgSchema = z.object({
   name: z.string().min(1, 'Organisatienaam is verplicht'),
   slug: z.string(),
   primaryColor: z.string().nullable().optional(),
@@ -56,10 +71,9 @@ const orgSchema = z.object({
   inspectorStaticEmail: z
     .union([z.string().email('Voer een geldig e-mailadres in'), z.literal('')])
     .optional(),
-  quoteApprovalThreshold: z
-    .union([z.coerce.number().min(0, 'Bedrag moet minimaal 0 zijn'), z.literal('')])
-    .optional(),
+  quoteApprovalThreshold: optionalAmount,
   quoteApprovalRequiredRole: z.union([z.nativeEnum(Role), z.literal('')]).optional(),
+  quoteApprovalSelfApprovalAllowed: z.boolean(),
   chatEnabled: z.boolean(),
   inspectionReviewEnabled: z.boolean(),
   aiReviewEnabled: z.boolean(),
@@ -69,7 +83,7 @@ const orgSchema = z.object({
   message: 'Eindtijd moet na begintijd liggen',
   path: ['workdayEnd'],
 }).refine(
-  (d) => d.quoteApprovalThreshold === '' || d.quoteApprovalThreshold === undefined || !!d.quoteApprovalRequiredRole,
+  (d) => d.quoteApprovalThreshold === null || !!d.quoteApprovalRequiredRole,
   { message: 'Kies een vereiste rol wanneer u een goedkeuringsgrens instelt', path: ['quoteApprovalRequiredRole'] },
 );
 
@@ -265,7 +279,7 @@ function GroupNotificationPrefsCard() {
 export default function OrganizationSettingsPage() {
   const { user } = useAuth();
   const { showToast } = useToast();
-  const { data: organization, isLoading } = useOrganization(user?.orgId);
+  const { data: organization, isLoading, error: loadError } = useOrganization(user?.orgId);
   const updateMutation = useUpdateOrganization(user?.orgId);
   const uploadLogoMutation = useUploadLogo(user?.orgId);
   const deleteLogoMutation = useDeleteLogo(user?.orgId);
@@ -285,7 +299,7 @@ export default function OrganizationSettingsPage() {
     handleSubmit,
     reset,
     watch,
-    formState: { errors, isDirty },
+    formState: { errors, isDirty, dirtyFields },
   } = useForm<OrgFormData>({
     resolver: zodResolver(orgSchema),
   });
@@ -320,8 +334,11 @@ export default function OrganizationSettingsPage() {
         inspectorEmailDisplay: organization.inspectorEmailDisplay ?? ContactDisplayMode.NONE,
         inspectorStaticPhone: organization.inspectorStaticPhone ?? '',
         inspectorStaticEmail: organization.inspectorStaticEmail ?? '',
-        quoteApprovalThreshold: organization.quoteApprovalThreshold ?? '',
+        // B-508: null ("geen drempel") blijft null → het veld rendert leeg en
+        // is daarmee te onderscheiden van een expliciete drempel van 0.
+        quoteApprovalThreshold: organization.quoteApprovalThreshold ?? null,
         quoteApprovalRequiredRole: organization.quoteApprovalRequiredRole ?? '',
+        quoteApprovalSelfApprovalAllowed: organization.quoteApprovalSelfApprovalAllowed ?? false,
         chatEnabled: organization.chatEnabled ?? true,
         inspectionReviewEnabled: organization.inspectionReviewEnabled ?? true,
         aiReviewEnabled: organization.aiReviewEnabled ?? false,
@@ -332,31 +349,59 @@ export default function OrganizationSettingsPage() {
   }, [organization, reset]);
 
   const onSubmit = async (data: OrgFormData) => {
+    // B-508: elk tabblad heeft een eigen <form> op dezelfde formulierstate.
+    // Verstuur alléén de velden die de gebruiker daadwerkelijk wijzigde
+    // (dirtyFields), zodat "Opslaan" op bijv. het Inspecties-tab nooit
+    // ongemerkt de goedkeuringsdrempel (of een ander veld van een ander tab)
+    // overschrijft — en twee beheerders op verschillende tabbladen elkaars
+    // werk niet meer wegschrijven.
+    const serialized: Required<UpdateOrganizationDto> = {
+      name: data.name,
+      primaryColor: data.primaryColor ?? null,
+      defaultVat: data.defaultVat,
+      defaultValidityDays: data.defaultValidityDays,
+      senderName: data.senderName || null,
+      senderEmail: data.senderEmail || null,
+      workdayStart: data.workdayStart,
+      workdayEnd: data.workdayEnd,
+      inspectorPhoneDisplay: data.inspectorPhoneDisplay,
+      inspectorEmailDisplay: data.inspectorEmailDisplay,
+      inspectorStaticPhone: data.inspectorStaticPhone?.trim() || null,
+      inspectorStaticEmail: data.inspectorStaticEmail?.trim() || null,
+      // '' is door de zod-preprocess al null geworden; 0 blijft 0.
+      quoteApprovalThreshold: data.quoteApprovalThreshold,
+      quoteApprovalRequiredRole: data.quoteApprovalRequiredRole || null,
+      quoteApprovalSelfApprovalAllowed: data.quoteApprovalSelfApprovalAllowed,
+      chatEnabled: data.chatEnabled,
+      inspectionReviewEnabled: data.inspectionReviewEnabled,
+      aiReviewEnabled: data.aiReviewEnabled,
+      aiReviewInstructions: data.aiReviewInstructions?.trim() || null,
+      onlineRepairDefault: data.onlineRepairDefault,
+    };
+
+    // Drempel en rol horen bij elkaar (backend-validatie + refine hierboven):
+    // wijzigt één van de twee, stuur ze samen.
+    const linkedFields: Record<string, string[]> = {
+      quoteApprovalThreshold: ['quoteApprovalRequiredRole'],
+      quoteApprovalRequiredRole: ['quoteApprovalThreshold'],
+    };
+
+    const dirtyKeys = new Set(
+      Object.keys(dirtyFields).filter(
+        (key) => dirtyFields[key as keyof typeof dirtyFields],
+      ),
+    );
+    for (const key of [...dirtyKeys]) {
+      for (const linked of linkedFields[key] ?? []) dirtyKeys.add(linked);
+    }
+
+    const payload = Object.fromEntries(
+      Object.entries(serialized).filter(([key]) => dirtyKeys.has(key)),
+    ) as UpdateOrganizationDto;
+    if (Object.keys(payload).length === 0) return;
+
     try {
-      await updateMutation.mutateAsync({
-        name: data.name,
-        primaryColor: data.primaryColor,
-        defaultVat: data.defaultVat,
-        defaultValidityDays: data.defaultValidityDays,
-        senderName: data.senderName || null,
-        senderEmail: data.senderEmail || null,
-        workdayStart: data.workdayStart,
-        workdayEnd: data.workdayEnd,
-        inspectorPhoneDisplay: data.inspectorPhoneDisplay,
-        inspectorEmailDisplay: data.inspectorEmailDisplay,
-        inspectorStaticPhone: data.inspectorStaticPhone?.trim() || null,
-        inspectorStaticEmail: data.inspectorStaticEmail?.trim() || null,
-        quoteApprovalThreshold:
-          data.quoteApprovalThreshold === '' || data.quoteApprovalThreshold === undefined
-            ? null
-            : Number(data.quoteApprovalThreshold),
-        quoteApprovalRequiredRole: data.quoteApprovalRequiredRole || null,
-        chatEnabled: data.chatEnabled,
-        inspectionReviewEnabled: data.inspectionReviewEnabled,
-        aiReviewEnabled: data.aiReviewEnabled,
-        aiReviewInstructions: data.aiReviewInstructions?.trim() || null,
-        onlineRepairDefault: data.onlineRepairDefault,
-      });
+      await updateMutation.mutateAsync(payload);
       showToast('Organisatie-instellingen opgeslagen', 'success');
     } catch {
       /* foutmelding wordt centraal getoond via useApiMutation */
@@ -425,6 +470,22 @@ export default function OrganizationSettingsPage() {
     return (
       <div className="flex h-64 items-center justify-center">
         <Spinner size="lg" />
+      </div>
+    );
+  }
+
+  // WP-C1 (B-509): bij een mislukte load (bv. 403 voor een rol zonder toegang)
+  // GEEN leeg-maar-bewerkbaar formulier renderen, maar een nette errorstate.
+  if (loadError || !organization) {
+    return (
+      <div>
+        <h1 className="mb-6 text-2xl font-bold text-gray-900">
+          Organisatie-instellingen
+        </h1>
+        <ErrorBox>
+          De organisatiegegevens konden niet geladen worden. Controleer of u de juiste
+          rechten heeft of probeer het later opnieuw.
+        </ErrorBox>
       </div>
     );
   }
@@ -682,6 +743,16 @@ export default function OrganizationSettingsPage() {
                 ]}
                 {...register('quoteApprovalRequiredRole')}
               />
+            </div>
+            <div className="mt-4">
+              <Checkbox
+                label="Aanvrager mag eigen goedkeuringsverzoek afhandelen (self-approval)"
+                {...register('quoteApprovalSelfApprovalAllowed')}
+              />
+              <p className="mt-1 text-xs text-gray-500">
+                Standaard uit (vier-ogen-principe). Alleen aanzetten als uw organisatie maar
+                één persoon met de vereiste goedkeur-rol heeft.
+              </p>
             </div>
           </div>
 

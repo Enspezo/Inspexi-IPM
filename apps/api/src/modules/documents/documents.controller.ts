@@ -8,7 +8,6 @@ import {
   Body,
   Query,
   Res,
-  ParseUUIDPipe,
   UseInterceptors,
   UploadedFile,
   ParseFilePipe,
@@ -38,6 +37,7 @@ import {
 import { DocumentsService } from './documents.service';
 import { UploadDocumentDto, ListDocumentsQueryDto, UpdateDocumentDto } from './dto';
 import { Roles, CurrentUser } from '@/common/decorators';
+import { ParseUuidPipe } from '@/common';
 
 /**
  * Custom file type validator that checks the MIME type supplied by the client.
@@ -125,7 +125,7 @@ export class DocumentsController {
   @ApiResponse({ status: 200, description: 'Document details' })
   @ApiResponse({ status: 404, description: 'Niet gevonden' })
   async findOne(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @CurrentUser() user: User,
   ) {
     const document = await this.documentsService.findOne(id, user);
@@ -138,7 +138,7 @@ export class DocumentsController {
   @ApiResponse({ status: 200, description: 'Bestand gedownload' })
   @ApiResponse({ status: 404, description: 'Niet gevonden' })
   async download(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @CurrentUser() user: User,
     @Res() res: Response,
   ) {
@@ -160,7 +160,7 @@ export class DocumentsController {
   @ApiOperation({ summary: 'Document beschrijving bijwerken' })
   @ApiResponse({ status: 200, description: 'Document bijgewerkt' })
   async update(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @Body() dto: UpdateDocumentDto,
     @CurrentUser() user: User,
   ) {
@@ -173,7 +173,7 @@ export class DocumentsController {
   @ApiOperation({ summary: 'Document verwijderen' })
   @ApiResponse({ status: 200, description: 'Document verwijderd' })
   async remove(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @CurrentUser() user: User,
   ) {
     await this.documentsService.remove(id, user);

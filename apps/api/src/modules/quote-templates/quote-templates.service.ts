@@ -1,12 +1,11 @@
 import {
   Injectable,
   NotFoundException,
-  ForbiddenException,
   BadRequestException,
   Inject,
   Logger,
 } from '@nestjs/common';
-import { User, Role, Prisma } from '@prisma/client';
+import { User, Prisma } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import * as mammoth from 'mammoth';
 import { PrismaService } from '@/prisma';
@@ -17,6 +16,7 @@ import {
   assertFound,
   assertSameOrg,
   sanitizeStorageFilename,
+  requireOrg,
   assertAllowedImageUpload,
   assertAllowedAttachmentUpload,
   assertUploadContentMatchesClaim,
@@ -73,8 +73,9 @@ export class QuoteTemplatesService {
   }
 
   async findOne(id: string, user: User) {
-    const template = assertFound(await this.prisma.quoteTemplate.findUnique({
-      where: { id },
+    // WP-C1 (B-105): org-scope in de query — cross-tenant id → zelfde 404.
+    const template = assertFound(await this.prisma.quoteTemplate.findFirst({
+      where: { id, ...orgScope(user) },
       include: {
         attachments: { orderBy: { sortOrder: 'asc' } },
         docxRevisions: {
@@ -106,22 +107,17 @@ export class QuoteTemplatesService {
       },
     }), 'Template');
 
-    if (!user.roles.includes(Role.SUPERUSER) && template.orgId !== user.orgId) {
-      throw new ForbiddenException();
-    }
-
     return template;
   }
 
   async create(dto: CreateQuoteTemplateDto, user: User) {
-    const orgId = user.orgId;
-    if (!orgId && !user.roles.includes(Role.SUPERUSER)) {
-      throw new ForbiddenException('Geen organisatie gekoppeld');
-    }
+    // WP-B3 (B-503): effectieve org (SUPERUSER op org-subdomein → tenant-org);
+    // zonder org een nette NL-400 i.p.v. een Prisma-fout (500).
+    const orgId = requireOrg(user);
 
     return this.prisma.quoteTemplate.create({
       data: {
-        orgId: orgId!,
+        orgId,
         name: dto.name,
         description: dto.description ?? null,
         templateType: dto.templateType ?? 'BLOCKS',

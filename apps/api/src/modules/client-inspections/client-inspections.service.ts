@@ -14,8 +14,28 @@ import {
 } from '@nestjs/common';
 import { SignatureStatus } from '@prisma/client';
 import { PrismaService } from '@/prisma';
-import { STATUS_OPEN, STATUS_RESOLVED, resolveInspectorContact } from '@/common';
+import {
+  STATUS_OPEN,
+  STATUS_RESOLVED,
+  STATUS_REVIEWED,
+  STATUS_APPROVED,
+  STATUS_COMPLETED,
+  resolveInspectorContact,
+} from '@/common';
 import type { CurrentClientUserData } from '@/common/decorators/current-client-user.decorator';
+
+/**
+ * B-412 (WP-B9): planstatussen waarvan de INHOUD (constateringen + documenten)
+ * klant-zichtbaar is. Metadata (titel, adres, datum, status) is altijd zichtbaar;
+ * inhoud pas vanaf review. De vier-ogen-gate op statusovergangen
+ * (inspection-plans.service / sync.service) garandeert dat completed/approved
+ * alleen ná review bereikt worden zolang de org-toggle aan staat.
+ */
+export const CLIENT_CONTENT_RELEASED_STATUSES: readonly string[] = [
+  STATUS_REVIEWED,
+  STATUS_APPROVED,
+  STATUS_COMPLETED,
+];
 
 @Injectable()
 export class ClientInspectionsService {
@@ -77,10 +97,16 @@ export class ClientInspectionsService {
     return !!plan;
   }
 
-  /** 403 als de klant geen toegang heeft (hergebruikt door sub-services). */
+  /**
+   * 404 als de klant geen toegang heeft (hergebruikt door sub-services).
+   * WP-C1 (B-151): 404 conform de statuscode-conventie ("bestaan niet
+   * onthullen"), net als de staf-realm; "bestaat niet", "andere org" en "geen
+   * grant" blijven bewust ononderscheidbaar. `assertSignAccess` hieronder geeft
+   * wél 403 — daar is het bestaan al bevestigd en ontbreekt alleen het recht.
+   */
   async assertInspectionAccess(clientUserId: string, orgId: string, planId: string): Promise<void> {
     if (!(await this.hasAccessToInspection(clientUserId, orgId, planId))) {
-      throw new ForbiddenException('Geen toegang tot deze inspectie');
+      throw new NotFoundException('Inspectie niet gevonden');
     }
   }
 
@@ -103,6 +129,68 @@ export class ClientInspectionsService {
     if (!grant) {
       throw new ForbiddenException('Geen recht om dit document te ondertekenen');
     }
+  }
+
+  /**
+   * Niet-gooiende variant van assertSignAccess (B-406a): geeft terug óf de klant
+   * op dit plan mag ondertekenen, zodat de UI de knop kan verbergen i.p.v. pas
+   * na het tekenen een 403 te tonen.
+   */
+  async hasSignAccess(clientUserId: string, orgId: string, planId: string): Promise<boolean> {
+    const grant = await this.prisma.inspectionClientAccess.findFirst({
+      where: {
+        clientUserId,
+        inspectionPlanId: planId,
+        canSign: true,
+        inspectionPlan: { orgId, deletedAt: null },
+      },
+      select: { inspectionPlanId: true },
+    });
+    return !!grant;
+  }
+
+  /** Plan-ids (binnen deze org) waarop de klant een canSign-grant heeft (B-406a). */
+  async signablePlanIds(clientUserId: string, orgId: string): Promise<string[]> {
+    const rows = await this.prisma.inspectionClientAccess.findMany({
+      where: { clientUserId, canSign: true, inspectionPlan: { orgId, deletedAt: null } },
+      select: { inspectionPlanId: true },
+    });
+    return rows.map((r) => r.inspectionPlanId);
+  }
+
+  /**
+   * B-412: staat de vier-ogen-review-gate voor deze org aan? Bewust vers uit de
+   * DB (niet uit de tenant-cache) zodat een org-wijziging direct doorwerkt.
+   */
+  async reviewGateEnabled(orgId: string): Promise<boolean> {
+    const org = await this.prisma.organization.findUnique({
+      where: { id: orgId },
+      select: { inspectionReviewEnabled: true },
+    });
+    return org?.inspectionReviewEnabled ?? true;
+  }
+
+  /**
+   * B-412: is de INHOUD (constateringen/documenten) van een plan met deze status
+   * klant-zichtbaar? Bij orgs met de review-gate uit verdwijnt er niets — de
+   * gate geldt alleen wanneer review aanstaat.
+   */
+  async isContentReleased(orgId: string, statusCode: string): Promise<boolean> {
+    if (CLIENT_CONTENT_RELEASED_STATUSES.includes(statusCode)) return true;
+    return !(await this.reviewGateEnabled(orgId));
+  }
+
+  /**
+   * Statuscode van een (toegankelijk) plan ophalen + release-check in één stap,
+   * voor content-routes van sub-services (findings/documenten).
+   */
+  async isPlanContentReleased(orgId: string, planId: string): Promise<boolean> {
+    const plan = await this.prisma.inspectionPlan.findFirst({
+      where: { id: planId, orgId, deletedAt: null },
+      select: { statusCode: true },
+    });
+    if (!plan) return false;
+    return this.isContentReleased(orgId, plan.statusCode);
   }
 
   async list(user: CurrentClientUserData, orgId: string | null) {
@@ -190,20 +278,27 @@ export class ClientInspectionsService {
     });
     if (!plan) throw new NotFoundException('Inspectie niet gevonden');
 
+    // B-412 (WP-B9): inhoud (constateringen + documenten) pas vanaf review
+    // klant-zichtbaar; metadata blijft altijd staan. Bij een org met de
+    // vier-ogen-gate uit is alles zichtbaar (contentReleased altijd true).
+    const contentReleased = await this.isContentReleased(org, plan.statusCode);
+
     // Asset-boom: de findings dragen sinds de unified-tree zelf assetNodeId + inspectionPlanId.
     // We halen de findings van dit plan op en groeperen ze onder hun asset-node, zodat de klant
     // exact de assets ziet die constateringen hebben (de vorige plan.assets-relatie bestaat niet meer).
-    const findings = await this.prisma.finding.findMany({
-      where: { inspectionPlanId: id, orgId: org, deletedAt: null },
-      select: {
-        id: true,
-        assetNodeId: true,
-        statusCode: true,
-        shortDescription: true,
-        classificationValues: true,
-      },
-      orderBy: { createdAt: 'asc' },
-    });
+    const findings = contentReleased
+      ? await this.prisma.finding.findMany({
+          where: { inspectionPlanId: id, orgId: org, deletedAt: null },
+          select: {
+            id: true,
+            assetNodeId: true,
+            statusCode: true,
+            shortDescription: true,
+            classificationValues: true,
+          },
+          orderBy: { createdAt: 'asc' },
+        })
+      : [];
 
     const assetNodeIds = [...new Set(findings.map((f) => f.assetNodeId))];
     const assetNodes = assetNodeIds.length
@@ -248,7 +343,15 @@ export class ClientInspectionsService {
       open: findings.filter((f) => f.statusCode === STATUS_OPEN).length,
       resolved: findings.filter((f) => f.statusCode === STATUS_RESOLVED).length,
     };
-    return { ...planRest, assets, assignedUser: assignedInspector, findingCounts };
+    return {
+      ...planRest,
+      // Documenten van een niet-vrijgegeven rapport niet meesturen (B-412).
+      generatedDocuments: contentReleased ? planRest.generatedDocuments : [],
+      assets,
+      assignedUser: assignedInspector,
+      findingCounts,
+      contentReleased,
+    };
   }
 
   /** Documenten van een inspectie (klant). */
@@ -256,34 +359,45 @@ export class ClientInspectionsService {
     const org = this.requireOrg(orgId);
     await this.assertInspectionAccess(user.id, org, planId);
 
-    return this.prisma.generatedDocument.findMany({
-      where: { inspectionPlanId: planId, orgId: org },
-      select: {
-        id: true,
-        documentType: true,
-        status: true,
-        generatedAt: true,
-        finalizedAt: true,
-        pdfUrl: true,
-        signatures: {
-          select: {
-            id: true,
-            signerRoleCode: true,
-            signerName: true,
-            signerFunction: true,
-            status: true,
-            signedAt: true,
+    // B-412: documenten van een nog niet gereviewd rapport zijn niet klant-zichtbaar.
+    if (!(await this.isPlanContentReleased(org, planId))) return [];
+
+    const [documents, canSign] = await Promise.all([
+      this.prisma.generatedDocument.findMany({
+        where: { inspectionPlanId: planId, orgId: org },
+        select: {
+          id: true,
+          documentType: true,
+          status: true,
+          generatedAt: true,
+          finalizedAt: true,
+          pdfUrl: true,
+          signatures: {
+            select: {
+              id: true,
+              signerRoleCode: true,
+              signerName: true,
+              signerFunction: true,
+              status: true,
+              signedAt: true,
+            },
           },
         },
-      },
-      orderBy: { generatedAt: 'asc' },
-    });
+        orderBy: { generatedAt: 'asc' },
+      }),
+      // B-406a: teken-recht is een per-plan grant; de UI verbergt de knop zonder recht.
+      this.hasSignAccess(user.id, org, planId),
+    ]);
+    return documents.map((d) => ({ ...d, canSign }));
   }
 
   /** Constateringen van een inspectie (klant), met laatste resolutie. */
   async getFindings(user: CurrentClientUserData, orgId: string | null, planId: string) {
     const org = this.requireOrg(orgId);
     await this.assertInspectionAccess(user.id, org, planId);
+
+    // B-412: constateringen van een nog niet gereviewd rapport zijn niet klant-zichtbaar.
+    if (!(await this.isPlanContentReleased(org, planId))) return [];
 
     return this.prisma.finding.findMany({
       where: { orgId: org, deletedAt: null, inspectionPlanId: planId },
@@ -336,34 +450,53 @@ export class ClientInspectionsService {
           contact: { select: { id: true, companyName: true, firstName: true, lastName: true } },
         },
       }),
-      this.prisma.inspectionPlan.findMany({ where: accessFilter, select: { id: true } }),
+      this.prisma.inspectionPlan.findMany({
+        where: accessFilter,
+        select: { id: true, statusCode: true },
+      }),
     ]);
     const allPlanIds = allPlans.map((p) => p.id);
 
+    // B-412: tellers en actie-items alleen over plannen waarvan de inhoud is
+    // vrijgegeven (review-gate); met de org-toggle uit telt alles gewoon mee.
+    const gateEnabled = await this.reviewGateEnabled(org);
+    const releasedPlanIds = gateEnabled
+      ? allPlans
+          .filter((p) => CLIENT_CONTENT_RELEASED_STATUSES.includes(p.statusCode))
+          .map((p) => p.id)
+      : allPlanIds;
+
+    // B-406a: het dashboard-actie-item "ondertekenen" alleen voor plannen waar
+    // deze klant daadwerkelijk teken-recht (canSign) op heeft.
+    const signableIds = new Set(await this.signablePlanIds(user.id, org));
+    const actionablePlanIds = releasedPlanIds.filter((id) => signableIds.has(id));
+
     const [pendingSignatures, openFindingsCount] = await Promise.all([
-      this.prisma.documentSignature.findMany({
-        where: {
-          signerRoleCode: 'CLIENT',
-          status: { in: [SignatureStatus.PENDING, SignatureStatus.REQUESTED] },
-          generatedDocument: { inspectionPlanId: { in: allPlanIds } },
-        },
-        select: {
-          id: true,
-          generatedDocument: {
+      actionablePlanIds.length
+        ? this.prisma.documentSignature.findMany({
+            where: {
+              signerRoleCode: 'CLIENT',
+              status: { in: [SignatureStatus.PENDING, SignatureStatus.REQUESTED] },
+              generatedDocument: { inspectionPlanId: { in: actionablePlanIds } },
+            },
             select: {
               id: true,
-              documentType: true,
-              inspectionPlan: { select: { id: true, projectName: true, addressCity: true } },
+              generatedDocument: {
+                select: {
+                  id: true,
+                  documentType: true,
+                  inspectionPlan: { select: { id: true, projectName: true, addressCity: true } },
+                },
+              },
             },
-          },
-        },
-      }),
-      allPlanIds.length
+          })
+        : Promise.resolve([]),
+      releasedPlanIds.length
         ? this.prisma.finding.count({
             where: {
               statusCode: STATUS_OPEN,
               deletedAt: null,
-              inspectionPlanId: { in: allPlanIds },
+              inspectionPlanId: { in: releasedPlanIds },
             },
           })
         : Promise.resolve(0),

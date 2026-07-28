@@ -38,8 +38,23 @@ import {
   FINAL_CHECK_RESULTS_LABEL,
 } from '../measurement-sheet-records/schemas/sheet-record-data.schema';
 
-/** Het contract-versienummer; bump bij elke breaking wijziging aan de wire-vorm. */
-export const SYNC_CONTRACT_VERSION = 3;
+/**
+ * Het contract-versienummer; bump bij elke breaking wijziging aan de wire-vorm.
+ *
+ * v4 (WP-D1, besluit A1 — B-209/B-223e): `updatedAt` is het universele
+ * versie-anker voor conflictdetectie.
+ *  - Push-updates dragen `baseVersion` (de laatst geziene server-`updatedAt`);
+ *    ontbreekt élk anker bij een update van een bestaand record → fail-closed
+ *    conflict ("geen basis bekend" is nooit meer "geen conflict").
+ *  - Push-respons draagt `applied[]` (nieuwe server-`updatedAt` per geslaagde
+ *    create/update) zodat de client zijn basis exact kan bijwerken.
+ *  - Pull-envelope draagt `openConflicts[]` (openstaande conflicten van deze
+ *    gebruiker) zodat een conflict ook in een nieuwe sessie zichtbaar is.
+ * Compatibiliteit: een v3-PWA blokkeert zichzelf op de pull-guard
+ * (contractVersion ≠ verwacht) en pusht daarna niet; een in-flight v3-push
+ * met `syncedAt` valt terug op de oude vergelijking (nooit stil overschrijven).
+ */
+export const SYNC_CONTRACT_VERSION = 4;
 
 export type SyncEntityKey =
   | 'inspectionPlans'
@@ -68,7 +83,9 @@ export type FkCheckModel =
   | 'user'
   | 'contactPerson'
   | 'contact'
-  | 'project';
+  | 'project'
+  | 'visualInspection'
+  | 'measurementRecord';
 
 /**
  * Inkomend client-record (wire) — Beheer-veldnamen. Alleen de sleutels die de service
@@ -77,6 +94,13 @@ export type FkCheckModel =
  */
 export interface SyncRecordData {
   id?: string;
+  /**
+   * v4-versie-anker (besluit A1): de nieuwste server-`updatedAt` die de client
+   * voor dit record heeft gezien (gevuld bij pull en push-ack). De server
+   * vergelijkt hiertegen voor conflictdetectie.
+   */
+  baseVersion?: string;
+  /** Legacy v3-anker (transitie): alleen gelezen als `baseVersion` ontbreekt. */
   syncedAt?: string;
   createdBy?: string;
   [field: string]: unknown;
@@ -124,6 +148,13 @@ interface EntityConfig {
   injectInspectorId?: boolean;
   /** FK-velden die — indien aanwezig — tot dezelfde org moeten horen (cross-tenant). */
   fkChecks?: Array<{ field: string; model: FkCheckModel; label: string }>;
+  /**
+   * Velden die bij een `create` aanwezig moeten zijn. Prisma zou een ontbrekende
+   * verplichte kolom toch weigeren, maar dan met een rauwe Engelstalige
+   * driver-melding in `errors[]` (zo bleef B-207 maandenlang onleesbaar voor de
+   * inspecteur). Deze check geeft een nette Nederlandse `<label> ontbreekt`.
+   */
+  requiredOnCreate?: Array<{ field: string; label: string }>;
   /**
    * User-FK-velden (bv. `assignedTo`, `resolvedBy`) die — indien aanwezig — tot
    * dezelfde org moeten horen. Client mag ze zetten (i.t.t. createdBy/inspectorId),
@@ -199,27 +230,10 @@ export const SYNC_ENTITIES: Record<SyncEntityKey, EntityConfig> = {
       { field: 'rootLocationId', model: 'location', label: 'Hoofdlocatie' },
     ],
   },
-  findings: {
-    model: 'finding',
-    singular: 'finding',
-    softDelete: true,
-    org: { from: 'self' },
-    injectCreatedBy: true,
-    dateFields: FINDING_DATES,
-    allowed: [
-      'assetNodeId', 'inspectionPlanId', 'visualInspectionId', 'measurementRecordId', 'findingTemplateId',
-      'inspectionType', 'shortDescription', 'longDescription', 'classificationValues',
-      'locationDescription', 'recommendation', 'recommendationCustom', 'normReference',
-      'checklistItemId', 'statusCode', 'resolvedAt', 'resolvedBy', 'resolutionNotes',
-      ...FINDING_DATES, 'deviceId',
-    ],
-    fkChecks: [
-      { field: 'assetNodeId', model: 'assetNode', label: 'Asset-node' },
-      { field: 'inspectionPlanId', model: 'inspectionPlan', label: 'Inspectie' },
-    ],
-    userFkChecks: ['resolvedBy'],
-    treeCheck: { nodeField: 'assetNodeId', planField: 'inspectionPlanId' },
-  },
+  // NB (WP-A2): de push verwerkt entiteiten in déze objectvolgorde — ouders vóór
+  // kinderen. visualInspections en measurementRecords staan daarom vóór findings:
+  // een finding uit dezelfde batch verwijst met visualInspectionId/
+  // measurementRecordId naar deze records (B-206) en zou anders op de FK stranden.
   visualInspections: {
     model: 'visualInspection',
     singular: 'visualInspection',
@@ -257,6 +271,32 @@ export const SYNC_ENTITIES: Record<SyncEntityKey, EntityConfig> = {
     ],
     treeCheck: { nodeField: 'assetNodeId', planField: 'inspectionPlanId' },
   },
+  findings: {
+    model: 'finding',
+    singular: 'finding',
+    softDelete: true,
+    org: { from: 'self' },
+    injectCreatedBy: true,
+    dateFields: FINDING_DATES,
+    allowed: [
+      'assetNodeId', 'inspectionPlanId', 'visualInspectionId', 'measurementRecordId', 'findingTemplateId',
+      'inspectionType', 'shortDescription', 'longDescription', 'classificationValues',
+      'locationDescription', 'recommendation', 'recommendationCustom', 'normReference',
+      'checklistItemId', 'statusCode', 'resolvedAt', 'resolvedBy', 'resolutionNotes',
+      ...FINDING_DATES, 'deviceId',
+    ],
+    // visualInspectionId/measurementRecordId (WP-A2 · B-206): zonder deze checks
+    // gaf een onbekende referentie een rauwe Prisma-P2003 in errors[] — en kon een
+    // client bovendien cross-tenant naar andermans VI/meetrecord verwijzen.
+    fkChecks: [
+      { field: 'assetNodeId', model: 'assetNode', label: 'Asset-node' },
+      { field: 'inspectionPlanId', model: 'inspectionPlan', label: 'Inspectie' },
+      { field: 'visualInspectionId', model: 'visualInspection', label: 'Visuele inspectie' },
+      { field: 'measurementRecordId', model: 'measurementRecord', label: 'Meetrecord' },
+    ],
+    userFkChecks: ['resolvedBy'],
+    treeCheck: { nodeField: 'assetNodeId', planField: 'inspectionPlanId' },
+  },
   measurementSheetRecords: {
     model: 'measurementSheetRecord',
     singular: 'measurementSheetRecord',
@@ -272,6 +312,15 @@ export const SYNC_ENTITIES: Record<SyncEntityKey, EntityConfig> = {
     fkChecks: [
       { field: 'assetNodeId', model: 'assetNode', label: 'Asset-node' },
       { field: 'inspectionPlanId', model: 'inspectionPlan', label: 'Inspectie' },
+    ],
+    // B-207 (WP-A2): een PWA-payload zonder templateVersion faalde met een rauwe
+    // Prisma-melding ("Argument `templateVersion` is missing") in errors[] — de
+    // klasse fouten die maandenlang álle meetstaten stil liet stranden. Deze
+    // verplichte-velden-check maakt er een leesbare NL-melding van.
+    requiredOnCreate: [
+      { field: 'templateId', label: 'Meetstaat-template' },
+      { field: 'templateVersion', label: 'Template-versie' },
+      { field: 'templateSnapshot', label: 'Template-snapshot' },
     ],
     treeCheck: { nodeField: 'assetNodeId', planField: 'inspectionPlanId' },
   },
@@ -311,6 +360,17 @@ function coerce(field: string, value: unknown, dateFields: string[]): unknown {
 }
 
 /**
+ * Per-entiteit velden die als string in de DB staan maar door (oudere) PWA-caches
+ * als getal geserialiseerd kunnen worden. De meetstaat-`templateVersion` is
+ * server-side een String-kolom ("1.0"), terwijl de gedeelde PWA-typedef `number`
+ * zegt — een numerieke waarde zou anders met een rauwe Prisma-typefout stranden
+ * (B-207-klasse). Coercen is hier verliesvrij.
+ */
+const STRING_COERCE_FIELDS: Partial<Record<SyncEntityKey, string[]>> = {
+  measurementSheetRecords: ['templateVersion'],
+};
+
+/**
  * Per-entiteit JSON-kolom → { schema, label }. De /sync-push omzeilt de class-validator
  * DTO-laag (kale `@IsObject()`), dus valideren we deze vormvrije kolommen hier permissief
  * (dezelfde colocated schema's als het REST-pad) om garbage tegen te houden.
@@ -342,10 +402,14 @@ const JSON_FIELD_VALIDATORS: Partial<
 export function toDbData(key: SyncEntityKey, data: Record<string, unknown>): Record<string, unknown> {
   const cfg = SYNC_ENTITIES[key];
   const jsonValidators = JSON_FIELD_VALIDATORS[key];
+  const stringCoerce = STRING_COERCE_FIELDS[key];
   const out: Record<string, unknown> = {};
   for (const field of cfg.allowed) {
     if (data[field] === undefined) continue;
-    const value = coerce(field, data[field], cfg.dateFields);
+    let value = coerce(field, data[field], cfg.dateFields);
+    if (stringCoerce?.includes(field) && typeof value === 'number') {
+      value = String(value);
+    }
     const v = jsonValidators?.[field];
     out[field] = v ? validateJsonColumn(v.schema, value, v.label) : value;
   }

@@ -76,7 +76,10 @@ describe('RolesGuard', () => {
       (reflector.getAllAndOverride as jest.Mock).mockReturnValue([Role.ORG_ADMIN]);
 
       const context = createMockContext({ roles: [Role.INSPECTEUR] });
-      expect(guard.canActivate(context)).toBe(false);
+      // WP-C1 (B-106): expliciete NL ForbiddenException i.p.v. `false`
+      expect(() => guard.canActivate(context)).toThrow(
+        'U heeft niet de juiste rol voor deze actie',
+      );
     });
 
     it('should allow SUPERUSER when SUPERUSER is in required roles', () => {
@@ -93,14 +96,18 @@ describe('RolesGuard', () => {
       (reflector.getAllAndOverride as jest.Mock).mockReturnValue([Role.ORG_ADMIN]);
 
       const context = createMockContext(undefined);
-      expect(guard.canActivate(context)).toBe(false);
+      expect(() => guard.canActivate(context)).toThrow(
+        'U heeft niet de juiste rol voor deze actie',
+      );
     });
 
     it('should deny access when user is null', () => {
       (reflector.getAllAndOverride as jest.Mock).mockReturnValue([Role.ORG_ADMIN]);
 
       const context = createMockContext(null);
-      expect(guard.canActivate(context)).toBe(false);
+      expect(() => guard.canActivate(context)).toThrow(
+        'U heeft niet de juiste rol voor deze actie',
+      );
     });
 
     it('should deny access when user has no matching roles', () => {
@@ -110,7 +117,9 @@ describe('RolesGuard', () => {
       ]);
 
       const context = createMockContext({ roles: [Role.BACKOFFICE, Role.INSPECTEUR] });
-      expect(guard.canActivate(context)).toBe(false);
+      expect(() => guard.canActivate(context)).toThrow(
+        'U heeft niet de juiste rol voor deze actie',
+      );
     });
 
     it('should allow user with multiple roles when one matches', () => {

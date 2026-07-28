@@ -266,10 +266,17 @@ describe('InspectionPlans (e2e)', () => {
       .send({})
       .expect(200);
 
-    const res = await request(app.getHttpServer())
+    // B-315 §8 (WP-C5): afkeuren zonder toelichting wordt geweigerd.
+    await request(app.getHttpServer())
       .post(`/api/v1/inspection-plans/${planId}/review`)
       .set('Authorization', `Bearer ${accessToken}`)
       .send({ decision: 'reject' })
+      .expect(400);
+
+    const res = await request(app.getHttpServer())
+      .post(`/api/v1/inspection-plans/${planId}/review`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ decision: 'reject', notes: 'E2E: meetstaat onvolledig' })
       .expect(200);
 
     expect(res.body.success).toBe(true);

@@ -8,6 +8,7 @@ import {
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { Response, Request } from 'express';
+import { StorageObjectNotFoundError } from '../services/storage/storage.interface';
 
 /** Fout met een numerieke HTTP-status (bv. Express body-parser's PayloadTooLargeError). */
 interface HttpErrorLike {
@@ -24,6 +25,31 @@ function isHttpErrorLike(err: unknown): err is HttpErrorLike {
   return typeof code === 'number' && code >= 400 && code <= 599;
 }
 
+/**
+ * WP-C1 (B-106/B-155/B-601): vangnet dat bekende Engelse framework-defaults
+ * naar het Nederlands mapt. Alleen exacte matches worden vervangen — eigen
+ * (Nederlandse) meldingen passeren ongewijzigd. De structurele fixes zitten in
+ * de guards/pipes zelf; dit vangt exceptions af die daar omheen ontstaan
+ * (bv. een kale `throw new ForbiddenException()` in nieuwe code).
+ */
+const NL_FRAMEWORK_MESSAGES: Record<string, string> = {
+  'Forbidden resource': 'U heeft niet de juiste rol voor deze actie',
+  Forbidden: 'Geen toegang',
+  Unauthorized: 'Niet ingelogd of uw sessie is verlopen',
+  'Not Found': 'Niet gevonden',
+  'Bad Request': 'Ongeldige aanvraag',
+  Conflict: 'Conflict met de huidige gegevens',
+  'Too Many Requests': 'Te veel pogingen, probeer later opnieuw',
+  'ThrottlerException: Too Many Requests': 'Te veel pogingen, probeer later opnieuw',
+  'Validation failed (uuid is expected)': 'Ongeldige identificatie',
+  'Internal server error': 'Er is een onverwachte fout opgetreden',
+  'Internal Server Error': 'Er is een onverwachte fout opgetreden',
+};
+
+function toDutchMessage(message: string): string {
+  return NL_FRAMEWORK_MESSAGES[message] ?? message;
+}
+
 @Catch()
 export class AllExceptionsFilter implements ExceptionFilter {
   private readonly logger = new Logger('AllExceptionsFilter');
@@ -32,6 +58,8 @@ export class AllExceptionsFilter implements ExceptionFilter {
     const ctx = host.switchToHttp();
     const response = ctx.getResponse<Response>();
     const request = ctx.getRequest<Request>();
+    const requestId = (request as any).requestId as string | undefined;
+    const requestIdSuffix = requestId ? ` [requestId=${requestId}]` : '';
 
     let status = HttpStatus.INTERNAL_SERVER_ERROR;
     let message: string | string[] = 'Internal server error';
@@ -63,6 +91,16 @@ export class AllExceptionsFilter implements ExceptionFilter {
       ) {
         warnings = (exceptionResponse as { warnings?: unknown }).warnings;
       }
+    } else if (exception instanceof StorageObjectNotFoundError) {
+      // B-154: ontbrekend storage-object → nette NL 404 op álle download-routes
+      // (documenten, PDF's, foto's, avatars, logo's) in één centrale mapping.
+      // Warn (geen error): verwachtbare toestand, maar wél met de storage-key
+      // zodat de dangling verwijzing in de logs terug te vinden is.
+      status = HttpStatus.NOT_FOUND;
+      message = 'Het opgevraagde bestand is niet (meer) beschikbaar';
+      this.logger.warn(
+        `Storage object missing on ${request.method} ${request.url}${requestIdSuffix}: key=${exception.key}`,
+      );
     } else if (exception instanceof Prisma.PrismaClientKnownRequestError) {
       switch (exception.code) {
         case 'P2002':
@@ -77,12 +115,50 @@ export class AllExceptionsFilter implements ExceptionFilter {
           status = HttpStatus.BAD_REQUEST;
           message = 'Verwijzing naar niet-bestaande gegevens';
           break;
+        // WP-B3 (B-503): null in een NOT NULL-kolom (bv. orgId zonder
+        // tenantcontext) is ongeldige invoer, geen serverfout.
+        case 'P2011':
+          status = HttpStatus.BAD_REQUEST;
+          message = 'Verplicht veld ontbreekt';
+          break;
+        case 'P2020':
+          // Waarde buiten het kolomtype-bereik (bv. Postgres numeric overflow) — B-303.
+          status = HttpStatus.BAD_REQUEST;
+          message = 'Een waarde valt buiten het toegestane bereik';
+          break;
       }
       if (status !== HttpStatus.INTERNAL_SERVER_ERROR) {
-        this.logger.warn(
-          `Prisma ${exception.code} on ${request.method} ${request.url}: ${exception.message.split('\n').pop()}`,
-        );
+        // P2011 wijst vrijwel altijd op een codefout (verplichte kolom niet
+        // gevuld) — log op error-niveau mét requestId zodat de bug niet uit
+        // beeld verdwijnt achter de nette 400.
+        const logLine = `Prisma ${exception.code} on ${request.method} ${request.url}${requestIdSuffix}: ${exception.message.split('\n').pop()}`;
+        if (exception.code === 'P2011') {
+          this.logger.error(logLine);
+        } else {
+          this.logger.warn(logLine);
+        }
       }
+    } else if (exception instanceof Prisma.PrismaClientValidationError) {
+      // WP-B3 (B-503): ongeldige query-input (bv. `orgId: null` in een
+      // verplichte FK-kolom) → 400 i.p.v. 500. Wel op error-niveau loggen mét
+      // requestId: dit duidt vrijwel altijd op een codefout die zichtbaar
+      // moet blijven in de serverlogs.
+      status = HttpStatus.BAD_REQUEST;
+      message = 'Ongeldige gegevens';
+      this.logger.error(
+        `PrismaClientValidationError on ${request.method} ${request.url}${requestIdSuffix}: ${exception.message.split('\n').pop()}`,
+      );
+    } else if (
+      exception instanceof Prisma.PrismaClientUnknownRequestError &&
+      /numeric field overflow/i.test(exception.message)
+    ) {
+      // Postgres `numeric field overflow` (SQLSTATE 22003) komt niet altijd als P2020
+      // terug maar soms als "unknown" Prisma-fout — óók 400 i.p.v. 500 (B-303).
+      status = HttpStatus.BAD_REQUEST;
+      message = 'Een bedrag of aantal is te groot om op te slaan';
+      this.logger.warn(
+        `Prisma numeric overflow on ${request.method} ${request.url}${requestIdSuffix}`,
+      );
     } else if (isHttpErrorLike(exception)) {
       // Express body-parser-fouten (PayloadTooLargeError → 413, kapotte JSON → 400)
       // zijn géén Nest-HttpException maar dragen wél een numerieke `status`/`statusCode`.
@@ -96,16 +172,18 @@ export class AllExceptionsFilter implements ExceptionFilter {
             : message;
     }
 
-    const requestId = (request as any).requestId as string | undefined;
     const isServerError = status === HttpStatus.INTERNAL_SERVER_ERROR;
 
     // Log non-HTTP exceptions (500s) for debugging
     if (isServerError) {
       this.logger.error(
-        `500 on ${request.method} ${request.url}${requestId ? ` [requestId=${requestId}]` : ''}`,
+        `500 on ${request.method} ${request.url}${requestIdSuffix}`,
         exception instanceof Error ? exception.stack : String(exception),
       );
     }
+
+    // NL-vangnet voor bekende Engelse framework-teksten (WP-C1).
+    message = Array.isArray(message) ? message.map(toDutchMessage) : toDutchMessage(message);
 
     response.status(status).json({
       success: false,

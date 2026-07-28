@@ -47,17 +47,20 @@ describe('QuickCreateButton', () => {
     expect(screen.getByText('Nieuw project')).toBeInTheDocument();
   });
 
-  it('hides write-gated items for an INSPECTEUR (only contactpersoon + locatie remain)', () => {
+  // B-315 §7: een INSPECTEUR krijgt 403 op /contacts en kan de contactpersoon-/
+  // locatie-flows nooit afronden — de hele knop verdwijnt daarom voor die rol.
+  it('B-315 §7: hides ALL items (and the button) for an INSPECTEUR', () => {
     setUser([Role.INSPECTEUR]);
-    render(<QuickCreateButton />);
+    const { container } = render(<QuickCreateButton />);
 
     expect(screen.queryByText('Nieuwe relatie')).not.toBeInTheDocument();
     expect(screen.queryByText('Nieuwe aanvraag')).not.toBeInTheDocument();
     expect(screen.queryByText('Nieuwe offerte')).not.toBeInTheDocument();
     expect(screen.queryByText('Nieuw project')).not.toBeInTheDocument();
-
-    expect(screen.getByText('Nieuwe contactpersoon')).toBeInTheDocument();
-    expect(screen.getByText('Nieuwe locatie')).toBeInTheDocument();
+    expect(screen.queryByText('Nieuwe contactpersoon')).not.toBeInTheDocument();
+    expect(screen.queryByText('Nieuwe locatie')).not.toBeInTheDocument();
+    // Geen enkel item → knop volledig verborgen.
+    expect(container).toBeEmptyDOMElement();
   });
 
   it('shows the project item for a WERKVOORBEREIDER but not the CRM-write items', () => {
@@ -65,6 +68,9 @@ describe('QuickCreateButton', () => {
     render(<QuickCreateButton />);
 
     expect(screen.getByText('Nieuw project')).toBeInTheDocument();
+    // WERKVOORBEREIDER heeft CRM-leestoegang → contactpersoon/locatie blijven.
+    expect(screen.getByText('Nieuwe contactpersoon')).toBeInTheDocument();
+    expect(screen.getByText('Nieuwe locatie')).toBeInTheDocument();
     expect(screen.queryByText('Nieuwe relatie')).not.toBeInTheDocument();
     expect(screen.queryByText('Nieuwe offerte')).not.toBeInTheDocument();
   });
@@ -88,7 +94,7 @@ describe('QuickCreateButton', () => {
   });
 
   it('opens the location flow when "Nieuwe locatie" is clicked', () => {
-    setUser([Role.INSPECTEUR]);
+    setUser([Role.BACKOFFICE]);
     render(<QuickCreateButton />);
 
     fireEvent.click(screen.getByText('Nieuwe locatie'));

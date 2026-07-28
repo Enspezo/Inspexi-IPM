@@ -3761,6 +3761,19 @@ async function main() {
   await backfillNumbering(prisma);
   console.log('  ✓ Nummering: standaard-schemas, nummers en tellers geseed (per org, per model)');
 
+  // ─── WP-D1 (besluit A1): synced_at vullen op alle geseede sync-entiteiten ──
+  // De seed draait buiten de API (geen sync-anchor-middleware), dus één rauwe
+  // pass per tabel: synced_at = updated_at. Zonder deze basis zou elke geseede
+  // rij bij de eerste PWA-push fail-closed in conflict gaan (B-209).
+  await prisma.$executeRaw`UPDATE imp_inspection_plans SET synced_at = updated_at WHERE synced_at IS NULL`;
+  await prisma.$executeRaw`UPDATE imp_asset_nodes SET synced_at = updated_at WHERE synced_at IS NULL`;
+  await prisma.$executeRaw`UPDATE imp_findings SET synced_at = updated_at WHERE synced_at IS NULL`;
+  await prisma.$executeRaw`UPDATE imp_visual_inspections SET synced_at = updated_at WHERE synced_at IS NULL`;
+  await prisma.$executeRaw`UPDATE imp_measurement_records SET synced_at = updated_at WHERE synced_at IS NULL`;
+  await prisma.$executeRaw`UPDATE imp_measurement_sheet_records SET synced_at = updated_at WHERE synced_at IS NULL`;
+  await prisma.$executeRaw`UPDATE imp_standalone_measurements SET synced_at = updated_at WHERE synced_at IS NULL`;
+  console.log('  ✓ Sync-basis: synced_at = updated_at gezet op alle geseede sync-entiteiten (WP-D1)');
+
   console.log('\n✅ Seed completed successfully!');
   console.log('\n📋 Login credentials (all use Password123!):');
   console.log('   superuser@inspexi.nl      → SUPERUSER');

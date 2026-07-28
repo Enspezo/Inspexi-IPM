@@ -337,19 +337,29 @@ export class ClientRepairService {
     >();
 
     const findingViews = findings.map((finding, index) => {
-      const classification = getMainClassification(
+      const resolved = getMainClassification(
         finding.classificationValues as Record<string, string> | null,
         classificationModel,
       );
+      // B-410 (WP-C2): zonder (bruikbaar) classificatiemodel doet de resolver
+      // géén uitspraak over kritikaliteit (null) — val dan terug op het
+      // gedenormaliseerde, server-owned Finding.isCritical. Zo beweert de
+      // respons nooit `isCritical: false` over een wél-kritieke constatering.
+      const classification = {
+        ...resolved,
+        isCritical: resolved.isCritical ?? finding.isCritical,
+      };
 
       const group = groups.get(classification.code) ?? {
         code: classification.code,
         label: classification.name,
         color: classification.color,
-        isCritical: classification.isCritical,
+        isCritical: false,
         openCount: 0,
         resolvedCount: 0,
       };
+      // Groep is kritiek zodra één constatering in de groep kritiek is.
+      group.isCritical = group.isCritical || classification.isCritical;
       if (finding.statusCode === STATUS_OPEN) group.openCount += 1;
       if (finding.statusCode === STATUS_RESOLVED) group.resolvedCount += 1;
       groups.set(classification.code, group);

@@ -216,6 +216,56 @@ describe('NumberingService', () => {
       );
       expect(result).toEqual({ id: 'l1', number: 'LOC-0001' });
     });
+
+    // WP-C3 (B-203): een leeg-resolvende [typecode] gaf misvormde, org-unieke
+    // nummers als `-0033` — de generatie moet dan geweigerd worden, vóór de
+    // counter-bump.
+    it('ASSET_NODE: refuses generation when [typecode] resolves empty (B-203)', async () => {
+      mockPrisma.numberingScheme.upsert.mockResolvedValue(
+        sequentialScheme({
+          model: 'ASSET_NODE',
+          prefix: '[typecode]-',
+          resetPolicy: 'CONTINUOUS',
+        }),
+      );
+
+      const create = jest.fn();
+
+      await expect(
+        service.runWithGeneratedNumber(
+          'ASSET_NODE',
+          ORG,
+          { context: { typeShortCode: null } },
+          create,
+        ),
+      ).rejects.toThrow(BadRequestException);
+
+      expect(create).not.toHaveBeenCalled();
+      // Geen counter-bump voor een geweigerde generatie.
+      expect(mockPrisma.$queryRaw).not.toHaveBeenCalled();
+    });
+
+    it('ASSET_NODE: allows an empty shortcode when the scheme does not use [typecode]', async () => {
+      mockPrisma.numberingScheme.upsert.mockResolvedValue(
+        sequentialScheme({
+          model: 'ASSET_NODE',
+          prefix: 'A-',
+          resetPolicy: 'CONTINUOUS',
+        }),
+      );
+      mockPrisma.$queryRaw.mockResolvedValue([{ value: 7 }]);
+      mockPrisma.$transaction.mockImplementation((cb: (tx: unknown) => unknown) => cb(mockTx));
+
+      const create = jest.fn(async (_tx, value: string) => ({ id: 'n1', number: value }));
+      const result = await service.runWithGeneratedNumber(
+        'ASSET_NODE',
+        ORG,
+        { context: { typeShortCode: null } },
+        create,
+      );
+
+      expect(result).toEqual({ id: 'n1', number: 'A-0007' });
+    });
   });
 
   describe('validateManualNumber', () => {

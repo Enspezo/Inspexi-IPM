@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { join, dirname, resolve, sep } from 'path';
 import * as fs from 'fs/promises';
-import type { StorageProvider } from './storage.interface';
+import { StorageObjectNotFoundError, type StorageProvider } from './storage.interface';
 
 @Injectable()
 export class LocalStorageProvider implements StorageProvider {
@@ -35,7 +35,18 @@ export class LocalStorageProvider implements StorageProvider {
 
   async download(key: string): Promise<Buffer> {
     const fullPath = this.safeResolve(key);
-    return fs.readFile(fullPath);
+    try {
+      return await fs.readFile(fullPath);
+    } catch (err) {
+      // B-154: een ontbrekend object is een verwachtbare toestand (gefaalde
+      // upload, opgeruimde uploads-map, bucket-migratie) — geef een getypeerde
+      // fout die de exception filter naar een NL 404 mapt i.p.v. de rauwe
+      // ENOENT als 500 te laten doorslaan.
+      if ((err as NodeJS.ErrnoException)?.code === 'ENOENT') {
+        throw new StorageObjectNotFoundError(key);
+      }
+      throw err;
+    }
   }
 
   async delete(key: string): Promise<void> {

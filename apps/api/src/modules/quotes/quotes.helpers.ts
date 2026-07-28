@@ -1,8 +1,8 @@
-import { BadRequestException, ForbiddenException } from '@nestjs/common';
+import { BadRequestException } from '@nestjs/common';
 import { Role, User, QuoteStatus, QuoteTemplate } from '@prisma/client';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '@/prisma';
-import { assertFound } from '@/common';
+import { assertFound, orgScope } from '@/common';
 
 /**
  * The subset of template fields that gets applied onto a quote when a template
@@ -90,6 +90,13 @@ export const VALID_TRANSITIONS: Record<QuoteStatus, QuoteStatus[]> = {
   [QuoteStatus.VERLOPEN]: [],
 };
 
+/**
+ * Maximaal representeerbaar bedrag in de `numeric(12,2)`-geldkolommen
+ * (lineTotal/subtotal/vatTotal/discountTotal/total). Berekeningen die hier
+ * bovenuit komen worden vóór de write geweigerd met een NL-melding (B-303).
+ */
+export const MAX_QUOTE_AMOUNT = 9_999_999_999.99;
+
 export function calculateLineTotal(quantity: number, unitPrice: number, discountPct: number): number {
   return Math.round(quantity * unitPrice * (1 - discountPct / 100) * 100) / 100;
 }
@@ -169,10 +176,69 @@ export const QUOTE_INCLUDE = {
 
 /** Org-scoped quote lookup with full includes (shared by all quote services). */
 export async function findQuoteForUser(prisma: PrismaService, id: string, user: User) {
-  const quote = assertFound(await prisma.quote.findUnique({ where: { id }, include: QUOTE_INCLUDE }), 'Offerte');
-  if (!user.roles.includes(Role.SUPERUSER) && quote.orgId !== user.orgId) throw new ForbiddenException();
-  return quote;
+  // WP-C1 (B-105): org-scope in de query — cross-tenant id → zelfde 404.
+  return assertFound(
+    await prisma.quote.findFirst({ where: { id, ...orgScope(user) }, include: QUOTE_INCLUDE }),
+    'Offerte',
+  );
 }
+
+/**
+ * WP-B7 (B-152/B-306-klasse): expliciete allowlist voor de PUBLIEKE offerte-payload.
+ *
+ * `QUOTE_INCLUDE` + record-spread serveerde voorheen élk kolomveld publiek —
+ * inclusief `internalNotes`, `clientIp`/`clientUserAgent`, `customFields`,
+ * interne `approvalRequests` (met stafnamen/-e-mails en afkeurnotities),
+ * `createdByUser` (staf-e-mail) en storage-keys. De publieke webviewer
+ * (`/offerte/:token`) leest uitsluitend onderstaande velden; iets toevoegen is
+ * een bewuste, geteste beslissing (key-snapshot-e2e in
+ * test/public-endpoints.e2e-spec.ts).
+ *
+ * NB: `pdfStorageKey` blijft erin — de pagina gebruikt de aanwezigheid ervan om
+ * tussen DOCX-weergave (embedded PDF) en blokkenweergave te kiezen. Vragen
+ * (`questions`) gaan zonder `user`-relatie mee: de pagina toont voor
+ * stafantwoorden de organisatienaam, nooit de individuele medewerker.
+ */
+export const PUBLIC_QUOTE_SELECT = {
+  id: true,
+  quoteNumber: true,
+  status: true,
+  subject: true,
+  contentBlocks: true,
+  subtotal: true,
+  discountTotal: true,
+  vatTotal: true,
+  total: true,
+  validUntil: true,
+  createdAt: true,
+  signedAt: true,
+  clientName: true,
+  pdfStorageKey: true,
+  contact: { select: { id: true, type: true, companyName: true, firstName: true, lastName: true } },
+  organization: { select: { id: true, name: true, logoUrl: true, primaryColor: true } },
+  lines: {
+    select: {
+      id: true,
+      description: true,
+      quantity: true,
+      unit: true,
+      unitPrice: true,
+      vatRate: true,
+      discountPct: true,
+      lineTotal: true,
+      sortOrder: true,
+    },
+    orderBy: { sortOrder: 'asc' as const },
+  },
+  attachments: {
+    select: { id: true, fileName: true, mimeType: true, fileSize: true, sortOrder: true },
+    orderBy: { sortOrder: 'asc' as const },
+  },
+  questions: {
+    select: { id: true, message: true, isFromClient: true, createdAt: true },
+    orderBy: { createdAt: 'asc' as const },
+  },
+};
 
 export function getPublicUrl(config: ConfigService, path: string): string {
   const baseUrl = config.get<string>('PUBLIC_URL', 'http://localhost:5173');

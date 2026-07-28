@@ -56,28 +56,28 @@ GOLF 4  Gecoördineerd contractwerk            3 WP    ~3-4 dagen  (na stabilisa
 
 | WP | Titel | Repo | Bevindingen | Sev | Afhankelijk van | Status |
 |---|---|---|---|---|---|---|
-| **A1** | Sync-fouten zichtbaar maken | PWA | B-211, B-208, B-223b | S2 | — | open |
-| **A2** | Dataverlies-stop: findings + meetstaten | PWA | B-210, B-206, B-207, B-223d | **S1** | A1 | open |
+| **A1** | Sync-fouten zichtbaar maken | PWA | B-211, B-208, B-223b | S2 | — | ✅ gemerged (InspeXi PR #30) |
+| **A2** | Dataverlies-stop: findings + meetstaten | PWA | B-210, B-206, B-207, B-223d | **S1** | A1 | ✅ gemerged (PR InspeXi #31 + #149) |
 | **A3** | Documentketen-integriteit | API | B-101, B-102, B-103, B-104 | **S1** | — | ✅ gemerged (PR #133) |
 | **A4** | Klantportaal-crash (AssetNode) | client-portal | B-401 | **S1** | — | ✅ gemerged (PR #132) |
-| **B1** | Referentiedata-sync herstellen | PWA | B-202, B-204, B-205a | S2 | A1 | open |
-| **B2** | Assetboom + dode UI | PWA | B-201, B-213, B-214, B-215, B-223c/f/g, B-221 | S2/S3 | B1 | open |
-| **B3** | Superuser-scoping & onboarding | API + portal | B-502, B-503, B-504, B-511§1 | S2 | — | open |
-| **B4** | Upload-security (logo + avatar) | API | B-507 | S2 | — | open |
-| **B5** | Offerte-keten: gate, bedragen, idempotentie | API + portal | B-302, B-303, B-304, B-307, B-308, B-309, B-314, B-315-B | S2 | — | open |
-| **B6** | Paginatie-contract + zichtbare queryfouten | API + portal | B-305 | S2 | — | open |
-| **B7** | Publieke endpoints: allowlist + tenantbinding | API | B-306, B-152 | S2 | — | open |
-| **B8** | Planning: sessies toewijzen (UI) | portal | B-310 | S2 | — | open |
-| **B9** | Klantportaal: zichtbaarheid + mitigaties | API + beide portals | B-412, B-402*, B-403*, B-406a | S2/S3 | A4 | open |
-| **B10** | Constatering-classificatie uit het model | PWA + API | B-222 | S2 | B1 | open |
-| **C1** | Foutcontract: NL-meldingen + 404-oracle | API + portal | B-105, B-106, B-151, B-155, B-501, B-509, B-601 | S3/S4 | — | open |
-| **C2** | Klantportaal-hygiëne | API + client-portal | B-404, B-405, B-407, B-408, B-409, B-410, B-411 | S3/S4 | — | open |
-| **C3** | Sync-hardening serverzijde | API | B-203, B-212, B-216, B-217, B-218, B-223a | S3 | — | open |
-| **C4** | Documentgeneratie + tabeloverflow | API + portal | B-311, B-312, B-301 | S3 | — | open |
-| **C5** | Config-validatie & losse rest | API + portal | B-001, B-107, B-153, B-154, B-313, B-315-rest, B-505, B-506, B-508, B-510, B-511 | S3/S4 | — | open |
-| **D1** | Sync-versieanker + conflicten in pull | PWA + API | B-209, B-223e | S2 | golf 1-2 stabiel | open |
-| **D2** | Canonieke MeasurementSheetRecord-datavorm | PWA + API | B-205b | S2 | A2 | open |
-| **D3** | Offline-shell hertest + sessiebeleid | PWA | B-219, B-220 | S3→S1? | — | open |
+| **B1** | Referentiedata-sync herstellen | PWA | B-202, B-204, B-205a | S2 | A1 | ✅ gemerged (InspeXi #32 + #155) |
+| **B2** | Assetboom + dode UI | PWA | B-201, B-213, B-214, B-215, B-223c/f/g, B-221 | S2/S3 | B1 | ✅ gemerged (InspeXi #34) |
+| **B3** | Superuser-scoping & onboarding | API + portal | B-502, B-503, B-504, B-511§1 | S2 | — | ✅ gemerged (PR #141) |
+| **B4** | Upload-security (logo + avatar) | API | B-507 | S2 | — | ✅ gemerged (PR #136) |
+| **B5** | Offerte-keten: gate, bedragen, idempotentie | API + portal | B-302, B-303, B-304, B-307, B-308, B-309, B-314, B-315-B | S2 | — | ✅ gemerged (PR #142) |
+| **B6** | Paginatie-contract + zichtbare queryfouten | API + portal | B-305 | S2 | — | ✅ gemerged (PR #137) |
+| **B7** | Publieke endpoints: allowlist + tenantbinding | API | B-306, B-152 | S2 | — | ✅ gemerged (PR #138) |
+| **B8** | Planning: sessies toewijzen (UI) | portal | B-310 | S2 | — | ✅ gemerged (PR #135) |
+| **B9** | Klantportaal: zichtbaarheid + mitigaties | API + beide portals | B-412, B-402*, B-403*, B-406a | S2/S3 | A4 | ✅ gemerged (PR #139) |
+| **B10** | Constatering-classificatie uit het model | PWA + API | B-222 | S2 | B1 | ✅ gemerged (InspeXi #35 + #159) |
+| **C1** | Foutcontract: NL-meldingen + 404-oracle | API + portal | B-105, B-106, B-151, B-155, B-501, B-509, B-601 | S3/S4 | — | ✅ gemerged (PR #152) |
+| **C2** | Klantportaal-hygiëne | API + client-portal | B-404, B-405, B-407, B-408, B-409, B-410, B-411 | S3/S4 | — | ✅ gemerged (PR #147) |
+| **C3** | Sync-hardening serverzijde | API | B-203, B-212, B-216, B-217, B-218, B-223a | S3 | — | ✅ gemerged (PR #150) |
+| **C4** | Documentgeneratie + tabeloverflow | API + portal | B-311, B-312, B-301 | S3 | — | ✅ gemerged (PR #148) |
+| **C5** | Config-validatie & losse rest | API + portal | B-001, B-107, B-153, B-154, B-313, B-315-rest, B-505, B-506, B-508, B-510, B-511 | S3/S4 | — | ✅ gemerged (PR #153) |
+| **D1** | Sync-versieanker + conflicten in pull | PWA + API | B-209, B-223e | S2 | golf 1-2 stabiel | ✅ gemerged (PR #165 + InspeXi #37) |
+| **D2** | Canonieke MeasurementSheetRecord-datavorm | PWA + API | B-205b | S2 | A2 | ✅ gemerged (PR #167 + InspeXi #38) |
+| **D3** | Offline-shell hertest + sessiebeleid | PWA | B-219, B-220 | S3→S1? | — | ✅ gemerged (InspeXi #33) — B-219 definitief S3 |
 
 \* mitigatie, niet de volledige feature (zie D1-beslissing)
 

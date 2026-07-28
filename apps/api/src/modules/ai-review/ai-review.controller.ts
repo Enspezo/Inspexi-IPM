@@ -12,7 +12,6 @@ import {
   Param,
   Body,
   Query,
-  ParseUUIDPipe,
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
@@ -24,6 +23,7 @@ import { RequiresFeature } from '@/common/decorators/requires-feature.decorator'
 import { ALL_STAFF, REVIEW_ROLES } from '@/common/auth/roles';
 import { AiReviewService } from './ai-review.service';
 import { UpdateAiReviewItemDto } from './dto';
+import { ParseUuidPipe } from '@/common';
 
 @ApiTags('ai-review')
 @ApiBearerAuth()
@@ -47,7 +47,7 @@ export class AiReviewController {
   @ApiResponse({ status: 200, description: 'Laatste run of null; met ?all=true een lijst' })
   @ApiResponse({ status: 404, description: 'Inspectieplan niet gevonden' })
   async getForPlan(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @CurrentUser() user: User,
     @Query('all') all?: string,
   ) {
@@ -64,7 +64,7 @@ export class AiReviewController {
   @ApiResponse({ status: 400, description: 'AI-voorcontrole staat uit voor deze organisatie' })
   @ApiResponse({ status: 409, description: 'Er draait al een AI-analyse voor dit plan' })
   @ApiResponse({ status: 503, description: 'AI-dienst niet geconfigureerd' })
-  async startRun(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: User) {
+  async startRun(@Param('id', ParseUuidPipe) id: string, @CurrentUser() user: User) {
     return { success: true, data: await this.service.startRun(id, user) };
   }
 
@@ -75,7 +75,7 @@ export class AiReviewController {
   @ApiResponse({ status: 200, description: 'Item bijgewerkt' })
   @ApiResponse({ status: 404, description: 'AI-review-item niet gevonden' })
   async updateItem(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @Body() dto: UpdateAiReviewItemDto,
     @CurrentUser() user: User,
   ) {

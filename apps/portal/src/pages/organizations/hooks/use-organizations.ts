@@ -66,6 +66,8 @@ interface UpdateOrganizationDto {
   defaultVat?: number;
   defaultValidityDays?: number;
   chatEnabled?: boolean;
+  /** B-511 §1: offboarding — inactieve orgs geven 404 op hun subdomein. */
+  isActive?: boolean;
 }
 
 export function useUpdateOrganization(id: string) {
@@ -77,6 +79,37 @@ export function useUpdateOrganization(id: string) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: organizationKeys.all });
       queryClient.invalidateQueries({ queryKey: organizationKeys.detail(id) });
+    },
+  });
+}
+
+// ─── Onboarding (WP-B3, B-504) ──────────────────────────────────────────────
+
+interface InviteOrganizationUserDto {
+  email: string;
+  role: string;
+}
+
+interface Invitation {
+  id: string;
+  orgId: string;
+  email: string;
+  role: string;
+  expiresAt: string;
+}
+
+/**
+ * SUPERUSER-onboarding: eerste (of volgende) gebruiker van een organisatie
+ * uitnodigen vanaf het superuser-domein via POST /organizations/:id/invite.
+ */
+export function useInviteOrganizationUser(orgId: string) {
+  const queryClient = useQueryClient();
+
+  return useApiMutation({
+    mutationFn: (data: InviteOrganizationUserDto) =>
+      apiClient.post<Invitation>(`/organizations/${orgId}/invite`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: organizationKeys.users(orgId) });
     },
   });
 }

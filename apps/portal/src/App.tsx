@@ -3,8 +3,11 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 import ErrorBoundary from '@/components/error-boundary/error-boundary';
 import { ProtectedRoute } from '@/components/auth/protected-route';
 import { FeatureRoute } from '@/components/auth/feature-route';
+import { RoleRoute } from '@/components/auth/role-route';
 import { AppLayout } from '@/components/layout/app-layout';
 import { Spinner } from '@/components/ui';
+import { ADMIN_ROLES, CRM_ROLES } from '@/lib/roles';
+import { Role } from '@/types';
 
 // Lazy-loaded pages
 const LoginPage = lazy(() => import('@/pages/auth/login-page'));
@@ -186,27 +189,15 @@ export default function App() {
             FeatureGuard op de API blijft de echte grens — dit is UX). */}
         <Route element={<ProtectedRoute />}>
           <Route element={<AppLayout />}>
-            {/* Core / platform — nooit gated (auth, dashboard, profiel, gebruikers,
-                organisatie-instellingen, zoeken, e-mailsjablonen, en de SUPERUSER-only
-                Inspectie-systeem- + platformroutes op hun bestaande roles-filter). */}
+            {/* Core / platform — niet feature-gated (auth, dashboard, profiel,
+                zoeken, help). Beheer- en platformroutes zijn wél rol-gated via
+                <RoleRoute> (WP-C1 / B-509) — de RolesGuard op de API blijft de
+                echte grens, dit is UX voor deeplinks/bladwijzers. */}
             <Route path="/dashboard" element={<DashboardPage />} />
-            <Route path="/users" element={<UsersPage />} />
-            <Route path="/users/:id" element={<UserDetailPage />} />
-            <Route
-              path="/organization/settings"
-              element={<OrganizationSettingsPage />}
-            />
             <Route path="/profile" element={<ProfilePage />} />
             <Route path="/availability-templates" element={<AvailabilityTemplatesPage />} />
             <Route path="/my-availability" element={<MyAvailabilityPage />} />
-            <Route path="/email-templates" element={<EmailTemplatesPage />} />
-            <Route path="/email-templates/:id" element={<EmailTemplateDetailPage />} />
             <Route path="/search" element={<SearchPage />} />
-            <Route path="/organizations" element={<OrganizationsPage />} />
-            <Route path="/organizations/:id" element={<OrganizationDetailPage />} />
-            <Route path="/plans" element={<PlansPage />} />
-            <Route path="/plans/:id" element={<PlanDetailPage />} />
-            <Route path="/error-reports" element={<ErrorReportsPage />} />
             <Route path="/help" element={<HelpCenterPage />} />
             <Route path="/help/category/:slug" element={<HelpCenterPage />} />
             <Route path="/help/article/:slug" element={<HelpArticlePage />} />
@@ -215,20 +206,48 @@ export default function App() {
             <Route path="/help/tickets" element={<TicketsPage />} />
             <Route path="/help/tickets/new" element={<NewTicketPage />} />
             <Route path="/help/tickets/:id" element={<TicketDetailPage />} />
-            <Route path="/classification-models" element={<ClassificationModelsPage />} />
-            <Route path="/classification-models/:id" element={<ClassificationModelDetailPage />} />
-            <Route path="/norm-types" element={<NormTypesPage />} />
-            <Route path="/norm-types/:id" element={<NormTypeDetailPage />} />
-            <Route path="/admin/voice-prompts" element={<VoiceBasePromptsPage />} />
 
-            {/* BASIS_CRM — relaties, contactpersonen, locaties */}
+            {/* ORG_ADMIN-only beheerroutes (B-509) */}
+            <Route element={<RoleRoute roles={ADMIN_ROLES} />}>
+              <Route path="/users" element={<UsersPage />} />
+              <Route path="/users/:id" element={<UserDetailPage />} />
+              <Route
+                path="/organization/settings"
+                element={<OrganizationSettingsPage />}
+              />
+              <Route path="/email-templates" element={<EmailTemplatesPage />} />
+              <Route path="/email-templates/:id" element={<EmailTemplateDetailPage />} />
+            </Route>
+
+            {/* SUPERUSER-only platform- en Inspectie-systeemroutes (B-509).
+                NB: de API laat GET /classification-models en /norm-types bewust
+                toe voor ORG_ADMIN (config-dropdowns); alleen de beheerpagina's
+                zijn SUPERUSER-only. */}
+            <Route element={<RoleRoute roles={[Role.SUPERUSER]} />}>
+              <Route path="/organizations" element={<OrganizationsPage />} />
+              <Route path="/organizations/:id" element={<OrganizationDetailPage />} />
+              <Route path="/plans" element={<PlansPage />} />
+              <Route path="/plans/:id" element={<PlanDetailPage />} />
+              <Route path="/error-reports" element={<ErrorReportsPage />} />
+              <Route path="/classification-models" element={<ClassificationModelsPage />} />
+              <Route path="/classification-models/:id" element={<ClassificationModelDetailPage />} />
+              <Route path="/norm-types" element={<NormTypesPage />} />
+              <Route path="/norm-types/:id" element={<NormTypeDetailPage />} />
+              <Route path="/admin/voice-prompts" element={<VoiceBasePromptsPage />} />
+            </Route>
+
+            {/* BASIS_CRM — relaties, contactpersonen, locaties.
+                B-315 §7: rol-gate (CRM_ROLES) — een INSPECTEUR kreeg hier een
+                lege lijst te zien terwijl de API 403 gaf. */}
             <Route element={<FeatureRoute feature="BASIS_CRM" />}>
-              <Route path="/contacts" element={<ContactsPage />} />
-              <Route path="/contacts/persons" element={<ContactPersonsPage />} />
-              <Route path="/contacts/persons/:personId" element={<ContactPersonDetailPage />} />
-              <Route path="/contacts/locations" element={<LocationsPage />} />
-              <Route path="/contacts/locations/:locationId" element={<LocationDetailPage />} />
-              <Route path="/contacts/:id" element={<ContactDetailPage />} />
+              <Route element={<RoleRoute roles={CRM_ROLES} />}>
+                <Route path="/contacts" element={<ContactsPage />} />
+                <Route path="/contacts/persons" element={<ContactPersonsPage />} />
+                <Route path="/contacts/persons/:personId" element={<ContactPersonDetailPage />} />
+                <Route path="/contacts/locations" element={<LocationsPage />} />
+                <Route path="/contacts/locations/:locationId" element={<LocationDetailPage />} />
+                <Route path="/contacts/:id" element={<ContactDetailPage />} />
+              </Route>
             </Route>
 
             {/* CRM_COMPLEET — klantgroepen, aanvragen, offertes, producten, prijstabellen */}
@@ -284,8 +303,11 @@ export default function App() {
               <Route path="/asset-types/:id" element={<AssetTypeDetailPage />} />
               <Route path="/location-types" element={<LocationTypesPage />} />
               <Route path="/location-types/:id" element={<LocationTypeDetailPage />} />
-              <Route path="/measurement-sheet-templates" element={<MeasurementSheetTemplatesPage />} />
-              <Route path="/measurement-sheet-templates/:id" element={<MeasurementSheetTemplateDetailPage />} />
+              {/* Meetstaat-templates horen bij het SUPERUSER-only Inspectie-systeem (B-509) */}
+              <Route element={<RoleRoute roles={[Role.SUPERUSER]} />}>
+                <Route path="/measurement-sheet-templates" element={<MeasurementSheetTemplatesPage />} />
+                <Route path="/measurement-sheet-templates/:id" element={<MeasurementSheetTemplateDetailPage />} />
+              </Route>
               <Route path="/voice-prompts/template" element={<VoiceTemplatePromptsPage />} />
               <Route path="/inspection-templates" element={<InspectionTemplatesPage />} />
               <Route path="/inspection-templates/:id" element={<InspectionTemplateDetailPage />} />

@@ -103,7 +103,7 @@ export class ProjectPhasesService {
       'Project',
     );
     if (project.isDeleted) throw new NotFoundException('Project niet gevonden');
-    assertOrgAccess(user, project.orgId);
+    assertOrgAccess(user, project.orgId, 'Project');
     return project;
   }
 
@@ -113,7 +113,7 @@ export class ProjectPhasesService {
     if (!phase || phase.isDeleted || phase.projectId !== projectId) {
       throw new NotFoundException('Fase niet gevonden');
     }
-    assertOrgAccess(user, phase.orgId);
+    assertOrgAccess(user, phase.orgId, 'Fase');
     return phase;
   }
 
@@ -138,7 +138,7 @@ export class ProjectPhasesService {
     if (!phase || phase.isDeleted || phase.projectId !== projectId) {
       throw new NotFoundException('Fase niet gevonden');
     }
-    assertOrgAccess(user, phase.orgId);
+    assertOrgAccess(user, phase.orgId, 'Fase');
     return this.stripBudget(phase, user);
   }
 

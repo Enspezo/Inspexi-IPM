@@ -293,7 +293,15 @@ describe('Generated Documents (e2e)', () => {
     expect(JSON.stringify(res.body.data)).not.toContain('internalNotes');
   });
 
-  it('signs via the public link and flips the document to SIGNED', async () => {
+  it('rejects a non-image signature payload on the public link (400, B-404)', async () => {
+    const res = await request(app.getHttpServer())
+      .post(`/api/v1/signature-requests/${signatureRequestId}/sign`)
+      .send({ signatureImage: 'javascript:alert(1)', signerName: 'Jan Klant' })
+      .expect(400);
+    expect(JSON.stringify(res.body)).toContain('data-afbeelding');
+  });
+
+  it('signs via the public link, flips the document to SIGNED and records the IP (B-408)', async () => {
     await request(app.getHttpServer())
       .post(`/api/v1/signature-requests/${signatureRequestId}/sign`)
       .send({ signatureImage: 'data:image/png;base64,iVBORw0KGgo=', signerName: 'Jan Klant' })
@@ -304,6 +312,14 @@ describe('Generated Documents (e2e)', () => {
       .set(auth())
       .expect(200);
     expect(doc.body.data.status).toBe('SIGNED');
+
+    // B-408: het publieke kanaal legt het IP van de ondertekenaar vast
+    // (audit trail) — net als de staf- en klantportaal-ondertekenroutes.
+    const sig = await prisma.documentSignature.findFirst({
+      where: { signatureRequestId },
+    });
+    expect(sig?.signedIpAddress).toEqual(expect.any(String));
+    expect(sig?.signedIpAddress).not.toHaveLength(0);
   });
 
   it('finalizes the document', async () => {

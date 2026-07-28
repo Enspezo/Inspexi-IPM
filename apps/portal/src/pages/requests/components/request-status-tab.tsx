@@ -3,7 +3,7 @@ import { RequestStatus } from '@/types';
 import type { Request } from '@/types';
 import { Button, Card, Select, Input, useToast } from '@/components/ui';
 import { getStatusConfig, REQUEST_STATUS } from '@/lib/status';
-import type { useUpdateRequestStatus } from '../hooks/use-requests';
+import { useLostReasons, type useUpdateRequestStatus } from '../hooks/use-requests';
 import { formatDate } from './request-detail-helpers';
 import { getErrorMessage } from '@/lib/api-client';
 
@@ -24,17 +24,35 @@ export function RequestStatusTab({
   const { showToast } = useToast();
   const [newStatus, setNewStatus] = useState('');
   const [statusNote, setStatusNote] = useState('');
+  // B-315 §1: bij VERLOREN is een reden verplicht (+ optionele toelichting).
+  const [lostReasonId, setLostReasonId] = useState('');
+  const [lostNote, setLostNote] = useState('');
+  const isLost = newStatus === RequestStatus.VERLOREN;
+  const { data: lostReasons } = useLostReasons();
+  const lostReasonOptions = [
+    { value: '', label: 'Kies een reden…' },
+    ...(lostReasons ?? []).map((r) => ({ value: r.id, label: r.label })),
+  ];
 
   const handleStatusUpdate = async () => {
     if (!newStatus) return;
+    if (isLost && !lostReasonId) {
+      showToast('Kies een reden waarom deze aanvraag verloren is gegaan', 'error');
+      return;
+    }
     try {
       await updateStatusMutation.mutateAsync({
         status: newStatus,
         note: statusNote || undefined,
+        ...(isLost
+          ? { lostReasonId, lostNote: lostNote.trim() || undefined }
+          : {}),
       });
       showToast('Status bijgewerkt', 'success');
       setNewStatus('');
       setStatusNote('');
+      setLostReasonId('');
+      setLostNote('');
     } catch {
       /* foutmelding wordt centraal getoond via useApiMutation */
     }
@@ -80,11 +98,28 @@ export function RequestStatusTab({
             <Button
               onClick={handleStatusUpdate}
               isLoading={updateStatusMutation.isPending}
-              disabled={!newStatus || newStatus === request.status}
+              disabled={!newStatus || newStatus === request.status || (isLost && !lostReasonId)}
             >
               Bijwerken
             </Button>
           </div>
+          {/* B-315 §1: reden verplicht bij VERLOREN */}
+          {isLost && (
+            <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <Select
+                label="Reden verloren (verplicht)"
+                options={lostReasonOptions}
+                value={lostReasonId}
+                onChange={(e) => setLostReasonId(e.target.value)}
+              />
+              <Input
+                label="Toelichting verloren (optioneel)"
+                placeholder="Bijv. gekozen voor een concurrent..."
+                value={lostNote}
+                onChange={(e) => setLostNote(e.target.value)}
+              />
+            </div>
+          )}
         </Card>
       )}
 

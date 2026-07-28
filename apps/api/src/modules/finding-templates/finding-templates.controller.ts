@@ -7,7 +7,6 @@ import {
   Param,
   Body,
   Query,
-  ParseUUIDPipe,
 } from '@nestjs/common';
 import { RequiresFeature } from '@/common/decorators/requires-feature.decorator';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
@@ -21,6 +20,7 @@ import {
   QueryFindingTemplatesDto,
   ImportFindingTemplatesDto,
 } from './dto';
+import { ParseUuidPipe } from '@/common';
 
 const READ_ROLES = ALL_STAFF;
 const WRITE_ROLES = ORG_ADMINS;
@@ -82,7 +82,7 @@ export class FindingTemplatesController {
   @Get(':id')
   @Roles(...READ_ROLES)
   @ApiOperation({ summary: 'Constateringssjabloon detail' })
-  async findById(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: User) {
+  async findById(@Param('id', ParseUuidPipe) id: string, @CurrentUser() user: User) {
     return { success: true, data: await this.service.findById(id, user) };
   }
 
@@ -97,7 +97,7 @@ export class FindingTemplatesController {
   @Roles(...WRITE_ROLES)
   @ApiOperation({ summary: 'Sjabloon bijwerken' })
   async update(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @CurrentUser() user: User,
     @Body() dto: UpdateFindingTemplateDto,
   ) {
@@ -107,7 +107,7 @@ export class FindingTemplatesController {
   @Delete(':id')
   @Roles(...WRITE_ROLES)
   @ApiOperation({ summary: 'Sjabloon verwijderen (soft-delete)' })
-  async delete(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: User) {
+  async delete(@Param('id', ParseUuidPipe) id: string, @CurrentUser() user: User) {
     return { success: true, data: await this.service.delete(id, user) };
   }
 
@@ -115,7 +115,7 @@ export class FindingTemplatesController {
   @Roles(...WRITE_ROLES)
   @ApiOperation({ summary: 'Sjabloon naar eigen org dupliceren' })
   async duplicate(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @CurrentUser() user: User,
     @Body() body: { code?: string },
   ) {

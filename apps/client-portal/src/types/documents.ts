@@ -17,6 +17,15 @@ export interface GeneratedDocumentSummary {
   signatures: DocumentSignature[];
 }
 
+/**
+ * GET /client/inspections/:id/documents — B-406a (WP-B9): de server stuurt per
+ * document het per-plan teken-recht mee zodat de UI de onderteken-knop verbergt
+ * i.p.v. de klant pas ná het tekenen een 403 te tonen.
+ */
+export interface InspectionDocumentListItem extends GeneratedDocumentSummary {
+  canSign: boolean;
+}
+
 export interface DocumentDetail {
   id: string;
   documentType: string;
@@ -32,6 +41,8 @@ export interface DocumentDetail {
     normTypeCode: string;
     addressCity: string | null;
   };
+  /** B-406a (WP-B9): per-plan teken-recht van de ingelogde klant. */
+  canSign: boolean;
   signatures: DocumentSignature[];
 }
 

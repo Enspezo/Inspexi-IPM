@@ -27,7 +27,7 @@ import {
   ListQuotesQueryDto,
   SendQuoteDto,
 } from './dto';
-import { VALID_TRANSITIONS, assertTemplateLinked, calculateLineTotal, findQuoteForUser, getPublicUrl, isQuoteApprovalRequired, resolveTemplateData, serializeQuote } from './quotes.helpers';
+import { MAX_QUOTE_AMOUNT, VALID_TRANSITIONS, assertTemplateLinked, calculateLineTotal, findQuoteForUser, getPublicUrl, isQuoteApprovalRequired, resolveTemplateData, serializeQuote } from './quotes.helpers';
 
 @Injectable()
 export class QuotesService {
@@ -79,7 +79,17 @@ export class QuotesService {
   }
 
   async findOne(id: string, user: User) {
-    return serializeQuote(await findQuoteForUser(this.prisma, id, user));
+    const quote = await findQuoteForUser(this.prisma, id, user);
+    // Effectieve goedkeuringsplicht (B-304): org-drempel ÓF template-vlag, server-side
+    // berekend zodat de portal één bron van waarheid heeft (actiemenu + verstuurgate).
+    const org = await this.prisma.organization.findUnique({
+      where: { id: quote.orgId },
+      select: { quoteApprovalThreshold: true, quoteApprovalRequiredRole: true },
+    });
+    return {
+      ...serializeQuote(quote),
+      approvalRequired: org ? isQuoteApprovalRequired(org, quote) : quote.requiresApproval,
+    };
   }
 
   async create(dto: CreateQuoteDto, user: User) {
@@ -310,14 +320,27 @@ export class QuotesService {
         const vatRate = line.vatRate ?? 21;
         const discountPct = line.discountPct ?? 0;
         const lineTotal = calculateLineTotal(line.quantity, line.unitPrice, discountPct);
+        // B-303: bewaak het berekende regeltotaal vóór de write — de kolommen zijn
+        // numeric(12,2); zonder deze guard gooit Postgres "numeric field overflow" (500).
+        if (Math.abs(lineTotal) > MAX_QUOTE_AMOUNT) {
+          throw new BadRequestException(
+            `Het regeltotaal van regel ${index + 1} is te groot (maximaal € 9.999.999.999,99). Verlaag het aantal of de eenheidsprijs.`,
+          );
+        }
         const fullPrice = Math.round(line.quantity * line.unitPrice * 100) / 100;
         subtotal += lineTotal;
         vatTotal += Math.round((lineTotal * vatRate) / 100 * 100) / 100;
         discountTotal += Math.round((fullPrice - lineTotal) * 100) / 100;
         return { quoteId: quote.id, productId: line.productId || undefined, description: line.description, quantity: line.quantity, unit: line.unit, unitPrice: line.unitPrice, vatRate, discountPct, lineTotal, sortOrder: line.sortOrder ?? index };
       });
-      if (lineData.length > 0) await tx.quoteLine.createMany({ data: lineData });
       const total = Math.round((subtotal + vatTotal) * 100) / 100;
+      // B-303: ook subtotaal/btw/korting/totaal moeten binnen numeric(12,2) blijven.
+      if ([subtotal, vatTotal, discountTotal, total].some((v) => Math.abs(v) > MAX_QUOTE_AMOUNT)) {
+        throw new BadRequestException(
+          'Het offertetotaal is te groot (maximaal € 9.999.999.999,99). Verlaag het aantal of de eenheidsprijs.',
+        );
+      }
+      if (lineData.length > 0) await tx.quoteLine.createMany({ data: lineData });
       return serializeQuote(await tx.quote.update({ where: { id: quote.id }, data: { subtotal, vatTotal, discountTotal, total }, include: { lines: { orderBy: { sortOrder: 'asc' } } } }));
     });
   }
@@ -366,17 +389,70 @@ export class QuotesService {
 
   async sendQuote(id: string, dto: SendQuoteDto, user: User) {
     const quote = await this.findOne(id, user);
+    // B-308: idempotentie — een al verstuurde offerte mag nooit een tweede keer
+    // (dubbele klant-e-mail) de deur uit.
+    if (quote.sentAt) {
+      throw new BadRequestException('Deze offerte is al verstuurd');
+    }
     if (quote.status !== QuoteStatus.GOEDGEKEURD && quote.status !== QuoteStatus.CONCEPT) {
       throw new BadRequestException('Alleen offertes met status CONCEPT of GOEDGEKEURD kunnen verstuurd worden');
     }
     // Sending a CONCEPT quote moves it forward — a template must be linked.
     if (quote.status === QuoteStatus.CONCEPT) assertTemplateLinked(quote);
-    const org = await this.prisma.organization.findUnique({ where: { id: quote.orgId }, select: { name: true, senderName: true, senderEmail: true } });
-
+    // B-315: een offerte zonder regels (totaal € 0,00) hoort niet naar de klant te gaan.
+    if ((quote.lines?.length ?? 0) === 0) {
+      throw new BadRequestException(
+        'Deze offerte heeft geen offerteregels en kan niet verstuurd worden. Voeg eerst regels toe.',
+      );
+    }
     // Verplichte goedkeuringsgate (REQ5): boven de org-drempel (of bij template-`requiresApproval`)
     // mag niet verstuurd worden zonder een GOEDGEKEURD verplicht (THRESHOLD) verzoek.
     // Vrijwillige (VOLUNTARY_*) verzoeken tellen hier nooit mee.
     await this.assertApprovalSatisfied(quote);
+
+    // ── Race-vrije claim (B-308) ──
+    // Twee gelijktijdige requests lezen hierboven allebei een onverzonden offerte;
+    // deze conditionele updateMany is één atomisch UPDATE-statement, dus precies
+    // één request "wint" de claim (count === 1) en mag mailen. De verliezer krijgt
+    // dezelfde nette 400 als hierboven. De statusovergang zelf gebeurt ná het
+    // mailen via een gewone (geauditeerde) update — alleen de winnaar komt daar.
+    const sentAt = new Date();
+    const claimed = await this.prisma.quote.updateMany({
+      where: {
+        id: quote.id,
+        orgId: quote.orgId,
+        sentAt: null,
+        status: { in: [QuoteStatus.CONCEPT, QuoteStatus.GOEDGEKEURD] },
+      },
+      data: { sentAt },
+    });
+    if (claimed.count !== 1) {
+      throw new BadRequestException('Deze offerte is al verstuurd');
+    }
+
+    try {
+      return await this.deliverQuote(quote, dto, user, sentAt);
+    } catch (err) {
+      // Claim terugdraaien zodat de offerte na een mislukte verzending opnieuw
+      // verstuurd kan worden (status is nog niet gewijzigd op dit punt).
+      await this.prisma.quote
+        .updateMany({ where: { id: quote.id, sentAt }, data: { sentAt: null } })
+        .catch((revertErr) => this.logger.error('Failed to revert send claim', revertErr));
+      throw err;
+    }
+  }
+
+  /**
+   * Daadwerkelijke verzending (PDF, bijlagen, e-mail, statusovergang, notificatie,
+   * follow-ups). Alleen aangeroepen door de claim-winnaar in `sendQuote()`.
+   */
+  private async deliverQuote(
+    quote: Awaited<ReturnType<QuotesService['findOne']>>,
+    dto: SendQuoteDto,
+    user: User,
+    sentAt: Date,
+  ) {
+    const org = await this.prisma.organization.findUnique({ where: { id: quote.orgId }, select: { name: true, senderName: true, senderEmail: true } });
     let token = quote.publicToken;
     if (!token) {
       token = randomUUID();
@@ -388,7 +464,7 @@ export class QuotesService {
     const template = quote.template as { id: string; name: string; templateType: string; docxStorageKey: string | null; sendEmailTemplateId: string | null; sendEmailEnabled: boolean; acceptedEmailTemplateId: string | null; acceptedEmailEnabled: boolean } | null;
     if (template?.templateType === 'DOCX' && template.docxStorageKey) {
       try {
-        const { buffer: docxBuf } = await this.quotePdfService.renderQuoteDocx(id, user);
+        const { buffer: docxBuf } = await this.quotePdfService.renderQuoteDocx(quote.id, user);
         const pdfBuf = await this.pdfService.convertDocxToPdf(docxBuf);
         const pdfKey = `${quote.orgId}/quotes/${quote.id}/offerte-${quote.quoteNumber}.pdf`;
         await this.storage.upload(pdfKey, pdfBuf, 'application/pdf');
@@ -440,8 +516,9 @@ export class QuotesService {
         attachments: emailAttachments.length > 0 ? emailAttachments : undefined,
       });
     }
-    const sentAt = new Date();
-    const updated = await this.prisma.quote.update({ where: { id: quote.id }, data: { status: QuoteStatus.VERSTUURD, sentAt } });
+    // `sentAt` is al gezet door de claim in sendQuote(); hier alleen nog de
+    // (geauditeerde) statusovergang → VERSTUURD.
+    const updated = await this.prisma.quote.update({ where: { id: quote.id }, data: { status: QuoteStatus.VERSTUURD } });
     this.notifications.dispatch({ type: NotificationType.OFFERTE_VERSTUURD, orgId: quote.orgId, recipientUserIds: [quote.createdBy], title: 'Offerte verstuurd', body: `Offerte ${quote.quoteNumber} is naar ${dto.to} verstuurd.`, entityType: 'quote', entityId: quote.id });
 
     // Fire-and-forget: create follow-up tasks from template rules
@@ -525,8 +602,11 @@ export class QuotesService {
 
   // Price resolution
   async resolvePrice(productId: string, contactId: string, quantity: number, user: User) {
-    const product = assertFound(await this.prisma.product.findUnique({ where: { id: productId } }), 'Product');
-    if (!user.roles.includes(Role.SUPERUSER) && product.orgId !== user.orgId) throw new ForbiddenException();
+    // WP-C1 (B-105): org-scope in de query — cross-tenant id → zelfde 404.
+    const product = assertFound(
+      await this.prisma.product.findFirst({ where: { id: productId, ...orgScope(user) } }),
+      'Product',
+    );
     const contactTables = await this.prisma.contactPriceTable.findMany({
       where: { contactId },
       include: { priceTable: { include: { items: { where: { productId }, include: { tiers: { orderBy: { fromQty: 'asc' } } } } } } },
@@ -541,21 +621,34 @@ export class QuotesService {
       priceTableItem = defaultTable?.items.find((i) => i.productId === productId) ?? null;
     }
     let unitPrice = 0;
+    // Herkomst-metadata voor de editor (B-309): welke prijsbron is toegepast en —
+    // bij een staffel — welke tier (zodat de UI "staffel 10–49: € 10,00" kan tonen).
+    let priceType: 'FIXED' | 'TIERED' | null = null;
+    let tier: { fromQty: number; toQty: number | null } | null = null;
     if (priceTableItem) {
-      if (priceTableItem.priceType === 'FIXED') unitPrice = priceTableItem.basePrice != null ? Number(priceTableItem.basePrice) : 0;
-      else if (priceTableItem.priceType === 'TIERED') {
-        for (const tier of priceTableItem.tiers) {
-          if (quantity >= tier.fromQty && (tier.toQty === null || quantity <= tier.toQty)) { unitPrice = Number(tier.price); break; }
+      if (priceTableItem.priceType === 'FIXED') {
+        unitPrice = priceTableItem.basePrice != null ? Number(priceTableItem.basePrice) : 0;
+        priceType = 'FIXED';
+      } else if (priceTableItem.priceType === 'TIERED') {
+        priceType = 'TIERED';
+        for (const t of priceTableItem.tiers) {
+          if (quantity >= t.fromQty && (t.toQty === null || quantity <= t.toQty)) {
+            unitPrice = Number(t.price);
+            tier = { fromQty: t.fromQty, toQty: t.toQty };
+            break;
+          }
         }
       }
     }
-    return { unitPrice, vatRate: product.defaultVat, unit: product.unit };
+    return { unitPrice, vatRate: product.defaultVat, unit: product.unit, priceType, tier };
   }
 
   async createFromRequest(requestId: string, user: User) {
-    const request = await this.prisma.request.findUnique({ where: { id: requestId } });
+    // WP-C1 (B-105): org-scope in de query — cross-tenant id → zelfde 404.
+    const request = await this.prisma.request.findFirst({
+      where: { id: requestId, ...orgScope(user) },
+    });
     if (!request || request.isDeleted) throw new NotFoundException('Aanvraag niet gevonden');
-    if (!user.roles.includes(Role.SUPERUSER) && request.orgId !== user.orgId) throw new ForbiddenException();
     const org = await this.prisma.organization.findUnique({ where: { id: request.orgId } });
     const validUntil = new Date();
     validUntil.setDate(validUntil.getDate() + (org?.defaultValidityDays ?? 30));

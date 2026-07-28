@@ -335,13 +335,13 @@ describe('PlanningService', () => {
       await expect(service.findOne('nonexistent', mockUser)).rejects.toThrow(NotFoundException);
     });
 
-    it('should throw ForbiddenException for cross-org access', async () => {
+    it('should throw the same NotFound for cross-org access (WP-C1: 404-oracle)', async () => {
       mockPrismaService.planningItem.findUnique.mockResolvedValue({
         ...mockPlanningItem,
         orgId: 'other-org',
       });
 
-      await expect(service.findOne('plan-1', mockUser)).rejects.toThrow(ForbiddenException);
+      await expect(service.findOne('plan-1', mockUser)).rejects.toThrow('Planregel niet gevonden');
     });
 
     it('should allow SUPERUSER to access any org', async () => {
@@ -525,7 +525,7 @@ describe('PlanningService', () => {
       expect(mockNotificationsService.dispatch).not.toHaveBeenCalled();
     });
 
-    it('should throw ForbiddenException for cross-org update', async () => {
+    it('should throw the same NotFound for cross-org update (WP-C1: 404-oracle)', async () => {
       mockPrismaService.planningItem.findUnique.mockResolvedValue({
         ...mockPlanningItem,
         orgId: 'other-org',
@@ -533,7 +533,7 @@ describe('PlanningService', () => {
 
       await expect(
         service.update('plan-1', { productName: 'Hack' } as any, mockUser),
-      ).rejects.toThrow(ForbiddenException);
+      ).rejects.toThrow('Planregel niet gevonden');
     });
   });
 

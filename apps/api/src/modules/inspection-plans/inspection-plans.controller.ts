@@ -8,7 +8,6 @@ import {
   Body,
   Query,
   Headers,
-  ParseUUIDPipe,
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
@@ -31,6 +30,7 @@ import {
   SubmitInspectionPlanDto,
   ReviewInspectionPlanDto,
 } from './dto';
+import { ParseUuidPipe } from '@/common';
 
 const WRITE_ROLES = CRM_ROLES;
 
@@ -59,7 +59,7 @@ export class InspectionPlansController {
   @Roles(...ALL_ROLES)
   @ApiOperation({ summary: 'Indienen ter review' })
   async submit(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @Body() dto: SubmitInspectionPlanDto,
     @CurrentUser() user: User,
   ) {
@@ -71,7 +71,7 @@ export class InspectionPlansController {
   @Roles(...REVIEW_ROLES)
   @ApiOperation({ summary: 'Inspectieplan beoordelen (goedkeuren/afkeuren)' })
   async review(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @Body() dto: ReviewInspectionPlanDto,
     @CurrentUser() user: User,
   ) {
@@ -83,7 +83,7 @@ export class InspectionPlansController {
   @Roles(...ALL_ROLES)
   @ApiOperation({ summary: 'Scope-deellocaties van een inspectieplan' })
   async listScopeLocations(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @CurrentUser() user: User,
   ) {
     return { success: true, data: await this.service.listScopeLocations(id, user) };
@@ -94,8 +94,8 @@ export class InspectionPlansController {
   @Roles(...WRITE_ROLES)
   @ApiOperation({ summary: 'Deellocatie aan de scope toevoegen' })
   async addScopeLocation(
-    @Param('id', ParseUUIDPipe) id: string,
-    @Param('assetNodeId', ParseUUIDPipe) assetNodeId: string,
+    @Param('id', ParseUuidPipe) id: string,
+    @Param('assetNodeId', ParseUuidPipe) assetNodeId: string,
     @CurrentUser() user: User,
   ) {
     return { success: true, data: await this.service.addScopeLocation(id, assetNodeId, user) };
@@ -105,8 +105,8 @@ export class InspectionPlansController {
   @Roles(...WRITE_ROLES)
   @ApiOperation({ summary: 'Deellocatie uit de scope verwijderen' })
   async removeScopeLocation(
-    @Param('id', ParseUUIDPipe) id: string,
-    @Param('assetNodeId', ParseUUIDPipe) assetNodeId: string,
+    @Param('id', ParseUuidPipe) id: string,
+    @Param('assetNodeId', ParseUuidPipe) assetNodeId: string,
     @CurrentUser() user: User,
   ) {
     return { success: true, data: await this.service.removeScopeLocation(id, assetNodeId, user) };
@@ -118,7 +118,7 @@ export class InspectionPlansController {
     summary: 'Asset-node aanmaken vanuit een inspectie (parent defaultet naar scope/wortel)',
   })
   async createAssetNode(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @Body() dto: CreateAssetNodeDto,
     @CurrentUser() user: User,
     @Headers('x-device-id') deviceId?: string,
@@ -134,7 +134,7 @@ export class InspectionPlansController {
   @ApiOperation({ summary: 'Inspectieplan detail' })
   @ApiResponse({ status: 404, description: 'Niet gevonden' })
   async findOne(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @CurrentUser() user: User,
   ) {
     return { success: true, data: await this.service.findOne(id, user) };
@@ -154,7 +154,7 @@ export class InspectionPlansController {
   @Roles(...WRITE_ROLES)
   @ApiOperation({ summary: 'Inspectieplan bijwerken' })
   async update(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @Body() dto: UpdateInspectionPlanDto,
     @CurrentUser() user: User,
   ) {
@@ -165,7 +165,7 @@ export class InspectionPlansController {
   @Roles(...WRITE_ROLES)
   @ApiOperation({ summary: 'Inspectieplan verwijderen (soft-delete)' })
   async remove(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @CurrentUser() user: User,
   ) {
     await this.service.remove(id, user);

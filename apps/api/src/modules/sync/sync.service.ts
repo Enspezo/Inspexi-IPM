@@ -1,23 +1,39 @@
-// v3 sync — entiteit-gegroepeerd, aligned op Beheer-schema (unified AssetNode tree), tenant-veilig.
+// v4 sync — entiteit-gegroepeerd, aligned op Beheer-schema (unified AssetNode tree), tenant-veilig.
 // Contract: pull → {inspectionPlans, assetNodes, findings, visualInspections, measurementRecords,
-//                    measurementSheetRecords, standaloneMeasurements, photos, contacts, deletedIds, serverTime}
+//                    measurementSheetRecords, standaloneMeasurements, photos, contacts,
+//                    openConflicts, deletedIds, serverTime}
 //           push → {deviceId, clientTime, changes:{<entityKey>[]...}}
+//                  → {processed, assigned, applied, conflicts, errors, serverTime}
 //           resolve → {deviceId, resolutions:[{entityType,entityId,resolution,mergedData?}]}
 //
 // Veiligheid: nooit blind data spreaden (whitelist via sync-mapper), orgId server-side
 // geïnjecteerd (elke entiteit heeft een eigen orgId-kolom), FK's met assertSameOrg
-// gecontroleerd (cross-tenant). Conflict: optimistic — server.updatedAt > client.syncedAt.
+// gecontroleerd (cross-tenant).
+//
+// Conflict (v4, besluit A1 — B-209): optimistic op het universele versie-anker
+// `updatedAt`. De client stuurt per update `baseVersion` (de nieuwste server-
+// `updatedAt` die hij zag); conflict zodra server.updatedAt > baseVersion, en
+// FAIL-CLOSED (= conflict) zodra élk anker ontbreekt bij een update/adoptie van
+// een bestaand record. Legacy `syncedAt` (v3) blijft als transitie-anker gelezen.
 
-import { Injectable, BadRequestException } from '@nestjs/common';
+import { Injectable, BadRequestException, Logger } from '@nestjs/common';
 import { AssetNodeType, User, Prisma, NumberingModel, SyncStatus } from '@prisma/client';
+import { isDeepStrictEqual } from 'util';
 import { PrismaService } from '@/prisma';
 import {
   orgScope,
   assertSameOrg,
   requireOrg,
+  hasRole,
+  REVIEW_ROLES,
+  STATUS_PENDING_REVIEW,
   STATUS_RESOLVED,
-  computeFindingIsCritical,
+  computeFindingIsCriticalAny,
   loadPlanCriticalModel,
+  loadFindingTemplateCriticalModel,
+  assertClassificationValuesKnown,
+  findClassificationValueIssues,
+  formatClassificationValueIssues,
   type ClassificationModelForCritical,
 } from '@/common';
 import { PushDto, ResolveDto, EntityChangeDto } from './dto';
@@ -25,12 +41,31 @@ import {
   SYNC_ENTITIES, SyncEntityKey, SyncModelName, FkCheckModel, SyncRecordData,
   SYNC_CONTRACT_VERSION, toDbData, toChildRows, toWire,
 } from './sync-mapper';
+import { toClientSyncError } from './sync-errors';
 import { ChatSyncService } from '../chat/chat-sync.service';
 import { NumberingService } from '../numbering/numbering.service';
 import { AssetNodesService } from '../asset-nodes/asset-nodes.service';
+import { InspectionPlansService } from '../inspection-plans/inspection-plans.service';
 
 type OpResult =
-  | { entityType: string; entityId: string; status: 'success' }
+  | {
+      entityType: string;
+      entityId: string;
+      status: 'success';
+      /**
+       * Additief (WP-C3/B-203, contractafspraak zonder versie-bump):
+       * server-toegekende waarden die de client lokaal moet overnemen. Nu
+       * alleen `nodeNumber` voor assetNodes; de push-respons bundelt deze
+       * records onder de top-level `assigned`-key.
+       */
+      assigned?: { nodeNumber: string };
+      /**
+       * v4 (WP-D1): de nieuwe server-`updatedAt` (ISO) ná deze geslaagde
+       * create/update — de client zet dit lokaal als nieuwe base-versie.
+       * Gebundeld in de top-level `applied`-key; deletes hebben er geen.
+       */
+      serverVersion?: string;
+    }
   | {
       entityType: string;
       entityId: string;
@@ -59,7 +94,7 @@ interface SyncDelegate {
   findFirst(args: { where: Record<string, unknown> }): Promise<SyncRow | null>;
   findUnique(args: { where: { id: string }; select: { orgId: true } }): Promise<{ orgId: string } | null>;
   findMany(args: { where: { id: { in: string[] }; orgId: string }; select: { id: true } }): Promise<Array<{ id: string }>>;
-  create(args: { data: Record<string, unknown> }): Promise<unknown>;
+  create(args: { data: Record<string, unknown> }): Promise<SyncRow>;
   update(args: {
     where: { id: string };
     data: Record<string, unknown>;
@@ -72,6 +107,34 @@ function asRecord(value: unknown): Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : {};
+}
+
+/**
+ * v4-versie-anker van de client (besluit A1): `baseVersion` (de nieuwste
+ * server-`updatedAt` die de client zag), met legacy-fallback op `syncedAt`
+ * (v3-transitie). Ongeldige datums tellen als "geen anker" (fail-closed).
+ */
+export function clientBaseVersion(data: SyncRecordData): Date | null {
+  const raw = data.baseVersion ?? data.syncedAt;
+  if (typeof raw !== 'string' || !raw) return null;
+  const parsed = new Date(raw);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+/**
+ * Conflictbeslissing voor een update/adoptie van een bestaand record (B-209):
+ *  - géén anker → conflict (fail-closed — "geen basis bekend" is nooit meer
+ *    "geen conflict");
+ *  - anker ouder dan de serverstaat → conflict (iemand anders schreef ná de
+ *    laatst geziene versie van de client).
+ * De `>`-vergelijking (i.p.v. ongelijkheid) laat een base die NA de serverstaat
+ * ligt bewust passeren: een push-ack-basis (serverTime) ligt enkele ms ná de
+ * record-stempel van diezelfde push en mag geen zelf-conflict geven (WP-A1).
+ */
+export function isConflictBound(data: SyncRecordData, existing: SyncRow): boolean {
+  const base = clientBaseVersion(data);
+  if (!base) return true;
+  return existing.updatedAt.getTime() > base.getTime();
 }
 
 /**
@@ -110,11 +173,14 @@ export function orderAssetNodesParentFirst(changes: EntityChangeDto[]): EntityCh
 
 @Injectable()
 export class SyncService {
+  private readonly logger = new Logger(SyncService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly chat: ChatSyncService,
     private readonly numbering: NumberingService,
     private readonly assetNodes: AssetNodesService,
+    private readonly inspectionPlans: InspectionPlansService,
   ) {}
 
   /** Expliciete map model-naam → Prisma-delegate, i.p.v. een dynamische `this.prisma[name]`. */
@@ -141,33 +207,231 @@ export class SyncService {
       contactPerson: this.prisma.contactPerson,
       contact: this.prisma.contact,
       project: this.prisma.project,
+      // WP-A2 (B-206): finding.visualInspectionId/measurementRecordId worden nu
+      // vooraf gevalideerd → nette NL-400 i.p.v. een rauwe Prisma-P2003, en
+      // geen cross-tenant koppeling aan andermans uitvoeringsrecords.
+      visualInspection: this.prisma.visualInspection,
+      measurementRecord: this.prisma.measurementRecord,
     };
     return delegates[model] as SyncDelegate;
   }
 
   /**
-   * Shortcode (`[typecode]`) van het type-def dat bij `typeCode` hoort, voor de
-   * server-toegekende nodeNumber-generatie. Org-specifiek wint van systeem/globaal
-   * (orgId null); `null` als er geen match/shortcode is (placeholder → '').
+   * Type-definitie (AssetTypeDefinition voor ASSET, LocationTypeDefinition voor
+   * LOCATION) die bij `typeCode` hoort. Org-specifiek wint van systeem/globaal
+   * (orgId null); `null` als er geen match is. De shortCode voedt de
+   * `[typecode]`-placeholder van de nodeNumber-generatie.
    */
-  private async resolveTypeShortCode(
+  private async resolveTypeDefinition(
     orgId: string,
     nodeType: AssetNodeType,
     typeCode: string,
-  ): Promise<string | null> {
+  ): Promise<{ shortCode: string | null } | null> {
     if (!typeCode) return null;
-    if (nodeType === AssetNodeType.ASSET) {
-      const defs = await this.prisma.assetTypeDefinition.findMany({
-        where: { code: typeCode, OR: [{ orgId }, { orgId: null }], deletedAt: null },
-        select: { orgId: true, shortCode: true },
-      });
-      return (defs.find((d) => d.orgId === orgId) ?? defs[0])?.shortCode ?? null;
+    const where = { code: typeCode, OR: [{ orgId }, { orgId: null }], deletedAt: null };
+    const select = { orgId: true, shortCode: true };
+    const defs =
+      nodeType === AssetNodeType.ASSET
+        ? await this.prisma.assetTypeDefinition.findMany({ where, select })
+        : await this.prisma.locationTypeDefinition.findMany({ where, select });
+    return defs.find((d) => d.orgId === orgId) ?? defs[0] ?? null;
+  }
+
+  /**
+   * WP-C3 (B-203): `typeCode` is een vrije tekstkolom zonder FK — valideer hem
+   * tegen de type-definities (org-eigen én systeem) vóór de write. Een lege of
+   * onbekende waarde leverde eerder misvormde nodenummers (`-0033`) en
+   * datavervuiling op. Geeft de definitie terug (voor de shortcode).
+   */
+  private async assertValidTypeCode(
+    orgId: string,
+    nodeType: AssetNodeType,
+    typeCode: string,
+  ): Promise<{ shortCode: string | null }> {
+    const label = nodeType === AssetNodeType.ASSET ? 'assettype' : 'locatietype';
+    if (!typeCode.trim()) {
+      throw new BadRequestException(`Geen ${label} opgegeven: kies een geldig type`);
     }
-    const defs = await this.prisma.locationTypeDefinition.findMany({
-      where: { code: typeCode, OR: [{ orgId }, { orgId: null }], deletedAt: null },
-      select: { orgId: true, shortCode: true },
+    const def = await this.resolveTypeDefinition(orgId, nodeType, typeCode);
+    if (!def) {
+      throw new BadRequestException(`Onbekend ${label} "${typeCode}"`);
+    }
+    return def;
+  }
+
+  /**
+   * B-203 (update-pad): een typeCode-wijziging op een bestaande node wordt
+   * gevalideerd; een ongewijzigde echo (ook van legacy records met een inmiddels
+   * verwijderd type) blijft werken.
+   */
+  private async assertTypeCodeChangeValid(
+    key: SyncEntityKey,
+    fields: Record<string, unknown>,
+    existing: SyncRow,
+    orgId: string,
+  ): Promise<void> {
+    if (key !== 'assetNodes') return;
+    if (fields.typeCode === undefined || fields.typeCode === existing.typeCode) return;
+    const nodeType =
+      String(fields.nodeType ?? existing.nodeType) === AssetNodeType.LOCATION
+        ? AssetNodeType.LOCATION
+        : AssetNodeType.ASSET;
+    await this.assertValidTypeCode(orgId, nodeType, String(fields.typeCode ?? ''));
+  }
+
+  /**
+   * WP-C3 (B-216): een sync-update die `parentId` wijzigt is een move — de
+   * dieptegrens geldt dan voor de meeschuivende subtree. Een ongewijzigde echo
+   * van `parentId` wordt niet gecheckt (bestaande diepe bomen blijven bewerkbaar).
+   */
+  private async assertReparentDepth(
+    key: SyncEntityKey,
+    fields: Record<string, unknown>,
+    existing: SyncRow,
+    orgId: string,
+    nodeId: string,
+  ): Promise<void> {
+    if (key !== 'assetNodes') return;
+    const newParentId = fields.parentId;
+    if (typeof newParentId !== 'string' || !newParentId) return;
+    if (newParentId === existing.parentId) return;
+    await this.assetNodes.assertDepthForWrite(newParentId, orgId, nodeId);
+  }
+
+  /**
+   * WP-C3 (B-217, beslispunt A6-optie b): `assignedTo`/`reviewerId` zijn
+   * management-beslissingen. De PWA echoot het volledige plan-record in elke
+   * push, dus alleen een WIJZIGING t.o.v. de serverstaat wordt geguard: pushers
+   * zonder review-rol (REVIEW_ROLES) mogen de waarde niet veranderen.
+   * Uitzonderingen:
+   * - een offline aangemaakt plan mag door de maker aan zichzelf toegewezen
+   *   worden (`assignedTo === user.id` bij create) — eigenaarschap, geen routing;
+   * - `reviewerId === user.id` wordt bewust NIET apart geweigerd voor
+   *   review-rollen (beslispunt-materie, zie A6) — alleen de rol telt.
+   */
+  private assertPlanAssignmentRole(
+    key: SyncEntityKey,
+    fields: Record<string, unknown>,
+    existing: SyncRow | null,
+    user: User,
+  ): void {
+    if (key !== 'inspectionPlans') return;
+    if (hasRole(user, REVIEW_ROLES)) return;
+    for (const field of ['assignedTo', 'reviewerId'] as const) {
+      if (fields[field] === undefined) continue;
+      const incoming = (fields[field] ?? null) as string | null;
+      const current = (existing?.[field] ?? null) as string | null;
+      if (incoming === current) continue; // echo van de serverstaat
+      if (!existing && field === 'assignedTo' && incoming === user.id) continue;
+      throw new BadRequestException(
+        'Alleen management- of werkvoorbereidingsrollen mogen de toewijzing of beoordelaar van een inspectieplan wijzigen',
+      );
+    }
+  }
+
+  /**
+   * WP-C3 (B-218): statusovergang → `pending_review`, gedetecteerd op de oude
+   * serverstaat. `existing === null` = record dat direct als pending_review
+   * binnenkomt (volledig offline ingediend).
+   */
+  private planBecamePendingReview(
+    key: SyncEntityKey,
+    fields: Record<string, unknown>,
+    existing: SyncRow | null,
+  ): boolean {
+    return (
+      key === 'inspectionPlans' &&
+      fields.statusCode === STATUS_PENDING_REVIEW &&
+      (existing?.statusCode ?? null) !== STATUS_PENDING_REVIEW
+    );
+  }
+
+  /**
+   * B-218: `submittedAt` server-side vullen wanneer de client hem bij het
+   * indienen niet meestuurde (spiegel van `submit()`) — zelfde write, dus geen
+   * extra updatedAt-bump die valse zelf-conflicten zou veroorzaken.
+   */
+  private enrichPlanSubmit(
+    key: SyncEntityKey,
+    fields: Record<string, unknown>,
+    existing: SyncRow | null,
+  ): void {
+    if (!this.planBecamePendingReview(key, fields, existing)) return;
+    if (fields.submittedAt === undefined && !existing?.submittedAt) {
+      fields.submittedAt = new Date();
+    }
+  }
+
+  /**
+   * B-218: dezelfde submit-side-effects als het REST-pad (notificatie
+   * INSPECTIEPLAN_TER_REVIEW met reviewer→PM→inspecteur-fallback + AI-voorcontrole),
+   * fire-and-forget ná een geslaagde write — mag de push nooit laten falen.
+   */
+  private firePlanSubmittedSideEffects(
+    key: SyncEntityKey,
+    fields: Record<string, unknown>,
+    existing: SyncRow | null,
+    user: User,
+    planId: string,
+  ): void {
+    if (!this.planBecamePendingReview(key, fields, existing)) return;
+    this.inspectionPlans.dispatchSubmitSideEffects(planId, user).catch((e) => {
+      this.logger.error(
+        `Submit-side-effects (sync) mislukt voor plan ${planId}: ${(e as Error)?.message}`,
+      );
     });
-    return (defs.find((d) => d.orgId === orgId) ?? defs[0])?.shortCode ?? null;
+  }
+
+  /**
+   * B-203: pre-write-guards die alleen zinvol zijn wanneer de update ook echt
+   * toegepast gaat worden. Conflict-bound updates (server nieuwer dan de
+   * client-baseline) slaan we over: applyUpdate schrijft dan niets en
+   * `resolve()` draait dezelfde guards opnieuw over de gekozen data.
+   */
+  private async assertUpdateGuards(
+    key: SyncEntityKey,
+    data: SyncRecordData,
+    fields: Record<string, unknown>,
+    existing: SyncRow,
+    orgId: string,
+    user: User,
+  ): Promise<void> {
+    if (isConflictBound(data, existing)) return; // → conflictpad (incl. ontbrekend anker, v4)
+    this.assertPlanAssignmentRole(key, fields, existing, user);
+    await this.assertTypeCodeChangeValid(key, fields, existing, orgId);
+    await this.assertReparentDepth(key, fields, existing, orgId, String(data.id ?? ''));
+  }
+
+  /**
+   * v4 (WP-D1): benigne create-retry-detectie. Een create voor een al bestaand
+   * record zónder versie-anker is normaliter fail-closed een conflict — behálve
+   * wanneer de payload byte-voor-byte overeenkomt met de serverstaat (de klassieke
+   * retry nadat de push-respons verloren ging: de eerdere push heeft de data al
+   * toegepast). Dan valt er niets te overschrijven en is een no-op veilig.
+   * Conservatief: elke afwijking (ook type-verschillen zoals Decimal↔number)
+   * → géén no-op → het gewone fail-closed conflictpad.
+   */
+  private isNoopEcho(fields: Record<string, unknown>, existing: SyncRow): boolean {
+    const normalize = (v: unknown): unknown =>
+      v === undefined ? null : (JSON.parse(JSON.stringify(v)) as unknown);
+    for (const [key, value] of Object.entries(fields)) {
+      if (!isDeepStrictEqual(normalize(value), normalize(existing[key] ?? null))) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  /** B-203: server-toegekend nodeNumber meegeven op het adopt-/update-pad. */
+  private withAssignedNodeNumber(
+    key: SyncEntityKey,
+    result: OpResult,
+    row: SyncRow,
+  ): OpResult {
+    if (key !== 'assetNodes' || result.status !== 'success') return result;
+    const nodeNumber = row.nodeNumber;
+    if (typeof nodeNumber !== 'string' || !nodeNumber) return result;
+    return { ...result, assigned: { nodeNumber } };
   }
 
   /** Valideer dat alle aanwezige FK-waarden bij de eigen org horen (no-op voor superuser). */
@@ -310,6 +574,35 @@ export class SyncService {
     // presence. Bestaande keys blijven ongewijzigd; een oude PWA negeert deze.
     const chat = await this.chat.getSyncSnapshot(user, since);
 
+    // v4 (WP-D1 · B-223e): openstaande conflicten van déze gebruiker reizen mee
+    // in elke pull — bewust NIET since-gefilterd (altijd de volledige open set,
+    // gededupliceerd op record), zodat een nieuw toestel/verse sessie ze ziet én
+    // een elders opgelost conflict uit de set verdwijnt (de PWA reconcilieert
+    // zijn lokale conflictadministratie tegen deze lijst). Persoonlijk gescoped:
+    // het conflict draagt de niet-toegepaste invoer van de pusher zelf.
+    const conflictRows = await this.prisma.syncQueue.findMany({
+      where: { ...scope, userId: user.id, status: SyncStatus.conflict },
+      orderBy: { createdAt: 'asc' },
+      select: {
+        entityType: true, entityId: true, deviceId: true,
+        createdAt: true, conflictData: true,
+      },
+    });
+    const openConflicts = conflictRows.map((row) => {
+      const conflict = asRecord(row.conflictData);
+      return {
+        entityType: row.entityType,
+        entityId: row.entityId,
+        deviceId: row.deviceId,
+        conflictAt: row.createdAt.toISOString(),
+        serverVersion: typeof conflict.serverVersion === 'string' ? conflict.serverVersion : null,
+        // toWire ook hier: pre-v4 conflictrijen kunnen internalNotes nog in hun
+        // serverData-snapshot dragen — dat veld verlaat de server nooit.
+        serverData: toWire(asRecord(conflict.serverData)),
+        clientData: asRecord(conflict.clientData),
+      };
+    });
+
     return {
       inspectionPlans: plans.map((p) => ({
         ...toWire(p),
@@ -341,6 +634,8 @@ export class SyncService {
       chatThreads: chat.chatThreads,
       chatMessages: chat.chatMessages,
       users: chat.users,
+      // v4 (B-223e) — openstaande conflicten van deze gebruiker (volledige set):
+      openConflicts,
       deletedIds: {
         inspectionPlans: delPlans.map((x) => x.id),
         assetNodes: delNodes.map((x) => x.id),
@@ -379,16 +674,21 @@ export class SyncService {
           ? orderAssetNodesParentFirst(dto.changes[key] ?? [])
           : dto.changes[key] ?? [];
       for (const change of group) {
+        // B-212: nooit de rauwe exception-message (Prisma lekt pad/regels/payload)
+        // naar de client — map naar NL, log volledig server-side met referentie.
+        const ref = {
+          entityType: SYNC_ENTITIES[key].singular,
+          entityId: String(change.data.id ?? ''),
+        };
         try {
           const r = await this.processChange(key, change.operation, change.data, user, orgId, dto.deviceId, criticalModelCache);
           results.push(r);
           if (r.status === 'success') processed[key]++;
-        } catch (e: any) {
+        } catch (e: unknown) {
           results.push({
-            entityType: SYNC_ENTITIES[key].singular,
-            entityId: String(change.data.id ?? ''),
+            ...ref,
             status: 'failed',
-            error: e?.message ?? 'Onbekende fout',
+            error: toClientSyncError(e, this.logger, ref),
           });
         }
       }
@@ -400,17 +700,13 @@ export class SyncService {
     // zodat een in dezelfde push aangemaakte thread bestaat als z'n berichten
     // worden toegepast.
     for (const change of dto.changes.chatThreads ?? []) {
+      const ref = { entityType: 'chatThread', entityId: String(change.data.id ?? '') };
       try {
         const r = await this.chat.applySyncThread(user, change.operation, change.data);
         results.push({ entityType: 'chatThread', entityId: r.id, status: 'success' });
         processed.chatThreads++;
-      } catch (e: any) {
-        results.push({
-          entityType: 'chatThread',
-          entityId: String(change.data.id ?? ''),
-          status: 'failed',
-          error: e?.message ?? 'Onbekende fout',
-        });
+      } catch (e: unknown) {
+        results.push({ ...ref, status: 'failed', error: toClientSyncError(e, this.logger, ref) });
       }
     }
 
@@ -418,39 +714,52 @@ export class SyncService {
     // ze vereisen membership-autorisatie + notificatie-dispatch — dus delegeren we
     // naar ChatService (idempotent op client-id).
     for (const change of dto.changes.chatMessages ?? []) {
+      const ref = { entityType: 'chatMessage', entityId: String(change.data.id ?? '') };
       try {
         const r = await this.chat.applySyncMessage(user, change.operation, change.data);
         results.push({ entityType: 'chatMessage', entityId: r.id, status: 'success' });
         processed.chatMessages++;
-      } catch (e: any) {
-        results.push({
-          entityType: 'chatMessage',
-          entityId: String(change.data.id ?? ''),
-          status: 'failed',
-          error: e?.message ?? 'Onbekende fout',
-        });
+      } catch (e: unknown) {
+        results.push({ ...ref, status: 'failed', error: toClientSyncError(e, this.logger, ref) });
       }
     }
 
     // Additief: presence. De gebruiker komt uit de JWT; de payload bepaalt enkel
     // status + notitie.
     for (const change of dto.changes.presence ?? []) {
+      const ref = { entityType: 'presence', entityId: String(change.data.id ?? '') };
       try {
         const r = await this.chat.applySyncPresence(user, change.data);
         results.push({ entityType: 'presence', entityId: r.id, status: 'success' });
         processed.presence++;
-      } catch (e: any) {
-        results.push({
-          entityType: 'presence',
-          entityId: String(change.data.id ?? ''),
-          status: 'failed',
-          error: e?.message ?? 'Onbekende fout',
-        });
+      } catch (e: unknown) {
+        results.push({ ...ref, status: 'failed', error: toClientSyncError(e, this.logger, ref) });
+      }
+    }
+
+    // Additief (WP-C3/B-203, contractafspraak zonder bump): server-toegekende
+    // waarden per succesvol record — nu alleen assetNode.nodeNumber. De client
+    // neemt deze lokaal over zodat "concept" het echte nummer wordt zonder op
+    // de volgende pull-cursor te hoeven wachten. Oude PWA's negeren de key.
+    const assigned: Array<{ entityType: string; entityId: string; nodeNumber: string }> = [];
+    // v4 (WP-D1): per geslaagde create/update de nieuwe server-`updatedAt` —
+    // de client zet dit als exacte base-versie (i.p.v. de grovere serverTime,
+    // die een portal-write binnen hetzelfde push-venster zou maskeren).
+    const applied: Array<{ entityType: string; entityId: string; serverVersion: string }> = [];
+    for (const r of results) {
+      if (r.status !== 'success') continue;
+      if (r.assigned) {
+        assigned.push({ entityType: r.entityType, entityId: r.entityId, ...r.assigned });
+      }
+      if (r.serverVersion) {
+        applied.push({ entityType: r.entityType, entityId: r.entityId, serverVersion: r.serverVersion });
       }
     }
 
     return {
       processed,
+      assigned,
+      applied,
       conflicts: results.filter((r) => r.status === 'conflict'),
       errors: results.filter((r) => r.status === 'failed'),
       serverTime: new Date().toISOString(),
@@ -499,17 +808,45 @@ export class SyncService {
       const dup = await model.findFirst({ where: { id, ...orgScope(user) } });
       if (dup) {
         await this.assertPlanReviewGate(key, fields, dup, orgId);
+        // v4 (WP-D1): een anker-loze adoptie is fail-closed een conflict, MAAR een
+        // byte-identieke echo (benigne retry na verloren push-respons) is een
+        // veilige no-op — er valt niets te overschrijven. Geneste kind-rijen
+        // (childRows) kunnen hier niet goedkoop vergeleken worden → geen shortcut.
+        if (clientBaseVersion(data) === null && !childRows && this.isNoopEcho(fields, dup)) {
+          const echo: OpResult = {
+            ...ref, status: 'success', serverVersion: dup.updatedAt.toISOString(),
+          };
+          return this.withAssignedNodeNumber(key, echo, dup);
+        }
+        // WP-C3: rol-/typeCode-/dieptechecks op het adopt-pad (update-semantiek).
+        await this.assertUpdateGuards(key, data, fields, dup, orgId, user);
         await this.computeFindingCriticalField(key, fields, dup, data, criticalModelCache);
-        const adopted = await this.applyUpdate(cfg, model, id, ref, data, fields, childRows, dup, user, deviceId);
+        this.enrichPlanSubmit(key, fields, dup);
+        const adopted = await this.applyUpdate(cfg, model, id, ref, data, fields, childRows, dup, user, deviceId, orgId);
         // Reset pas ná een geslaagde write (review #5): een LWW-conflict mag de
         // herinspectie-trigger niet her-armen op basis van stale PWA-data.
         if (adopted.status === 'success') {
           await this.resetCriticalRepairNotified(key, fields, dup);
+          this.firePlanSubmittedSideEffects(key, fields, dup, user, id);
+          return this.withAssignedNodeNumber(key, adopted, dup);
         }
         return adopted;
       }
+      // B-217: toewijzingsvelden op een nieuw plan alleen met review-rol
+      // (uitzondering: assignedTo === maker zelf).
+      this.assertPlanAssignmentRole(key, fields, null, user);
       await this.assertPlanReviewGate(key, fields, null, orgId);
       await this.computeFindingCriticalField(key, fields, null, data, criticalModelCache);
+      this.enrichPlanSubmit(key, fields, null);
+
+      // Verplichte create-velden (WP-A2 · B-207): een ontbrekende verplichte
+      // kolom zou anders pas bij Prisma stranden, met een rauwe Engelstalige
+      // driver-melding in errors[]. Hier → nette NL-melding.
+      for (const req of cfg.requiredOnCreate ?? []) {
+        if (fields[req.field] === undefined || fields[req.field] === null) {
+          throw new BadRequestException(`${req.label} ontbreekt`);
+        }
+      }
 
       const createData: Record<string, unknown> = { ...fields, id, orgId };
       // createdBy is server-owned: altijd de pushende gebruiker, nooit de client-waarde.
@@ -524,41 +861,59 @@ export class SyncService {
           String(data.nodeType) === AssetNodeType.LOCATION
             ? AssetNodeType.LOCATION
             : AssetNodeType.ASSET;
-        const typeCode = String(data.typeCode ?? '');
-        await this.numbering.runWithGeneratedNumber(
+        // B-203: typeCode valideren tegen de type-definities; de gevonden
+        // shortcode voedt de [typecode]-placeholder van de nummering.
+        const typeDef = await this.assertValidTypeCode(orgId, nodeType, String(data.typeCode ?? ''));
+        // B-216: dieptegrens op nieuwe child-nodes (wortels zitten op diepte 0).
+        if (typeof data.parentId === 'string' && data.parentId) {
+          await this.assetNodes.assertDepthForWrite(data.parentId, orgId);
+        }
+        const created = await this.numbering.runWithGeneratedNumber(
           nodeType === AssetNodeType.LOCATION
             ? NumberingModel.LOCATION_NODE
             : NumberingModel.ASSET_NODE,
           orgId,
-          {
-            loadContext: async () => ({
-              typeShortCode: await this.resolveTypeShortCode(orgId, nodeType, typeCode),
-            }),
-          },
+          { context: { typeShortCode: typeDef.shortCode } },
           (tx, nodeNumber) =>
             tx.assetNode.create({
               data: { ...createData, nodeNumber } as unknown as Prisma.AssetNodeUncheckedCreateInput,
             }),
         );
-        return { ...ref, status: 'success' };
+        // B-203: server-toegekende waarden direct terug in de push-respons.
+        // v4: plus de base-versie (updatedAt) van het verse record (applied[]).
+        const createdRow = created as { nodeNumber?: string | null; updatedAt?: Date } | null;
+        const assignedNumber = createdRow?.nodeNumber;
+        const nodeVersion = createdRow?.updatedAt?.toISOString();
+        return assignedNumber
+          ? { ...ref, status: 'success', assigned: { nodeNumber: assignedNumber }, serverVersion: nodeVersion }
+          : { ...ref, status: 'success', serverVersion: nodeVersion };
       }
 
-      await model.create({ data: createData });
+      const created = await model.create({ data: createData });
       // Nieuwe open kritieke constatering via de push → trigger her-armen (review #7).
       await this.resetCriticalRepairNotified(key, fields, null);
-      return { ...ref, status: 'success' };
+      // B-218: een plan dat direct als pending_review binnenkomt (volledig
+      // offline ingediend) start dezelfde submit-keten.
+      this.firePlanSubmittedSideEffects(key, fields, null, user, id);
+      // v4: base-versie van het verse record terug naar de client (applied[]).
+      return { ...ref, status: 'success', serverVersion: created.updatedAt?.toISOString() };
     }
 
     // update
     const existing = await model.findFirst({ where: { id, ...orgScope(user) } });
     if (!existing) throw new BadRequestException('Record niet gevonden');
     await this.assertPlanReviewGate(key, fields, existing, orgId);
+    // WP-C3: rol-/typeCode-/dieptechecks (conflict-bound updates slaan over).
+    await this.assertUpdateGuards(key, data, fields, existing, orgId, user);
     await this.computeFindingCriticalField(key, fields, existing, data, criticalModelCache);
-    const result = await this.applyUpdate(cfg, model, id, ref, data, fields, childRows, existing, user, deviceId);
+    this.enrichPlanSubmit(key, fields, existing);
+    const result = await this.applyUpdate(cfg, model, id, ref, data, fields, childRows, existing, user, deviceId, orgId);
     // Reset pas ná een geslaagde write (review #5): een LWW-conflict mag de
     // herinspectie-trigger niet her-armen op basis van stale PWA-data.
     if (result.status === 'success') {
       await this.resetCriticalRepairNotified(key, fields, existing);
+      this.firePlanSubmittedSideEffects(key, fields, existing, user, id);
+      return this.withAssignedNodeNumber(key, result, existing);
     }
     return result;
   }
@@ -566,8 +921,17 @@ export class SyncService {
   /**
    * Finding.isCritical is server-owned (PRD-14): het staat bewust NIET in de
    * allowed-whitelist van de sync-mapper. Herbereken de vlag bij een create of
-   * wanneer classificationValues meekomen, op basis van het classificatiemodel
-   * van het plan (per-push gecachet).
+   * wanneer classificationValues meekomen, op basis van de toepasselijke
+   * classificatiemodellen (plan-model mét normtype-fallback + eventueel het
+   * finding-template-model; per-push gecachet).
+   *
+   * WP-B10 (B-222) — validatie van de codes zelf, gefaseerd:
+   *  - create of daadwerkelijk GEWIJZIGDE classificatie → streng: onbekende
+   *    kenmerk-/optiecodes geven een NL-fout in errors[] (geen stille
+   *    datavervuiling met fictief vocabulaire meer);
+   *  - een ongewijzigde echo van bestaande (legacy-)waarden bij een update
+   *    blijft werken — de PWA stuurt het volledige record bij elke push;
+   *    hier alleen tolerant loggen zodat legacy-records traceerbaar blijven.
    */
   private async computeFindingCriticalField(
     key: SyncEntityKey,
@@ -581,15 +945,62 @@ export class SyncService {
       fields.inspectionPlanId ?? existing?.inspectionPlanId ?? data.inspectionPlanId ?? '',
     );
     if (!planId) return;
+    if (existing && fields.classificationValues === undefined) return;
 
-    if (!existing || fields.classificationValues !== undefined) {
-      let model = cache.get(planId);
-      if (model === undefined) {
-        model = await loadPlanCriticalModel(this.prisma, planId);
-        cache.set(planId, model);
+    const models = await this.loadApplicableClassificationModels(
+      planId,
+      (fields.findingTemplateId ?? existing?.findingTemplateId) as string | undefined,
+      cache,
+    );
+    const values = fields.classificationValues ?? {};
+
+    if (fields.classificationValues !== undefined) {
+      const unchangedEcho =
+        existing !== null &&
+        isDeepStrictEqual(existing.classificationValues ?? {}, fields.classificationValues);
+      if (unchangedEcho) {
+        const issues = findClassificationValueIssues(values, models);
+        if (issues.length > 0) {
+          this.logger.warn(
+            `Finding ${String(data.id ?? '')} echo't legacy-classificatie (toegestaan op update): ` +
+              formatClassificationValueIssues(issues),
+          );
+        }
+      } else {
+        assertClassificationValuesKnown(values, models);
       }
-      fields.isCritical = computeFindingIsCritical(fields.classificationValues ?? {}, model);
     }
+
+    fields.isCritical = computeFindingIsCriticalAny(values, models);
+  }
+
+  /**
+   * Toepasselijke classificatiemodellen voor een finding (WP-B10): het
+   * plan-model (template → normtype-fallback, zie loadPlanCriticalModel) plus
+   * het model van het finding-template wanneer de finding daarmee is
+   * aangemaakt. Per push gecachet onder gescheiden sleutels.
+   */
+  private async loadApplicableClassificationModels(
+    planId: string,
+    findingTemplateId: string | undefined,
+    cache: Map<string, ClassificationModelForCritical | null>,
+  ): Promise<Array<ClassificationModelForCritical | null>> {
+    const planKey = `plan:${planId}`;
+    let planModel = cache.get(planKey);
+    if (planModel === undefined) {
+      planModel = await loadPlanCriticalModel(this.prisma, planId);
+      cache.set(planKey, planModel);
+    }
+
+    if (!findingTemplateId) return [planModel];
+
+    const tplKey = `tpl:${findingTemplateId}`;
+    let templateModel = cache.get(tplKey);
+    if (templateModel === undefined) {
+      templateModel = await loadFindingTemplateCriticalModel(this.prisma, findingTemplateId);
+      cache.set(tplKey, templateModel);
+    }
+    return [planModel, templateModel];
   }
 
   /**
@@ -674,13 +1085,16 @@ export class SyncService {
     existing: SyncRow,
     user: User,
     deviceId: string,
+    orgId: string,
   ): Promise<OpResult> {
-    // optimistic conflict: server nieuwer dan wat de client laatst zag
-    const clientSynced = data.syncedAt ? new Date(data.syncedAt) : null;
-    if (clientSynced && existing.updatedAt > clientSynced) {
+    // v4 optimistic conflict (besluit A1): server nieuwer dan de client-basis,
+    // óf helemaal geen anker meegestuurd (fail-closed — B-209).
+    if (isConflictBound(data, existing)) {
       // existing bevat Date/Decimal-velden die niet rauw in de Json-kolom mogen;
-      // normaliseer naar plain JSON vóór opslag/teruggave.
-      const serverData: unknown = JSON.parse(JSON.stringify(existing));
+      // normaliseer naar plain JSON vóór opslag/teruggave. `toWire` stript
+      // interne velden (internalNotes) — die horen ook niet in conflictData of
+      // de pull-envelope terecht te komen.
+      const serverData: unknown = JSON.parse(JSON.stringify(toWire(existing)));
       const serverVersion = existing.updatedAt.toISOString();
       const conflictData = {
         serverData, clientData: data, serverVersion,
@@ -697,14 +1111,14 @@ export class SyncService {
         await this.prisma.syncQueue.update({
           where: { id: openConflict.id },
           data: {
-            deviceId, userId: user.id, operation: 'update',
+            deviceId, userId: user.id, orgId, operation: 'update',
             payload: data as Prisma.InputJsonValue, conflictData,
           },
         });
       } else {
         await this.prisma.syncQueue.create({
           data: {
-            deviceId, userId: user.id, entityType: cfg.singular, entityId: id,
+            deviceId, userId: user.id, orgId, entityType: cfg.singular, entityId: id,
             operation: 'update', payload: data as Prisma.InputJsonValue, status: SyncStatus.conflict,
             conflictData,
           },
@@ -713,13 +1127,18 @@ export class SyncService {
       return { ...ref, status: 'conflict', serverVersion, clientData: data, serverData };
     }
 
-    const updateData: Record<string, unknown> = { ...fields, syncedAt: new Date() };
+    // syncedAt en updatedAt uit één stempel: Prisma's @updatedAt krijgt anders een
+    // eigen, enkele ms later tijdstip → rij met `updatedAt > syncedAt` → vals
+    // zelf-conflict bij de eerstvolgende push vanaf een vers apparaat (WP-A1).
+    const stamp = new Date();
+    const updateData: Record<string, unknown> = { ...fields, syncedAt: stamp, updatedAt: stamp };
     // replace-on-write: alleen als de client het kind-veld meestuurde.
     if (cfg.nestedChild && childRows) {
       updateData[cfg.nestedChild.relation] = { deleteMany: {}, create: childRows };
     }
     await model.update({ where: { id }, data: updateData });
-    return { ...ref, status: 'success' };
+    // v4: de nieuwe base-versie per record terug naar de client (applied[]).
+    return { ...ref, status: 'success', serverVersion: stamp.toISOString() };
   }
 
   /** orgId uit de hiërarchie + tenant-check op de parent-FK. */
@@ -743,7 +1162,7 @@ export class SyncService {
 
   // ── RESOLVE ────────────────────────────────────────────
   async resolve(user: User, dto: ResolveDto) {
-    requireOrg(user);
+    const resolveOrgId = requireOrg(user);
     let resolved = 0;
     // Per opgelost record de nieuwe base-versie (ISO updatedAt) terug — de PWA zet
     // hier lokaal `syncedAt = result.serverVersion`. Zie "Gedeeld contract".
@@ -752,8 +1171,15 @@ export class SyncService {
 
     for (const r of dto.resolutions) {
       try {
+        // Org-gescoped (v4): een gebruiker resolvet nooit andermans org-conflict.
+        // `orgId: null` matcht pre-v4 legacy-rijen die de backfill niet kon
+        // koppelen (userId leeg); de record-fetch hieronder blijft de harde
+        // tenant-guard.
         const queueItem = await this.prisma.syncQueue.findFirst({
-          where: { entityType: r.entityType, entityId: r.entityId, status: SyncStatus.conflict },
+          where: {
+            entityType: r.entityType, entityId: r.entityId, status: SyncStatus.conflict,
+            OR: [{ orgId: resolveOrgId }, { orgId: null }],
+          },
           orderBy: { createdAt: 'desc' },
         });
         if (!queueItem) throw new BadRequestException('Geen conflict gevonden');
@@ -784,27 +1210,49 @@ export class SyncService {
         const fields = toDbData(key, chosen);
         const gateOrgId = (existing as { orgId?: string | null }).orgId ?? user.orgId!;
         await this.assertPlanReviewGate(key, fields, existing as Record<string, unknown>, gateOrgId);
+        // WP-C3: dezelfde harde guards als het push-pad. Een resolution is een
+        // definitieve write, dus hier géén conflict-skip (B-217/B-203/B-216).
+        this.assertPlanAssignmentRole(key, fields, existing, user);
+        await this.assertTypeCodeChangeValid(key, fields, existing, gateOrgId);
+        await this.assertReparentDepth(key, fields, existing, gateOrgId, r.entityId);
+        // WP-B10: een resolution is een definitieve write — herbereken het
+        // server-owned isCritical en valideer gewijzigde classificatiecodes
+        // (zelfde fasering als het push-pad; een client-payload met legacy-
+        // waarden die gelijk zijn aan de serverstaat blijft toegestaan).
+        await this.computeFindingCriticalField(key, fields, existing, chosen, new Map());
+        this.enrichPlanSubmit(key, fields, existing);
 
         // Bewust GEEN narrow select: de audit-$use-middleware (prisma.service)
         // leest entityId/orgId én de nieuwe veldwaarden uit het update-resultaat.
         // Met `select: { updatedAt: true }` ontbrak result.id → de UPDATE-audit-row
         // van elke conflict-resolve faalde stil op entity_id NOT NULL (23502).
+        // Zelfde gedeelde stempel als in applyUpdate: voorkom de syncedAt/updatedAt
+        // ms-skew die valse zelf-conflicten veroorzaakt.
+        const stamp = new Date();
         const updated = await delegate.update({
           where: { id: r.entityId },
-          data: { ...fields, syncedAt: new Date() },
+          data: { ...fields, syncedAt: stamp, updatedAt: stamp },
         });
         await this.prisma.syncQueue.update({
           where: { id: queueItem.id },
           data: { status: SyncStatus.completed, resolvedAt: new Date(), resolvedBy: user.id },
         });
+        // WP-B10: zelfde her-arming van de herinspectie-trigger als het push-pad
+        // (alleen ná een geslaagde definitieve write).
+        await this.resetCriticalRepairNotified(key, fields, existing);
+        // B-218: een resolution die het plan alsnog op pending_review zet
+        // start dezelfde submit-keten als push/REST (fire-and-forget).
+        this.firePlanSubmittedSideEffects(key, fields, existing, user, r.entityId);
         results.push({
           entityType: r.entityType,
           entityId: r.entityId,
           serverVersion: updated.updatedAt.toISOString(),
         });
         resolved++;
-      } catch (e: any) {
-        errors.push({ entityType: r.entityType, entityId: r.entityId, error: e?.message ?? 'Onbekende fout' });
+      } catch (e: unknown) {
+        // B-212: geen rauwe exception-messages naar de client.
+        const ref = { entityType: r.entityType, entityId: r.entityId };
+        errors.push({ ...ref, error: toClientSyncError(e, this.logger, ref) });
       }
     }
     return { resolved, results, errors };

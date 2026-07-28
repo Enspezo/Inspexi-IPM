@@ -7,9 +7,12 @@ import { AppModule } from '@/app.module';
 import { PrismaService } from '@/prisma';
 
 // Online herstel (PRD-14, besluit 8 + 9) — server-owned `Finding.isCritical`:
-// afgeleid van classificationValues × ClassificationOption.isCritical van het
-// classificatiemodel van het plan, en de heropen-reset van
+// afgeleid van classificationValues × ClassificationOption.isCritical van de
+// toepasselijke classificatiemodellen, en de heropen-reset van
 // InspectionPlan.criticalRepairNotifiedAt in findings.service.update().
+// WP-B10 (B-222) voegt toe: REST-validatie van classificationValues (streng op
+// nieuwe/gewijzigde waarden, tolerant voor een ongewijzigde legacy-echo) en de
+// NORMTYPE-fallback voor plannen zonder inspectie-template.
 jest.setTimeout(60000);
 
 describe('Findings isCritical + heropen-reset (e2e)', () => {
@@ -22,6 +25,7 @@ describe('Findings isCritical + heropen-reset (e2e)', () => {
   let locationId: string;
   let cmId: string;
   let planId: string;
+  let planNoTemplateId: string;
   let assetId: string;
   let accessToken: string;
 
@@ -103,8 +107,16 @@ describe('Findings isCritical + heropen-reset (e2e)', () => {
     });
     cmId = cm.id;
 
+    // WP-B10: het normtype draagt hetzelfde model als default → plannen zonder
+    // inspectie-template bereiken het model via de normtype-fallback.
     await prisma.normTypeDefinition.create({
-      data: { code: NORM_CODE, label: 'E2E FindCrit Norm', createdBy: user.id, assetTypes: [] },
+      data: {
+        code: NORM_CODE,
+        label: 'E2E FindCrit Norm',
+        createdBy: user.id,
+        assetTypes: [],
+        classificationModelId: cm.id,
+      },
     });
 
     // Het plan bereikt het classificatiemodel via zijn inspectionTemplate.
@@ -131,6 +143,19 @@ describe('Findings isCritical + heropen-reset (e2e)', () => {
       },
     });
     planId = plan.id;
+
+    // WP-B10: tweede plan ZONDER template — model komt via de normtype-fallback.
+    const planNoTemplate = await prisma.inspectionPlan.create({
+      data: {
+        orgId: org.id,
+        contactId: contact.id,
+        locationId: location.id,
+        projectName: 'E2E FindCrit Plan (geen template)',
+        normTypeCode: NORM_CODE,
+        createdBy: user.id,
+      },
+    });
+    planNoTemplateId = planNoTemplate.id;
 
     // AssetNode-boom: parent vóór child (DB-triggers vullen path/depth).
     const rootNode = await prisma.assetNode.create({
@@ -180,12 +205,15 @@ describe('Findings isCritical + heropen-reset (e2e)', () => {
     }
   });
 
-  const createFinding = async (classificationValues?: Record<string, string>) => {
+  const createFinding = async (
+    classificationValues?: Record<string, string>,
+    targetPlanId: string = planId,
+  ) => {
     const res = await request(app.getHttpServer())
       .post(`/api/v1/assets/${assetId}/findings`)
       .set('Authorization', `Bearer ${accessToken}`)
       .send({
-        inspectionPlanId: planId,
+        inspectionPlanId: targetPlanId,
         inspectionType: 'visual',
         shortDescription: 'E2E crit finding',
         ...(classificationValues ? { classificationValues } : {}),
@@ -224,6 +252,66 @@ describe('Findings isCritical + heropen-reset (e2e)', () => {
       await patchFinding(id, { classificationValues: { SEVERITY: 'C3' } }).expect(200);
       finding = await prisma.finding.findUnique({ where: { id } });
       expect(finding?.isCritical).toBe(false);
+    });
+
+    it('WP-B10: normtype-fallback — plan zonder inspectie-template bereikt het model via het normtype', async () => {
+      const id = await createFinding({ SEVERITY: 'C1' }, planNoTemplateId);
+      const finding = await prisma.finding.findUnique({ where: { id } });
+      expect(finding?.isCritical).toBe(true);
+    });
+  });
+
+  describe('WP-B10 (B-222): validatie van classificationValues (REST)', () => {
+    it('weigert fictief vocabulaire op een nieuwe finding met een NL-400', async () => {
+      const res = await request(app.getHttpServer())
+        .post(`/api/v1/assets/${assetId}/findings`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({
+          inspectionPlanId: planId,
+          inspectionType: 'visual',
+          shortDescription: 'Legacy vocabulaire',
+          classificationValues: { risico: 'kritiek' },
+        })
+        .expect(400);
+      expect(res.body.message).toContain('Classificatie ongeldig');
+      expect(res.body.message).toContain(
+        "kenmerk 'risico' bestaat niet in het classificatiemodel",
+      );
+    });
+
+    it('weigert een PATCH die de classificatie naar onbekende codes wijzigt', async () => {
+      const id = await createFinding({ SEVERITY: 'C3' });
+      const res = await patchFinding(id, {
+        classificationValues: { SEVERITY: 'C9' },
+      }).expect(400);
+      expect(res.body.message).toContain("optie 'C9' is onbekend voor kenmerk 'SEVERITY'");
+    });
+
+    it('staat een ongewijzigde legacy-echo op een PATCH toe (fasering)', async () => {
+      // Legacy record rechtstreeks in de DB (pre-fix toestand).
+      const legacy = await prisma.finding.create({
+        data: {
+          orgId,
+          assetNodeId: assetId,
+          inspectionPlanId: planId,
+          inspectionType: 'visual',
+          shortDescription: 'Legacy record',
+          classificationValues: { risico: 'gering' },
+          statusCode: 'open',
+          createdBy: userId,
+        },
+      });
+      createdFindingIds.push(legacy.id);
+
+      // Zelfde waarden + een andere veldwijziging → toegestaan.
+      await patchFinding(legacy.id, {
+        classificationValues: { risico: 'gering' },
+        shortDescription: 'Legacy record — bijgewerkt',
+      }).expect(200);
+
+      const row = await prisma.finding.findUnique({ where: { id: legacy.id } });
+      expect(row?.shortDescription).toBe('Legacy record — bijgewerkt');
+      expect(row?.isCritical).toBe(false);
     });
   });
 

@@ -8,7 +8,6 @@ import {
   Body,
   Query,
   Headers,
-  ParseUUIDPipe,
 } from '@nestjs/common';
 import { RequiresFeature } from '@/common/decorators/requires-feature.decorator';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
@@ -21,6 +20,7 @@ import {
   UpdateMeasurementSheetRecordDto,
   QueryMeasurementSheetRecordsDto,
 } from './dto';
+import { ParseUuidPipe } from '@/common';
 
 const ALL = ALL_STAFF;
 
@@ -33,7 +33,7 @@ export class MeasurementSheetRecordsController {
 
   @Get()
   @Roles(...ALL)
-  @ApiOperation({ summary: 'Ingevulde meetstaten (filters: assetId, inspectionPlanId, templateId, status)' })
+  @ApiOperation({ summary: 'Ingevulde meetstaten (filters: assetNodeId, inspectionPlanId, templateId, status)' })
   async findAll(
     @CurrentUser() user: User,
     @Query() query: QueryMeasurementSheetRecordsDto,
@@ -55,21 +55,21 @@ export class MeasurementSheetRecordsController {
   @Post(':id/validate')
   @Roles(...ALL)
   @ApiOperation({ summary: 'Meetstaat valideren tegen de snapshot (zonder status te wijzigen)' })
-  async validate(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: User) {
+  async validate(@Param('id', ParseUuidPipe) id: string, @CurrentUser() user: User) {
     return { success: true, data: await this.service.validate(id, user) };
   }
 
   @Post(':id/complete')
   @Roles(...ALL)
   @ApiOperation({ summary: 'Meetstaat afronden (final-check + status naar COMPLETED)' })
-  async complete(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: User) {
+  async complete(@Param('id', ParseUuidPipe) id: string, @CurrentUser() user: User) {
     return { success: true, data: await this.service.complete(id, user) };
   }
 
   @Get(':id')
   @Roles(...ALL)
   @ApiOperation({ summary: 'Meetstaat detail (incl. snapshot)' })
-  async findById(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: User) {
+  async findById(@Param('id', ParseUuidPipe) id: string, @CurrentUser() user: User) {
     return { success: true, data: await this.service.findById(id, user) };
   }
 
@@ -77,7 +77,7 @@ export class MeasurementSheetRecordsController {
   @Roles(...ALL)
   @ApiOperation({ summary: 'Meetstaat-data bijwerken (alleen IN_PROGRESS)' })
   async update(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @CurrentUser() user: User,
     @Body() dto: UpdateMeasurementSheetRecordDto,
     @Headers('x-device-id') deviceId?: string,
@@ -88,7 +88,7 @@ export class MeasurementSheetRecordsController {
   @Delete(':id')
   @Roles(...ALL)
   @ApiOperation({ summary: 'Meetstaat verwijderen (alleen IN_PROGRESS, harde delete)' })
-  async delete(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: User) {
+  async delete(@Param('id', ParseUuidPipe) id: string, @CurrentUser() user: User) {
     return { success: true, data: await this.service.delete(id, user) };
   }
 }

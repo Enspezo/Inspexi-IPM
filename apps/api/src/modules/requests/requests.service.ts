@@ -3,6 +3,7 @@ import {
   Logger,
   NotFoundException,
   ForbiddenException,
+  BadRequestException,
 } from '@nestjs/common';
 import { User, Role, Prisma, RequestStatus, NotificationType } from '@prisma/client';
 import { PrismaService } from '@/prisma';
@@ -104,8 +105,9 @@ export class RequestsService {
   }
 
   async findOne(id: string, user: User) {
-    const request = await this.prisma.request.findUnique({
-      where: { id },
+    // WP-C1 (B-105): org-scope in de query — cross-tenant id → zelfde 404.
+    const request = await this.prisma.request.findFirst({
+      where: { id, ...orgScope(user) },
       include: {
         contact: {
           select: {
@@ -164,10 +166,6 @@ export class RequestsService {
 
     if (!request || request.isDeleted) {
       throw new NotFoundException('Aanvraag niet gevonden');
-    }
-
-    if (!user.roles.includes(Role.SUPERUSER) && request.orgId !== user.orgId) {
-      throw new ForbiddenException();
     }
 
     return request;
@@ -283,8 +281,10 @@ export class RequestsService {
       if (!contact || contact.isDeleted) {
         throw new NotFoundException('Relatie niet gevonden');
       }
+      // FK-injectie (SEC-08-semantiek): de contact-id is invoer van de caller —
+      // bewust een 403 mét NL-melding, conform assertSameOrg.
       if (!user.roles.includes(Role.SUPERUSER) && contact.orgId !== user.orgId) {
-        throw new ForbiddenException();
+        throw new ForbiddenException('Relatie hoort niet bij uw organisatie');
       }
     }
 
@@ -388,6 +388,15 @@ export class RequestsService {
 
   async updateStatus(id: string, dto: UpdateRequestStatusDto, user: User) {
     const request = await this.findOne(id, user);
+
+    // B-315 §1: een aanvraag op VERLOREN zetten vereist een reden — zonder
+    // reden is de verlies-registratie (lost_reason_id) betekenisloos en kan
+    // er nooit op gestuurd worden.
+    if (dto.status === 'VERLOREN' && !dto.lostReasonId) {
+      throw new BadRequestException(
+        'Kies een reden waarom deze aanvraag verloren is gegaan',
+      );
+    }
 
     const lostReasonId =
       dto.status === 'VERLOREN'

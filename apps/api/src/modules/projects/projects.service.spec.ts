@@ -239,10 +239,10 @@ describe('ProjectsService', () => {
       await expect(service.findOne('project-1', mockUser)).rejects.toThrow(NotFoundException);
     });
 
-    it('should throw ForbiddenException when project belongs to a different org', async () => {
+    it('should throw the same NotFound when project belongs to a different org (WP-C1: 404-oracle)', async () => {
       mockPrismaService.project.findUnique.mockResolvedValue({ ...mockProject, orgId: 'other-org' });
 
-      await expect(service.findOne('project-1', mockUser)).rejects.toThrow(ForbiddenException);
+      await expect(service.findOne('project-1', mockUser)).rejects.toThrow('Project niet gevonden');
     });
 
     it('should allow SUPERUSER to access project from any org', async () => {
@@ -352,12 +352,12 @@ describe('ProjectsService', () => {
       ).rejects.toThrow(NotFoundException);
     });
 
-    it('should throw ForbiddenException for cross-org update', async () => {
+    it('should throw the same NotFound for cross-org update (WP-C1: 404-oracle)', async () => {
       mockPrismaService.project.findUnique.mockResolvedValue({ ...mockProject, orgId: 'other-org' });
 
       await expect(
         service.update('project-1', { title: 'hack' } as any, mockUser),
-      ).rejects.toThrow(ForbiddenException);
+      ).rejects.toThrow(NotFoundException);
     });
 
     it('should auto-set endDate when status is changed to AFGEROND', async () => {
@@ -428,10 +428,10 @@ describe('ProjectsService', () => {
       await expect(service.remove('nonexistent', mockUser)).rejects.toThrow(NotFoundException);
     });
 
-    it('should throw ForbiddenException for cross-org delete', async () => {
+    it('should throw the same NotFound for cross-org delete (WP-C1: 404-oracle)', async () => {
       mockPrismaService.project.findUnique.mockResolvedValue({ ...mockProject, orgId: 'other-org' });
 
-      await expect(service.remove('project-1', mockUser)).rejects.toThrow(ForbiddenException);
+      await expect(service.remove('project-1', mockUser)).rejects.toThrow(NotFoundException);
     });
   });
 
@@ -605,7 +605,7 @@ describe('ProjectsService', () => {
       );
     });
 
-    it('should throw ForbiddenException when request belongs to a different org', async () => {
+    it('should throw the same NotFound when request belongs to a different org (WP-C1)', async () => {
       mockPrismaService.request.findUnique.mockResolvedValue({
         id: 'req-1',
         orgId: 'other-org',
@@ -614,7 +614,7 @@ describe('ProjectsService', () => {
       });
 
       await expect(service.createFromRequest('req-1', mockUser)).rejects.toThrow(
-        ForbiddenException,
+        'Aanvraag niet gevonden',
       );
     });
 

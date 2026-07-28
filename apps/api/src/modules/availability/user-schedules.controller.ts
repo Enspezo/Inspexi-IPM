@@ -5,7 +5,6 @@ import {
   Delete,
   Param,
   Body,
-  ParseUUIDPipe,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { User } from '@prisma/client';
@@ -13,6 +12,7 @@ import { ALL_STAFF, MANAGEMENT_ROLES } from '@/common/auth/roles';
 import { Roles, CurrentUser } from '@/common/decorators';
 import { UserSchedulesService } from './user-schedules.service';
 import { AssignScheduleDto } from './dto';
+import { ParseUuidPipe } from '@/common';
 
 @ApiTags('User schedules')
 @ApiBearerAuth()
@@ -26,7 +26,7 @@ export class UserSchedulesController {
   @ApiOperation({ summary: 'Schema-toewijzingen van een inspecteur (actueel + historisch)' })
   @ApiResponse({ status: 200, description: 'Lijst toewijzingen' })
   async getSchedule(
-    @Param('userId', ParseUUIDPipe) userId: string,
+    @Param('userId', ParseUuidPipe) userId: string,
     @CurrentUser() user: User,
   ) {
     const data = await this.service.getSchedule(userId, user);
@@ -38,7 +38,7 @@ export class UserSchedulesController {
   @ApiOperation({ summary: 'Weekschema toewijzen (sluit de lopende toewijzing af op validFrom)' })
   @ApiResponse({ status: 200, description: 'Toewijzing aangemaakt' })
   async assign(
-    @Param('userId', ParseUUIDPipe) userId: string,
+    @Param('userId', ParseUuidPipe) userId: string,
     @Body() dto: AssignScheduleDto,
     @CurrentUser() user: User,
   ) {
@@ -52,8 +52,8 @@ export class UserSchedulesController {
   @ApiResponse({ status: 200, description: 'Toewijzing verwijderd' })
   @ApiResponse({ status: 400, description: 'Alleen toekomstige toewijzingen kunnen worden verwijderd' })
   async remove(
-    @Param('userId', ParseUUIDPipe) userId: string,
-    @Param('assignmentId', ParseUUIDPipe) assignmentId: string,
+    @Param('userId', ParseUuidPipe) userId: string,
+    @Param('assignmentId', ParseUuidPipe) assignmentId: string,
     @CurrentUser() user: User,
   ) {
     await this.service.remove(userId, assignmentId, user);

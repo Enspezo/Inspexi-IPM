@@ -7,7 +7,6 @@ import {
   Param,
   Body,
   Query,
-  ParseUUIDPipe,
 } from '@nestjs/common';
 import { RequiresFeature } from '@/common/decorators/requires-feature.decorator';
 import {
@@ -42,6 +41,7 @@ import {
   PdokRefreshDto,
 } from './dto';
 import { Roles, CurrentUser } from '@/common/decorators';
+import { ParseUuidPipe } from '@/common';
 
 @ApiTags('Contacts')
 @ApiBearerAuth()
@@ -104,7 +104,7 @@ export class ContactsController {
   @ApiOperation({ summary: 'Locatie detail ophalen' })
   @ApiResponse({ status: 200, description: 'Locatie details' })
   async findLocation(
-    @Param('locationId', ParseUUIDPipe) locationId: string,
+    @Param('locationId', ParseUuidPipe) locationId: string,
     @CurrentUser() user: User,
   ) {
     const location = await this.locationsService.findLocation(locationId, user);
@@ -126,7 +126,7 @@ export class ContactsController {
   @ApiResponse({ status: 200, description: 'Relatie details' })
   @ApiResponse({ status: 404, description: 'Niet gevonden' })
   async findOne(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @CurrentUser() user: User,
   ) {
     const contact = await this.contactsService.findOne(id, user);
@@ -138,7 +138,7 @@ export class ContactsController {
   @ApiOperation({ summary: 'Relatie bijwerken' })
   @ApiResponse({ status: 200, description: 'Relatie bijgewerkt' })
   async update(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @Body() dto: UpdateContactDto,
     @CurrentUser() user: User,
   ) {
@@ -151,7 +151,7 @@ export class ContactsController {
   @ApiOperation({ summary: 'Relatie verwijderen (soft delete)' })
   @ApiResponse({ status: 200, description: 'Relatie verwijderd' })
   async remove(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @CurrentUser() user: User,
   ) {
     await this.contactsService.softDelete(id, user);
@@ -165,7 +165,7 @@ export class ContactsController {
   @ApiOperation({ summary: 'Adres toevoegen aan relatie' })
   @ApiResponse({ status: 201, description: 'Adres toegevoegd' })
   async addAddress(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @Body() dto: CreateContactAddressDto,
     @CurrentUser() user: User,
   ) {
@@ -178,7 +178,7 @@ export class ContactsController {
   @ApiOperation({ summary: 'Adres bijwerken' })
   @ApiResponse({ status: 200, description: 'Adres bijgewerkt' })
   async updateAddress(
-    @Param('addressId', ParseUUIDPipe) addressId: string,
+    @Param('addressId', ParseUuidPipe) addressId: string,
     @Body() dto: UpdateContactAddressDto,
     @CurrentUser() user: User,
   ) {
@@ -191,7 +191,7 @@ export class ContactsController {
   @ApiOperation({ summary: 'Adres verwijderen' })
   @ApiResponse({ status: 200, description: 'Adres verwijderd' })
   async deleteAddress(
-    @Param('addressId', ParseUUIDPipe) addressId: string,
+    @Param('addressId', ParseUuidPipe) addressId: string,
     @CurrentUser() user: User,
   ) {
     await this.contactAddressesService.deleteAddress(addressId, user);
@@ -205,7 +205,7 @@ export class ContactsController {
   @ApiOperation({ summary: 'Klantgroepen van relatie instellen' })
   @ApiResponse({ status: 200, description: 'Klantgroepen bijgewerkt' })
   async setContactGroups(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @Body() body: { groupIds: string[] },
     @CurrentUser() user: User,
   ) {
@@ -224,7 +224,7 @@ export class ContactsController {
   @ApiOperation({ summary: 'Contactpersoon toevoegen aan relatie' })
   @ApiResponse({ status: 201, description: 'Contactpersoon toegevoegd' })
   async addContactPerson(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @Body() dto: CreateContactPersonDto,
     @CurrentUser() user: User,
   ) {
@@ -237,7 +237,7 @@ export class ContactsController {
   @ApiOperation({ summary: 'Gekoppelde locaties van contactpersoon ophalen' })
   @ApiResponse({ status: 200, description: 'Lijst gekoppelde locaties' })
   async findContactPersonLocations(
-    @Param('personId', ParseUUIDPipe) personId: string,
+    @Param('personId', ParseUuidPipe) personId: string,
     @CurrentUser() user: User,
   ) {
     const links = await this.contactPersonsService.findContactPersonLocations(personId, user);
@@ -249,7 +249,7 @@ export class ContactsController {
   @ApiOperation({ summary: 'Locatie koppelen aan contactpersoon' })
   @ApiResponse({ status: 201, description: 'Locatie gekoppeld' })
   async addContactPersonLocation(
-    @Param('personId', ParseUUIDPipe) personId: string,
+    @Param('personId', ParseUuidPipe) personId: string,
     @Body() dto: CreateContactPersonLocationDto,
     @CurrentUser() user: User,
   ) {
@@ -262,7 +262,7 @@ export class ContactsController {
   @ApiOperation({ summary: 'Contactpersoon detail ophalen' })
   @ApiResponse({ status: 200, description: 'Contactpersoon details' })
   async findContactPerson(
-    @Param('personId', ParseUUIDPipe) personId: string,
+    @Param('personId', ParseUuidPipe) personId: string,
     @CurrentUser() user: User,
   ) {
     const person = await this.contactPersonsService.findContactPerson(personId, user);
@@ -274,7 +274,7 @@ export class ContactsController {
   @ApiOperation({ summary: 'Contactpersoon bijwerken' })
   @ApiResponse({ status: 200, description: 'Contactpersoon bijgewerkt' })
   async updateContactPerson(
-    @Param('personId', ParseUUIDPipe) personId: string,
+    @Param('personId', ParseUuidPipe) personId: string,
     @Body() dto: UpdateContactPersonDto,
     @CurrentUser() user: User,
   ) {
@@ -287,7 +287,7 @@ export class ContactsController {
   @ApiOperation({ summary: 'Contactpersoon verwijderen (soft delete)' })
   @ApiResponse({ status: 200, description: 'Contactpersoon verwijderd' })
   async deleteContactPerson(
-    @Param('personId', ParseUUIDPipe) personId: string,
+    @Param('personId', ParseUuidPipe) personId: string,
     @CurrentUser() user: User,
   ) {
     await this.contactPersonsService.deleteContactPerson(personId, user);
@@ -301,7 +301,7 @@ export class ContactsController {
   @ApiOperation({ summary: 'Gekoppelde contactpersonen van locatie ophalen' })
   @ApiResponse({ status: 200, description: 'Lijst gekoppelde contactpersonen' })
   async findLocationContactPersons(
-    @Param('locationId', ParseUUIDPipe) locationId: string,
+    @Param('locationId', ParseUuidPipe) locationId: string,
     @CurrentUser() user: User,
   ) {
     const links = await this.locationsService.findLocationContactPersons(locationId, user);
@@ -313,7 +313,7 @@ export class ContactsController {
   @ApiOperation({ summary: 'Contactpersoon koppelen aan locatie' })
   @ApiResponse({ status: 201, description: 'Contactpersoon gekoppeld' })
   async addLocationContactPerson(
-    @Param('locationId', ParseUUIDPipe) locationId: string,
+    @Param('locationId', ParseUuidPipe) locationId: string,
     @Body() dto: CreateLocationContactPersonDto,
     @CurrentUser() user: User,
   ) {
@@ -326,7 +326,7 @@ export class ContactsController {
   @ApiOperation({ summary: 'Opmerkingen koppeling bijwerken' })
   @ApiResponse({ status: 200, description: 'Koppeling bijgewerkt' })
   async updateLocationContactPerson(
-    @Param('linkId', ParseUUIDPipe) linkId: string,
+    @Param('linkId', ParseUuidPipe) linkId: string,
     @Body() dto: UpdateLocationContactPersonDto,
     @CurrentUser() user: User,
   ) {
@@ -339,7 +339,7 @@ export class ContactsController {
   @ApiOperation({ summary: 'Contactpersoon ontkoppelen van locatie' })
   @ApiResponse({ status: 200, description: 'Contactpersoon ontkoppeld' })
   async removeLocationContactPerson(
-    @Param('linkId', ParseUUIDPipe) linkId: string,
+    @Param('linkId', ParseUuidPipe) linkId: string,
     @CurrentUser() user: User,
   ) {
     await this.locationsService.removeLocationContactPerson(linkId, user);
@@ -353,7 +353,7 @@ export class ContactsController {
   @ApiOperation({ summary: 'Locatie toevoegen aan relatie' })
   @ApiResponse({ status: 201, description: 'Locatie toegevoegd' })
   async addLocation(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @Body() dto: CreateLocationDto,
     @CurrentUser() user: User,
   ) {
@@ -366,7 +366,7 @@ export class ContactsController {
   @ApiOperation({ summary: 'Locaties van relatie ophalen' })
   @ApiResponse({ status: 200, description: 'Lijst locaties' })
   async findLocations(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @CurrentUser() user: User,
   ) {
     const locations = await this.locationsService.findLocations(id, user);
@@ -378,7 +378,7 @@ export class ContactsController {
   @ApiOperation({ summary: 'Locatie bijwerken' })
   @ApiResponse({ status: 200, description: 'Locatie bijgewerkt' })
   async updateLocation(
-    @Param('locationId', ParseUUIDPipe) locationId: string,
+    @Param('locationId', ParseUuidPipe) locationId: string,
     @Body() dto: UpdateLocationDto,
     @CurrentUser() user: User,
   ) {
@@ -398,7 +398,7 @@ export class ContactsController {
   })
   @ApiResponse({ status: 200, description: 'Diff of bijgewerkte locatie' })
   async refreshLocationPdok(
-    @Param('locationId', ParseUUIDPipe) locationId: string,
+    @Param('locationId', ParseUuidPipe) locationId: string,
     @Body() dto: PdokRefreshDto,
     @CurrentUser() user: User,
   ) {
@@ -415,7 +415,7 @@ export class ContactsController {
   @ApiOperation({ summary: 'Locatie verwijderen' })
   @ApiResponse({ status: 200, description: 'Locatie verwijderd' })
   async deleteLocation(
-    @Param('locationId', ParseUUIDPipe) locationId: string,
+    @Param('locationId', ParseUuidPipe) locationId: string,
     @CurrentUser() user: User,
   ) {
     await this.locationsService.deleteLocation(locationId, user);
@@ -429,7 +429,7 @@ export class ContactsController {
   @ApiOperation({ summary: 'Contactmoment loggen' })
   @ApiResponse({ status: 201, description: 'Contactmoment gelogd' })
   async addLog(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @Body() dto: CreateContactLogDto,
     @CurrentUser() user: User,
   ) {
@@ -442,7 +442,7 @@ export class ContactsController {
   @ApiOperation({ summary: 'Contactgeschiedenis ophalen' })
   @ApiResponse({ status: 200, description: 'Lijst contactmomenten' })
   async findLogs(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @CurrentUser() user: User,
   ) {
     const logs = await this.contactsService.findLogs(id, user);
@@ -456,7 +456,7 @@ export class ContactsController {
   @ApiOperation({ summary: 'Email versturen naar relatie' })
   @ApiResponse({ status: 201, description: 'Email verstuurd' })
   async sendEmail(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @Body() dto: SendContactEmailDto,
     @CurrentUser() user: User,
   ) {

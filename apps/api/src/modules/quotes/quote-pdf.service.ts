@@ -5,10 +5,12 @@ import {
   BadRequestException,
   Inject,
 } from '@nestjs/common';
-import { User, Role, QuoteStatus } from '@prisma/client';
+import { User, QuoteStatus } from '@prisma/client';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '@/prisma';
-import { assertFound } from '@/common';
+import { assertFound, orgScope, publicTenantWhere } from '@/common';
+import { TenantContext } from '@/common/interfaces/tenant-context.interface';
+import { EntitlementsService } from '@/modules/entitlements/entitlements.service';
 import { StorageProvider, STORAGE_PROVIDER } from '@/common/services/storage/storage.interface';
 import { DocxRendererService } from '../quote-templates/docx-renderer.service';
 import { PdfService } from './pdf.service';
@@ -22,20 +24,21 @@ export class QuotePdfService {
     @Inject(STORAGE_PROVIDER) private storage: StorageProvider,
     private docxRenderer: DocxRendererService,
     private pdfService: PdfService,
+    private entitlements: EntitlementsService,
   ) {}
 
   // ─── DOCX Rendering ──────────────────────────────────
 
   async renderQuoteDocx(id: string, user: User): Promise<{ buffer: Buffer; quoteNumber: string }> {
-    const quote = assertFound(await this.prisma.quote.findUnique({
-      where: { id },
+    // WP-C1 (B-105): org-scope in de query — cross-tenant id → zelfde 404.
+    const quote = assertFound(await this.prisma.quote.findFirst({
+      where: { id, ...orgScope(user) },
       include: {
         template: true,
         contact: { select: { companyName: true, firstName: true, lastName: true, email: true } },
         lines: { orderBy: { sortOrder: 'asc' as const } },
       },
     }), 'Offerte');
-    if (!user.roles.includes(Role.SUPERUSER) && quote.orgId !== user.orgId) throw new ForbiddenException();
 
     const template = quote.template;
     if (!template || template.templateType !== 'DOCX' || !template.docxStorageKey) {
@@ -102,15 +105,17 @@ export class QuotePdfService {
 
   // ─── Public PDF download ────────────────────────────
 
-  async downloadPublicPdf(token: string) {
-    const quote = assertFound(await this.prisma.quote.findUnique({
-      where: { publicToken: token },
+  async downloadPublicPdf(token: string, tenant?: TenantContext) {
+    // B-152 (WP-B7): tenantbinding + entitlement tegen de eigenaar-org.
+    const quote = assertFound(await this.prisma.quote.findFirst({
+      where: { publicToken: token, ...publicTenantWhere(tenant, this.config, 'PDF') },
       select: {
         id: true, orgId: true, status: true, pdfStorageKey: true, quoteNumber: true,
         templateId: true,
         template: { select: { id: true, templateType: true, docxStorageKey: true } },
       },
     }), 'PDF');
+    await this.entitlements.assertFeature(quote.orgId, 'CRM_COMPLEET');
     const unavailable: QuoteStatus[] = [QuoteStatus.CONCEPT, QuoteStatus.TER_GOEDKEURING, QuoteStatus.GOEDGEKEURD];
     if (unavailable.includes(quote.status)) throw new ForbiddenException('Offerte is niet beschikbaar');
 

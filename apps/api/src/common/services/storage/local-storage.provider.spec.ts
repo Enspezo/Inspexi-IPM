@@ -3,6 +3,7 @@ import { promises as fs } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { LocalStorageProvider } from './local-storage.provider';
+import { StorageObjectNotFoundError } from './storage.interface';
 
 describe('LocalStorageProvider — path traversal guard', () => {
   let provider: LocalStorageProvider;
@@ -26,6 +27,21 @@ describe('LocalStorageProvider — path traversal guard', () => {
     await provider.upload(key, Buffer.from('hello'), 'application/pdf');
     expect((await provider.download(key)).toString()).toBe('hello');
     expect(await provider.exists(key)).toBe(true);
+  });
+
+  // B-154: ontbrekend object → getypeerde fout (filter mapt hem naar NL 404).
+  it('B-154: download van een niet-bestaand object gooit StorageObjectNotFoundError met de key', async () => {
+    const key = 'org-1/bestaat-niet.pdf';
+    const err = await provider.download(key).catch((e) => e);
+    expect(err).toBeInstanceOf(StorageObjectNotFoundError);
+    expect((err as StorageObjectNotFoundError).key).toBe(key);
+  });
+
+  it('B-154: andere fs-fouten dan ENOENT worden NIET als not-found gemaskeerd', async () => {
+    // Een directory als key → EISDIR bij readFile.
+    await fs.mkdir(join(root, 'org-1/imeendir'), { recursive: true });
+    const err = await provider.download('org-1/imeendir').catch((e) => e);
+    expect(err).not.toBeInstanceOf(StorageObjectNotFoundError);
   });
 
   it.each([

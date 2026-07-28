@@ -11,7 +11,6 @@ import {
   UseGuards,
   UseInterceptors,
   UploadedFiles,
-  ParseUUIDPipe,
   BadRequestException,
   Res,
   StreamableFile,
@@ -30,6 +29,7 @@ import {
 } from '@/common/decorators/current-client-user.decorator';
 import { ClientFindingsService } from './client-findings.service';
 import { ResolveFindingDto } from './dto';
+import { ParseUuidPipe } from '@/common';
 
 const photoFileFilter = (
   _req: unknown,
@@ -54,7 +54,7 @@ export class ClientFindingsController {
   @Get('resolution-photos/:id')
   @ApiOperation({ summary: 'Resolutie-foto downloaden (org + ClientAccess gescoped)' })
   async photo(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @CurrentClientUser() user: CurrentClientUserData,
     @CurrentTenant('orgId') orgId: string | null,
     @Res({ passthrough: true }) res: Response,
@@ -76,7 +76,7 @@ export class ClientFindingsController {
   @Get(':id')
   @ApiOperation({ summary: 'Constatering-detail met resoluties en foto’s (klant)' })
   async detail(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @CurrentClientUser() user: CurrentClientUserData,
     @CurrentTenant('orgId') orgId: string | null,
   ) {
@@ -86,7 +86,7 @@ export class ClientFindingsController {
   @Post(':id/resolve')
   @ApiOperation({ summary: 'Constatering als opgelost melden' })
   async resolve(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @Body() dto: ResolveFindingDto,
     @CurrentClientUser() user: CurrentClientUserData,
     @CurrentTenant('orgId') orgId: string | null,
@@ -105,7 +105,7 @@ export class ClientFindingsController {
     }),
   )
   async uploadPhotos(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @UploadedFiles() files: Express.Multer.File[],
     @CurrentClientUser() user: CurrentClientUserData,
     @CurrentTenant('orgId') orgId: string | null,
@@ -119,7 +119,7 @@ export class ClientFindingsController {
   @Delete(':id/resolve')
   @ApiOperation({ summary: 'Eigen openstaande resolutie terugtrekken' })
   async deleteResolution(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @CurrentClientUser() user: CurrentClientUserData,
     @CurrentTenant('orgId') orgId: string | null,
   ) {

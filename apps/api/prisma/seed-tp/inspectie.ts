@@ -23,7 +23,9 @@ import {
   GeneratedDocumentStatus,
   InspectionExecStatus,
   MarkerType,
+  MeasurementSheetFieldType,
   MeasurementSheetRecordStatus,
+  MeasurementSheetTemplateStatus,
   PrismaClient,
   RepairAccessType,
   RepairSessionStatus,
@@ -693,6 +695,20 @@ export async function seedInspectie(prisma: PrismaClient, refs: TpRefs): Promise
     onlineRepairEnabled?: boolean;
   }
 
+  // B-313: koppel het systeem-inspectietemplate aan de TP-plannen. Zonder
+  // template blokkeert documentgeneratie ("Plan heeft geen inspectie-template")
+  // en dat gold voor álle TP-plannen. Het NEN1010-systeemtemplate is het enige
+  // geseede template (isSystem, geldig voor elke org); voor plannen met een
+  // ander normtype is het inhoudelijk generiek genoeg voor testdoeleinden.
+  const inspTemplate = await prisma.inspectionTemplate.findFirst({
+    where: { code: 'IT-NEN1010-INITIAL' },
+    select: { id: true },
+    orderBy: { createdAt: 'desc' },
+  });
+  if (!inspTemplate) {
+    step('⚠️  Inspectietemplate IT-NEN1010-INITIAL niet gevonden — TP-plannen krijgen geen template');
+  }
+
   const planSpecs: PlanSpec[] = [
     {
       refKey: 'draft',
@@ -796,6 +812,8 @@ export async function seedInspectie(prisma: PrismaClient, refs: TpRefs): Promise
       referenceNumber: spec.referenceNumber,
       normTypeCode: spec.normTypeCode,
       statusCode: spec.statusCode,
+      // B-313: template nodig voor documentgeneratie (zie lookup hierboven).
+      inspectionTemplateId: inspTemplate?.id ?? null,
       locationId: spec.locationId,
       addressStreet: 'Testweg',
       addressHouseNumber: '1',
@@ -830,6 +848,8 @@ export async function seedInspectie(prisma: PrismaClient, refs: TpRefs): Promise
     referenceNumber: 'TB-RAP-001',
     normTypeCode: 'NEN1010',
     statusCode: 'planned',
+    // B-313: zie de template-lookup hierboven (systeemtemplate, org-onafhankelijk).
+    inspectionTemplateId: inspTemplate?.id ?? null,
     locationId: treeTb.locationId,
     addressPostalCode: '5611AA',
     addressCity: 'Eindhoven',
@@ -1172,6 +1192,57 @@ export async function seedInspectie(prisma: PrismaClient, refs: TpRefs): Promise
     });
   }
   step('H4: 2 visuele inspecties (in_progress, 1 OK + 1 NOK) + 2 meetrecords op plan A/B');
+
+  // ── H4c. Bewust fout meetstaat-template (B-506 / SU-18-fixture) ────────────
+  // MS-SU17-TEST bevat een veld met min (100) > max (0) — het originele
+  // SU-18-testgeval. Sinds WP-C5 (B-506) weigert de publish-gate zo'n template;
+  // daarom staat het hier expliciet als ONGEPUBLICEERD CONCEPT: de seed schrijft
+  // rauw via Prisma (buiten de servicevalidatie om), maar élke poging tot
+  // publiceren via UI/API hoort nu een NL 400 te geven. Testdata-bedoeling
+  // ("levend bewijs" voor de gate) blijft zo behouden zonder de seed te breken.
+  const su17TemplateId = tpId('measurement-sheet-template:su17');
+  const su17SectionId = tpId('measurement-sheet-section:su17-algemeen');
+  await prisma.measurementSheetTemplate.upsert({
+    where: { id: su17TemplateId },
+    update: { status: MeasurementSheetTemplateStatus.CONCEPT, publishedAt: null },
+    create: {
+      id: su17TemplateId,
+      code: 'MS-SU17-TEST',
+      name: 'SU17/SU18 testmeetstaat (bewust foute grenzen)',
+      description:
+        'Testfixture B-506: veld su18_omgekeerd heeft min 100 / max 0 en mag dus nooit gepubliceerd kunnen worden.',
+      normTypeCode: 'NEN1010',
+      assetTypes: ['electrical_installation'],
+      locationTypes: [],
+      status: MeasurementSheetTemplateStatus.CONCEPT,
+      version: '1.0',
+      createdBy: adminId,
+      sections: {
+        create: [
+          {
+            id: su17SectionId,
+            code: 'algemeen',
+            name: 'Algemene metingen',
+            sortOrder: 0,
+            fields: {
+              create: [
+                {
+                  id: tpId('measurement-sheet-field:su18-omgekeerd'),
+                  code: 'su18_omgekeerd',
+                  name: 'SU18 omgekeerde grenzen',
+                  fieldType: MeasurementSheetFieldType.NUMBER,
+                  sortOrder: 0,
+                  minValue: 100,
+                  maxValue: 0,
+                },
+              ],
+            },
+          },
+        ],
+      },
+    },
+  });
+  step('H4c: meetstaat-template MS-SU17-TEST (CONCEPT, min 100 > max 0 — publish-gate-fixture B-506)');
 
   // ── H5. Plattegrond op de wortel van boom A ────────────────────────────────
   const floorPlanKey = `${demoOrgId}/${tpId('floorplan:A')}-tp-plattegrond-boom-a.png`;

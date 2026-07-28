@@ -40,6 +40,9 @@ export default function DocumentViewerPage() {
   const hasPendingClientSignature = doc.signatures.some(
     (s) => s.signerRoleCode === 'CLIENT' && (s.status === 'PENDING' || s.status === 'REQUESTED'),
   );
+  // B-406a (WP-B9): ondertekenen vereist een per-plan canSign-grant; zonder dat
+  // recht geen knop (voorheen: eerst tekenen, dán pas een 403).
+  const canSign = doc.canSign !== false;
 
   const handleDownload = async () => {
     setDownloading(true);
@@ -100,10 +103,15 @@ export default function DocumentViewerPage() {
                   Download PDF
                 </Button>
               )}
-              {hasPendingClientSignature && (
+              {hasPendingClientSignature && canSign && (
                 <Button className="w-full" onClick={() => setShowSign(true)}>
                   Ondertekenen
                 </Button>
+              )}
+              {hasPendingClientSignature && !canSign && (
+                <p className="text-sm text-gray-500">
+                  Ondertekening verloopt via de link in uw e-mail.
+                </p>
               )}
               {!doc.pdfUrl && !hasPendingClientSignature && (
                 <p className="text-sm text-gray-500">Geen acties beschikbaar.</p>

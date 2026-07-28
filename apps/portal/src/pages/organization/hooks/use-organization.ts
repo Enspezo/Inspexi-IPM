@@ -17,7 +17,7 @@ export function useOrganization(orgId: string | null | undefined) {
   });
 }
 
-interface UpdateOrganizationDto {
+export interface UpdateOrganizationDto {
   name?: string;
   primaryColor?: string | null;
   defaultVat?: number;
@@ -32,6 +32,7 @@ interface UpdateOrganizationDto {
   inspectorStaticEmail?: string | null;
   quoteApprovalThreshold?: number | null;
   quoteApprovalRequiredRole?: Role | null;
+  quoteApprovalSelfApprovalAllowed?: boolean;
   chatEnabled?: boolean;
   inspectionReviewEnabled?: boolean;
   aiReviewEnabled?: boolean;

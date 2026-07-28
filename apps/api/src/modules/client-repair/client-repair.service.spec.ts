@@ -751,6 +751,40 @@ describe('ClientRepairService', () => {
 
       await expect(service.getSessionView(buildSession())).rejects.toThrow(NotFoundException);
     });
+
+    // B-410 (WP-C2): plan ZONDER inspectietemplate (zoals RAP-TEST-100) →
+    // getMainClassification kan niets resolven en doet geen uitspraak (null);
+    // de view valt dan terug op het gedenormaliseerde Finding.isCritical i.p.v.
+    // hardgecodeerd false te beweren.
+    it('valt zonder classificatiemodel terug op Finding.isCritical (B-410)', async () => {
+      mockPrisma.inspectionPlan.findFirst.mockResolvedValue(buildViewPlan()); // inspectionTemplate: null
+      mockPrisma.finding.findMany.mockResolvedValue([
+        baseFinding({
+          id: 'f-krit',
+          statusCode: STATUS_OPEN,
+          isCritical: true,
+          classificationValues: { SEVERITY: 'C1' },
+        }),
+        baseFinding({
+          id: 'f-niet-krit',
+          statusCode: STATUS_OPEN,
+          isCritical: false,
+          classificationValues: { SEVERITY: 'C3' },
+        }),
+      ]);
+
+      const view = await service.getSessionView(buildSession());
+
+      // Per constatering: classification.isCritical volgt Finding.isCritical.
+      expect(view.findings[0].classification).toMatchObject({ code: 'C1', isCritical: true });
+      expect(view.findings[1].classification).toMatchObject({ code: 'C3', isCritical: false });
+
+      // En de groepssamenvatting markeert C1 als kritiek (voorheen: false + grijs).
+      const c1 = view.summary.find((g: { code: string }) => g.code === 'C1');
+      const c3 = view.summary.find((g: { code: string }) => g.code === 'C3');
+      expect(c1).toMatchObject({ isCritical: true, openCount: 1 });
+      expect(c3).toMatchObject({ isCritical: false, openCount: 1 });
+    });
   });
 
   // ── uploadResolutionPhotos ──────────────────────────────

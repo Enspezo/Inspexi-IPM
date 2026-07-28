@@ -58,7 +58,7 @@ export class UsersService {
     }
 
     if (!orgId) {
-      throw new ForbiddenException();
+      throw new ForbiddenException('Geen organisatie gekoppeld aan uw account');
     }
 
     return this.prisma.user.findMany({
@@ -210,6 +210,38 @@ export class UsersService {
     return updated;
   }
 
+  /**
+   * B-511 §7: valideer een uitnodigingstoken vóórdat de invite-pagina het
+   * registratieformulier toont — voorheen ontdekte de gebruiker pas ná het
+   * invullen van naam + wachtwoord dat de uitnodiging verlopen of al gebruikt
+   * was. Zelfde checks en meldingen als acceptInvitation(); het token is een
+   * hoog-entropie geheim, dus de e-mail/organisatie teruggeven aan de houder
+   * ervan lekt niets.
+   */
+  async getInvitationByToken(token: string) {
+    const invitation = await this.prisma.invitation.findUnique({
+      where: { token },
+      include: { organization: { select: { name: true } } },
+    });
+
+    if (!invitation) {
+      throw new BadRequestException('Ongeldige uitnodiging');
+    }
+    if (invitation.acceptedAt) {
+      throw new BadRequestException('Uitnodiging is al geaccepteerd');
+    }
+    if (invitation.expiresAt < new Date()) {
+      throw new BadRequestException('Uitnodiging is verlopen');
+    }
+
+    return {
+      email: invitation.email,
+      role: invitation.role,
+      organizationName: invitation.organization.name,
+      expiresAt: invitation.expiresAt,
+    };
+  }
+
   async acceptInvitation(dto: AcceptInvitationDto) {
     const invitation = await this.prisma.invitation.findUnique({
       where: { token: dto.token },
@@ -267,12 +299,12 @@ export class UsersService {
 
     const user = await this.findOne(id);
 
-    // Check tenant isolation
+    // Tenant-isolatie (WP-C1 / B-105): cross-tenant id → zelfde 404 als "bestaat niet".
     if (
       !currentUser.roles.includes(Role.SUPERUSER) &&
       user.orgId !== currentUser.orgId
     ) {
-      throw new ForbiddenException();
+      throw new NotFoundException('Gebruiker niet gevonden');
     }
 
     await this.prisma.user.update({
@@ -294,7 +326,7 @@ export class UsersService {
       !currentUser.roles.includes(Role.SUPERUSER) &&
       user.orgId !== currentUser.orgId
     ) {
-      throw new ForbiddenException();
+      throw new NotFoundException('Gebruiker niet gevonden');
     }
 
     await this.prisma.user.update({
@@ -310,12 +342,12 @@ export class UsersService {
 
     const user = await this.findOne(id);
 
-    // Check tenant isolation
+    // Tenant-isolatie (WP-C1 / B-105): cross-tenant id → zelfde 404 als "bestaat niet".
     if (
       !currentUser.roles.includes(Role.SUPERUSER) &&
       user.orgId !== currentUser.orgId
     ) {
-      throw new ForbiddenException();
+      throw new NotFoundException('Gebruiker niet gevonden');
     }
 
     // Alleen SUPERUSER mag SUPERUSER-rol toewijzen
@@ -351,12 +383,12 @@ export class UsersService {
 
     const user = await this.findOne(id);
 
-    // Tenant isolatie
+    // Tenant-isolatie (WP-C1 / B-105): cross-tenant id → zelfde 404 als "bestaat niet".
     if (
       !currentUser.roles.includes(Role.SUPERUSER) &&
       user.orgId !== currentUser.orgId
     ) {
-      throw new ForbiddenException();
+      throw new NotFoundException('Gebruiker niet gevonden');
     }
 
     // ORG_ADMIN mag geen andere ORG_ADMIN of SUPERUSER resetten
@@ -441,8 +473,9 @@ export class UsersService {
 
   async adminUpdateUser(id: string, dto: AdminUpdateUserDto, actor: User) {
     const target = await this.findOne(id);
+    // Tenant-isolatie (WP-C1 / B-105): cross-tenant id → zelfde 404 als "bestaat niet".
     if (!actor.roles.includes(Role.SUPERUSER) && target.orgId !== actor.orgId) {
-      throw new ForbiddenException();
+      throw new NotFoundException('Gebruiker niet gevonden');
     }
 
     // PRD-12: de route is verbreed naar MANAGEMENT_ROLES zodat een MANAGER de
@@ -755,12 +788,12 @@ export class UsersService {
       throw new BadRequestException('Gebruiker is al verwijderd');
     }
 
-    // Tenant isolation
+    // Tenant-isolatie (WP-C1 / B-105): cross-tenant id → zelfde 404 als "bestaat niet".
     if (
       !currentUser.roles.includes(Role.SUPERUSER) &&
       targetUser.orgId !== currentUser.orgId
     ) {
-      throw new ForbiddenException();
+      throw new NotFoundException('Gebruiker niet gevonden');
     }
 
     // ORG_ADMIN cannot delete SUPERUSER
@@ -784,9 +817,9 @@ export class UsersService {
       throw new ForbiddenException('Geen bevoegdheid om de kleur van deze gebruiker te wijzigen');
     }
 
-    // Tenant isolation for non-superusers
+    // Tenant-isolatie (WP-C1 / B-105): cross-tenant id → zelfde 404 als "bestaat niet".
     if (!actor.roles.includes(Role.SUPERUSER) && target.orgId !== actor.orgId) {
-      throw new ForbiddenException();
+      throw new NotFoundException('Gebruiker niet gevonden');
     }
 
     return this.prisma.user.update({

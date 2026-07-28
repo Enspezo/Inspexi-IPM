@@ -8,7 +8,6 @@ import {
   Param,
   Query,
   Res,
-  ParseUUIDPipe,
   BadRequestException,
   UseInterceptors,
   UploadedFile,
@@ -25,6 +24,7 @@ import { CurrentUser } from '@/common/decorators/current-user.decorator';
 import { EmailTemplatesService } from './email-templates.service';
 import { CreateEmailTemplateDto } from './dto/create-email-template.dto';
 import { UpdateEmailTemplateDto } from './dto/update-email-template.dto';
+import { ParseUuidPipe } from '@/common';
 
 @ApiTags('email-templates')
 @Controller('email-templates')
@@ -77,7 +77,7 @@ export class EmailTemplatesController {
   @ApiOperation({ summary: 'Bijlagen van e-mailsjabloon ophalen' })
   async getAttachments(
     @CurrentUser() user: User,
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
   ) {
     const data = await this.service.getAttachments(id, user);
     return { success: true, data };
@@ -90,7 +90,7 @@ export class EmailTemplatesController {
   @ApiOperation({ summary: 'Bijlage toevoegen aan e-mailsjabloon' })
   async uploadAttachment(
     @CurrentUser() user: User,
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @UploadedFile() file: Express.Multer.File,
   ) {
     if (!file) throw new BadRequestException('Geen bestand geüpload');
@@ -103,8 +103,8 @@ export class EmailTemplatesController {
   @ApiOperation({ summary: 'Bijlage downloaden' })
   async downloadAttachment(
     @CurrentUser() user: User,
-    @Param('id', ParseUUIDPipe) id: string,
-    @Param('attachmentId', ParseUUIDPipe) attachmentId: string,
+    @Param('id', ParseUuidPipe) id: string,
+    @Param('attachmentId', ParseUuidPipe) attachmentId: string,
     @Res() res: Response,
   ) {
     const { buffer, attachment } = await this.service.downloadAttachment(id, attachmentId, user);
@@ -123,8 +123,8 @@ export class EmailTemplatesController {
   @ApiOperation({ summary: 'Bijlage verwijderen' })
   async deleteAttachment(
     @CurrentUser() user: User,
-    @Param('id', ParseUUIDPipe) id: string,
-    @Param('attachmentId', ParseUUIDPipe) attachmentId: string,
+    @Param('id', ParseUuidPipe) id: string,
+    @Param('attachmentId', ParseUuidPipe) attachmentId: string,
   ) {
     await this.service.deleteAttachment(id, attachmentId, user);
     return { success: true };
@@ -135,7 +135,7 @@ export class EmailTemplatesController {
   @ApiOperation({ summary: 'E-mailsjabloon details' })
   async findOne(
     @CurrentUser() user: User,
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
   ) {
     const data = await this.service.findOne(id, user);
     return { success: true, data };
@@ -157,7 +157,7 @@ export class EmailTemplatesController {
   @ApiOperation({ summary: 'E-mailsjabloon dupliceren' })
   async duplicate(
     @CurrentUser() user: User,
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
   ) {
     const data = await this.service.duplicate(id, user);
     return { success: true, data };
@@ -168,7 +168,7 @@ export class EmailTemplatesController {
   @ApiOperation({ summary: 'E-mailsjabloon bijwerken' })
   async update(
     @CurrentUser() user: User,
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @Body() dto: UpdateEmailTemplateDto,
   ) {
     const data = await this.service.update(id, dto, user);
@@ -180,7 +180,7 @@ export class EmailTemplatesController {
   @ApiOperation({ summary: 'E-mailsjabloon deactiveren' })
   async deactivate(
     @CurrentUser() user: User,
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
   ) {
     const data = await this.service.deactivate(id, user);
     return { success: true, data };

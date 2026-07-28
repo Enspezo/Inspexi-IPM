@@ -7,7 +7,7 @@ import {
 } from '@nestjs/common';
 import { User, Role, Prisma } from '@prisma/client';
 import { PrismaService } from '@/prisma';
-import { paginate, orgScope, assertFound, assertAllSameOrg } from '@/common';
+import { paginate, orgScope, assertFound, assertAllSameOrg, requireOrg } from '@/common';
 import {
   CreatePriceTableDto,
   UpdatePriceTableDto,
@@ -64,8 +64,9 @@ export class PriceTablesService {
   }
 
   async findOne(id: string, user: User) {
-    const priceTable = assertFound(await this.prisma.priceTable.findUnique({
-      where: { id },
+    // WP-C1 (B-105): org-scope in de query — cross-tenant id → zelfde 404.
+    const priceTable = assertFound(await this.prisma.priceTable.findFirst({
+      where: { id, ...orgScope(user) },
       include: {
         items: {
           include: {
@@ -91,30 +92,25 @@ export class PriceTablesService {
       },
     }), 'Prijstabel');
 
-    if (!user.roles.includes(Role.SUPERUSER) && priceTable.orgId !== user.orgId) {
-      throw new ForbiddenException();
-    }
-
     return this.serializePriceTable(priceTable);
   }
 
   async create(dto: CreatePriceTableDto, user: User) {
-    const orgId = user.orgId;
-    if (!orgId && !user.roles.includes(Role.SUPERUSER)) {
-      throw new ForbiddenException('Geen organisatie gekoppeld');
-    }
+    // WP-B3 (B-503): effectieve org (SUPERUSER op org-subdomein → tenant-org);
+    // zonder org een nette NL-400 i.p.v. een Prisma-fout (500).
+    const orgId = requireOrg(user);
 
     // If setting as default, unset other defaults in a transaction
     if (dto.isDefault) {
       return this.prisma.$transaction(async (tx) => {
         await tx.priceTable.updateMany({
-          where: { orgId: orgId!, isDefault: true },
+          where: { orgId, isDefault: true },
           data: { isDefault: false },
         });
 
         return tx.priceTable.create({
           data: {
-            orgId: orgId!,
+            orgId,
             name: dto.name,
             description: dto.description,
             isDefault: true,
@@ -125,7 +121,7 @@ export class PriceTablesService {
 
     return this.prisma.priceTable.create({
       data: {
-        orgId: orgId!,
+        orgId,
         name: dto.name,
         description: dto.description,
         isDefault: dto.isDefault ?? false,
@@ -238,8 +234,10 @@ export class PriceTablesService {
       throw new NotFoundException('Relatie niet gevonden');
     }
 
+    // FK-injectie (SEC-08-semantiek): de contact-id is invoer van de caller —
+    // bewust een 403 mét NL-melding, conform assertSameOrg.
     if (!user.roles.includes(Role.SUPERUSER) && contact.orgId !== user.orgId) {
-      throw new ForbiddenException();
+      throw new ForbiddenException('Relatie hoort niet bij uw organisatie');
     }
 
     // Check if already assigned
@@ -302,17 +300,14 @@ export class PriceTablesService {
   }
 
   async findForContact(contactId: string, user: User) {
-    // Verify contact access
-    const contact = await this.prisma.contact.findUnique({
-      where: { id: contactId },
+    // Verify contact access — WP-C1 (B-105): org-scope in de query, zodat een
+    // cross-tenant contact-id dezelfde 404 geeft als een niet-bestaande.
+    const contact = await this.prisma.contact.findFirst({
+      where: { id: contactId, ...orgScope(user) },
     });
 
     if (!contact || contact.isDeleted) {
       throw new NotFoundException('Relatie niet gevonden');
-    }
-
-    if (!user.roles.includes(Role.SUPERUSER) && contact.orgId !== user.orgId) {
-      throw new ForbiddenException();
     }
 
     // Get assigned price tables

@@ -12,7 +12,6 @@ import {
   paginate,
   assertFound,
   assertSameOrg,
-  orgScope,
   requireOrg,
   isSuperuser,
   isManagement,
@@ -72,7 +71,9 @@ export class SupportTicketsService {
   async stats(user: User): Promise<Record<string, number>> {
     const where: Prisma.SupportTicketWhereInput = { isDeleted: false };
     if (isSuperuser(user)) {
-      Object.assign(where, orgScope(user));
+      // Platform-support-wachtrij: bewust géén tenant-scoping, net als findAll
+      // hierboven (WP-B3/D2-uitzondering — dit is een mijn.*-console over alle
+      // organisaties; de lijst en de tellers moeten hetzelfde universum tonen).
     } else {
       where.orgId = user.orgId!;
       if (!isManagement(user)) where.createdById = user.id;

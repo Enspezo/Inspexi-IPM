@@ -9,7 +9,6 @@ import {
   Body,
   Query,
   Res,
-  ParseUUIDPipe,
   UseInterceptors,
   UploadedFile,
   ParseFilePipe,
@@ -46,6 +45,7 @@ import {
   InstrumentSuggestionsQueryDto,
   SetDefaultInstrumentsDto,
 } from './dto';
+import { ParseUuidPipe } from '@/common';
 
 const MAX_FILE_SIZE = 25 * 1024 * 1024; // 25 MB
 
@@ -131,7 +131,7 @@ export class MeasurementInstrumentsController {
   @Get('plan-defaults/:planId')
   @ApiOperation({ summary: 'Standaard-meetmiddelen voor een inspectie (niveau 2)' })
   async getPlanDefaults(
-    @Param('planId', ParseUUIDPipe) planId: string,
+    @Param('planId', ParseUuidPipe) planId: string,
     @CurrentUser() user: User,
   ) {
     const data = await this.service.getPlanDefaults(planId, user);
@@ -142,7 +142,7 @@ export class MeasurementInstrumentsController {
   @Roles(...WRITE_ROLES)
   @ApiOperation({ summary: 'Standaard-meetmiddelen voor een inspectie instellen' })
   async setPlanDefaults(
-    @Param('planId', ParseUUIDPipe) planId: string,
+    @Param('planId', ParseUuidPipe) planId: string,
     @CurrentUser() user: User,
     @Body() dto: SetDefaultInstrumentsDto,
   ) {
@@ -173,7 +173,7 @@ export class MeasurementInstrumentsController {
   @Get(':id/calibrations')
   @ApiOperation({ summary: 'Kalibraties van een meetmiddel' })
   async listCalibrations(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @CurrentUser() user: User,
   ) {
     const data = await this.service.listCalibrations(id, user);
@@ -186,7 +186,7 @@ export class MeasurementInstrumentsController {
   @ApiConsumes('multipart/form-data')
   @ApiOperation({ summary: 'Kalibratie toevoegen (optioneel met certificaat)' })
   async createCalibration(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @UploadedFile(optionalFilePipe) file: Express.Multer.File | undefined,
     @Body() dto: CreateCalibrationDto,
     @CurrentUser() user: User,
@@ -198,8 +198,8 @@ export class MeasurementInstrumentsController {
   @Get(':id/calibrations/:calId/document')
   @ApiOperation({ summary: 'Kalibratiecertificaat downloaden' })
   async downloadCalibrationDocument(
-    @Param('id', ParseUUIDPipe) id: string,
-    @Param('calId', ParseUUIDPipe) calId: string,
+    @Param('id', ParseUuidPipe) id: string,
+    @Param('calId', ParseUuidPipe) calId: string,
     @CurrentUser() user: User,
     @Res() res: Response,
   ) {
@@ -220,8 +220,8 @@ export class MeasurementInstrumentsController {
   @Roles(...WRITE_ROLES)
   @ApiOperation({ summary: 'Alleen het kalibratiecertificaat verwijderen' })
   async removeCalibrationDocument(
-    @Param('id', ParseUUIDPipe) id: string,
-    @Param('calId', ParseUUIDPipe) calId: string,
+    @Param('id', ParseUuidPipe) id: string,
+    @Param('calId', ParseUuidPipe) calId: string,
     @CurrentUser() user: User,
   ) {
     const data = await this.service.removeCalibrationDocument(id, calId, user);
@@ -234,8 +234,8 @@ export class MeasurementInstrumentsController {
   @ApiConsumes('multipart/form-data')
   @ApiOperation({ summary: 'Kalibratie bijwerken (optioneel certificaat vervangen)' })
   async updateCalibration(
-    @Param('id', ParseUUIDPipe) id: string,
-    @Param('calId', ParseUUIDPipe) calId: string,
+    @Param('id', ParseUuidPipe) id: string,
+    @Param('calId', ParseUuidPipe) calId: string,
     @UploadedFile(optionalFilePipe) file: Express.Multer.File | undefined,
     @Body() dto: UpdateCalibrationDto,
     @CurrentUser() user: User,
@@ -248,8 +248,8 @@ export class MeasurementInstrumentsController {
   @Roles(...WRITE_ROLES)
   @ApiOperation({ summary: 'Kalibratie verwijderen' })
   async removeCalibration(
-    @Param('id', ParseUUIDPipe) id: string,
-    @Param('calId', ParseUUIDPipe) calId: string,
+    @Param('id', ParseUuidPipe) id: string,
+    @Param('calId', ParseUuidPipe) calId: string,
     @CurrentUser() user: User,
   ) {
     await this.service.removeCalibration(id, calId, user);
@@ -260,7 +260,7 @@ export class MeasurementInstrumentsController {
 
   @Get(':id')
   @ApiOperation({ summary: 'Meetmiddel detail (incl. kalibraties)' })
-  async findOne(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: User) {
+  async findOne(@Param('id', ParseUuidPipe) id: string, @CurrentUser() user: User) {
     const data = await this.service.findOne(id, user);
     return { success: true, data };
   }
@@ -269,7 +269,7 @@ export class MeasurementInstrumentsController {
   @Roles(...WRITE_ROLES)
   @ApiOperation({ summary: 'Meetmiddel bijwerken (incl. toewijzing/status)' })
   async update(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @CurrentUser() user: User,
     @Body() dto: UpdateMeasurementInstrumentDto,
   ) {
@@ -280,7 +280,7 @@ export class MeasurementInstrumentsController {
   @Delete(':id')
   @Roles(...WRITE_ROLES)
   @ApiOperation({ summary: 'Meetmiddel verwijderen' })
-  async remove(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: User) {
+  async remove(@Param('id', ParseUuidPipe) id: string, @CurrentUser() user: User) {
     await this.service.remove(id, user);
     return { success: true, message: 'Meetmiddel verwijderd' };
   }

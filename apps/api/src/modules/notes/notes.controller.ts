@@ -7,7 +7,6 @@ import {
   Param,
   Body,
   Query,
-  ParseUUIDPipe,
 } from '@nestjs/common';
 import { RequiresFeature } from '@/common/decorators/requires-feature.decorator';
 import {
@@ -21,6 +20,7 @@ import { NotesService } from './notes.service';
 import { CreateNoteDto, UpdateNoteDto, ListNotesQueryDto } from './dto';
 import { Roles, CurrentUser } from '@/common/decorators';
 import { CRM_ROLES } from '@/common/auth/roles';
+import { ParseUuidPipe } from '@/common';
 
 const crmRoles = CRM_ROLES;
 
@@ -63,7 +63,7 @@ export class NotesController {
   @ApiResponse({ status: 200, description: 'Notitie details' })
   @ApiResponse({ status: 404, description: 'Niet gevonden' })
   async findOne(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @CurrentUser() user: User,
   ) {
     const note = await this.notesService.findOne(id, user);
@@ -84,7 +84,7 @@ export class NotesController {
   @ApiOperation({ summary: 'Notitie bijwerken (alleen aanmaker, ORG_ADMIN of SUPERUSER)' })
   @ApiResponse({ status: 200, description: 'Notitie bijgewerkt' })
   async update(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @Body() dto: UpdateNoteDto,
     @CurrentUser() user: User,
   ) {
@@ -97,7 +97,7 @@ export class NotesController {
   @ApiOperation({ summary: 'Notitie verwijderen (soft delete, alleen aanmaker, ORG_ADMIN of SUPERUSER)' })
   @ApiResponse({ status: 200, description: 'Notitie verwijderd' })
   async remove(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @CurrentUser() user: User,
   ) {
     await this.notesService.remove(id, user);

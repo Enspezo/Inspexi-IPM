@@ -11,7 +11,7 @@ import type {
   DashboardData,
   InspectionListItem,
   InspectionDetail,
-  GeneratedDocumentSummary,
+  InspectionDocumentListItem,
   Finding,
 } from '@/types';
 
@@ -38,9 +38,9 @@ export function useInspection(id: string | undefined) {
 }
 
 export function useInspectionDocuments(id: string | undefined) {
-  return useQuery<GeneratedDocumentSummary[]>({
+  return useQuery<InspectionDocumentListItem[]>({
     queryKey: clientInspectionDocumentKeys.byInspection(id as string),
-    queryFn: () => apiClient.get<GeneratedDocumentSummary[]>(`/client/inspections/${id}/documents`),
+    queryFn: () => apiClient.get<InspectionDocumentListItem[]>(`/client/inspections/${id}/documents`),
     enabled: !!id,
   });
 }

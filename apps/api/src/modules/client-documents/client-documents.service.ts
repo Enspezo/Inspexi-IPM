@@ -41,17 +41,32 @@ export class ClientDocumentsService {
             referenceNumber: true,
             normTypeCode: true,
             addressCity: true,
+            statusCode: true,
           },
         },
       },
     });
     if (!document) throw new NotFoundException('Document niet gevonden');
     await this.inspections.assertInspectionAccess(user.id, org, document.inspectionPlanId);
+    // B-412 (WP-B9): documenten van een nog niet gereviewd rapport zijn niet
+    // klant-zichtbaar — zelfde 404 als een onbekend document (geen oracle).
+    if (!(await this.inspections.isContentReleased(org, document.inspectionPlan.statusCode))) {
+      throw new NotFoundException('Document niet gevonden');
+    }
     return document;
   }
 
   async getDetail(user: CurrentClientUserData, orgId: string | null, documentId: string) {
     const document = await this.getWithAccessCheck(user, orgId, documentId);
+    // B-406a: teken-recht meesturen zodat de UI de knop kan verbergen en de
+    // klant niet pas ná het tekenen een 403 krijgt.
+    const canSign = await this.inspections.hasSignAccess(
+      user.id,
+      this.inspections.requireOrg(orgId),
+      document.inspectionPlanId,
+    );
+    const { statusCode: _planStatus, ...inspectionPlan } = document.inspectionPlan;
+    void _planStatus;
     return {
       id: document.id,
       documentType: document.documentType,
@@ -60,7 +75,8 @@ export class ClientDocumentsService {
       pdfUrl: document.pdfUrl,
       generatedAt: document.generatedAt,
       finalizedAt: document.finalizedAt,
-      inspectionPlan: document.inspectionPlan,
+      inspectionPlan,
+      canSign,
       signatures: document.signatures.map((s) => ({
         id: s.id,
         signerRoleCode: s.signerRoleCode,

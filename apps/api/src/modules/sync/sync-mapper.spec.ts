@@ -88,6 +88,25 @@ describe('sync-mapper — JSON-kolomvalidatie (permissief, garbage → 400)', ()
     // non-nullable metadata → null is garbage.
     expect(() => toDbData('inspectionPlans', { metadata: null })).toThrow(BadRequestException);
   });
+
+  it('WP-D2: measurementSheetRecords.data dwingt de canonieke vorm af', () => {
+    const canonical = {
+      isolation: { '0': { r_iso: { value: 210.5, passFail: 'pass' } } },
+    };
+    expect(toDbData('measurementSheetRecords', { data: canonical })).toEqual({
+      data: canonical,
+    });
+    // De verouderde PWA-vorm (sections-wrapper) → 400 met NL-melding.
+    expect(() =>
+      toDbData('measurementSheetRecords', {
+        data: { sections: { isolation: { rows: [{ r_iso: 2.5 }] } } },
+      }),
+    ).toThrow(BadRequestException);
+    // Platte leaf zonder { value }-wrapper → 400.
+    expect(() =>
+      toDbData('measurementSheetRecords', { data: { isolation: { '0': { r_iso: 2.5 } } } }),
+    ).toThrow(BadRequestException);
+  });
 });
 
 describe('sync-mapper — toChildRows whitelist', () => {

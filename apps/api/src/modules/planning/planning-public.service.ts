@@ -21,9 +21,23 @@ export class PlanningPublicService {
   // ─── Public portal ─────────────────────────────────────────
 
   async findByPublicToken(token: string) {
+    // B-306 (WP-B7): expliciete select-allowlist i.p.v. een include+spread die élk
+    // kolomveld (incl. `internalNotes`) publiek maakte. Alleen wat de publieke
+    // afspraakpagina daadwerkelijk toont mag hier staan — een nieuw veld toevoegen
+    // is een bewuste, geteste beslissing (zie de key-snapshot-e2e in
+    // test/public-endpoints.e2e-spec.ts). `orgId` is server-side nodig voor de
+    // inspecteur-contactresolutie en wordt vóór de return weer weggestript.
     const item = assertFound(await this.prisma.planningItem.findUnique({
       where: { publicToken: token },
-      include: {
+      select: {
+        id: true,
+        orgId: true, // intern — wordt hieronder uit de response gestript
+        status: true,
+        productName: true,
+        scheduledDate: true,
+        durationHours: true,
+        isMultiDay: true,
+        labels: true,
         contact: {
           select: { id: true, type: true, companyName: true, firstName: true, lastName: true },
         },
@@ -39,7 +53,10 @@ export class PlanningPublicService {
         },
         inspectors: {
           where: { acceptanceStatus: AcceptanceStatus.ACCEPTED },
-          include: {
+          select: {
+            id: true,
+            isPrimary: true,
+            acceptanceStatus: true,
             user: {
               // Rauwe contact-/consent-velden alleen voor server-side resolutie (zie leak-strip).
               select: {
@@ -55,15 +72,25 @@ export class PlanningPublicService {
               },
             },
           },
-          orderBy: [{ isPrimary: 'desc' }],
+          orderBy: [{ isPrimary: 'desc' as const }],
         },
         organization: { select: { id: true, name: true, logoUrl: true, primaryColor: true } },
         sessions: {
           where: { isCancelled: false },
-          include: {
+          select: {
+            id: true,
+            sessionNumber: true,
+            scheduledDate: true,
+            durationHours: true,
+            status: true,
+            notes: true,
+            isCancelled: true,
             sessionInspectors: {
               where: { acceptanceStatus: AcceptanceStatus.ACCEPTED },
-              include: {
+              select: {
+                id: true,
+                isPrimary: true,
+                acceptanceStatus: true,
                 user: {
                   // Rauwe contact-/consent-velden alleen voor server-side resolutie (zie leak-strip).
                   select: {
@@ -136,7 +163,9 @@ export class PlanningPublicService {
 
     // Attach shared documents (from this planning item + linked quote + linked request)
     const documents = await this.getSharedDocuments(token);
-    return { ...item, inspectors, sessions, documents };
+    // `orgId` was alleen nodig voor de contactresolutie hierboven — nooit teruggeven.
+    const { orgId: _orgId, ...publicItem } = item;
+    return { ...publicItem, inspectors, sessions, documents };
   }
 
   async addClientQuestion(token: string, dto: AddQuestionDto) {

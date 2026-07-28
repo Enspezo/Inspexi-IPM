@@ -4,9 +4,10 @@ import { OrganizationsService } from './organizations.service';
 import { SupportAccessService } from './support-access.service';
 import { SupportAccessScheduler } from './support-access.scheduler';
 import { StorageModule } from '@/common/services/storage/storage.module';
+import { UsersModule } from '@/modules/users/users.module';
 
 @Module({
-  imports: [StorageModule],
+  imports: [StorageModule, UsersModule],
   controllers: [OrganizationsController],
   providers: [OrganizationsService, SupportAccessService, SupportAccessScheduler],
   exports: [OrganizationsService, SupportAccessService],

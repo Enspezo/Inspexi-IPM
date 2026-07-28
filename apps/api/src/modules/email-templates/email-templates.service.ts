@@ -3,11 +3,10 @@ import {
   Inject,
   Logger,
   NotFoundException,
-  ForbiddenException,
   BadRequestException,
 } from '@nestjs/common';
 import { randomUUID } from 'crypto';
-import { User, Role, Prisma, EmailTemplateType } from '@prisma/client';
+import { User, Prisma, EmailTemplateType } from '@prisma/client';
 import { PrismaService } from '@/prisma';
 import { STORAGE_PROVIDER, type StorageProvider } from '@/common/services/storage/storage.interface';
 import {
@@ -15,6 +14,7 @@ import {
   orgScope,
   assertFound,
   sanitizeStorageFilename,
+  requireOrg,
   assertAllowedAttachmentUpload,
 } from '@/common';
 import { CreateEmailTemplateDto } from './dto/create-email-template.dto';
@@ -63,9 +63,10 @@ export class EmailTemplatesService {
   }
 
   async findOne(id: string, user: User) {
-    const template = assertFound(
-      await this.prisma.emailTemplate.findUnique({
-        where: { id },
+    // WP-C1 (B-105): org-scope in de query — cross-tenant id → zelfde 404.
+    return assertFound(
+      await this.prisma.emailTemplate.findFirst({
+        where: { id, ...orgScope(user) },
         include: {
           creator: { select: { id: true, firstName: true, lastName: true } },
           attachments: { orderBy: { sortOrder: 'asc' } },
@@ -73,19 +74,12 @@ export class EmailTemplatesService {
       }),
       'E-mailsjabloon',
     );
-
-    if (!user.roles.includes(Role.SUPERUSER) && template.orgId !== user.orgId) {
-      throw new ForbiddenException();
-    }
-
-    return template;
   }
 
   async create(dto: CreateEmailTemplateDto, user: User) {
-    const orgId = user.orgId;
-    if (!orgId) {
-      throw new ForbiddenException('Geen organisatie gekoppeld');
-    }
+    // WP-B3 (B-503): effectieve org (SUPERUSER op org-subdomein → tenant-org);
+    // zonder org een nette NL-400 i.p.v. een 403.
+    const orgId = requireOrg(user);
 
     // Auto-deactivate existing active template of same type
     return this.prisma.$transaction(async (tx) => {

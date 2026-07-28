@@ -163,6 +163,77 @@ describe('TenantGuard', () => {
     });
   });
 
+  describe('SUPERUSER effectieve org (D2: subdomein bepaalt de scope)', () => {
+    const createRequestContext = (
+      user: any,
+      tenant: TenantContext,
+    ): { request: { user: any; tenant: TenantContext }; context: ExecutionContext } => {
+      const request = { user, tenant };
+      const context = {
+        getHandler: jest.fn(),
+        getClass: jest.fn(),
+        switchToHttp: jest.fn().mockReturnValue({
+          getRequest: jest.fn().mockReturnValue(request),
+        }),
+      } as unknown as ExecutionContext;
+      return { request, context };
+    };
+
+    it('zet de tenant-org als effectieve orgId op de request-user (org-subdomein)', () => {
+      (reflector.getAllAndOverride as jest.Mock).mockReturnValue(false);
+
+      const org = { id: 'org-1', name: 'Org 1' } as any;
+      const tenant: TenantContext = {
+        slug: 'someorg',
+        organization: org,
+        orgId: 'org-1',
+        isSuperuserDomain: false,
+      };
+      const user = { id: 'u1', orgId: null, roles: [Role.SUPERUSER] };
+      const { request, context } = createRequestContext(user, tenant);
+
+      expect(guard.canActivate(context)).toBe(true);
+      expect(request.user.orgId).toBe('org-1');
+      expect(request.user.organization).toBe(org);
+      // Oorspronkelijke user-object blijft onaangetast (shallow clone)
+      expect(user.orgId).toBeNull();
+    });
+
+    it('laat orgId null op het superuser-domein (platform-breed)', () => {
+      (reflector.getAllAndOverride as jest.Mock).mockReturnValue(false);
+
+      const tenant: TenantContext = {
+        slug: null,
+        organization: null,
+        orgId: null,
+        isSuperuserDomain: true,
+      };
+      const user = { id: 'u1', orgId: null, roles: [Role.SUPERUSER] };
+      const { request, context } = createRequestContext(user, tenant);
+
+      expect(guard.canActivate(context)).toBe(true);
+      expect(request.user).toBe(user);
+      expect(request.user.orgId).toBeNull();
+    });
+
+    it('laat orgId null op een onbekende host (e2e/127.0.0.1)', () => {
+      (reflector.getAllAndOverride as jest.Mock).mockReturnValue(false);
+
+      const tenant: TenantContext = {
+        slug: null,
+        organization: null,
+        orgId: null,
+        isSuperuserDomain: false,
+      };
+      const user = { id: 'u1', orgId: null, roles: [Role.SUPERUSER] };
+      const { request, context } = createRequestContext(user, tenant);
+
+      expect(guard.canActivate(context)).toBe(true);
+      expect(request.user).toBe(user);
+      expect(request.user.orgId).toBeNull();
+    });
+  });
+
   describe('superuser domain — non-SUPERUSER', () => {
     it('should deny non-SUPERUSER on superuser domain', () => {
       (reflector.getAllAndOverride as jest.Mock).mockReturnValue(false);

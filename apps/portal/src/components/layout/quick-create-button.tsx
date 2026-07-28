@@ -9,6 +9,10 @@ import { Role } from '@/types';
 // (contacts / requests / quotes). Projects additionally allow WERKVOORBEREIDER.
 const CRM_WRITE_ROLES = [Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE];
 const PROJECT_WRITE_ROLES = [...CRM_WRITE_ROLES, Role.WERKVOORBEREIDER];
+// B-315 §7: contactpersonen/locaties vereisen CRM-leestoegang (een INSPECTEUR
+// krijgt 403 op /contacts en kan de flows dus nooit afronden — dode menu-items).
+// Zelfde rolgroep als het sidebar-item "Relaties" (crmRoles).
+const CRM_READ_ROLES = [...CRM_WRITE_ROLES, Role.WERKVOORBEREIDER];
 
 type QuickCreateAction =
   | { type: 'flow'; flow: QuickCreateFlow }
@@ -17,8 +21,7 @@ type QuickCreateAction =
 interface QuickCreateDef {
   key: string;
   label: string;
-  /** Roles allowed to create this; `null` = visible to everyone (matches the
-   *  contactpersoon/locatie overview pages, which have no role check). */
+  /** Roles allowed to create this; `null` = visible to everyone. */
   roles: Role[] | null;
   action: QuickCreateAction;
 }
@@ -26,8 +29,8 @@ interface QuickCreateDef {
 // Order is intentional and matches the spec.
 export const QUICK_CREATE_DEFS: QuickCreateDef[] = [
   { key: 'contact', label: 'Nieuwe relatie', roles: CRM_WRITE_ROLES, action: { type: 'flow', flow: 'contact' } },
-  { key: 'contactPerson', label: 'Nieuwe contactpersoon', roles: null, action: { type: 'flow', flow: 'contactPerson' } },
-  { key: 'location', label: 'Nieuwe locatie', roles: null, action: { type: 'flow', flow: 'location' } },
+  { key: 'contactPerson', label: 'Nieuwe contactpersoon', roles: CRM_READ_ROLES, action: { type: 'flow', flow: 'contactPerson' } },
+  { key: 'location', label: 'Nieuwe locatie', roles: CRM_READ_ROLES, action: { type: 'flow', flow: 'location' } },
   { key: 'request', label: 'Nieuwe aanvraag', roles: CRM_WRITE_ROLES, action: { type: 'flow', flow: 'request' } },
   { key: 'quote', label: 'Nieuwe offerte', roles: CRM_WRITE_ROLES, action: { type: 'navigate', to: '/quotes/new' } },
   { key: 'project', label: 'Nieuw project', roles: PROJECT_WRITE_ROLES, action: { type: 'flow', flow: 'project' } },

@@ -136,8 +136,9 @@ export class ContactPersonsService {
   }
 
   async findContactPerson(id: string, user: User) {
-    const person = await this.prisma.contactPerson.findUnique({
-      where: { id },
+    // WP-C1 (B-105): org-scope in de query — cross-tenant id → zelfde 404.
+    const person = await this.prisma.contactPerson.findFirst({
+      where: { id, ...orgScope(user) },
       include: {
         contact: true,
         role: { select: { id: true, code: true, label: true } },
@@ -146,10 +147,6 @@ export class ContactPersonsService {
 
     if (!person || person.isDeleted) {
       throw new NotFoundException('Contactpersoon niet gevonden');
-    }
-
-    if (!user.roles.includes(Role.SUPERUSER) && person.orgId !== user.orgId) {
-      throw new ForbiddenException();
     }
 
     return person;
@@ -224,8 +221,10 @@ export class ContactPersonsService {
       throw new NotFoundException('Locatie niet gevonden');
     }
 
+    // FK-injectie (SEC-08-semantiek): de caller levert deze id zelf als invoer
+    // aan — bewust een 403 mét NL-melding, conform assertSameOrg.
     if (!user.roles.includes(Role.SUPERUSER) && location.orgId !== user.orgId) {
-      throw new ForbiddenException();
+      throw new ForbiddenException('Locatie hoort niet bij uw organisatie');
     }
 
     return this.prisma.locationContactPerson.create({

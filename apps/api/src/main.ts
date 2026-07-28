@@ -1,6 +1,6 @@
 import { NestFactory } from '@nestjs/core';
 import { NestExpressApplication } from '@nestjs/platform-express';
-import { Logger, RawBodyRequest, ValidationPipe } from '@nestjs/common';
+import { Logger, RawBodyRequest } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
@@ -8,6 +8,7 @@ import { json, urlencoded } from 'express';
 import type { NextFunction, Request, Response } from 'express';
 import { AppModule } from './app.module';
 import { AllExceptionsFilter } from './common/filters';
+import { createAppValidationPipe } from './common/validation/nl-validation';
 import { validateJwtSecrets } from './common/config/validate-jwt-secrets';
 
 const processLogger = new Logger('Process');
@@ -184,15 +185,8 @@ async function bootstrap() {
   // Global prefix
   app.setGlobalPrefix('api/v1');
 
-  // Validation pipe
-  app.useGlobalPipes(
-    new ValidationPipe({
-      whitelist: true,
-      forbidNonWhitelisted: true,
-      transform: true,
-      transformOptions: { enableImplicitConversion: true },
-    }),
-  );
+  // Validation pipe — gedeelde factory mét NL-exceptionFactory (WP-C1 / B-501).
+  app.useGlobalPipes(createAppValidationPipe());
 
   // Global exception filter
   app.useGlobalFilters(new AllExceptionsFilter());

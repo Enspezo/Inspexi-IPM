@@ -6,7 +6,6 @@ import {
   Delete,
   Param,
   Body,
-  ParseUUIDPipe,
   ParseEnumPipe,
   BadRequestException,
 } from '@nestjs/common';
@@ -21,6 +20,7 @@ import {
   ReorderCustomFieldsDto,
 } from './dto';
 import { Roles, CurrentUser } from '@/common/decorators';
+import { ParseUuidPipe } from '@/common';
 
 @ApiTags('Custom Fields')
 @ApiBearerAuth()
@@ -79,7 +79,7 @@ export class CustomFieldsController {
   @Roles(...ORG_ADMINS)
   @ApiOperation({ summary: 'Eigen veld bijwerken' })
   update(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @Body() dto: UpdateCustomFieldDto,
     @CurrentUser() user: User,
   ) {
@@ -90,7 +90,7 @@ export class CustomFieldsController {
   @Roles(...ORG_ADMINS)
   @ApiOperation({ summary: 'Eigen veld verwijderen (soft-delete)' })
   remove(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @CurrentUser() user: User,
   ) {
     return this.customFieldsService.remove(id, this.requireOrg(user));

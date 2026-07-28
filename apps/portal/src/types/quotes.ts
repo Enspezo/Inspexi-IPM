@@ -149,6 +149,12 @@ export interface Quote {
   total: number;
   validUntil: string | null;
   requiresApproval: boolean;
+  /**
+   * Effectieve goedkeuringsplicht (B-304), server-side berekend in de detail-
+   * response: org-drempel ÓF template-`requiresApproval`. Gebruik dít veld voor
+   * actiemenu/verstuurgate — niet `requiresApproval` (dat is alleen de template-vlag).
+   */
+  approvalRequired?: boolean;
   internalNotes: string | null;
   projectId: string | null;
   projectPhaseId: string | null;
@@ -215,6 +221,10 @@ export interface ResolvedPrice {
   unitPrice: number;
   vatRate: number;
   unit: string;
+  /** Herkomst van de prijs (B-309): vaste prijs, staffel of geen prijstabel-match. */
+  priceType?: 'FIXED' | 'TIERED' | null;
+  /** Toegepaste staffel (alleen bij priceType TIERED); toQty null = "vanaf". */
+  tier?: { fromQty: number; toQty: number | null } | null;
 }
 
 export interface QuoteQuestion {

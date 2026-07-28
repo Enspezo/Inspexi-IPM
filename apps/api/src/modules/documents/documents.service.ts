@@ -13,7 +13,15 @@ import {
   STORAGE_PROVIDER,
   type StorageProvider,
 } from '@/common/services/storage/storage.interface';
-import { paginate, buildOrderBy, orgScope, assertSameOrg, assertAllSameOrg, sanitizeStorageFilename } from '@/common';
+import {
+  paginate,
+  buildOrderBy,
+  orgScope,
+  assertSameOrg,
+  assertAllSameOrg,
+  sanitizeStorageFilename,
+  assertUploadContentMatchesClaim,
+} from '@/common';
 import { UploadDocumentDto, ListDocumentsQueryDto, UpdateDocumentDto } from './dto';
 
 const userSelect = {
@@ -268,6 +276,10 @@ export class DocumentsService {
 
   async upload(file: Express.Multer.File, dto: UploadDocumentDto, user: User) {
     const orgId = user.orgId!;
+
+    // De controller-whitelist keurt de client-claim; hier waarborgen we dat de
+    // inhoud die claim waarmaakt voor formaten mét magic bytes (WP-B4).
+    assertUploadContentMatchesClaim(file);
 
     // Validate the linked entity exists and belongs to the caller's org
     // (prevents linking a document to another tenant's record by UUID).

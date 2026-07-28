@@ -17,6 +17,7 @@ import { memoryStorage } from 'multer';
 import { ApiTags, ApiOperation, ApiConsumes } from '@nestjs/swagger';
 import { User, EmailTemplateType } from '@prisma/client';
 import { ORG_ADMINS } from '@/common/auth/roles';
+import { setBinaryResponseHeaders, sanitizeDispositionFilename } from '@/common';
 import type { Response } from 'express';
 import { Roles } from '@/common/decorators/roles.decorator';
 import { CurrentUser } from '@/common/decorators/current-user.decorator';
@@ -107,8 +108,13 @@ export class EmailTemplatesController {
     @Res() res: Response,
   ) {
     const { buffer, attachment } = await this.service.downloadAttachment(id, attachmentId, user);
-    res.set('Content-Type', attachment.mimeType);
-    res.set('Content-Disposition', `attachment; filename="${encodeURIComponent(attachment.originalName)}"`);
+    setBinaryResponseHeaders(res, {
+      mimeType: attachment.mimeType,
+      contentLength: buffer.length,
+      filename: sanitizeDispositionFilename(attachment.originalName),
+      disposition: 'attachment',
+      cacheControl: 'private, no-store',
+    });
     res.send(buffer);
   }
 

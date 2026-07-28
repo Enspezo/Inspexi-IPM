@@ -21,6 +21,7 @@ import { ApiTags, ApiOperation, ApiConsumes } from '@nestjs/swagger';
 import { Response, Request } from 'express';
 import { User, QuoteStatus } from '@prisma/client';
 import { ALL_STAFF, CRM_ROLES, MANAGEMENT_ROLES, OFFICE_ROLES } from '@/common/auth/roles';
+import { setBinaryResponseHeaders, sanitizeDispositionFilename } from '@/common';
 import { Roles } from '@/common/decorators/roles.decorator';
 import { CurrentUser } from '@/common/decorators/current-user.decorator';
 import { CurrentTenant } from '@/common/decorators/current-tenant.decorator';
@@ -263,7 +264,13 @@ export class QuotesController {
     @Res() res: Response,
   ) {
     const { buffer, attachment } = await this.attachmentsService.downloadAttachment(id, attachmentId, user);
-    res.set({ 'Content-Type': attachment.mimeType, 'Content-Disposition': `attachment; filename="${attachment.fileName}"`, 'Content-Length': buffer.length });
+    setBinaryResponseHeaders(res, {
+      mimeType: attachment.mimeType,
+      contentLength: buffer.length,
+      filename: sanitizeDispositionFilename(attachment.fileName),
+      disposition: 'attachment',
+      cacheControl: 'private, no-store',
+    });
     res.send(buffer);
   }
 
@@ -405,8 +412,21 @@ export class PublicQuotesController {
     @CurrentTenant() tenant: TenantContext,
     @Res() res: Response,
   ) {
-    const { buffer, attachment } = await this.attachmentsService.downloadPublicAttachment(token, attachmentId, tenant);
-    res.set({ 'Content-Type': attachment.mimeType, 'Content-Disposition': `attachment; filename="${attachment.fileName}"`, 'Content-Length': buffer.length });
+    const { buffer, attachment } = await this.attachmentsService.downloadPublicAttachment(
+      token,
+      attachmentId,
+      tenant,
+    );
+    // Publieke route: bijlagen van vóór de upload-whitelist kunnen elk type
+    // bevatten — attachment + nosniff + sandbox houden ze inert (WP-B4).
+    // De tenantbinding (WP-B7/B-152) zit in downloadPublicAttachment zelf.
+    setBinaryResponseHeaders(res, {
+      mimeType: attachment.mimeType,
+      contentLength: buffer.length,
+      filename: sanitizeDispositionFilename(attachment.fileName),
+      disposition: 'attachment',
+      cacheControl: 'private, no-store',
+    });
     res.send(buffer);
   }
 }

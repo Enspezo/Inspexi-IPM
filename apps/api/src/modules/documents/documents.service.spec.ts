@@ -92,10 +92,11 @@ describe('DocumentsService', () => {
   });
 
   describe('upload', () => {
+    // Echte %PDF-header — de upload kruist sinds WP-B4 claim ↔ inhoud.
     const mockFile = {
       originalname: 'test.pdf',
       mimetype: 'application/pdf',
-      buffer: Buffer.from('pdf-content'),
+      buffer: Buffer.from('%PDF-1.7\npdf-content'),
       size: 1024,
     } as Express.Multer.File;
 
@@ -482,7 +483,7 @@ describe('DocumentsService', () => {
     const locationFile = {
       originalname: 'plattegrond.pdf',
       mimetype: 'application/pdf',
-      buffer: Buffer.from('pdf'),
+      buffer: Buffer.from('%PDF-1.7\npdf'),
       size: 512,
     } as Express.Multer.File;
 

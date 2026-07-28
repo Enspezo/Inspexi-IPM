@@ -12,6 +12,7 @@ import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { User } from '@prisma/client';
 import { Roles, CurrentUser } from '@/common/decorators';
 import { ALL_STAFF } from '@/common/auth/roles';
+import { resolveImageResponseType, setBinaryResponseHeaders } from '@/common';
 import { FindingsService } from './findings.service';
 import { CreateFindingDto, UpdateFindingDto } from './dto';
 import { ParseUuidPipe } from '@/common';
@@ -52,8 +53,17 @@ export class FindingsController {
     @CurrentUser() user: User,
     @Res({ passthrough: true }) res: Response,
   ): Promise<StreamableFile> {
-    const { buffer, mimeType } = await this.service.getResolutionPhoto(id, user);
-    res.set({ 'Content-Type': mimeType, 'Cache-Control': 'private, max-age=86400' });
+    const { buffer } = await this.service.getResolutionPhoto(id, user);
+    // WP-B4: bytes bepalen het Content-Type (niet de sleutel-extensie) +
+    // nosniff/sandbox; onherkenbare inhoud degradeert naar octet-stream.
+    const resolved = resolveImageResponseType(buffer, 'herstelfoto');
+    setBinaryResponseHeaders(res, {
+      mimeType: resolved.mimeType,
+      contentLength: buffer.length,
+      filename: resolved.filename,
+      disposition: resolved.disposition,
+      cacheControl: 'private, max-age=86400',
+    });
     return new StreamableFile(buffer);
   }
 

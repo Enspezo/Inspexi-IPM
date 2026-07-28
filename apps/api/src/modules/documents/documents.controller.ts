@@ -29,6 +29,11 @@ import { memoryStorage } from 'multer';
 import { Response } from 'express';
 import { User } from '@prisma/client';
 import { ALL_STAFF, CRM_ROLES, ORG_ADMINS } from '@/common/auth/roles';
+import {
+  ALLOWED_ATTACHMENT_MIME_TYPES,
+  setBinaryResponseHeaders,
+  sanitizeDispositionFilename,
+} from '@/common';
 import { DocumentsService } from './documents.service';
 import { UploadDocumentDto, ListDocumentsQueryDto, UpdateDocumentDto } from './dto';
 import { Roles, CurrentUser } from '@/common/decorators';
@@ -39,11 +44,9 @@ import { ParseUuidPipe } from '@/common';
  * NestJS built-in FileTypeValidator uses `file-type` which inspects magic bytes.
  * Formats like CSV, SVG, and plain-text docs have no magic bytes, so they
  * are rejected by the built-in validator.  This validator accepts them based
- * on the mimetype field set by multer.
+ * on the mimetype field set by multer; de claim↔inhoud-kruiscontrole (magic
+ * bytes waar het formaat die heeft) volgt daarna in de service (WP-B4).
  */
-const ALLOWED_MIME_REGEX =
-  /^(application\/pdf|image\/(jpeg|png|svg\+xml|webp)|application\/vnd\.(ms-excel|ms-powerpoint|openxmlformats-officedocument\.(spreadsheetml\.sheet|wordprocessingml\.document|presentationml\.presentation))|application\/msword|application\/zip|text\/csv)$/;
-
 class MimeTypeValidator extends FileValidator {
   constructor() {
     super({});
@@ -51,7 +54,7 @@ class MimeTypeValidator extends FileValidator {
 
   isValid(file?: Express.Multer.File): boolean {
     if (!file) return false;
-    return ALLOWED_MIME_REGEX.test(file.mimetype);
+    return (ALLOWED_ATTACHMENT_MIME_TYPES as readonly string[]).includes(file.mimetype);
   }
 
   buildErrorMessage(): string {
@@ -140,10 +143,14 @@ export class DocumentsController {
     @Res() res: Response,
   ) {
     const { buffer, document } = await this.documentsService.download(id, user);
-    res.set({
-      'Content-Type': document.mimeType,
-      'Content-Disposition': `attachment; filename="${encodeURIComponent(document.originalName)}"`,
-      'Content-Length': buffer.length.toString(),
+    // Altijd attachment (documenten renderen nooit op het app-origin);
+    // nosniff + sandbox-CSP via de gedeelde helper (WP-B4).
+    setBinaryResponseHeaders(res, {
+      mimeType: document.mimeType,
+      contentLength: buffer.length,
+      filename: sanitizeDispositionFilename(document.originalName),
+      disposition: 'attachment',
+      cacheControl: 'private, no-store',
     });
     res.send(buffer);
   }

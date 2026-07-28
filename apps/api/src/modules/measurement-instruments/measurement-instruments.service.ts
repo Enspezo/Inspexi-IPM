@@ -26,7 +26,7 @@ import {
   assertAllSameOrg,
   requireOrg,
   USER_SUMMARY_SELECT,
-  sanitizeStorageFilename,
+  assertAllowedPdfOrImageUpload,
 } from '@/common';
 import {
   CreateMeasurementInstrumentDto,
@@ -510,15 +510,18 @@ export class MeasurementInstrumentsService {
     return calibration;
   }
 
-  /** Storage-sleutel: `{orgId}/measurement-instruments/{instrumentId}/calibrations/{uuid}-{name}`. */
+  /** Storage-sleutel: `{orgId}/measurement-instruments/{instrumentId}/calibrations/{uuid}.{ext}`. */
   private async storeFile(orgId: string, instrumentId: string, file: Express.Multer.File) {
-    const storageKey = `${orgId}/measurement-instruments/${instrumentId}/calibrations/${randomUUID()}-${sanitizeStorageFilename(file.originalname)}`;
-    await this.storage.upload(storageKey, file.buffer, file.mimetype);
+    // Magic bytes beslissen type + opslagextensie (WP-B4); `originalname`
+    // blijft alleen als weergavenaam bewaard.
+    const detected = assertAllowedPdfOrImageUpload(file);
+    const storageKey = `${orgId}/measurement-instruments/${instrumentId}/calibrations/${randomUUID()}.${detected.extension}`;
+    await this.storage.upload(storageKey, file.buffer, detected.mimeType);
     return {
       storageKey,
       fileName: file.originalname,
       originalName: file.originalname,
-      mimeType: file.mimetype,
+      mimeType: detected.mimeType,
       size: file.size,
     };
   }

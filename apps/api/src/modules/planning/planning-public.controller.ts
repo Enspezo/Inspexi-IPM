@@ -15,6 +15,7 @@ import { RequiresFeature } from '@/common/decorators/requires-feature.decorator'
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { Request, Response } from 'express';
 import { Public } from '@/common/decorators';
+import { setBinaryResponseHeaders, sanitizeDispositionFilename } from '@/common';
 import { PlanningPublicService } from './planning-public.service';
 import { PlanningIcalService } from './planning-ical.service';
 import { AddQuestionDto, CreateRescheduleRequestDto } from './dto';
@@ -107,10 +108,13 @@ export class PlanningPublicController {
     }
 
     const buffer = await this.storage.download(doc.storageKey);
-    res.set({
-      'Content-Type': doc.mimeType,
-      'Content-Disposition': `attachment; filename="${encodeURIComponent(doc.originalName)}"`,
-      'Content-Length': buffer.length.toString(),
+    // Publieke route: attachment + nosniff + sandbox via de gedeelde helper (WP-B4).
+    setBinaryResponseHeaders(res, {
+      mimeType: doc.mimeType,
+      contentLength: buffer.length,
+      filename: sanitizeDispositionFilename(doc.originalName),
+      disposition: 'attachment',
+      cacheControl: 'private, no-store',
     });
     res.send(buffer);
   }

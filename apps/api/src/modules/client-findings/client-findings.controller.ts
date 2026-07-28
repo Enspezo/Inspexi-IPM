@@ -21,6 +21,7 @@ import { memoryStorage } from 'multer';
 import type { Response } from 'express';
 import { ApiTags, ApiOperation, ApiConsumes } from '@nestjs/swagger';
 import { Public, CurrentTenant } from '@/common/decorators';
+import { resolveImageResponseType, setBinaryResponseHeaders } from '@/common';
 import { ClientJwtAuthGuard } from '@/common/guards/client-jwt-auth.guard';
 import {
   CurrentClientUser,
@@ -58,8 +59,17 @@ export class ClientFindingsController {
     @CurrentTenant('orgId') orgId: string | null,
     @Res({ passthrough: true }) res: Response,
   ): Promise<StreamableFile> {
-    const { buffer, mimeType } = await this.service.getResolutionPhoto(user, orgId, id);
-    res.set({ 'Content-Type': mimeType, 'Cache-Control': 'private, max-age=86400' });
+    const { buffer } = await this.service.getResolutionPhoto(user, orgId, id);
+    // WP-B4: bytes bepalen het Content-Type (niet de sleutel-extensie) +
+    // nosniff/sandbox; onherkenbare inhoud degradeert naar octet-stream.
+    const resolved = resolveImageResponseType(buffer, 'herstelfoto');
+    setBinaryResponseHeaders(res, {
+      mimeType: resolved.mimeType,
+      contentLength: buffer.length,
+      filename: resolved.filename,
+      disposition: resolved.disposition,
+      cacheControl: 'private, max-age=86400',
+    });
     return new StreamableFile(buffer);
   }
 

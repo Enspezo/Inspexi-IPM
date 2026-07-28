@@ -612,7 +612,7 @@ describe('EmailTemplatesService', () => {
       const file = {
         originalname: 'test.pdf',
         mimetype: 'application/pdf',
-        buffer: Buffer.from('pdf'),
+        buffer: Buffer.from('%PDF-1.7\npdf'),
         size: 100,
       } as Express.Multer.File;
 
@@ -656,7 +656,7 @@ describe('EmailTemplatesService', () => {
       const file = {
         originalname: 'first.pdf',
         mimetype: 'application/pdf',
-        buffer: Buffer.from('pdf'),
+        buffer: Buffer.from('%PDF-1.7\npdf'),
         size: 50,
       } as Express.Multer.File;
 

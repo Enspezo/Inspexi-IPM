@@ -19,6 +19,11 @@ import { ApiTags, ApiOperation, ApiConsumes } from '@nestjs/swagger';
 import { User } from '@prisma/client';
 import { OFFICE_ROLES, ORG_ADMINS } from '@/common/auth/roles';
 import { Response } from 'express';
+import {
+  resolveImageResponseType,
+  setBinaryResponseHeaders,
+  sanitizeDispositionFilename,
+} from '@/common';
 import { Roles } from '@/common/decorators/roles.decorator';
 import { CurrentUser } from '@/common/decorators/current-user.decorator';
 import { QuoteTemplatesService } from './quote-templates.service';
@@ -93,11 +98,13 @@ export class QuoteTemplatesController {
   ) {
     const { buffer, fileName, mimeType } =
       await this.service.downloadDocx(id, user);
-    res.set('Content-Type', mimeType);
-    res.set(
-      'Content-Disposition',
-      `attachment; filename="${fileName}"`,
-    );
+    setBinaryResponseHeaders(res, {
+      mimeType,
+      contentLength: buffer.length,
+      filename: sanitizeDispositionFilename(fileName, 'sjabloon.docx'),
+      disposition: 'attachment',
+      cacheControl: 'private, no-store',
+    });
     res.send(buffer);
   }
 
@@ -123,11 +130,13 @@ export class QuoteTemplatesController {
   ) {
     const { buffer, fileName, mimeType } =
       await this.service.downloadDocxRevision(id, revisionId, user);
-    res.set('Content-Type', mimeType);
-    res.set(
-      'Content-Disposition',
-      `attachment; filename="${fileName}"`,
-    );
+    setBinaryResponseHeaders(res, {
+      mimeType,
+      contentLength: buffer.length,
+      filename: sanitizeDispositionFilename(fileName, 'sjabloon.docx'),
+      disposition: 'attachment',
+      cacheControl: 'private, no-store',
+    });
     res.send(buffer);
   }
 
@@ -165,16 +174,18 @@ export class QuoteTemplatesController {
     @Res() res: Response,
   ) {
     const buffer = await this.service.getImage(id, key, user);
-    const ext = key.split('.').pop()?.toLowerCase();
-    const mimeMap: Record<string, string> = {
-      jpg: 'image/jpeg',
-      jpeg: 'image/jpeg',
-      png: 'image/png',
-      svg: 'image/svg+xml',
-      webp: 'image/webp',
-    };
-    res.set('Content-Type', mimeMap[ext ?? ''] ?? 'application/octet-stream');
-    res.set('Cache-Control', 'private, max-age=3600');
+    // WP-B4: de bytes — niet de sleutel-extensie — bepalen het Content-Type.
+    // Legacy `.svg`-sleutels (van vóór deze fix) degraderen zo naar
+    // `application/octet-stream` + attachment en zijn nooit meer uitvoerbaar
+    // op het app-origin.
+    const resolved = resolveImageResponseType(buffer, 'sjabloonafbeelding');
+    setBinaryResponseHeaders(res, {
+      mimeType: resolved.mimeType,
+      contentLength: buffer.length,
+      filename: resolved.filename,
+      disposition: resolved.disposition,
+      cacheControl: 'private, max-age=3600',
+    });
     res.send(buffer);
   }
 
@@ -243,11 +254,13 @@ export class QuoteTemplatesController {
       attachmentId,
       user,
     );
-    res.set('Content-Type', attachment.mimeType);
-    res.set(
-      'Content-Disposition',
-      `attachment; filename="${attachment.fileName}"`,
-    );
+    setBinaryResponseHeaders(res, {
+      mimeType: attachment.mimeType,
+      contentLength: buffer.length,
+      filename: sanitizeDispositionFilename(attachment.fileName),
+      disposition: 'attachment',
+      cacheControl: 'private, no-store',
+    });
     res.send(buffer);
   }
 

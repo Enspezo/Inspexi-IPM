@@ -23,7 +23,7 @@ import {
   isManagement,
   hasRole,
   USER_SUMMARY_SELECT,
-  sanitizeStorageFilename,
+  assertAllowedPdfOrImageUpload,
 } from '@/common';
 import {
   CreateInspectorCertificateDto,
@@ -299,13 +299,16 @@ export class InspectorCertificatesService {
 
   /** Storage-sleutel: `{orgId}/inspector-certificates/{userId}/{uuid}-{originalName}`. */
   private async storeFile(orgId: string, userId: string, file: Express.Multer.File) {
-    const storageKey = `${orgId}/inspector-certificates/${userId}/${randomUUID()}-${sanitizeStorageFilename(file.originalname)}`;
-    await this.storage.upload(storageKey, file.buffer, file.mimetype);
+    // Magic bytes beslissen type + opslagextensie (WP-B4); `originalname`
+    // blijft alleen als weergavenaam bewaard.
+    const detected = assertAllowedPdfOrImageUpload(file);
+    const storageKey = `${orgId}/inspector-certificates/${userId}/${randomUUID()}.${detected.extension}`;
+    await this.storage.upload(storageKey, file.buffer, detected.mimeType);
     return {
       storageKey,
       fileName: file.originalname,
       originalName: file.originalname,
-      mimeType: file.mimetype,
+      mimeType: detected.mimeType,
       size: file.size,
     };
   }

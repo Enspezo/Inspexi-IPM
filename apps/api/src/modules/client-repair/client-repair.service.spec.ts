@@ -790,8 +790,17 @@ describe('ClientRepairService', () => {
   // ── uploadResolutionPhotos ──────────────────────────────
 
   describe('uploadResolutionPhotos', () => {
+    // Echte magic bytes per claim — de upload valideert sinds WP-B4 op inhoud
+    // en bepaalt daaruit de opslagextensie.
+    const MAGIC: Record<string, Buffer> = {
+      'image/png': Buffer.concat([
+        Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+        Buffer.from([0x00, 0x00, 0x00, 0x0d]),
+      ]),
+      'image/jpeg': Buffer.concat([Buffer.from([0xff, 0xd8, 0xff]), Buffer.from('jpeg-body')]),
+    };
     const file = (mimetype: string) =>
-      ({ mimetype, buffer: Buffer.from('img') }) as Express.Multer.File;
+      ({ mimetype, buffer: MAGIC[mimetype] ?? Buffer.from('img') }) as Express.Multer.File;
 
     it('weigert zonder eigen herstelmelding', async () => {
       mockPrisma.findingResolution.findFirst.mockResolvedValue(null);

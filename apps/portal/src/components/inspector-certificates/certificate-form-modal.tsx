@@ -15,7 +15,7 @@ import {
 } from '@/pages/inspectors/hooks/use-inspector-certificates';
 
 const MAX_SIZE = 25 * 1024 * 1024; // 25 MB
-const ACCEPTED = 'application/pdf,image/jpeg,image/png,image/webp,image/svg+xml';
+const ACCEPTED = 'application/pdf,image/jpeg,image/png,image/webp';
 
 const schema = z.object({
   type: z.string().min(1, 'Soort is verplicht').max(200, 'Maximaal 200 tekens'),
@@ -218,7 +218,7 @@ export function CertificateFormModal({
             {isEdit && certificate?.hasDocument
               ? 'Een nieuw bestand vervangt het huidige document. '
               : ''}
-            Toegestaan: PDF, JPEG, PNG, WebP, SVG (max 25 MB).
+            Toegestaan: PDF, JPEG, PNG, WebP (max 25 MB).
           </p>
         </div>
 

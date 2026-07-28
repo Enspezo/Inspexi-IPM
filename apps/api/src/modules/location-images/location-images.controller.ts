@@ -28,6 +28,8 @@ import type { Response } from 'express';
 import { User } from '@prisma/client';
 import { Roles, CurrentUser } from '@/common/decorators';
 import { ALL_STAFF } from '@/common/auth/roles';
+import { resolveImageResponseType, setBinaryResponseHeaders } from '@/common';
+import { createHash } from 'crypto';
 import { LocationImagesService } from './location-images.service';
 import {
   CreateMarkerDto,
@@ -40,10 +42,12 @@ import { ParseUuidPipe } from '@/common';
 
 /**
  * Image-only MIME validator (zie documents.controller MimeTypeValidator).
- * NestJS' ingebouwde FileTypeValidator gebruikt magic bytes; deze checkt de
- * door multer geleverde mimetype en staat alleen afbeeldingen toe.
+ * Checkt de door multer geleverde mimetype als eerste poort; de inhoud
+ * (magic bytes) wordt daarna in de service gevalideerd (WP-B4). SVG is niet
+ * meer toegestaan: de plattegrond wordt inline op het app-origin geserveerd
+ * en een SVG met script was daar een stored-XSS-vector (B-507-klasse).
  */
-const ALLOWED_IMAGE_MIME_REGEX = /^image\/(jpeg|png|webp|svg\+xml)$/;
+const ALLOWED_IMAGE_MIME_REGEX = /^image\/(jpeg|png|webp)$/;
 
 class ImageMimeTypeValidator extends FileValidator {
   constructor() {
@@ -56,7 +60,7 @@ class ImageMimeTypeValidator extends FileValidator {
   }
 
   buildErrorMessage(): string {
-    return 'Bestandstype niet toegestaan. Alleen afbeeldingen (JPEG, PNG, WebP, SVG).';
+    return 'Bestandstype niet toegestaan. Alleen afbeeldingen (JPEG, PNG, WebP).';
   }
 }
 
@@ -90,12 +94,19 @@ export class LocationImagesController {
     @Res() res: Response,
   ) {
     const { buffer, image } = await this.service.getImageFile(locationId, user);
-    res.set({
-      'Content-Type': image.mimeType,
-      'Content-Disposition': `inline; filename="${encodeURIComponent(
-        image.originalFilename ?? 'afbeelding',
-      )}"`,
-      'Content-Length': buffer.length.toString(),
+    // WP-B4: bytes bepalen het Content-Type (het opgeslagen mimetype was
+    // client-supplied — een SVG/HTML-upload werd hier inline uitvoerbaar op
+    // het app-origin). De URL is per locatie constant terwijl de afbeelding
+    // vervangen kan worden → ETag volgt de opslagsleutel (nieuwe UUID per
+    // upload), zoals bij het organisatielogo.
+    const resolved = resolveImageResponseType(buffer, 'plattegrond');
+    setBinaryResponseHeaders(res, {
+      mimeType: resolved.mimeType,
+      contentLength: buffer.length,
+      filename: resolved.filename,
+      disposition: resolved.disposition,
+      cacheControl: 'private, max-age=300, must-revalidate',
+      etag: `"${createHash('sha256').update(image.storagePath).digest('hex').slice(0, 32)}"`,
     });
     res.send(buffer);
   }

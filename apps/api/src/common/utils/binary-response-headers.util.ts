@@ -17,6 +17,26 @@ import type { Response } from 'express';
  * De filename wordt door de aanroeper server-side samengesteld (nooit uit
  * `originalname`), dus header-injectie is uitgesloten.
  */
+/**
+ * Maakt van een user-supplied bestandsnaam een waarde die veilig in een
+ * `Content-Disposition: …; filename="…"` past: alleen ASCII-woordtekens,
+ * punt, spatie en streepje blijven over (dus nooit quotes, backslashes of
+ * CR/LF), dubbele punten worden samengevouwen. Voor routes die de originele
+ * naam als download-naam willen behouden i.p.v. een vaste server-naam.
+ */
+export function sanitizeDispositionFilename(
+  name: string | null | undefined,
+  fallback = 'bestand',
+): string {
+  const cleaned = String(name ?? '')
+    .replace(/[^a-zA-Z0-9._ -]/g, '')
+    .replace(/\.{2,}/g, '.')
+    .replace(/^[. ]+/, '')
+    .trim()
+    .slice(0, 120);
+  return cleaned.length > 0 ? cleaned : fallback;
+}
+
 export function setBinaryResponseHeaders(
   res: Response,
   options: {

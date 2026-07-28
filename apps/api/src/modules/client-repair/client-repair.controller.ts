@@ -28,6 +28,7 @@ import { ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import type { RepairSession } from '@prisma/client';
 import { Public, CurrentTenant } from '@/common/decorators';
+import { resolveImageResponseType, setBinaryResponseHeaders } from '@/common';
 import { RequiresFeature } from '@/common/decorators/requires-feature.decorator';
 import { ClientJwtAuthGuard } from '@/common/guards/client-jwt-auth.guard';
 import {
@@ -141,8 +142,18 @@ export class ClientRepairController {
     @CurrentRepairSession() session: RepairSession,
     @Res({ passthrough: true }) res: Response,
   ): Promise<StreamableFile> {
-    const { buffer, mimeType } = await this.service.getPhoto(session, id);
-    res.set({ 'Content-Type': mimeType, 'Cache-Control': 'private, max-age=86400' });
+    const { buffer } = await this.service.getPhoto(session, id);
+    // WP-B4: bytes bepalen het Content-Type (niet de sleutel-extensie of het
+    // opgeslagen mimetype) + nosniff/sandbox; onherkenbare inhoud degradeert
+    // naar octet-stream.
+    const resolved = resolveImageResponseType(buffer, 'foto');
+    setBinaryResponseHeaders(res, {
+      mimeType: resolved.mimeType,
+      contentLength: buffer.length,
+      filename: resolved.filename,
+      disposition: resolved.disposition,
+      cacheControl: 'private, max-age=86400',
+    });
     return new StreamableFile(buffer);
   }
 

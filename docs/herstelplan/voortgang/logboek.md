@@ -46,6 +46,13 @@ Conform `docs/testprogramma/00-master-testplan.md` §5: API `:3001` (`NODE_ENV=t
 
 ## Chronologisch logboek
 
+### 28 juli 2026 — B-105-restant: existence-oracle op id-routes dicht (PR #171)
+
+- Na-loop op WP-C1 (eigenaarsopdracht): C1 verwijderde de kale exceptions, maar **17 plekken** (16 vooraf geverifieerd + 1 extra gevonden in `support-tickets.update()`) deden nog `findUnique` + org-vergelijking met 403 → bestaan van andermans data was af te leiden (404 vs 403). Nu overal `assertFound(findFirst({id, ...orgScope(user), …}))` per de bestaande conventie: documents (4), notes (4), tasks (3), work-orders (3), support-tickets (2+1 — daar bewust zónder orgScope: de superuser-wachtrij op `mijn.*` is platform-breed; rol-weigering binnen eigen org blijft 403). `assert-same-org` (FK-injectie in body's) blijft per conventie 403.
+- Tests: 5 unit-specs omgezet als contractwijziging; `error-contract.e2e-spec` oracle-tabel uitgebreid naar **18 modules** (vreemde-org-id én onbestaande UUID moeten byte-identiek zijn). Unit 2285 · gerichte e2e 164/5 suites · build 6/6.
+- **Live curl-bewijs orkestrator** (branch-code): documents (inspexidemo→inspeximix-doc) en support-tickets (testbedrijf→inspexidemo-ticket): vreemd id en onbestaand UUID → **byte-identieke** 404-body (`cmp` schoon). Leerzaam neveneffect: bij een org zónder feature vangt de FeatureGuard beide met een identieke 403 — ook geen oracle.
+- `B-105.md` herschreven naar de tweetraps-eindstand. NB: het in de opdracht genoemde `AUDIT-onafhankelijk.md` bestaat op geen enkele branch — stap overgeslagen en gemeld. Restpuntjes (PR-body): 2 vergelijkbare 403-plekken in het client-realm buiten scope; `support-tickets.findOne` filtert ongewijzigd niet op isDeleted.
+
 ### 28 juli 2026 — Chip-PR's gemerged + hercontrole op de gecombineerde stand
 
 - De drie door de eigenaar gestarte chip-sessies zijn geland: **#162** (requests-e2e lekte offertes in de gedeelde dev-DB — orkestrator-merge ná mergeability-check), **#164** (upload-hardening-sweep over alle resterende upload-/serve-routes, B-507-follow-up — door de eigenaar zelf gemerged) en **InspeXi #36** (knip-registratie `playwright.offline.config.ts` — orkestrator-merge, knip-run groen geverifieerd).

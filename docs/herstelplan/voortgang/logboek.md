@@ -46,6 +46,14 @@ Conform `docs/testprogramma/00-master-testplan.md` §5: API `:3001` (`NODE_ENV=t
 
 ## Chronologisch logboek
 
+### 28 juli 2026 — PR #124 (AI-agent backoffice) geport naar dev (PR #178) → main heeft geen unieke code meer
+
+- **Eigenaarsbesluit uitgevoerd**: de AI-agent-backoffice is via een bewuste port (géén kale main-merge) naar `dev` gebracht conform `MAIN-DEV-ANALYSE.md` §6.2: 3 migraties her-getimestamped naar ná de D2-migratie (replay-check schoon op wegwerp-DB, resolve-instructies voor main-keten-omgevingen in de PR-body), main's dubbele `password_changed_at`-migratie NIET meegenomen, `AiAnthropicProvider` → gedeelde `AnthropicClientService` (+`ANTHROPIC_AGENT_MODEL`), WP-C1-foutcontract incl. NL-afhandeling op het SSE-pad, `AI_AGENT`-entitlement + org-vlaggen langs B-505/B-510, `AuditLog.source` (HUMAN|AI) op dev's audit-registry, PRD hernoemd naar **IMP_PRD_15**.
+- **Belangrijke vangst van de port-agent**: de 3-way-apply had dev's seed-productieguard stilletjes teruggedraaid — via een systematische reverte-hunk-check gedetecteerd en hersteld (enige getroffen bestand).
+- Testcijfers: build 6/6 · unit **2334/148** · volledige e2e **1230/70** (incl. ai-agent-e2e 15, Anthropic gemockt) · portal 373.
+- **Browser-smoke orkestrator** (branch-code): AI-knop + drawer bij de demo-org (entitlement-override + org-vlag), bericht sturen zonder `ANTHROPIC_API_KEY` → nette NL-melding "De AI-assistent is niet geconfigureerd" op het streaming-pad, en géén knop bij testbedrijf (geen entitlement). NB: een eerste vals-negatief kwam door een stale `@inspexi/entitlements`-dist in de orkestrator-worktree (alleen `nest build` gedraaid i.p.v. `turbo run build` — omgevingsartefact, geen PR-fout; volledige turbo-build loste het op).
+- Restpunten (PR-body): live streaming tegen de echte Anthropic-API onbewezen tot er een `ANTHROPIC_API_KEY` is; `MODEL_PRICING` kent alleen sonnet-5/opus-4-8; AI-data-retentie bij offboarding = PRD-15-follow-up. **Na deze merge resteert er géén unieke code meer op `main`** — de release-merge dev→main kan met dev als winnaar (MAIN-DEV-ANALYSE §6.4).
+
 ### 28 juli 2026 — Onafhankelijke audit verwerkt: §7 punten 1–7 afgehandeld
 
 - Het door de eigenaar aangeleverde auditrapport is verbatim vastgelegd (**#173**, `AUDIT-onafhankelijk.md`) met een status-naloop-tabel onder §7. Afgehandeld deze dag: punt 1 (upload-sweep #164), punt 2 (B-105 #171), punt 3 (main↔dev-analyse **#174** → `MAIN-DEV-ANALYSE.md`: #105 zit al op dev via #116, alleen #124 écht main-only; eigenaarsbesluit: **#124 wordt geport** — port-agent gestart), punt 4/5/6 (**#175**: `RUNBOOK-DEPLOY.md`, seed-productieguard met bewezen weigering, administratie compleet incl. nieuwe bevinding B-413), punt 7 (beslispunten, hieronder).

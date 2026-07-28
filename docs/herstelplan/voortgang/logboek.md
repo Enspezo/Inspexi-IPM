@@ -46,6 +46,14 @@ Conform `docs/testprogramma/00-master-testplan.md` §5: API `:3001` (`NODE_ENV=t
 
 ## Chronologisch logboek
 
+### 28 juli 2026 — Release-merge dev→main uitgevoerd · stale branches opgeruimd
+
+- **Voorafgaande verificatie op `origin/dev`** (eigenaarsopdracht, niet op de samenvatting vertrouwd): H1 (storage-key-guard + `storage-key.util.ts`), H4 (`validate-jwt-secrets.ts`), H5 (reset-token `type:'access'`/`pwStamp`), K3 (`SEED_DEMO`, 21 hits) en de complete `ai-agent`-module — alle zes checks groen.
+- **De valkuil bevestigd**: exact de verwachte **14 orphan-bestanden** alleen op `main` (1× `ai-anthropic.provider.ts` — nul referenties op dev; 13× `apps/portal/src/components/ui/*.tsx` — op dev verhuisd naar `packages/ui`). Daarom géén standaardmerge maar merge + `git read-tree -u --reset origin/dev`: merge-commit **`e8837a0`** (ouders `02540a0` + `7f25ea0`) met een tree die **byte-identiek** aan dev is — `git diff --stat origin/dev main` leeg, `rev-list --count main..dev` = 0, beide orphan-categorieën aantoonbaar weg.
+- **Suites op `main` vóór de push**: build 6/6 · unit **2336/148** · volledige e2e **1230/70** (onder de e2e-lock) · portal **373/41** · client-portal **47** — alles groen; daarna gepusht.
+- **Branch-opruiming**: `claude/ai-agent-backoffice-prd-dsnivl` en `fix/auth-storage-hardening` verwijderd (achterhaald door #178 resp. #116). De twee "niet zomaar verwijderen"-branches eerst inhoudelijk beoordeeld: `feat/req1-internal-chat` (uniek commit `d43038b`: markRead-dedup-re-arm + chat-e-mail-uit) en `feat/help-system-fase4` (uniek commit `84aa2c5`: GIN/pg_trgm-indexen in het schema) blijken **beide volledig op dev vertegenwoordigd** (de chat-fix verhuisde naar `chat-threads.service.ts`, incl. e2e-dekking; de indexdeclaraties staan letterlijk in dev's `schema.prisma`) → beide verwijderd, beoordeling genoteerd bij Epic 1 in `03-beslispunten-backlog.md`. NB: de req1-branch raakte inhoudelijk níet Epic 1 (dat gaat over het klant-berichtenkanaal `InspectionMessage`, niet de interne staf-chat).
+- **Deploy is bewust níet meegenomen** — die volgt apart via `RUNBOOK-DEPLOY.md`.
+
 ### 28 juli 2026 — PR #124 (AI-agent backoffice) geport naar dev (PR #178) → main heeft geen unieke code meer
 
 - **Eigenaarsbesluit uitgevoerd**: de AI-agent-backoffice is via een bewuste port (géén kale main-merge) naar `dev` gebracht conform `MAIN-DEV-ANALYSE.md` §6.2: 3 migraties her-getimestamped naar ná de D2-migratie (replay-check schoon op wegwerp-DB, resolve-instructies voor main-keten-omgevingen in de PR-body), main's dubbele `password_changed_at`-migratie NIET meegenomen, `AiAnthropicProvider` → gedeelde `AnthropicClientService` (+`ANTHROPIC_AGENT_MODEL`), WP-C1-foutcontract incl. NL-afhandeling op het SSE-pad, `AI_AGENT`-entitlement + org-vlaggen langs B-505/B-510, `AuditLog.source` (HUMAN|AI) op dev's audit-registry, PRD hernoemd naar **IMP_PRD_15**.

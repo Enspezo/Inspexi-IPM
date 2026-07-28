@@ -111,7 +111,7 @@ De claim "75 bevindingen afgehandeld" is verdedigbaar in de zin van *behandeld e
 |---|---|
 | 1 — upload-sweep mergen | ✅ 28-07: PR #164 gemerged (door eigenaar); hercontrole gecombineerde stand groen (build 6/6 · unit 2285 · e2e 1210/69) — B-507-restrisico dicht |
 | 2 — B-105 afmaken | ✅ 28-07: PR #171 — 17 plekken (16 + 1 extra in `support-tickets.update()`) naar `findFirst + orgScope + assertFound`; oracle-tabel in `error-contract.e2e-spec` naar 18 modules; live byte-identiek curl-bewijs; `B-105.md` bijgesteld |
-| 3 — `main` ↔ `dev` | 🔄 in onderzoek — NB: de inhoud van PR #105 is destijds al opnieuw op `dev` aangebracht via PR #116 (re-apply van H1/H4/H5/K3); te verifiëren is wat er van de 12 commits inhoudelijk écht alleen op `main` leeft (m.n. PR #124) |
+| 3 — `main` ↔ `dev` | ✅ 28-07: onderzocht — PR #105 zit inhoudelijk volledig op `dev` (PR #116, file-niveau geverifieerd); alleen PR #124 (AI-agent backoffice, 55 bestanden/+4438) is écht main-only; proef-merge gaf 23 conflictpaden + een dubbele `password_changed_at`-migratie; geadviseerd pad: #124 eerst via eigen PR naar `dev` + hertest, daarna release-merge — zie `MAIN-DEV-ANALYSE.md` |
 | 4 — pre-deploy runbook | 🔄 in uitvoering |
 | 5 — seed-guard | 🔄 in uitvoering |
 | 6 — administratie | 🔄 in uitvoering |

@@ -16,6 +16,7 @@ import {
   ONLINE_HERSTEL_FEATURE,
 } from '@/common';
 import { TenantCacheService } from '@/common/services/tenant-cache.service';
+import { requestContext } from '@/common/services/request-context';
 import {
   CreateOrganizationDto,
   UpdateOrganizationDto,
@@ -156,10 +157,46 @@ export class OrganizationsService {
       );
     }
 
-    const updated = await this.prisma.organization.update({
-      where: { id },
-      data: dto,
-    });
+    // PRD-15 §6.6: org-offboarding (deactiveren) wist alle AI-gesprekken van
+    // de organisatie (AiMessage/AiPendingAction cascaden mee); AiUsageLog en
+    // AuditLog blijven bewaard. Zelfde transactie als de statuswijziging.
+    const isDeactivation = dto.isActive === false && current.isActive;
+
+    const [updated, purgedAiConversations] = await this.prisma.$transaction(
+      async (tx) => {
+        const purged = isDeactivation
+          ? (await tx.aiConversation.deleteMany({ where: { orgId: id } })).count
+          : 0;
+        const org = await tx.organization.update({
+          where: { id },
+          data: dto,
+        });
+        return [org, purged] as const;
+      },
+    );
+
+    if (purgedAiConversations > 0) {
+      // Herleidbaarheid van de gegevensverwijdering (AiConversation zit bewust
+      // niet in de audit-registry); fire-and-forget, blokkeert de update niet.
+      const ctx = requestContext.getStore();
+      if (ctx?.userId) {
+        this.prisma
+          .writeAuditLog({
+            entityType: 'Organization',
+            entityId: id,
+            action: 'UPDATE',
+            snapshot: null,
+            changes: { aiConversationsPurged: { from: purgedAiConversations, to: 0 } },
+            userId: ctx.userId,
+            orgId: id,
+            ipAddress: ctx.ipAddress,
+            source: ctx.source,
+          })
+          .catch((err) =>
+            this.logger.error(`AI-retentie audit log fout: ${err}`),
+          );
+      }
+    }
 
     // Tenant-cache direct invalideren zodat slug-wijziging of deactivatie
     // niet tot 5 minuten uit een verouderde cache geserveerd wordt

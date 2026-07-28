@@ -37,10 +37,27 @@ describe('AiToolRegistry', () => {
   });
 
   it('create_task delegates to TasksService.create with the acting user', async () => {
-    await registry.get('create_task')!.run({ user }, { title: 'Bellen', deadline: '2026-08-01' });
+    await registry
+      .get('create_task')!
+      .run({ user }, { title: 'Bellen', deadline: '2026-08-01', entityType: 'CONTACT', entityId: 'c1' });
     expect(tasks.create).toHaveBeenCalledWith(
-      expect.objectContaining({ title: 'Bellen', deadline: '2026-08-01' }),
+      expect.objectContaining({
+        title: 'Bellen',
+        deadline: '2026-08-01',
+        entityType: 'CONTACT',
+        entityId: 'c1',
+      }),
       user,
+    );
+  });
+
+  it('create_task requires an entity link in its schema (F4-live: Prisma vereist entityType/entityId)', () => {
+    const schema = registry.get('create_task')!.inputSchema as any;
+    expect(schema.required).toEqual(
+      expect.arrayContaining(['title', 'entityType', 'entityId']),
+    );
+    expect(schema.properties.entityType.enum).toEqual(
+      expect.arrayContaining(['CONTACT', 'USER']),
     );
   });
 

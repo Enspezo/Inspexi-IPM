@@ -33,4 +33,6 @@
 | B-222-legacy (nasleep) | B10 | Bestaande pending PWA-records met fictief vocabulaire worden expliciet afgekeurd (dead-letter + NL-uitleg) — inspecteur herclassificeert; servervalidatie echo-tolerant voor bestaande rijen | InspeXi #35 + #159 |
 | B-411 punt 3 → B-413 (contact-brede ClientAccess) | — | **Open — nu eigen bevinding B-413.** "Uitnodigen voor één rapport" geeft via `grantPlanAccess` óók een contact-brede `ClientAccess` (alle inspecties van het contact zichtbaar); autorisatie-ontwerpvraag bij de eigenaar (beslispunt B7) | `B-413.md` + `03-beslispunten-backlog.md` §B B7 |
 
+| AI-agent UX (nieuw, uit F4-live) | — | **Open (klein).** (1) De bevestigingskaart voor pending write-acties rendert alleen uit het live `pending_actions`-SSE-event: na een paginaherlaad is een openstaande PENDING-actie onzichtbaar terwijl hij het gesprek blokkeert ("Er staan nog acties open") — render de kaart ook uit `GET /ai/conversations/:id`. (2) Markdown (`**…**`) wordt letterlijk getoond in de drawer | Logboek F4-vermelding (28-07-2026) |
+
 _Deze tabel wordt per golf bijgewerkt; bevindingen die tijdens uitvoering achterhaald blijken komen hier ook te staan._

@@ -46,6 +46,20 @@ Conform `docs/testprogramma/00-master-testplan.md` §5: API `:3001` (`NODE_ENV=t
 
 ## Chronologisch logboek
 
+### 28 juli 2026 — Follow-up F4: AI-agent live geverifieerd tegen de echte Anthropic-API
+
+- Branch `chore/ai-agent-live-verificatie`, stack lokaal (API :3001 `NODE_ENV=test`, portal :5173), echte `ANTHROPIC_API_KEY`, model `claude-sonnet-5`. Eén beknopte sessie (~100k tokens incl. cache, ruim binnen het 5M-quotum).
+- **Geverifieerd (allemaal groen):**
+  - **Streaming**: token-voor-token respons in de drawer én als ruwe SSE (`token`/`tool`/`pending_actions`/`done`-events via curl).
+  - **Read-tool**: `search_contacts` vuurde en gaf correcte org-data (Bouwbedrijf De Vries BV) terug.
+  - **Write-keten**: voorstel → bevestigingskaart (Bevestigen/Afwijzen/Aanpassen) → confirm → taak correct aangemaakt → **`AuditLog` met `source = AI`** en de mens als `userId`. Reject-endpoint ook geverifieerd.
+  - **Metering**: `AiUsageLog`-regels met input/output/cache-tokens + `costCents`; `GET /ai/usage` telt op tegen het maandquotum. `MODEL_PRICING` kent `claude-sonnet-5` al — geen aanpassing nodig.
+  - **Entitlement-negatief**: `testbedrijf` (zonder `AI_AGENT`) → `/ai/access` 403 `FEATURE_NOT_IN_PLAN`, `/ai/conversations` 403, en géén AI-knop in de DOM.
+  - **SSE-foutpad**: NL `error`-event (`AI_PENDING_ACTIONS`) i.p.v. een 500.
+- **Gevonden + gefixt (dit is waar de live-run voor was):** de `create_task`-toolschema noemde `entityType`/`entityId` "optioneel", terwijl een `Task` altijd een entiteit-koppeling vereist (non-nullable) — bevestigen strandde op een Prisma-fout (actie FAILED, nette NL-afhandeling, geen 500). Fix: schema vereist nu `entityType` (enum) + `entityId` en de tooldescription stuurt de agent naar een koppeling; unit-tests toegevoegd (`tool-registry.spec.ts`). Herverificatie: voorstel kwam mét correcte koppeling en de confirm slaagde.
+- **Kleine UX-bevindingen (open, zie restrisico):** (1) de bevestigingskaart rendert alleen uit het live `pending_actions`-SSE-event — na een paginaherlaad is een openstaande PENDING-actie onzichtbaar terwijl hij het gesprek wél blokkeert (server-guard werkt; afwijzen kan dan alleen via de API); (2) markdown-opmaak (`**…**`) wordt letterlijk getoond in de drawer.
+- Restpunt in de PR-body van #178 afgevinkt. Testartefact: taak "Live-verificatie AI-agent" op het demo-contact (verdwijnt bij herseed).
+
 ### 28 juli 2026 — Release-merge dev→main uitgevoerd · stale branches opgeruimd
 
 - **Voorafgaande verificatie op `origin/dev`** (eigenaarsopdracht, niet op de samenvatting vertrouwd): H1 (storage-key-guard + `storage-key.util.ts`), H4 (`validate-jwt-secrets.ts`), H5 (reset-token `type:'access'`/`pwStamp`), K3 (`SEED_DEMO`, 21 hits) en de complete `ai-agent`-module — alle zes checks groen.

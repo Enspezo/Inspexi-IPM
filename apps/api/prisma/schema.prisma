@@ -4009,6 +4009,10 @@ model SyncQueue {
 
   deviceId String  @map("device_id")
   userId   String? @map("user_id") @db.Uuid
+  // WP-D1 (B-223e): org-scoping zodat open conflicten veilig in de /sync-pull
+  // kunnen meereizen. Nullable + zonder relatie (log-/queue-tabelpatroon, zoals
+  // AuditLog); bestaande rijen zijn in de migratie gebackfilld via user.orgId.
+  orgId    String? @map("org_id") @db.Uuid
 
   entityType String        @map("entity_type")
   entityId   String        @map("entity_id") @db.Uuid
@@ -4030,6 +4034,7 @@ model SyncQueue {
 
   @@index([entityType, entityId, status])
   @@index([status, createdAt])
+  @@index([orgId, status])
   @@map("imp_sync_queue")
 }
 

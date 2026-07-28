@@ -48,6 +48,14 @@ describe('Sync hardening WP-C3 (e2e)', () => {
       .set('Authorization', `Bearer ${token}`)
       .send({ deviceId, clientTime: new Date().toISOString(), changes });
 
+  // v4 (WP-D1): updates zonder versie-anker zijn fail-closed een conflict.
+  // Deze suite test de inhoudelijke guards, dus elke update draagt de actuele
+  // serverbasis mee (zoals een v4-client die na een pull doet).
+  const planBase = async (id: string): Promise<string> => {
+    const row = await prisma.inspectionPlan.findUnique({ where: { id } });
+    return row!.updatedAt.toISOString();
+  };
+
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
@@ -343,7 +351,7 @@ describe('Sync hardening WP-C3 (e2e)', () => {
     it('INSPECTEUR cannot CHANGE reviewerId to himself (INS-41 repro)', async () => {
       const res = await push(inspecteurToken, {
         inspectionPlans: [
-          { operation: 'update', data: { id: planRoleId, reviewerId: inspecteurId } },
+          { operation: 'update', data: { id: planRoleId, reviewerId: inspecteurId, baseVersion: await planBase(planRoleId) } },
         ],
       }).expect(201);
 
@@ -367,6 +375,7 @@ describe('Sync hardening WP-C3 (e2e)', () => {
               reviewerId: plannerId,
               assignedTo: inspecteurId,
               notes: 'Echo-push met ongewijzigde toewijzing',
+              baseVersion: await planBase(planRoleId),
             },
           },
         ],
@@ -379,7 +388,7 @@ describe('Sync hardening WP-C3 (e2e)', () => {
     it('WERKVOORBEREIDER (REVIEW_ROLES) may change the reviewer via sync', async () => {
       const res = await push(plannerToken, {
         inspectionPlans: [
-          { operation: 'update', data: { id: planRoleId, reviewerId: plannerId, assignedTo: inspecteurId } },
+          { operation: 'update', data: { id: planRoleId, reviewerId: plannerId, assignedTo: inspecteurId, baseVersion: await planBase(planRoleId) } },
         ],
       }).expect(201);
 
@@ -394,7 +403,7 @@ describe('Sync hardening WP-C3 (e2e)', () => {
       const res = await push(inspecteurToken, {
         inspectionPlans: [
           // Geen submittedAt in de payload: de server moet hem vullen (spiegel submit()).
-          { operation: 'update', data: { id: planSubmitId, statusCode: 'pending_review' } },
+          { operation: 'update', data: { id: planSubmitId, statusCode: 'pending_review', baseVersion: await planBase(planSubmitId) } },
         ],
       }).expect(201);
 
@@ -430,7 +439,7 @@ describe('Sync hardening WP-C3 (e2e)', () => {
 
       const res = await push(inspecteurToken, {
         inspectionPlans: [
-          { operation: 'update', data: { id: planSubmitId, statusCode: 'pending_review', notes: 'echo' } },
+          { operation: 'update', data: { id: planSubmitId, statusCode: 'pending_review', notes: 'echo', baseVersion: await planBase(planSubmitId) } },
         ],
       }).expect(201);
       expect(res.body.data.errors).toHaveLength(0);

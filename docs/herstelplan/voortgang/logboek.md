@@ -38,11 +38,20 @@ Conform `docs/testprogramma/00-master-testplan.md` §5: API `:3001` (`NODE_ENV=t
 | C3 | `fix/wp-c3-sync-hardening` | [#150](https://github.com/Enspezo/Inspexi-IPM/pull/150) | ✅ gemerged (A2+C3 samen: 119 sync-unit + 28 e2e groen) | B-203 ✔, B-212 ✔, B-216 ✔, B-217 ✔ (A6: rol-guard — PWA stuurt velden mee), B-218 ✔; B-223a → beslispunt A3 | sync-errors-mapper, sync-hardening-e2e 9 |
 | C4 | `fix/wp-c4-docgen-overflow` | [#148](https://github.com/Enspezo/Inspexi-IPM/pull/148) | ✅ gemerged + visueel geverifieerd (vóór/ná-PDF's + portal-tabellen) | B-311 ✔, B-312 ✔ (CJK = deploy-vereiste), B-301 ✔ | header-resolver-tests, table.test.tsx 9 |
 | D3 | `fix/wp-d3-offline-shell` (PWA) | [InspeXi #33](https://github.com/Enspezo/InspeXi/pull/33) | ✅ gemerged + eigen prod-e2e-run groen | B-219 ✔ **definitief S3** (dev-server-artefact; prod-denylist-gat wél gedicht); B-220 → beslispunt A5 | offline-shell-Playwright tegen productiebuild (CI-verankerd), 8 unit |
-| D1, D2 | — | — | 🔄 in uitvoering (A1/A2 besloten 28-07) | B-209, B-223e, B-205b | — |
+| D1 | `fix/wp-d1-sync-version-anchor` (beide repo's) | [#165](https://github.com/Enspezo/Inspexi-IPM/pull/165) + [InspeXi #37](https://github.com/Enspezo/InspeXi/pull/37) | ✅ gemerged + browser-geverifieerd (volledige conflictcyclus) | B-209 ✔, B-223e ✔ | sync-anchor e2e (B-209-repro, conflicten-in-pull, baseVersion/applied), unit 2269, PWA migration-v16-v17 (5) + syncService.v4-anchor (12) |
+| D2 | `fix/wp-d2-sheet-record-canonical` | — | 🔄 in uitvoering (A2 besloten 28-07) | B-205b | — |
 
 ---
 
 ## Chronologisch logboek
+
+### 28 juli 2026 — WP-D1 gemerged: `updatedAt`-versieanker + conflicten in de pull (contract v4)
+
+- **WP-D1 gemerged** (#165 + InspeXi #37): "geen basis bekend" is nooit meer "geen conflict". `baseVersion`-anker met fail-closed op updates/adopties, backfill in migratie `20260728061433` (**102 rijen** op dev over de 7 sync-tabellen), Prisma-stempel-middleware (elke serverwrite `syncedAt`=`updatedAt` uit één stempel), push-ack `applied[]` (anker schuift per record mee), conflicten additief in de pull (`openConflicts[]`, user-gescoped), `SyncQueue.orgId`, Dexie v16→v17 zónder conflictgolf (ge-ackte records → syncedAt-basis, schone → gepulde updatedAt).
+- **Browserbewijs orkestrator — volledige cyclus op "Onderverdeler kantoor"**: (1) B-209-repro: offline PWA-statuswijziging + serverzijdige naamswijziging (`updated_at=now()`) → ConflictBanner mét veldtabel (name/nodeNumber/statusCode server vs. mijn), servernaam intact, conflictrij mét `org_id`; (2) B-223e: na `clearAllData()` + verse login verschijnt hetzélfde conflict uit de pull-envelope, "Mijn versie" gevuld met de bewaarde clientData; (3) resolve "Serverversie" → rij `completed`, lokaal adopteert de servernaam; (4) contraproef: zelfde edit mét API online synct schoon (0 conflictrijen) en het anker schuift byte-gelijk mee (`serverUpdatedAt` = server-`updated_at` = 07:05:04.012); (5) Dexie v17 (idb-versie 170) foutloos gemigreerd.
+- Testcijfers agent (echt gedraaid): Beheer build 6/6 · unit 2269/140 · volledige e2e 1188/68 onder de lock; PWA Vitest 231/37 · build groen. Playwright vereist draaiende stack → vervangen door de orkestrator-browsercyclus hierboven.
+- Pre-deploy prod: migratie bevat de verplichte NULL-backfill; v3-`syncedAt`-fallback blijft één transitievenster server-side staan (schoonmaak-PR later).
+- Bijvangst: PWA-`dev` bevatte al de flaky-testfix uit een chip-sessie van de eigenaar (D1 is erop gerebased). Open chip-PR's genoteerd, niet door de orkestrator gemerged: Beheer #162/#164, PWA #36.
 
 ### 28 juli 2026 — Golf 4 gestart: beslispunten A1/A2 door de eigenaar beantwoord
 

@@ -46,6 +46,14 @@ Conform `docs/testprogramma/00-master-testplan.md` §5: API `:3001` (`NODE_ENV=t
 
 ## Chronologisch logboek
 
+### 28 juli 2026 — Follow-up F2: testprogramma-docs bijgewerkt op het A3-besluit
+
+- Branch `docs/ins01-a3-besluit`. Alleen documentatie, geen code.
+- `05-actor-inspecteur-pwa.md` INS-01-orakel herschreven naar het huidige gedrag (besluit A3, optie b — InspeXi #40): alle org-plannen zichtbaar onder de neutrale naam "Inspecties", KPI "Toegewezen" telt alleen eigen plannen, "Toegewezen aan mij"-badge.
+- `logboek-INS.md` INS-01-kanttekening gemarkeerd als destijds-waarneming met de A3-eindstand erbij.
+- `B-223.md` sub-item a gecontroleerd: stond al correct op **opgelost** met de volledige A3-uitkomst — geen wijziging nodig.
+- `restrisico.md`: rij B-223a van "Wacht op beslispunt A3" naar **Opgelost** (bewuste keuze pull-scope gedocumenteerd).
+
 ### 28 juli 2026 — Release-merge dev→main uitgevoerd · stale branches opgeruimd
 
 - **Voorafgaande verificatie op `origin/dev`** (eigenaarsopdracht, niet op de samenvatting vertrouwd): H1 (storage-key-guard + `storage-key.util.ts`), H4 (`validate-jwt-secrets.ts`), H5 (reset-token `type:'access'`/`pwStamp`), K3 (`SEED_DEMO`, 21 hits) en de complete `ai-agent`-module — alle zes checks groen.

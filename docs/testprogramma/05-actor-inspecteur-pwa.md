@@ -17,7 +17,7 @@ Legenda **T**: G=gouden pad, B=grens, F=foutgok, O=offline/sync, A=proces/autori
 
 | ID | T | Stap / invoer | Verwacht (orakel) |
 |---|---|---|---|
-| INS-01 | G | Open `inspexidemo.localhost:5176` → login → dashboard | KPI's laden; initiële sync draait (progress); plannen zichtbaar |
+| INS-01 | G | Open `inspexidemo.localhost:5176` → login → dashboard | KPI's laden; initiële sync draait (progress); álle org-plannen zichtbaar (bewust, besluit A3) onder de neutrale lijstnaam "Inspecties"; KPI "Toegewezen" telt alleen plannen met `assignedTo = ingelogde gebruiker`; eigen plannen dragen een "Toegewezen aan mij"-badge |
 | INS-02 | F | Open **kale** `localhost:5176` (geen subdomein) | Organisatie-kiezer of nette melding; inspecteur-login faalt niet in een crash |
 | INS-03 | F | Verkeerd wachtwoord / niet-bestaand e-mail | 401 generiek "Ongeldige inloggegevens" (geen onderscheid bestaat/niet) |
 | INS-04 | G | Na een config-wijziging door OA (nieuwe checklist-versie) → sync | Reference-caches ververst; "nieuwere versie beschikbaar"-banner op oud plan |

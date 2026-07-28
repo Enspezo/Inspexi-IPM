@@ -33,7 +33,7 @@ export class MeasurementSheetRecordsController {
 
   @Get()
   @Roles(...ALL)
-  @ApiOperation({ summary: 'Ingevulde meetstaten (filters: assetId, inspectionPlanId, templateId, status)' })
+  @ApiOperation({ summary: 'Ingevulde meetstaten (filters: assetNodeId, inspectionPlanId, templateId, status)' })
   async findAll(
     @CurrentUser() user: User,
     @Query() query: QueryMeasurementSheetRecordsDto,

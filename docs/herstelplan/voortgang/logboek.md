@@ -46,6 +46,11 @@ Conform `docs/testprogramma/00-master-testplan.md` §5: API `:3001` (`NODE_ENV=t
 
 ## Chronologisch logboek
 
+### 28 juli 2026 — Chip-PR's gemerged + hercontrole op de gecombineerde stand
+
+- De drie door de eigenaar gestarte chip-sessies zijn geland: **#162** (requests-e2e lekte offertes in de gedeelde dev-DB — orkestrator-merge ná mergeability-check), **#164** (upload-hardening-sweep over alle resterende upload-/serve-routes, B-507-follow-up — door de eigenaar zelf gemerged) en **InspeXi #36** (knip-registratie `playwright.offline.config.ts` — orkestrator-merge, knip-run groen geverifieerd).
+- **Hercontrole op de gecombineerde dev** (Beheer 7735ef3): build 6/6 · unit **2285/2285** (141 suites) · volledige e2e **1210/1210** (**69** suites — +1 suite/+17 tests uit de chip-PR's) · dev-API herstart op de nieuwe build (health 200).
+
 ### 28 juli 2026 — WP-D2 gemerged → HERSTELPLAN COMPLEET (22/22) · bonusfix staf-meetstaatpaneel
 
 - **WP-D2 gemerged** (#167 + InspeXi #38): `sheetRecordDataSchema` is een écht schema (canonieke vorm `{[sectie]:{[rij]:{[veld]:{value,passFail}}}}`, gerichte NL-melding voor de oude `sections`-wrapper), afgedwongen op REST-PATCH, `/sync`-push én resolve. Idempotente datamigratie `20260728100000` pakt legacy-wrappers uit (óók openstaande conflictpayloads; `updated_at`/`synced_at` onaangeroerd → geen valse v4-ankerconflicten): **0 rijen op dev** (vooraf geverifieerde nulmeting: beide bestaande records waren al canoniek), transformatie bewezen via BEGIN/ROLLBACK-sandbox met synthetische legacy-/gemengde rijen incl. idempotentierun. PWA canonical-native + passFail-sweep bij save + **Dexie v17→v18** (zelfde conversieregels als de server-SQL, één bron). **Contract blijft v4** (de vorm wás het gedocumenteerde contract; de enige oude-vorm-schrijver is al door de v4-pull-guard buitengesloten); FASE3-SYNC §11.

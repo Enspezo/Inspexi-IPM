@@ -37,6 +37,8 @@ Het herstelplan **mitigeert** deze drie in WP-B9 (~6 uur totaal) zodat het lek d
 
 ### Epic 1 — Stafzijde van het berichtenkanaal (B-402) · 2–3 dagen
 
+> **Branch-beoordeling (28-07-2026, release-opruiming):** de oude remote branch `feat/req1-internal-chat` is bekeken en verwijderd. Hij betrof de *interne staf-chat* (REQ1), niet dit epic, en zijn enige unieke commit (`d43038b` — markRead-dedup-re-arm + chat-e-mail-uit-default) staat al volledig op `dev` (in `chat-threads.service.ts` resp. `notifications.service.ts`, incl. e2e-dekking). Geen herbruikbaar materiaal voor dit epic. Ook `feat/help-system-fase4` is verwijderd: zijn unieke commit (`84aa2c5` — GIN/pg_trgm-indexen in het Prisma-schema) staat letterlijk op `dev`.
+
 Het datamodel is compleet en expliciet voorbereid op tweerichtingsverkeer: `InspectionMessage` heeft naast `clientUserId` ook `userId` (staf) en `readAt`, en `MessageAttachment` bestaat. `markRead()` markeert zelfs al *staf*-berichten als gelezen door de klant — er kan alleen nooit een staf-bericht ontstaan. Het model komt in de hele codebase op 4 plekken voor: 1× API-service, 3× client-portal. Nul referenties in de staf-portal.
 
 | Deel | Werk | Schatting |

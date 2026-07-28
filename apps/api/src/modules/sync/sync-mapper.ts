@@ -38,8 +38,23 @@ import {
   FINAL_CHECK_RESULTS_LABEL,
 } from '../measurement-sheet-records/schemas/sheet-record-data.schema';
 
-/** Het contract-versienummer; bump bij elke breaking wijziging aan de wire-vorm. */
-export const SYNC_CONTRACT_VERSION = 3;
+/**
+ * Het contract-versienummer; bump bij elke breaking wijziging aan de wire-vorm.
+ *
+ * v4 (WP-D1, besluit A1 — B-209/B-223e): `updatedAt` is het universele
+ * versie-anker voor conflictdetectie.
+ *  - Push-updates dragen `baseVersion` (de laatst geziene server-`updatedAt`);
+ *    ontbreekt élk anker bij een update van een bestaand record → fail-closed
+ *    conflict ("geen basis bekend" is nooit meer "geen conflict").
+ *  - Push-respons draagt `applied[]` (nieuwe server-`updatedAt` per geslaagde
+ *    create/update) zodat de client zijn basis exact kan bijwerken.
+ *  - Pull-envelope draagt `openConflicts[]` (openstaande conflicten van deze
+ *    gebruiker) zodat een conflict ook in een nieuwe sessie zichtbaar is.
+ * Compatibiliteit: een v3-PWA blokkeert zichzelf op de pull-guard
+ * (contractVersion ≠ verwacht) en pusht daarna niet; een in-flight v3-push
+ * met `syncedAt` valt terug op de oude vergelijking (nooit stil overschrijven).
+ */
+export const SYNC_CONTRACT_VERSION = 4;
 
 export type SyncEntityKey =
   | 'inspectionPlans'
@@ -79,6 +94,13 @@ export type FkCheckModel =
  */
 export interface SyncRecordData {
   id?: string;
+  /**
+   * v4-versie-anker (besluit A1): de nieuwste server-`updatedAt` die de client
+   * voor dit record heeft gezien (gevuld bij pull en push-ack). De server
+   * vergelijkt hiertegen voor conflictdetectie.
+   */
+  baseVersion?: string;
+  /** Legacy v3-anker (transitie): alleen gelezen als `baseVersion` ontbreekt. */
   syncedAt?: string;
   createdBy?: string;
   [field: string]: unknown;

@@ -105,6 +105,10 @@ describe('SyncService', () => {
     }).compile();
 
     service = module.get<SyncService>(SyncService);
+
+    // v4 (WP-D1): elke pull leest de open conflicten van de gebruiker —
+    // default leeg zodat bestaande pull-tests niet op undefined.map stranden.
+    mockPrisma.syncQueue.findMany.mockResolvedValue([]);
   });
 
   // ── PUSH: create ──────────────────────────────────────
@@ -507,7 +511,64 @@ describe('SyncService', () => {
       expect(result.processed.findings).toBe(0);
     });
 
-    it('M2: treats a create for an already-existing record as an idempotent update', async () => {
+    it('M2/v4: an identical create-retry (lost push response) is a safe no-op success', async () => {
+      // De eerdere push heeft de data al toegepast: serverstaat == payload.
+      const dupUpdatedAt = new Date('2020-01-01');
+      mockPrisma.inspectionPlan.findFirst.mockResolvedValue({
+        id: 'p1', orgId: 'org-1', updatedAt: dupUpdatedAt, projectName: 'Retry',
+      });
+
+      const dto = {
+        deviceId: 'dev-1',
+        changes: {
+          inspectionPlans: [
+            { operation: 'create', data: { id: 'p1', projectName: 'Retry' } },
+          ],
+        },
+      } as any;
+
+      const result = await service.push(user, dto);
+
+      // No-op: niets geschreven, wél succes + de bestaande base-versie terug.
+      expect(mockPrisma.inspectionPlan.create).not.toHaveBeenCalled();
+      expect(mockPrisma.inspectionPlan.update).not.toHaveBeenCalled();
+      expect(result.processed.inspectionPlans).toBe(1);
+      expect(result.conflicts).toHaveLength(0);
+      expect(result.applied).toEqual([
+        { entityType: 'inspectionPlan', entityId: 'p1', serverVersion: dupUpdatedAt.toISOString() },
+      ]);
+    });
+
+    it('v4/B-209: an anchor-less create for an existing record with DIFFERENT content is a fail-closed conflict', async () => {
+      // Het B-209-scenario: de PWA pusht een bestaand server-record (zonder
+      // basis) als create, met offline gewijzigde inhoud. Vóór WP-D1 werd de
+      // serverstaat hier stil overschreven.
+      mockPrisma.inspectionPlan.findFirst.mockResolvedValue({
+        id: 'p1', orgId: 'org-1', updatedAt: new Date('2020-01-01'), projectName: 'SERVERVERSIE',
+      });
+      mockPrisma.syncQueue.findFirst.mockResolvedValue(null);
+      mockPrisma.syncQueue.create.mockResolvedValue({ id: 'q1' });
+
+      const dto = {
+        deviceId: 'dev-1',
+        changes: {
+          inspectionPlans: [
+            { operation: 'create', data: { id: 'p1', projectName: 'CLIENTVERSIE' } },
+          ],
+        },
+      } as any;
+
+      const result = await service.push(user, dto);
+
+      expect(mockPrisma.inspectionPlan.update).not.toHaveBeenCalled();
+      expect(result.conflicts).toHaveLength(1);
+      expect(result.conflicts[0]).toEqual(
+        expect.objectContaining({ entityType: 'inspectionPlan', entityId: 'p1' }),
+      );
+      expect(result.processed.inspectionPlans).toBe(0);
+    });
+
+    it('v4: a create-adoption WITH a fresh baseVersion applies as an idempotent update', async () => {
       mockPrisma.inspectionPlan.findFirst.mockResolvedValue({
         id: 'p1', orgId: 'org-1', updatedAt: new Date('2020-01-01'),
       });
@@ -517,7 +578,10 @@ describe('SyncService', () => {
         deviceId: 'dev-1',
         changes: {
           inspectionPlans: [
-            { operation: 'create', data: { id: 'p1', projectName: 'Retry' } },
+            {
+              operation: 'create',
+              data: { id: 'p1', projectName: 'Retry', baseVersion: '2025-01-01T00:00:00.000Z' },
+            },
           ],
         },
       } as any;
@@ -628,6 +692,134 @@ describe('SyncService', () => {
         expect.objectContaining({ where: { id: 'q-open' } }),
       );
       expect(result.conflicts).toHaveLength(1);
+    });
+  });
+
+  // ── PUSH: v4-versieanker (WP-D1, besluit A1 — B-209) ──
+  describe('push — v4 version anchor (fail-closed)', () => {
+    const planUpdateData = (data: Record<string, unknown>) =>
+      ({
+        deviceId: 'dev-1',
+        changes: { inspectionPlans: [{ operation: 'update', data: { id: 'p1', ...data } }] },
+      }) as any;
+
+    beforeEach(() => {
+      mockPrisma.syncQueue.findFirst.mockResolvedValue(null);
+      mockPrisma.syncQueue.create.mockResolvedValue({ id: 'q1' });
+    });
+
+    it('B-209: an update WITHOUT any anchor is a conflict (fail-closed), never a silent overwrite', async () => {
+      mockPrisma.inspectionPlan.findFirst.mockResolvedValue({
+        id: 'p1', orgId: 'org-1', updatedAt: new Date('2020-01-01'), projectName: 'SERVERVERSIE',
+      });
+
+      const result = await service.push(user, planUpdateData({ projectName: 'CLIENTVERSIE' }));
+
+      expect(mockPrisma.inspectionPlan.update).not.toHaveBeenCalled();
+      expect(result.conflicts).toHaveLength(1);
+      expect(result.conflicts[0].serverVersion).toBe(new Date('2020-01-01').toISOString());
+      // De conflictrij draagt de org-scoping voor de pull-envelope (B-223e).
+      expect(mockPrisma.syncQueue.create).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ orgId: 'org-1' }) }),
+      );
+    });
+
+    it('an unparseable anchor counts as missing (fail-closed conflict)', async () => {
+      mockPrisma.inspectionPlan.findFirst.mockResolvedValue({
+        id: 'p1', orgId: 'org-1', updatedAt: new Date('2020-01-01'),
+      });
+
+      const result = await service.push(
+        user,
+        planUpdateData({ projectName: 'Y', baseVersion: 'geen-datum' }),
+      );
+
+      expect(mockPrisma.inspectionPlan.update).not.toHaveBeenCalled();
+      expect(result.conflicts).toHaveLength(1);
+    });
+
+    it('accepts a fresh v4 baseVersion (preferred over a stale legacy syncedAt)', async () => {
+      mockPrisma.inspectionPlan.findFirst.mockResolvedValue({
+        id: 'p1', orgId: 'org-1', updatedAt: new Date('2024-06-01T00:00:00.000Z'),
+      });
+      mockPrisma.inspectionPlan.update.mockResolvedValue({ id: 'p1' });
+
+      const result = await service.push(
+        user,
+        planUpdateData({
+          projectName: 'Y',
+          baseVersion: '2024-06-01T00:00:00.000Z', // exact de laatst geziene serverstaat
+          syncedAt: '2020-01-01T00:00:00.000Z', // stale legacy-anker mag niet meetellen
+        }),
+      );
+
+      expect(result.conflicts).toHaveLength(0);
+      expect(mockPrisma.inspectionPlan.update).toHaveBeenCalled();
+      expect(result.processed.inspectionPlans).toBe(1);
+    });
+
+    it('detects a conflict on a stale baseVersion (server newer than the client base)', async () => {
+      mockPrisma.inspectionPlan.findFirst.mockResolvedValue({
+        id: 'p1', orgId: 'org-1', updatedAt: new Date('2024-06-02T00:00:00.000Z'),
+      });
+
+      const result = await service.push(
+        user,
+        planUpdateData({ projectName: 'Y', baseVersion: '2024-06-01T00:00:00.000Z' }),
+      );
+
+      expect(mockPrisma.inspectionPlan.update).not.toHaveBeenCalled();
+      expect(result.conflicts).toHaveLength(1);
+    });
+
+    it('returns the new server base per successful write under applied[] (create + update)', async () => {
+      const createdAt = new Date('2026-01-01T10:00:00.000Z');
+      mockPrisma.inspectionPlan.findFirst
+        .mockResolvedValueOnce(null) // create: geen dup
+        .mockResolvedValueOnce({ id: 'p2', orgId: 'org-1', updatedAt: new Date('2020-01-01') });
+      mockPrisma.inspectionPlan.create.mockResolvedValue({ id: 'p-new', updatedAt: createdAt });
+      mockPrisma.inspectionPlan.update.mockResolvedValue({ id: 'p2' });
+
+      const dto = {
+        deviceId: 'dev-1',
+        changes: {
+          inspectionPlans: [
+            { operation: 'create', data: { id: 'p-new', projectName: 'Nieuw' } },
+            {
+              operation: 'update',
+              data: { id: 'p2', projectName: 'Y', baseVersion: '2025-01-01T00:00:00.000Z' },
+            },
+          ],
+        },
+      } as any;
+
+      const result = await service.push(user, dto);
+
+      expect(result.errors).toHaveLength(0);
+      expect(result.applied).toHaveLength(2);
+      expect(result.applied[0]).toEqual({
+        entityType: 'inspectionPlan', entityId: 'p-new', serverVersion: createdAt.toISOString(),
+      });
+      // De update-versie is de gedeelde stempel die ook als updatedAt geschreven is.
+      const written = mockPrisma.inspectionPlan.update.mock.calls[0][0].data;
+      expect(result.applied[1]).toEqual({
+        entityType: 'inspectionPlan', entityId: 'p2', serverVersion: written.updatedAt.toISOString(),
+      });
+    });
+
+    it('conflict serverData never leaks internalNotes', async () => {
+      mockPrisma.inspectionPlan.findFirst.mockResolvedValue({
+        id: 'p1', orgId: 'org-1', updatedAt: new Date('2020-01-01'),
+        projectName: 'SERVERVERSIE', internalNotes: 'GEHEIM',
+      });
+
+      const result = await service.push(user, planUpdateData({ projectName: 'CLIENTVERSIE' }));
+
+      expect(result.conflicts).toHaveLength(1);
+      expect(result.conflicts[0].serverData).not.toHaveProperty('internalNotes');
+      const queued = mockPrisma.syncQueue.create.mock.calls[0][0].data;
+      expect((queued.conflictData as { serverData: Record<string, unknown> }).serverData)
+        .not.toHaveProperty('internalNotes');
     });
   });
 
@@ -978,7 +1170,8 @@ describe('SyncService', () => {
       expect(result).toHaveProperty('photos');
       expect(result).toHaveProperty('contacts');
       expect(result).toHaveProperty('deletedIds');
-      expect(result).toHaveProperty('contractVersion', 3);
+      expect(result).toHaveProperty('contractVersion', 4);
+      expect(result).toHaveProperty('openConflicts', []);
       expect(result).toHaveProperty('serverTime');
 
       // toWire strips internalNotes
@@ -1034,6 +1227,60 @@ describe('SyncService', () => {
       expect(result.users).toEqual([{ id: 'u1', availability: 'BESCHIKBAAR' }]);
       expect(result.deletedIds.chatThreads).toEqual(['t-del']);
       expect(result.deletedIds.chatMessages).toEqual(['m-del']);
+    });
+
+    it('v4/B-223e: delivers the FULL open-conflict set of this user, stripped and user-scoped', async () => {
+      mockPrisma.inspectionPlan.findMany.mockResolvedValue([]);
+      mockPrisma.assetNode.findMany.mockResolvedValue([]);
+      mockPrisma.finding.findMany.mockResolvedValue([]);
+      mockPrisma.visualInspection.findMany.mockResolvedValue([]);
+      mockPrisma.measurementRecord.findMany.mockResolvedValue([]);
+      mockPrisma.measurementSheetRecord.findMany.mockResolvedValue([]);
+      mockPrisma.standaloneMeasurement.findMany.mockResolvedValue([]);
+      mockPrisma.photo.findMany.mockResolvedValue([]);
+      mockPrisma.contact.findMany.mockResolvedValue([]);
+      mockPrisma.measurementInstrument.findMany.mockResolvedValue([]);
+      mockPrisma.userDefaultInstrument.findMany.mockResolvedValue([]);
+      mockPrisma.inspectionPlanDefaultInstrument.findMany.mockResolvedValue([]);
+
+      const createdAt = new Date('2026-07-01T10:00:00.000Z');
+      mockPrisma.syncQueue.findMany.mockResolvedValue([
+        {
+          entityType: 'assetNode',
+          entityId: 'node-1',
+          deviceId: 'dev-2',
+          createdAt,
+          conflictData: {
+            serverVersion: '2026-07-01T09:00:00.000Z',
+            serverData: { id: 'node-1', name: 'SERVERVERSIE', internalNotes: 'GEHEIM' },
+            clientData: { id: 'node-1', name: 'CLIENTVERSIE' },
+          },
+        },
+      ]);
+
+      const result = await service.pull(user, '2026-07-27T00:00:00.000Z');
+
+      // Bewust NIET since-gefilterd: altijd de volledige open set van de gebruiker.
+      expect(mockPrisma.syncQueue.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            orgId: 'org-1',
+            userId: 'user-1',
+            status: SyncStatus.conflict,
+          }),
+        }),
+      );
+      expect(result.openConflicts).toEqual([
+        {
+          entityType: 'assetNode',
+          entityId: 'node-1',
+          deviceId: 'dev-2',
+          conflictAt: createdAt.toISOString(),
+          serverVersion: '2026-07-01T09:00:00.000Z',
+          serverData: { id: 'node-1', name: 'SERVERVERSIE' }, // internalNotes gestript
+          clientData: { id: 'node-1', name: 'CLIENTVERSIE' },
+        },
+      ]);
     });
   });
 
@@ -1226,19 +1473,42 @@ describe('SyncService', () => {
     });
 
     it('returns the EXISTING nodeNumber on an idempotent create retry (adopt path)', async () => {
-      // Retry van een create die eerder half slaagde: record bestaat al mét nummer.
+      // Retry van een create die eerder half slaagde: record bestaat al mét nummer
+      // en met exact de eerder gepushte inhoud (v4: byte-identieke echo → no-op).
       mockPrisma.assetNode.findFirst.mockResolvedValue({
-        id: 'a1', orgId: 'org-1', typeCode: 'electrical_installation', parentId: null,
+        id: 'a1', orgId: 'org-1', nodeType: 'ASSET', typeCode: 'electrical_installation',
+        name: 'X', parentId: null,
         nodeNumber: 'EI-0007', updatedAt: new Date('2020-01-01'),
       });
-      mockPrisma.assetNode.update.mockResolvedValue({ id: 'a1', updatedAt: new Date() });
 
       const result = await service.push(user, nodeCreate('electrical_installation'));
 
       expect(mockPrisma.assetNode.create).not.toHaveBeenCalled();
+      // v4: geen write nodig (identieke echo), wél het bestaande nummer terug.
+      expect(mockPrisma.assetNode.update).not.toHaveBeenCalled();
       expect(result.assigned).toEqual([
         { entityType: 'assetNode', entityId: 'a1', nodeNumber: 'EI-0007' },
       ]);
+    });
+
+    it('v4/B-209: an anchor-less node adopt with DIFFERENT content conflicts instead of overwriting', async () => {
+      // Het letterlijke B-209-bewijs: "TP Onderverdeler B1 SERVERVERSIE" werd
+      // door een anker-loze pseudo-create teruggezet naar de oude clientnaam.
+      mockPrisma.assetNode.findFirst.mockResolvedValue({
+        id: 'a1', orgId: 'org-1', nodeType: 'ASSET', typeCode: 'electrical_installation',
+        name: 'TP Onderverdeler B1 SERVERVERSIE', parentId: null,
+        nodeNumber: 'EI-0007', updatedAt: new Date('2020-01-01'),
+      });
+      mockPrisma.syncQueue.findFirst.mockResolvedValue(null);
+      mockPrisma.syncQueue.create.mockResolvedValue({ id: 'q1' });
+
+      const result = await service.push(user, nodeCreate('electrical_installation'));
+
+      expect(mockPrisma.assetNode.update).not.toHaveBeenCalled();
+      expect(result.conflicts).toHaveLength(1);
+      expect(result.conflicts[0]).toEqual(
+        expect.objectContaining({ entityType: 'assetNode', entityId: 'a1' }),
+      );
     });
 
     it('allows an UNCHANGED typeCode echo on update (legacy records keep syncing)', async () => {

@@ -10,6 +10,24 @@ const EXCLUDED_FIELDS = new Set([
   'tokenHash',
   'createdAt',
   'updatedAt',
+  // WP-D1: sync-boekhouding, geen inhoudelijke wijziging — buiten de audit-diff.
+  'syncedAt',
+]);
+
+/**
+ * WP-D1 (B-209, besluit A1): de zeven sync-entiteiten waarvoor élke serverwrite
+ * `syncedAt` moet vullen (REST/portal-services incluis), zodat elk record een
+ * geldige pull-basis heeft. De /sync-paden stempelen zelf al (syncedAt +
+ * updatedAt uit één stempel); deze middleware dekt alle overige schrijfpaden.
+ */
+const SYNC_ANCHORED_MODELS = new Set([
+  'InspectionPlan',
+  'AssetNode',
+  'Finding',
+  'VisualInspection',
+  'MeasurementRecord',
+  'MeasurementSheetRecord',
+  'StandaloneMeasurement',
 ]);
 
 /** Audit-failure alerting thresholds (in-memory, single process) */
@@ -78,11 +96,63 @@ export class PrismaService
 
   async onModuleInit() {
     await this.$connect();
+    // Volgorde bewust: de sync-anchor-middleware eerst (buitenste laag), zodat
+    // de audit-middleware ongewijzigde params ziet; `syncedAt` staat in
+    // EXCLUDED_FIELDS en vervuilt de audit-diff dus nooit.
+    this.setupSyncAnchorMiddleware();
     this.setupAuditMiddleware();
   }
 
   async onModuleDestroy() {
     await this.$disconnect();
+  }
+
+  /**
+   * WP-D1 (B-209): vult `syncedAt` bij elke create/update op de zeven
+   * sync-entiteiten — met updatedAt en syncedAt uit ÉÉN stempel wanneer de
+   * caller ze niet zelf zet. Zonder die gedeelde stempel zou Prisma's
+   * `@updatedAt` enkele ms later stempelen dan syncedAt → rij met
+   * `updatedAt > syncedAt` → vals zelf-conflict op een v3-transitieclient
+   * (dezelfde skew-klasse als PR #144). De /sync-paden zetten beide velden al
+   * expliciet en worden hier dus nooit overschreven (`=== undefined`-guard).
+   * Geen recursiegevaar: er wordt alleen `params.args.data` gemuteerd, geen
+   * extra query gedaan.
+   */
+  private setupSyncAnchorMiddleware() {
+    const stampData = (data: unknown, stamp: Date): void => {
+      if (!data || typeof data !== 'object') return;
+      const record = data as Record<string, unknown>;
+      if (record.syncedAt !== undefined) return; // sync-pad stempelt zelf
+      record.syncedAt = stamp;
+      if (record.updatedAt === undefined) record.updatedAt = stamp;
+    };
+
+    this.$use(async (params: Prisma.MiddlewareParams, next) => {
+      if (!params.model || !SYNC_ANCHORED_MODELS.has(params.model)) {
+        return next(params);
+      }
+      const stamp = new Date();
+      switch (params.action) {
+        case 'create':
+        case 'update':
+        case 'updateMany':
+          stampData(params.args?.data, stamp);
+          break;
+        case 'createMany': {
+          const data = params.args?.data;
+          if (Array.isArray(data)) for (const row of data) stampData(row, stamp);
+          else stampData(data, stamp);
+          break;
+        }
+        case 'upsert':
+          stampData(params.args?.create, stamp);
+          stampData(params.args?.update, stamp);
+          break;
+        default:
+          break;
+      }
+      return next(params);
+    });
   }
 
   private setupAuditMiddleware() {

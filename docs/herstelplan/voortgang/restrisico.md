@@ -9,8 +9,8 @@
 | B-406 deel 2 (tekenrecht toekennen) | B9 | Alleen mitigatie (`canSign` doorgeven) — toekennen is Epic 3 | `03-beslispunten-backlog.md` §C Epic 3 |
 | B-409 (anonimisering hersteller) | C2 | Wacht op beslispunt A4 | `03-beslispunten-backlog.md` §A A4 |
 | B-220 (offline inloggen na uitloggen) | D3 | Wacht op beslispunt A5 | `03-beslispunten-backlog.md` §A A5 |
-| B-209/B-223e (versieanker) | D1 | Wacht op beslispunt A1 | `03-beslispunten-backlog.md` §A A1 |
-| B-205b (canonieke datavorm) | D2 | Wacht op beslispunt A2 | `03-beslispunten-backlog.md` §A A2 |
+| B-209/B-223e (versieanker) | D1 | Wacht op beslispunt A1. Mitigatie al gemerged: syncedAt/updatedAt-skew-hotfix (PR #144) + backfill-script | `03-beslispunten-backlog.md` §A A1 |
+| B-205b (canonieke datavorm) | D2 | Wacht op beslispunt A2. Mitigatie al gemerged: defensieve asRecordData (WP-B1) — geen crashes meer op gemengde vormen | `03-beslispunten-backlog.md` §A A2 |
 | B-223a (pull-scope inspecteur) | C3 | Wacht op beslispunt A3 | `03-beslispunten-backlog.md` §A A3 |
 | B-402/B-403 (dead-end blijft) | B9 | Alleen mitigatie: klant wordt niet meer misleid + org krijgt e-mail; stafzijde = Epic 1/2 | `03-beslispunten-backlog.md` §C |
 | B-315 (lines.0.-prefix) | B5 | Geneste DTO-fouten dragen ValidationPipe-prefix voor directe API-callers; ontprefixing hoort bij WP-C1 | WP-C1 (golf 3) |
@@ -23,5 +23,7 @@
 | B-203 (nasleep) | C3 | Testomgeving bevat nog `-0033`/`-0034`-nodenummers (data-opruiming); datacheck aanbevolen op typedefinities zonder shortCode vóór prod | B-203.md |
 | B-312 (deploy) | C4 | CJK blijft stuk tot `fonts-noto-cjk` in de Puppeteer/Chromium-image zit — zelfde release als de code | PR #148 + FASE4-DOCGEN.md |
 | B-211 (nasleep) | A1 | Auto-sync triggert alleen op reconnect/mount (online muteren vergt de sync-pill — bewuste scope); bottom-nav overlapt sheet-submit op desktop (pre-existing, cosmetica-kandidaat) | InspeXi PR #30-body |
+
+| B-222-legacy (nasleep) | B10 | Bestaande pending PWA-records met fictief vocabulaire worden expliciet afgekeurd (dead-letter + NL-uitleg) — inspecteur herclassificeert; servervalidatie echo-tolerant voor bestaande rijen | InspeXi #35 + #159 |
 
 _Deze tabel wordt per golf bijgewerkt; bevindingen die tijdens uitvoering achterhaald blijken komen hier ook te staan._

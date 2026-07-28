@@ -69,14 +69,14 @@ GOLF 4  Gecoördineerd contractwerk            3 WP    ~3-4 dagen  (na stabilisa
 | **B7** | Publieke endpoints: allowlist + tenantbinding | API | B-306, B-152 | S2 | — | ✅ gemerged (PR #138) |
 | **B8** | Planning: sessies toewijzen (UI) | portal | B-310 | S2 | — | ✅ gemerged (PR #135) |
 | **B9** | Klantportaal: zichtbaarheid + mitigaties | API + beide portals | B-412, B-402*, B-403*, B-406a | S2/S3 | A4 | ✅ gemerged (PR #139) |
-| **B10** | Constatering-classificatie uit het model | PWA + API | B-222 | S2 | B1 | open |
+| **B10** | Constatering-classificatie uit het model | PWA + API | B-222 | S2 | B1 | ✅ gemerged (InspeXi #35 + #159) |
 | **C1** | Foutcontract: NL-meldingen + 404-oracle | API + portal | B-105, B-106, B-151, B-155, B-501, B-509, B-601 | S3/S4 | — | ✅ gemerged (PR #152) |
 | **C2** | Klantportaal-hygiëne | API + client-portal | B-404, B-405, B-407, B-408, B-409, B-410, B-411 | S3/S4 | — | ✅ gemerged (PR #147) |
 | **C3** | Sync-hardening serverzijde | API | B-203, B-212, B-216, B-217, B-218, B-223a | S3 | — | ✅ gemerged (PR #150) |
 | **C4** | Documentgeneratie + tabeloverflow | API + portal | B-311, B-312, B-301 | S3 | — | ✅ gemerged (PR #148) |
 | **C5** | Config-validatie & losse rest | API + portal | B-001, B-107, B-153, B-154, B-313, B-315-rest, B-505, B-506, B-508, B-510, B-511 | S3/S4 | — | ✅ gemerged (PR #153) |
-| **D1** | Sync-versieanker + conflicten in pull | PWA + API | B-209, B-223e | S2 | golf 1-2 stabiel | open |
-| **D2** | Canonieke MeasurementSheetRecord-datavorm | PWA + API | B-205b | S2 | A2 | open |
+| **D1** | Sync-versieanker + conflicten in pull | PWA + API | B-209, B-223e | S2 | golf 1-2 stabiel | ⏸ geblokkeerd op beslispunt A1 |
+| **D2** | Canonieke MeasurementSheetRecord-datavorm | PWA + API | B-205b | S2 | A2 | ⏸ geblokkeerd op beslispunt A2 |
 | **D3** | Offline-shell hertest + sessiebeleid | PWA | B-219, B-220 | S3→S1? | — | ✅ gemerged (InspeXi #33) — B-219 definitief S3 |
 
 \* mitigatie, niet de volledige feature (zie D1-beslissing)

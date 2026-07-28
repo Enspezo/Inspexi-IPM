@@ -5,6 +5,9 @@ export interface RequestContextData {
   orgId: string | null;
   ipAddress?: string;
   requestId?: string;
+  // Herkomst van mutaties in deze context (PRD-15). Ongezet = HUMAN (normale UI).
+  // De AI-assistent draait zijn bevestigde schrijfacties in een context met source='AI'.
+  source?: 'HUMAN' | 'AI';
 }
 
 export const requestContext = new AsyncLocalStorage<RequestContextData>();

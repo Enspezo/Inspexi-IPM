@@ -114,6 +114,9 @@ export class OrganizationsController {
         // als chatEnabled, niet gevoelig.
         inspectionReviewEnabled: true,
         aiReviewEnabled: true,
+        // AI-assistent: drawer-zichtbaarheid voor alle stafrollen (zelfde
+        // precedent; de rol-check zelf is server-autoritatief via GET /ai/access).
+        aiAgentEnabled: true,
       },
     });
     if (!org) {

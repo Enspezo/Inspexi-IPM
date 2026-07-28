@@ -716,6 +716,12 @@ async function main() {
   // de org/plan zelf; het plan ná de organization (Organization.planId → Plan).
   await prisma.organizationFeature.deleteMany();
   await prisma.planFeature.deleteMany();
+  // AI-assistent (add-on) — kinderen eerst; usageLog verwijst (scalar)
+  // naar conversation, dus vóór aiConversation opruimen.
+  await prisma.aiPendingAction.deleteMany();
+  await prisma.aiMessage.deleteMany();
+  await prisma.aiUsageLog.deleteMany();
+  await prisma.aiConversation.deleteMany();
   // Auth/org tables
   await prisma.auditLog.deleteMany();
   await prisma.invitation.deleteMany();
@@ -3575,6 +3581,25 @@ async function main() {
     );
   } else {
     console.log('  ⏭️  AI-voorcontrole demo-run overgeslagen (zet SEED_DEMO=1 om aan te maken)');
+  }
+
+  // ─── AI-assistent demo (PRD-15) — alleen bij SEED_DEMO=1 ────────────────
+  // Zelfde belt-and-braces als AI_REVIEW hierboven: expliciete AI_AGENT-override
+  // op de demo-org zodat de assistent-drawer in de demo altijd beschikbaar is
+  // (de kill-switch `aiAgentEnabled` staat schema-default al aan). Zonder
+  // ANTHROPIC_API_KEY meldt de assistent zelf dat hij niet geconfigureerd is.
+  if (process.env.SEED_DEMO === '1') {
+    await prisma.organizationFeature.create({
+      data: {
+        orgId: org1.id,
+        featureKey: 'AI_AGENT',
+        enabled: true,
+        updatedById: orgAdminId,
+      },
+    });
+    console.log('  ✓ AI-assistent: AI_AGENT-override op de demo-org (SEED_DEMO=1)');
+  } else {
+    console.log('  ⏭️  AI-assistent-override overgeslagen (zet SEED_DEMO=1 om aan te maken)');
   }
 
   // ─── Online herstel demo (PRD-14 §14.12) — alleen bij SEED_DEMO=1 ────────

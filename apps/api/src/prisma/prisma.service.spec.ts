@@ -93,3 +93,54 @@ describe('PrismaService audit-failure alerting', () => {
     expect(dispatchSpy).toHaveBeenCalledTimes(2);
   });
 });
+
+/**
+ * PRD-15: audit-attributie. `source` is de laatste geïnterpoleerde waarde in de
+ * INSERT-template (vóór het literale NOW()), dus we lezen die uit de raw-call.
+ */
+describe('PrismaService writeAuditLog — source attribution (PRD-15)', () => {
+  let service: PrismaService;
+  let rawSpy: jest.SpyInstance;
+
+  const base = {
+    entityType: 'Contact',
+    entityId: '00000000-0000-0000-0000-000000000001',
+    action: 'CREATE',
+    snapshot: null,
+    changes: null,
+    userId: '00000000-0000-0000-0000-000000000002',
+    orgId: '00000000-0000-0000-0000-000000000003',
+  };
+
+  /** Laatste `${}`-waarde uit de eerste $executeRaw-call = het source-argument. */
+  const insertedSource = () => {
+    const args = rawSpy.mock.calls[0];
+    return args[args.length - 1];
+  };
+
+  beforeEach(() => {
+    service = new PrismaService();
+    jest
+      .spyOn((service as any).logger, 'error')
+      .mockImplementation(() => undefined);
+    rawSpy = jest.spyOn(service, '$executeRaw').mockResolvedValue(1 as never);
+  });
+
+  afterEach(() => jest.restoreAllMocks());
+
+  it("defaults source to 'HUMAN' when not provided", async () => {
+    await service.writeAuditLog({ ...base });
+    expect(rawSpy).toHaveBeenCalledTimes(1);
+    expect(insertedSource()).toBe('HUMAN');
+  });
+
+  it("stamps source 'AI' when the context is AI-initiated", async () => {
+    await service.writeAuditLog({ ...base, source: 'AI' });
+    expect(insertedSource()).toBe('AI');
+  });
+
+  it("keeps 'HUMAN' when explicitly set", async () => {
+    await service.writeAuditLog({ ...base, source: 'HUMAN' });
+    expect(insertedSource()).toBe('HUMAN');
+  });
+});

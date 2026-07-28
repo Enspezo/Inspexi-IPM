@@ -38,6 +38,8 @@ export interface UpdateOrganizationDto {
   aiReviewEnabled?: boolean;
   aiReviewInstructions?: string | null;
   onlineRepairDefault?: boolean;
+  aiAgentEnabled?: boolean;
+  aiAgentAllowedRoles?: Role[];
 }
 
 export function useUpdateOrganization(orgId: string | null | undefined) {

@@ -202,6 +202,15 @@ export const aiReviewKeys = {
   status: () => [...aiReviewKeys.all, 'status'] as const,
 };
 
+// AI-assistent (add-on, PRD-15)
+export const aiAgentKeys = {
+  all: ['ai'] as const,
+  access: () => [...aiAgentKeys.all, 'access'] as const,
+  conversations: () => [...aiAgentKeys.all, 'conversations'] as const,
+  conversation: (id: string | null) => [...aiAgentKeys.all, 'conversation', id] as const,
+  usage: () => [...aiAgentKeys.all, 'usage'] as const,
+};
+
 export const inspectionAssetKeys = {
   all: ['inspection-assets'] as const,
   byPlan: (planId: string) => [...inspectionAssetKeys.all, planId] as const,

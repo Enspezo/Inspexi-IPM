@@ -21,6 +21,8 @@ export interface OrgBranding {
   inspectionReviewEnabled?: boolean;
   /** AI-voorcontrole van inspectierapporten aan/uit (PRD-13). */
   aiReviewEnabled?: boolean;
+  /** AI-assistent kill-switch voor deze organisatie. */
+  aiAgentEnabled?: boolean;
 }
 
 interface TenantContextType {

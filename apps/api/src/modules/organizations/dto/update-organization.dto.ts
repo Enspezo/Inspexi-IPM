@@ -1,5 +1,6 @@
 import { ApiPropertyOptional, PartialType } from '@nestjs/swagger';
-import { IsBoolean, IsOptional, IsString, MaxLength } from 'class-validator';
+import { IsArray, IsBoolean, IsEnum, IsOptional, IsString, MaxLength } from 'class-validator';
+import { Role } from '@prisma/client';
 import { CreateOrganizationDto } from './create-organization.dto';
 
 export class UpdateOrganizationDto extends PartialType(CreateOrganizationDto) {
@@ -55,4 +56,24 @@ export class UpdateOrganizationDto extends PartialType(CreateOrganizationDto) {
   @IsOptional()
   @IsBoolean()
   onlineRepairDefault?: boolean;
+
+  @ApiPropertyOptional({
+    example: true,
+    description:
+      'AI-assistent aan/uit voor deze organisatie (kill-switch); vereist het AI_AGENT-entitlement',
+  })
+  @IsOptional()
+  @IsBoolean()
+  aiAgentEnabled?: boolean;
+
+  @ApiPropertyOptional({
+    isArray: true,
+    enum: Role,
+    description:
+      'Rollen die de AI-assistent mogen gebruiken; leeg = systeem-default (staf behalve inspecteur)',
+  })
+  @IsOptional()
+  @IsArray()
+  @IsEnum(Role, { each: true })
+  aiAgentAllowedRoles?: Role[];
 }

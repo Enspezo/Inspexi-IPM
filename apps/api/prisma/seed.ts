@@ -3583,6 +3583,25 @@ async function main() {
     console.log('  ⏭️  AI-voorcontrole demo-run overgeslagen (zet SEED_DEMO=1 om aan te maken)');
   }
 
+  // ─── AI-assistent demo (PRD-15) — alleen bij SEED_DEMO=1 ────────────────
+  // Zelfde belt-and-braces als AI_REVIEW hierboven: expliciete AI_AGENT-override
+  // op de demo-org zodat de assistent-drawer in de demo altijd beschikbaar is
+  // (de kill-switch `aiAgentEnabled` staat schema-default al aan). Zonder
+  // ANTHROPIC_API_KEY meldt de assistent zelf dat hij niet geconfigureerd is.
+  if (process.env.SEED_DEMO === '1') {
+    await prisma.organizationFeature.create({
+      data: {
+        orgId: org1.id,
+        featureKey: 'AI_AGENT',
+        enabled: true,
+        updatedById: orgAdminId,
+      },
+    });
+    console.log('  ✓ AI-assistent: AI_AGENT-override op de demo-org (SEED_DEMO=1)');
+  } else {
+    console.log('  ⏭️  AI-assistent-override overgeslagen (zet SEED_DEMO=1 om aan te maken)');
+  }
+
   // ─── Online herstel demo (PRD-14 §14.12) — alleen bij SEED_DEMO=1 ────────
   // De demo-org krijgt het ONLINE_HERSTEL-entitlement (override, belt-and-braces
   // naast het Compleet-plan) + org-default aan; het demo-plan krijgt het

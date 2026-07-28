@@ -18,6 +18,16 @@ import { emptyRefs } from './seed-tp/shared';
 import { seedBeheer } from './seed-tp/beheer';
 import { seedInspectie } from './seed-tp/inspectie';
 import { backfillNumbering } from './backfill-numbering';
+import { assertSeedAllowed } from '../src/common/config/assert-seed-allowed';
+
+// Productie-guard (audit §7.5): deze seed schrijft/verwijdert testdata. Moet
+// vóór élke databaseactie staan — bij weigering is er gegarandeerd niets geraakt.
+try {
+  assertSeedAllowed(process.env);
+} catch (e) {
+  console.error((e as Error).message);
+  process.exit(1);
+}
 
 const prisma = new PrismaClient();
 

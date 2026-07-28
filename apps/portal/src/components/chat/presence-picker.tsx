@@ -39,8 +39,8 @@ export function PresencePicker() {
   async function apply(availability: Availability, availabilityNote: string) {
     try {
       await updatePresence.mutateAsync({ availability, availabilityNote: availabilityNote || undefined });
-    } catch (err) {
-      showToast(err instanceof Error ? err.message : 'Status bijwerken mislukt', 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   }
 

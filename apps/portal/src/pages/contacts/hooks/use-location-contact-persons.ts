@@ -1,5 +1,10 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useApiMutation } from '@/hooks/use-api-mutation';
 import { apiClient } from '@/lib/api-client';
+import {
+  contactPersonLocationKeys,
+  locationContactPersonKeys,
+} from '@/lib/query-keys';
 import type { LocationContactPerson } from '@/types';
 
 // ─── Location–ContactPerson links ─────────────────────
@@ -13,7 +18,7 @@ export function useContactPersonLocations(personId: string) {
       contact?: { id: string; type: string; companyName: string | null; firstName: string | null; lastName: string | null };
     };
   })[]>({
-    queryKey: ['contact-person-locations', personId],
+    queryKey: contactPersonLocationKeys.byPerson(personId),
     queryFn: () => apiClient.get(`/contacts/contact-persons/${personId}/locations`),
     enabled: !!personId,
   });
@@ -21,7 +26,7 @@ export function useContactPersonLocations(personId: string) {
 
 export function useLocationContactPersons(locationId: string) {
   return useQuery<LocationContactPerson[]>({
-    queryKey: ['location-contact-persons', locationId],
+    queryKey: locationContactPersonKeys.byLocation(locationId),
     queryFn: () => apiClient.get(`/contacts/locations/${locationId}/contact-persons`),
     enabled: !!locationId,
   });
@@ -30,11 +35,11 @@ export function useLocationContactPersons(locationId: string) {
 export function useLinkContactPerson(locationId: string) {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useApiMutation({
     mutationFn: (data: { contactPersonId: string; notes?: string }) =>
       apiClient.post<LocationContactPerson>(`/contacts/locations/${locationId}/contact-persons`, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['location-contact-persons', locationId] });
+      queryClient.invalidateQueries({ queryKey: locationContactPersonKeys.byLocation(locationId) });
     },
   });
 }
@@ -42,11 +47,11 @@ export function useLinkContactPerson(locationId: string) {
 export function useUpdateLocationContactPerson(linkId: string, locationId: string) {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useApiMutation({
     mutationFn: (data: { notes?: string }) =>
       apiClient.patch<LocationContactPerson>(`/contacts/locations/contact-persons/${linkId}`, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['location-contact-persons', locationId] });
+      queryClient.invalidateQueries({ queryKey: locationContactPersonKeys.byLocation(locationId) });
     },
   });
 }
@@ -54,11 +59,11 @@ export function useUpdateLocationContactPerson(linkId: string, locationId: strin
 export function useUnlinkContactPerson(locationId: string) {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useApiMutation({
     mutationFn: (linkId: string) =>
       apiClient.delete(`/contacts/locations/contact-persons/${linkId}`),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['location-contact-persons', locationId] });
+      queryClient.invalidateQueries({ queryKey: locationContactPersonKeys.byLocation(locationId) });
     },
   });
 }
@@ -68,11 +73,11 @@ export function useUnlinkContactPerson(locationId: string) {
 export function useLinkLocationToContactPerson(personId: string) {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useApiMutation({
     mutationFn: (data: { locationId: string; notes?: string }) =>
       apiClient.post<LocationContactPerson>(`/contacts/contact-persons/${personId}/locations`, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['contact-person-locations', personId] });
+      queryClient.invalidateQueries({ queryKey: contactPersonLocationKeys.byPerson(personId) });
     },
   });
 }
@@ -80,11 +85,11 @@ export function useLinkLocationToContactPerson(personId: string) {
 export function useUpdateContactPersonLocationNotes(personId: string) {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useApiMutation({
     mutationFn: ({ linkId, notes }: { linkId: string; notes?: string }) =>
       apiClient.patch<LocationContactPerson>(`/contacts/locations/contact-persons/${linkId}`, { notes }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['contact-person-locations', personId] });
+      queryClient.invalidateQueries({ queryKey: contactPersonLocationKeys.byPerson(personId) });
     },
   });
 }
@@ -92,11 +97,11 @@ export function useUpdateContactPersonLocationNotes(personId: string) {
 export function useUnlinkLocationFromContactPerson(personId: string) {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useApiMutation({
     mutationFn: (linkId: string) =>
       apiClient.delete(`/contacts/locations/contact-persons/${linkId}`),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['contact-person-locations', personId] });
+      queryClient.invalidateQueries({ queryKey: contactPersonLocationKeys.byPerson(personId) });
     },
   });
 }

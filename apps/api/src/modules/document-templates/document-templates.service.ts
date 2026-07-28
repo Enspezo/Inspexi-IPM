@@ -15,7 +15,7 @@ import {
   TemplateStatus,
 } from '@prisma/client';
 import { PrismaService } from '@/prisma';
-import { assertFound, assertSystemRowManageable } from '@/common';
+import { assertFound, assertSystemRowManageable, assertUploadContentMatchesClaim } from '@/common';
 import {
   STORAGE_PROVIDER,
   type StorageProvider,
@@ -217,6 +217,10 @@ export class DocumentTemplatesService {
   /** Upload een nieuwe DOCX-revisie via de storage-provider en koppel die aan het template. */
   async uploadDocxRevision(documentTemplateId: string, user: User, file: Express.Multer.File) {
     const docTemplate = await this.loadDocTemplate(documentTemplateId, user, { write: true });
+
+    // WP-B4: de multer-fileFilter keurt alleen de client-claim; een .docx is
+    // een ZIP, dus de inhoud moet dat ook waarmaken (claims mét signature).
+    assertUploadContentMatchesClaim(file);
 
     const lastRevision = await this.prisma.documentTemplateDocxRevision.findFirst({
       where: { documentTemplateId },

@@ -155,6 +155,46 @@ describe('InspectionPlans (e2e)', () => {
     expect(res.body.data.statusCode).toBe('in_progress');
   });
 
+  // M7 regression: an update that sets a FK via a Prisma relation-connect
+  // (data.assignedUser = { connect }) must still surface the scalar FK change
+  // (assignedTo) in the audit diff. The before-state select maps the relation key
+  // back to its scalar column; without that the change silently dropped out.
+  it('2b. records a relation-connect FK change in the audit diff', async () => {
+    const createRes = await request(app.getHttpServer())
+      .post('/api/v1/inspection-plans')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ contactId: testContactId, projectName: 'E2E Audit FK', normTypeCode: NORM_CODE })
+      .expect(201);
+    const planId = createRes.body.data.id;
+    createdPlanIds.push(planId);
+
+    // PATCH assignedTo → the service writes { assignedUser: { connect: { id } } }.
+    await request(app.getHttpServer())
+      .patch(`/api/v1/inspection-plans/${planId}`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ assignedTo: assigneeId })
+      .expect(200);
+
+    const auditRes = await request(app.getHttpServer())
+      .get(`/api/v1/inspection-plans/${planId}`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+    expect(auditRes.body.data.assignedTo).toBe(assigneeId);
+
+    const logsRes = await request(app.getHttpServer())
+      .get(`/api/v1/audit-logs/InspectionPlan/${planId}`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    const updateEntry = logsRes.body.data.data.find(
+      (e: { action: string; changes: Record<string, unknown> | null }) =>
+        e.action === 'UPDATE' && e.changes && 'assignedTo' in e.changes,
+    );
+    expect(updateEntry).toBeDefined();
+    // `to` is FK-resolved to the assignee's display name — just assert it is set.
+    expect(updateEntry.changes.assignedTo.to).toBeTruthy();
+  });
+
   it('3. should reject submit from draft (400)', async () => {
     // Second plan stays in draft
     const createRes = await request(app.getHttpServer())
@@ -226,10 +266,17 @@ describe('InspectionPlans (e2e)', () => {
       .send({})
       .expect(200);
 
-    const res = await request(app.getHttpServer())
+    // B-315 §8 (WP-C5): afkeuren zonder toelichting wordt geweigerd.
+    await request(app.getHttpServer())
       .post(`/api/v1/inspection-plans/${planId}/review`)
       .set('Authorization', `Bearer ${accessToken}`)
       .send({ decision: 'reject' })
+      .expect(400);
+
+    const res = await request(app.getHttpServer())
+      .post(`/api/v1/inspection-plans/${planId}/review`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ decision: 'reject', notes: 'E2E: meetstaat onvolledig' })
       .expect(200);
 
     expect(res.body.success).toBe(true);
@@ -267,5 +314,119 @@ describe('InspectionPlans (e2e)', () => {
       .get(`/api/v1/inspection-plans/${planId}`)
       .set('Authorization', `Bearer ${accessToken}`)
       .expect(404);
+  });
+
+  // Vier-ogen-gate (PRD-13 §13.7): met de org-toggle aan (default) mag een plan
+  // zonder menselijke review (reviewedAt leeg) niet naar completed/approved;
+  // met de toggle uit gaat dezelfde transitie wél door.
+  describe('8. four-eyes gate on update()', () => {
+    let gatedPlanId: string;
+
+    beforeAll(async () => {
+      const createRes = await request(app.getHttpServer())
+        .post('/api/v1/inspection-plans')
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({
+          contactId: testContactId,
+          projectName: 'E2E Four Eyes',
+          normTypeCode: NORM_CODE,
+        })
+        .expect(201);
+      gatedPlanId = createRes.body.data.id;
+      createdPlanIds.push(gatedPlanId);
+
+      await request(app.getHttpServer())
+        .patch(`/api/v1/inspection-plans/${gatedPlanId}`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ statusCode: 'in_progress' })
+        .expect(200);
+    });
+
+    it('rejects completed without review while inspectionReviewEnabled=true (400)', async () => {
+      const res = await request(app.getHttpServer())
+        .patch(`/api/v1/inspection-plans/${gatedPlanId}`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ statusCode: 'completed' })
+        .expect(400);
+      expect(res.body.message).toContain('vier-ogen');
+    });
+
+    it('rejects approved without review as well (400)', async () => {
+      await request(app.getHttpServer())
+        .patch(`/api/v1/inspection-plans/${gatedPlanId}`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ statusCode: 'approved' })
+        .expect(400);
+    });
+
+    it('allows completed without review when inspectionReviewEnabled=false', async () => {
+      await prisma.organization.update({
+        where: { id: testOrgId },
+        data: { inspectionReviewEnabled: false },
+      });
+
+      const res = await request(app.getHttpServer())
+        .patch(`/api/v1/inspection-plans/${gatedPlanId}`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ statusCode: 'completed' })
+        .expect(200);
+      expect(res.body.data.statusCode).toBe('completed');
+    });
+  });
+
+  // Online herstel (PRD-14, besluit 1): het rapportnummer (referenceNumber) is de
+  // anonieme toegangssleutel — de plan-vlag mag alleen aan wanneer het nummer
+  // gevuld én (case-insensitief) uniek binnen de org is.
+  describe('9. online herstel plan-vlag (PRD-14)', () => {
+    const createPlan = async (referenceNumber?: string): Promise<string> => {
+      const res = await request(app.getHttpServer())
+        .post('/api/v1/inspection-plans')
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({
+          contactId: testContactId,
+          projectName: 'E2E Online Herstel',
+          normTypeCode: NORM_CODE,
+          ...(referenceNumber ? { referenceNumber } : {}),
+        })
+        .expect(201);
+      createdPlanIds.push(res.body.data.id);
+      return res.body.data.id;
+    };
+
+    it('weigert aanzetten zonder referenceNumber (400)', async () => {
+      const planId = await createPlan();
+      const res = await request(app.getHttpServer())
+        .patch(`/api/v1/inspection-plans/${planId}`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ onlineRepairEnabled: true })
+        .expect(400);
+      expect(res.body.message).toContain('rapportnummer');
+
+      const plan = await prisma.inspectionPlan.findUnique({ where: { id: planId } });
+      expect(plan?.onlineRepairEnabled).toBe(false);
+    });
+
+    it('weigert aanzetten met een duplicaat referenceNumber binnen de org (400)', async () => {
+      await createPlan('E2E-OR-DUP');
+      // Case-insensitieve botsing — de lookup matcht immers ook case-insensitief.
+      const planId = await createPlan('e2e-or-dup');
+
+      const res = await request(app.getHttpServer())
+        .patch(`/api/v1/inspection-plans/${planId}`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ onlineRepairEnabled: true })
+        .expect(400);
+      expect(res.body.message).toContain('al in gebruik');
+    });
+
+    it('zet de vlag aan met een uniek referenceNumber (200)', async () => {
+      const planId = await createPlan('E2E-OR-UNIEK');
+      const res = await request(app.getHttpServer())
+        .patch(`/api/v1/inspection-plans/${planId}`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ onlineRepairEnabled: true })
+        .expect(200);
+      expect(res.body.data.onlineRepairEnabled).toBe(true);
+    });
   });
 });

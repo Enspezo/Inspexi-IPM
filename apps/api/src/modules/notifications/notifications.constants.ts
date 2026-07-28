@@ -25,7 +25,8 @@ export type NotificationModel =
   | 'INSPECTIEPLANNEN'
   | 'MEETMIDDELEN'
   | 'CHAT'
-  | 'SUPPORT';
+  | 'SUPPORT'
+  | 'BESCHIKBAARHEID';
 
 export const NOTIFICATION_MODEL_KEYS: NotificationModel[] = [
   'OFFERTES',
@@ -40,6 +41,7 @@ export const NOTIFICATION_MODEL_KEYS: NotificationModel[] = [
   'MEETMIDDELEN',
   'CHAT',
   'SUPPORT',
+  'BESCHIKBAARHEID',
 ];
 
 export const NOTIFICATION_MODEL_TYPES: Record<
@@ -82,6 +84,9 @@ export const NOTIFICATION_MODEL_TYPES: Record<
   PROJECTEN: [
     NotificationType.PROJECT_AANGEMAAKT,
     NotificationType.PROJECT_STATUS_GEWIJZIGD,
+    NotificationType.FASE_STATUS_GEWIJZIGD,
+    NotificationType.MILESTONE_HERINNERING,
+    NotificationType.MILESTONE_VERLOPEN,
   ],
   FOUTMELDINGEN: [NotificationType.FOUTMELDING_INGEDIEND],
   INSPECTIEPLANNEN: [
@@ -89,6 +94,11 @@ export const NOTIFICATION_MODEL_TYPES: Record<
     NotificationType.INSPECTIEPLAN_TER_REVIEW,
     NotificationType.INSPECTIEPLAN_GOEDGEKEURD,
     NotificationType.INSPECTIEPLAN_AFGEKEURD,
+    NotificationType.AI_REVIEW_GEREED,
+    // Online herstel (PRD-14)
+    NotificationType.HERSTEL_AFGEROND,
+    NotificationType.HERSTEL_CONFLICT,
+    NotificationType.HERINSPECTIE_VOORSTEL,
   ],
   MEETMIDDELEN: [
     NotificationType.MEETMIDDEL_KALIBRATIE_BINNENKORT,
@@ -103,6 +113,10 @@ export const NOTIFICATION_MODEL_TYPES: Record<
     NotificationType.SUPPORT_TICKET_AANGEMAAKT,
     NotificationType.SUPPORT_TICKET_REACTIE,
     NotificationType.SUPPORT_TICKET_STATUS,
+  ],
+  BESCHIKBAARHEID: [
+    NotificationType.BESCHIKBAARHEID_GEWIJZIGD_DOOR_INSPECTEUR,
+    NotificationType.BESCHIKBAARHEID_GEWIJZIGD_DOOR_MANAGER,
   ],
 };
 

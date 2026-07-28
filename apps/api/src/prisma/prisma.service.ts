@@ -2,7 +2,7 @@ import { Injectable, Logger, OnModuleInit, OnModuleDestroy } from '@nestjs/commo
 import { Prisma, PrismaClient } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import { requestContext } from '../common/services/request-context';
-import { AUDITED_MODELS } from '../common/audit';
+import { AUDITED_MODELS, scalarSelect, getModelScalarFields, relationScalarColumns } from '../common/audit';
 
 /** Fields excluded from change tracking */
 const EXCLUDED_FIELDS = new Set([
@@ -10,6 +10,24 @@ const EXCLUDED_FIELDS = new Set([
   'tokenHash',
   'createdAt',
   'updatedAt',
+  // WP-D1: sync-boekhouding, geen inhoudelijke wijziging — buiten de audit-diff.
+  'syncedAt',
+]);
+
+/**
+ * WP-D1 (B-209, besluit A1): de zeven sync-entiteiten waarvoor élke serverwrite
+ * `syncedAt` moet vullen (REST/portal-services incluis), zodat elk record een
+ * geldige pull-basis heeft. De /sync-paden stempelen zelf al (syncedAt +
+ * updatedAt uit één stempel); deze middleware dekt alle overige schrijfpaden.
+ */
+const SYNC_ANCHORED_MODELS = new Set([
+  'InspectionPlan',
+  'AssetNode',
+  'Finding',
+  'VisualInspection',
+  'MeasurementRecord',
+  'MeasurementSheetRecord',
+  'StandaloneMeasurement',
 ]);
 
 /** Audit-failure alerting thresholds (in-memory, single process) */
@@ -32,8 +50,15 @@ function computeChanges(
   after: Record<string, any>,
 ): Record<string, { from: any; to: any }> | null {
   const changes: Record<string, { from: any; to: any }> = {};
-  for (const key of Object.keys(after)) {
+  // Iterate the `before` keys: the before-state is fetched with a select limited to
+  // the columns the update touches (+ id/orgId), so those are exactly the fields that
+  // can change. `after` (the full write result) carries a value for each of them.
+  for (const key of Object.keys(before)) {
     if (EXCLUDED_FIELDS.has(key)) continue;
+    // Defensief: draait een caller de update met een narrow `select`, dan mist
+    // `after` kolommen die wél gelezen zijn in `before`. Overslaan i.p.v. een
+    // bogus `veld → null`-diff schrijven (zie sync resolve()-regressie).
+    if (!(key in after)) continue;
     const oldVal = before[key];
     const newVal = after[key];
     if (JSON.stringify(oldVal) !== JSON.stringify(newVal)) {
@@ -48,6 +73,18 @@ export class PrismaService
   extends PrismaClient
   implements OnModuleInit, OnModuleDestroy
 {
+  constructor() {
+    // WP-C3 (B-212): Prisma's uitgebreide foutweergave bevat het absolute
+    // serverpad, broncoderegels en de volledige query-payload. In productie
+    // minimal — defense-in-depth voor elk pad waar een Prisma-message ooit
+    // een response zou bereiken; lokaal/test blijft de rijke dev-weergave.
+    super(
+      process.env.NODE_ENV === 'production'
+        ? { errorFormat: 'minimal' }
+        : {},
+    );
+  }
+
   private readonly logger = new Logger(PrismaService.name);
 
   /** Timestamps (ms) of recent audit-write failures within the rolling window */
@@ -59,11 +96,63 @@ export class PrismaService
 
   async onModuleInit() {
     await this.$connect();
+    // Volgorde bewust: de sync-anchor-middleware eerst (buitenste laag), zodat
+    // de audit-middleware ongewijzigde params ziet; `syncedAt` staat in
+    // EXCLUDED_FIELDS en vervuilt de audit-diff dus nooit.
+    this.setupSyncAnchorMiddleware();
     this.setupAuditMiddleware();
   }
 
   async onModuleDestroy() {
     await this.$disconnect();
+  }
+
+  /**
+   * WP-D1 (B-209): vult `syncedAt` bij elke create/update op de zeven
+   * sync-entiteiten — met updatedAt en syncedAt uit ÉÉN stempel wanneer de
+   * caller ze niet zelf zet. Zonder die gedeelde stempel zou Prisma's
+   * `@updatedAt` enkele ms later stempelen dan syncedAt → rij met
+   * `updatedAt > syncedAt` → vals zelf-conflict op een v3-transitieclient
+   * (dezelfde skew-klasse als PR #144). De /sync-paden zetten beide velden al
+   * expliciet en worden hier dus nooit overschreven (`=== undefined`-guard).
+   * Geen recursiegevaar: er wordt alleen `params.args.data` gemuteerd, geen
+   * extra query gedaan.
+   */
+  private setupSyncAnchorMiddleware() {
+    const stampData = (data: unknown, stamp: Date): void => {
+      if (!data || typeof data !== 'object') return;
+      const record = data as Record<string, unknown>;
+      if (record.syncedAt !== undefined) return; // sync-pad stempelt zelf
+      record.syncedAt = stamp;
+      if (record.updatedAt === undefined) record.updatedAt = stamp;
+    };
+
+    this.$use(async (params: Prisma.MiddlewareParams, next) => {
+      if (!params.model || !SYNC_ANCHORED_MODELS.has(params.model)) {
+        return next(params);
+      }
+      const stamp = new Date();
+      switch (params.action) {
+        case 'create':
+        case 'update':
+        case 'updateMany':
+          stampData(params.args?.data, stamp);
+          break;
+        case 'createMany': {
+          const data = params.args?.data;
+          if (Array.isArray(data)) for (const row of data) stampData(row, stamp);
+          else stampData(data, stamp);
+          break;
+        }
+        case 'upsert':
+          stampData(params.args?.create, stamp);
+          stampData(params.args?.update, stamp);
+          break;
+        default:
+          break;
+      }
+      return next(params);
+    });
   }
 
   private setupAuditMiddleware() {
@@ -81,13 +170,18 @@ export class PrismaService
       const action = params.action;
 
       // Capture before-state for update/delete (best-effort; never blocks the op).
+      // M7: fetch only the columns we actually diff/snapshot instead of the whole row —
+      // no large JSON blobs, no sensitive columns (passwordHash/tokenHash) in memory.
       let before: Record<string, any> | null = null;
       if (action === 'update' || action === 'delete') {
         try {
           const whereId = params.args?.where?.id;
           if (whereId) {
-            before = await (this as any)[this.toCamelCase(model)].findUnique({
+            const delegate = (this as any)[this.toCamelCase(model)];
+            const select = this.beforeStateSelect(model, action, params.args?.data);
+            before = await delegate.findUnique({
               where: { id: whereId },
+              ...(select ? { select } : {}),
             });
           }
         } catch {
@@ -116,12 +210,21 @@ export class PrismaService
             source: ctx.source,
           });
         } else if (action === 'update') {
+          // Defensief (zoals het delete-pad): een update met een narrow `select`
+          // levert een result zonder `id` — val terug op de where-clause i.p.v.
+          // de audit-write op entity_id NOT NULL te laten stranden.
+          const updateEntityId = result?.id ?? params.args?.where?.id;
+          if (result?.id == null && updateEntityId != null) {
+            this.logger.warn(
+              `Audit: update-result van ${model} mist 'id' (narrow select bij de caller?) — entityId via where.id`,
+            );
+          }
           if (before) {
             const changes = computeChanges(before, result);
-            if (changes) {
+            if (changes && updateEntityId != null) {
               await this.writeAuditLog({
                 entityType: model,
-                entityId: result.id,
+                entityId: updateEntityId,
                 action: 'UPDATE',
                 snapshot: null,
                 changes,
@@ -131,11 +234,11 @@ export class PrismaService
                 source: ctx.source,
               });
             }
-          } else {
+          } else if (updateEntityId != null) {
             // No before-state available, log with snapshot
             await this.writeAuditLog({
               entityType: model,
-              entityId: result.id,
+              entityId: updateEntityId,
               action: 'UPDATE',
               snapshot: sanitize(result),
               changes: null,
@@ -172,6 +275,45 @@ export class PrismaService
     return model.charAt(0).toLowerCase() + model.slice(1);
   }
 
+  /**
+   * Minimal `select` for the audit before-state (M7).
+   * - update: `id` + `orgId` + the scalar columns the update actually writes — exactly
+   *   the fields `computeChanges` compares, so nothing is over-fetched and no spurious
+   *   diff appears for a column we didn't read. A relation-write names the relation
+   *   (`{ contact: { connect }}`), not the scalar FK column, so those keys are mapped
+   *   back to their FK column(s) via the datamodel — otherwise a connect/disconnect
+   *   FK change would silently drop out of the audit diff.
+   * - delete: every scalar column except the excluded ones (createdAt/updatedAt +
+   *   sensitive hashes), which is what the DELETE snapshot needs — minus the noise.
+   * Returns `undefined` for an unknown model → caller falls back to a full fetch.
+   */
+  private beforeStateSelect(
+    model: string,
+    action: string,
+    data: unknown,
+  ): Record<string, true> | undefined {
+    if (action === 'delete') {
+      const scalars = getModelScalarFields(model);
+      if (!scalars) return undefined;
+      return scalarSelect(
+        model,
+        [...scalars].filter((f) => !EXCLUDED_FIELDS.has(f)),
+      );
+    }
+    const dataKeys =
+      data && typeof data === 'object' && !Array.isArray(data) ? Object.keys(data) : [];
+    const fields = ['orgId'];
+    for (const key of dataKeys) {
+      if (EXCLUDED_FIELDS.has(key)) continue;
+      // Relation-write key (contact/assignedUser/…) → its scalar FK column(s); a plain
+      // scalar column passes through (scalarSelect drops anything that isn't a real column).
+      const relationCols = relationScalarColumns(model, key);
+      if (relationCols) fields.push(...relationCols);
+      else fields.push(key);
+    }
+    return scalarSelect(model, fields);
+  }
+
   async writeAuditLog(data: {
     entityType: string;
     entityId: string;
@@ -181,7 +323,7 @@ export class PrismaService
     userId: string;
     orgId: string | null;
     ipAddress?: string;
-    // Herkomst van de mutatie (PRD-12). Ongezet = HUMAN.
+    // Herkomst van de mutatie (PRD-15). Ongezet = HUMAN.
     source?: 'HUMAN' | 'AI';
   }): Promise<void> {
     try {

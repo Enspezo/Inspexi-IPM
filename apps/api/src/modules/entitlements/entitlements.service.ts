@@ -1,4 +1,5 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, ForbiddenException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '@/prisma';
 import { FeatureKey, resolveEffectiveFeatures } from '@inspexi/entitlements';
 
@@ -35,7 +36,53 @@ export class EntitlementsService {
   private readonly cache = new Map<string, CacheEntry>();
   private readonly TTL = 5 * 60 * 1000; // 5 minutes
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly config: ConfigService,
+  ) {}
+
+  /**
+   * Service-laag entitlement-guard voor plekken die *niet* via een controller-route
+   * lopen (PRD-12 §Fase E): het koppelen van een `projectPhaseId` gebeurt op de
+   * update-endpoints van quotes/planning/work-orders/inspection-plans, dus de
+   * {@link FeatureGuard} kan daar niet gaten. Deze helper spiegelt exact diens
+   * semantiek zodat dev/e2e-gedrag identiek blijft:
+   *
+   * - `orgId === null` (SUPERUSER / onbekende host): op localhost door, in productie dicht.
+   * - Nog niet ingerichte org (lege feature-set): op localhost door (fixtures zonder plan).
+   * - Anders: gooit {@link ForbiddenException} als de feature niet in de set zit.
+   *
+   * Gooit dezelfde `FEATURE_NOT_IN_PLAN`-shape als de guard, met een aanroeper-
+   * specifieke NL-melding.
+   */
+  async assertFeature(
+    orgId: string | null,
+    feature: FeatureKey,
+    message = 'Deze functie zit niet in uw abonnement',
+  ): Promise<void> {
+    const isLocalhost =
+      this.config.get<string>('BASE_DOMAIN', 'localhost') === 'localhost';
+
+    if (orgId === null) {
+      if (isLocalhost) return;
+      throw this.featureForbidden(message);
+    }
+
+    const enabled = await this.getEnabledFeatures(orgId);
+    // Nog niet ingerichte org (lege set) → op localhost niet gaten (mirrors guard).
+    if (enabled.length === 0 && isLocalhost) return;
+    if (!enabled.includes(feature)) {
+      throw this.featureForbidden(message);
+    }
+  }
+
+  private featureForbidden(message: string): ForbiddenException {
+    return new ForbiddenException({
+      success: false,
+      message,
+      code: 'FEATURE_NOT_IN_PLAN',
+    });
+  }
 
   /**
    * Effectieve feature-keys voor een org, deterministisch geordend volgens

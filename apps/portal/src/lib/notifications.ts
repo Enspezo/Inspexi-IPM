@@ -28,7 +28,8 @@ export type NotificationModel =
   | 'INSPECTIEPLANNEN'
   | 'MEETMIDDELEN'
   | 'CHAT'
-  | 'SUPPORT';
+  | 'SUPPORT'
+  | 'BESCHIKBAARHEID';
 
 interface NotificationModelDef {
   key: NotificationModel;
@@ -104,6 +105,9 @@ export const NOTIFICATION_MODELS: NotificationModelDef[] = [
     types: [
       NotificationType.PROJECT_AANGEMAAKT,
       NotificationType.PROJECT_STATUS_GEWIJZIGD,
+      NotificationType.FASE_STATUS_GEWIJZIGD,
+      NotificationType.MILESTONE_HERINNERING,
+      NotificationType.MILESTONE_VERLOPEN,
     ],
   },
   {
@@ -119,6 +123,11 @@ export const NOTIFICATION_MODELS: NotificationModelDef[] = [
       NotificationType.INSPECTIEPLAN_TER_REVIEW,
       NotificationType.INSPECTIEPLAN_GOEDGEKEURD,
       NotificationType.INSPECTIEPLAN_AFGEKEURD,
+      NotificationType.AI_REVIEW_GEREED,
+      // Online herstel (PRD-14)
+      NotificationType.HERSTEL_AFGEROND,
+      NotificationType.HERSTEL_CONFLICT,
+      NotificationType.HERINSPECTIE_VOORSTEL,
     ],
   },
   {
@@ -145,6 +154,14 @@ export const NOTIFICATION_MODELS: NotificationModelDef[] = [
       NotificationType.SUPPORT_TICKET_AANGEMAAKT,
       NotificationType.SUPPORT_TICKET_REACTIE,
       NotificationType.SUPPORT_TICKET_STATUS,
+    ],
+  },
+  {
+    key: 'BESCHIKBAARHEID',
+    label: 'Beschikbaarheid',
+    types: [
+      NotificationType.BESCHIKBAARHEID_GEWIJZIGD_DOOR_INSPECTEUR,
+      NotificationType.BESCHIKBAARHEID_GEWIJZIGD_DOOR_MANAGER,
     ],
   },
 ];
@@ -181,6 +198,10 @@ export const NOTIFICATION_TYPE_LABELS: Record<NotificationType, string> = {
   [NotificationType.INSPECTIEPLAN_TER_REVIEW]: 'Inspectieplan ter review',
   [NotificationType.INSPECTIEPLAN_GOEDGEKEURD]: 'Inspectieplan goedgekeurd',
   [NotificationType.INSPECTIEPLAN_AFGEKEURD]: 'Inspectieplan afgekeurd',
+  [NotificationType.AI_REVIEW_GEREED]: 'AI-controle afgerond',
+  [NotificationType.HERSTEL_AFGEROND]: 'Herstelverklaring ondertekend',
+  [NotificationType.HERSTEL_CONFLICT]: 'Herstel-conflict gemeld',
+  [NotificationType.HERINSPECTIE_VOORSTEL]: 'Herinspectie voorgesteld',
   [NotificationType.CHAT_BERICHT]: 'Nieuw chatbericht',
   [NotificationType.CHAT_TEAM_BERICHT]: 'Nieuw team-chatbericht',
   [NotificationType.CHAT_MENTION]: 'Genoemd in een chat',
@@ -189,6 +210,11 @@ export const NOTIFICATION_TYPE_LABELS: Record<NotificationType, string> = {
   [NotificationType.SUPPORT_TICKET_STATUS]: 'Supportticket status gewijzigd',
   [NotificationType.MEETMIDDEL_KALIBRATIE_BINNENKORT]: 'Kalibratie verloopt binnenkort',
   [NotificationType.MEETMIDDEL_KALIBRATIE_VERLOPEN]: 'Kalibratie verlopen',
+  [NotificationType.FASE_STATUS_GEWIJZIGD]: 'Fasestatus gewijzigd',
+  [NotificationType.MILESTONE_HERINNERING]: 'Milestone-herinnering',
+  [NotificationType.MILESTONE_VERLOPEN]: 'Milestone verlopen',
+  [NotificationType.BESCHIKBAARHEID_GEWIJZIGD_DOOR_INSPECTEUR]: 'Beschikbaarheid gewijzigd door inspecteur',
+  [NotificationType.BESCHIKBAARHEID_GEWIJZIGD_DOOR_MANAGER]: 'Beschikbaarheid gewijzigd door manager',
 };
 
 /** Afgeleide lookup: type → model-key. */
@@ -246,6 +272,13 @@ export function getNotificationRoute(notif: Notification): string | null {
       return `/help/tickets/${notif.entityId}`;
     case 'measurementInstrument':
       return `/meetmiddelen/${notif.entityId}`;
+    case 'inspectionPlan':
+      return `/inspections/${notif.entityId}`;
+    case 'user':
+      return `/users/${notif.entityId}`;
+    case 'availabilityException':
+      // Beschikbaarheids-uitzondering wijzigt → de eigen beschikbaarheidspagina.
+      return '/my-availability';
     default:
       return null;
   }

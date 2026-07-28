@@ -95,10 +95,10 @@ describe('PrismaService audit-failure alerting', () => {
 });
 
 /**
- * PRD-12: audit-attributie. `source` is de laatste geïnterpoleerde waarde in de
+ * PRD-15: audit-attributie. `source` is de laatste geïnterpoleerde waarde in de
  * INSERT-template (vóór het literale NOW()), dus we lezen die uit de raw-call.
  */
-describe('PrismaService writeAuditLog — source attribution (PRD-12)', () => {
+describe('PrismaService writeAuditLog — source attribution (PRD-15)', () => {
   let service: PrismaService;
   let rawSpy: jest.SpyInstance;
 

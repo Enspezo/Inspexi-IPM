@@ -1,16 +1,26 @@
 import {
   Injectable,
   NotFoundException,
-  ForbiddenException,
   BadRequestException,
   Inject,
   Logger,
 } from '@nestjs/common';
-import { User, Role, Prisma } from '@prisma/client';
+import { User, Prisma } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import * as mammoth from 'mammoth';
 import { PrismaService } from '@/prisma';
-import { paginate, buildOrderBy, orgScope, assertFound, sanitizeStorageFilename } from '@/common';
+import {
+  paginate,
+  buildOrderBy,
+  orgScope,
+  assertFound,
+  assertSameOrg,
+  sanitizeStorageFilename,
+  requireOrg,
+  assertAllowedImageUpload,
+  assertAllowedAttachmentUpload,
+  assertUploadContentMatchesClaim,
+} from '@/common';
 import {
   STORAGE_PROVIDER,
   StorageProvider,
@@ -22,29 +32,6 @@ import {
   CreateFollowUpDto,
   UpdateFollowUpDto,
 } from './dto';
-
-const IMAGE_MIME_TYPES = [
-  'image/jpeg',
-  'image/png',
-  'image/svg+xml',
-  'image/webp',
-];
-
-const ATTACHMENT_MIME_TYPES = [
-  'application/pdf',
-  'image/jpeg',
-  'image/png',
-  'image/svg+xml',
-  'image/webp',
-  'application/msword',
-  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-  'application/vnd.ms-excel',
-  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-  'application/vnd.ms-powerpoint',
-  'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-  'text/csv',
-  'application/zip',
-];
 
 const DOCX_MIME_TYPES = [
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
@@ -86,8 +73,9 @@ export class QuoteTemplatesService {
   }
 
   async findOne(id: string, user: User) {
-    const template = assertFound(await this.prisma.quoteTemplate.findUnique({
-      where: { id },
+    // WP-C1 (B-105): org-scope in de query — cross-tenant id → zelfde 404.
+    const template = assertFound(await this.prisma.quoteTemplate.findFirst({
+      where: { id, ...orgScope(user) },
       include: {
         attachments: { orderBy: { sortOrder: 'asc' } },
         docxRevisions: {
@@ -119,22 +107,17 @@ export class QuoteTemplatesService {
       },
     }), 'Template');
 
-    if (!user.roles.includes(Role.SUPERUSER) && template.orgId !== user.orgId) {
-      throw new ForbiddenException();
-    }
-
     return template;
   }
 
   async create(dto: CreateQuoteTemplateDto, user: User) {
-    const orgId = user.orgId;
-    if (!orgId && !user.roles.includes(Role.SUPERUSER)) {
-      throw new ForbiddenException('Geen organisatie gekoppeld');
-    }
+    // WP-B3 (B-503): effectieve org (SUPERUSER op org-subdomein → tenant-org);
+    // zonder org een nette NL-400 i.p.v. een Prisma-fout (500).
+    const orgId = requireOrg(user);
 
     return this.prisma.quoteTemplate.create({
       data: {
-        orgId: orgId!,
+        orgId,
         name: dto.name,
         description: dto.description ?? null,
         templateType: dto.templateType ?? 'BLOCKS',
@@ -151,6 +134,13 @@ export class QuoteTemplatesService {
 
   async update(id: string, dto: UpdateQuoteTemplateDto, user: User) {
     const template = await this.findOne(id, user);
+
+    // Referenced email templates are read back through the include below — verify
+    // they belong to the caller's org so another org's template cannot be linked/leaked.
+    if (dto.sendEmailTemplateId !== undefined)
+      await assertSameOrg(this.prisma.emailTemplate, dto.sendEmailTemplateId, user.orgId, 'E-mailtemplate');
+    if (dto.acceptedEmailTemplateId !== undefined)
+      await assertSameOrg(this.prisma.emailTemplate, dto.acceptedEmailTemplateId, user.orgId, 'E-mailtemplate');
 
     // Template type cannot be changed after creation
     if (
@@ -248,6 +238,9 @@ export class QuoteTemplatesService {
         'Alleen DOCX bestanden zijn toegestaan (.docx)',
       );
     }
+    // Een .docx is een ZIP; een niet-ZIP-buffer zou anders pas bij mammoth
+    // stranden (500). Claim ↔ inhoud hier al afvangen → nette 400 (WP-B4).
+    assertUploadContentMatchesClaim(file);
 
     // Validate that required placeholder is present using text extraction
     // Supports both loop syntax ({{#offerteregels}}) and simple placeholder ({{offerteregels}})
@@ -375,21 +368,30 @@ export class QuoteTemplatesService {
   ) {
     const template = await this.findOne(id, user);
 
-    if (!IMAGE_MIME_TYPES.includes(file.mimetype)) {
-      throw new BadRequestException(
-        `Ongeldig bestandstype. Toegestaan: ${IMAGE_MIME_TYPES.join(', ')}`,
-      );
-    }
+    // Inhoud (magic bytes) beslist type én opslagextensie; SVG is niet meer
+    // toegestaan — deze afbeeldingen worden inline op het app-origin gerenderd
+    // (block-editor + offerte-PDF) en waren zo een stored-XSS-vector (B-507).
+    const detected = assertAllowedImageUpload(file);
 
-    const storageKey = `${template.orgId}/qt/${template.id}/img/${randomUUID()}-${sanitizeStorageFilename(file.originalname)}`;
-    await this.storage.upload(storageKey, file.buffer, file.mimetype);
+    const storageKey = `${template.orgId}/qt/${template.id}/img/${randomUUID()}.${detected.extension}`;
+    await this.storage.upload(storageKey, file.buffer, detected.mimeType);
 
     return { storageKey, fileName: file.originalname };
   }
 
   async getImage(id: string, storageKey: string, user: User) {
     // Verify template access
-    await this.findOne(id, user);
+    const template = await this.findOne(id, user);
+
+    // De route accepteert een vrije opslagsleutel (`:key(*)`); zonder deze
+    // prefix-check kon élke opslagsleutel — ook die van een andere organisatie —
+    // via een willekeurig eigen template-id uitgelezen worden. Scope op de
+    // offertesjabloon-bestanden van de eigen org (`/qt/` i.p.v. `/qt/{id}/`,
+    // omdat gekopieerde blokken naar afbeeldingen van een ander eigen sjabloon
+    // kunnen verwijzen).
+    if (!storageKey.startsWith(`${template.orgId}/qt/`)) {
+      throw new NotFoundException('Afbeelding niet gevonden');
+    }
 
     const exists = await this.storage.exists(storageKey);
     if (!exists) {
@@ -417,11 +419,7 @@ export class QuoteTemplatesService {
   ) {
     const template = await this.findOne(id, user);
 
-    if (!ATTACHMENT_MIME_TYPES.includes(file.mimetype)) {
-      throw new BadRequestException(
-        `Ongeldig bestandstype voor bijlage`,
-      );
-    }
+    assertAllowedAttachmentUpload(file);
 
     const storageKey = `${template.orgId}/qt/${template.id}/att/${randomUUID()}-${sanitizeStorageFilename(file.originalname)}`;
     await this.storage.upload(storageKey, file.buffer, file.mimetype);
@@ -530,6 +528,11 @@ export class QuoteTemplatesService {
   async createFollowUp(id: string, dto: CreateFollowUpDto, user: User) {
     const template = await this.findOne(id, user);
 
+    // Both FKs are read back through FOLLOW_UP_INCLUDE and assigneeUserId later
+    // assigns a task — validate they belong to the caller's org.
+    await assertSameOrg(this.prisma.emailTemplate, dto.emailTemplateId, user.orgId, 'E-mailtemplate');
+    await assertSameOrg(this.prisma.user, dto.assigneeUserId, user.orgId, 'Gebruiker');
+
     const maxOrder = await this.prisma.quoteTemplateFollowUp.aggregate({
       where: { templateId: template.id },
       _max: { sortOrder: true },
@@ -566,6 +569,12 @@ export class QuoteTemplatesService {
     if (!followUp || followUp.templateId !== id) {
       throw new NotFoundException('Follow-up regel niet gevonden');
     }
+
+    // Validate re-pointed FKs against the caller's org (read back via FOLLOW_UP_INCLUDE).
+    if (dto.emailTemplateId !== undefined)
+      await assertSameOrg(this.prisma.emailTemplate, dto.emailTemplateId, user.orgId, 'E-mailtemplate');
+    if (dto.assigneeUserId !== undefined)
+      await assertSameOrg(this.prisma.user, dto.assigneeUserId, user.orgId, 'Gebruiker');
 
     return this.prisma.quoteTemplateFollowUp.update({
       where: { id: followUpId },

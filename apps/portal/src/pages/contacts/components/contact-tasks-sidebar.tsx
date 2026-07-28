@@ -157,8 +157,8 @@ export function ContactTasksSidebar({
   const handleStatusChange = async (taskId: string, status: TaskStatus) => {
     try {
       await updateTaskMutation.mutateAsync({ id: taskId, data: { status } });
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Status bijwerken mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 

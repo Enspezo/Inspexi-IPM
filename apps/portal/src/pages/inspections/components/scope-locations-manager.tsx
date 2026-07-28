@@ -28,8 +28,8 @@ export function ScopeLocationsManager({ planId, canWrite }: { planId: string; ca
       await add.mutateAsync(toAdd);
       setToAdd('');
       showToast('Scope-locatie toegevoegd', 'success');
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Toevoegen mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 
@@ -37,8 +37,8 @@ export function ScopeLocationsManager({ planId, canWrite }: { planId: string; ca
     try {
       await remove.mutateAsync(assetNodeId);
       showToast('Scope-locatie verwijderd', 'success');
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Verwijderen mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 

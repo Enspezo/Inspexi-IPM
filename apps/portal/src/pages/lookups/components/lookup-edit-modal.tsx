@@ -72,8 +72,8 @@ export function LookupEditModal({ isOpen, onClose, kind, row }: Props) {
         showToast('Waarde toegevoegd', 'success');
       }
       onClose();
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Opslaan mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 

@@ -7,7 +7,7 @@ import { AI_AGENT_DEFAULT_MODEL } from './ai-config';
 import { CreateConversationDto } from './dto';
 
 /**
- * Conversatie-CRUD voor de AI-assistent (PRD-12). Gesprekken zijn privé per
+ * Conversatie-CRUD voor de AI-assistent (PRD-15). Gesprekken zijn privé per
  * gebruiker: elke query is gescoped op `orgId` + `userId`, dus andermans of
  * cross-tenant gesprekken geven 404 (geen bestaan prijsgeven).
  */
@@ -18,9 +18,9 @@ export class AiAgentService {
     private readonly config: ConfigService,
   ) {}
 
-  /** Actueel geconfigureerd model (PRD-12 §5.5). */
+  /** Actueel geconfigureerd model (env-patroon: ANTHROPIC_<functie>_MODEL). */
   resolveModel(): string {
-    return this.config.get<string>('AI_AGENT_MODEL', AI_AGENT_DEFAULT_MODEL);
+    return this.config.get<string>('ANTHROPIC_AGENT_MODEL', AI_AGENT_DEFAULT_MODEL);
   }
 
   /** De assistent vereist een organisatiecontext (superuser heeft er geen). */

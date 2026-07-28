@@ -192,8 +192,8 @@ export default function ContactDetailPage() {
       viesNameApplied.current = false;
       showToast('Relatie bijgewerkt', 'success');
       setIsEditing(false);
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Opslaan mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 
@@ -229,8 +229,8 @@ export default function ContactDetailPage() {
       await deleteMutation.mutateAsync(contact.id);
       showToast('Relatie verwijderd', 'success');
       navigate('/contacts');
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Verwijderen mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 

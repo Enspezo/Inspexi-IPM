@@ -135,6 +135,15 @@ enum NotificationType {
   SUPPORT_TICKET_STATUS
   MEETMIDDEL_KALIBRATIE_BINNENKORT
   MEETMIDDEL_KALIBRATIE_VERLOPEN
+  FASE_STATUS_GEWIJZIGD
+  MILESTONE_HERINNERING
+  MILESTONE_VERLOPEN
+  BESCHIKBAARHEID_GEWIJZIGD_DOOR_INSPECTEUR
+  BESCHIKBAARHEID_GEWIJZIGD_DOOR_MANAGER
+  AI_REVIEW_GEREED
+  HERSTEL_AFGEROND
+  HERSTEL_CONFLICT
+  HERINSPECTIE_VOORSTEL
 }
 
 enum AuditAction {
@@ -143,14 +152,14 @@ enum AuditAction {
   DELETE
 }
 
-// Herkomst van een audit-mutatie (PRD-12): HUMAN = normale UI-actie,
+// Herkomst van een audit-mutatie (PRD-15): HUMAN = normale UI-actie,
 // AI = door de AI-assistent geïnitieerd (en door de gebruiker bevestigd).
 enum AuditSource {
   HUMAN
   AI
 }
 
-// AI-assistent (add-on, PRD-12)
+// AI-assistent (add-on, PRD-15)
 enum AiMessageRole {
   USER
   ASSISTANT
@@ -190,6 +199,7 @@ enum TaskEntityType {
   QUOTE
   PLANNING
   PROJECT
+  PROJECT_PHASE
   USER
 }
 
@@ -213,6 +223,7 @@ enum DocumentEntityType {
   TASK
   PLANNING
   PROJECT
+  PROJECT_PHASE
   USER
   WORK_ORDER
   SUPPORT_TICKET
@@ -224,6 +235,7 @@ enum NoteEntityType {
   QUOTE
   PLANNING
   PROJECT
+  PROJECT_PHASE
   USER
   WORK_ORDER
 }
@@ -340,6 +352,12 @@ enum HelpArticleStatus {
   ARCHIVED
 }
 
+// KB-doelgroep: INTERNAL = staff-portal (org/globaal); EXTERNAL = klantportaal (per-org)
+enum HelpAudience {
+  INTERNAL
+  EXTERNAL
+}
+
 enum SupportTicketStatus {
   NIEUW
   IN_BEHANDELING
@@ -395,7 +413,7 @@ model Organization {
   isActive            Boolean  @default(true) @map("is_active")
   // Interne chat per organisatie aan/uit (REQ1) — te schakelen door SUPERUSER/ORG_ADMIN.
   chatEnabled         Boolean  @default(true) @map("chat_enabled")
-  // AI-assistent (add-on, PRD-12): per-org kill-switch + toegestane rollen.
+  // AI-assistent (add-on, PRD-15): per-org kill-switch + toegestane rollen.
   // Lege rollen-lijst → systeem-default (alle staf behalve INSPECTEUR).
   aiAgentEnabled      Boolean  @default(true) @map("ai_agent_enabled")
   aiAgentAllowedRoles Role[]   @default([]) @map("ai_agent_allowed_roles")
@@ -416,10 +434,21 @@ model Organization {
   // Beide null → geen verplichte drempel (val terug op template-`requiresApproval`).
   quoteApprovalThreshold    Decimal? @map("quote_approval_threshold") @db.Decimal(12, 2)
   quoteApprovalRequiredRole Role?    @map("quote_approval_required_role")
+  // Vier-ogen op offertes (B-307): mag de aanvrager zijn eigen goedkeuringsverzoek
+  // afhandelen? Default uit; alleen aanzetten voor kleine orgs met één goedkeurder.
+  quoteApprovalSelfApprovalAllowed Boolean @default(false) @map("quote_approval_self_approval_allowed")
 
   // Support-toegang (PRD-10): expliciete, geauditeerde consent voor InspeXi-support.
   supportAccessEnabled   Boolean   @default(false) @map("support_access_enabled")
   supportAccessExpiresAt DateTime? @map("support_access_expires_at")
+
+  // Inspectie-review (vier-ogen + AI-voorcontrole, PRD-13)
+  inspectionReviewEnabled Boolean @default(true) @map("inspection_review_enabled")
+  aiReviewEnabled         Boolean @default(false) @map("ai_review_enabled")
+  aiReviewInstructions    String? @map("ai_review_instructions") @db.Text
+
+  // Online herstel (PRD-14): default voor `InspectionPlan.onlineRepairEnabled` bij nieuwe plannen
+  onlineRepairDefault Boolean @default(false) @map("online_repair_default")
 
   users                    User[]
   invitations              Invitation[]
@@ -451,6 +480,8 @@ model Organization {
   locationContactPersons   LocationContactPerson[]
   lostReasons              LostReason[]
   contactPersonRoles       ContactPersonRoleOption[]
+  projectPhases            ProjectPhase[]
+  phaseMilestones          PhaseMilestone[]
 
   // Inspectiedomein (Fase 1)
   normConfigurations       NormConfiguration[]
@@ -496,7 +527,7 @@ model Organization {
   chatThreads  ChatThread[]
   chatMessages ChatMessage[]
 
-  // AI-assistent (add-on, PRD-12)
+  // AI-assistent (add-on, PRD-15)
   aiConversations AiConversation[]
   aiUsageLogs     AiUsageLog[]
 
@@ -518,6 +549,17 @@ model Organization {
   calibrations                     Calibration[]
   userDefaultInstruments           UserDefaultInstrument[]
   inspectionPlanDefaultInstruments InspectionPlanDefaultInstrument[]
+
+  // Beschikbaarheid inspecteurs (PRD-12)
+  availabilityTemplates   AvailabilityTemplate[]
+  userScheduleAssignments UserScheduleAssignment[]
+  availabilityExceptions  AvailabilityException[]
+
+  // AI-review van inspectierapporten (PRD-13)
+  aiReviewRuns AiReviewRun[]
+
+  // Online herstel van constateringen (PRD-14)
+  repairSessions RepairSession[]
 
   @@map("imp_organizations")
 }
@@ -571,34 +613,34 @@ model OrganizationFeature {
 }
 
 model User {
-  id              String         @id @default(uuid()) @db.Uuid
-  orgId           String?        @map("org_id") @db.Uuid
-  email           String         @unique
-  passwordHash    String         @map("password_hash")
+  id                String         @id @default(uuid()) @db.Uuid
+  orgId             String?        @map("org_id") @db.Uuid
+  email             String         @unique
+  passwordHash      String         @map("password_hash")
   // Wijzigingsmoment van het wachtwoord — bindt reset-tokens aan de huidige
   // wachtwoordstaat zodat een reset-link éénmalig bruikbaar is en na een
   // wachtwoordwijziging (of hergebruik) ongeldig wordt.
-  passwordChangedAt DateTime?    @map("password_changed_at")
-  firstName       String         @map("first_name")
-  lastName        String         @map("last_name")
-  roles           Role[]         @default([])
-  isActive        Boolean        @default(true) @map("is_active")
-  isDeleted       Boolean        @default(false) @map("is_deleted")
-  deletedAt       DateTime?      @map("deleted_at")
-  emailVerifiedAt DateTime?      @map("email_verified_at")
-  initials        String?        @map("initials")
-  avatarUrl       String?        @map("avatar_url")
-  signatureType   SignatureType? @map("signature_type")
-  signatureData   String?        @map("signature_data")
-  color           String? // HEX kleurcode voor kalenderweergave, bijv. "#3B82F6"
-  homeStreet      String?        @map("home_street")
-  homeHouseNumber String?        @map("home_house_number")
-  homePostalCode  String?        @map("home_postal_code")
-  homeCity        String?        @map("home_city")
-  homeLat         Float?         @map("home_lat")
-  homeLng         Float?         @map("home_lng")
-  icalToken       String         @unique @default(uuid()) @map("ical_token")
-  createdAt       DateTime       @default(now()) @map("created_at")
+  passwordChangedAt DateTime?      @map("password_changed_at")
+  firstName         String         @map("first_name")
+  lastName          String         @map("last_name")
+  roles             Role[]         @default([])
+  isActive          Boolean        @default(true) @map("is_active")
+  isDeleted         Boolean        @default(false) @map("is_deleted")
+  deletedAt         DateTime?      @map("deleted_at")
+  emailVerifiedAt   DateTime?      @map("email_verified_at")
+  initials          String?        @map("initials")
+  avatarUrl         String?        @map("avatar_url")
+  signatureType     SignatureType? @map("signature_type")
+  signatureData     String?        @map("signature_data")
+  color             String? // HEX kleurcode voor kalenderweergave, bijv. "#3B82F6"
+  homeStreet        String?        @map("home_street")
+  homeHouseNumber   String?        @map("home_house_number")
+  homePostalCode    String?        @map("home_postal_code")
+  homeCity          String?        @map("home_city")
+  homeLat           Float?         @map("home_lat")
+  homeLng           Float?         @map("home_lng")
+  icalToken         String         @unique @default(uuid()) @map("ical_token")
+  createdAt         DateTime       @default(now()) @map("created_at")
 
   // Standaard vrijwillige goedkeurder (persoon) — voorvult het persoon-verzoek (REQ5).
   defaultApprovalPersonId String? @map("default_approval_person_id") @db.Uuid
@@ -641,7 +683,7 @@ model User {
   auditLogs         AuditLog[]
   favorites         Favorite[]
 
-  // AI-assistent (add-on, PRD-12) — privé gesprekken van deze gebruiker.
+  // AI-assistent (add-on, PRD-15) — privé gesprekken van deze gebruiker.
   aiConversations AiConversation[]
 
   // Per-org feature-overrides die deze gebruiker heeft gezet (PRD-09 entitlements).
@@ -660,12 +702,17 @@ model User {
   planningSessionInspectors PlanningSessionInspector[]
   emailTemplates            EmailTemplate[]            @relation("EmailTemplateCreatedBy")
 
-  managedProjects   Project[]                   @relation("ProjectManager")
-  createdProjects   Project[]                   @relation("ProjectCreatedByUser")
-  projectFollowers  ProjectFollower[]
-  errorReports      ErrorReport[]
-  docxRevisions     QuoteTemplateDocxRevision[]
-  createdWorkOrders WorkOrder[]                 @relation("WorkOrderCreatedByUser")
+  managedProjects  Project[]         @relation("ProjectManager")
+  createdProjects  Project[]         @relation("ProjectCreatedByUser")
+  projectFollowers ProjectFollower[]
+  errorReports     ErrorReport[]
+
+  // Projectfasen (PRD-12)
+  createdProjectPhases  ProjectPhase[]              @relation("PhaseCreatedByUser")
+  projectPhaseFollowers ProjectPhaseFollower[]
+  assignedMilestones    PhaseMilestone[]            @relation("MilestoneAssignee")
+  docxRevisions         QuoteTemplateDocxRevision[]
+  createdWorkOrders     WorkOrder[]                 @relation("WorkOrderCreatedByUser")
 
   // Inspectiedomein (Fase 1)
   assignedInspectionPlans  InspectionPlan[]               @relation("InspectionPlanAssignee")
@@ -707,20 +754,30 @@ model User {
   assignedInstruments MeasurementInstrument[] @relation("MeasurementInstrumentAssignee")
   defaultInstruments  UserDefaultInstrument[]
 
+  // Beschikbaarheid inspecteurs (PRD-12). `employmentType` null = geen inspecteur / n.v.t.
+  // Raakt de bestaande chat-presence enum `availability` (Availability) niet.
+  employmentType         EmploymentType?          @map("employment_type")
+  scheduleAssignments    UserScheduleAssignment[]
+  availabilityExceptions AvailabilityException[]
+
+  // AI-review van inspectierapporten (PRD-13)
+  triggeredAiReviewRuns AiReviewRun[]  @relation("AiReviewRunTriggeredBy")
+  checkedAiReviewItems  AiReviewItem[] @relation("AiReviewItemCheckedBy")
+
   @@index([orgId, isDeleted])
   @@map("imp_users")
 }
 
 model RefreshToken {
-  id        String    @id @default(uuid()) @db.Uuid
-  userId    String    @map("user_id") @db.Uuid
-  tokenHash String    @map("token_hash")
-  expiresAt DateTime  @map("expires_at")
-  revokedAt DateTime? @map("revoked_at")
-  ipAddress String?   @map("ip_address")
-  userAgent String?   @map("user_agent")
-  rememberMe Boolean  @default(true) @map("remember_me")
-  createdAt DateTime  @default(now()) @map("created_at")
+  id         String    @id @default(uuid()) @db.Uuid
+  userId     String    @map("user_id") @db.Uuid
+  tokenHash  String    @map("token_hash")
+  expiresAt  DateTime  @map("expires_at")
+  revokedAt  DateTime? @map("revoked_at")
+  ipAddress  String?   @map("ip_address")
+  userAgent  String?   @map("user_agent")
+  rememberMe Boolean   @default(true) @map("remember_me")
+  createdAt  DateTime  @default(now()) @map("created_at")
 
   user User @relation(fields: [userId], references: [id])
 
@@ -865,6 +922,7 @@ model ContactPerson {
   organization           Organization             @relation(fields: [orgId], references: [id])
   role                   ContactPersonRoleOption? @relation(fields: [roleId], references: [id])
   planningItems          PlanningItem[]
+  projectPhases          ProjectPhase[]
   locationContactPersons LocationContactPerson[]
 
   // Inspectiedomein (Fase 1)
@@ -905,6 +963,7 @@ model Location {
   quotes                 Quote[]
   planningItems          PlanningItem[]
   projects               Project[]
+  projectPhases          ProjectPhase[]
   locationContactPersons LocationContactPerson[]
   inspectionPlans        InspectionPlan[]
   assetNodeRoot          AssetNode?              @relation("AssetNodeRoot") // 1:1; de wortel van de inspectie-boom voor deze locatie
@@ -1314,7 +1373,8 @@ model Quote {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  projectId String? @map("project_id") @db.Uuid
+  projectId      String? @map("project_id") @db.Uuid
+  projectPhaseId String? @map("project_phase_id") @db.Uuid
 
   organization     Organization           @relation(fields: [orgId], references: [id])
   template         QuoteTemplate?         @relation(fields: [templateId], references: [id])
@@ -1323,6 +1383,7 @@ model Quote {
   location         Location?              @relation(fields: [locationId], references: [id])
   createdByUser    User                   @relation("QuoteCreatedByUser", fields: [createdBy], references: [id])
   project          Project?               @relation(fields: [projectId], references: [id])
+  projectPhase     ProjectPhase?          @relation(fields: [projectPhaseId], references: [id])
   lines            QuoteLine[]
   approvalRequests QuoteApprovalRequest[]
   questions        QuoteQuestion[]
@@ -1477,7 +1538,7 @@ model AuditLog {
   snapshot   Json?
   userId     String      @map("user_id") @db.Uuid
   ipAddress  String?     @map("ip_address")
-  // Herkomst van de mutatie (PRD-12). `userId` blijft de mens-acteur; `source=AI`
+  // Herkomst van de mutatie (PRD-15). `userId` blijft de mens-acteur; `source=AI`
   // markeert dat de wijziging via de AI-assistent is uitgevoerd (toont AI-icoon).
   source     AuditSource @default(HUMAN)
   createdAt  DateTime    @default(now()) @map("created_at")
@@ -1490,7 +1551,7 @@ model AuditLog {
   @@map("imp_audit_logs")
 }
 
-// ─── AI-assistent (add-on, PRD-12) ───────────────────────
+// ─── AI-assistent (add-on, PRD-15) ───────────────────────
 // Privé per gebruiker. De FK-cascade op User/Organization vuurt bij een
 // HARD delete van de user/org. Reguliere offboarding is een soft-delete
 // (isDeleted/deletedAt) → AI-data blijft dan bewaard tot een harde verwijdering
@@ -1707,7 +1768,8 @@ model PlanningItem {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  projectId String? @map("project_id") @db.Uuid
+  projectId      String? @map("project_id") @db.Uuid
+  projectPhaseId String? @map("project_phase_id") @db.Uuid
 
   organization       Organization        @relation(fields: [orgId], references: [id])
   contact            Contact             @relation(fields: [contactId], references: [id])
@@ -1715,6 +1777,7 @@ model PlanningItem {
   location           Location?           @relation(fields: [locationId], references: [id])
   createdByUser      User                @relation("PlanningCreatedByUser", fields: [createdBy], references: [id])
   project            Project?            @relation(fields: [projectId], references: [id])
+  projectPhase       ProjectPhase?       @relation(fields: [projectPhaseId], references: [id])
   inspectors         PlanningInspector[]
   history            PlanningHistory[]
   rescheduleRequests RescheduleRequest[]
@@ -1872,6 +1935,7 @@ model Project {
   requests       Request[]
   quotes         Quote[]
   planningItems  PlanningItem[]
+  phases         ProjectPhase[]
 
   // Inspectiedomein (Fase 1)
   inspectionPlans InspectionPlan[]
@@ -1901,6 +1965,114 @@ model ProjectFollower {
 
   @@index([projectId])
   @@map("imp_project_followers")
+}
+
+// ─── PRD-12: Projectfasen (deelprojecten binnen een project) ───
+
+enum PhaseStatus {
+  NIET_GESTART
+  ACTIEF
+  ON_HOLD
+  AFGEROND
+  GEANNULEERD
+}
+
+enum MilestoneStatus {
+  OPEN
+  BEHAALD
+  VERVALLEN
+}
+
+model ProjectPhase {
+  id          String      @id @default(uuid()) @db.Uuid
+  orgId       String      @map("org_id") @db.Uuid
+  projectId   String      @map("project_id") @db.Uuid
+  name        String
+  description String?
+  status      PhaseStatus @default(NIET_GESTART)
+  sortOrder   Int         @default(0) @map("sort_order")
+
+  // Eigen context per fase (alles optioneel — erft anders visueel van het project)
+  locationId      String?   @map("location_id") @db.Uuid // CRM-Location
+  contactPersonId String?   @map("contact_person_id") @db.Uuid // ContactPerson van het projectcontact
+  startDate       DateTime? @map("start_date") @db.Date
+  expectedEndDate DateTime? @map("expected_end_date") @db.Date
+  completedAt     DateTime? @map("completed_at")
+
+  // Haak voor deelfacturatie (PRD-08); nu alleen registratie
+  budgetAmount Decimal? @map("budget_amount") @db.Decimal(12, 2)
+
+  isDeleted Boolean   @default(false) @map("is_deleted")
+  deletedAt DateTime? @map("deleted_at")
+  createdBy String    @map("created_by") @db.Uuid
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+
+  organization  Organization           @relation(fields: [orgId], references: [id])
+  project       Project                @relation(fields: [projectId], references: [id])
+  location      Location?              @relation(fields: [locationId], references: [id])
+  contactPerson ContactPerson?         @relation(fields: [contactPersonId], references: [id])
+  createdByUser User                   @relation("PhaseCreatedByUser", fields: [createdBy], references: [id])
+  followers     ProjectPhaseFollower[]
+  milestones    PhaseMilestone[]
+
+  inspectionPlans InspectionPlan[]
+  planningItems   PlanningItem[]
+  workOrders      WorkOrder[]
+  quotes          Quote[]
+
+  @@index([orgId, projectId, sortOrder])
+  @@index([projectId, status])
+  @@map("imp_project_phases")
+}
+
+model ProjectPhaseFollower {
+  id               String   @id @default(uuid()) @db.Uuid
+  phaseId          String   @map("phase_id") @db.Uuid
+  userId           String?  @map("user_id") @db.Uuid
+  email            String?
+  name             String?
+  canViewGeneral   Boolean  @default(true) @map("can_view_general")
+  canViewRequests  Boolean  @default(false) @map("can_view_requests")
+  canViewQuotes    Boolean  @default(true) @map("can_view_quotes")
+  canViewPlanning  Boolean  @default(true) @map("can_view_planning")
+  canViewDocuments Boolean  @default(false) @map("can_view_documents")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  phase ProjectPhase @relation(fields: [phaseId], references: [id], onDelete: Cascade)
+  user  User?        @relation(fields: [userId], references: [id])
+
+  @@index([phaseId])
+  @@map("imp_project_phase_followers")
+}
+
+model PhaseMilestone {
+  id                 String          @id @default(uuid()) @db.Uuid
+  orgId              String          @map("org_id") @db.Uuid
+  phaseId            String          @map("phase_id") @db.Uuid
+  title              String
+  description        String?
+  dueDate            DateTime        @map("due_date") @db.Date
+  status             MilestoneStatus @default(OPEN)
+  completedAt        DateTime?       @map("completed_at")
+  assigneeId         String?         @map("assignee_id") @db.Uuid
+  reminderDaysBefore Int             @default(7) @map("reminder_days_before")
+
+  // Dedupe-patroon identiek aan MeasurementInstrumentsScheduler
+  lastReminderStage String?   @map("last_reminder_stage") // 'upcoming' | 'overdue'
+  lastReminderAt    DateTime? @map("last_reminder_at")
+
+  sortOrder Int      @default(0) @map("sort_order")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [orgId], references: [id])
+  phase        ProjectPhase @relation(fields: [phaseId], references: [id], onDelete: Cascade)
+  assignee     User?        @relation("MilestoneAssignee", fields: [assigneeId], references: [id])
+
+  @@index([phaseId, dueDate])
+  @@index([orgId, status, dueDate])
+  @@map("imp_project_phase_milestones")
 }
 
 // ─── Custom Fields ──────────────────────────────────────
@@ -2088,6 +2260,7 @@ model WorkOrder {
   id              String          @id @default(uuid()) @db.Uuid
   orgId           String          @map("org_id") @db.Uuid
   planningItemId  String?         @map("planning_item_id") @db.Uuid
+  projectPhaseId  String?         @map("project_phase_id") @db.Uuid
   workOrderNumber String          @map("work_order_number")
   status          WorkOrderStatus @default(IN_VOORBEREIDING)
   internalNotes   String?         @map("internal_notes")
@@ -2099,6 +2272,7 @@ model WorkOrder {
 
   organization  Organization    @relation(fields: [orgId], references: [id])
   planningItem  PlanningItem?   @relation(fields: [planningItemId], references: [id])
+  projectPhase  ProjectPhase?   @relation(fields: [projectPhaseId], references: [id])
   createdByUser User            @relation("WorkOrderCreatedByUser", fields: [createdBy], references: [id])
   lines         WorkOrderLine[]
 
@@ -2221,6 +2395,7 @@ enum TemplateStatus {
 enum DocumentType {
   PLAN
   REPORT
+  HERSTELVERKLARING
 }
 
 enum TemplateMode {
@@ -2611,6 +2786,8 @@ model ClassificationOption {
   description      String?
   color            String
   sortOrder        Int     @default(0) @map("sort_order")
+  // Online herstel (PRD-14): markeert deze optie als "kritiek" (→ Finding.isCritical)
+  isCritical       Boolean @default(false) @map("is_critical")
 
   characteristic ClassificationCharacteristic @relation(fields: [characteristicId], references: [id], onDelete: Cascade)
 
@@ -2622,11 +2799,12 @@ model ClassificationOption {
 // ─── Inspectieplan (kern) ────────────────────────────────
 
 model InspectionPlan {
-  id         String  @id @default(uuid()) @db.Uuid
-  orgId      String  @map("org_id") @db.Uuid
-  contactId  String  @map("contact_id") @db.Uuid // was clientId → Beheer Contact
-  projectId  String? @map("project_id") @db.Uuid // Beheer Project
-  locationId String? @map("location_id") @db.Uuid // CRM-Location = hoofdlocatie / boom-wortel
+  id             String  @id @default(uuid()) @db.Uuid
+  orgId          String  @map("org_id") @db.Uuid
+  contactId      String  @map("contact_id") @db.Uuid // was clientId → Beheer Contact
+  projectId      String? @map("project_id") @db.Uuid // Beheer Project
+  projectPhaseId String? @map("project_phase_id") @db.Uuid // PRD-12: optionele fase binnen het project
+  locationId     String? @map("location_id") @db.Uuid // CRM-Location = hoofdlocatie / boom-wortel
 
   inspectionTemplateId String? @map("inspection_template_id") @db.Uuid
 
@@ -2664,6 +2842,10 @@ model InspectionPlan {
   internalNotes String? @map("internal_notes")
   metadata      Json    @default("{}")
 
+  // Online herstel (PRD-14)
+  onlineRepairEnabled      Boolean   @default(false) @map("online_repair_enabled")
+  criticalRepairNotifiedAt DateTime? @map("critical_repair_notified_at")
+
   createdAt      DateTime  @default(now()) @map("created_at")
   updatedAt      DateTime  @updatedAt @map("updated_at")
   syncedAt       DateTime? @map("synced_at")
@@ -2675,6 +2857,7 @@ model InspectionPlan {
   organization            Organization        @relation(fields: [orgId], references: [id])
   contact                 Contact             @relation(fields: [contactId], references: [id])
   project                 Project?            @relation(fields: [projectId], references: [id])
+  projectPhase            ProjectPhase?       @relation(fields: [projectPhaseId], references: [id])
   location                Location?           @relation(fields: [locationId], references: [id])
   assignedUser            User?               @relation("InspectionPlanAssignee", fields: [assignedTo], references: [id])
   reviewer                User?               @relation("InspectionPlanReviewer", fields: [reviewerId], references: [id])
@@ -2697,6 +2880,8 @@ model InspectionPlan {
   clientRequests          ClientRequest[]                   @relation("RelatedInspectionPlan")
   standaloneMeasurements  StandaloneMeasurement[]
   instrumentDefaults      InspectionPlanDefaultInstrument[]
+  aiReviewRuns            AiReviewRun[]
+  repairSessions          RepairSession[]
 
   @@index([orgId, statusCode])
   @@index([contactId])
@@ -2763,6 +2948,7 @@ model AssetNode {
   image                   LocationImage? // floor-plan op een LOCATION-node
   standaloneMeasurements  StandaloneMeasurement[]  @relation("NodeStandalone")
   planScopes              InspectionPlanLocation[] // inspecties waarvoor deze LOCATION-node in scope is
+  aiReviewItems           AiReviewItem[]
 
   @@unique([orgId, nodeNumber])
   @@index([orgId])
@@ -2816,6 +3002,7 @@ model VisualInspection {
   findings       Finding[]
 
   @@index([orgId])
+  @@index([orgId, updatedAt])
   @@index([assetNodeId])
   @@index([inspectionPlanId])
   @@map("imp_visual_inspections")
@@ -2851,6 +3038,7 @@ model MeasurementRecord {
   findings       Finding[]
 
   @@index([orgId])
+  @@index([orgId, updatedAt])
   @@index([assetNodeId])
   @@index([inspectionPlanId])
   @@map("imp_measurement_records")
@@ -2884,6 +3072,10 @@ model Finding {
   resolvedBy      String?   @map("resolved_by") @db.Uuid
   resolutionNotes String?   @map("resolution_notes")
 
+  // Online herstel (PRD-14): gedenormaliseerd uit classificationValues × ClassificationOption.isCritical
+  // (server-owned: gezet door findings.service en de /sync-push-mapper, niet client-schrijfbaar)
+  isCritical Boolean @default(false) @map("is_critical")
+
   createdAt DateTime  @default(now()) @map("created_at")
   updatedAt DateTime  @updatedAt @map("updated_at")
   syncedAt  DateTime? @map("synced_at")
@@ -2901,12 +3093,15 @@ model Finding {
   resolvedByUser    User?                 @relation("FindingResolvedBy", fields: [resolvedBy], references: [id])
   resolutions       FindingResolution[]
   markers           LocationImageMarker[]
+  aiReviewItems     AiReviewItem[]
 
   @@index([orgId])
+  @@index([orgId, updatedAt])
   @@index([assetNodeId])
   @@index([inspectionPlanId])
   @@index([findingTemplateId])
   @@index([orgId, statusCode])
+  @@index([inspectionPlanId, isCritical, statusCode])
   @@map("imp_findings")
 }
 
@@ -3348,7 +3543,7 @@ model LocationTypeDefinition {
   orgId String? @map("org_id") @db.Uuid
 
   code        String
-  shortCode   String? @map("short_code") // shortcode voor [typecode] in AssetNode-nummering
+  shortCode   String?           @map("short_code") // shortcode voor [typecode] in AssetNode-nummering
   name        String
   description String?
   icon        String?
@@ -3586,7 +3781,8 @@ model DocumentSection {
 model GeneratedDocument {
   id                 String       @id @default(uuid()) @db.Uuid
   orgId              String       @map("org_id") @db.Uuid
-  documentTemplateId String       @map("document_template_id") @db.Uuid
+  // PRD-14: nullable — de herstelverklaring is een code-based template zonder DocumentTemplate-rij
+  documentTemplateId String?      @map("document_template_id") @db.Uuid
   inspectionPlanId   String       @map("inspection_plan_id") @db.Uuid
   documentType       DocumentType @map("document_type")
 
@@ -3602,13 +3798,16 @@ model GeneratedDocument {
   wordUrl String? @map("word_url")
 
   generatedAt DateTime  @default(now()) @map("generated_at")
-  generatedBy String    @map("generated_by") @db.Uuid
+  // PRD-14: nullable — een via online herstel gegenereerde verklaring heeft geen staf-gebruiker
+  generatedBy String?   @map("generated_by") @db.Uuid
   finalizedAt DateTime? @map("finalized_at")
 
   organization     Organization        @relation(fields: [orgId], references: [id])
-  documentTemplate DocumentTemplate    @relation(fields: [documentTemplateId], references: [id])
+  documentTemplate DocumentTemplate?   @relation(fields: [documentTemplateId], references: [id])
   inspectionPlan   InspectionPlan      @relation(fields: [inspectionPlanId], references: [id])
   signatures       DocumentSignature[]
+  aiReviewRuns     AiReviewRun[]
+  repairSessions   RepairSession[]
 
   @@index([orgId])
   @@index([inspectionPlanId, documentType])
@@ -3627,6 +3826,9 @@ model DocumentSignature {
   signatureImage  String?   @map("signature_image") @db.Text
   signedAt        DateTime? @map("signed_at")
   signedIpAddress String?   @map("signed_ip_address")
+  // WP-A3 (B-101): herleidbaarheid — de staf-gebruiker die intern ondertekende.
+  // Plain uuid zonder FK-relatie, consistent met generatedBy/editedBy op GeneratedDocument.
+  signedByUserId  String?   @map("signed_by_user_id") @db.Uuid
 
   signatureRequestId     String?         @map("signature_request_id")
   signatureRequestSentAt DateTime?       @map("signature_request_sent_at")
@@ -3797,6 +3999,7 @@ model MeasurementSheetRecord {
   inspectionPlan InspectionPlan           @relation(fields: [inspectionPlanId], references: [id])
 
   @@index([orgId])
+  @@index([orgId, updatedAt])
   @@index([templateId])
   @@index([assetNodeId])
   @@index([inspectionPlanId])
@@ -3898,6 +4101,7 @@ model StandaloneMeasurement {
   markers         LocationImageMarker[]
 
   @@index([orgId])
+  @@index([orgId, updatedAt])
   @@index([inspectionPlanId])
   @@index([locationNodeId])
   @@index([linkedAssetNodeId])
@@ -3930,6 +4134,10 @@ model SyncQueue {
 
   deviceId String  @map("device_id")
   userId   String? @map("user_id") @db.Uuid
+  // WP-D1 (B-223e): org-scoping zodat open conflicten veilig in de /sync-pull
+  // kunnen meereizen. Nullable + zonder relatie (log-/queue-tabelpatroon, zoals
+  // AuditLog); bestaande rijen zijn in de migratie gebackfilld via user.orgId.
+  orgId    String? @map("org_id") @db.Uuid
 
   entityType String        @map("entity_type")
   entityId   String        @map("entity_id") @db.Uuid
@@ -3949,6 +4157,9 @@ model SyncQueue {
   user         User? @relation("SyncQueueUser", fields: [userId], references: [id])
   resolvedUser User? @relation("SyncResolvedBy", fields: [resolvedBy], references: [id])
 
+  @@index([entityType, entityId, status])
+  @@index([status, createdAt])
+  @@index([orgId, status])
   @@map("imp_sync_queue")
 }
 
@@ -3995,12 +4206,35 @@ model ClientUser {
 
   clientAccess       ClientAccess[]
   magicLinks         ClientMagicLink[]
+  refreshTokens      ClientRefreshToken[]
   inspectionAccess   InspectionClientAccess[]
   messages           InspectionMessage[]      @relation("MessageClientUser")
   findingResolutions FindingResolution[]
   clientRequests     ClientRequest[]
+  repairSessions     RepairSession[]
 
   @@map("imp_client_users")
+}
+
+/// Stateful refresh-token voor de client-realm (spiegelt RefreshToken van de staf-realm):
+/// SHA-256-gehasht opgeslagen, roteerbaar bij refresh en intrekbaar bij logout. Cascade op
+/// ClientUser zodat het verwijderen van een klantaccount de tokens meeneemt.
+model ClientRefreshToken {
+  id           String    @id @default(uuid()) @db.Uuid
+  clientUserId String    @map("client_user_id") @db.Uuid
+  tokenHash    String    @map("token_hash")
+  expiresAt    DateTime  @map("expires_at")
+  revokedAt    DateTime? @map("revoked_at")
+  ipAddress    String?   @map("ip_address")
+  userAgent    String?   @map("user_agent")
+  createdAt    DateTime  @default(now()) @map("created_at")
+
+  clientUser ClientUser @relation(fields: [clientUserId], references: [id], onDelete: Cascade)
+
+  @@index([clientUserId])
+  @@index([expiresAt])
+  @@index([tokenHash])
+  @@map("imp_client_refresh_tokens")
 }
 
 /// Koppeling ClientUser → Contact (opdrachtgever). Was: → Client.
@@ -4090,9 +4324,12 @@ model MessageAttachment {
 }
 
 model FindingResolution {
+  // PRD-14: resolvedByClientUserId is optioneel geworden — een anonieme herstelsessie
+  // (RepairSession ANONYMOUS) heeft geen ClientUser; herkomst zit dan in repairSessionId.
   id                     String    @id @default(uuid()) @db.Uuid
   findingId              String    @map("finding_id") @db.Uuid
-  resolvedByClientUserId String    @map("resolved_by_client_user_id") @db.Uuid
+  resolvedByClientUserId String?   @map("resolved_by_client_user_id") @db.Uuid
+  repairSessionId        String?   @map("repair_session_id") @db.Uuid
   description            String?   @db.Text
   resolvedAt             DateTime  @default(now()) @map("resolved_at")
   statusCode             String    @default("PENDING_VERIFICATION") @map("status") // → imp_resolution_status_types.code
@@ -4101,10 +4338,17 @@ model FindingResolution {
   verificationNotes      String?   @map("verification_notes")
 
   finding              Finding                  @relation(fields: [findingId], references: [id], onDelete: Cascade)
-  resolvedByClientUser ClientUser               @relation(fields: [resolvedByClientUserId], references: [id])
+  resolvedByClientUser ClientUser?              @relation(fields: [resolvedByClientUserId], references: [id])
+  repairSession        RepairSession?           @relation(fields: [repairSessionId], references: [id], onDelete: SetNull)
   photos               FindingResolutionPhoto[]
 
+  // Max één herstelmelding per constatering per sessie (PRD-14): vangt de
+  // dubbelklik-race die de niet-atomische precheck in claimFinding mist.
+  // NB: rijen met repairSessionId NULL (oude PENDING_VERIFICATION-flow) botsen
+  // nooit — Postgres-uniques negeren NULL.
+  @@unique([findingId, repairSessionId])
   @@index([findingId])
+  @@index([repairSessionId])
   @@map("imp_finding_resolutions")
 }
 
@@ -4118,6 +4362,50 @@ model FindingResolutionPhoto {
   resolution FindingResolution @relation(fields: [resolutionId], references: [id], onDelete: Cascade)
 
   @@map("imp_finding_resolution_photos")
+}
+
+// ─── Online herstel van constateringen (PRD-14) ───
+
+enum RepairAccessType {
+  CLIENT_USER // ingelogde klantportaal-gebruiker
+  ANONYMOUS // rapportnummer + postcode (later: QR)
+}
+
+enum RepairSessionStatus {
+  ACTIVE
+  COMPLETED // herstelverklaring ondertekend
+  EXPIRED
+}
+
+model RepairSession {
+  id               String              @id @default(uuid()) @db.Uuid
+  orgId            String              @map("org_id") @db.Uuid
+  inspectionPlanId String              @map("inspection_plan_id") @db.Uuid
+  accessType       RepairAccessType    @map("access_type")
+  status           RepairSessionStatus @default(ACTIVE)
+  token            String              @unique // crypto-random, zoals ClientMagicLink
+  clientUserId     String?             @map("client_user_id") @db.Uuid
+
+  // Invullergegevens (verklaring); bij CLIENT_USER vooraf gevuld vanuit het account
+  contactName         String? @map("contact_name")
+  companyName         String? @map("company_name")
+  email               String? // verplicht bij ANONYMOUS vóór afronden
+  generatedDocumentId String? @map("generated_document_id") @db.Uuid // herstelverklaring
+
+  expiresAt        DateTime  @map("expires_at") // now + 72 uur
+  completedAt      DateTime? @map("completed_at")
+  lastActivityAt   DateTime  @default(now()) @map("last_activity_at")
+  createdIpAddress String?   @map("created_ip_address")
+  createdAt        DateTime  @default(now()) @map("created_at")
+
+  organization      Organization        @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  inspectionPlan    InspectionPlan      @relation(fields: [inspectionPlanId], references: [id], onDelete: Cascade)
+  clientUser        ClientUser?         @relation(fields: [clientUserId], references: [id], onDelete: SetNull)
+  generatedDocument GeneratedDocument?  @relation(fields: [generatedDocumentId], references: [id], onDelete: SetNull)
+  resolutions       FindingResolution[]
+
+  @@index([orgId, inspectionPlanId])
+  @@map("imp_repair_sessions")
 }
 
 model ClientRequest {
@@ -4317,17 +4605,20 @@ model ChatMessage {
 // Knowledge base (hybride: org_id null = globaal, gezet = org-specifiek)
 
 model HelpCategory {
-  id          String   @id @default(uuid()) @db.Uuid
-  orgId       String?  @map("org_id") @db.Uuid // null = globaal; gezet = org-specifiek
+  id          String       @id @default(uuid()) @db.Uuid
+  orgId       String?      @map("org_id") @db.Uuid // null = globaal; gezet = org-specifiek
   slug        String
   name        String
   description String?
   icon        String?
-  order       Int      @default(0)
-  parentId    String?  @map("parent_id") @db.Uuid
-  isPublished Boolean  @default(true) @map("is_published")
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  order       Int          @default(0)
+  parentId    String?      @map("parent_id") @db.Uuid
+  isPublished Boolean      @default(true) @map("is_published")
+  audience    HelpAudience @default(INTERNAL)
+  // Alleen relevant voor EXTERNAL: true = publiek zichtbaar (zonder login), false = achter klant-login
+  isPublic    Boolean      @default(false) @map("is_public")
+  createdAt   DateTime     @default(now()) @map("created_at")
+  updatedAt   DateTime     @updatedAt @map("updated_at")
 
   organization Organization?  @relation(fields: [orgId], references: [id])
   parent       HelpCategory?  @relation("HelpCategoryTree", fields: [parentId], references: [id])
@@ -4336,6 +4627,7 @@ model HelpCategory {
 
   @@unique([orgId, slug])
   @@index([parentId, order])
+  @@index([orgId, audience])
   @@map("imp_help_categories")
 }
 
@@ -4348,6 +4640,7 @@ model HelpArticle {
   excerpt     String?
   body        String            @db.Text
   status      HelpArticleStatus @default(DRAFT)
+  audience    HelpAudience      @default(INTERNAL)
   tags        String[]          @default([])
   moduleKeys  String[]          @default([]) @map("module_keys")
   order       Int               @default(0)
@@ -4365,6 +4658,7 @@ model HelpArticle {
 
   @@unique([orgId, slug])
   @@index([orgId, status])
+  @@index([orgId, audience, status])
   @@index([categoryId, order])
   // pg_trgm/GIN-indexen voor typo-tolerante KB-zoek (oorspronkelijk via raw SQL in
   // 20260623214008_help_trigram_search). Hier in het schema gemodelleerd met de
@@ -4588,4 +4882,188 @@ model InspectionPlanDefaultInstrument {
   @@index([orgId])
   @@index([instrumentId])
   @@map("imp_inspection_plan_default_instruments")
+}
+
+// ─── Beschikbaarheid inspecteurs (PRD-12) ────────────────────────────────────
+// Weekschema-template als baseline (dienstverband) + uitzonderingen (overrides)
+// er bovenop. Losstaand van de bestaande chat-presence enum `Availability`.
+
+/// Dienstvorm per inspecteur. `DIENSTVERBAND` = standaard beschikbaar volgens
+/// weekschema; `FREELANCE` = standaard niet beschikbaar (opgeven via excepties).
+enum EmploymentType {
+  DIENSTVERBAND
+  FREELANCE
+}
+
+/// Type uitzondering: voegt beschikbaarheid toe of blokkeert die.
+enum AvailabilityExceptionType {
+  BESCHIKBAAR // voegt beschikbaarheid toe (freelance-patroon of extra dag dienstverband)
+  GEBLOKKEERD // blokkeert beschikbaarheid (verlof, afwezigheid) — wint altijd
+}
+
+/// Herbruikbaar weekschema per organisatie met tijdsloten per weekdag.
+model AvailabilityTemplate {
+  id          String   @id @default(uuid()) @db.Uuid
+  orgId       String   @map("org_id") @db.Uuid
+  name        String // "Standaard", "Sjaak Parttime"
+  description String?
+  isActive    Boolean  @default(true) @map("is_active")
+  isDeleted   Boolean  @default(false) @map("is_deleted")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  organization Organization               @relation(fields: [orgId], references: [id])
+  slots        AvailabilityTemplateSlot[]
+  assignments  UserScheduleAssignment[]
+
+  @@unique([orgId, name])
+  @@index([orgId, isDeleted])
+  @@map("imp_availability_templates")
+}
+
+/// Eén tijdslot binnen een template-weekdag (minuten vanaf middernacht).
+model AvailabilityTemplateSlot {
+  id          String @id @default(uuid()) @db.Uuid
+  templateId  String @map("template_id") @db.Uuid
+  weekday     Int // ISO-8601: 1 = maandag ... 7 = zondag
+  startMinute Int    @map("start_minute") // 480 = 08:00
+  endMinute   Int    @map("end_minute") // 1050 = 17:30
+
+  template AvailabilityTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+
+  @@index([templateId])
+  @@map("imp_availability_template_slots")
+}
+
+/// Koppeling inspecteur → template met ingangsdatum, zodat schemawissels
+/// historisch kloppen (`validUntil` wordt gezet bij het toewijzen van een opvolger).
+model UserScheduleAssignment {
+  id          String    @id @default(uuid()) @db.Uuid
+  orgId       String    @map("org_id") @db.Uuid
+  userId      String    @map("user_id") @db.Uuid
+  templateId  String    @map("template_id") @db.Uuid
+  validFrom   DateTime  @map("valid_from") @db.Date // date-only (00:00 lokale tijd)
+  validUntil  DateTime? @map("valid_until") @db.Date // null = doorlopend
+  createdById String    @map("created_by_id") @db.Uuid
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  organization Organization         @relation(fields: [orgId], references: [id])
+  user         User                 @relation(fields: [userId], references: [id])
+  template     AvailabilityTemplate @relation(fields: [templateId], references: [id])
+
+  @@index([orgId, userId, validFrom])
+  @@map("imp_user_schedule_assignments")
+}
+
+/// Eenmalige of wekelijks herhalende periode die beschikbaarheid toevoegt of blokkeert.
+/// Óf eenmalig (startsAt/endsAt) óf herhalend (RRULE-subset FREQ=WEEKLY), nooit beide.
+model AvailabilityException {
+  id     String                    @id @default(uuid()) @db.Uuid
+  orgId  String                    @map("org_id") @db.Uuid
+  userId String                    @map("user_id") @db.Uuid
+  type   AvailabilityExceptionType
+
+  // Eenmalig (isRecurring = false): absolute periode.
+  startsAt DateTime? @map("starts_at")
+  endsAt   DateTime? @map("ends_at")
+  allDay   Boolean   @default(false) @map("all_day")
+
+  // Herhalend (isRecurring = true): RRULE-subset FREQ=WEEKLY.
+  isRecurring    Boolean   @default(false) @map("is_recurring")
+  weekdays       Int[]     @default([]) // ISO 1..7
+  startMinute    Int?      @map("start_minute") // 60 = 01:00
+  endMinute      Int?      @map("end_minute") // 300 = 05:00
+  intervalWeeks  Int       @default(1) @map("interval_weeks") // 1 = wekelijks, 2 = tweewekelijks
+  recurStartDate DateTime? @map("recur_start_date") @db.Date
+  recurEndDate   DateTime? @map("recur_end_date") @db.Date
+
+  reason      String?
+  createdById String   @map("created_by_id") @db.Uuid // inspecteur zelf of manager
+  isDeleted   Boolean  @default(false) @map("is_deleted")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [orgId], references: [id])
+  user         User         @relation(fields: [userId], references: [id])
+
+  @@index([orgId, userId, isDeleted])
+  @@map("imp_availability_exceptions")
+}
+
+// ─── AI-review van inspectierapporten (PRD-13) ───────────────────────────────
+// Eén analyse-run van Claude over een ingediend inspectieplan; het resultaat is
+// een checklist van aandachtspunten (items) voor de menselijke controleur.
+// Adviserend, nooit blokkerend: geen enkele statustransitie hangt hiervan af.
+
+enum AiReviewRunStatus {
+  PENDING // aangemaakt, run nog niet gestart/bezig
+  COMPLETED // analyse gelukt, items beschikbaar
+  FAILED // fout (API/timeout/parse) — errorMessage gevuld
+}
+
+enum AiReviewItemSeverity {
+  CRITICAL // waarschijnlijk fout in het rapport (bijv. meting buiten norm zonder afwijking)
+  WARNING // verdacht / inconsistent, controleren
+  SUGGESTION // verbeterpunt (formulering, volledigheid)
+  INFO // ter kennisgeving
+}
+
+enum AiReviewItemStatus {
+  OPEN
+  CHECKED // door reviewer afgevinkt (gezien/afgehandeld)
+  DISMISSED // door reviewer afgewezen (niet relevant / vals alarm)
+}
+
+model AiReviewRun {
+  id                  String            @id @default(uuid()) @db.Uuid
+  orgId               String            @map("org_id") @db.Uuid
+  inspectionPlanId    String            @map("inspection_plan_id") @db.Uuid
+  generatedDocumentId String?           @map("generated_document_id") @db.Uuid
+  status              AiReviewRunStatus @default(PENDING)
+  triggeredBy         String?           @map("triggered_by") @db.Uuid // null = automatisch bij submit
+  model               String // gebruikt Claude-model (audit/kosten)
+  summary             String?           @db.Text // NL-samenvatting van de AI
+  errorMessage        String?           @map("error_message")
+  inputTokens         Int?              @map("input_tokens")
+  outputTokens        Int?              @map("output_tokens")
+  startedAt           DateTime?         @map("started_at")
+  completedAt         DateTime?         @map("completed_at")
+  createdAt           DateTime          @default(now()) @map("created_at")
+
+  organization      Organization       @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  inspectionPlan    InspectionPlan     @relation(fields: [inspectionPlanId], references: [id], onDelete: Cascade)
+  generatedDocument GeneratedDocument? @relation(fields: [generatedDocumentId], references: [id], onDelete: SetNull)
+  triggeredByUser   User?              @relation("AiReviewRunTriggeredBy", fields: [triggeredBy], references: [id], onDelete: SetNull)
+  items             AiReviewItem[]
+
+  @@index([orgId, inspectionPlanId])
+  @@map("imp_ai_review_runs")
+}
+
+model AiReviewItem {
+  id                  String               @id @default(uuid()) @db.Uuid
+  orgId               String               @map("org_id") @db.Uuid
+  runId               String               @map("run_id") @db.Uuid
+  severity            AiReviewItemSeverity
+  category            String // vrije NL-categorie uit de prompt-taxonomie (PRD §13.6.3)
+  title               String
+  description         String               @db.Text
+  // Optionele verwijzingen zodat de UI kan deeplinken; AI levert deze alleen
+  // als het id in de input voorkwam — service valideert vóór opslag.
+  assetNodeId         String?              @map("asset_node_id") @db.Uuid
+  findingId           String?              @map("finding_id") @db.Uuid
+  measurementRecordId String?              @map("measurement_record_id") @db.Uuid
+  status              AiReviewItemStatus   @default(OPEN)
+  checkedBy           String?              @map("checked_by") @db.Uuid
+  checkedAt           DateTime?            @map("checked_at")
+  sortOrder           Int                  @default(0) @map("sort_order")
+  createdAt           DateTime             @default(now()) @map("created_at")
+
+  run           AiReviewRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  assetNode     AssetNode?  @relation(fields: [assetNodeId], references: [id], onDelete: SetNull)
+  finding       Finding?    @relation(fields: [findingId], references: [id], onDelete: SetNull)
+  checkedByUser User?       @relation("AiReviewItemCheckedBy", fields: [checkedBy], references: [id], onDelete: SetNull)
+
+  @@index([runId])
+  @@map("imp_ai_review_items")
 }

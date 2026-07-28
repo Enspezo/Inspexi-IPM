@@ -1,17 +1,22 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api-client';
+import {
+  clientRequestKeys,
+  clientRequestDetailKeys,
+  clientMeKeys,
+} from '@/lib/query-keys';
 import type { ClientRequest, ClientMe } from '@/types';
 
 export function useRequests() {
   return useQuery<ClientRequest[]>({
-    queryKey: ['client-requests'],
+    queryKey: clientRequestKeys.lists(),
     queryFn: () => apiClient.get<ClientRequest[]>('/client/requests'),
   });
 }
 
 export function useRequest(id: string | undefined) {
   return useQuery<ClientRequest>({
-    queryKey: ['client-request', id],
+    queryKey: clientRequestDetailKeys.detail(id as string),
     queryFn: () => apiClient.get<ClientRequest>(`/client/requests/${id}`),
     enabled: !!id,
   });
@@ -20,7 +25,7 @@ export function useRequest(id: string | undefined) {
 /** Toegangslijst van de klant binnen deze org (voor de contact-keuze bij een nieuwe opdracht). */
 export function useClientMe() {
   return useQuery<ClientMe>({
-    queryKey: ['client-me'],
+    queryKey: clientMeKeys.all,
     queryFn: () => apiClient.get<ClientMe>('/client/auth/me'),
   });
 }
@@ -30,7 +35,7 @@ export function useCreateReinspection() {
   return useMutation({
     mutationFn: (body: { inspectionPlanId: string; description: string; preferredDate?: string }) =>
       apiClient.post<ClientRequest>('/client/requests/reinspection', body),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['client-requests'] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: clientRequestKeys.lists() }),
   });
 }
 
@@ -43,6 +48,6 @@ export function useCreateNewAssignment() {
       description: string;
       preferredDate?: string;
     }) => apiClient.post<ClientRequest>('/client/requests/new-assignment', body),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['client-requests'] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: clientRequestKeys.lists() }),
   });
 }

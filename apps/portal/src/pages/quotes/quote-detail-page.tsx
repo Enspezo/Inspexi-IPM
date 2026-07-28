@@ -8,8 +8,6 @@ import {
   DocumentEntityType,
   CustomFieldEntityType,
   NoteEntityType,
-  ApprovalKind,
-  ApprovalStatus,
 } from '@/types';
 import { ActionMenu, Button, Card, ErrorBox, Spinner, StatusBadge, Input, Table, useConfirm, useToast, type Column } from '@/components/ui';
 import { formatCurrency, formatDate } from '@/lib/format';
@@ -19,6 +17,7 @@ import { FavoriteStar } from '@/components/favorites/favorite-star';
 import { StartChatButton } from '@/components/chat';
 import { NotesSidebarSection, HistorySidebarSection, DocumentsSidebarSection } from '@/components/layout/sidebar-sections';
 import { useAuth } from '@/providers/auth-provider';
+import { useFeatures } from '@/providers/feature-provider';
 import { useWindowTabSync } from '@/providers/window-tabs';
 import {
   useQuote,
@@ -38,14 +37,13 @@ import { SendQuoteModal } from './components/send-quote-modal';
 import { ApproveQuoteModal } from './components/approve-quote-modal';
 import { QuoteApprovalList } from './components/quote-approval-list';
 import { RequestTeamApprovalModal, RequestPersonApprovalModal } from './components/voluntary-approval-modals';
-import { useOrganization } from '@/pages/organization/hooks/use-organization';
 import { PdfPreviewModal } from './components/pdf-preview-modal';
 import { QuoteInfoCard } from './components/quote-detail-info-card';
 import { QuoteQuestionsCard } from './components/quote-detail-questions-card';
 import { QuoteAttachmentsCard } from './components/quote-detail-attachments-card';
 import { QuoteTasksSidebar } from './components/quote-detail-tasks-sidebar';
 import { ContactLogsSidebar } from './components/quote-detail-contact-logs-sidebar';
-import { formatDateTimeLong } from './components/quote-detail-helpers';
+import { formatDateTimeLong, getQuoteApprovalState } from './components/quote-detail-helpers';
 import { RichTextViewer } from '@/components/ui';
 import { getAccessToken, getErrorMessage } from '@/lib/api-client';
 
@@ -56,6 +54,7 @@ export default function QuoteDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { hasFeature } = useFeatures();
   const { showToast } = useToast();
   const confirm = useConfirm();
   const { data: quote, isLoading, error } = useQuote(id!);
@@ -84,9 +83,6 @@ export default function QuoteDetailPage() {
   const [isTeamReqOpen, setIsTeamReqOpen] = useState(false);
   const [isPersonReqOpen, setIsPersonReqOpen] = useState(false);
 
-  // Org-config voor de verplichte goedkeuringsgate (REQ5).
-  const { data: organization } = useOrganization(user?.orgId);
-
   const { data: tasksData } = useTasks({ entityType: TaskEntityType.QUOTE, entityId: id, limit: 100 });
   const quoteTasks = tasksData?.data || [];
   const incompleteTasks = quoteTasks.filter((t) => t.status !== TaskStatus.VOLTOOID);
@@ -95,12 +91,17 @@ export default function QuoteDetailPage() {
   const userCanApprove = user && user.roles.some(r => canApprove.includes(r));
   // Backend staat bewerken alleen toe bij status CONCEPT (quotes.service.ts update())
   const canEditQuote = !!userCanWrite && quote?.status === QuoteStatus.CONCEPT;
+  // Projectfasen zitten achter de PROJECT_FASEN-entitlement (§Fase E).
+  const hasPhaseFeature = hasFeature('PROJECT_FASEN');
+  // Fase-koppelen mag in élke status (PRD-12): pure projectPhaseId-patch passeert de
+  // CONCEPT-guard — mits de feature aanstaat.
+  const canLinkPhase = !!userCanWrite && hasPhaseFeature;
 
   const handleSubmitApproval = async () => {
     try {
       await submitApprovalMutation.mutateAsync();
       showToast('Offerte ter goedkeuring ingediend', 'success');
-    } catch (err) { showToast(getErrorMessage(err, 'Indienen mislukt'), 'error'); }
+    } catch { /* foutmelding wordt centraal getoond via useApiMutation */ }
   };
 
   const handleReject = async () => {
@@ -109,14 +110,14 @@ export default function QuoteDetailPage() {
       showToast('Offerte afgewezen', 'success');
       setRejectNote('');
       setShowRejectInput(false);
-    } catch (err) { showToast(getErrorMessage(err, 'Afwijzen mislukt'), 'error'); }
+    } catch { /* foutmelding wordt centraal getoond via useApiMutation */ }
   };
 
   const handleStatusUpdate = async (status: string) => {
     try {
       await updateStatusMutation.mutateAsync({ status });
       showToast('Status bijgewerkt', 'success');
-    } catch (err) { showToast(getErrorMessage(err, 'Status wijzigen mislukt'), 'error'); }
+    } catch { /* foutmelding wordt centraal getoond via useApiMutation */ }
   };
 
   const handleDelete = async () => {
@@ -131,7 +132,7 @@ export default function QuoteDetailPage() {
       await deleteMutation.mutateAsync(quote.id);
       showToast('Offerte verwijderd', 'success');
       navigate('/quotes');
-    } catch (err) { showToast(getErrorMessage(err, 'Verwijderen mislukt'), 'error'); }
+    } catch { /* foutmelding wordt centraal getoond via useApiMutation */ }
   };
 
   if (isLoading) {
@@ -157,17 +158,11 @@ export default function QuoteDetailPage() {
   const missingTemplate = quote.status === QuoteStatus.CONCEPT && !quote.templateId;
   const noTemplateHint = 'Koppel eerst een sjabloon';
 
-  // Verplichte goedkeuringsgate (REQ5): boven de org-drempel (of bij template-`requiresApproval`)
-  // mag niet verstuurd worden zonder een GOEDGEKEURD verplicht (THRESHOLD) verzoek.
-  const thresholdActive =
-    organization?.quoteApprovalThreshold != null &&
-    organization?.quoteApprovalRequiredRole != null &&
-    quote.total > organization.quoteApprovalThreshold;
-  const approvalRequired = !!thresholdActive || quote.requiresApproval;
-  const hasApprovedMandatory = (quote.approvalRequests ?? []).some(
-    (a) => a.kind === ApprovalKind.THRESHOLD && a.status === ApprovalStatus.APPROVED,
-  );
-  const sendBlockedByApproval = approvalRequired && !hasApprovedMandatory;
+  // Verplichte goedkeuringsgate (REQ5/B-304): het server-side berekende
+  // `quote.approvalRequired` (org-drempel ÓF template-vlag) is de enige bron van
+  // waarheid voor het actiemenu en de verstuurgate.
+  const { showSubmitApproval, showDirectApprove, sendBlockedByApproval } =
+    getQuoteApprovalState(quote);
   const sendDisabled = missingTemplate || sendBlockedByApproval;
   const sendHint = missingTemplate
     ? noTemplateHint
@@ -255,7 +250,8 @@ export default function QuoteDetailPage() {
             {userCanWrite && (
             <ActionMenu
               primaryActions={[
-                ...(quote.status === QuoteStatus.CONCEPT && quote.requiresApproval ? [{
+                // B-304: sturen op de efféctieve goedkeuringsplicht (drempel óf template)
+                ...(showSubmitApproval ? [{
                   label: 'Ter goedkeuring',
                   icon: <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>,
                   onClick: handleSubmitApproval,
@@ -263,10 +259,13 @@ export default function QuoteDetailPage() {
                   disabled: missingTemplate,
                   title: missingTemplate ? noTemplateHint : undefined,
                 }] : []),
-                ...(quote.status === QuoteStatus.CONCEPT && !quote.requiresApproval ? [{
+                ...(showDirectApprove ? [{
                   label: 'Goedkeuren',
                   icon: <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>,
-                  onClick: () => setIsApproveOpen(true),
+                  // Directe overgang CONCEPT → GOEDGEKEURD; /approve vereist TER_GOEDKEURING
+                  // en gaf hier altijd 400.
+                  onClick: () => handleStatusUpdate(QuoteStatus.GOEDGEKEURD),
+                  isLoading: updateStatusMutation.isPending,
                   disabled: missingTemplate,
                   title: missingTemplate ? noTemplateHint : undefined,
                 }] : []),
@@ -360,10 +359,10 @@ export default function QuoteDetailPage() {
         {/* Reject note input */}
         {showRejectInput && (
           <Card>
-            <h3 className="text-sm font-semibold text-gray-900 mb-3">Reden van afwijzing</h3>
+            <h3 className="text-sm font-semibold text-gray-900 mb-3">Reden voor afwijzing</h3>
             <div className="flex gap-3">
               <div className="flex-1">
-                <Input placeholder="Notitie bij afwijzing (optioneel)..." value={rejectNote} onChange={(e) => setRejectNote(e.target.value)} />
+                <Input placeholder="Reden voor afwijzing (optioneel)..." value={rejectNote} onChange={(e) => setRejectNote(e.target.value)} />
               </div>
               <Button variant="danger" onClick={handleReject} isLoading={rejectMutation.isPending}>Bevestig afwijzing</Button>
             </div>
@@ -386,6 +385,8 @@ export default function QuoteDetailPage() {
         <QuoteInfoCard
           quote={quote}
           canEditQuote={canEditQuote}
+          canLinkPhase={canLinkPhase}
+          hasPhaseFeature={hasPhaseFeature}
           updateQuoteMutation={updateQuoteMutation}
           showToast={showToast}
         />

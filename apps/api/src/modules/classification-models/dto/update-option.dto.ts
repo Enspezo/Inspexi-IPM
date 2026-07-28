@@ -1,5 +1,6 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import {
+  IsBoolean,
   IsString,
   IsOptional,
   MinLength,
@@ -32,4 +33,10 @@ export class UpdateOptionDto {
   @ApiPropertyOptional()
   @IsOptional()
   sortOrder?: number;
+
+  /** Markeert deze optie als "kritiek" (PRD-14, → Finding.isCritical). */
+  @ApiPropertyOptional({ example: false })
+  @IsOptional()
+  @IsBoolean()
+  isCritical?: boolean;
 }

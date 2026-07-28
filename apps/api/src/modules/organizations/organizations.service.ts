@@ -7,8 +7,14 @@ import {
   Inject,
 } from '@nestjs/common';
 import { randomUUID } from 'crypto';
+import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '@/prisma';
-import { assertFound, sanitizeStorageExtension } from '@/common';
+import {
+  assertFound,
+  assertAllowedImageUpload,
+  resolveImageResponseType,
+  ONLINE_HERSTEL_FEATURE,
+} from '@/common';
 import { TenantCacheService } from '@/common/services/tenant-cache.service';
 import {
   CreateOrganizationDto,
@@ -21,6 +27,7 @@ import {
 } from '@/common/services/storage/storage.interface';
 import { EntitlementsService } from '@/modules/entitlements/entitlements.service';
 import { analyzeEntitlements, isFeatureKey } from '@inspexi/entitlements';
+import { RESERVED_SLUGS } from './reserved-slugs';
 
 @Injectable()
 export class OrganizationsService {
@@ -31,9 +38,26 @@ export class OrganizationsService {
     @Inject(STORAGE_PROVIDER) private storage: StorageProvider,
     private tenantCache: TenantCacheService,
     private entitlements: EntitlementsService,
+    private config: ConfigService,
   ) {}
 
+  /**
+   * B-505: weiger slugs die nooit als org-subdomein kunnen dienen. De statische
+   * lijst dekt infrastructuurnamen; runtime komt het geconfigureerde
+   * SUPERUSER_SUBDOMAIN erbij (de middleware kortsluit dat subdomein vóór de
+   * slug-lookup, dus zo'n org zou permanent onbereikbaar zijn).
+   */
+  private assertSlugAllowed(slug: string): void {
+    const superuserSubdomain = this.config.get<string>('SUPERUSER_SUBDOMAIN', 'mijn');
+    if (slug === superuserSubdomain || RESERVED_SLUGS.has(slug)) {
+      throw new BadRequestException(
+        `Deze slug is gereserveerd en kan niet als subdomein gebruikt worden`,
+      );
+    }
+  }
+
   async create(dto: CreateOrganizationDto) {
+    this.assertSlugAllowed(dto.slug);
     const existing = await this.prisma.organization.findUnique({
       where: { slug: dto.slug },
     });
@@ -90,12 +114,46 @@ export class OrganizationsService {
     const current = await this.findOne(id);
 
     if (dto.slug) {
+      this.assertSlugAllowed(dto.slug);
       const existing = await this.prisma.organization.findFirst({
         where: { slug: dto.slug, NOT: { id } },
       });
       if (existing) {
         throw new ConflictException('Slug is al in gebruik');
       }
+    }
+
+    // B-510: entitlement-afhankelijke vlaggen mogen alleen AAN gezet worden
+    // mét het bijbehorende abonnement — anders ontstaat een tegenstrijdige
+    // toestand ("aangevinkt" naast "Niet beschikbaar in uw abonnement") die
+    // via de publieke by-slug-branding doorwerkt in de portal-UI. Alleen de
+    // false→true-transitie wordt gegate: uitzetten (en aan laten staan na een
+    // plan-downgrade) mag altijd. Automatisch terugzetten bij een downgrade is
+    // beslispunt B6.
+    if (dto.aiReviewEnabled === true && !current.aiReviewEnabled) {
+      await this.entitlements.assertFeature(
+        id,
+        'AI_REVIEW',
+        'AI-voorcontrole zit niet in uw abonnement',
+      );
+    }
+    if (dto.onlineRepairDefault === true && !current.onlineRepairDefault) {
+      await this.entitlements.assertFeature(
+        id,
+        ONLINE_HERSTEL_FEATURE,
+        'Online herstel zit niet in uw abonnement',
+      );
+    }
+    // AI-assistent: zelfde B-510-regel — de kill-switch weer AAN zetten vereist
+    // het AI_AGENT-entitlement; uitzetten mag altijd. De rollenlijst is vrij
+    // instelbaar (zonder entitlement heeft die toch geen effect: de FeatureGuard
+    // blokkeert alle /ai-routes al).
+    if (dto.aiAgentEnabled === true && !current.aiAgentEnabled) {
+      await this.entitlements.assertFeature(
+        id,
+        'AI_AGENT',
+        'De AI-assistent zit niet in uw abonnement',
+      );
     }
 
     const updated = await this.prisma.organization.update({
@@ -234,13 +292,13 @@ export class OrganizationsService {
     return this.getEntitlements(orgId);
   }
 
+  /**
+   * B-507 / WP-B4: de inhoud bepaalt het type, niet `file.mimetype` (client-header)
+   * en niet `file.originalname` (bestandsnaam). SVG is uit de whitelist; zowel de
+   * opslagextensie als het opgeslagen mimetype komen uit de magic bytes.
+   */
   async uploadLogo(id: string, file: Express.Multer.File): Promise<string> {
-    const allowed = ['image/png', 'image/jpeg', 'image/svg+xml', 'image/webp'];
-    if (!allowed.includes(file.mimetype)) {
-      throw new BadRequestException(
-        'Alleen PNG, JPEG, SVG en WebP afbeeldingen zijn toegestaan',
-      );
-    }
+    const detected = assertAllowedImageUpload(file);
 
     const org = await this.findOne(id);
 
@@ -249,9 +307,8 @@ export class OrganizationsService {
       await this.storage.delete(org.logoUrl).catch(() => {});
     }
 
-    const ext = sanitizeStorageExtension(file.originalname, 'png');
-    const storageKey = `logos/${id}/${randomUUID()}.${ext}`;
-    await this.storage.upload(storageKey, file.buffer, file.mimetype);
+    const storageKey = `logos/${id}/${randomUUID()}.${detected.extension}`;
+    await this.storage.upload(storageKey, file.buffer, detected.mimeType);
 
     await this.prisma.organization.update({
       where: { id },
@@ -261,9 +318,13 @@ export class OrganizationsService {
     return storageKey;
   }
 
-  async downloadLogo(
-    id: string,
-  ): Promise<{ buffer: Buffer; mimeType: string }> {
+  async downloadLogo(id: string): Promise<{
+    buffer: Buffer;
+    mimeType: string;
+    filename: string;
+    disposition: 'inline' | 'attachment';
+    storageKey: string;
+  }> {
     const org = await this.findOne(id);
     if (!org.logoUrl) {
       throw new NotFoundException('Geen logo gevonden');
@@ -271,18 +332,12 @@ export class OrganizationsService {
 
     const buffer = await this.storage.download(org.logoUrl);
 
-    // Bepaal mimeType op basis van extensie
-    const ext = org.logoUrl.split('.').pop()?.toLowerCase() ?? 'png';
-    const mimeMap: Record<string, string> = {
-      png: 'image/png',
-      jpg: 'image/jpeg',
-      jpeg: 'image/jpeg',
-      svg: 'image/svg+xml',
-      webp: 'image/webp',
-    };
-    const mimeType = mimeMap[ext] ?? 'image/png';
+    // Het Content-Type komt uit de bytes, niet uit de extensie van de sleutel:
+    // rijen van vóór WP-B4 kunnen nog op `.svg` eindigen en die mogen nooit als
+    // `image/svg+xml` teruggaan (uitvoerbaar op het app-origin).
+    const { mimeType, filename, disposition } = resolveImageResponseType(buffer, 'logo');
 
-    return { buffer, mimeType };
+    return { buffer, mimeType, filename, disposition, storageKey: org.logoUrl };
   }
 
   async deleteLogo(id: string): Promise<void> {

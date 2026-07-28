@@ -94,6 +94,7 @@ export async function seedLookups(prisma: PrismaClient): Promise<void> {
       { code: 'REVIEWER', label: 'Beoordelaar', color: BLUE, sortOrder: 20 },
       { code: 'CLIENT', label: 'Opdrachtgever', color: GRAY, sortOrder: 30 },
       { code: 'INSTALLATION_RESPONSIBLE', label: 'Installatieverantwoordelijke', color: GRAY, sortOrder: 40 },
+      { code: 'HERSTELLER', label: 'Hersteller', color: GRAY, sortOrder: 50 }, // Online herstel (PRD-14)
     ]),
   });
 
@@ -115,6 +116,9 @@ export async function seedLookups(prisma: PrismaClient): Promise<void> {
       { code: 'PENDING_VERIFICATION', label: 'Wacht op verificatie', color: AMBER, sortOrder: 10 },
       { code: 'VERIFIED', label: 'Geverifieerd', color: GREEN, sortOrder: 20 },
       { code: 'REJECTED', label: 'Afgewezen', color: RED, sortOrder: 30 },
+      // Online herstel (PRD-14)
+      { code: 'REPORTED', label: 'Hersteld gemeld', color: GREEN, sortOrder: 40 },
+      { code: 'CONFLICT', label: 'Conflict — niet doorgevoerd', color: ORANGE, sortOrder: 50 },
     ]),
   });
 

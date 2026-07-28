@@ -13,6 +13,7 @@
     "test:cov": "jest --coverage",
     "test:e2e": "jest --config ./test/jest-e2e.json",
     "prisma:migrate": "prisma migrate dev",
+    "prisma:migrate:deploy": "prisma migrate deploy",
     "prisma:seed": "ts-node prisma/seed.ts",
     "prisma:studio": "prisma studio",
     "prisma:generate": "prisma generate"
@@ -38,7 +39,9 @@
     "class-validator": "^0.14.1",
     "cookie-parser": "^1.4.7",
     "docxtemplater": "^3.68.3",
+    "express": "^4.22.1",
     "handlebars": "^4.7.8",
+    "helmet": "^8.3.0",
     "html-docx-js": "^0.3.1",
     "mammoth": "^1.11.0",
     "multer": "^2.0.2",
@@ -52,7 +55,8 @@
     "rxjs": "^7.8.1",
     "sharp": "^0.35.1",
     "svix": "^1.86.0",
-    "uuid": "^10.0.0"
+    "uuid": "^10.0.0",
+    "zod": "^3.24.2"
   },
   "devDependencies": {
     "@nestjs/cli": "^10.4.9",

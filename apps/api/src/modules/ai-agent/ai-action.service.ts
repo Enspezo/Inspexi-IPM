@@ -6,7 +6,7 @@ import { PrismaService } from '@/prisma/prisma.service';
 import { AiToolRegistry } from './tools/tool-registry';
 
 /**
- * Bevestigen/afwijzen van door de agent voorgestelde schrijfacties (PRD-12
+ * Bevestigen/afwijzen van door de agent voorgestelde schrijfacties (PRD-15
  * §5.3–5.4). Een bevestigde write draait binnen een `source='AI'`-auditcontext,
  * op naam van de ingelogde gebruiker, via exact dezelfde service-methode als een
  * normale UI-actie — dus de bestaande guards/scoping en de audit-middleware

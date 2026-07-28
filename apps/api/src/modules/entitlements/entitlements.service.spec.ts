@@ -1,4 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { ForbiddenException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { EntitlementsService } from './entitlements.service';
 import { PrismaService } from '@/prisma';
 
@@ -23,13 +25,23 @@ describe('EntitlementsService', () => {
     organization: { findUnique: jest.fn() },
   };
 
+  // BASE_DOMAIN stuurt de localhost fail-open van assertFeature. Default 'localhost'.
+  let baseDomain = 'localhost';
+  const mockConfig = {
+    get: jest.fn((_key: string, def?: string) =>
+      _key === 'BASE_DOMAIN' ? baseDomain : def,
+    ),
+  };
+
   beforeEach(async () => {
     jest.clearAllMocks();
+    baseDomain = 'localhost';
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         EntitlementsService,
         { provide: PrismaService, useValue: mockPrisma },
+        { provide: ConfigService, useValue: mockConfig },
       ],
     }).compile();
 
@@ -206,6 +218,57 @@ describe('EntitlementsService', () => {
       expect(mockPrisma.organization.findUnique).toHaveBeenCalledTimes(2);
 
       nowSpy.mockRestore();
+    });
+  });
+
+  describe('assertFeature (PRD-12 §Fase E)', () => {
+    it('feature aanwezig → geen exception', async () => {
+      mockPrisma.organization.findUnique.mockResolvedValue(
+        orgRow(['BASIS_CRM', 'BASIS_UITVOERING', 'PROJECT_FASEN']),
+      );
+
+      await expect(
+        service.assertFeature('org-has', 'PROJECT_FASEN', 'nee'),
+      ).resolves.toBeUndefined();
+    });
+
+    it('ingerichte org zonder de feature → ForbiddenException (ook op localhost)', async () => {
+      // Niet-lege plan-set, maar PROJECT_FASEN ontbreekt → afdwingen, ook lokaal.
+      mockPrisma.organization.findUnique.mockResolvedValue(
+        orgRow(['BASIS_CRM', 'BASIS_UITVOERING']),
+      );
+
+      await expect(
+        service.assertFeature('org-basis', 'PROJECT_FASEN', 'Projectfasen niet in abonnement'),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+    });
+
+    it('nog niet ingerichte org (lege set) → op localhost door (fail-open)', async () => {
+      mockPrisma.organization.findUnique.mockResolvedValue(orgRow(null, []));
+
+      await expect(
+        service.assertFeature('org-empty', 'PROJECT_FASEN', 'nee'),
+      ).resolves.toBeUndefined();
+    });
+
+    it('lege set in productie → ForbiddenException (fail-secure)', async () => {
+      baseDomain = 'inspexi.nl';
+      mockPrisma.organization.findUnique.mockResolvedValue(orgRow(null, []));
+
+      await expect(
+        service.assertFeature('org-empty-prod', 'PROJECT_FASEN', 'nee'),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+    });
+
+    it('orgId null → op localhost door, in productie dicht', async () => {
+      await expect(
+        service.assertFeature(null, 'PROJECT_FASEN', 'nee'),
+      ).resolves.toBeUndefined();
+
+      baseDomain = 'inspexi.nl';
+      await expect(
+        service.assertFeature(null, 'PROJECT_FASEN', 'nee'),
+      ).rejects.toBeInstanceOf(ForbiddenException);
     });
   });
 });

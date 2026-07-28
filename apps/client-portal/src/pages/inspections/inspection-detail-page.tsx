@@ -8,6 +8,7 @@ import { OverviewTab } from './components/overview-tab';
 import { FindingsTab } from './components/findings-tab';
 import { MessagesTab } from './components/messages-tab';
 import { DocumentsTab } from './components/documents-tab';
+import { TabErrorBoundary } from './components/tab-error-boundary';
 
 export type InspectionTabKey = 'overview' | 'findings' | 'messages' | 'documents';
 
@@ -35,11 +36,26 @@ export default function InspectionDetailPage() {
     );
   }
 
+  // B-412 (WP-B9): zolang het rapport nog niet gereviewd is (contentReleased
+  // expliciet false) zijn constateringen en documenten niet zichtbaar — de
+  // server stuurt ze dan ook niet mee; hier verdwijnen de bijbehorende tabs.
+  const contentReleased = inspection.contentReleased !== false;
+
   const tabs: TabDef<InspectionTabKey>[] = [
     { key: 'overview', label: 'Overzicht' },
-    { key: 'findings', label: 'Constateringen', count: inspection.findingCounts.total },
+    ...(contentReleased
+      ? [
+          {
+            key: 'findings',
+            label: 'Constateringen',
+            count: inspection.findingCounts.total,
+          } as TabDef<InspectionTabKey>,
+        ]
+      : []),
     { key: 'messages', label: 'Berichten' },
-    { key: 'documents', label: 'Documenten' },
+    ...(contentReleased
+      ? [{ key: 'documents', label: 'Documenten' } as TabDef<InspectionTabKey>]
+      : []),
   ];
 
   return (
@@ -60,11 +76,30 @@ export default function InspectionDetailPage() {
 
       <Tabs tabs={tabs} active={tab} onChange={setTab} />
 
-      {tab === 'overview' && <OverviewTab inspection={inspection} onNavigateTab={setTab} />}
-      {tab === 'findings' && <FindingsTab inspectionId={inspection.id} />}
-      {tab === 'messages' && <MessagesTab inspectionId={inspection.id} />}
-      {tab === 'documents' && (
-        <DocumentsTab inspectionId={inspection.id} inspectionName={inspection.projectName} />
+      {/* B-401: elke tab in een eigen boundary — één kapotte tab sloopt nooit de pagina. */}
+      {tab === 'overview' && (
+        <TabErrorBoundary>
+          <OverviewTab inspection={inspection} onNavigateTab={setTab} />
+        </TabErrorBoundary>
+      )}
+      {tab === 'findings' && contentReleased && (
+        <TabErrorBoundary>
+          <FindingsTab
+            inspectionId={inspection.id}
+            onlineRepairEnabled={inspection.onlineRepairEnabled}
+            onNavigateTab={setTab}
+          />
+        </TabErrorBoundary>
+      )}
+      {tab === 'messages' && (
+        <TabErrorBoundary>
+          <MessagesTab inspectionId={inspection.id} />
+        </TabErrorBoundary>
+      )}
+      {tab === 'documents' && contentReleased && (
+        <TabErrorBoundary>
+          <DocumentsTab inspectionId={inspection.id} inspectionName={inspection.projectName} />
+        </TabErrorBoundary>
       )}
     </div>
   );

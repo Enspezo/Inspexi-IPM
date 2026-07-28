@@ -61,8 +61,8 @@ export function QuoteApprovalList({ quoteId, approvals, user }: Props) {
     try {
       await reviewMutation.mutateAsync({ requestId, approved });
       showToast(approved ? 'Verzoek goedgekeurd' : 'Verzoek afgewezen', 'success');
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Beoordelen mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 
@@ -76,8 +76,8 @@ export function QuoteApprovalList({ quoteId, approvals, user }: Props) {
     try {
       await cancelMutation.mutateAsync(requestId);
       showToast('Verzoek ingetrokken', 'success');
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Intrekken mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 

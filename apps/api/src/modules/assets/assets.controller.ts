@@ -8,7 +8,6 @@ import {
   Body,
   Query,
   Headers,
-  ParseUUIDPipe,
 } from '@nestjs/common';
 import { RequiresFeature } from '@/common/decorators/requires-feature.decorator';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
@@ -23,6 +22,7 @@ import {
   ReorderAssetsDto,
   ListAssetsQueryDto,
 } from './dto';
+import { ParseUuidPipe } from '@/common';
 
 const ALL = ALL_STAFF;
 
@@ -44,7 +44,7 @@ export class AssetsController {
   @Roles(...ALL)
   @ApiOperation({ summary: 'Assets per inspectieplan (boom of plat)' })
   async findAllByPlan(
-    @Param('planId', ParseUUIDPipe) planId: string,
+    @Param('planId', ParseUuidPipe) planId: string,
     @CurrentUser() user: User,
     @Query('parentId') parentId?: string,
     @Query('flat') flat?: string,
@@ -59,7 +59,7 @@ export class AssetsController {
   @Roles(...ALL)
   @ApiOperation({ summary: 'Asset aanmaken onder een plan' })
   async create(
-    @Param('planId', ParseUUIDPipe) planId: string,
+    @Param('planId', ParseUuidPipe) planId: string,
     @CurrentUser() user: User,
     @Body() dto: CreateAssetDto,
     @Headers('x-device-id') deviceId?: string,
@@ -71,7 +71,7 @@ export class AssetsController {
   @Roles(...ALL)
   @ApiOperation({ summary: 'Assets herordenen' })
   async reorder(
-    @Param('planId', ParseUUIDPipe) planId: string,
+    @Param('planId', ParseUuidPipe) planId: string,
     @CurrentUser() user: User,
     @Body() dto: ReorderAssetsDto,
   ) {
@@ -81,7 +81,7 @@ export class AssetsController {
   @Get('assets/:id')
   @Roles(...ALL)
   @ApiOperation({ summary: 'Asset detail' })
-  async findById(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: User) {
+  async findById(@Param('id', ParseUuidPipe) id: string, @CurrentUser() user: User) {
     return { success: true, data: await this.service.findById(id, user) };
   }
 
@@ -89,7 +89,7 @@ export class AssetsController {
   @Roles(...ALL)
   @ApiOperation({ summary: 'Asset bijwerken' })
   async update(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @CurrentUser() user: User,
     @Body() dto: UpdateAssetDto,
   ) {
@@ -100,7 +100,7 @@ export class AssetsController {
   @Roles(...ALL)
   @ApiOperation({ summary: 'Asset verplaatsen in de boom' })
   async move(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @CurrentUser() user: User,
     @Body() dto: MoveAssetDto,
   ) {
@@ -110,7 +110,7 @@ export class AssetsController {
   @Delete('assets/:id')
   @Roles(...ALL)
   @ApiOperation({ summary: 'Asset verwijderen (soft-delete, incl. kinderen)' })
-  async delete(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: User) {
+  async delete(@Param('id', ParseUuidPipe) id: string, @CurrentUser() user: User) {
     return { success: true, data: await this.service.delete(id, user) };
   }
 }

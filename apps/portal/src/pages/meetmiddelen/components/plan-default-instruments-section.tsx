@@ -31,8 +31,8 @@ export function PlanDefaultInstrumentsSection({ planId, canEdit }: PlanDefaultIn
       await setMutation.mutateAsync(value);
       setDraft(null);
       showToast('Standaard-meetmiddelen voor deze inspectie opgeslagen', 'success');
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Opslaan mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 

@@ -2,7 +2,7 @@
 
 import {
   Controller, Post, Get, Param, Body, Query, UploadedFile,
-  ParseFilePipe, MaxFileSizeValidator, ParseUUIDPipe, Headers, Res, StreamableFile,
+  ParseFilePipe, MaxFileSizeValidator, Headers, Res, StreamableFile,
 } from '@nestjs/common';
 import { RequiresFeature } from '@/common/decorators/requires-feature.decorator';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -12,8 +12,10 @@ import type { Response } from 'express';
 import { User } from '@prisma/client';
 import { Roles, CurrentUser } from '@/common/decorators';
 import { ALL_STAFF } from '@/common/auth/roles';
+import { resolveImageResponseType, setBinaryResponseHeaders } from '@/common';
 import { PhotosService } from './photos.service';
 import { PhotoUploadDto } from './dto';
+import { ParseUuidPipe } from '@/common';
 
 const ALL = ALL_STAFF;
 
@@ -28,7 +30,10 @@ export class PhotosController {
   @Roles(...ALL)
   @ApiConsumes('multipart/form-data')
   @ApiOperation({ summary: 'Foto uploaden voor asset/finding/inspectionPlan' })
-  @UseInterceptors(FileInterceptor('file'))
+  // Multer-level size cap so an oversized body is rejected before it is fully
+  // buffered into memory; the MaxFileSizeValidator is the defence-in-depth check
+  // after buffering (SEC-12).
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 25 * 1024 * 1024 } }))
   async upload(
     @UploadedFile(
       new ParseFilePipe({ validators: [new MaxFileSizeValidator({ maxSize: 25 * 1024 * 1024 })] }),
@@ -46,13 +51,23 @@ export class PhotosController {
   @Roles(...ALL)
   @ApiOperation({ summary: 'Foto downloaden (org-scoped stream)' })
   async download(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @CurrentUser() user: User,
     @Res({ passthrough: true }) res: Response,
     @Query('thumb') thumb?: string,
   ): Promise<StreamableFile> {
-    const { buffer, mimeType } = await this.photos.getFile(id, user, Boolean(thumb));
-    res.set({ 'Content-Type': mimeType, 'Cache-Control': 'private, max-age=86400' });
+    const { buffer } = await this.photos.getFile(id, user, Boolean(thumb));
+    // WP-B4: Content-Type uit de bytes (niet uit de opgeslagen, ooit
+    // client-geclaimde mimetype) + nosniff/sandbox; legacy gespoofte inhoud
+    // degradeert naar octet-stream + attachment.
+    const resolved = resolveImageResponseType(buffer, 'foto');
+    setBinaryResponseHeaders(res, {
+      mimeType: resolved.mimeType,
+      contentLength: buffer.length,
+      filename: resolved.filename,
+      disposition: resolved.disposition,
+      cacheControl: 'private, max-age=86400',
+    });
     return new StreamableFile(buffer);
   }
 }

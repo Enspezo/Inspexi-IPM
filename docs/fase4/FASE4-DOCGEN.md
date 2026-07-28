@@ -80,6 +80,8 @@ Env: `PUPPETEER_EXECUTABLE_PATH` (productie), `PUBLIC_URL` (signeer-links), evt.
 
 **Deploy (belangrijk)**: Puppeteer heeft een **Chromium-binary** nodig. Opties: (a) `puppeteer` laat 'm meebundelen (grotere image), of (b) systeem-Chromium installeren in de Docker-image en `PUPPETEER_EXECUTABLE_PATH` zetten. PDF-generatie is CPU/geheugen-intensief — overweeg een aparte worker/queue als volume groeit (nu: synchroon in-request, zoals de App). Documenteer in `docs/DEPLOYMENT`.
 
+**Deploy-fonts (B-312, WP-C4)**: installeer **`fonts-noto-cjk`** in dezelfde image als de Chromium-binary. Chromium tekent géén glyph voor tekens zonder beschikbaar font (geen tofu-blokjes — de tekens verdwijnen stil), dus zonder CJK-font vallen bv. Chinese tekens uit project-/relatienamen weg uit elk gegenereerd PDF-document. De render-CSS verwijst sinds WP-C4 expliciet naar `'Noto Sans CJK SC'` in alle font-stacks. Let op: dit is **alleen te testen in de echte container-image** — op macOS/desktop gedraagt de fallback zich anders. De `apps/convert-api`-image (LibreOffice, DOCX⇄PDF) installeert `fonts-noto-cjk` al in z'n Dockerfile; de API-image heeft (nog) geen Dockerfile in de repo, dus dit is daar een expliciete deploy-vereiste.
+
 ---
 
 ## 7. Prompt H — Claude Code: render-infra + document-templates (Beheer-repo)

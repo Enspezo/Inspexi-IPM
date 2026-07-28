@@ -68,11 +68,8 @@ export function CustomFieldsManagement() {
     try {
       await deleteMutation.mutateAsync(field.id);
       showToast('Eigen veld verwijderd', 'success');
-    } catch (err) {
-      showToast(
-        err instanceof Error ? err.message : 'Verwijderen mislukt',
-        'error',
-      );
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 

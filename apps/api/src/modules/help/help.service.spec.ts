@@ -121,6 +121,7 @@ describe('HelpService', () => {
       mockPrisma.helpCategory.findUnique.mockResolvedValue({
         id: 'c1',
         orgId: null,
+        audience: 'INTERNAL',
       });
       mockPrisma.helpArticle.findFirst.mockResolvedValue(null);
       mockPrisma.helpArticle.create.mockImplementation(({ data }) =>
@@ -141,6 +142,7 @@ describe('HelpService', () => {
       mockPrisma.helpCategory.findUnique.mockResolvedValue({
         id: 'c1',
         orgId: null,
+        audience: 'INTERNAL',
       });
       mockPrisma.helpArticle.findFirst.mockResolvedValue(null);
       mockPrisma.helpArticle.create.mockImplementation(({ data }) =>
@@ -195,6 +197,7 @@ describe('HelpService', () => {
       mockPrisma.helpCategory.findUnique.mockResolvedValue({
         id: 'c1',
         orgId: null,
+        audience: 'INTERNAL',
       });
       mockPrisma.helpArticle.findFirst
         .mockResolvedValueOnce({ id: 'existing' }) // 'aan-de-slag' bezet
@@ -208,6 +211,62 @@ describe('HelpService', () => {
         body: 'B',
       } as never);
       expect(res.slug).toBe('aan-de-slag-2');
+    });
+  });
+
+  describe('externe KB (audience)', () => {
+    it('extern artikel onder externe categorie: orgId geforceerd, moduleKeys leeg', async () => {
+      mockPrisma.helpCategory.findUnique.mockResolvedValue({
+        id: 'ext',
+        orgId: 'orgA',
+        audience: 'EXTERNAL',
+      });
+      mockPrisma.helpArticle.findFirst.mockResolvedValue(null);
+      mockPrisma.helpArticle.create.mockImplementation(({ data }) =>
+        Promise.resolve({ id: 'new', ...data }),
+      );
+      const res = await service.createArticle(orgAdmin, {
+        categoryId: 'ext',
+        title: 'Publiek',
+        body: 'B',
+        audience: 'EXTERNAL',
+        moduleKeys: ['quotes'], // moet genegeerd worden voor extern
+      } as never);
+      expect(res.orgId).toBe('orgA');
+      expect(res.audience).toBe('EXTERNAL');
+      expect(res.moduleKeys).toEqual([]);
+    });
+
+    it('extern artikel onder interne categorie → BadRequest', async () => {
+      mockPrisma.helpCategory.findUnique.mockResolvedValue({
+        id: 'c1',
+        orgId: 'orgA',
+        audience: 'INTERNAL',
+      });
+      await expect(
+        service.createArticle(orgAdmin, {
+          categoryId: 'c1',
+          title: 'T',
+          body: 'B',
+          audience: 'EXTERNAL',
+        } as never),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('SUPERUSER (zonder org) kan geen extern artikel maken → BadRequest', async () => {
+      mockPrisma.helpCategory.findUnique.mockResolvedValue({
+        id: 'ext',
+        orgId: null,
+        audience: 'EXTERNAL',
+      });
+      await expect(
+        service.createArticle(superuser, {
+          categoryId: 'ext',
+          title: 'T',
+          body: 'B',
+          audience: 'EXTERNAL',
+        } as never),
+      ).rejects.toBeInstanceOf(BadRequestException);
     });
   });
 

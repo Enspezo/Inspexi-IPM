@@ -9,7 +9,6 @@ import {
   Body,
   Query,
   Res,
-  ParseUUIDPipe,
   UseInterceptors,
   UploadedFile,
   ParseFilePipe,
@@ -31,6 +30,11 @@ import { Role, User } from '@prisma/client';
 import { ALL_STAFF } from '@/common/auth/roles';
 import { Roles, CurrentUser } from '@/common/decorators';
 import { RequiresFeature } from '@/common/decorators/requires-feature.decorator';
+import {
+  resolveUploadedContentType,
+  setBinaryResponseHeaders,
+  sanitizeDispositionFilename,
+} from '@/common';
 import { MeasurementInstrumentsService } from './measurement-instruments.service';
 import {
   CreateMeasurementInstrumentDto,
@@ -41,6 +45,7 @@ import {
   InstrumentSuggestionsQueryDto,
   SetDefaultInstrumentsDto,
 } from './dto';
+import { ParseUuidPipe } from '@/common';
 
 const MAX_FILE_SIZE = 25 * 1024 * 1024; // 25 MB
 
@@ -52,8 +57,12 @@ const WRITE_ROLES = [
   Role.WERKVOORBEREIDER,
 ] as const;
 
-/** PDF + afbeeldingen (scans/foto's). Checkt `file.mimetype` (multer), niet magic bytes. */
-const ALLOWED_MIME_REGEX = /^(application\/pdf|image\/(jpeg|png|webp|svg\+xml))$/;
+/**
+ * PDF + rasterafbeeldingen (scans/foto's). Eerste poort op de client-claim;
+ * de inhoud (magic bytes) wordt in de service gevalideerd (WP-B4). SVG is
+ * geen scan/foto en niet meer toegestaan.
+ */
+const ALLOWED_MIME_REGEX = /^(application\/pdf|image\/(jpeg|png|webp))$/;
 
 class CalibrationMimeTypeValidator extends FileValidator {
   constructor() {
@@ -66,7 +75,7 @@ class CalibrationMimeTypeValidator extends FileValidator {
   }
 
   buildErrorMessage(): string {
-    return 'Bestandstype niet toegestaan. Toegestane types: PDF, JPEG, PNG, WebP, SVG.';
+    return 'Bestandstype niet toegestaan. Toegestane types: PDF, JPEG, PNG, WebP.';
   }
 }
 
@@ -122,7 +131,7 @@ export class MeasurementInstrumentsController {
   @Get('plan-defaults/:planId')
   @ApiOperation({ summary: 'Standaard-meetmiddelen voor een inspectie (niveau 2)' })
   async getPlanDefaults(
-    @Param('planId', ParseUUIDPipe) planId: string,
+    @Param('planId', ParseUuidPipe) planId: string,
     @CurrentUser() user: User,
   ) {
     const data = await this.service.getPlanDefaults(planId, user);
@@ -133,7 +142,7 @@ export class MeasurementInstrumentsController {
   @Roles(...WRITE_ROLES)
   @ApiOperation({ summary: 'Standaard-meetmiddelen voor een inspectie instellen' })
   async setPlanDefaults(
-    @Param('planId', ParseUUIDPipe) planId: string,
+    @Param('planId', ParseUuidPipe) planId: string,
     @CurrentUser() user: User,
     @Body() dto: SetDefaultInstrumentsDto,
   ) {
@@ -164,7 +173,7 @@ export class MeasurementInstrumentsController {
   @Get(':id/calibrations')
   @ApiOperation({ summary: 'Kalibraties van een meetmiddel' })
   async listCalibrations(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @CurrentUser() user: User,
   ) {
     const data = await this.service.listCalibrations(id, user);
@@ -177,7 +186,7 @@ export class MeasurementInstrumentsController {
   @ApiConsumes('multipart/form-data')
   @ApiOperation({ summary: 'Kalibratie toevoegen (optioneel met certificaat)' })
   async createCalibration(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @UploadedFile(optionalFilePipe) file: Express.Multer.File | undefined,
     @Body() dto: CreateCalibrationDto,
     @CurrentUser() user: User,
@@ -189,16 +198,20 @@ export class MeasurementInstrumentsController {
   @Get(':id/calibrations/:calId/document')
   @ApiOperation({ summary: 'Kalibratiecertificaat downloaden' })
   async downloadCalibrationDocument(
-    @Param('id', ParseUUIDPipe) id: string,
-    @Param('calId', ParseUUIDPipe) calId: string,
+    @Param('id', ParseUuidPipe) id: string,
+    @Param('calId', ParseUuidPipe) calId: string,
     @CurrentUser() user: User,
     @Res() res: Response,
   ) {
     const { buffer, calibration } = await this.service.getCalibrationDocument(id, calId, user);
-    res.set({
-      'Content-Type': calibration.mimeType!,
-      'Content-Disposition': `attachment; filename="${encodeURIComponent(calibration.originalName!)}"`,
-      'Content-Length': buffer.length.toString(),
+    // WP-B4: Content-Type uit de bytes; legacy rijen met gespoofte of
+    // SVG-inhoud degraderen naar octet-stream.
+    setBinaryResponseHeaders(res, {
+      mimeType: resolveUploadedContentType(buffer).mimeType,
+      contentLength: buffer.length,
+      filename: sanitizeDispositionFilename(calibration.originalName, 'certificaat'),
+      disposition: 'attachment',
+      cacheControl: 'private, no-store',
     });
     res.send(buffer);
   }
@@ -207,8 +220,8 @@ export class MeasurementInstrumentsController {
   @Roles(...WRITE_ROLES)
   @ApiOperation({ summary: 'Alleen het kalibratiecertificaat verwijderen' })
   async removeCalibrationDocument(
-    @Param('id', ParseUUIDPipe) id: string,
-    @Param('calId', ParseUUIDPipe) calId: string,
+    @Param('id', ParseUuidPipe) id: string,
+    @Param('calId', ParseUuidPipe) calId: string,
     @CurrentUser() user: User,
   ) {
     const data = await this.service.removeCalibrationDocument(id, calId, user);
@@ -221,8 +234,8 @@ export class MeasurementInstrumentsController {
   @ApiConsumes('multipart/form-data')
   @ApiOperation({ summary: 'Kalibratie bijwerken (optioneel certificaat vervangen)' })
   async updateCalibration(
-    @Param('id', ParseUUIDPipe) id: string,
-    @Param('calId', ParseUUIDPipe) calId: string,
+    @Param('id', ParseUuidPipe) id: string,
+    @Param('calId', ParseUuidPipe) calId: string,
     @UploadedFile(optionalFilePipe) file: Express.Multer.File | undefined,
     @Body() dto: UpdateCalibrationDto,
     @CurrentUser() user: User,
@@ -235,8 +248,8 @@ export class MeasurementInstrumentsController {
   @Roles(...WRITE_ROLES)
   @ApiOperation({ summary: 'Kalibratie verwijderen' })
   async removeCalibration(
-    @Param('id', ParseUUIDPipe) id: string,
-    @Param('calId', ParseUUIDPipe) calId: string,
+    @Param('id', ParseUuidPipe) id: string,
+    @Param('calId', ParseUuidPipe) calId: string,
     @CurrentUser() user: User,
   ) {
     await this.service.removeCalibration(id, calId, user);
@@ -247,7 +260,7 @@ export class MeasurementInstrumentsController {
 
   @Get(':id')
   @ApiOperation({ summary: 'Meetmiddel detail (incl. kalibraties)' })
-  async findOne(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: User) {
+  async findOne(@Param('id', ParseUuidPipe) id: string, @CurrentUser() user: User) {
     const data = await this.service.findOne(id, user);
     return { success: true, data };
   }
@@ -256,7 +269,7 @@ export class MeasurementInstrumentsController {
   @Roles(...WRITE_ROLES)
   @ApiOperation({ summary: 'Meetmiddel bijwerken (incl. toewijzing/status)' })
   async update(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @CurrentUser() user: User,
     @Body() dto: UpdateMeasurementInstrumentDto,
   ) {
@@ -267,7 +280,7 @@ export class MeasurementInstrumentsController {
   @Delete(':id')
   @Roles(...WRITE_ROLES)
   @ApiOperation({ summary: 'Meetmiddel verwijderen' })
-  async remove(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: User) {
+  async remove(@Param('id', ParseUuidPipe) id: string, @CurrentUser() user: User) {
     await this.service.remove(id, user);
     return { success: true, message: 'Meetmiddel verwijderd' };
   }

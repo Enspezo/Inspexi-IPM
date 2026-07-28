@@ -17,9 +17,15 @@ import { PrismaService } from '@/prisma';
 import { NotificationsService } from '../notifications/notifications.service';
 import { WorkOrdersService } from '../work-orders/work-orders.service';
 import { PlanningEmailService } from './planning-email.service';
+import { EntitlementsService } from '@/modules/entitlements/entitlements.service';
+import { AvailabilityResolutionService } from '@/modules/availability/availability-resolution.service';
+import { ConflictException } from '@nestjs/common';
 
 describe('PlanningService', () => {
   let service: PlanningService;
+  const mockAvailabilityService = {
+    checkPlanningDay: jest.fn().mockResolvedValue([]),
+  };
 
   const mockPrismaService = {
     planningItem: {
@@ -195,6 +201,11 @@ describe('PlanningService', () => {
         { provide: WorkOrdersService, useValue: mockWorkOrdersService },
         { provide: PlanningEmailService, useValue: mockPlanningEmailService },
         { provide: ConfigService, useValue: mockConfigService },
+        {
+          provide: EntitlementsService,
+          useValue: { assertFeature: jest.fn().mockResolvedValue(undefined) },
+        },
+        { provide: AvailabilityResolutionService, useValue: mockAvailabilityService },
       ],
     }).compile();
 
@@ -206,6 +217,9 @@ describe('PlanningService', () => {
     mockPrismaService.contactPerson.findUnique.mockResolvedValue({ orgId: 'org-1' });
     mockPrismaService.product.findUnique.mockResolvedValue({ orgId: 'org-1' });
     mockPrismaService.quote.findUnique.mockResolvedValue({ orgId: 'org-1' });
+
+    // Default: geen beschikbaarheidsconflicten (PRD-12 §12.9)
+    mockAvailabilityService.checkPlanningDay.mockResolvedValue([]);
 
     // Default: fire-and-forget services resolve quietly
     mockPrismaService.planningHistory.create.mockResolvedValue({});
@@ -321,13 +335,13 @@ describe('PlanningService', () => {
       await expect(service.findOne('nonexistent', mockUser)).rejects.toThrow(NotFoundException);
     });
 
-    it('should throw ForbiddenException for cross-org access', async () => {
+    it('should throw the same NotFound for cross-org access (WP-C1: 404-oracle)', async () => {
       mockPrismaService.planningItem.findUnique.mockResolvedValue({
         ...mockPlanningItem,
         orgId: 'other-org',
       });
 
-      await expect(service.findOne('plan-1', mockUser)).rejects.toThrow(ForbiddenException);
+      await expect(service.findOne('plan-1', mockUser)).rejects.toThrow('Planregel niet gevonden');
     });
 
     it('should allow SUPERUSER to access any org', async () => {
@@ -420,6 +434,57 @@ describe('PlanningService', () => {
       expect(mockPrismaService.planningItem.update).toHaveBeenCalled();
     });
 
+    it('rechecks availability when only the duration changes on a scheduled item', async () => {
+      const itemWithInspectors = {
+        ...mockPlanningItem,
+        inspectors: [{ userId: 'user-2' }],
+      };
+      mockPrismaService.planningItem.findUnique.mockResolvedValue(itemWithInspectors);
+      mockPrismaService.planningItem.update.mockResolvedValue(itemWithInspectors);
+      mockAvailabilityService.checkPlanningDay.mockResolvedValue([]);
+
+      await service.update('plan-1', { durationHours: 8 } as any, mockUser);
+
+      // Duur-wijziging zonder datum-wijziging → check op de bestaande datum met de nieuwe duur.
+      expect(mockAvailabilityService.checkPlanningDay).toHaveBeenCalledWith(
+        ['user-2'],
+        '2026-04-01',
+        8 * 60,
+      );
+    });
+
+    it('treats an explicit durationHours: null as "no duration" in the recheck', async () => {
+      const itemWithInspectors = {
+        ...mockPlanningItem,
+        inspectors: [{ userId: 'user-2' }],
+      };
+      mockPrismaService.planningItem.findUnique.mockResolvedValue(itemWithInspectors);
+      mockPrismaService.planningItem.update.mockResolvedValue(itemWithInspectors);
+      mockAvailabilityService.checkPlanningDay.mockResolvedValue([]);
+
+      await service.update('plan-1', { durationHours: null } as any, mockUser);
+
+      // Expliciete null valt níét terug op de bestaande duur (partial-PATCH-semantiek).
+      expect(mockAvailabilityService.checkPlanningDay).toHaveBeenCalledWith(
+        ['user-2'],
+        '2026-04-01',
+        null,
+      );
+    });
+
+    it('does not recheck availability when neither date nor duration changes', async () => {
+      const itemWithInspectors = {
+        ...mockPlanningItem,
+        inspectors: [{ userId: 'user-2' }],
+      };
+      mockPrismaService.planningItem.findUnique.mockResolvedValue(itemWithInspectors);
+      mockPrismaService.planningItem.update.mockResolvedValue(itemWithInspectors);
+
+      await service.update('plan-1', { internalNotes: 'x' } as any, mockUser);
+
+      expect(mockAvailabilityService.checkPlanningDay).not.toHaveBeenCalled();
+    });
+
     it('should dispatch AFSPRAAK_VERPLAATST notification when date changes with assigned inspectors', async () => {
       const itemWithInspectors = {
         ...mockPlanningItem,
@@ -460,7 +525,7 @@ describe('PlanningService', () => {
       expect(mockNotificationsService.dispatch).not.toHaveBeenCalled();
     });
 
-    it('should throw ForbiddenException for cross-org update', async () => {
+    it('should throw the same NotFound for cross-org update (WP-C1: 404-oracle)', async () => {
       mockPrismaService.planningItem.findUnique.mockResolvedValue({
         ...mockPlanningItem,
         orgId: 'other-org',
@@ -468,7 +533,7 @@ describe('PlanningService', () => {
 
       await expect(
         service.update('plan-1', { productName: 'Hack' } as any, mockUser),
-      ).rejects.toThrow(ForbiddenException);
+      ).rejects.toThrow('Planregel niet gevonden');
     });
   });
 
@@ -554,6 +619,81 @@ describe('PlanningService', () => {
       await service.assignInspectors('plan-1', dto, mockUser);
 
       expect(mockNotificationsService.dispatch).not.toHaveBeenCalled();
+    });
+
+    // ─── PRD-12 §12.9: beschikbaarheids-soft-check ─────────────
+
+    it('throws ConflictException with warnings when an inspector is unavailable and no override', async () => {
+      mockPrismaService.planningItem.findUnique.mockResolvedValue(mockPlanningItem);
+      mockPrismaService.user.findMany.mockResolvedValue([
+        { id: 'user-2', firstName: 'Tom', lastName: 'Visser' },
+      ]);
+      mockAvailabilityService.checkPlanningDay.mockResolvedValue([
+        { userId: 'user-2', date: '2026-04-01', reason: 'Verlof — hele dag geblokkeerd' },
+      ]);
+
+      const dto = { inspectorIds: ['user-2'], primaryInspectorId: 'user-2' } as any;
+
+      await expect(service.assignInspectors('plan-1', dto, mockUser)).rejects.toThrow(ConflictException);
+      // The write must be aborted — no inspector upsert happened.
+      expect(mockPrismaService.planningInspector.upsert).not.toHaveBeenCalled();
+
+      try {
+        await service.assignInspectors('plan-1', dto, mockUser);
+      } catch (err: any) {
+        const body = err.getResponse();
+        expect(body.warnings).toEqual([
+          { userId: 'user-2', name: 'Tom Visser', date: '2026-04-01', reason: 'Verlof — hele dag geblokkeerd' },
+        ]);
+      }
+    });
+
+    it('assigns and writes an AVAILABILITY_OVERRIDE history record when override is set', async () => {
+      mockPrismaService.planningItem.findUnique
+        .mockResolvedValueOnce(mockPlanningItem) // findOne
+        .mockResolvedValueOnce(mockPlanningItem); // final findOne
+      mockPrismaService.planningInspector.deleteMany.mockResolvedValue({});
+      mockPrismaService.planningInspector.upsert.mockResolvedValue({});
+      mockPrismaService.planningItem.update.mockResolvedValue({ ...mockPlanningItem, status: PlanningStatus.CONCEPT });
+      mockPrismaService.organization.findUnique.mockResolvedValue({ name: 'Test Org' });
+      // Serves all three user.findMany calls: org-check, availability names, notify emails.
+      mockPrismaService.user.findMany.mockResolvedValue([
+        { id: 'user-2', firstName: 'Tom', lastName: 'Visser', email: 'tom@test.nl' },
+      ]);
+      mockAvailabilityService.checkPlanningDay.mockResolvedValue([
+        { userId: 'user-2', date: '2026-04-01', reason: 'Verlof — hele dag geblokkeerd' },
+      ]);
+
+      const dto = {
+        inspectorIds: ['user-2'],
+        primaryInspectorId: 'user-2',
+        overrideAvailabilityWarnings: true,
+      } as any;
+
+      await service.assignInspectors('plan-1', dto, mockUser);
+
+      expect(mockPrismaService.planningInspector.upsert).toHaveBeenCalledTimes(1);
+      expect(mockPrismaService.planningHistory.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ action: 'AVAILABILITY_OVERRIDE' }),
+        }),
+      );
+    });
+
+    it('does not check availability when the item has no scheduledDate', async () => {
+      const noDateItem = { ...mockPlanningItem, scheduledDate: null };
+      mockPrismaService.planningItem.findUnique
+        .mockResolvedValueOnce(noDateItem)
+        .mockResolvedValueOnce(noDateItem);
+      mockPrismaService.planningInspector.deleteMany.mockResolvedValue({});
+      mockPrismaService.planningInspector.upsert.mockResolvedValue({});
+      mockPrismaService.planningItem.update.mockResolvedValue({ ...noDateItem, status: PlanningStatus.CONCEPT });
+
+      const dto = { inspectorIds: ['user-1'], primaryInspectorId: 'user-1' } as any;
+
+      await service.assignInspectors('plan-1', dto, mockUser);
+
+      expect(mockAvailabilityService.checkPlanningDay).not.toHaveBeenCalled();
     });
   });
 

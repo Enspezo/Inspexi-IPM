@@ -4,6 +4,9 @@ import { PlanningStatus } from '@prisma/client';
 import { BasePaginationQueryDto } from '@/common/dto';
 
 export class ListPlanningQueryDto extends BasePaginationQueryDto {
+  // `limit` volgt de basiscap (200) — de vroegere @Max(200)-override is daarmee
+  // vervallen; de kalenderweergave (~6 weken in één request) past er nog steeds in.
+
   @ApiPropertyOptional({ example: 'NEN1010' })
   @IsOptional()
   @IsString()

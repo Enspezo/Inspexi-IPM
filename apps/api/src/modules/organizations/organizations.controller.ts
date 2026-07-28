@@ -10,7 +10,6 @@ import {
   Query,
   Ip,
   Headers,
-  ParseUUIDPipe,
   ForbiddenException,
   NotFoundException,
   HttpException,
@@ -29,9 +28,13 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { Response } from 'express';
+import { createHash } from 'crypto';
+import { setBinaryResponseHeaders, ParseUuidPipe } from '@/common';
 import { User, Role } from '@prisma/client';
 import { ORG_ADMINS } from '@/common/auth/roles';
 import { OrganizationsService } from './organizations.service';
+import { UsersService } from '@/modules/users/users.service';
+import { InviteUserDto } from '@/modules/users/dto';
 import { SupportAccessService } from './support-access.service';
 import {
   CreateOrganizationDto,
@@ -52,6 +55,7 @@ import { FEATURE_KEYS } from '@inspexi/entitlements';
 export class OrganizationsController {
   constructor(
     private organizationsService: OrganizationsService,
+    private usersService: UsersService,
     private supportAccess: SupportAccessService,
     private prisma: PrismaService,
     private entitlements: EntitlementsService,
@@ -89,18 +93,12 @@ export class OrganizationsController {
     @Ip() ip: string,
     @Res({ passthrough: true }) res: Response,
   ) {
-    // Bescherm tegen brute-force enumeratie van geldige slugs. Deelt dezelfde
-    // per-IP teller als TenantMiddleware, zodat beide enumeratie-vectoren
-    // (controller + middleware-404) samen tellen.
-    const blockedSeconds = this.enumerationGuard.isBlocked(ip);
-    if (blockedSeconds > 0) {
-      res.setHeader('Retry-After', String(blockedSeconds));
-      throw new HttpException(
-        'Te veel pogingen, probeer later opnieuw',
-        HttpStatus.TOO_MANY_REQUESTS,
-      );
-    }
-
+    // B-511 §3: lookup vóór de blokkade-check — de branding van een bestaande
+    // organisatie mag nooit collateral zijn van de enumeratieblokkade (gedeeld
+    // kantoor-IP). Alleen écht onbekende slugs tellen mee en krijgen bij een
+    // actieve blokkade een 429; een bestaande-maar-inactieve org geeft 404
+    // (offboarding) zonder de per-IP-teller te raken. Deelt dezelfde teller
+    // als TenantMiddleware, zodat beide enumeratie-vectoren samen tellen.
     const org = await this.prisma.organization.findUnique({
       where: { slug },
       select: {
@@ -110,19 +108,41 @@ export class OrganizationsController {
         logoUrl: true,
         primaryColor: true,
         chatEnabled: true,
+        isActive: true,
+        // PRD-13: workflow-vlaggen die de portal-UI voor álle stafrollen nodig
+        // heeft (GET /organizations/:id is ORG_ADMIN-only) — zelfde precedent
+        // als chatEnabled, niet gevoelig.
+        inspectionReviewEnabled: true,
+        aiReviewEnabled: true,
+        // AI-assistent: drawer-zichtbaarheid voor alle stafrollen (zelfde
+        // precedent; de rol-check zelf is server-autoritatief via GET /ai/access).
         aiAgentEnabled: true,
       },
     });
     if (!org) {
-      // Tel alleen mislukte lookups (404); een geslaagde 200 hieronder niet.
+      const blockedSeconds = this.enumerationGuard.isBlocked(ip);
+      if (blockedSeconds > 0) {
+        res.setHeader('Retry-After', String(blockedSeconds));
+        throw new HttpException(
+          'Te veel pogingen, probeer later opnieuw',
+          HttpStatus.TOO_MANY_REQUESTS,
+        );
+      }
+      // Tel alleen mislukte lookups van onbekende slugs.
       this.enumerationGuard.recordFailure(ip);
+      throw new NotFoundException('Organisatie niet gevonden');
+    }
+    if (!org.isActive) {
+      // Offboarding: inactieve orgs zijn publiek onzichtbaar, maar tellen niet
+      // mee als enumeratie-failure (de slug bestaat immers).
       throw new NotFoundException('Organisatie niet gevonden');
     }
     // Effectieve feature-keys meeleveren (PRD §5.1) zodat het klantportaal — dat
     // een eigen auth-realm heeft en `me/features` niet kan aanroepen — de gating
     // al vóór login (realm-onafhankelijk) kan toepassen.
     const features = await this.entitlements.getEnabledFeatures(org.id);
-    return { success: true, data: { ...org, features } };
+    const { isActive: _isActive, ...publicOrg } = org;
+    return { success: true, data: { ...publicOrg, features } };
   }
 
   @Get('me/features')
@@ -144,9 +164,31 @@ export class OrganizationsController {
   @Roles(Role.SUPERUSER)
   @ApiOperation({ summary: 'Gebruikers van een organisatie ophalen (Superuser)' })
   @ApiResponse({ status: 200, description: 'Lijst van gebruikers' })
-  async findUsers(@Param('id', ParseUUIDPipe) id: string) {
+  async findUsers(@Param('id', ParseUuidPipe) id: string) {
     const users = await this.organizationsService.findUsers(id);
     return { success: true, data: users };
+  }
+
+  @Post(':id/invite')
+  @Roles(Role.SUPERUSER)
+  @ApiOperation({
+    summary:
+      'Gebruiker uitnodigen voor een organisatie (Superuser-onboarding, WP-B3/B-504)',
+  })
+  @ApiResponse({ status: 201, description: 'Uitnodiging verstuurd' })
+  @ApiResponse({ status: 404, description: 'Organisatie niet gevonden' })
+  @ApiResponse({ status: 409, description: 'Gebruiker of uitnodiging bestaat al' })
+  async inviteUser(
+    @Param('id', ParseUuidPipe) id: string,
+    @Body() dto: InviteUserDto,
+    @CurrentUser() user: User,
+  ) {
+    // Nette 404 vóór de invite-flow; daarna exact dezelfde invite-logica en
+    // rolhiërarchie-check als POST /users/invite (B-504: eerste beheerder van
+    // een verse organisatie uitnodigen vanaf het superuser-domein).
+    await this.organizationsService.findOne(id);
+    const invitation = await this.usersService.invite(id, dto, user);
+    return { success: true, data: invitation };
   }
 
   @Get(':id/entitlements')
@@ -158,7 +200,7 @@ export class OrganizationsController {
     status: 200,
     description: 'Plan, plan-features, overrides, effectieve set + waarschuwingen',
   })
-  async getEntitlements(@Param('id', ParseUUIDPipe) id: string) {
+  async getEntitlements(@Param('id', ParseUuidPipe) id: string) {
     const data = await this.organizationsService.getEntitlements(id);
     return { success: true, data };
   }
@@ -173,7 +215,7 @@ export class OrganizationsController {
   @ApiResponse({ status: 403, description: 'Geen toegang tot deze organisatie' })
   async getSupportAccess(
     @CurrentUser() user: User,
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
   ) {
     return { success: true, data: await this.supportAccess.getStatus(user, id) };
   }
@@ -185,7 +227,7 @@ export class OrganizationsController {
   @ApiResponse({ status: 403, description: 'Geen toegang tot deze organisatie' })
   async setSupportAccess(
     @CurrentUser() user: User,
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @Body() dto: SetSupportAccessDto,
     @Ip() ip: string,
     @Headers('user-agent') userAgent: string,
@@ -203,7 +245,7 @@ export class OrganizationsController {
   @ApiResponse({ status: 403, description: 'Geen toegang tot deze organisatie' })
   async supportAccessLogs(
     @CurrentUser() user: User,
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
   ) {
@@ -224,7 +266,7 @@ export class OrganizationsController {
   @ApiResponse({ status: 200, description: 'Organisatie details' })
   @ApiResponse({ status: 404, description: 'Niet gevonden' })
   async findOne(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @CurrentUser() user: User,
   ) {
     if (!user.roles.includes(Role.SUPERUSER) && user.orgId !== id) {
@@ -240,7 +282,7 @@ export class OrganizationsController {
   @ApiResponse({ status: 200, description: 'Organisatie bijgewerkt' })
   @ApiResponse({ status: 404, description: 'Niet gevonden' })
   async update(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @Body() dto: UpdateOrganizationDto,
     @CurrentUser() user: User,
   ) {
@@ -257,7 +299,7 @@ export class OrganizationsController {
   @ApiResponse({ status: 200, description: 'Entitlement-staat na wijziging' })
   @ApiResponse({ status: 404, description: 'Organisatie of abonnement niet gevonden' })
   async assignPlan(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @Body() dto: AssignPlanDto,
   ) {
     const data = await this.organizationsService.assignPlan(id, dto.planId);
@@ -272,7 +314,7 @@ export class OrganizationsController {
   @ApiResponse({ status: 200, description: 'Entitlement-staat na wijziging' })
   @ApiResponse({ status: 400, description: 'Onbekende feature-key' })
   async setFeatureOverride(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @Param('featureKey') featureKey: string,
     @Body() dto: SetOrganizationFeatureDto,
     @CurrentUser() user: User,
@@ -298,7 +340,7 @@ export class OrganizationsController {
   @ApiOperation({ summary: 'Logo uploaden voor organisatie' })
   @ApiResponse({ status: 200, description: 'Logo geüpload' })
   async uploadLogo(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @UploadedFile() file: Express.Multer.File,
     @CurrentUser() user: User,
   ) {
@@ -318,15 +360,24 @@ export class OrganizationsController {
   @ApiResponse({ status: 200, description: 'Logo afbeelding' })
   @ApiResponse({ status: 404, description: 'Geen logo gevonden' })
   async getLogo(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @Res() res: Response,
   ) {
-    const { buffer, mimeType } =
+    const { buffer, mimeType, filename, disposition, storageKey } =
       await this.organizationsService.downloadLogo(id);
-    res.set({
-      'Content-Type': mimeType,
-      'Content-Length': buffer.length.toString(),
-      'Cache-Control': 'public, max-age=86400',
+    // WP-B4: publieke route, dus altijd nosniff + sandbox-CSP + expliciete
+    // disposition. Cache-Control was 24 uur op een URL die nooit verandert —
+    // een kwaadaardig logo bleef daardoor een dag in caches hangen. De ETag
+    // volgt de opslagsleutel (nieuwe UUID per upload), dus vervangen of
+    // verwijderen breekt de cache-key meteen; de korte max-age begrenst het
+    // venster waarin een client zonder revalidatie oude bytes toont.
+    setBinaryResponseHeaders(res, {
+      mimeType,
+      contentLength: buffer.length,
+      filename,
+      disposition,
+      cacheControl: 'public, max-age=300, must-revalidate',
+      etag: `"${createHash('sha256').update(storageKey).digest('hex').slice(0, 32)}"`,
     });
     res.send(buffer);
   }
@@ -336,7 +387,7 @@ export class OrganizationsController {
   @ApiOperation({ summary: 'Logo verwijderen van organisatie' })
   @ApiResponse({ status: 200, description: 'Logo verwijderd' })
   async deleteLogo(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @CurrentUser() user: User,
   ) {
     if (!user.roles.includes(Role.SUPERUSER) && user.orgId !== id) {

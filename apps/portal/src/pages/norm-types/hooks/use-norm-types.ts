@@ -3,8 +3,10 @@
 // NB: dit model gebruikt 'label' i.p.v. 'name' en heeft een 'deletedAt' soft-delete veld.
 // Schrijfacties zijn SUPERUSER-only (backend dwingt dit af).
 
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useApiMutation } from '@/hooks/use-api-mutation';
 import { apiClient } from '@/lib/api-client';
+import { normTypeKeys } from '@/lib/query-keys';
 import type { NormTypeDefinition } from '@/types';
 
 export interface UseNormTypesParams {
@@ -19,14 +21,14 @@ export function useNormTypes(params: UseNormTypesParams = {}) {
   const qs = query.toString();
 
   return useQuery<NormTypeDefinition[]>({
-    queryKey: ['norm-types', params],
+    queryKey: normTypeKeys.list(params),
     queryFn: () => apiClient.get<NormTypeDefinition[]>(`/norm-types${qs ? `?${qs}` : ''}`),
   });
 }
 
 export function useNormType(id: string) {
   return useQuery<NormTypeDefinition>({
-    queryKey: ['norm-types', id],
+    queryKey: normTypeKeys.detail(id),
     queryFn: () => apiClient.get<NormTypeDefinition>(`/norm-types/${id}`),
     enabled: !!id,
   });
@@ -34,21 +36,21 @@ export function useNormType(id: string) {
 
 export function useCreateNormType() {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (data: Record<string, unknown>) =>
       apiClient.post<NormTypeDefinition>('/norm-types', data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['norm-types'] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: normTypeKeys.all }),
   });
 }
 
 export function useUpdateNormType() {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: ({ id, data }: { id: string; data: Record<string, unknown> }) =>
       apiClient.patch<NormTypeDefinition>(`/norm-types/${id}`, data),
     onSuccess: (_d, v) => {
-      qc.invalidateQueries({ queryKey: ['norm-types'] });
-      qc.invalidateQueries({ queryKey: ['norm-types', v.id] });
+      qc.invalidateQueries({ queryKey: normTypeKeys.all });
+      qc.invalidateQueries({ queryKey: normTypeKeys.detail(v.id) });
     },
   });
 }
@@ -56,11 +58,11 @@ export function useUpdateNormType() {
 /** Soft-delete: zet deletedAt. */
 export function useDeleteNormType() {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (id: string) => apiClient.delete(`/norm-types/${id}`),
     onSuccess: (_d, id) => {
-      qc.invalidateQueries({ queryKey: ['norm-types'] });
-      qc.invalidateQueries({ queryKey: ['norm-types', id] });
+      qc.invalidateQueries({ queryKey: normTypeKeys.all });
+      qc.invalidateQueries({ queryKey: normTypeKeys.detail(id) });
     },
   });
 }
@@ -68,11 +70,11 @@ export function useDeleteNormType() {
 /** Herstel een soft-deleted normtype (deletedAt = null). */
 export function useRestoreNormType() {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (id: string) => apiClient.patch<NormTypeDefinition>(`/norm-types/${id}/restore`),
     onSuccess: (_d, id) => {
-      qc.invalidateQueries({ queryKey: ['norm-types'] });
-      qc.invalidateQueries({ queryKey: ['norm-types', id] });
+      qc.invalidateQueries({ queryKey: normTypeKeys.all });
+      qc.invalidateQueries({ queryKey: normTypeKeys.detail(id) });
     },
   });
 }

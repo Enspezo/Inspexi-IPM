@@ -1,5 +1,5 @@
 import { ApiPropertyOptional, PartialType } from '@nestjs/swagger';
-import { IsString, IsOptional, IsObject, IsDateString } from 'class-validator';
+import { IsBoolean, IsString, IsOptional, IsObject, IsDateString, IsUUID, ValidateIf } from 'class-validator';
 import { CreateInspectionPlanDto } from './create-inspection-plan.dto';
 
 /**
@@ -28,8 +28,22 @@ export class UpdateInspectionPlanDto extends PartialType(
   @IsString()
   internalNotes?: string;
 
+  @ApiPropertyOptional({ description: 'Projectfase ID (null om te ontkoppelen). Moet bij hetzelfde project horen (PRD-12).', nullable: true })
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null)
+  @IsUUID()
+  projectPhaseId?: string | null;
+
   @ApiPropertyOptional({ description: 'Vrije metadata' })
   @IsOptional()
   @IsObject()
   metadata?: Record<string, unknown>;
+
+  @ApiPropertyOptional({
+    description:
+      'Online herstel aan/uit voor dit plan (PRD-14). Aanzetten vereist een gevuld, binnen de org uniek referenceNumber.',
+  })
+  @IsOptional()
+  @IsBoolean()
+  onlineRepairEnabled?: boolean;
 }

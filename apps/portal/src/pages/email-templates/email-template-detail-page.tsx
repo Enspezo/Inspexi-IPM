@@ -6,6 +6,7 @@ import { z } from 'zod';
 import type { Editor } from '@tiptap/react';
 import { ActionMenu, Button, Card, ErrorBox, InfoField, Spinner, Input, RichTextEditor, useConfirm } from '@/components/ui';
 import { formatFileSize } from '@/lib/format';
+import { sanitizeHtml } from '@/lib/sanitize-html';
 import { DetailPageLayout } from '@/components/layout/detail-page-layout';
 import { AuditHistory } from '@/components/audit-history/audit-history';
 import { useToast } from '@/components/ui';
@@ -84,8 +85,8 @@ export default function EmailTemplateDetailPage() {
       });
       showToast('Sjabloongegevens opgeslagen', 'success');
       setIsEditing(false);
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Opslaan mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 
@@ -104,8 +105,8 @@ export default function EmailTemplateDetailPage() {
       });
       showToast('Sjabloon opgeslagen', 'success');
       setIsBodyDirty(false);
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Opslaan mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 
@@ -123,8 +124,8 @@ export default function EmailTemplateDetailPage() {
     try {
       await updateMutation.mutateAsync({ isActive: newActive });
       showToast(`Sjabloon ${newActive ? 'geactiveerd' : 'gedeactiveerd'}`, 'success');
-    } catch (err) {
-      showToast(getErrorMessage(err, `${msg} mislukt`), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 
@@ -133,8 +134,8 @@ export default function EmailTemplateDetailPage() {
       const result = await duplicateMutation.mutateAsync(id!);
       showToast('Sjabloon gedupliceerd', 'success');
       navigate(`/email-templates/${result.id}`);
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Dupliceren mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 
@@ -186,9 +187,9 @@ export default function EmailTemplateDetailPage() {
       try {
         await uploadAttachmentMutation.mutateAsync(formData);
         showToast('Bijlage toegevoegd', 'success');
-      } catch (err) {
-        showToast(getErrorMessage(err, 'Upload mislukt'), 'error');
-      }
+      } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
+    }
     };
     input.click();
   };
@@ -223,8 +224,8 @@ export default function EmailTemplateDetailPage() {
     try {
       await deleteAttachmentMutation.mutateAsync(attachmentId);
       showToast('Bijlage verwijderd', 'success');
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Verwijderen mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 
@@ -462,7 +463,7 @@ export default function EmailTemplateDetailPage() {
                 </div>
                 <div className="rounded-lg border border-gray-200 bg-white p-6">
                   <div
-                    dangerouslySetInnerHTML={{ __html: previewMutation.data.html }}
+                    dangerouslySetInnerHTML={{ __html: sanitizeHtml(previewMutation.data.html) }}
                     className="prose prose-sm max-w-none"
                   />
                 </div>

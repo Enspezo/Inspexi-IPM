@@ -407,8 +407,10 @@ export class DocumentRenderService {
 
     * { box-sizing: border-box; }
 
+    /* B-312: 'Noto Sans CJK SC' in de stack zodat CJK-tekens niet stil wegvallen
+       (Chromium tekent geen glyph zonder font; fonts-noto-cjk hoort in de render-image). */
     body {
-      font-family: Arial, Helvetica, sans-serif;
+      font-family: Arial, Helvetica, 'Noto Sans CJK SC', sans-serif;
       font-size: 10pt;
       line-height: 1.4;
       color: #333;
@@ -423,8 +425,10 @@ export class DocumentRenderService {
 
     p { margin: 0 0 6pt 0; }
 
-    table { width: 100%; border-collapse: collapse; margin: 12pt 0; }
-    th, td { border: 1px solid #ccc; padding: 6pt 8pt; text-align: left; vertical-align: top; }
+    /* B-312: fixed layout + breekbare celinhoud — een lange waarde zonder spaties
+       mag een tabel nooit voorbij de paginabreedte duwen. */
+    table { width: 100%; border-collapse: collapse; margin: 12pt 0; table-layout: fixed; }
+    th, td { border: 1px solid #ccc; padding: 6pt 8pt; text-align: left; vertical-align: top; word-break: break-word; overflow-wrap: anywhere; }
     th { background-color: #f5f5f5; font-weight: bold; }
 
     .page-break { page-break-after: always; }

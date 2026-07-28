@@ -3,9 +3,8 @@ import {
   Logger,
   Inject,
   NotFoundException,
-  ForbiddenException,
 } from '@nestjs/common';
-import { User, Role, Prisma, DocumentEntityType, NotificationType } from '@prisma/client';
+import { User, Prisma, DocumentEntityType, NotificationType } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import { PrismaService } from '@/prisma';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -13,7 +12,16 @@ import {
   STORAGE_PROVIDER,
   type StorageProvider,
 } from '@/common/services/storage/storage.interface';
-import { paginate, buildOrderBy, orgScope, assertSameOrg, assertAllSameOrg, sanitizeStorageFilename } from '@/common';
+import {
+  paginate,
+  buildOrderBy,
+  orgScope,
+  assertFound,
+  assertSameOrg,
+  assertAllSameOrg,
+  sanitizeStorageFilename,
+  assertUploadContentMatchesClaim,
+} from '@/common';
 import { UploadDocumentDto, ListDocumentsQueryDto, UpdateDocumentDto } from './dto';
 
 const userSelect = {
@@ -84,7 +92,7 @@ export class DocumentsService {
 
     if (contactIds.length > 0) {
       const contacts = await this.prisma.contact.findMany({
-        where: { id: { in: contactIds } },
+        where: { id: { in: contactIds }, isDeleted: false },
         select: { id: true, companyName: true, firstName: true, lastName: true },
       });
       for (const c of contacts) {
@@ -112,7 +120,7 @@ export class DocumentsService {
 
     if (requestIds.length > 0) {
       const requests = await this.prisma.request.findMany({
-        where: { id: { in: requestIds } },
+        where: { id: { in: requestIds }, isDeleted: false },
         select: { id: true, title: true },
       });
       for (const r of requests) {
@@ -170,7 +178,7 @@ export class DocumentsService {
 
     if (projectIds.length > 0) {
       const projects = await this.prisma.project.findMany({
-        where: { id: { in: projectIds } },
+        where: { id: { in: projectIds }, isDeleted: false },
         select: { id: true, title: true, projectNumber: true },
       });
       for (const p of projects) {
@@ -184,7 +192,7 @@ export class DocumentsService {
 
     if (userIds.length > 0) {
       const users = await this.prisma.user.findMany({
-        where: { id: { in: userIds } },
+        where: { id: { in: userIds }, isDeleted: false },
         select: { id: true, firstName: true, lastName: true },
       });
       for (const u of users) {
@@ -212,7 +220,7 @@ export class DocumentsService {
 
     if (supportTicketIds.length > 0) {
       const tickets = await this.prisma.supportTicket.findMany({
-        where: { id: { in: supportTicketIds } },
+        where: { id: { in: supportTicketIds }, isDeleted: false },
         select: { id: true, ticketNumber: true, subject: true },
       });
       for (const t of tickets) {
@@ -249,6 +257,8 @@ export class DocumentsService {
         return { model: this.prisma.planningItem, label: 'Afspraak' };
       case DocumentEntityType.PROJECT:
         return { model: this.prisma.project, label: 'Project' };
+      case DocumentEntityType.PROJECT_PHASE:
+        return { model: this.prisma.projectPhase, label: 'Projectfase' };
       case DocumentEntityType.WORK_ORDER:
         return { model: this.prisma.workOrder, label: 'Werkbon' };
       case DocumentEntityType.USER:
@@ -266,6 +276,10 @@ export class DocumentsService {
 
   async upload(file: Express.Multer.File, dto: UploadDocumentDto, user: User) {
     const orgId = user.orgId!;
+
+    // De controller-whitelist keurt de client-claim; hier waarborgen we dat de
+    // inhoud die claim waarmaakt voor formaten mét magic bytes (WP-B4).
+    assertUploadContentMatchesClaim(file);
 
     // Validate the linked entity exists and belongs to the caller's org
     // (prevents linking a document to another tenant's record by UUID).
@@ -368,18 +382,15 @@ export class DocumentsService {
   }
 
   async findOne(id: string, user: User) {
-    const found = await this.prisma.document.findUnique({
-      where: { id },
-      include: documentInclude,
-    });
-
-    if (!found || found.isDeleted) {
-      throw new NotFoundException('Document niet gevonden');
-    }
-
-    if (!user.roles.includes(Role.SUPERUSER) && found.orgId !== user.orgId) {
-      throw new ForbiddenException('Geen toegang tot dit document');
-    }
+    // Org-scoped lookup: een vreemde-org-id is niet te onderscheiden van een
+    // niet-bestaand id (zelfde 404) — geen existence-oracle (B-105).
+    const found = assertFound(
+      await this.prisma.document.findFirst({
+        where: { id, ...orgScope(user), isDeleted: false },
+        include: documentInclude,
+      }),
+      'Document',
+    );
 
     const document = flattenTags(found);
     const nameMap = await this.enrichWithEntityNames([document]);
@@ -390,34 +401,24 @@ export class DocumentsService {
   }
 
   async download(id: string, user: User) {
-    const document = await this.prisma.document.findUnique({
-      where: { id },
-    });
-
-    if (!document || document.isDeleted) {
-      throw new NotFoundException('Document niet gevonden');
-    }
-
-    if (!user.roles.includes(Role.SUPERUSER) && document.orgId !== user.orgId) {
-      throw new ForbiddenException('Geen toegang tot dit document');
-    }
+    const document = assertFound(
+      await this.prisma.document.findFirst({
+        where: { id, ...orgScope(user), isDeleted: false },
+      }),
+      'Document',
+    );
 
     const buffer = await this.storage.download(document.storageKey);
     return { buffer, document };
   }
 
   async update(id: string, dto: UpdateDocumentDto, user: User) {
-    const existing = await this.prisma.document.findUnique({
-      where: { id },
-    });
-
-    if (!existing || existing.isDeleted) {
-      throw new NotFoundException('Document niet gevonden');
-    }
-
-    if (!user.roles.includes(Role.SUPERUSER) && existing.orgId !== user.orgId) {
-      throw new ForbiddenException('Geen toegang tot dit document');
-    }
+    const existing = assertFound(
+      await this.prisma.document.findFirst({
+        where: { id, ...orgScope(user), isDeleted: false },
+      }),
+      'Document',
+    );
 
     // Replace the full tag-set when tagIds is provided (validated same-org).
     if (dto.tagIds !== undefined) {
@@ -542,17 +543,12 @@ export class DocumentsService {
   }
 
   async remove(id: string, user: User) {
-    const existing = await this.prisma.document.findUnique({
-      where: { id },
-    });
-
-    if (!existing || existing.isDeleted) {
-      throw new NotFoundException('Document niet gevonden');
-    }
-
-    if (!user.roles.includes(Role.SUPERUSER) && existing.orgId !== user.orgId) {
-      throw new ForbiddenException('Geen toegang tot dit document');
-    }
+    const existing = assertFound(
+      await this.prisma.document.findFirst({
+        where: { id, ...orgScope(user), isDeleted: false },
+      }),
+      'Document',
+    );
 
     await this.prisma.document.update({
       where: { id },

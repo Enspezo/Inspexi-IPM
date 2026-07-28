@@ -7,12 +7,14 @@ import {
   SignatureRequestsController,
 } from './generated-documents.controller';
 import { GeneratedDocumentsService } from './generated-documents.service';
+import { GenerationContextService } from './generation-context.service';
+import { DocumentSigningService } from './document-signing.service';
 
 // EmailService, ConfigService, PrismaService en STORAGE_PROVIDER zijn globaal beschikbaar.
 @Module({
   imports: [DocumentGenerationModule, LookupModule, AssetNodesModule],
   controllers: [GeneratedDocumentsController, SignatureRequestsController],
-  providers: [GeneratedDocumentsService],
+  providers: [GeneratedDocumentsService, GenerationContextService, DocumentSigningService],
   exports: [GeneratedDocumentsService],
 })
 export class GeneratedDocumentsModule {}

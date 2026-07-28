@@ -33,6 +33,9 @@ import { RequestSignatureModal } from './request-signature-modal';
 const DOC_TYPE_LABEL: Record<string, string> = {
   [DocumentType.PLAN]: 'Inspectieplan',
   [DocumentType.REPORT]: 'Rapport',
+  // PRD-14: alleen een label — herstelverklaringen ontstaan uitsluitend via de
+  // online-herstel-flow (geen genereer-knop).
+  [DocumentType.HERSTELVERKLARING]: 'Herstelverklaring',
 };
 
 interface DocumentsTabProps {
@@ -64,8 +67,8 @@ export function DocumentsTab({ planId, canWrite, canFinalize }: DocumentsTabProp
     try {
       await generate.mutateAsync(type);
       showToast(`${DOC_TYPE_LABEL[type]} gegenereerd`, 'success');
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Genereren mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 
@@ -79,8 +82,8 @@ export function DocumentsTab({ planId, canWrite, canFinalize }: DocumentsTabProp
       const ext = format === 'pdf' ? 'pdf' : 'docx';
       const name = `${DOC_TYPE_LABEL[doc.documentType] ?? 'document'}-${doc.id.slice(0, 8)}.${ext}`;
       await downloadDocument(doc.id, format, name);
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Export mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     } finally {
       setBusy(null);
     }
@@ -96,8 +99,8 @@ export function DocumentsTab({ planId, canWrite, canFinalize }: DocumentsTabProp
     try {
       await finalize.mutateAsync(doc.id);
       showToast('Document gefinaliseerd', 'success');
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Finaliseren mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 
@@ -111,8 +114,8 @@ export function DocumentsTab({ planId, canWrite, canFinalize }: DocumentsTabProp
     try {
       await deleteDoc.mutateAsync(doc.id);
       showToast('Document verwijderd', 'success');
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Verwijderen mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 
@@ -122,8 +125,8 @@ export function DocumentsTab({ planId, canWrite, canFinalize }: DocumentsTabProp
       await requestSignature.mutateAsync({ id: signatureDocId, data });
       showToast('Ondertekenverzoek verstuurd', 'success');
       setSignatureDocId(null);
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Ondertekenverzoek mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 
@@ -219,6 +222,9 @@ function DocumentRow({
 }: DocumentRowProps) {
   const isFinalized = doc.status === GeneratedDocumentStatus.FINALIZED;
   const signatures = doc.signatures ?? [];
+  // WP-A3 (B-102): verwijderen is API-zijdig APPROVERS-only en geblokkeerd zodra
+  // er een handtekening staat — de knop volgt die regels.
+  const hasSignedSignature = signatures.some((s) => s.status === SignatureStatus.SIGNED);
 
   return (
     <li className="py-3">
@@ -266,7 +272,7 @@ function DocumentRow({
               Finaliseren
             </Button>
           )}
-          {canWrite && !isFinalized && (
+          {canFinalize && !isFinalized && !hasSignedSignature && (
             <Button size="sm" variant="ghost" onClick={onDelete} className="text-danger-600 hover:text-danger-700">
               Verwijderen
             </Button>

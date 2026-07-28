@@ -1,4 +1,4 @@
-import { ForbiddenException, Injectable } from '@nestjs/common';
+import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import {
   Prisma,
   Role,
@@ -12,7 +12,6 @@ import {
   paginate,
   assertFound,
   assertSameOrg,
-  orgScope,
   requireOrg,
   isSuperuser,
   isManagement,
@@ -72,7 +71,9 @@ export class SupportTicketsService {
   async stats(user: User): Promise<Record<string, number>> {
     const where: Prisma.SupportTicketWhereInput = { isDeleted: false };
     if (isSuperuser(user)) {
-      Object.assign(where, orgScope(user));
+      // Platform-support-wachtrij: bewust géén tenant-scoping, net als findAll
+      // hierboven (WP-B3/D2-uitzondering — dit is een mijn.*-console over alle
+      // organisaties; de lijst en de tellers moeten hetzelfde universum tonen).
     } else {
       where.orgId = user.orgId!;
       if (!isManagement(user)) where.createdById = user.id;
@@ -117,12 +118,16 @@ export class SupportTicketsService {
     ticket: { orgId: string; createdById: string },
   ): void {
     if (isSuperuser(user)) return;
+    // B-105: een ticket buiten het eigen zicht is niet te onderscheiden van
+    // een niet-bestaand ticket — zelfde 404 als assertFound, geen
+    // existence-oracle. (Bewust géén orgScope-query: de superuser-wachtrij op
+    // mijn.* is platform-breed, zie findAll/stats — WP-B3/D2-uitzondering.)
     if (ticket.orgId !== user.orgId) {
-      throw new ForbiddenException('Geen toegang tot dit ticket');
+      throw new NotFoundException('Ticket niet gevonden');
     }
     // Niet-management mag alleen eigen tickets inzien.
     if (!isManagement(user) && ticket.createdById !== user.id) {
-      throw new ForbiddenException('Geen toegang tot dit ticket');
+      throw new NotFoundException('Ticket niet gevonden');
     }
   }
 
@@ -292,11 +297,15 @@ export class SupportTicketsService {
       await this.prisma.supportTicket.findUnique({ where: { id } }),
       'Ticket',
     );
+    // B-105: een ticket van een andere org is niet te onderscheiden van een
+    // niet-bestaand ticket (zelfde 404 als assertFound hierboven).
+    if (!isSuperuser(user) && ticket.orgId !== user.orgId) {
+      throw new NotFoundException('Ticket niet gevonden');
+    }
     // Muteren mag alleen door SUPERUSER of ORG_ADMIN van de eigen org.
-    // MANAGER mag inzien maar niet wijzigen.
-    const canEdit =
-      isSuperuser(user) ||
-      (user.roles.includes(Role.ORG_ADMIN) && ticket.orgId === user.orgId);
+    // MANAGER mag inzien maar niet wijzigen (rol-weigering binnen eigen org
+    // blijft 403 — het record is dan al zichtbaar, geen oracle).
+    const canEdit = isSuperuser(user) || user.roles.includes(Role.ORG_ADMIN);
     if (!canEdit) {
       throw new ForbiddenException('Geen rechten om dit ticket te wijzigen');
     }

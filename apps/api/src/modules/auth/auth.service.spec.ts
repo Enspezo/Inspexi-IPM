@@ -206,15 +206,28 @@ describe('AuthService', () => {
       );
     });
 
-    it('should throw UnauthorizedException for inactive user', async () => {
+    it('should throw UnauthorizedException for inactive user (with correct password)', async () => {
       const inactiveUser = { ...mockUser, isActive: false };
       mockPrismaService.user.findUnique.mockResolvedValue(inactiveUser);
+      // B-511 §4: de deactiveringsmelding komt pas NA een geslaagde
+      // wachtwoordcontrole.
+      (bcrypt.compare as jest.Mock).mockResolvedValue(true);
 
       await expect(service.login(loginDto)).rejects.toThrow(
         UnauthorizedException,
       );
       await expect(service.login(loginDto)).rejects.toThrow(
         'Account is gedeactiveerd',
+      );
+    });
+
+    it('B-511 §4: inactieve user + FOUT wachtwoord → generieke melding (geen account-oracle)', async () => {
+      const inactiveUser = { ...mockUser, isActive: false };
+      mockPrismaService.user.findUnique.mockResolvedValue(inactiveUser);
+      (bcrypt.compare as jest.Mock).mockResolvedValue(false);
+
+      await expect(service.login(loginDto)).rejects.toThrow(
+        'Ongeldige inloggegevens',
       );
     });
   });

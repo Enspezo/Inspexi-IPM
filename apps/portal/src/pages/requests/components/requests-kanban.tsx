@@ -2,61 +2,56 @@ import { tenantStorage } from '@/lib/storage';
 import { useState, useRef, useCallback } from 'react';
 import { RequestStatus } from '@/types';
 import type { Priority, Request } from '@/types';
-import { ErrorBox, Spinner } from '@/components/ui';
+import { Button, ErrorBox, Input, Modal, Select, Spinner } from '@/components/ui';
 import { useWindowTabs } from '@/providers/window-tabs';
-import { getStatusConfig, PRIORITY } from '@/lib/status';
-import { useAllRequests } from '../hooks/use-requests';
-import { useQueryClient, useMutation } from '@tanstack/react-query';
+import { getStatusConfig, PRIORITY, REQUEST_STATUS } from '@/lib/status';
+import { useAllRequests, useLostReasons } from '../hooks/use-requests';
+import { useQueryClient } from '@tanstack/react-query';
+import { useApiMutation } from '@/hooks/use-api-mutation';
 import { apiClient } from '@/lib/api-client';
+import { requestKeys, requestsAllKeys } from '@/lib/query-keys';
 
 // ─── Config ────────────────────────────────────────────────────────────────
 
-const COLUMNS: {
+// Kanban-specifieke kolomconfig (volgorde, header-achtergrond, standaard ingeklapt).
+// Label + kleur komen uit de canonieke REQUEST_STATUS-map (geen duplicaat — FE-2).
+const COLUMN_META: {
   status: RequestStatus;
-  label: string;
-  color: string;
   headerBg: string;
   defaultCollapsed?: boolean;
 }[] = [
   {
     status: RequestStatus.NIEUW,
-    label: 'Nieuw',
-    color: 'bg-blue-100 text-blue-800',
     headerBg: 'bg-blue-50 border-blue-200',
   },
   {
     status: RequestStatus.IN_BEHANDELING,
-    label: 'In behandeling',
-    color: 'bg-yellow-100 text-yellow-800',
     headerBg: 'bg-yellow-50 border-yellow-200',
   },
   {
     status: RequestStatus.OFFERTE_GEMAAKT,
-    label: 'Offerte gemaakt',
-    color: 'bg-purple-100 text-purple-800',
     headerBg: 'bg-purple-50 border-purple-200',
   },
   {
     status: RequestStatus.GEWONNEN,
-    label: 'Gewonnen',
-    color: 'bg-green-100 text-green-800',
     headerBg: 'bg-green-50 border-green-200',
   },
   {
     status: RequestStatus.VERLOREN,
-    label: 'Verloren',
-    color: 'bg-red-100 text-red-800',
     headerBg: 'bg-red-50 border-red-200',
     defaultCollapsed: true,
   },
   {
     status: RequestStatus.ON_HOLD,
-    label: 'On hold',
-    color: 'bg-gray-100 text-gray-600',
     headerBg: 'bg-gray-50 border-gray-200',
     defaultCollapsed: true,
   },
 ];
+
+const COLUMNS = COLUMN_META.map((col) => {
+  const { label, classes } = getStatusConfig(REQUEST_STATUS, col.status);
+  return { ...col, label, color: classes };
+});
 
 // ─── KanbanCard ────────────────────────────────────────────────────────────
 
@@ -322,14 +317,40 @@ export function RequestsKanban({ search, priorityFilter, assignedTo }: RequestsK
   const [localOverrides, setLocalOverrides] = useState<Record<string, RequestStatus>>({});
 
   // Generieke status-update mutation — id wordt meegegeven in mutationFn
-  const updateStatusMutation = useMutation({
-    mutationFn: ({ id, status }: { id: string; status: RequestStatus }) =>
-      apiClient.patch(`/requests/${id}/status`, { status }),
+  const updateStatusMutation = useApiMutation({
+    mutationFn: ({
+      id,
+      status,
+      lostReasonId,
+      lostNote,
+    }: {
+      id: string;
+      status: RequestStatus;
+      lostReasonId?: string;
+      lostNote?: string;
+    }) =>
+      apiClient.patch(`/requests/${id}/status`, {
+        status,
+        ...(lostReasonId ? { lostReasonId } : {}),
+        ...(lostNote ? { lostNote } : {}),
+      }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['requests'] });
-      queryClient.invalidateQueries({ queryKey: ['requests-all'] });
+      queryClient.invalidateQueries({ queryKey: requestKeys.all });
+      queryClient.invalidateQueries({ queryKey: requestsAllKeys.all });
     },
   });
+
+  // B-315 §1: VERLOREN vereist een reden — een drop op die kolom opent eerst
+  // een dialoog; de mutatie (en de optimistische override) volgen pas na
+  // bevestiging.
+  const [pendingLostId, setPendingLostId] = useState<string | null>(null);
+  const [lostReasonId, setLostReasonId] = useState('');
+  const [lostNote, setLostNote] = useState('');
+  const { data: lostReasons } = useLostReasons();
+  const lostReasonOptions = [
+    { value: '', label: 'Kies een reden…' },
+    ...(lostReasons ?? []).map((r) => ({ value: r.id, label: r.label })),
+  ];
 
   const handleDragStart = useCallback((id: string) => {
     draggingId.current = id;
@@ -359,6 +380,14 @@ export function RequestsKanban({ search, priorityFilter, assignedTo }: RequestsK
       const currentStatus = localOverrides[id] ?? request?.status;
       if (!request || currentStatus === targetStatus) return;
 
+      // B-315 §1: VERLOREN vraagt eerst om een reden via de dialoog.
+      if (targetStatus === RequestStatus.VERLOREN) {
+        setLostReasonId('');
+        setLostNote('');
+        setPendingLostId(id);
+        return;
+      }
+
       // Optimistisch updaten in de UI
       setLocalOverrides((prev) => ({ ...prev, [id]: targetStatus }));
 
@@ -381,6 +410,33 @@ export function RequestsKanban({ search, priorityFilter, assignedTo }: RequestsK
     },
     [data, localOverrides, updateStatusMutation],
   );
+
+  const confirmLost = useCallback(async () => {
+    const id = pendingLostId;
+    if (!id || !lostReasonId) return;
+
+    setPendingLostId(null);
+    setLocalOverrides((prev) => ({ ...prev, [id]: RequestStatus.VERLOREN }));
+    try {
+      await updateStatusMutation.mutateAsync({
+        id,
+        status: RequestStatus.VERLOREN,
+        lostReasonId,
+        lostNote: lostNote.trim() || undefined,
+      });
+      setLocalOverrides((prev) => {
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      });
+    } catch {
+      setLocalOverrides((prev) => {
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      });
+    }
+  }, [pendingLostId, lostReasonId, lostNote, updateStatusMutation]);
 
   if (isLoading) {
     return (
@@ -435,6 +491,44 @@ export function RequestsKanban({ search, priorityFilter, assignedTo }: RequestsK
           Geen aanvragen gevonden
         </p>
       )}
+
+      {/* B-315 §1: reden verplicht bij het verplaatsen naar VERLOREN */}
+      <Modal
+        isOpen={pendingLostId !== null}
+        onClose={() => setPendingLostId(null)}
+        title="Aanvraag verloren"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-gray-600">
+            Kies een reden waarom deze aanvraag verloren is gegaan. De reden is
+            verplicht; de toelichting is optioneel.
+          </p>
+          <Select
+            label="Reden verloren"
+            options={lostReasonOptions}
+            value={lostReasonId}
+            onChange={(e) => setLostReasonId(e.target.value)}
+          />
+          <Input
+            label="Toelichting (optioneel)"
+            placeholder="Bijv. gekozen voor een concurrent..."
+            value={lostNote}
+            onChange={(e) => setLostNote(e.target.value)}
+          />
+          <div className="flex justify-end gap-2 border-t border-gray-200 pt-4">
+            <Button variant="secondary" onClick={() => setPendingLostId(null)}>
+              Annuleren
+            </Button>
+            <Button
+              onClick={confirmLost}
+              disabled={!lostReasonId}
+              isLoading={updateStatusMutation.isPending}
+            >
+              Verloren markeren
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }

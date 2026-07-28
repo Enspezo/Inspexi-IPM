@@ -190,7 +190,13 @@ export class InspectionLocationsService {
 
   async reorder(planId: string, user: User, dto: ReorderLocationsDto) {
     requireOrg(user);
-    await this.assetNodes.listPlanNodes(planId, user, AssetNodeType.LOCATION);
+    const planNodes = await this.assetNodes.listPlanNodes(planId, user, AssetNodeType.LOCATION);
+    // Elke opgegeven locatie moet in de boom van dit plan zitten (de update draait
+    // op `where: { id }`; zonder deze check kon een ander plan/org geraakt worden).
+    const allowed = new Set(planNodes.map((n) => n.id));
+    if (!dto.locationIds.every((locationId) => allowed.has(locationId))) {
+      throw new BadRequestException('Een of meer locaties horen niet bij dit inspectieplan');
+    }
     await this.prisma.$transaction(
       dto.locationIds.map((locationId, index) =>
         this.prisma.assetNode.update({ where: { id: locationId }, data: { sortOrder: index } }),

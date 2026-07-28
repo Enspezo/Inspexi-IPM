@@ -18,7 +18,13 @@ import {
 import { User, Prisma, MarkerType, AssetNodeType } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import { PrismaService } from '@/prisma';
-import { orgScope, assertFound, assertSameOrg, requireOrg, sanitizeStorageFilename } from '@/common';
+import {
+  orgScope,
+  assertFound,
+  assertSameOrg,
+  requireOrg,
+  assertAllowedImageUpload,
+} from '@/common';
 import {
   STORAGE_PROVIDER,
   type StorageProvider,
@@ -151,15 +157,19 @@ export class LocationImagesService {
       }
     }
 
-    const storagePath = `${orgId}/${randomUUID()}-${sanitizeStorageFilename(file.originalname)}`;
-    await this.storage.upload(storagePath, file.buffer, file.mimetype);
+    // Magic bytes beslissen type + opslagextensie (WP-B4); de extensie komt
+    // niet meer uit `originalname` en het opgeslagen mimetype niet meer uit de
+    // client-claim.
+    const detected = assertAllowedImageUpload(file);
+    const storagePath = `${orgId}/${randomUUID()}.${detected.extension}`;
+    await this.storage.upload(storagePath, file.buffer, detected.mimeType);
 
     const data = {
       orgId,
       storagePath,
       originalFilename: file.originalname,
       fileSize: file.size,
-      mimeType: file.mimetype,
+      mimeType: detected.mimeType,
       createdBy: user.id,
       deviceId,
     };

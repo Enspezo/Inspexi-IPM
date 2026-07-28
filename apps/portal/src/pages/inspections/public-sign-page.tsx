@@ -11,6 +11,7 @@ const API_BASE = '/api/v1';
 const DOC_TYPE_LABEL: Record<string, string> = {
   [DocumentType.PLAN]: 'Inspectieplan',
   [DocumentType.REPORT]: 'Inspectierapport',
+  [DocumentType.HERSTELVERKLARING]: 'Herstelverklaring',
 };
 
 interface SignatureRequestData {

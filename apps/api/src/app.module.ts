@@ -38,6 +38,7 @@ import { DocumentsModule } from './modules/documents/documents.module';
 import { DocumentTagsModule } from './modules/document-tags/document-tags.module';
 import { InspectorCertificatesModule } from './modules/inspector-certificates/inspector-certificates.module';
 import { MeasurementInstrumentsModule } from './modules/measurement-instruments/measurement-instruments.module';
+import { AvailabilityModule } from './modules/availability/availability.module';
 import { WebhooksModule } from './modules/webhooks/webhooks.module';
 import { PlanningModule } from './modules/planning/planning.module';
 import { SearchModule } from './modules/search/search.module';
@@ -46,8 +47,10 @@ import { CustomFieldsModule } from './modules/custom-fields/custom-fields.module
 import { NumberingModule } from './modules/numbering/numbering.module';
 import { EmailTemplatesModule } from './modules/email-templates/email-templates.module';
 import { ProjectsModule } from './modules/projects/projects.module';
+import { ProjectPhasesModule } from './modules/project-phases/project-phases.module';
 import { KvkModule } from './modules/kvk/kvk.module';
 import { VatModule } from './modules/vat/vat.module';
+import { HealthModule } from './modules/health/health.module';
 import { ErrorReportsModule } from './modules/error-reports/error-reports.module';
 import { HelpModule } from './modules/help/help.module';
 import { SupportTicketsModule } from './modules/support-tickets/support-tickets.module';
@@ -90,8 +93,14 @@ import { ClientFindingsModule } from './modules/client-findings/client-findings.
 import { ClientMessagesModule } from './modules/client-messages/client-messages.module';
 import { ClientRequestsModule } from './modules/client-requests/client-requests.module';
 import { ClientLookupsModule } from './modules/client-lookups/client-lookups.module';
+import { ClientHelpModule } from './modules/client-help/client-help.module';
+import { ClientRepairModule } from './modules/client-repair/client-repair.module';
 // Inspectiedomein Fase 7 — voice-input (AI spraak-naar-meting + 3-lagen prompts)
 import { VoiceModule } from './modules/voice/voice.module';
+// Gedeelde Anthropic-client (PRD-13 §13.6.1) — @Global, gebruikt door voice + ai-review
+import { AnthropicModule } from './common/services/anthropic/anthropic.module';
+// AI-voorcontrole van inspectierapporten (PRD-13)
+import { AiReviewModule } from './modules/ai-review/ai-review.module';
 
 @Module({
   imports: [
@@ -127,6 +136,7 @@ import { VoiceModule } from './modules/voice/voice.module';
     DocumentTagsModule,
     InspectorCertificatesModule,
     MeasurementInstrumentsModule,
+    AvailabilityModule,
     WebhooksModule,
     PlanningModule,
     SearchModule,
@@ -135,6 +145,7 @@ import { VoiceModule } from './modules/voice/voice.module';
     NumberingModule,
     EmailTemplatesModule,
     ProjectsModule,
+    ProjectPhasesModule,
     KvkModule,
     VatModule,
     ErrorReportsModule,
@@ -182,8 +193,14 @@ import { VoiceModule } from './modules/voice/voice.module';
     ClientMessagesModule,
     ClientRequestsModule,
     ClientLookupsModule,
+    ClientHelpModule,
+    ClientRepairModule,
     // Inspectiedomein Fase 7 — voice-input (AI spraak-naar-meting + 3-lagen prompts)
     VoiceModule,
+    // Gedeelde Anthropic-client + AI-voorcontrole van inspectierapporten (PRD-13)
+    AnthropicModule,
+    AiReviewModule,
+    HealthModule,
   ],
   providers: [
     {

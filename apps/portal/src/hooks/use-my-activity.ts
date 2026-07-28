@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api-client';
+import { myActivityKeys } from '@/lib/query-keys';
 import type { AuditLogEntry, PaginatedResponse } from '@/types';
 
 export interface UseMyActivityParams {
@@ -24,7 +25,7 @@ export function useMyActivity(params: UseMyActivityParams = {}) {
   const endpoint = `/audit-logs/me${qs ? `?${qs}` : ''}`;
 
   return useQuery<PaginatedResponse<AuditLogEntry>>({
-    queryKey: ['my-activity', params],
+    queryKey: myActivityKeys.list(params),
     queryFn: () => apiClient.get<PaginatedResponse<AuditLogEntry>>(endpoint),
   });
 }

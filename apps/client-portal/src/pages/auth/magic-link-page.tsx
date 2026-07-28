@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useClientAuth } from '@/providers/client-auth-provider';
 import { useTenant } from '@/providers/tenant-provider';
@@ -42,14 +42,23 @@ export default function MagicLinkPage() {
   const [sp] = useSearchParams();
   const token = paramToken ?? sp.get('token') ?? '';
 
-  const { loginWithTokens } = useClientAuth();
+  const { loginWithToken, logout, isAuthenticated, isLoading } = useClientAuth();
   const navigate = useNavigate();
 
   const [status, setStatus] = useState<Status>('loading');
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<{ email: string; inspectionPlanId: string | null } | null>(null);
+  const [endedPreviousSession, setEndedPreviousSession] = useState(false);
+
+  // B-411: lees de auth-status via een ref zodat de logout hieronder het
+  // verify-effect niet opnieuw triggert (en de link niet dubbel valideert).
+  const isAuthenticatedRef = useRef(isAuthenticated);
+  isAuthenticatedRef.current = isAuthenticated;
 
   useEffect(() => {
+    // Wacht tot het sessieherstel (refresh-cookie) klaar is — anders missen we
+    // een nog-actieve sessie van een vorige gebruiker (B-411).
+    if (isLoading) return;
     if (!token) {
       setStatus('error');
       setError('Ongeldige of ontbrekende link');
@@ -62,9 +71,20 @@ export default function MagicLinkPage() {
         const res = await apiClient.post<MagicLinkResult>('/client/auth/magic-link', { token });
         if (cancelled) return;
         if (res.requiresRegistration === false) {
-          loginWithTokens(res.accessToken, res.refreshToken, res.user);
+          loginWithToken(res.accessToken, res.user);
           navigate('/dashboard', { replace: true });
         } else {
+          // B-411 (WP-C2): de uitnodiging is voor een e-mailadres ZONDER account.
+          // Een nog-actieve sessie is dus per definitie van iemand anders
+          // (gedeelde werkplek). Beëindig die expliciet — anders stuurt de
+          // /register-guard de nieuwe collega stilzwijgend naar het dashboard
+          // van de vórige gebruiker. Logout eerst (server-side revoke), daarna
+          // pas de registratie-CTA tonen.
+          if (isAuthenticatedRef.current) {
+            await logout();
+            if (cancelled) return;
+            setEndedPreviousSession(true);
+          }
           setInfo({ email: res.email, inspectionPlanId: res.inspectionPlanId });
           setStatus('register');
         }
@@ -78,7 +98,7 @@ export default function MagicLinkPage() {
     return () => {
       cancelled = true;
     };
-  }, [token, loginWithTokens, navigate]);
+  }, [token, isLoading, loginWithToken, logout, navigate]);
 
   if (status === 'loading') {
     return (
@@ -116,6 +136,12 @@ export default function MagicLinkPage() {
   return (
     <AuthShell subtitle="Welkom">
       <div className="space-y-5 text-center">
+        {endedPreviousSession && (
+          <p className="rounded-lg bg-warning-50 px-3 py-2 text-sm text-warning-600">
+            Er was in deze browser nog een andere gebruiker ingelogd; die sessie is
+            voor de zekerheid beëindigd.
+          </p>
+        )}
         <p className="text-sm text-gray-600">
           U heeft nog geen account. Maak er een aan om uw inspectie(s) in te zien
           {info?.email ? (

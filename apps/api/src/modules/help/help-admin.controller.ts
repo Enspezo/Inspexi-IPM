@@ -7,7 +7,6 @@ import {
   Param,
   Query,
   Body,
-  ParseUUIDPipe,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { User } from '@prisma/client';
@@ -21,6 +20,8 @@ import {
   UpdateHelpArticleDto,
   ListHelpArticlesDto,
 } from './dto';
+import { HelpAudience } from '@prisma/client';
+import { ParseUuidPipe } from '@/common';
 
 @ApiTags('Help (beheer)')
 @ApiBearerAuth()
@@ -30,6 +31,19 @@ export class HelpAdminController {
   constructor(private help: HelpService) {}
 
   // Categorieën
+  @Get('categories')
+  @ApiOperation({ summary: 'Categorieën incl. niet-gepubliceerd (binnen scope)' })
+  async listCategories(
+    @CurrentUser() user: User,
+    @Query('audience') audience?: string,
+  ) {
+    const aud =
+      audience && (Object.values(HelpAudience) as string[]).includes(audience)
+        ? (audience as HelpAudience)
+        : undefined;
+    return { success: true, data: await this.help.adminListCategories(user, aud) };
+  }
+
   @Post('categories')
   async createCategory(
     @CurrentUser() user: User,
@@ -41,7 +55,7 @@ export class HelpAdminController {
   @Patch('categories/:id')
   async updateCategory(
     @CurrentUser() user: User,
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @Body() dto: UpdateHelpCategoryDto,
   ) {
     return { success: true, data: await this.help.updateCategory(user, id, dto) };
@@ -50,7 +64,7 @@ export class HelpAdminController {
   @Delete('categories/:id')
   async deleteCategory(
     @CurrentUser() user: User,
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
   ) {
     return { success: true, data: await this.help.deleteCategory(user, id) };
   }
@@ -73,7 +87,7 @@ export class HelpAdminController {
   @Patch('articles/:id')
   async updateArticle(
     @CurrentUser() user: User,
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @Body() dto: UpdateHelpArticleDto,
   ) {
     return { success: true, data: await this.help.updateArticle(user, id, dto) };
@@ -82,7 +96,7 @@ export class HelpAdminController {
   @Post('articles/:id/publish')
   async publishArticle(
     @CurrentUser() user: User,
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
   ) {
     return { success: true, data: await this.help.publishArticle(user, id) };
   }
@@ -90,7 +104,7 @@ export class HelpAdminController {
   @Delete('articles/:id')
   async deleteArticle(
     @CurrentUser() user: User,
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
   ) {
     return { success: true, data: await this.help.deleteArticle(user, id) };
   }

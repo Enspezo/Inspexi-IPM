@@ -15,6 +15,7 @@ import { RequiresFeature } from '@/common/decorators/requires-feature.decorator'
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { Request, Response } from 'express';
 import { Public } from '@/common/decorators';
+import { setBinaryResponseHeaders, sanitizeDispositionFilename } from '@/common';
 import { PlanningPublicService } from './planning-public.service';
 import { PlanningIcalService } from './planning-ical.service';
 import { AddQuestionDto, CreateRescheduleRequestDto } from './dto';
@@ -25,8 +26,9 @@ import {
 import { Inject } from '@nestjs/common';
 import { PrismaService } from '@/prisma';
 
+// @Public() staat per route (niet op klasseniveau) zodat een nieuw endpoint niet
+// per ongeluk publiek wordt — elke route verklaart dat expliciet.
 @ApiTags('Planning (public)')
-@Public()
 @RequiresFeature('UITVOERING_COMPLEET')
 @Controller('public/planning')
 export class PlanningPublicController {
@@ -37,6 +39,7 @@ export class PlanningPublicController {
     @Inject(STORAGE_PROVIDER) private readonly storage: StorageProvider,
   ) {}
 
+  @Public()
   @Get(':token')
   @ApiOperation({ summary: 'Afspraakdetails ophalen (publiek)' })
   async findByToken(@Param('token') token: string) {
@@ -44,6 +47,7 @@ export class PlanningPublicController {
     return { success: true, data };
   }
 
+  @Public()
   @Post(':token/questions')
   @ApiOperation({ summary: 'Vraag stellen als klant (publiek)' })
   @HttpCode(HttpStatus.CREATED)
@@ -52,6 +56,7 @@ export class PlanningPublicController {
     return { success: true, data };
   }
 
+  @Public()
   @Post(':token/reschedule-request')
   @ApiOperation({ summary: 'Afspraak verzetverzoek indienen (klant, publiek)' })
   @HttpCode(HttpStatus.CREATED)
@@ -63,6 +68,7 @@ export class PlanningPublicController {
     return { success: true, data };
   }
 
+  @Public()
   @Get(':token/documents')
   @ApiOperation({ summary: 'Gedeelde bijlagen ophalen (publiek)' })
   async getSharedDocuments(@Param('token') token: string) {
@@ -70,6 +76,7 @@ export class PlanningPublicController {
     return { success: true, data };
   }
 
+  @Public()
   @Get(':token/documents/:docId/download')
   @ApiOperation({ summary: 'Gedeelde bijlage downloaden (publiek)' })
   async downloadSharedDocument(
@@ -101,14 +108,18 @@ export class PlanningPublicController {
     }
 
     const buffer = await this.storage.download(doc.storageKey);
-    res.set({
-      'Content-Type': doc.mimeType,
-      'Content-Disposition': `attachment; filename="${encodeURIComponent(doc.originalName)}"`,
-      'Content-Length': buffer.length.toString(),
+    // Publieke route: attachment + nosniff + sandbox via de gedeelde helper (WP-B4).
+    setBinaryResponseHeaders(res, {
+      mimeType: doc.mimeType,
+      contentLength: buffer.length,
+      filename: sanitizeDispositionFilename(doc.originalName),
+      disposition: 'attachment',
+      cacheControl: 'private, no-store',
     });
     res.send(buffer);
   }
 
+  @Public()
   @Get(':token/ics')
   @ApiOperation({ summary: '.ics bestand downloaden (publiek)' })
   async downloadIcs(@Param('token') token: string, @Res() res: Response) {
@@ -146,7 +157,6 @@ export class PlanningPublicController {
 // ─── iCal feed controller ──────────────────────────────────
 
 @ApiTags('iCal')
-@Public()
 @RequiresFeature('UITVOERING_COMPLEET')
 @Controller('ical')
 export class PlanningIcalController {
@@ -154,6 +164,7 @@ export class PlanningIcalController {
 
   constructor(private readonly icalService: PlanningIcalService) {}
 
+  @Public()
   @Get(':ical_token.ics')
   @ApiOperation({ summary: 'Persoonlijke iCal feed voor inspecteur' })
   async getPersonalFeed(

@@ -10,6 +10,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 import { Request } from 'express';
 import { ConfigService } from '@nestjs/config';
 import { Webhook } from 'svix';
@@ -32,6 +33,7 @@ export class WebhooksController {
   ) {}
 
   @Public()
+  @Throttle({ default: { limit: 30, ttl: 60000 } })
   @Post('resend')
   @HttpCode(200)
   @ApiOperation({ summary: 'Resend webhook events ontvangen' })
@@ -43,7 +45,11 @@ export class WebhooksController {
   ) {
     const webhookSecret = this.config.get<string>('RESEND_WEBHOOK_SECRET');
 
-    // Verify signature if a secret is configured
+    // Verify the signature when a secret is configured. Fail CLOSED in production
+    // when it is absent — an unverified, unauthenticated @Public endpoint that
+    // writes across orgs must not run without signature verification on a shared
+    // deployment. Non-production keeps the previous lenient behaviour so local dev
+    // (which never receives real Resend events) is not broken (SEC-10).
     if (webhookSecret) {
       const rawBody = req.rawBody;
       if (!rawBody) {
@@ -61,6 +67,11 @@ export class WebhooksController {
         this.logger.warn('Invalid Resend webhook signature');
         throw new BadRequestException('Invalid webhook signature');
       }
+    } else if (this.config.get<string>('NODE_ENV') === 'production') {
+      this.logger.error('RESEND_WEBHOOK_SECRET not configured — rejecting unverified webhook');
+      throw new BadRequestException('Webhook signature verification not configured');
+    } else {
+      this.logger.warn('RESEND_WEBHOOK_SECRET not set — processing webhook unverified (non-production only)');
     }
 
     const payload = req.body as { type: string; data: Record<string, any> };

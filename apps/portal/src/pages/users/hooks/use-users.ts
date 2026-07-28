@@ -1,11 +1,13 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useApiMutation } from '@/hooks/use-api-mutation';
 import { apiClient } from '@/lib/api-client';
+import { userKeys } from '@/lib/query-keys';
 import type { User } from '@/types';
 import { Role } from '@/types';
 
 export function useUsers(options: { enabled?: boolean } = {}) {
   return useQuery<User[]>({
-    queryKey: ['users'],
+    queryKey: userKeys.all,
     queryFn: () => apiClient.get<User[]>('/users'),
     staleTime: 15 * 60 * 1000, // 15 min — user list for dropdowns, rarely changes
     enabled: options.enabled,
@@ -14,7 +16,7 @@ export function useUsers(options: { enabled?: boolean } = {}) {
 
 export function useUser(id: string) {
   return useQuery<User>({
-    queryKey: ['users', id],
+    queryKey: userKeys.detail(id),
     queryFn: () => apiClient.get<User>(`/users/${id}`),
     enabled: !!id,
   });
@@ -37,7 +39,7 @@ export interface SelectableUser {
 export function useSelectableUsers(role?: Role, options: { enabled?: boolean } = {}) {
   const qs = role ? `?role=${role}` : '';
   return useQuery<SelectableUser[]>({
-    queryKey: ['users', 'selectable', role ?? 'all'],
+    queryKey: userKeys.selectable(role ?? 'all'),
     queryFn: () => apiClient.get<SelectableUser[]>(`/users/selectable${qs}`),
     staleTime: 15 * 60 * 1000,
     enabled: options.enabled,
@@ -52,11 +54,11 @@ interface InviteUserDto {
 export function useInviteUser() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useApiMutation({
     mutationFn: (data: InviteUserDto) =>
       apiClient.post('/users/invite', data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['users'] });
+      queryClient.invalidateQueries({ queryKey: userKeys.all });
     },
   });
 }
@@ -64,12 +66,12 @@ export function useInviteUser() {
 export function useDeactivateUser() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useApiMutation({
     mutationFn: (userId: string) =>
       apiClient.patch(`/users/${userId}/deactivate`),
     onSuccess: (_data, userId) => {
-      queryClient.invalidateQueries({ queryKey: ['users'] });
-      queryClient.invalidateQueries({ queryKey: ['users', userId] });
+      queryClient.invalidateQueries({ queryKey: userKeys.all });
+      queryClient.invalidateQueries({ queryKey: userKeys.detail(userId) });
     },
   });
 }
@@ -77,12 +79,12 @@ export function useDeactivateUser() {
 export function useActivateUser() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useApiMutation({
     mutationFn: (userId: string) =>
       apiClient.patch(`/users/${userId}/activate`),
     onSuccess: (_data, userId) => {
-      queryClient.invalidateQueries({ queryKey: ['users'] });
-      queryClient.invalidateQueries({ queryKey: ['users', userId] });
+      queryClient.invalidateQueries({ queryKey: userKeys.all });
+      queryClient.invalidateQueries({ queryKey: userKeys.detail(userId) });
     },
   });
 }
@@ -95,17 +97,17 @@ interface ChangeRoleDto {
 export function useChangeRole() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useApiMutation({
     mutationFn: (data: ChangeRoleDto) =>
       apiClient.patch(`/users/${data.userId}/role`, { roles: data.roles }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['users'] });
+      queryClient.invalidateQueries({ queryKey: userKeys.all });
     },
   });
 }
 
 export function useAdminResetPassword() {
-  return useMutation({
+  return useApiMutation({
     mutationFn: ({
       userId,
       newPassword,
@@ -137,12 +139,12 @@ interface AdminUpdateUserDto {
 export function useAdminUpdateUser() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useApiMutation({
     mutationFn: ({ userId, data }: { userId: string; data: AdminUpdateUserDto }) =>
       apiClient.patch(`/users/${userId}`, data),
     onSuccess: (_data, { userId }) => {
-      queryClient.invalidateQueries({ queryKey: ['users'] });
-      queryClient.invalidateQueries({ queryKey: ['users', userId] });
+      queryClient.invalidateQueries({ queryKey: userKeys.all });
+      queryClient.invalidateQueries({ queryKey: userKeys.detail(userId) });
     },
   });
 }
@@ -159,7 +161,7 @@ interface UserRecordCounts {
 
 export function useUserRecordCounts(userId: string | null) {
   return useQuery<UserRecordCounts>({
-    queryKey: ['users', userId, 'record-counts'],
+    queryKey: userKeys.recordCounts(userId as string),
     queryFn: () => apiClient.get<UserRecordCounts>(`/users/${userId}/record-counts`),
     enabled: !!userId,
   });
@@ -168,11 +170,11 @@ export function useUserRecordCounts(userId: string | null) {
 export function useDeleteUser() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useApiMutation({
     mutationFn: ({ userId, transferToUserId }: { userId: string; transferToUserId: string }) =>
       apiClient.post(`/users/${userId}/delete`, { transferToUserId }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['users'] });
+      queryClient.invalidateQueries({ queryKey: userKeys.all });
     },
   });
 }

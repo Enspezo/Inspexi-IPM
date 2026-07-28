@@ -8,8 +8,10 @@ import {
   MaxLength,
   IsNumber,
   IsBoolean,
+  IsEnum,
   ValidateIf,
 } from 'class-validator';
+import { EmploymentType } from '@prisma/client';
 
 export class AdminUpdateUserDto {
   @ApiPropertyOptional({ example: 'Jan' })
@@ -91,4 +93,13 @@ export class AdminUpdateUserDto {
   @IsOptional()
   @IsBoolean()
   shareEmailWithClients?: boolean;
+
+  // ─── Beschikbaarheid (PRD-12) ───
+  // Dienstvorm van een inspecteur. Alleen te wijzigen door MANAGEMENT_ROLES
+  // (service dwingt dit af; 403 anders).
+  @ApiPropertyOptional({ enum: EmploymentType, nullable: true, description: 'Dienstvorm inspecteur' })
+  @IsOptional()
+  @ValidateIf((o) => o.employmentType !== null)
+  @IsEnum(EmploymentType, { message: 'Ongeldige dienstvorm' })
+  employmentType?: EmploymentType | null;
 }

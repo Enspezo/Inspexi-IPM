@@ -15,6 +15,7 @@ export const DOCUMENT_ENTITY_LABELS: Record<DocumentEntityType, string> = {
   [DocumentEntityType.PRODUCT]: 'Product',
   [DocumentEntityType.PLANNING]: 'Afspraak',
   [DocumentEntityType.WORK_ORDER]: 'Werkbon',
+  [DocumentEntityType.PROJECT_PHASE]: 'Projectfase',
   [DocumentEntityType.USER]: 'Gebruiker',
 };
 

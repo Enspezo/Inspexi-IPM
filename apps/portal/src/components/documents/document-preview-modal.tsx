@@ -1,12 +1,18 @@
-import { useState, useEffect } from 'react';
-import { Button, TagPill, TagSelect, useToast } from '@/components/ui';
+import { useState, useEffect, lazy, Suspense } from 'react';
+import { Button, TagPill, TagSelect, Spinner, useToast } from '@/components/ui';
 import { downloadFile } from '@/lib/download-file';
-import { formatFileSize } from '@/lib/format';
+import { formatFileSize, formatDateTimeLong } from '@/lib/format';
 import { getErrorMessage } from '@/lib/api-client';
 import type { CrmDocument } from '@/types';
 import { useUpdateDocument } from '@/pages/documents/hooks/use-documents';
 import { useDocumentTagsCompact } from '@/pages/organization/hooks/use-document-tags';
-import { FilePreviewModal, getMimeLabel } from './file-preview-modal';
+import { getMimeLabel } from './file-preview-utils';
+
+// De preview-renderer trekt docx-preview + xlsx mee; lazy laden zodat die bundel
+// pas binnenkomt wanneer er daadwerkelijk een document geopend wordt.
+const FilePreviewModal = lazy(() =>
+  import('./file-preview-modal').then((m) => ({ default: m.FilePreviewModal })),
+);
 
 interface DocumentPreviewModalProps {
   isOpen: boolean;
@@ -14,16 +20,6 @@ interface DocumentPreviewModalProps {
   document: CrmDocument | null;
   /** Sta toe om de tags van dit document te bewerken. */
   canEditTags?: boolean;
-}
-
-function formatDate(dateStr: string): string {
-  return new Date(dateStr).toLocaleDateString('nl-NL', {
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
 }
 
 const entityTypeLabels: Record<string, string> = {
@@ -71,8 +67,8 @@ export function DocumentPreviewModal({
       setCurrentTags(updated.tags ?? []);
       showToast('Tags bijgewerkt', 'success');
       setIsEditingTags(false);
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Bijwerken mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 
@@ -100,7 +96,7 @@ export function DocumentPreviewModal({
           label="Eigenaar"
           value={doc.uploadedBy ? `${doc.uploadedBy.firstName} ${doc.uploadedBy.lastName}` : '—'}
         />
-        <MetaField label="Datum" value={formatDate(doc.createdAt)} />
+        <MetaField label="Datum" value={formatDateTimeLong(doc.createdAt)} />
 
         {doc.description && <MetaField label="Beschrijving" value={doc.description} />}
 
@@ -182,15 +178,25 @@ export function DocumentPreviewModal({
     </>
   );
 
+  if (!isOpen) return null;
+
   return (
-    <FilePreviewModal
-      isOpen={isOpen}
-      onClose={onClose}
-      downloadPath={`/documents/${doc.id}/download`}
-      fileName={doc.originalName}
-      mimeType={doc.mimeType}
-      sidebar={sidebar}
-    />
+    <Suspense
+      fallback={
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <Spinner size="lg" />
+        </div>
+      }
+    >
+      <FilePreviewModal
+        isOpen={isOpen}
+        onClose={onClose}
+        downloadPath={`/documents/${doc.id}/download`}
+        fileName={doc.originalName}
+        mimeType={doc.mimeType}
+        sidebar={sidebar}
+      />
+    </Suspense>
   );
 }
 

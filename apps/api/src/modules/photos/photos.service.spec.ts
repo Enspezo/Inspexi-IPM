@@ -44,7 +44,13 @@ describe('PhotosService', () => {
   });
 
   describe('upload', () => {
-    const file = { buffer: Buffer.from('img-bytes'), mimetype: 'image/jpeg', size: 100 };
+    // Echte JPEG magic bytes (FF D8 FF) + vulling ≥ 12 bytes — de upload
+    // valideert sinds WP-B4 op inhoud, niet op de geclaimde mimetype.
+    const file = {
+      buffer: Buffer.concat([Buffer.from([0xff, 0xd8, 0xff]), Buffer.from('img-bytes')]),
+      mimetype: 'image/jpeg',
+      size: 100,
+    };
 
     it('uploads the original + a thumbnail and stores the thumbnail path', async () => {
       mockPrisma.assetNode.findFirst.mockResolvedValue({ orgId: 'org-1' });

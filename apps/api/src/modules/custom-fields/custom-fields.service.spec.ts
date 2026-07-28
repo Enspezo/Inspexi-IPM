@@ -354,9 +354,16 @@ describe('CustomFieldsService', () => {
       mockPrismaService.$transaction.mockImplementation(
         async (calls: Promise<any>[]) => Promise.all(calls),
       );
+      mockPrismaService.customFieldDefinition.count.mockResolvedValue(3);
       mockPrismaService.customFieldDefinition.update.mockResolvedValue({});
 
       await service.reorder(orgId, orderedIds);
+
+      expect(mockPrismaService.customFieldDefinition.count).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ id: { in: orderedIds }, orgId, isDeleted: false }),
+        }),
+      );
 
       expect(mockPrismaService.customFieldDefinition.update).toHaveBeenCalledTimes(3);
       expect(mockPrismaService.customFieldDefinition.update).toHaveBeenCalledWith(
@@ -374,9 +381,21 @@ describe('CustomFieldsService', () => {
       mockPrismaService.$transaction.mockImplementation(
         async (calls: Promise<any>[]) => Promise.all(calls),
       );
+      mockPrismaService.customFieldDefinition.count.mockResolvedValue(0);
 
       await service.reorder(orgId, []);
 
+      expect(mockPrismaService.customFieldDefinition.update).not.toHaveBeenCalled();
+    });
+
+    it('should throw BadRequestException when an id belongs to another org', async () => {
+      const orderedIds = ['field-1', 'foreign-field'];
+      // Only one of the two ids is found within the caller's org.
+      mockPrismaService.customFieldDefinition.count.mockResolvedValue(1);
+
+      await expect(service.reorder(orgId, orderedIds)).rejects.toThrow(
+        BadRequestException,
+      );
       expect(mockPrismaService.customFieldDefinition.update).not.toHaveBeenCalled();
     });
   });

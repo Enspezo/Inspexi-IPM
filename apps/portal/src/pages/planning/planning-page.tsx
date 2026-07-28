@@ -12,14 +12,17 @@ import {
   type ColumnDef,
 } from '@/components/table-config';
 import { useAuth } from '@/providers/auth-provider';
+import { useFeatures } from '@/providers/feature-provider';
 import { useWindowTabs } from '@/providers/window-tabs';
 import { usePlanningItems } from './hooks/use-planning';
+import { useResolvedAvailability } from '@/pages/availability/hooks/use-availability';
 import { useOrganization } from '../organization/hooks/use-organization';
 import {
   PlanningCalendarView,
   MONTHS_NL,
   getMonday,
   addDays,
+  localDateKey,
   type CalendarViewMode,
 } from './components/planning-calendar-view';
 import { InspectorFilter, type InspectorOption } from './components/inspector-filter';
@@ -105,12 +108,30 @@ function getCalendarRange(view: ViewMode, date: Date): { dateFrom: string; dateT
   return { dateFrom: gridStart.toISOString(), dateTo: gridEnd.toISOString() };
 }
 
+/** Zichtbare kalenderbereik als lokale date-keys (voor de resolved availability). */
+function getCalendarRangeKeys(view: ViewMode, date: Date): { fromKey: string; toKey: string } {
+  if (view === 'dag') {
+    const key = localDateKey(date);
+    return { fromKey: key, toKey: key };
+  }
+  if (view === 'week') {
+    const monday = getMonday(date);
+    return { fromKey: localDateKey(monday), toKey: localDateKey(addDays(monday, 6)) };
+  }
+  // maand — volledige 6-weken-grid.
+  const gridStart = getMonday(new Date(date.getFullYear(), date.getMonth(), 1));
+  return { fromKey: localDateKey(gridStart), toKey: localDateKey(addDays(gridStart, 41)) };
+}
+
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function PlanningPage() {
   const navigate = useNavigate();
   const { openTab } = useWindowTabs();
   const { user } = useAuth();
+  const { hasFeature } = useFeatures();
+  // PRD-12 §Fase E: fase-kolom alleen registreren bij de PROJECT_FASEN-entitlement.
+  const hasPhaseFeature = hasFeature('PROJECT_FASEN');
   const { data: orgData } = useOrganization(user?.orgId);
   const dayStart = orgData?.workdayStart ?? 8;
   const dayEnd = orgData?.workdayEnd ?? 17;
@@ -150,6 +171,8 @@ export default function PlanningPage() {
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<PlanningStatus | ''>('');
   const [page, setPage] = useState(1);
+  // Fase-kolomfilter (PRD-12): opties uit de zichtbare planregels.
+  const [phaseFilterOptions, setPhaseFilterOptions] = useState<{ value: string; label: string }[]>([]);
 
   // Debounce: wacht 300ms na laatste toetsaanslag, minimaal 3 tekens vereist
   useEffect(() => {
@@ -325,6 +348,22 @@ export default function PlanningPage() {
         );
       },
     },
+    ...(hasPhaseFeature
+      ? [{
+          key: 'phase',
+          header: 'Fase',
+          sidebarLabel: 'Fase',
+          defaultVisible: false,
+          filterable: true,
+          filterType: 'select' as const,
+          filterOptions: phaseFilterOptions,
+          groupable: true,
+          getFilterValue: (item: PlanningItem) => item.projectPhase?.name ?? '',
+          render: (item: PlanningItem) => (
+            <span className="text-gray-600">{item.projectPhase?.name ?? '—'}</span>
+          ),
+        }]
+      : []),
   ];
 
   const {
@@ -365,7 +404,7 @@ export default function PlanningPage() {
     }
     return {
       ...getCalendarRange(view, calendarDate),
-      limit: 300,
+      limit: 200,
       page: 1,
     };
   }, [view, debouncedSearch, statusFilter, page, calendarDate, apiSort]);
@@ -374,6 +413,14 @@ export default function PlanningPage() {
 
   // ─── Inspector list derived from loaded items ───────────────────────────────
   const allItems: PlanningItem[] = data?.data ?? [];
+
+  // Fase-filteropties uit de zichtbare planregels (distinct fasenaam).
+  useEffect(() => {
+    const names = Array.from(
+      new Set(allItems.map((i) => i.projectPhase?.name).filter(Boolean) as string[]),
+    ).sort();
+    setPhaseFilterOptions(names.map((n) => ({ value: n, label: n })));
+  }, [data]);
 
   const inspectors = useMemo((): InspectorOption[] => {
     const map = new Map<string, InspectorOption>();
@@ -405,6 +452,28 @@ export default function PlanningPage() {
       ),
     );
   }, [allItems, selectedInspectorIds]);
+
+  // ─── Beschikbaarheids-overlay (kalender, PRD-12 §12.9) ──────────────────────
+  // Alleen actief wanneer op precies één inspecteur gefilterd is.
+  const activeInspectorId = selectedInspectorIds.length === 1 ? selectedInspectorIds[0] : null;
+  const calRangeKeys = useMemo(
+    () => (view !== 'list' ? getCalendarRangeKeys(view, calendarDate) : null),
+    [view, calendarDate],
+  );
+  const { data: resolvedDays } = useResolvedAvailability(
+    calRangeKeys?.fromKey ?? '',
+    calRangeKeys?.toKey ?? '',
+    activeInspectorId ? [activeInspectorId] : [],
+    { enabled: !!calRangeKeys && !!activeInspectorId },
+  );
+  const unavailableDates = useMemo(() => {
+    const set = new Set<string>();
+    if (!activeInspectorId) return set;
+    for (const d of resolvedDays ?? []) {
+      if (!d.isAvailable) set.add(d.date);
+    }
+    return set;
+  }, [resolvedDays, activeInspectorId]);
 
   const handleSearch = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     setSearch(e.target.value);
@@ -638,6 +707,7 @@ export default function PlanningPage() {
             }}
             dayStart={dayStart}
             dayEnd={dayEnd}
+            unavailableDates={unavailableDates}
           />
         </div>
       )}

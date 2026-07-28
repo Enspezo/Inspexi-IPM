@@ -8,14 +8,63 @@
 import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import puppeteer, { Browser } from 'puppeteer';
+import { handlebars } from './handlebars-setup';
 import type { PdfOptions } from './types';
+
+/** Harde timeout (ms) voor setContent én page.pdf — voorkomt onbegrensd wachten. */
+const RENDER_TIMEOUT_MS = 30_000;
+
+/** Standaard aantal gelijktijdige renders; overschrijfbaar via PDF_MAX_CONCURRENCY. */
+const DEFAULT_MAX_CONCURRENCY = 3;
+
+/**
+ * Beslist per resource-request of hij door mag tijdens het renderen. De renderer mag
+ * GEEN externe/lokale bronnen ophalen: alleen het initiële document en ingesloten
+ * `data:`-afbeeldingen zijn toegestaan. Alles met schema `file:`, `http(s):` of een
+ * interne host wordt geblokkeerd (SSRF/lokale-bestandslezing-mitigatie).
+ *
+ * Pure functie zodat de interceptie-beslissing los te unit-testen is.
+ */
+export function isRenderRequestAllowed(url: string, isNavigationRequest: boolean): boolean {
+  if (isNavigationRequest) return true; // het setContent-document zelf
+  return url.startsWith('data:') || url.startsWith('about:');
+}
 
 @Injectable()
 export class PdfGenerationService implements OnModuleDestroy {
   private readonly logger = new Logger(PdfGenerationService.name);
   private browser: Browser | null = null;
 
-  constructor(private readonly config: ConfigService) {}
+  // Kleine semafoor: begrens het aantal gelijktijdige Chromium-pages. Onbegrensd
+  // parallel renderen kan bij een piek (bulk-generatie/sync) het geheugen opblazen.
+  private readonly maxConcurrency: number;
+  private active = 0;
+  private readonly waiters: Array<() => void> = [];
+
+  constructor(private readonly config: ConfigService) {
+    const configured = Number(this.config.get<string>('PDF_MAX_CONCURRENCY'));
+    this.maxConcurrency =
+      Number.isFinite(configured) && configured > 0 ? Math.floor(configured) : DEFAULT_MAX_CONCURRENCY;
+  }
+
+  /** Neem een renderslot; wacht in de wachtrij als de limiet bereikt is. */
+  private acquire(): Promise<void> {
+    if (this.active < this.maxConcurrency) {
+      this.active += 1;
+      return Promise.resolve();
+    }
+    return new Promise<void>((resolve) => this.waiters.push(resolve));
+  }
+
+  /** Geef een slot vrij; draag het direct over aan de eerstvolgende wachter. */
+  private release(): void {
+    const next = this.waiters.shift();
+    if (next) {
+      next(); // slot gaat rechtstreeks naar de wachter, `active` blijft gelijk
+    } else {
+      this.active -= 1;
+    }
+  }
 
   private async getBrowser(): Promise<Browser> {
     if (this.browser?.connected) return this.browser;
@@ -35,15 +84,48 @@ export class PdfGenerationService implements OnModuleDestroy {
     return this.browser;
   }
 
-  /** Render een volledige HTML-string naar een PDF-buffer. */
+  /**
+   * Render een volledige HTML-string naar een PDF-buffer.
+   *
+   * Deze publieke methode is enkel de concurrency-gate (M5): neem een renderslot,
+   * delegeer het eigenlijke page-werk aan `renderOnPage`, en geef het slot altijd
+   * weer vrij. De security-hardening zit in `renderOnPage` en draait dus automatisch
+   * bínnen de semafoor.
+   */
   async renderPdf(html: string, opts: PdfOptions = {}): Promise<Buffer> {
+    await this.acquire();
+    try {
+      return await this.renderOnPage(html, opts);
+    } finally {
+      this.release();
+    }
+  }
+
+  /**
+   * Rendert één HTML-string op een verse Chromium-page naar een PDF-buffer.
+   * Hardening (SSRF/lokale-bestandslezing/JS-injectie) staat vóór `setContent`.
+   */
+  private async renderOnPage(html: string, opts: PdfOptions): Promise<Buffer> {
     const browser = await this.getBrowser();
     const page = await browser.newPage();
     try {
-      await page.setContent(html, { waitUntil: 'networkidle0' });
+      // Hardening: geen JS-uitvoering en geen netwerk/bestand-toegang tijdens render.
+      // Neutraliseert zowel de publieke signatureImage-vector als staf-editedContent.
+      await page.setJavaScriptEnabled(false);
+      await page.setRequestInterception(true);
+      page.on('request', (req) => {
+        if (isRenderRequestAllowed(req.url(), req.isNavigationRequest())) {
+          void req.continue();
+        } else {
+          void req.abort();
+        }
+      });
+
+      // Externe requests worden toch geblokkeerd → 'load' i.p.v. 'networkidle0'.
+      await page.setContent(html, { waitUntil: 'load', timeout: RENDER_TIMEOUT_MS });
       const mm = (n?: number) => `${n ?? 20}mm`;
-      const headerHtml = this.formatHeaderFooter(opts.headerHtml);
-      const footerHtml = this.formatHeaderFooter(opts.footerHtml);
+      const headerHtml = this.formatHeaderFooter(opts.headerHtml, opts);
+      const footerHtml = this.formatHeaderFooter(opts.footerHtml, opts);
       const pdf = await page.pdf({
         format: opts.format ?? 'A4',
         landscape: opts.landscape ?? false,
@@ -51,6 +133,7 @@ export class PdfGenerationService implements OnModuleDestroy {
         displayHeaderFooter: Boolean(opts.headerHtml || opts.footerHtml),
         headerTemplate: headerHtml,
         footerTemplate: footerHtml,
+        timeout: RENDER_TIMEOUT_MS,
         margin: {
           top: mm(opts.marginTopMm),
           bottom: mm(opts.marginBottomMm),
@@ -67,19 +150,50 @@ export class PdfGenerationService implements OnModuleDestroy {
 
   /**
    * Zet onze header/footer-placeholders om naar Puppeteer's `<span class="...">`
-   * tokens en wikkel in een minimale container met klein lettertype.
+   * tokens, lost datalaag-placeholders (`{{organization.name}}`, …) op via
+   * dezelfde Handlebars-resolver als de body (B-311), en wikkelt het geheel in
+   * een minimale container met klein lettertype.
+   *
+   * Volgorde is belangrijk: de vijf Puppeteer-tokens moeten éérst naar hun
+   * `<span>`-vorm — anders zou de Handlebars-pass ze als (lege) datavelden
+   * opeten en verdwijnt bv. de paginanummering.
    */
-  private formatHeaderFooter(template: string | undefined): string {
+  private formatHeaderFooter(template: string | undefined, opts: PdfOptions = {}): string {
     if (!template) return '<span></span>';
 
-    const formatted = template
+    let formatted = template
       .replace(/\{\{pageNumber\}\}/g, '<span class="pageNumber"></span>')
       .replace(/\{\{totalPages\}\}/g, '<span class="totalPages"></span>')
       .replace(/\{\{date\}\}/g, '<span class="date"></span>')
       .replace(/\{\{title\}\}/g, '<span class="title"></span>')
       .replace(/\{\{url\}\}/g, '<span class="url"></span>');
 
-    return `<div style="font-size: 8pt; width: 100%; padding: 0 10mm; font-family: Arial, sans-serif;">${formatted}</div>`;
+    // B-311: datalaag-placeholders door dezelfde variabelenresolver als de body
+    // (gedeelde Handlebars-instance incl. helpers zoals formatDate).
+    if (opts.headerFooterContext) {
+      try {
+        formatted = handlebars.compile(formatted)(opts.headerFooterContext);
+      } catch (error) {
+        this.logger.warn(
+          `Header/footer-template compileert niet (template ${opts.templateId ?? 'onbekend'}): ${(error as Error).message}`,
+        );
+      }
+    }
+
+    // Vangnet (B-311): wat er nu nog aan {{…}} staat is onoplosbaar — strippen
+    // in plaats van letterlijk op elk gegenereerd document tonen, mét waarschuwing.
+    const leftoverRegex = /\{\{[^{}]*\}\}/g;
+    const leftovers = formatted.match(leftoverRegex);
+    if (leftovers?.length) {
+      this.logger.warn(
+        `Onopgeloste placeholder(s) ${[...new Set(leftovers)].join(', ')} verwijderd uit header/footer (template ${opts.templateId ?? 'onbekend'})`,
+      );
+      formatted = formatted.replace(leftoverRegex, '');
+    }
+
+    // B-312: CJK-font in de stack zodat een organisatie-/projectnaam met bv.
+    // Chinese tekens niet stil wegvalt (vereist fonts-noto-cjk in de render-image).
+    return `<div style="font-size: 8pt; width: 100%; padding: 0 10mm; font-family: Arial, 'Noto Sans CJK SC', sans-serif;">${formatted}</div>`;
   }
 
   async onModuleDestroy() {

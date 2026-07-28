@@ -11,9 +11,10 @@ import { PlanningIcalService } from './planning-ical.service';
 import { NotificationsModule } from '@/modules/notifications/notifications.module';
 import { StorageModule } from '@/common/services/storage/storage.module';
 import { WorkOrdersModule } from '@/modules/work-orders/work-orders.module';
+import { AvailabilityModule } from '@/modules/availability/availability.module';
 
 @Module({
-  imports: [ConfigModule, NotificationsModule, StorageModule, WorkOrdersModule],
+  imports: [ConfigModule, NotificationsModule, StorageModule, WorkOrdersModule, AvailabilityModule],
   controllers: [PlanningController, PlanningPublicController, PlanningIcalController],
   providers: [
     PlanningService,

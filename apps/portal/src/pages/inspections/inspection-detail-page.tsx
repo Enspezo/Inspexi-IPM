@@ -21,6 +21,7 @@ import { DetailPageLayout } from '@/components/layout/detail-page-layout';
 import { HistorySidebarSection } from '@/components/layout/sidebar-sections';
 import { PageHeader } from '@/components/layout/page-header';
 import { useAuth } from '@/providers/auth-provider';
+import { useTenant } from '@/providers/tenant-provider';
 import { useWindowTabSync } from '@/providers/window-tabs';
 import { useLookups } from '@/lib/lookups';
 import { getErrorMessage } from '@/lib/api-client';
@@ -32,11 +33,15 @@ import {
   useSubmitInspectionPlan,
   useDeleteInspectionPlan,
 } from './hooks/use-inspections';
+import { PhaseSelect, PhaseInfoField } from '@/components/projects/phase-select';
+import { useFeatures } from '@/providers/feature-provider';
 import { usePlanTree } from './hooks/use-asset-nodes';
 import { countByType, normalizeTree } from '@/components/asset-tree';
 import { PlanDefaultInstrumentsSection } from '@/pages/meetmiddelen/components/plan-default-instruments-section';
 import { AssetsTab } from './components/assets-tab';
 import { DocumentsTab } from './components/documents-tab';
+import { AiReviewPanel } from './components/ai-review-panel';
+import { OnlineRepairSection } from './components/online-repair-section';
 
 // Konva-zware tab apart laden: alleen wanneer de gebruiker hem opent.
 const FloorPlanTab = lazy(() =>
@@ -75,6 +80,10 @@ export default function InspectionDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { orgBranding } = useTenant();
+  const { hasFeature } = useFeatures();
+  // PRD-12 §Fase E: fase-koppeling alleen bij de PROJECT_FASEN-entitlement.
+  const showPhase = hasFeature('PROJECT_FASEN');
   const { showToast } = useToast();
   const confirm = useConfirm();
 
@@ -98,6 +107,9 @@ export default function InspectionDetailPage() {
   const [activeTab, setActiveTab] = useState<Tab>('overzicht');
   const [isEditing, setIsEditing] = useState(false);
   const [reviewNotes, setReviewNotes] = useState('');
+  // Fase-koppeling via custom control (buiten react-hook-form).
+  const [phaseId, setPhaseId] = useState<string | null>(plan?.projectPhaseId ?? null);
+  const phaseDirty = phaseId !== (plan?.projectPhaseId ?? null);
 
   const userCanWrite = !!user && user.roles.some((r) => canWriteRoles.includes(r));
   const userCanReview = !!user && user.roles.some((r) => canReviewRoles.includes(r));
@@ -122,6 +134,7 @@ export default function InspectionDetailPage() {
         notes: plan.notes || '',
         internalNotes: plan.internalNotes || '',
       });
+      setPhaseId(plan.projectPhaseId ?? null);
     }
   }, [plan, resetForm]);
 
@@ -150,12 +163,13 @@ export default function InspectionDetailPage() {
     };
     if (data.statusCode) payload.statusCode = data.statusCode;
     if (data.inspectionTypeCode) payload.inspectionTypeCode = data.inspectionTypeCode;
+    if (phaseDirty) payload.projectPhaseId = phaseId;
     try {
       await updateMutation.mutateAsync({ id: id!, data: payload });
       showToast('Inspectie bijgewerkt', 'success');
       setIsEditing(false);
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Bijwerken mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 
@@ -163,18 +177,24 @@ export default function InspectionDetailPage() {
     try {
       await submitMutation.mutateAsync(id!);
       showToast('Inspectie ingediend ter beoordeling', 'success');
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Indienen mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 
   const handleReview = async (decision: 'approve' | 'reject') => {
+    // B-315 §8: afkeuren vereist een toelichting — anders weet de inspecteur
+    // niet wat er aangepast moet worden (de backend weigert het ook met 400).
+    if (decision === 'reject' && !reviewNotes.trim()) {
+      showToast('Geef een toelichting bij het afkeuren', 'error');
+      return;
+    }
     try {
-      await reviewMutation.mutateAsync({ id: id!, decision, notes: reviewNotes || undefined });
+      await reviewMutation.mutateAsync({ id: id!, decision, notes: reviewNotes.trim() || undefined });
       showToast(decision === 'approve' ? 'Inspectie goedgekeurd' : 'Inspectie afgekeurd', 'success');
       setReviewNotes('');
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Beoordeling mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 
@@ -189,13 +209,31 @@ export default function InspectionDetailPage() {
       await deleteMutation.mutateAsync(id!);
       showToast('Inspectie verwijderd', 'success');
       navigate('/inspections');
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Verwijderen mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 
-  const awaitingReview = !!plan.submittedAt && !plan.reviewedAt;
-  const canSubmit = userCanWrite && !plan.submittedAt;
+  // Vier-ogen-toggle (PRD-13): met de org-vlag uit vervalt de submit-/review-flow
+  // en kan een schrijver het plan direct afronden. Default (vlag onbekend) = aan.
+  const reviewRequired = orgBranding?.inspectionReviewEnabled !== false;
+  const showAiPanel = hasFeature('AI_REVIEW');
+  // Online herstel (PRD-14): sectie alleen met het ONLINE_HERSTEL-entitlement.
+  const showOnlineRepair = hasFeature('ONLINE_HERSTEL');
+
+  const awaitingReview = reviewRequired && !!plan.submittedAt && !plan.reviewedAt;
+  const canSubmit = reviewRequired && userCanWrite && !plan.submittedAt;
+  const canComplete =
+    !reviewRequired && userCanWrite && plan.statusCode !== 'completed' && plan.statusCode !== 'approved';
+
+  const handleComplete = async () => {
+    try {
+      await updateMutation.mutateAsync({ id: id!, data: { statusCode: 'completed' } });
+      showToast('Inspectie afgerond', 'success');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
+    }
+  };
 
   const tabs = [
     { key: 'overzicht' as const, label: 'Overzicht' },
@@ -232,6 +270,11 @@ export default function InspectionDetailPage() {
                   Indienen
                 </Button>
               )}
+              {canComplete && (
+                <Button variant="secondary" onClick={handleComplete} isLoading={updateMutation.isPending}>
+                  Afronden
+                </Button>
+              )}
             </div>
           }
         />
@@ -247,7 +290,7 @@ export default function InspectionDetailPage() {
                   <textarea
                     value={reviewNotes}
                     onChange={(e) => setReviewNotes(e.target.value)}
-                    placeholder="Opmerkingen (optioneel)"
+                    placeholder="Opmerkingen (verplicht bij afkeuren)"
                     rows={2}
                     className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:ring-primary-500"
                   />
@@ -257,6 +300,15 @@ export default function InspectionDetailPage() {
                   </div>
                 </div>
               </Card>
+            )}
+
+            {showAiPanel && (
+              <AiReviewPanel
+                planId={id!}
+                canReview={userCanReview}
+                aiEnabled={orgBranding?.aiReviewEnabled === true}
+                onOpenAssets={() => setActiveTab('assets')}
+              />
             )}
 
             <Card
@@ -291,9 +343,12 @@ export default function InspectionDetailPage() {
                     <label className="mb-1 block text-sm font-medium text-gray-700">Interne notities</label>
                     <textarea {...register('internalNotes')} rows={2} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:ring-primary-500" />
                   </div>
+                  {showPhase && (
+                    <PhaseSelect projectId={plan.projectId} value={phaseId} onChange={setPhaseId} />
+                  )}
                   <div className="flex gap-2">
-                    <Button type="submit" disabled={!isDirty} isLoading={updateMutation.isPending}>Opslaan</Button>
-                    <Button type="button" variant="secondary" onClick={() => { resetForm(); setIsEditing(false); }}>Annuleren</Button>
+                    <Button type="submit" disabled={!isDirty && !phaseDirty} isLoading={updateMutation.isPending}>Opslaan</Button>
+                    <Button type="button" variant="secondary" onClick={() => { resetForm(); setPhaseId(plan.projectPhaseId ?? null); setIsEditing(false); }}>Annuleren</Button>
                   </div>
                 </form>
               ) : (
@@ -304,6 +359,9 @@ export default function InspectionDetailPage() {
                   <InfoField label="Inspectietype" value={<LookupBadge kind="inspection-types" code={plan.inspectionTypeCode} />} />
                   <InfoField label="Normtype" value={plan.normTypeCode} />
                   <InfoField label="Opdrachtgever" value={contactName(plan)} />
+                  {showPhase && (
+                    <PhaseInfoField phase={plan.projectPhase} projectId={plan.projectId} />
+                  )}
                   <InfoField label="Geplande datum" value={plan.plannedDate ? new Date(plan.plannedDate).toLocaleDateString('nl-NL') : null} />
                   <InfoField label="Deadline" value={plan.deadline ? new Date(plan.deadline).toLocaleDateString('nl-NL') : null} />
                   <InfoField label="Omschrijving" value={plan.description} />
@@ -311,6 +369,8 @@ export default function InspectionDetailPage() {
                 </dl>
               )}
             </Card>
+
+            {showOnlineRepair && <OnlineRepairSection plan={plan} canWrite={userCanWrite} />}
 
             <Card title="Standaard meetmiddelen">
               <PlanDefaultInstrumentsSection planId={id!} canEdit={userCanWrite} />

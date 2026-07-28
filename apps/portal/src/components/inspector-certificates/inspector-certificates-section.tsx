@@ -65,8 +65,8 @@ export function InspectorCertificatesSection({
     try {
       await deleteMutation.mutateAsync(cert.id);
       showToast('Certificaat verwijderd', 'success');
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Verwijderen mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 

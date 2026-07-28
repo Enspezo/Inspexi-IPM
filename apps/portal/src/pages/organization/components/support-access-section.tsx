@@ -41,7 +41,6 @@ export function SupportAccessSection({ orgId }: { orgId: string }) {
           data.enabled ? 'Support-toegang ingeschakeld' : 'Support-toegang ingetrokken',
           'success',
         ),
-      onError: (err) => showToast(getErrorMessage(err, 'Wijzigen mislukt'), 'error'),
     });
   }
 

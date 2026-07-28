@@ -33,7 +33,7 @@ const PROJECT_INCLUDE = {
     select: { id: true, firstName: true, lastName: true, email: true },
   },
   _count: {
-    select: { requests: true, quotes: true, planningItems: true },
+    select: { requests: { where: { isDeleted: false } }, quotes: true, planningItems: true },
   },
 };
 
@@ -110,7 +110,7 @@ export class ProjectsService {
       include: PROJECT_INCLUDE,
     });
     if (!project || project.isDeleted) throw new NotFoundException('Project niet gevonden');
-    assertOrgAccess(user, project.orgId);
+    assertOrgAccess(user, project.orgId, 'Project');
     return project;
   }
 
@@ -390,6 +390,9 @@ export class ProjectsService {
     }
 
     if (dto.userId) {
+      // Prevent enrolling a foreign-org user (whose email would leak back via the
+      // `user` include and who would then receive this org's notifications).
+      await assertSameOrg(this.prisma.user, dto.userId, user.orgId, 'Gebruiker');
       const exists = await this.prisma.projectFollower.findFirst({
         where: { projectId: id, userId: dto.userId },
       });
@@ -543,7 +546,7 @@ export class ProjectsService {
       }),
       'Aanvraag',
     );
-    assertOrgAccess(user, request.orgId);
+    assertOrgAccess(user, request.orgId, 'Aanvraag');
     if (request.projectId) throw new BadRequestException('Aanvraag is al gekoppeld aan een project');
 
     const contactName = request.contact?.companyName ||

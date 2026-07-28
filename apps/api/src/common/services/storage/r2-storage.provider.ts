@@ -8,7 +8,7 @@ import {
   HeadObjectCommand,
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
-import type { StorageProvider } from './storage.interface';
+import { StorageObjectNotFoundError, type StorageProvider } from './storage.interface';
 
 /** Optionele capability bovenop StorageProvider; door services feature-gedetecteerd. */
 export interface SignedUrlCapableStorage extends StorageProvider {
@@ -55,9 +55,22 @@ export class R2StorageProvider implements SignedUrlCapableStorage {
   }
 
   async download(key: string): Promise<Buffer> {
-    const res = await this.client.send(
-      new GetObjectCommand({ Bucket: this.bucket, Key: key }),
-    );
+    let res;
+    try {
+      res = await this.client.send(
+        new GetObjectCommand({ Bucket: this.bucket, Key: key }),
+      );
+    } catch (err) {
+      // B-154: NoSuchKey/404 van R2 → zelfde getypeerde fout als de lokale
+      // provider, zodat de centrale 404-mapping provideronafhankelijk is.
+      const name = (err as { name?: string })?.name;
+      const status = (err as { $metadata?: { httpStatusCode?: number } })?.$metadata
+        ?.httpStatusCode;
+      if (name === 'NoSuchKey' || status === 404) {
+        throw new StorageObjectNotFoundError(key);
+      }
+      throw err;
+    }
     const body = res.Body as NodeJS.ReadableStream;
     const chunks: Buffer[] = [];
     for await (const chunk of body) {

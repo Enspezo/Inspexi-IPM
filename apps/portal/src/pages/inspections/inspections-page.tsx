@@ -12,6 +12,7 @@ import { PageHeader } from '@/components/layout/page-header';
 import { TableConfigSidebar, useTableConfig, type ColumnDef } from '@/components/table-config';
 import { useLookups } from '@/lib/lookups';
 import { useAuth } from '@/providers/auth-provider';
+import { useFeatures } from '@/providers/feature-provider';
 import { useWindowTabs } from '@/providers/window-tabs';
 import { useInspectionPlans } from './hooks/use-inspections';
 import { CreateInspectionModal } from './components/create-inspection-modal';
@@ -27,10 +28,15 @@ function contactName(plan: InspectionPlan): string {
 export default function InspectionsPage() {
   const { openTab } = useWindowTabs();
   const { user } = useAuth();
+  const { hasFeature } = useFeatures();
+  // PRD-12 §Fase E: fase-kolom alleen registreren bij de PROJECT_FASEN-entitlement.
+  const hasPhaseFeature = hasFeature('PROJECT_FASEN');
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [page, setPage] = useState(1);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
+  // Fase-kolomfilter (PRD-12): opties uit de zichtbare inspectieplannen.
+  const [phaseFilterOptions, setPhaseFilterOptions] = useState<{ value: string; label: string }[]>([]);
 
   const userCanWrite = !!user && user.roles.some((r) => canWriteRoles.includes(r));
 
@@ -99,6 +105,14 @@ export default function InspectionsPage() {
       sortable: true, sortKey: 'createdAt', getFilterValue: (p) => p.createdAt,
       render: (p) => <span className="text-xs text-gray-500">{new Date(p.createdAt).toLocaleDateString('nl-NL')}</span>,
     },
+    ...(hasPhaseFeature
+      ? [{
+          key: 'phase', header: 'Fase', sidebarLabel: 'Fase', defaultVisible: false,
+          filterable: true, filterType: 'select' as const, filterOptions: phaseFilterOptions, groupable: true,
+          getFilterValue: (p: InspectionPlan) => p.projectPhase?.name ?? '',
+          render: (p: InspectionPlan) => <span className="text-gray-600">{p.projectPhase?.name ?? '—'}</span>,
+        }]
+      : []),
   ];
 
   const {
@@ -116,6 +130,14 @@ export default function InspectionsPage() {
     page, limit: 20,
     sortBy: apiSort?.sortBy, sortOrder: apiSort?.sortOrder,
   });
+
+  // Fase-filteropties uit de zichtbare inspectieplannen (distinct fasenaam).
+  useEffect(() => {
+    const names = Array.from(
+      new Set((data?.data ?? []).map((p) => p.projectPhase?.name).filter(Boolean) as string[]),
+    ).sort();
+    setPhaseFilterOptions(names.map((n) => ({ value: n, label: n })));
+  }, [data]);
 
   if (isLoading) return <div className="flex h-64 items-center justify-center"><Spinner size="lg" /></div>;
   if (error) return <ErrorBox>Fout bij het laden van inspecties: {(error as Error).message}</ErrorBox>;

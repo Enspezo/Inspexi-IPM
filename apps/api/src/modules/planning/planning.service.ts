@@ -2,6 +2,7 @@ import {
   Injectable,
   ForbiddenException,
   BadRequestException,
+  ConflictException,
   Logger,
 } from '@nestjs/common';
 import {
@@ -13,10 +14,13 @@ import {
 } from '@prisma/client';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '@/prisma';
-import { paginate, orgScope, assertFound, assertSameOrg, assertAllSameOrg, assertOrgAccess } from '@/common';
+import { paginate, orgScope, assertFound, assertSameOrg, assertAllSameOrg, assertOrgAccess, resolvePhaseLink, PROJECT_FASEN_FEATURE, PROJECT_FASEN_REQUIRED_MESSAGE } from '@/common';
+import { EntitlementsService } from '@/modules/entitlements/entitlements.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { WorkOrdersService } from '../work-orders/work-orders.service';
 import { PlanningEmailService } from './planning-email.service';
+import { AvailabilityResolutionService } from '@/modules/availability/availability-resolution.service';
+import { dateKeyOf } from '@/modules/availability/availability-resolution.helpers';
 import {
   CreatePlanningItemDto,
   UpdatePlanningItemDto,
@@ -26,6 +30,17 @@ import {
   AddQuestionDto,
   ListPlanningQueryDto,
 } from './dto';
+
+/** Eén beschikbaarheidswaarschuwing in een 409-payload (PRD-12 §12.9). */
+export interface AvailabilityWarning {
+  userId: string;
+  name: string;
+  date: string; // YYYY-MM-DD
+  reason: string;
+}
+
+/** Actie-string voor een genegeerde beschikbaarheidswaarschuwing in PlanningHistory. */
+export const AVAILABILITY_OVERRIDE_ACTION = 'AVAILABILITY_OVERRIDE';
 
 const PLANNING_INCLUDE = {
   contact: {
@@ -116,6 +131,7 @@ const PLANNING_INCLUDE = {
     orderBy: { sessionNumber: 'asc' as const },
   },
   project: { select: { id: true, projectNumber: true } },
+  projectPhase: { select: { id: true, name: true, sortOrder: true, status: true } },
 };
 
 @Injectable()
@@ -128,7 +144,87 @@ export class PlanningService {
     private workOrdersService: WorkOrdersService,
     private planningEmail: PlanningEmailService,
     private config: ConfigService,
+    private entitlements: EntitlementsService,
+    private availability: AvailabilityResolutionService,
   ) {}
+
+  // ─── Beschikbaarheids-soft-check (PRD-12 §12.9) ───────────
+
+  /**
+   * Toets de beschikbaarheid van de toe te wijzen inspecteurs op de geplande
+   * datum vóór het wegschrijven. Zonder `scheduledDate` (NOG_TE_PLANNEN) of
+   * zonder inspecteurs gebeurt er niets → lege lijst.
+   *
+   * Bij ≥1 onbeschikbare inspecteur en géén override wordt een `ConflictException`
+   * (409) met een `warnings`-payload gegooid. Met override worden de
+   * waarschuwingen teruggegeven zodat de caller een `AVAILABILITY_OVERRIDE`-
+   * history-record kan schrijven.
+   *
+   * Let op: de kalenderdag wordt bepaald via `dateKeyOf(scheduledDate)` (UTC),
+   * consistent met de hele resolutie-kern. Dit veronderstelt dat clients
+   * date-only of UTC-gealigneerde ISO-strings sturen (de portal doet dit);
+   * een tijdstip als `2026-09-08T00:30:00+02:00` zou anders op 7 september
+   * gecheckt worden.
+   */
+  async assertInspectorAvailability(
+    scheduledDate: Date | null,
+    durationHours: number | null,
+    inspectorIds: string[],
+    override: boolean | undefined,
+  ): Promise<AvailabilityWarning[]> {
+    if (!scheduledDate || inspectorIds.length === 0) return [];
+
+    const dateKey = dateKeyOf(scheduledDate);
+    const requiredMinutes =
+      durationHours && durationHours > 0 ? Math.round(durationHours * 60) : null;
+
+    const conflicts = await this.availability.checkPlanningDay(
+      inspectorIds,
+      dateKey,
+      requiredMinutes,
+    );
+    if (conflicts.length === 0) return [];
+
+    const users = await this.prisma.user.findMany({
+      where: { id: { in: conflicts.map((c) => c.userId) } },
+      select: { id: true, firstName: true, lastName: true },
+    });
+    const nameById = new Map(
+      users.map((u) => [u.id, `${u.firstName} ${u.lastName}`.trim() || 'Inspecteur']),
+    );
+    const warnings: AvailabilityWarning[] = conflicts.map((c) => ({
+      userId: c.userId,
+      name: nameById.get(c.userId) ?? 'Inspecteur',
+      date: c.date,
+      reason: c.reason,
+    }));
+
+    if (!override) {
+      throw new ConflictException({
+        success: false,
+        message: 'Een of meer inspecteurs zijn niet beschikbaar op de geplande datum',
+        warnings,
+      });
+    }
+    return warnings;
+  }
+
+  /** Schrijf een history-record wanneer beschikbaarheidswaarschuwingen genegeerd zijn. */
+  async logAvailabilityOverride(
+    planningItemId: string,
+    userId: string | null,
+    warnings: AvailabilityWarning[],
+    prefix = 'Beschikbaarheidswaarschuwing genegeerd',
+  ) {
+    if (warnings.length === 0) return;
+    const detail = warnings.map((w) => `${w.name} (${w.reason})`).join('; ');
+    await this.addHistoryEntry(
+      planningItemId,
+      userId,
+      AVAILABILITY_OVERRIDE_ACTION,
+      `${prefix}: ${detail}`,
+    );
+  }
 
   getPublicUrl(path: string): string {
     return `${this.config.get<string>('PUBLIC_URL', 'http://localhost:5173')}${path}`;
@@ -201,7 +297,7 @@ export class PlanningService {
       }),
       'Planregel',
     );
-    assertOrgAccess(user, item.orgId);
+    assertOrgAccess(user, item.orgId, 'Planregel');
     return item;
   }
 
@@ -275,10 +371,12 @@ export class PlanningService {
     quoteNumber: string;
     projectId?: string;
   }) {
-    if (!quote.locationId) {
-      this.logger.warn(`Skipping planning item for quote ${quote.id}: no location`);
-      return;
-    }
+    // B-315: een offerte zonder locatie leverde eerder stilzwijgend GÉÉN planregel op
+    // (logger.warn + return) — werk verdween onzichtbaar uit de pipeline. locationId is
+    // nullable op PlanningItem (net als bij handmatige planregels), dus we maken de
+    // planregel gewoon aan; de ontbrekende locatie wordt zichtbaar vastgelegd in de
+    // planninghistorie en kan bij het inplannen alsnog gekozen worden.
+    const missingLocation = !quote.locationId;
 
     // Fetch first line for product name
     const firstLine = await this.prisma.quoteLine.findFirst({
@@ -304,7 +402,17 @@ export class PlanningService {
       },
     });
 
-    await this.addHistoryEntry(item.id, quote.createdBy, 'AANGEMAAKT', `Planregel automatisch aangemaakt na acceptatie offerte ${quote.quoteNumber}`);
+    await this.addHistoryEntry(
+      item.id,
+      quote.createdBy,
+      'AANGEMAAKT',
+      missingLocation
+        ? `Planregel automatisch aangemaakt na acceptatie offerte ${quote.quoteNumber} — let op: de offerte heeft geen locatie; kies een locatie bij het inplannen`
+        : `Planregel automatisch aangemaakt na acceptatie offerte ${quote.quoteNumber}`,
+    );
+    if (missingLocation) {
+      this.logger.warn(`Planning item for quote ${quote.id} created without location`);
+    }
     this.logger.log(`Planning item created for quote ${quote.quoteNumber}`);
   }
 
@@ -313,17 +421,68 @@ export class PlanningService {
   async update(id: string, dto: UpdatePlanningItemDto, user: User) {
     const existing = await this.findOne(id, user);
 
+    // Projectfase-koppeling (PRD-12): alleen bij een DAADWERKELIJKE wijziging van
+    // projectPhaseId de PROJECT_FASEN-entitlement afdwingen (§Fase E).
+    if (dto.projectPhaseId !== undefined) {
+      await this.entitlements.assertFeature(
+        user.orgId, PROJECT_FASEN_FEATURE, PROJECT_FASEN_REQUIRED_MESSAGE,
+      );
+    }
+    // Valideer org + projectconsistentie en cascadeer het project van de fase naar
+    // de planregel wanneer die er nog geen heeft.
+    const phaseLink = await resolvePhaseLink(
+      this.prisma.projectPhase, dto.projectPhaseId, user.orgId, existing.projectId,
+    );
+
+    // Verify re-pointed foreign keys belong to the user's organization (mirrors
+    // create()); without this a caller could inject another org's UUIDs and read
+    // that org's address/contact PII back through PLANNING_INCLUDE.
+    if (dto.locationId !== undefined)
+      await assertSameOrg(this.prisma.location, dto.locationId, user.orgId, 'Locatie');
+    if (dto.contactPersonId !== undefined)
+      await assertSameOrg(this.prisma.contactPerson, dto.contactPersonId, user.orgId, 'Contactpersoon');
+    if (dto.productId !== undefined)
+      await assertSameOrg(this.prisma.product, dto.productId, user.orgId, 'Product');
+
     const data: any = {};
     if (dto.locationId !== undefined) data.locationId = dto.locationId;
     if (dto.contactPersonId !== undefined) data.contactPersonId = dto.contactPersonId ?? null;
     if (dto.productId !== undefined) data.productId = dto.productId ?? null;
     if (dto.productName !== undefined) data.productName = dto.productName;
+    if (phaseLink !== undefined) {
+      data.projectPhaseId = phaseLink.phaseId;
+      if (phaseLink.projectId && existing.projectId == null) data.projectId = phaseLink.projectId;
+    }
     if (dto.scheduledDate !== undefined) {
       data.scheduledDate = dto.scheduledDate ? new Date(dto.scheduledDate) : null;
     }
     if (dto.durationHours !== undefined) data.durationHours = dto.durationHours ?? null;
     if (dto.internalNotes !== undefined) data.internalNotes = dto.internalNotes ?? null;
     if (dto.labels !== undefined) data.labels = dto.labels;
+
+    // PRD-12 §12.9: verzetten naar een nieuwe datum óf een duur-wijziging op een
+    // geplande regel met toegewezen inspecteurs → beschikbaarheid opnieuw
+    // beoordelen (409 met warnings, tenzij override). Partial-PATCH-semantiek:
+    // een expliciete `durationHours: null` telt als "geen duur", en valt dus
+    // níét terug op de bestaande duur.
+    let overrideWarnings: AvailabilityWarning[] = [];
+    const effectiveDate =
+      dto.scheduledDate !== undefined ? data.scheduledDate : existing.scheduledDate;
+    const effectiveDuration =
+      dto.durationHours !== undefined ? (dto.durationHours ?? null) : existing.durationHours;
+    const durationChanged =
+      dto.durationHours !== undefined && (dto.durationHours ?? null) !== existing.durationHours;
+    if (effectiveDate instanceof Date && (dto.scheduledDate !== undefined || durationChanged)) {
+      const inspectorIds = (existing.inspectors as { userId: string | null }[])
+        .map((i) => i.userId)
+        .filter((uid): uid is string => !!uid);
+      overrideWarnings = await this.assertInspectorAvailability(
+        effectiveDate,
+        effectiveDuration,
+        inspectorIds,
+        dto.overrideAvailabilityWarnings,
+      );
+    }
 
     const updated = await this.prisma.planningItem.update({
       where: { id },
@@ -368,6 +527,12 @@ export class PlanningService {
     }
 
     await this.addHistoryEntry(id, user.id, 'BIJGEWERKT', 'Planregel bijgewerkt');
+    await this.logAvailabilityOverride(
+      id,
+      user.id,
+      overrideWarnings,
+      'Beschikbaarheidswaarschuwing genegeerd bij verzetten',
+    );
     return updated;
   }
 
@@ -378,6 +543,14 @@ export class PlanningService {
 
     // Inspectors must belong to the same organization as the planning item
     await assertAllSameOrg(this.prisma.user, dto.inspectorIds, item.orgId, 'inspecteurs');
+
+    // PRD-12 §12.9: beschikbaarheids-soft-check (409 met warnings, tenzij override).
+    const overrideWarnings = await this.assertInspectorAvailability(
+      item.scheduledDate,
+      item.durationHours,
+      dto.inspectorIds,
+      dto.overrideAvailabilityWarnings,
+    );
 
     // Remove pending (non-responded) inspectors
     await this.prisma.planningInspector.deleteMany({
@@ -417,6 +590,8 @@ export class PlanningService {
       'INSPECTEURS_TOEGEWEZEN',
       `${dto.inspectorIds.length} inspecteur(s) toegewezen`,
     );
+
+    await this.logAvailabilityOverride(id, user.id, overrideWarnings);
 
     // Notify inspectors (excluding the actor)
     const toNotify = dto.inspectorIds.filter((iid) => iid !== user.id);
@@ -740,7 +915,7 @@ export class PlanningService {
       }),
       'Planregel',
     );
-    assertOrgAccess(user, item.orgId);
+    assertOrgAccess(user, item.orgId, 'Planregel');
     await this.doSendConfirmationEmails(item);
     await this.addHistoryEntry(id, user.id, 'BEVESTIGING_VERSTUURD', 'Bevestigings-e-mail handmatig verstuurd');
   }

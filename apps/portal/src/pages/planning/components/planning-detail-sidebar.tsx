@@ -42,9 +42,9 @@ export function PlanningDetailSidebar({
                     const newStatus = task.status === TaskStatus.VOLTOOID ? TaskStatus.TE_DOEN : TaskStatus.VOLTOOID;
                     try {
                       await updateTaskMutation.mutateAsync({ id: task.id, data: { status: newStatus } });
-                    } catch (err) {
-                      showToast(getErrorMessage(err, 'Status wijzigen mislukt'), 'error');
-                    }
+                    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
+    }
                   }}
                   className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors ${
                     task.status === TaskStatus.VOLTOOID

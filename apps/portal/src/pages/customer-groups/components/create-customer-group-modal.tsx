@@ -38,11 +38,8 @@ export function CreateCustomerGroupModal({ isOpen, onClose }: Props) {
       showToast('Klantgroep aangemaakt!', 'success');
       reset();
       onClose();
-    } catch (err) {
-      showToast(
-        err instanceof Error ? err.message : 'Aanmaken mislukt',
-        'error',
-      );
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 

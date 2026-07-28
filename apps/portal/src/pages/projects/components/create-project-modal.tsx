@@ -93,8 +93,8 @@ export function CreateProjectModal({
       showToast('Project aangemaakt', 'success');
       reset();
       onCreated(result);
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Project aanmaken mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 

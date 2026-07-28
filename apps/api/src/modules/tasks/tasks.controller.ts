@@ -7,7 +7,6 @@ import {
   Param,
   Body,
   Query,
-  ParseUUIDPipe,
 } from '@nestjs/common';
 import { RequiresFeature } from '@/common/decorators/requires-feature.decorator';
 import {
@@ -21,6 +20,7 @@ import { CRM_ROLES } from '@/common/auth/roles';
 import { TasksService } from './tasks.service';
 import { CreateTaskDto, UpdateTaskDto, ListTasksQueryDto } from './dto';
 import { Roles, CurrentUser } from '@/common/decorators';
+import { ParseUuidPipe } from '@/common';
 
 @ApiTags('Tasks')
 @ApiBearerAuth()
@@ -47,7 +47,7 @@ export class TasksController {
   @ApiResponse({ status: 200, description: 'Taak details' })
   @ApiResponse({ status: 404, description: 'Niet gevonden' })
   async findOne(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @CurrentUser() user: User,
   ) {
     const task = await this.tasksService.findOne(id, user);
@@ -68,7 +68,7 @@ export class TasksController {
   @ApiOperation({ summary: 'Taak bijwerken' })
   @ApiResponse({ status: 200, description: 'Taak bijgewerkt' })
   async update(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @Body() dto: UpdateTaskDto,
     @CurrentUser() user: User,
   ) {
@@ -81,7 +81,7 @@ export class TasksController {
   @ApiOperation({ summary: 'Taak verwijderen' })
   @ApiResponse({ status: 200, description: 'Taak verwijderd' })
   async remove(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @CurrentUser() user: User,
   ) {
     await this.tasksService.remove(id, user);

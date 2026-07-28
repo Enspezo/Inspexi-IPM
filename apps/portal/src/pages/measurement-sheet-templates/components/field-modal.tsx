@@ -8,7 +8,7 @@ import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { Modal, Input, Select, Checkbox, Button, useToast } from '@/components/ui';
+import { Modal, Input, QueryErrorNotice, Select, Checkbox, Button, useToast } from '@/components/ui';
 import { getErrorMessage } from '@/lib/api-client';
 import {
   MeasurementSheetFieldType,
@@ -90,6 +90,27 @@ const schema = z.object({
   // Herhalende sectie
   copyValueOnNewRow: z.boolean().optional(),
   allowBulkEdit: z.boolean().optional(),
+}).superRefine((d, ctx) => {
+  // B-506: min > max maakt het veld oninvulbaar in de PWA — weiger de
+  // combinatie hier al in de builder (de API weigert hem ook).
+  const min = num(d.minValue);
+  const max = num(d.maxValue);
+  if (min !== undefined && max !== undefined && max < min) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['maxValue'],
+      message: 'Maximum moet groter of gelijk zijn aan het minimum',
+    });
+  }
+  const pfMin = num(d.passFailMinValue);
+  const pfMax = num(d.passFailMaxValue);
+  if (pfMin !== undefined && pfMax !== undefined && pfMax < pfMin) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['passFailMaxValue'],
+      message: 'Maximum moet groter of gelijk zijn aan het minimum',
+    });
+  }
 });
 type FormData = z.infer<typeof schema>;
 
@@ -121,7 +142,11 @@ export function FieldModal({ isOpen, onClose, templateId, section, field }: Prop
   const isEdit = !!field;
 
   // Finding-templates voor de auto-constatering Select (PAGINATED → .data).
-  const { data: findingTemplatesPage } = useFindingTemplates({ limit: 200 });
+  const {
+    data: findingTemplatesPage,
+    error: findingTemplatesError,
+    refetch: refetchFindingTemplates,
+  } = useFindingTemplates({ limit: 200 });
   const findingTemplateOptions = (findingTemplatesPage?.data ?? []).map((ft) => ({
     value: ft.id,
     label: ft.code ? `${ft.code} — ${ft.shortDescription}` : ft.shortDescription,
@@ -285,8 +310,8 @@ export function FieldModal({ isOpen, onClose, templateId, section, field }: Prop
         showToast('Veld toegevoegd', 'success');
       }
       onClose();
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Opslaan mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 
@@ -344,7 +369,12 @@ export function FieldModal({ isOpen, onClose, templateId, section, field }: Prop
               <Input label="Eenheid" placeholder="bijv. A, V" {...register('unit')} />
               <Input label="Decimalen" type="number" min={0} {...register('decimals')} />
               <Input label="Min" type="number" {...register('minValue')} />
-              <Input label="Max" type="number" {...register('maxValue')} />
+              <Input
+                label="Max"
+                type="number"
+                error={errors.maxValue?.message}
+                {...register('maxValue')}
+              />
             </div>
           </fieldset>
         )}
@@ -471,7 +501,12 @@ export function FieldModal({ isOpen, onClose, templateId, section, field }: Prop
                 {isRangeOp ? (
                   <div className="grid grid-cols-2 gap-4">
                     <Input label="Min (pass)" type="number" {...register('passFailMinValue')} />
-                    <Input label="Max (pass)" type="number" {...register('passFailMaxValue')} />
+                    <Input
+                      label="Max (pass)"
+                      type="number"
+                      error={errors.passFailMaxValue?.message}
+                      {...register('passFailMaxValue')}
+                    />
                   </div>
                 ) : isInOp ? (
                   <div>
@@ -534,12 +569,19 @@ export function FieldModal({ isOpen, onClose, templateId, section, field }: Prop
           <legend className="px-1 text-sm font-medium text-gray-700">Auto-constatering</legend>
           <Checkbox label="Automatisch constatering aanmaken bij fail" {...register('autoFindingEnabled')} />
           {autoFindingEnabled && (
-            <Select
-              label="Constatering-sjabloon"
-              placeholder="Kies een sjabloon"
-              options={findingTemplateOptions}
-              {...register('autoFindingTemplateId')}
-            />
+            <>
+              <Select
+                label="Constatering-sjabloon"
+                placeholder="Kies een sjabloon"
+                options={findingTemplateOptions}
+                {...register('autoFindingTemplateId')}
+              />
+              <QueryErrorNotice
+                error={findingTemplatesError}
+                label="Constatering-sjablonen"
+                onRetry={refetchFindingTemplates}
+              />
+            </>
           )}
         </fieldset>
 

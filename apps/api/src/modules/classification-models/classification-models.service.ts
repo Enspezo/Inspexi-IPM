@@ -350,6 +350,7 @@ export class ClassificationModelsService {
         description: dto.description,
         color: dto.color,
         sortOrder: dto.sortOrder ?? (maxSort._max.sortOrder ?? 0) + 1,
+        isCritical: dto.isCritical ?? false,
       },
     });
   }
@@ -370,6 +371,7 @@ export class ClassificationModelsService {
         description: dto.description,
         color: dto.color,
         sortOrder: dto.sortOrder,
+        isCritical: dto.isCritical,
       },
     });
   }

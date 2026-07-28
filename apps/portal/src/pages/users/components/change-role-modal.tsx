@@ -75,11 +75,8 @@ export function ChangeRoleModal({
       });
       showToast('Rollen succesvol gewijzigd', 'success');
       onClose();
-    } catch (err) {
-      showToast(
-        err instanceof Error ? err.message : 'Rollen wijzigen mislukt',
-        'error',
-      );
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 

@@ -8,7 +8,7 @@ import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { User, Role, NotificationType, Prisma } from '@prisma/client';
 import { PrismaService } from '@/prisma';
-import { paginate, assertFound } from '@/common';
+import { paginate, assertFound, requireOrg } from '@/common';
 import { EmailService } from '@/common/services/email.service';
 import {
   ListNotificationsQueryDto,
@@ -195,16 +195,15 @@ export class NotificationsService {
   }
 
   async markRead(id: string, user: User) {
-    const notification = assertFound(
-      await this.prisma.notification.findUnique({
-        where: { id },
+    // WP-C1 (B-105): eigenaarschap in de query — andermans notificatie-id geeft
+    // dezelfde 404 als een niet-bestaande (geen existence-oracle).
+    assertFound(
+      await this.prisma.notification.findFirst({
+        where: { id, userId: user.id },
+        select: { id: true },
       }),
       'Notificatie',
     );
-
-    if (notification.userId !== user.id) {
-      throw new ForbiddenException();
-    }
 
     return this.prisma.notification.update({
       where: { id },
@@ -265,13 +264,12 @@ export class NotificationsService {
   }
 
   async saveGroupPrefs(user: User, dto: SaveGroupPrefsDto) {
-    const orgId = user.orgId;
-    if (!orgId && !user.roles.includes(Role.SUPERUSER)) {
-      throw new ForbiddenException('Geen organisatie gekoppeld');
-    }
+    // WP-B3 (B-503): effectieve org (SUPERUSER op org-subdomein → tenant-org);
+    // zonder org een nette NL-400 i.p.v. een Prisma-fout (500).
+    const orgId = requireOrg(user);
 
     for (const item of dto.prefs) {
-      const targetOrgId = orgId!;
+      const targetOrgId = orgId;
       await this.prisma.notificationGroupPref.upsert({
         where: {
           orgId_role_notificationType: {

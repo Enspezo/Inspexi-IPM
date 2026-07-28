@@ -1,6 +1,5 @@
 import {
   Injectable,
-  ForbiddenException,
   Logger,
 } from '@nestjs/common';
 import { User, Role, Prisma, TaskEntityType, TaskType, TaskStatus, LogType, NotificationType } from '@prisma/client';
@@ -52,7 +51,7 @@ export class TasksService {
 
     if (contactIds.length > 0) {
       const contacts = await this.prisma.contact.findMany({
-        where: { id: { in: contactIds } },
+        where: { id: { in: contactIds }, isDeleted: false },
         select: { id: true, type: true, companyName: true, firstName: true, lastName: true },
       });
       for (const c of contacts) {
@@ -63,7 +62,7 @@ export class TasksService {
 
     if (requestIds.length > 0) {
       const requests = await this.prisma.request.findMany({
-        where: { id: { in: requestIds } },
+        where: { id: { in: requestIds }, isDeleted: false },
         select: { id: true, title: true },
       });
       for (const r of requests) {
@@ -101,7 +100,7 @@ export class TasksService {
 
     if (projectIds.length > 0) {
       const projects = await this.prisma.project.findMany({
-        where: { id: { in: projectIds } },
+        where: { id: { in: projectIds }, isDeleted: false },
         select: { id: true, title: true, projectNumber: true },
       });
       for (const p of projects) {
@@ -115,7 +114,7 @@ export class TasksService {
 
     if (userIds.length > 0) {
       const users = await this.prisma.user.findMany({
-        where: { id: { in: userIds } },
+        where: { id: { in: userIds }, isDeleted: false },
         select: { id: true, firstName: true, lastName: true },
       });
       for (const u of users) {
@@ -179,9 +178,11 @@ export class TasksService {
   }
 
   async findOne(id: string, user: User) {
+    // Org-scoped lookup: een vreemde-org-id is niet te onderscheiden van een
+    // niet-bestaand id (zelfde 404) — geen existence-oracle (B-105).
     const task = assertFound(
-      await this.prisma.task.findUnique({
-        where: { id },
+      await this.prisma.task.findFirst({
+        where: { id, ...orgScope(user) },
         include: {
           assignee: { select: userSelect },
           createdBy: { select: userSelect },
@@ -189,10 +190,6 @@ export class TasksService {
       }),
       'Taak',
     );
-
-    if (!user.roles.includes(Role.SUPERUSER) && task.orgId !== user.orgId) {
-      throw new ForbiddenException('Geen toegang tot deze taak');
-    }
 
     // Enrich with entity name
     const nameMap = await this.enrichWithEntityNames([task]);
@@ -276,13 +273,9 @@ export class TasksService {
 
   async update(id: string, dto: UpdateTaskDto, user: User) {
     const existing = assertFound(
-      await this.prisma.task.findUnique({ where: { id } }),
+      await this.prisma.task.findFirst({ where: { id, ...orgScope(user) } }),
       'Taak',
     );
-
-    if (!user.roles.includes(Role.SUPERUSER) && existing.orgId !== user.orgId) {
-      throw new ForbiddenException('Geen toegang tot deze taak');
-    }
 
     const oldStatus = existing.status;
     const oldAssigneeId = existing.assigneeId;
@@ -427,13 +420,9 @@ export class TasksService {
 
   async remove(id: string, user: User) {
     const existing = assertFound(
-      await this.prisma.task.findUnique({ where: { id } }),
+      await this.prisma.task.findFirst({ where: { id, ...orgScope(user) } }),
       'Taak',
     );
-
-    if (!user.roles.includes(Role.SUPERUSER) && existing.orgId !== user.orgId) {
-      throw new ForbiddenException('Geen toegang tot deze taak');
-    }
 
     await this.prisma.task.delete({
       where: { id: existing.id },

@@ -10,8 +10,10 @@ import {
   useToast,
 } from '@/components/ui';
 import type { LightboxImage } from '@/components/ui/image-lightbox';
+import { useNavigate } from 'react-router-dom';
 import { useFinding, useDeleteResolution } from '../hooks/use-findings';
 import { ResolveFindingModal } from './resolve-finding-modal';
+import { useStartRepairSession } from '@/pages/herstel/hooks/use-repair';
 import { getAccessToken, getErrorMessage } from '@/lib/api-client';
 import { formatDate } from '@/lib/format';
 import { personName } from '@/lib/labels';
@@ -58,16 +60,42 @@ function useAuthBlobUrls(urls: string[]): (string | null)[] {
 interface FindingDetailModalProps {
   findingId: string;
   onClose: () => void;
+  /** Nodig om vanuit de modal een herstelsessie te starten (online herstel, PRD-14). */
+  inspectionId?: string;
+  /** true → de oude "Als opgelost markeren"-flow wordt vervangen door online herstel (§14.9.6). */
+  onlineRepair?: boolean;
+  /** B-409 (A4): navigeer naar de Documenten-tab (sluit eerst de modal). */
+  onShowDocuments?: () => void;
 }
 
-export function FindingDetailModal({ findingId, onClose }: FindingDetailModalProps) {
+export function FindingDetailModal({
+  findingId,
+  onClose,
+  inspectionId,
+  onlineRepair = false,
+  onShowDocuments,
+}: FindingDetailModalProps) {
   const { data: finding, isLoading, error } = useFinding(findingId);
   const [showResolve, setShowResolve] = useState(false);
   const [lightbox, setLightbox] = useState<{ images: LightboxImage[]; index: number } | null>(null);
+  const navigate = useNavigate();
+  const { showToast } = useToast();
+  const startRepair = useStartRepairSession();
 
   const hasPending = !!finding?.resolutions.some((r) => r.statusCode === PENDING);
   const canResolve = !!finding && finding.statusCode !== 'resolved' && !hasPending;
+  const canOnlineRepair = onlineRepair && !!inspectionId && !!finding && finding.statusCode !== 'resolved';
   const recommendation = finding?.recommendationCustom || finding?.recommendation;
+
+  const handleStartRepair = async () => {
+    if (!inspectionId) return;
+    try {
+      await startRepair.mutateAsync(inspectionId);
+      navigate('/herstel/overzicht');
+    } catch (err) {
+      showToast(getErrorMessage(err, 'Kon de herstelsessie niet starten'), 'error');
+    }
+  };
 
   return (
     <Modal isOpen title="Constatering" onClose={onClose} className="max-w-2xl">
@@ -104,11 +132,13 @@ export function FindingDetailModal({ findingId, onClose }: FindingDetailModalPro
             )}
           </div>
 
+          {/* B-401: server levert `assetNode` ({id, name, description}); `asset` en
+              `locationDescription`-op-de-node bestaan niet meer. Defensief lezen. */}
           <div className="rounded-lg bg-gray-50 p-3 text-sm text-gray-700">
-            <p className="font-medium text-gray-900">{finding.asset.name}</p>
-            {(finding.locationDescription || finding.asset.locationDescription) && (
+            <p className="font-medium text-gray-900">{finding.assetNode?.name ?? '—'}</p>
+            {(finding.locationDescription ?? finding.assetNode?.description) && (
               <p className="text-xs text-gray-500">
-                {finding.locationDescription || finding.asset.locationDescription}
+                {finding.locationDescription ?? finding.assetNode?.description}
               </p>
             )}
           </div>
@@ -129,6 +159,7 @@ export function FindingDetailModal({ findingId, onClose }: FindingDetailModalPro
                   resolution={resolution}
                   findingId={finding.id}
                   onOpenLightbox={(images, index) => setLightbox({ images, index })}
+                  onShowDocuments={onShowDocuments}
                 />
               ))}
             </div>
@@ -138,7 +169,13 @@ export function FindingDetailModal({ findingId, onClose }: FindingDetailModalPro
             <Button variant="secondary" onClick={onClose}>
               Sluiten
             </Button>
-            {canResolve ? (
+            {onlineRepair ? (
+              canOnlineRepair ? (
+                <Button onClick={handleStartRepair} isLoading={startRepair.isPending}>
+                  Online herstel
+                </Button>
+              ) : null
+            ) : canResolve ? (
               <Button onClick={() => setShowResolve(true)}>Als opgelost markeren</Button>
             ) : hasPending ? (
               <span className="text-sm text-gray-500">Wacht op verificatie door de inspecteur</span>
@@ -171,10 +208,12 @@ function ResolutionCard({
   resolution,
   findingId,
   onOpenLightbox,
+  onShowDocuments,
 }: {
   resolution: FindingResolutionDetail;
   findingId: string;
   onOpenLightbox: (images: LightboxImage[], index: number) => void;
+  onShowDocuments?: () => void;
 }) {
   const confirm = useConfirm();
   const { showToast } = useToast();
@@ -241,6 +280,28 @@ function ResolutionCard({
             );
           })}
         </div>
+      )}
+
+      {/* B-409 (beslispunt A4): de verklaring is leidend — toon dát er een
+          (ondertekende) herstelverklaring bestaat, met verwijzing naar de
+          Documenten-tab waar de hersteller met naam benoemd wordt. */}
+      {resolution.repairStatement && (
+        <p className="mt-2 rounded bg-gray-50 px-2 py-1 text-xs text-gray-600">
+          {resolution.repairStatement.signedAt
+            ? `Voor dit herstel is op ${formatDate(resolution.repairStatement.signedAt)} een ondertekende herstelverklaring afgegeven.`
+            : 'Voor dit herstel is een herstelverklaring opgesteld.'}{' '}
+          {onShowDocuments ? (
+            <button
+              type="button"
+              onClick={onShowDocuments}
+              className="font-medium text-primary-700 hover:underline"
+            >
+              Bekijk de verklaring op de Documenten-tab
+            </button>
+          ) : (
+            <span>U vindt de verklaring op de Documenten-tab.</span>
+          )}
+        </p>
       )}
 
       {resolution.verificationNotes && (

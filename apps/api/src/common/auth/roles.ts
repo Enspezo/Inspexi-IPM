@@ -38,6 +38,18 @@ export const CRM_ROLES = [
   Role.WERKVOORBEREIDER,
 ] as const;
 
+/**
+ * Controleurs voor het vier-ogen-principe op inspectieplannen (review/goedkeuren)
+ * en de AI-voorcontrole (PRD-13). Geen subset van de hiërarchie hierboven:
+ * WERKVOORBEREIDER wel, BACKOFFICE niet.
+ */
+export const REVIEW_ROLES = [
+  Role.SUPERUSER,
+  Role.ORG_ADMIN,
+  Role.MANAGER,
+  Role.WERKVOORBEREIDER,
+] as const;
+
 /** Iedereen met een account binnen een organisatie (incl. superuser). */
 export const ALL_STAFF = [
   Role.SUPERUSER,

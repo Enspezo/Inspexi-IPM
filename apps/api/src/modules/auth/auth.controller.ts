@@ -9,6 +9,7 @@ import {
   Res,
   HttpCode,
   HttpStatus,
+  UnauthorizedException,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -80,6 +81,7 @@ export class AuthController {
   }
 
   @Public()
+  @Throttle({ default: { limit: 30, ttl: 60000 } })
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Vernieuw access token via httpOnly cookie' })
@@ -91,7 +93,11 @@ export class AuthController {
   ) {
     const refreshToken = req.cookies?.['refresh_token'];
     if (!refreshToken) {
-      return { success: false, message: 'Geen refresh token' };
+      // B-153: een ontbrekende cookie is een niet-geauthenticeerd verzoek en
+      // hoort — net als de andere faalpaden in AuthService.refresh() — een
+      // echte 401 te geven, niet een 200 met `success:false` (clients die op
+      // de HTTP-status sturen zagen anders een "geslaagde" refresh).
+      throw new UnauthorizedException('Geen refresh token');
     }
 
     const ip = req.ip || req.socket?.remoteAddress;

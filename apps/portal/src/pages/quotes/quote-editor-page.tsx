@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -41,6 +41,10 @@ interface EditorLine {
   unitPrice: number;
   vatRate: number;
   discountPct: number;
+  /** B-309: prijs handmatig aangepast → staffel-herberekening blijft er vanaf. */
+  priceOverridden: boolean;
+  /** Herkomst van de prijs ("staffel 10–49: € 10,00"), alleen bij prijstabel-match. */
+  priceSource: string | null;
 }
 
 
@@ -52,6 +56,43 @@ let lineKeyCounter = 0;
 function nextLineKey(): string {
   lineKeyCounter += 1;
   return `line-${lineKeyCounter}`;
+}
+
+/** Leesbaar herkomst-label voor een resolve-price-resultaat (B-309). */
+function priceSourceLabel(resolved: ResolvedPrice): string | null {
+  if (resolved.priceType === 'TIERED' && resolved.tier) {
+    const range =
+      resolved.tier.toQty != null
+        ? `${resolved.tier.fromQty}–${resolved.tier.toQty}`
+        : `${resolved.tier.fromQty}+`;
+    return `staffel ${range}: ${formatCurrency(resolved.unitPrice)}`;
+  }
+  if (resolved.priceType === 'FIXED') return `vaste prijs: ${formatCurrency(resolved.unitPrice)}`;
+  return null;
+}
+
+// Zelfde grenzen als de backend-DTO (B-302/B-303) — meldingen in het Nederlands.
+const MAX_LINE_VALUE = 9_999_999.99;
+
+type LineField = 'description' | 'quantity' | 'unitPrice' | 'discountPct' | 'vatRate';
+type LineFieldErrors = Partial<Record<LineField, string>>;
+
+/** NL-veldvalidatie per offerteregel; vervangt de native (Engelse) browserbubbels. */
+function validateLines(lines: EditorLine[]): Record<string, LineFieldErrors> {
+  const errors: Record<string, LineFieldErrors> = {};
+  for (const line of lines) {
+    const e: LineFieldErrors = {};
+    if (line.quantity < 0) e.quantity = 'Aantal mag niet negatief zijn';
+    else if (line.quantity > MAX_LINE_VALUE) e.quantity = 'Aantal mag maximaal 9.999.999,99 zijn';
+    if (line.unitPrice < 0) e.unitPrice = 'Eenheidsprijs mag niet negatief zijn';
+    else if (line.unitPrice > MAX_LINE_VALUE) e.unitPrice = 'Eenheidsprijs mag maximaal € 9.999.999,99 zijn';
+    if (line.discountPct < 0) e.discountPct = 'Korting mag niet negatief zijn';
+    else if (line.discountPct > 100) e.discountPct = 'Korting mag maximaal 100% zijn';
+    if (line.vatRate < 0) e.vatRate = 'Btw-tarief mag niet negatief zijn';
+    else if (line.vatRate > 100) e.vatRate = 'Btw-tarief mag maximaal 100% zijn';
+    if (Object.keys(e).length > 0) errors[line.key] = e;
+  }
+  return errors;
 }
 
 export default function QuoteEditorPage() {
@@ -80,8 +121,18 @@ export default function QuoteEditorPage() {
   const { data: locationsData } = useContactLocations(selectedContactId);
 
   const [lines, setLines] = useState<EditorLine[]>([]);
+  const [lineErrors, setLineErrors] = useState<Record<string, LineFieldErrors>>({});
   const [pendingProductId, setPendingProductId] = useState('');
   const [contentBlocks, setContentBlocks] = useState<object | null>(null);
+  // Debounce-timers per regel voor de staffel-herberekening bij aantalwijziging (B-309).
+  const priceTimersRef = useRef<Record<string, number>>({});
+
+  useEffect(() => {
+    const timers = priceTimersRef.current;
+    return () => {
+      Object.values(timers).forEach((t) => window.clearTimeout(t));
+    };
+  }, []);
 
   const {
     register,
@@ -135,6 +186,8 @@ export default function QuoteEditorPage() {
             unitPrice: l.unitPrice,
             vatRate: l.vatRate,
             discountPct: l.discountPct,
+            priceOverridden: false,
+            priceSource: null,
           })),
         );
       }
@@ -180,6 +233,18 @@ export default function QuoteEditorPage() {
     })),
   ];
 
+  /** Prijs opvragen bij de prijstabel-resolver, mét expliciet aantal (B-309). */
+  const fetchResolvedPrice = useCallback(
+    async (productId: string, contactId: string, quantity: number): Promise<ResolvedPrice> => {
+      const qs = new URLSearchParams();
+      qs.set('productId', productId);
+      qs.set('contactId', contactId);
+      qs.set('quantity', String(quantity));
+      return apiClient.get<ResolvedPrice>(`/quotes/resolve-price?${qs.toString()}`);
+    },
+    [],
+  );
+
   const handleAddProduct = useCallback(async () => {
     if (!pendingProductId || !selectedContactId) {
       if (!selectedContactId) {
@@ -189,10 +254,7 @@ export default function QuoteEditorPage() {
     }
 
     try {
-      const qs = new URLSearchParams();
-      qs.set('productId', pendingProductId);
-      qs.set('contactId', selectedContactId);
-      const resolved = await apiClient.get<ResolvedPrice>(`/quotes/resolve-price?${qs.toString()}`);
+      const resolved = await fetchResolvedPrice(pendingProductId, selectedContactId, 1);
 
       const product = products.find((p) => p.id === pendingProductId);
       setLines((prev) => [
@@ -206,6 +268,8 @@ export default function QuoteEditorPage() {
           unitPrice: resolved.unitPrice,
           vatRate: resolved.vatRate,
           discountPct: 0,
+          priceOverridden: false,
+          priceSource: priceSourceLabel(resolved),
         },
       ]);
       setPendingProductId('');
@@ -224,13 +288,15 @@ export default function QuoteEditorPage() {
             unitPrice: 0,
             vatRate: product.defaultVat,
             discountPct: 0,
+            priceOverridden: false,
+            priceSource: null,
           },
         ]);
       }
       setPendingProductId('');
       showToast('Prijs kon niet worden opgehaald, vul handmatig in', 'error');
     }
-  }, [pendingProductId, selectedContactId, products, showToast]);
+  }, [pendingProductId, selectedContactId, products, showToast, fetchResolvedPrice]);
 
   const handleAddFreeLine = () => {
     setLines((prev) => [
@@ -244,20 +310,81 @@ export default function QuoteEditorPage() {
         unitPrice: 0,
         vatRate: 21,
         discountPct: 0,
+        priceOverridden: false,
+        priceSource: null,
       },
     ]);
   };
 
   const handleRemoveLine = (key: string) => {
+    if (priceTimersRef.current[key]) {
+      window.clearTimeout(priceTimersRef.current[key]);
+      delete priceTimersRef.current[key];
+    }
+    setLineErrors((prev) => {
+      if (!prev[key]) return prev;
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
     setLines((prev) => prev.filter((l) => l.key !== key));
   };
 
+  /**
+   * Debounced staffel-herberekening (B-309): bij een aantalwijziging op een
+   * productregel zonder handmatige prijsoverride wordt de eenheidsprijs opnieuw
+   * geresolved (juiste tier). Handmatig gewijzigde prijzen worden nooit teruggezet.
+   */
+  const schedulePriceRefresh = useCallback(
+    (key: string, productId: string, quantity: number) => {
+      if (!selectedContactId) return;
+      if (priceTimersRef.current[key]) window.clearTimeout(priceTimersRef.current[key]);
+      priceTimersRef.current[key] = window.setTimeout(async () => {
+        delete priceTimersRef.current[key];
+        try {
+          const resolved = await fetchResolvedPrice(productId, selectedContactId, quantity);
+          setLines((prev) =>
+            prev.map((l) =>
+              l.key === key && !l.priceOverridden
+                ? { ...l, unitPrice: resolved.unitPrice, priceSource: priceSourceLabel(resolved) }
+                : l,
+            ),
+          );
+        } catch {
+          /* prijs blijft staan; geen harde fout bij een mislukte herberekening */
+        }
+      }, 400);
+    },
+    [selectedContactId, fetchResolvedPrice],
+  );
+
   const handleLineChange = (key: string, field: keyof EditorLine, value: string | number) => {
+    const line = lines.find((l) => l.key === key);
     setLines((prev) =>
-      prev.map((l) =>
-        l.key === key ? { ...l, [field]: value } : l,
-      ),
+      prev.map((l) => {
+        if (l.key !== key) return l;
+        // Handmatige prijswijziging → override-vlag: de staffel-herberekening
+        // mag deze prijs niet meer overschrijven (B-309).
+        if (field === 'unitPrice') {
+          return { ...l, unitPrice: value as number, priceOverridden: true, priceSource: null };
+        }
+        return { ...l, [field]: value };
+      }),
     );
+    // Veldfout wissen zodra de gebruiker het veld aanpast.
+    setLineErrors((prev) => {
+      const fieldErrors = prev[key];
+      if (!fieldErrors || !(field in fieldErrors)) return prev;
+      const nextFieldErrors = { ...fieldErrors };
+      delete nextFieldErrors[field as LineField];
+      const next = { ...prev };
+      if (Object.keys(nextFieldErrors).length === 0) delete next[key];
+      else next[key] = nextFieldErrors;
+      return next;
+    });
+    if (field === 'quantity' && line?.productId && !line.priceOverridden) {
+      schedulePriceRefresh(key, line.productId, Number(value) || 0);
+    }
   };
 
   // Calculate totals
@@ -272,6 +399,16 @@ export default function QuoteEditorPage() {
   const setLinesMutation = useSetQuoteLines(linesQuoteId || id || '');
 
   const onSubmit = async (data: FormData) => {
+    // B-302: Nederlandse veldvalidatie op de regels — vervangt de native
+    // (Engelstalige) browserbubbels; het formulier staat op noValidate.
+    const errors = validateLines(lines);
+    if (Object.keys(errors).length > 0) {
+      setLineErrors(errors);
+      showToast('Controleer de rood gemarkeerde offerteregels', 'error');
+      return;
+    }
+    setLineErrors({});
+
     try {
       let quoteId: string;
 
@@ -312,7 +449,13 @@ export default function QuoteEditorPage() {
         // For newly created quotes, we need to call the API directly
         // since the mutation hook may not have the correct ID yet
         if (!isEditing) {
-          await apiClient.put(`/quotes/${quoteId}/lines`, linePayload);
+          try {
+            await apiClient.put(`/quotes/${quoteId}/lines`, linePayload);
+          } catch (err) {
+            // Rauwe API-call (geen useApiMutation) → toon de fout hier zelf.
+            showToast(getErrorMessage(err, 'Offerteregels opslaan mislukt'), 'error');
+            return;
+          }
         } else {
           await setLinesMutation.mutateAsync(linePayload);
         }
@@ -320,8 +463,8 @@ export default function QuoteEditorPage() {
 
       showToast(isEditing ? 'Offerte bijgewerkt' : 'Offerte aangemaakt', 'success');
       navigate(`/quotes/${quoteId}`);
-    } catch (err) {
-      showToast(getErrorMessage(err, isEditing ? 'Bijwerken mislukt' : 'Aanmaken mislukt'), 'error');
+    } catch {
+      /* mutatiefouten worden centraal getoond via useApiMutation */
     }
   };
 
@@ -352,7 +495,9 @@ export default function QuoteEditorPage() {
         </div>
       </div>
 
-      <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+      {/* noValidate: veldfouten komen als NL-meldingen uit zod/validateLines,
+          niet als native browserbubbels in de taal van de browser (B-302). */}
+      <form onSubmit={handleSubmit(onSubmit)} className="space-y-6" noValidate>
         {/* Basic info */}
         <Card>
           <div className="space-y-4">
@@ -475,12 +620,20 @@ export default function QuoteEditorPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
-                  {lines.map((line) => (
+                  {lines.map((line) => {
+                    const errs = lineErrors[line.key] ?? {};
+                    const inputClass = (field: LineField) =>
+                      `w-full rounded border px-2 py-1 text-sm focus:outline-none focus:ring-1 ${
+                        errs[field]
+                          ? 'border-red-500 focus:border-red-500 focus:ring-red-500/20'
+                          : 'border-gray-300 focus:border-primary-500 focus:ring-primary-500/20'
+                      }`;
+                    return (
                     <tr key={line.key}>
                       <td className="px-3 py-2">
                         <input
                           type="text"
-                          className="w-full rounded border border-gray-300 px-2 py-1 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500/20"
+                          className={inputClass('description')}
                           value={line.description}
                           onChange={(e) =>
                             handleLineChange(line.key, 'description', e.target.value)
@@ -492,12 +645,15 @@ export default function QuoteEditorPage() {
                           type="number"
                           min="0"
                           step="0.01"
-                          className="w-full rounded border border-gray-300 px-2 py-1 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500/20"
+                          className={inputClass('quantity')}
                           value={line.quantity}
                           onChange={(e) =>
                             handleLineChange(line.key, 'quantity', parseFloat(e.target.value) || 0)
                           }
                         />
+                        {errs.quantity && (
+                          <p className="mt-0.5 text-xs text-red-600">{errs.quantity}</p>
+                        )}
                       </td>
                       <td className="px-3 py-2">
                         <input
@@ -514,12 +670,20 @@ export default function QuoteEditorPage() {
                           type="number"
                           min="0"
                           step="0.01"
-                          className="w-full rounded border border-gray-300 px-2 py-1 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500/20"
+                          className={inputClass('unitPrice')}
                           value={line.unitPrice}
                           onChange={(e) =>
                             handleLineChange(line.key, 'unitPrice', parseFloat(e.target.value) || 0)
                           }
                         />
+                        {errs.unitPrice && (
+                          <p className="mt-0.5 text-xs text-red-600">{errs.unitPrice}</p>
+                        )}
+                        {!errs.unitPrice && line.priceSource && !line.priceOverridden && (
+                          <p className="mt-0.5 text-xs text-gray-400" title="Prijs uit prijstabel">
+                            {line.priceSource}
+                          </p>
+                        )}
                       </td>
                       <td className="px-3 py-2">
                         <input
@@ -527,12 +691,15 @@ export default function QuoteEditorPage() {
                           min="0"
                           max="100"
                           step="0.1"
-                          className="w-full rounded border border-gray-300 px-2 py-1 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500/20"
+                          className={inputClass('discountPct')}
                           value={line.discountPct}
                           onChange={(e) =>
                             handleLineChange(line.key, 'discountPct', parseFloat(e.target.value) || 0)
                           }
                         />
+                        {errs.discountPct && (
+                          <p className="mt-0.5 text-xs text-red-600">{errs.discountPct}</p>
+                        )}
                       </td>
                       <td className="px-3 py-2">
                         <input
@@ -540,12 +707,15 @@ export default function QuoteEditorPage() {
                           min="0"
                           max="100"
                           step="0.1"
-                          className="w-full rounded border border-gray-300 px-2 py-1 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500/20"
+                          className={inputClass('vatRate')}
                           value={line.vatRate}
                           onChange={(e) =>
                             handleLineChange(line.key, 'vatRate', parseFloat(e.target.value) || 0)
                           }
                         />
+                        {errs.vatRate && (
+                          <p className="mt-0.5 text-xs text-red-600">{errs.vatRate}</p>
+                        )}
                       </td>
                       <td className="px-3 py-2 text-right">
                         <span className="text-sm font-medium text-gray-900">
@@ -564,7 +734,8 @@ export default function QuoteEditorPage() {
                         </button>
                       </td>
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

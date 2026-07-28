@@ -22,7 +22,7 @@ interface AiAgentContextValue {
 
 const AiAgentContext = createContext<AiAgentContextValue | null>(null);
 
-/** UI-state voor de AI-assistent-drawer (PRD-12). Geen dataophaling — die zit in de hooks. */
+/** UI-state voor de AI-assistent-drawer (PRD-15). Geen dataophaling — die zit in de hooks. */
 export function AiAgentProvider({ children }: { children: ReactNode }) {
   const [isOpen, setIsOpen] = useState(false);
   const [view, setView] = useState<AiView>('list');

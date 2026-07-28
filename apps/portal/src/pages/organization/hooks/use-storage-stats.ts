@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api-client';
+import { storageStatsKeys } from '@/lib/query-keys';
 
 export interface StorageStatsByEntityType {
   entityType: string;
@@ -25,7 +26,7 @@ export interface StorageStats {
 
 export function useStorageStats() {
   return useQuery<StorageStats>({
-    queryKey: ['storage-stats'],
+    queryKey: storageStatsKeys.all,
     queryFn: () => apiClient.get<StorageStats>('/documents/storage-stats'),
   });
 }

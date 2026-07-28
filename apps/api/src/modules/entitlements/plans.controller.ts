@@ -4,7 +4,6 @@ import {
   Delete,
   Get,
   Param,
-  ParseUUIDPipe,
   Patch,
   Post,
 } from '@nestjs/common';
@@ -18,6 +17,7 @@ import { Role } from '@prisma/client';
 import { Roles } from '@/common/decorators';
 import { PlansService } from './plans.service';
 import { CreatePlanDto, UpdatePlanDto } from './dto';
+import { ParseUuidPipe } from '@/common';
 
 /**
  * SUPERUSER-beheer voor abonnementsplannen (PRD-09 §5.3). Alleen SUPERUSER; geen
@@ -42,7 +42,7 @@ export class PlansController {
   @ApiOperation({ summary: 'Abonnement ophalen op ID (Superuser)' })
   @ApiResponse({ status: 200, description: 'Plan-details incl. features' })
   @ApiResponse({ status: 404, description: 'Niet gevonden' })
-  async findOne(@Param('id', ParseUUIDPipe) id: string) {
+  async findOne(@Param('id', ParseUuidPipe) id: string) {
     const data = await this.plansService.findOne(id);
     return { success: true, data };
   }
@@ -61,7 +61,7 @@ export class PlansController {
   @ApiResponse({ status: 200, description: 'Plan bijgewerkt' })
   @ApiResponse({ status: 404, description: 'Niet gevonden' })
   async update(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @Body() dto: UpdatePlanDto,
   ) {
     const data = await this.plansService.update(id, dto);
@@ -72,7 +72,7 @@ export class PlansController {
   @ApiOperation({ summary: 'Abonnement verwijderen (Superuser)' })
   @ApiResponse({ status: 200, description: 'Plan verwijderd' })
   @ApiResponse({ status: 409, description: 'Plan nog toegewezen aan organisaties' })
-  async remove(@Param('id', ParseUUIDPipe) id: string) {
+  async remove(@Param('id', ParseUuidPipe) id: string) {
     const data = await this.plansService.remove(id);
     return { success: true, data };
   }

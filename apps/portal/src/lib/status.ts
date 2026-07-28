@@ -7,15 +7,20 @@
  */
 import {
   AcceptanceStatus,
+  AiReviewItemSeverity,
   ApprovalStatus,
   AuditAction,
   Availability,
+  AvailabilityExceptionType,
+  EmploymentType,
   ChatThreadStatus,
   ContactType,
   HelpArticleStatus,
   SupportTicketStatus,
   SupportTicketPriority,
   LogType,
+  MilestoneStatus,
+  PhaseStatus,
   PlanningStatus,
   Priority,
   ProjectStatus,
@@ -29,20 +34,19 @@ import {
   WorkOrderStatus,
 } from '@/types';
 
-export interface StatusConfig {
-  label: string;
-  classes: string;
-}
+// Het StatusConfig/StatusMap-type, de veilige getStatusConfig-lookup en de twee
+// maps die óók in het klantportaal voorkomen (GENERATED_DOCUMENT_STATUS,
+// SIGNATURE_STATUS) komen uit @inspexi/shared-web. Hieronder alleen de
+// staf-portal-specifieke maps. Re-export zodat `@/lib/status` alles blijft leveren.
+import type { StatusConfig, StatusMap } from '@inspexi/shared-web';
+import {
+  getStatusConfig,
+  GENERATED_DOCUMENT_STATUS,
+  SIGNATURE_STATUS,
+} from '@inspexi/shared-web';
 
-export type StatusMap = Record<string, StatusConfig>;
-
-const FALLBACK: StatusConfig = { label: '', classes: 'bg-gray-100 text-gray-600' };
-
-/** Veilige lookup: onbekende waarde → grijze badge met de ruwe waarde als label. */
-export function getStatusConfig(map: StatusMap, value: string | null | undefined): StatusConfig {
-  if (!value) return { ...FALLBACK, label: '—' };
-  return map[value] ?? { ...FALLBACK, label: value };
-}
+export type { StatusConfig, StatusMap };
+export { getStatusConfig, GENERATED_DOCUMENT_STATUS, SIGNATURE_STATUS };
 
 export const TASK_STATUS: StatusMap = {
   [TaskStatus.TE_DOEN]: { label: 'Te doen', classes: 'bg-blue-100 text-blue-800' },
@@ -127,6 +131,22 @@ export const PROJECT_STATUS: StatusMap = {
   [ProjectStatus.GEANNULEERD]: { label: 'Geannuleerd', classes: 'bg-red-100 text-red-800' },
 };
 
+// ─── PRD-12: Projectfasen ─────────────────────────────────
+
+export const PHASE_STATUS: StatusMap = {
+  [PhaseStatus.NIET_GESTART]: { label: 'Niet gestart', classes: 'bg-gray-100 text-gray-700' },
+  [PhaseStatus.ACTIEF]: { label: 'Actief', classes: 'bg-green-100 text-green-800' },
+  [PhaseStatus.ON_HOLD]: { label: 'On hold', classes: 'bg-amber-100 text-amber-800' },
+  [PhaseStatus.AFGEROND]: { label: 'Afgerond', classes: 'bg-blue-100 text-blue-800' },
+  [PhaseStatus.GEANNULEERD]: { label: 'Geannuleerd', classes: 'bg-red-100 text-red-800' },
+};
+
+export const MILESTONE_STATUS: StatusMap = {
+  [MilestoneStatus.OPEN]: { label: 'Open', classes: 'bg-amber-100 text-amber-800' },
+  [MilestoneStatus.BEHAALD]: { label: 'Behaald', classes: 'bg-green-100 text-green-800' },
+  [MilestoneStatus.VERVALLEN]: { label: 'Vervallen', classes: 'bg-red-100 text-red-800' },
+};
+
 export const LOG_TYPE: StatusMap = {
   [LogType.EMAIL]: { label: 'E-mail', classes: 'bg-blue-100 text-blue-800' },
   [LogType.PHONE]: { label: 'Telefoon', classes: 'bg-green-100 text-green-800' },
@@ -166,6 +186,7 @@ export const ENTITY_TYPE_LABELS: Record<string, string> = {
   [TaskEntityType.QUOTE]: 'Offerte',
   [TaskEntityType.PLANNING]: 'Afspraak',
   [TaskEntityType.PROJECT]: 'Project',
+  [TaskEntityType.PROJECT_PHASE]: 'Projectfase',
   [TaskEntityType.USER]: 'Gebruiker',
   PRODUCT: 'Product',
   TASK: 'Taak',
@@ -199,20 +220,8 @@ export const MEASUREMENT_SHEET_RECORD_STATUS: StatusMap = {
   VALIDATED: { label: 'Gevalideerd', classes: 'bg-green-100 text-green-800' },
 };
 
-export const GENERATED_DOCUMENT_STATUS: StatusMap = {
-  DRAFT: { label: 'Concept', classes: 'bg-gray-100 text-gray-700' },
-  PENDING_SIGNATURES: { label: 'Wacht op ondertekening', classes: 'bg-orange-100 text-orange-800' },
-  SIGNED: { label: 'Ondertekend', classes: 'bg-green-100 text-green-800' },
-  FINALIZED: { label: 'Definitief', classes: 'bg-green-100 text-green-800' },
-};
-
-export const SIGNATURE_STATUS: StatusMap = {
-  PENDING: { label: 'In afwachting', classes: 'bg-gray-100 text-gray-700' },
-  REQUESTED: { label: 'Verzonden', classes: 'bg-blue-100 text-blue-800' },
-  SIGNED: { label: 'Ondertekend', classes: 'bg-green-100 text-green-800' },
-  DECLINED: { label: 'Geweigerd', classes: 'bg-red-100 text-red-800' },
-  EXPIRED: { label: 'Verlopen', classes: 'bg-red-100 text-red-800' },
-};
+// GENERATED_DOCUMENT_STATUS en SIGNATURE_STATUS komen nu uit @inspexi/shared-web
+// (zie de import/re-export bovenaan) — ze zijn identiek aan de klantportaal-versie.
 
 // ─── Interne chat (REQ1) ──────────────────────────────────
 
@@ -307,4 +316,31 @@ export const MEETMIDDEL_STATUS: StatusMap = {
   ACTIEF: { label: 'Actief', classes: 'bg-green-100 text-green-800' },
   BUITEN_GEBRUIK: { label: 'Buiten gebruik', classes: 'bg-gray-100 text-gray-700' },
   AFGEKEURD: { label: 'Afgekeurd', classes: 'bg-red-100 text-red-800' },
+};
+
+// ─── PRD-12: Beschikbaarheid inspecteurs ──────────────────
+
+export const AVAILABILITY_EXCEPTION_TYPE: StatusMap = {
+  [AvailabilityExceptionType.BESCHIKBAAR]: { label: 'Beschikbaar', classes: 'bg-green-100 text-green-800' },
+  [AvailabilityExceptionType.GEBLOKKEERD]: { label: 'Geblokkeerd', classes: 'bg-red-100 text-red-800' },
+};
+
+export const EMPLOYMENT_TYPE: StatusMap = {
+  [EmploymentType.DIENSTVERBAND]: { label: 'Dienstverband', classes: 'bg-blue-100 text-blue-800' },
+  [EmploymentType.FREELANCE]: { label: 'Freelance', classes: 'bg-purple-100 text-purple-800' },
+};
+
+/** Label-only map voor selects/weergave (zonder badge-kleuren). */
+export const EMPLOYMENT_TYPE_LABELS: Record<string, string> = {
+  [EmploymentType.DIENSTVERBAND]: 'Dienstverband',
+  [EmploymentType.FREELANCE]: 'Freelance',
+};
+
+// ─── PRD-13: AI-voorcontrole inspectierapporten ──────────────────
+
+export const AI_REVIEW_SEVERITY: StatusMap = {
+  [AiReviewItemSeverity.CRITICAL]: { label: 'Kritiek', classes: 'bg-red-100 text-red-800' },
+  [AiReviewItemSeverity.WARNING]: { label: 'Waarschuwing', classes: 'bg-orange-100 text-orange-800' },
+  [AiReviewItemSeverity.SUGGESTION]: { label: 'Suggestie', classes: 'bg-blue-100 text-blue-800' },
+  [AiReviewItemSeverity.INFO]: { label: 'Informatie', classes: 'bg-gray-100 text-gray-600' },
 };

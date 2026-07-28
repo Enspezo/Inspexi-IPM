@@ -1,13 +1,12 @@
 import {
   Injectable,
   Logger,
-  NotFoundException,
   ForbiddenException,
   BadRequestException,
 } from '@nestjs/common';
 import { User, Role, Prisma, NoteEntityType } from '@prisma/client';
 import { PrismaService } from '@/prisma';
-import { paginate, buildOrderBy, orgScope, assertSameOrg } from '@/common';
+import { paginate, buildOrderBy, orgScope, assertFound, assertSameOrg } from '@/common';
 import { CreateNoteDto, UpdateNoteDto, ListNotesQueryDto } from './dto';
 
 const createdBySelect = {
@@ -52,7 +51,7 @@ export class NotesService {
 
     if (contactIds.length > 0) {
       const contacts = await this.prisma.contact.findMany({
-        where: { id: { in: contactIds } },
+        where: { id: { in: contactIds }, isDeleted: false },
         select: { id: true, type: true, companyName: true, firstName: true, lastName: true },
       });
       for (const c of contacts) {
@@ -63,7 +62,7 @@ export class NotesService {
 
     if (requestIds.length > 0) {
       const requests = await this.prisma.request.findMany({
-        where: { id: { in: requestIds } },
+        where: { id: { in: requestIds }, isDeleted: false },
         select: { id: true, title: true },
       });
       for (const r of requests) {
@@ -93,7 +92,7 @@ export class NotesService {
 
     if (projectIds.length > 0) {
       const projects = await this.prisma.project.findMany({
-        where: { id: { in: projectIds } },
+        where: { id: { in: projectIds }, isDeleted: false },
         select: { id: true, title: true, projectNumber: true },
       });
       for (const p of projects) {
@@ -103,7 +102,7 @@ export class NotesService {
 
     if (userIds.length > 0) {
       const users = await this.prisma.user.findMany({
-        where: { id: { in: userIds } },
+        where: { id: { in: userIds }, isDeleted: false },
         select: { id: true, firstName: true, lastName: true },
       });
       for (const u of users) {
@@ -209,20 +208,15 @@ export class NotesService {
   }
 
   async findOne(id: string, user: User) {
-    const note = await this.prisma.note.findUnique({
-      where: { id },
-      include: { createdBy: { select: createdBySelect } },
-    });
-
-    if (!note || note.isDeleted) {
-      throw new NotFoundException('Notitie niet gevonden');
-    }
-
-    if (!user.roles.includes(Role.SUPERUSER) && note.orgId !== user.orgId) {
-      throw new ForbiddenException('Geen toegang tot deze notitie');
-    }
-
-    return note;
+    // Org-scoped lookup: een vreemde-org-id is niet te onderscheiden van een
+    // niet-bestaand id (zelfde 404) — geen existence-oracle (B-105).
+    return assertFound(
+      await this.prisma.note.findFirst({
+        where: { id, ...orgScope(user), isDeleted: false },
+        include: { createdBy: { select: createdBySelect } },
+      }),
+      'Notitie',
+    );
   }
 
   /**
@@ -258,18 +252,15 @@ export class NotesService {
 
     // Validate depth: replies to replies are not allowed
     if (dto.parentId) {
-      const parent = await this.prisma.note.findUnique({
-        where: { id: dto.parentId },
-        select: { id: true, parentId: true, orgId: true, isDeleted: true },
-      });
-
-      if (!parent || parent.isDeleted) {
-        throw new NotFoundException('Parent notitie niet gevonden');
-      }
-
-      if (!user.roles.includes(Role.SUPERUSER) && parent.orgId !== user.orgId) {
-        throw new ForbiddenException('Geen toegang tot deze notitie');
-      }
+      // Org-scoped: een parent-id van een andere org geeft dezelfde 404 als een
+      // niet-bestaand id — geen existence-oracle (B-105).
+      const parent = assertFound(
+        await this.prisma.note.findFirst({
+          where: { id: dto.parentId, ...orgScope(user), isDeleted: false },
+          select: { id: true, parentId: true },
+        }),
+        'Parent notitie',
+      );
 
       if (parent.parentId !== null) {
         throw new BadRequestException('Replies mogen niet op een reply geplaatst worden');
@@ -292,15 +283,12 @@ export class NotesService {
   }
 
   async update(id: string, dto: UpdateNoteDto, user: User) {
-    const existing = await this.prisma.note.findUnique({ where: { id } });
-
-    if (!existing || existing.isDeleted) {
-      throw new NotFoundException('Notitie niet gevonden');
-    }
-
-    if (!user.roles.includes(Role.SUPERUSER) && existing.orgId !== user.orgId) {
-      throw new ForbiddenException('Geen toegang tot deze notitie');
-    }
+    const existing = assertFound(
+      await this.prisma.note.findFirst({
+        where: { id, ...orgScope(user), isDeleted: false },
+      }),
+      'Notitie',
+    );
 
     const canEdit =
       existing.createdById === user.id ||
@@ -321,15 +309,12 @@ export class NotesService {
   }
 
   async remove(id: string, user: User) {
-    const existing = await this.prisma.note.findUnique({ where: { id } });
-
-    if (!existing || existing.isDeleted) {
-      throw new NotFoundException('Notitie niet gevonden');
-    }
-
-    if (!user.roles.includes(Role.SUPERUSER) && existing.orgId !== user.orgId) {
-      throw new ForbiddenException('Geen toegang tot deze notitie');
-    }
+    const existing = assertFound(
+      await this.prisma.note.findFirst({
+        where: { id, ...orgScope(user), isDeleted: false },
+      }),
+      'Notitie',
+    );
 
     const canDelete =
       existing.createdById === user.id ||

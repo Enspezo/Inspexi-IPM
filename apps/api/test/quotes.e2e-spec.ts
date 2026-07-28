@@ -4,6 +4,7 @@ import request from 'supertest';
 import cookieParser from 'cookie-parser';
 import { AppModule } from '@/app.module';
 import { PrismaService } from '@/prisma';
+import { EmailService } from '@/common/services/email.service';
 
 /**
  * Quotes API (e2e)
@@ -26,6 +27,20 @@ import { PrismaService } from '@/prisma';
 describe('Quotes API (e2e)', () => {
   let app: INestApplication;
   let prisma: PrismaService;
+
+  // E-mailmock (B-308): vervangt de echte EmailService zodat de idempotentie-test
+  // exact kan tellen hoe vaak de klant-e-mail is verstuurd. Alle overige send*-
+  // methoden zijn no-ops (fire-and-forget paden mogen nooit een test breken).
+  const emailServiceMock = {
+    sendQuoteEmail: jest.fn().mockResolvedValue(undefined),
+    sendNotificationEmail: jest.fn().mockResolvedValue(undefined),
+    sendContactEmail: jest.fn().mockResolvedValue(undefined),
+    sendSignedQuoteEmail: jest.fn().mockResolvedValue(undefined),
+    sendQuoteAnswerEmail: jest.fn().mockResolvedValue(undefined),
+    sendInvitation: jest.fn().mockResolvedValue(undefined),
+    sendEmailVerification: jest.fn().mockResolvedValue(undefined),
+    sendPasswordReset: jest.fn().mockResolvedValue(undefined),
+  };
 
   // Tokens per role
   let org1AdminToken: string;
@@ -54,7 +69,10 @@ describe('Quotes API (e2e)', () => {
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
-    }).compile();
+    })
+      .overrideProvider(EmailService)
+      .useValue(emailServiceMock)
+      .compile();
 
     app = moduleFixture.createNestApplication();
     app.use(cookieParser());
@@ -285,9 +303,12 @@ describe('Quotes API (e2e)', () => {
 
   describe('GET /api/v1/quotes/:id', () => {
     it('detail contains lines, contact, approvalRequests', async () => {
-      // Use the seeded GOEDGEKEURD quote (OFF-2026-0001) which has 3 lines
+      // Use the seeded GOEDGEKEURD quote (OFF-2026-0001) which has 3 lines.
+      // Zoek op quoteNumber zodat de offerte gevonden wordt ongeacht paginatie
+      // (de gedeelde dev-DB kan naast de seed ook TP-/e2e-offertes bevatten,
+      // waardoor de seed-offerte anders van de lijst valt).
       const listRes = await request(app.getHttpServer())
-        .get('/api/v1/quotes')
+        .get('/api/v1/quotes?search=OFF-2026-0001')
         .set('Authorization', `Bearer ${org1AdminToken}`)
         .expect(200);
 
@@ -353,9 +374,10 @@ describe('Quotes API (e2e)', () => {
     });
 
     it('update fails when not CONCEPT (GOEDGEKEURD quote)', async () => {
-      // Use the seeded GOEDGEKEURD quote (OFF-2026-0001)
+      // Use the seeded GOEDGEKEURD quote (OFF-2026-0001); zoek op quoteNumber
+      // zoals hierboven, zodat paginatie de lookup niet kan breken.
       const listRes = await request(app.getHttpServer())
-        .get('/api/v1/quotes')
+        .get('/api/v1/quotes?search=OFF-2026-0001')
         .set('Authorization', `Bearer ${org1AdminToken}`)
         .expect(200);
 
@@ -629,6 +651,13 @@ describe('Quotes API (e2e)', () => {
 
       approvalQuoteId = createRes.body.data.id;
       createdQuoteIds.push(approvalQuoteId);
+
+      // Sinds WP-B5 (B-315) weigert submit-approval een offerte zonder regels.
+      await request(app.getHttpServer())
+        .put(`/api/v1/quotes/${approvalQuoteId}/lines`)
+        .set('Authorization', `Bearer ${org1AdminToken}`)
+        .send({ lines: [{ description: 'Workflow-dienst', quantity: 1, unit: 'stuks', unitPrice: 100, vatRate: 21, discountPct: 0 }] })
+        .expect(200);
     });
 
     it('POST /quotes/:id/submit-approval creates approval request and sets TER_GOEDKEURING', async () => {
@@ -794,7 +823,11 @@ describe('Quotes API (e2e)', () => {
         .get('/api/v1/users/selectable?role=MANAGER')
         .set('Authorization', `Bearer ${org1AdminToken}`)
         .expect(200);
-      const managerId = usersRes.body.data[0].id;
+      // Expliciet de seed-manager kiezen — de gedeelde DB bevat ook TP-seed-managers
+      // en data[0] (sortering op voornaam) is dan niet gegarandeerd deze gebruiker.
+      const managerId = (usersRes.body.data as any[]).find(
+        (u) => u.email === 'manager@inspexi-demo.nl',
+      )!.id;
 
       const reqRes = await request(app.getHttpServer())
         .post(`/api/v1/quotes/${smallQuoteId}/voluntary-approval/person`)
@@ -938,9 +971,11 @@ describe('Quotes API (e2e)', () => {
     });
 
     it('delete fails for non-CONCEPT status', async () => {
-      // Try to delete the seeded GOEDGEKEURD quote
+      // Try to delete the seeded GOEDGEKEURD quote. Filter op quoteNumber zodat de
+      // offerte gevonden wordt ongeacht paginatie (eerdere tests kunnen extra
+      // offertes hebben aangemaakt, waardoor OFF-2026-0001 van de default-20-lijst valt).
       const listRes = await request(app.getHttpServer())
-        .get('/api/v1/quotes')
+        .get('/api/v1/quotes?search=OFF-2026-0001')
         .set('Authorization', `Bearer ${org1AdminToken}`)
         .expect(200);
 
@@ -996,6 +1031,403 @@ describe('Quotes API (e2e)', () => {
         .patch(`/api/v1/requests/${targetRequest.id}/status`)
         .set('Authorization', `Bearer ${org1AdminToken}`)
         .send({ status: 'NIEUW', note: 'E2E cleanup restore' });
+    });
+  });
+
+  // ─── WP-B5: send-idempotentie + lege offertes (B-308 / B-315) ─────────
+
+  describe('Send idempotency & empty quotes (B-308/B-315)', () => {
+    let contactId: string;
+    let blocksTemplateId: string;
+    let approvalTemplateId: string;
+
+    beforeAll(async () => {
+      const contactRes = await request(app.getHttpServer())
+        .get('/api/v1/contacts')
+        .set('Authorization', `Bearer ${org1AdminToken}`)
+        .expect(200);
+      contactId = contactRes.body.data.data[0].id;
+
+      const templatesRes = await request(app.getHttpServer())
+        .get('/api/v1/quote-templates')
+        .set('Authorization', `Bearer ${org1AdminToken}`)
+        .expect(200);
+      const templates = templatesRes.body.data.data as any[];
+      blocksTemplateId = templates.find((t) => t.requiresApproval === false).id;
+      approvalTemplateId = templates.find((t) => t.requiresApproval === true).id;
+    });
+
+    /** Fresh CONCEPT quote (below threshold) with template + one line. */
+    async function createSendableQuote(subject: string): Promise<string> {
+      const res = await request(app.getHttpServer())
+        .post('/api/v1/quotes')
+        .set('Authorization', `Bearer ${org1AdminToken}`)
+        .send({ contactId, subject, templateId: blocksTemplateId })
+        .expect(201);
+      const quoteId = res.body.data.id;
+      createdQuoteIds.push(quoteId);
+      await request(app.getHttpServer())
+        .put(`/api/v1/quotes/${quoteId}/lines`)
+        .set('Authorization', `Bearer ${org1AdminToken}`)
+        .send({ lines: [{ description: 'Kleine klus', quantity: 1, unit: 'stuks', unitPrice: 500, vatRate: 21, discountPct: 0 }] })
+        .expect(200);
+      return quoteId;
+    }
+
+    it('two parallel sends: exactly one 201, one 400, and exactly one customer e-mail (B-308)', async () => {
+      const quoteId = await createSendableQuote('B-308 parallel send');
+      emailServiceMock.sendQuoteEmail.mockClear();
+
+      const payload = { to: 'klant@example.com', subject: 'Offerte', bodyText: 'Zie bijlage' };
+      const [res1, res2] = await Promise.all([
+        request(app.getHttpServer())
+          .post(`/api/v1/quotes/${quoteId}/send`)
+          .set('Authorization', `Bearer ${org1AdminToken}`)
+          .send(payload),
+        request(app.getHttpServer())
+          .post(`/api/v1/quotes/${quoteId}/send`)
+          .set('Authorization', `Bearer ${org1AdminToken}`)
+          .send(payload),
+      ]);
+
+      const statuses = [res1.status, res2.status].sort((a, b) => a - b);
+      expect(statuses).toEqual([201, 400]);
+      const loser = res1.status === 400 ? res1 : res2;
+      expect(loser.body.message).toBe('Deze offerte is al verstuurd');
+      // Kern van B-308: de klant krijgt exact één e-mail.
+      expect(emailServiceMock.sendQuoteEmail).toHaveBeenCalledTimes(1);
+
+      // En de offerte staat exact één keer op VERSTUURD met sentAt gezet.
+      const detail = await request(app.getHttpServer())
+        .get(`/api/v1/quotes/${quoteId}`)
+        .set('Authorization', `Bearer ${org1AdminToken}`)
+        .expect(200);
+      expect(detail.body.data.status).toBe('VERSTUURD');
+      expect(detail.body.data.sentAt).toBeTruthy();
+    });
+
+    it('a repeat send on an already-sent quote returns 400 with a Dutch message', async () => {
+      const quoteId = await createSendableQuote('B-308 herhaalde send');
+      const payload = { to: 'klant@example.com', subject: 'Offerte', bodyText: 'Zie bijlage' };
+
+      await request(app.getHttpServer())
+        .post(`/api/v1/quotes/${quoteId}/send`)
+        .set('Authorization', `Bearer ${org1AdminToken}`)
+        .send(payload)
+        .expect(201);
+
+      const res = await request(app.getHttpServer())
+        .post(`/api/v1/quotes/${quoteId}/send`)
+        .set('Authorization', `Bearer ${org1AdminToken}`)
+        .send(payload)
+        .expect(400);
+      expect(res.body.message).toBe('Deze offerte is al verstuurd');
+    });
+
+    it('refuses to send a quote without lines (B-315, NL 400)', async () => {
+      const res = await request(app.getHttpServer())
+        .post('/api/v1/quotes')
+        .set('Authorization', `Bearer ${org1AdminToken}`)
+        .send({ contactId, subject: 'B-315 lege offerte', templateId: blocksTemplateId })
+        .expect(201);
+      const quoteId = res.body.data.id;
+      createdQuoteIds.push(quoteId);
+
+      const sendRes = await request(app.getHttpServer())
+        .post(`/api/v1/quotes/${quoteId}/send`)
+        .set('Authorization', `Bearer ${org1AdminToken}`)
+        .send({ to: 'klant@example.com', subject: 'Offerte', bodyText: 'Zie bijlage' })
+        .expect(400);
+      expect(sendRes.body.message).toContain('geen offerteregels');
+    });
+
+    it('refuses to submit an empty quote for approval (B-315, NL 400)', async () => {
+      const res = await request(app.getHttpServer())
+        .post('/api/v1/quotes')
+        .set('Authorization', `Bearer ${org1AdminToken}`)
+        .send({ contactId, subject: 'B-315 lege offerte ter goedkeuring', templateId: approvalTemplateId })
+        .expect(201);
+      const quoteId = res.body.data.id;
+      createdQuoteIds.push(quoteId);
+
+      const submitRes = await request(app.getHttpServer())
+        .post(`/api/v1/quotes/${quoteId}/submit-approval`)
+        .set('Authorization', `Bearer ${org1AdminToken}`)
+        .send({})
+        .expect(400);
+      expect(submitRes.body.message).toContain('geen offerteregels');
+    });
+  });
+
+  // ─── WP-B5: vier-ogen op offertes (B-307) + approvalRequired (B-304) ──
+
+  describe('Self-approval four-eyes (B-307) & approvalRequired serialization (B-304)', () => {
+    let contactId: string;
+    let blocksTemplateId: string;
+    let bigQuoteId: string; // above the €10.000 org threshold, created by MANAGER
+    let org1Id: string;
+
+    beforeAll(async () => {
+      const org1 = await prisma.organization.findFirst({ where: { slug: 'inspexidemo' } });
+      org1Id = org1!.id;
+
+      const contactRes = await request(app.getHttpServer())
+        .get('/api/v1/contacts')
+        .set('Authorization', `Bearer ${org1ManagerToken}`)
+        .expect(200);
+      contactId = contactRes.body.data.data[0].id;
+
+      const templatesRes = await request(app.getHttpServer())
+        .get('/api/v1/quote-templates')
+        .set('Authorization', `Bearer ${org1ManagerToken}`)
+        .expect(200);
+      blocksTemplateId = (templatesRes.body.data.data as any[]).find(
+        (t) => t.requiresApproval === false,
+      ).id;
+
+      // MANAGER maakt zijn eigen offerte boven de drempel en dient hem in.
+      const createRes = await request(app.getHttpServer())
+        .post('/api/v1/quotes')
+        .set('Authorization', `Bearer ${org1ManagerToken}`)
+        .send({ contactId, subject: 'B-307 self-approval', templateId: blocksTemplateId })
+        .expect(201);
+      bigQuoteId = createRes.body.data.id;
+      createdQuoteIds.push(bigQuoteId);
+      await request(app.getHttpServer())
+        .put(`/api/v1/quotes/${bigQuoteId}/lines`)
+        .set('Authorization', `Bearer ${org1ManagerToken}`)
+        .send({ lines: [{ description: 'Groot project', quantity: 1, unit: 'stuks', unitPrice: 25000, vatRate: 21, discountPct: 0 }] })
+        .expect(200);
+    });
+
+    afterAll(async () => {
+      // Org-vlag altijd terugzetten — andere suites verwachten de default (uit).
+      await prisma.organization.update({
+        where: { id: org1Id },
+        data: { quoteApprovalSelfApprovalAllowed: false },
+      });
+    });
+
+    it('serializes approvalRequired=true on the detail response above the threshold (B-304)', async () => {
+      const detail = await request(app.getHttpServer())
+        .get(`/api/v1/quotes/${bigQuoteId}`)
+        .set('Authorization', `Bearer ${org1ManagerToken}`)
+        .expect(200);
+
+      // Template-vlag staat uit; alleen de org-drempel triggert de plicht.
+      expect(detail.body.data.requiresApproval).toBe(false);
+      expect(detail.body.data.approvalRequired).toBe(true);
+    });
+
+    it('the requester cannot approve their own request (403, NL)', async () => {
+      await request(app.getHttpServer())
+        .post(`/api/v1/quotes/${bigQuoteId}/submit-approval`)
+        .set('Authorization', `Bearer ${org1ManagerToken}`)
+        .send({ note: 'Eigen offerte' })
+        .expect(201);
+
+      const res = await request(app.getHttpServer())
+        .post(`/api/v1/quotes/${bigQuoteId}/approve`)
+        .set('Authorization', `Bearer ${org1ManagerToken}`)
+        .send({})
+        .expect(403);
+      expect(res.body.message).toContain('eigen goedkeuringsverzoek');
+    });
+
+    it('the requester cannot reject their own request either (403, NL)', async () => {
+      const res = await request(app.getHttpServer())
+        .post(`/api/v1/quotes/${bigQuoteId}/reject`)
+        .set('Authorization', `Bearer ${org1ManagerToken}`)
+        .send({ note: 'toch maar niet' })
+        .expect(403);
+      expect(res.body.message).toContain('eigen goedkeuringsverzoek');
+    });
+
+    it('self-approval succeeds once the org flag is enabled', async () => {
+      await prisma.organization.update({
+        where: { id: org1Id },
+        data: { quoteApprovalSelfApprovalAllowed: true },
+      });
+
+      const res = await request(app.getHttpServer())
+        .post(`/api/v1/quotes/${bigQuoteId}/approve`)
+        .set('Authorization', `Bearer ${org1ManagerToken}`)
+        .send({ note: 'Zelf goedgekeurd (org-vlag aan)' })
+        .expect(201);
+      expect(res.body.data.status).toBe('GOEDGEKEURD');
+    });
+  });
+
+  // ─── WP-B5: regel-grenzen (B-302/B-303) + reject zonder notitie (B-314) ─
+
+  describe('Line bounds (B-302/B-303) & reject without note (B-314)', () => {
+    let contactId: string;
+    let boundsQuoteId: string;
+
+    beforeAll(async () => {
+      const contactRes = await request(app.getHttpServer())
+        .get('/api/v1/contacts')
+        .set('Authorization', `Bearer ${org1AdminToken}`)
+        .expect(200);
+      contactId = contactRes.body.data.data[0].id;
+
+      const createRes = await request(app.getHttpServer())
+        .post('/api/v1/quotes')
+        .set('Authorization', `Bearer ${org1AdminToken}`)
+        .send({ contactId, subject: 'B-302/B-303 grenzen' })
+        .expect(201);
+      boundsQuoteId = createRes.body.data.id;
+      createdQuoteIds.push(boundsQuoteId);
+    });
+
+    function putLines(line: Record<string, unknown>) {
+      return request(app.getHttpServer())
+        .put(`/api/v1/quotes/${boundsQuoteId}/lines`)
+        .set('Authorization', `Bearer ${org1AdminToken}`)
+        .send({ lines: [{ description: 'Grens', quantity: 1, unit: 'stuks', unitPrice: 100, vatRate: 21, discountPct: 0, ...line }] });
+    }
+
+    it('quantity 999999999 → 400 with a Dutch message (B-303 acceptatie)', async () => {
+      const res = await putLines({ quantity: 999_999_999 }).expect(400);
+      // ValidationPipe prefixt geneste fouten met het regelpad ("lines.0."),
+      // de melding zelf is Nederlands.
+      expect(res.body.message).toContain('Aantal mag maximaal 9.999.999,99 zijn');
+    });
+
+    it('negative unitPrice, korting > 100% en btw > 100% → 400 NL (B-302)', async () => {
+      expect((await putLines({ unitPrice: -100 }).expect(400)).body.message).toContain(
+        'Eenheidsprijs mag niet negatief zijn',
+      );
+      expect((await putLines({ discountPct: 150 }).expect(400)).body.message).toContain(
+        'Korting mag maximaal 100% zijn',
+      );
+      expect((await putLines({ vatRate: 250 }).expect(400)).body.message).toContain(
+        'Btw-tarief mag maximaal 100% zijn',
+      );
+      expect((await putLines({ vatRate: -50 }).expect(400)).body.message).toContain(
+        'Btw-tarief mag niet negatief zijn',
+      );
+    });
+
+    it('a line total beyond numeric(12,2) → 400 NL instead of 500 (B-303)', async () => {
+      // 9.999.999 × 9.999 ≈ € 99,99 mld — per veld geldig, als regeltotaal niet.
+      const res = await putLines({ quantity: 9_999_999, unitPrice: 9_999 }).expect(400);
+      expect(res.body.message).toContain('regeltotaal');
+      expect(res.body.message).toContain('te groot');
+    });
+
+    it('boundary values (korting 100%, btw 100%, prijs 0,01) are accepted', async () => {
+      await putLines({ quantity: 2, unitPrice: 0.01, vatRate: 100, discountPct: 100 }).expect(200);
+    });
+
+    it('rejecting without a note works — note is now optional (B-314)', async () => {
+      // Aparte offerte mét approval-template zodat submit-approval lukt.
+      const templatesRes = await request(app.getHttpServer())
+        .get('/api/v1/quote-templates')
+        .set('Authorization', `Bearer ${org1AdminToken}`)
+        .expect(200);
+      const approvalTemplateId = (templatesRes.body.data.data as any[]).find(
+        (t) => t.requiresApproval === true,
+      ).id;
+
+      const createRes = await request(app.getHttpServer())
+        .post('/api/v1/quotes')
+        .set('Authorization', `Bearer ${org1AdminToken}`)
+        .send({ contactId, subject: 'B-314 reject zonder notitie', templateId: approvalTemplateId })
+        .expect(201);
+      const quoteId = createRes.body.data.id;
+      createdQuoteIds.push(quoteId);
+      await request(app.getHttpServer())
+        .put(`/api/v1/quotes/${quoteId}/lines`)
+        .set('Authorization', `Bearer ${org1AdminToken}`)
+        .send({ lines: [{ description: 'Dienst', quantity: 1, unit: 'stuks', unitPrice: 100, vatRate: 21, discountPct: 0 }] })
+        .expect(200);
+      await request(app.getHttpServer())
+        .post(`/api/v1/quotes/${quoteId}/submit-approval`)
+        .set('Authorization', `Bearer ${org1AdminToken}`)
+        .send({})
+        .expect(201);
+
+      // Lege body — vóór WP-B5 gaf dit "note must be a string".
+      const rejectRes = await request(app.getHttpServer())
+        .post(`/api/v1/quotes/${quoteId}/reject`)
+        .set('Authorization', `Bearer ${org1ManagerToken}`)
+        .send({})
+        .expect(201);
+      expect(rejectRes.body.data.status).toBe('CONCEPT');
+    });
+  });
+
+  // ─── WP-B5: staffelgrenzen op resolve-price (B-309) ───────────────────
+
+  describe('resolve-price tier boundaries (B-309)', () => {
+    let tierContactId: string;
+    let tierProductId: string;
+    let tierTableId: string;
+    let tierItemId: string;
+    let org1Id: string;
+
+    beforeAll(async () => {
+      // Eigen fixture (los van seeddata): staffel 1–9 → 12,50 / 10–49 → 10,00 / 50+ → 7,50,
+      // exact de grenzen uit het acceptatiecriterium (9→10 en 49→50).
+      const org1 = await prisma.organization.findFirst({ where: { slug: 'inspexidemo' } });
+      org1Id = org1!.id;
+      const contact = await prisma.contact.create({
+        data: { orgId: org1Id, type: 'COMPANY', companyName: 'E2E Staffel Klant BV' },
+      });
+      tierContactId = contact.id;
+      const product = await prisma.product.create({
+        data: { orgId: org1Id, name: 'E2E Staffelproduct', unit: 'stuks', defaultVat: 21 },
+      });
+      tierProductId = product.id;
+      const table = await prisma.priceTable.create({
+        data: { orgId: org1Id, name: 'E2E Staffeltabel', isDefault: false },
+      });
+      tierTableId = table.id;
+      const item = await prisma.priceTableItem.create({
+        data: {
+          priceTableId: tierTableId,
+          productId: tierProductId,
+          priceType: 'TIERED',
+          tiers: {
+            create: [
+              { fromQty: 1, toQty: 9, price: 12.5 },
+              { fromQty: 10, toQty: 49, price: 10 },
+              { fromQty: 50, toQty: null, price: 7.5 },
+            ],
+          },
+        },
+      });
+      tierItemId = item.id;
+      await prisma.contactPriceTable.create({
+        data: { contactId: tierContactId, priceTableId: tierTableId },
+      });
+    });
+
+    afterAll(async () => {
+      await prisma.priceTier.deleteMany({ where: { priceTableItemId: tierItemId } });
+      await prisma.contactPriceTable.deleteMany({ where: { priceTableId: tierTableId } });
+      await prisma.priceTableItem.deleteMany({ where: { id: tierItemId } });
+      await prisma.priceTable.deleteMany({ where: { id: tierTableId } });
+      await prisma.product.deleteMany({ where: { id: tierProductId } });
+      await prisma.contact.deleteMany({ where: { id: tierContactId } });
+    });
+
+    it.each([
+      ['9', 12.5],
+      ['10', 10],
+      ['49', 10],
+      ['50', 7.5],
+    ])('quantity %s resolves to the correct tier price', async (quantity, expected) => {
+      const res = await request(app.getHttpServer())
+        .get('/api/v1/quotes/resolve-price')
+        .query({ productId: tierProductId, contactId: tierContactId, quantity })
+        .set('Authorization', `Bearer ${org1AdminToken}`)
+        .expect(200);
+
+      expect(res.body.data.unitPrice).toBe(expected);
+      expect(res.body.data.priceType).toBe('TIERED');
+      expect(res.body.data.tier).toBeTruthy();
     });
   });
 });

@@ -26,8 +26,8 @@ export function ApproveQuoteModal({ quoteId, quoteNumber, isOpen, onClose }: App
       });
       showToast('Offerte goedgekeurd', 'success');
       onClose();
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Goedkeuren mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 

@@ -23,8 +23,8 @@ export function PlanningGeschiedenisTab({
       await addQuestion.mutateAsync({ message: newQuestion });
       setNewQuestion('');
       showToast('Vraag/opmerking toegevoegd', 'success');
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Fout bij toevoegen vraag'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 

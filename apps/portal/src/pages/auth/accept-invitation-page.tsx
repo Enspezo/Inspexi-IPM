@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { apiClient } from '@/lib/api-client';
-import { Button, Input } from '@/components/ui';
+import { apiClient, getErrorMessage } from '@/lib/api-client';
+import { Button, Input, Spinner } from '@/components/ui';
 
 const acceptSchema = z
   .object({
@@ -22,12 +23,35 @@ const acceptSchema = z
 
 type AcceptFormData = z.infer<typeof acceptSchema>;
 
+interface InvitationInfo {
+  email: string;
+  role: string;
+  organizationName: string;
+  expiresAt: string;
+}
+
 export default function AcceptInvitationPage() {
   const { token } = useParams<{ token: string }>();
   const navigate = useNavigate();
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
+
+  // B-511 §7: valideer het token bij het laden van de pagina, zodat een
+  // verlopen of al gebruikte uitnodiging direct een duidelijke melding geeft —
+  // en niet pas nadat naam + wachtwoord al zijn ingetypt.
+  const {
+    data: invitation,
+    isLoading: isValidating,
+    error: invitationError,
+  } = useQuery<InvitationInfo>({
+    queryKey: ['invitation', token],
+    queryFn: () => apiClient.get<InvitationInfo>(`/users/invitation/${token}`),
+    enabled: !!token,
+    retry: false,
+    // Eigen foutscherm hieronder — geen globale error-toast nodig.
+    meta: { suppressErrorToast: true },
+  });
 
   const {
     register,
@@ -80,7 +104,38 @@ export default function AcceptInvitationPage() {
 
         {/* Card */}
         <div className="rounded-2xl bg-white p-8 shadow-2xl">
-          {isSuccess ? (
+          {isValidating ? (
+            <div className="flex flex-col items-center py-8">
+              <Spinner size="lg" />
+              <p className="mt-4 text-sm text-gray-600">Uitnodiging controleren...</p>
+            </div>
+          ) : invitationError ? (
+            <div className="text-center">
+              <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-danger-50">
+                <svg className="h-6 w-6 text-danger-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M12 5a7 7 0 100 14 7 7 0 000-14z" />
+                </svg>
+              </div>
+              <h2 className="text-lg font-semibold text-gray-900">
+                Uitnodiging niet geldig
+              </h2>
+              <p className="mt-2 text-sm text-gray-600">
+                {getErrorMessage(
+                  invitationError,
+                  'Deze uitnodiging is niet (meer) geldig.',
+                )}
+              </p>
+              <p className="mt-2 text-sm text-gray-500">
+                Vraag uw beheerder om een nieuwe uitnodiging te versturen.
+              </p>
+              <Link
+                to="/login"
+                className="mt-4 inline-block text-sm font-medium text-primary-600 hover:text-primary-700"
+              >
+                Naar de inlogpagina
+              </Link>
+            </div>
+          ) : isSuccess ? (
             <div className="text-center">
               <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-success-50">
                 <svg className="h-6 w-6 text-success-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -108,7 +163,9 @@ export default function AcceptInvitationPage() {
                   Welkom bij InspeXi
                 </h2>
                 <p className="mt-1 text-sm text-gray-600">
-                  Vul uw gegevens in om uw account aan te maken.
+                  {invitation
+                    ? `U bent uitgenodigd voor ${invitation.organizationName} (${invitation.email}). Vul uw gegevens in om uw account aan te maken.`
+                    : 'Vul uw gegevens in om uw account aan te maken.'}
                 </p>
               </div>
 

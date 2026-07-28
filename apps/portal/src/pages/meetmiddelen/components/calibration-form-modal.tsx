@@ -15,7 +15,7 @@ import {
 } from '../hooks/use-calibrations';
 
 const MAX_SIZE = 25 * 1024 * 1024; // 25 MB
-const ACCEPTED = 'application/pdf,image/jpeg,image/png,image/webp,image/svg+xml';
+const ACCEPTED = 'application/pdf,image/jpeg,image/png,image/webp';
 
 const schema = z.object({
   calibrationDate: z.string().min(1, 'Kalibratiedatum is verplicht'),
@@ -102,8 +102,8 @@ export function CalibrationFormModal({
         showToast('Kalibratie toegevoegd', 'success');
       }
       onClose();
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Opslaan mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 
@@ -112,8 +112,8 @@ export function CalibrationFormModal({
     try {
       await removeDocMutation.mutateAsync(calibration.id);
       showToast('Certificaat verwijderd', 'success');
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Verwijderen mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 
@@ -199,7 +199,7 @@ export function CalibrationFormModal({
             {isEdit && calibration?.hasDocument
               ? 'Een nieuw bestand vervangt het huidige certificaat. '
               : ''}
-            Toegestaan: PDF, JPEG, PNG, WebP, SVG (max 25 MB).
+            Toegestaan: PDF, JPEG, PNG, WebP (max 25 MB).
           </p>
         </div>
 

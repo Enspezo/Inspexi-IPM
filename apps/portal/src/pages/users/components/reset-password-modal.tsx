@@ -57,11 +57,8 @@ export function ResetPasswordModal({
         'success',
       );
       handleClose();
-    } catch (err) {
-      showToast(
-        err instanceof Error ? err.message : 'Resetten mislukt',
-        'error',
-      );
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 

@@ -1,7 +1,15 @@
-import { Button, Input, Select } from '@/components/ui';
+import { lazy, Suspense } from 'react';
+import { Button, Input, Select, Spinner, ErrorBoundary, ErrorBox } from '@/components/ui';
 import { formatFileSize } from '@/lib/format';
 import type { QuoteTemplate } from '@/types';
-import { DocxPreviewFrame } from './quote-template-docx-preview-frame';
+
+// docx-preview is zwaar; lazy laden zodat de bundel pas binnenkomt wanneer deze
+// tab de preview daadwerkelijk rendert.
+const DocxPreviewFrame = lazy(() =>
+  import('./quote-template-docx-preview-frame').then((m) => ({
+    default: m.DocxPreviewFrame,
+  })),
+);
 
 // ── DOCX: DOCX Bestand tab ─────────────────────────────
 
@@ -119,10 +127,25 @@ export function DocxFileTab({
             {/* Preview */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">Preview</label>
-              <DocxPreviewFrame
+              <ErrorBoundary
                 key={docxPreviewVersion}
-                templateId={template.id}
-              />
+                fallback={() => (
+                  <ErrorBox>
+                    De DOCX-preview kon niet worden weergegeven. Het bestand is
+                    mogelijk beschadigd — download het om het lokaal te openen.
+                  </ErrorBox>
+                )}
+              >
+                <Suspense
+                  fallback={
+                    <div className="flex items-center justify-center py-8">
+                      <Spinner size="md" />
+                    </div>
+                  }
+                >
+                  <DocxPreviewFrame templateId={template.id} />
+                </Suspense>
+              </ErrorBoundary>
             </div>
           </div>
         ) : (

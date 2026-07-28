@@ -48,7 +48,10 @@ export class SearchService {
   async search(user: User, query: SearchQueryDto): Promise<SearchResult> {
     const { q, type, limit = 4, page = 1 } = query;
     const skip = (page - 1) * limit;
-    const orgScope = !user.roles.includes(Role.SUPERUSER) ? { orgId: user.orgId! } : {};
+    // WP-B3 (D2): scope op de effectieve org (TenantGuard zet voor een
+    // SUPERUSER op een org-subdomein de tenant-org op de request-user);
+    // alleen op mijn.*/onbekende host zoekt een SUPERUSER platform-breed.
+    const orgScope = user.orgId ? { orgId: user.orgId } : {};
     const canSeeProducts = !user.roles.includes(Role.INSPECTEUR);
 
     const runAll = !type;
@@ -438,7 +441,7 @@ export class SearchService {
       contactIds.length > 0
         ? this.prisma.contact
             .findMany({
-              where: { id: { in: contactIds } },
+              where: { id: { in: contactIds }, isDeleted: false },
               select: { id: true, companyName: true, firstName: true, lastName: true },
             })
             .then((contacts) => {
@@ -455,7 +458,7 @@ export class SearchService {
       requestIds.length > 0
         ? this.prisma.request
             .findMany({
-              where: { id: { in: requestIds } },
+              where: { id: { in: requestIds }, isDeleted: false },
               select: { id: true, title: true },
             })
             .then((requests) => {
@@ -525,7 +528,7 @@ export class SearchService {
       contactIds.length > 0
         ? this.prisma.contact
             .findMany({
-              where: { id: { in: contactIds } },
+              where: { id: { in: contactIds }, isDeleted: false },
               select: { id: true, companyName: true, firstName: true, lastName: true },
             })
             .then((contacts) => {
@@ -542,7 +545,7 @@ export class SearchService {
       requestIds.length > 0
         ? this.prisma.request
             .findMany({
-              where: { id: { in: requestIds } },
+              where: { id: { in: requestIds }, isDeleted: false },
               select: { id: true, title: true },
             })
             .then((requests) => {

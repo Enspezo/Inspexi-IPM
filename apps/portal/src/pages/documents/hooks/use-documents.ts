@@ -1,10 +1,12 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useApiMutation } from '@/hooks/use-api-mutation';
 import { apiClient } from '@/lib/api-client';
 import type {
   CrmDocument,
   PaginatedResponse,
   DocumentEntityType,
 } from '@/types';
+import { documentKeys } from '@/lib/query-keys';
 
 interface ListDocumentsParams {
   search?: string;
@@ -34,7 +36,7 @@ export function useDocuments(params: ListDocumentsParams = {}) {
   const endpoint = `/documents${qs ? `?${qs}` : ''}`;
 
   return useQuery<PaginatedResponse<CrmDocument>>({
-    queryKey: ['documents', params],
+    queryKey: documentKeys.list(params),
     queryFn: () => apiClient.get<PaginatedResponse<CrmDocument>>(endpoint),
   });
 }
@@ -57,7 +59,7 @@ interface UploadDocumentData {
 export function useUploadDocument() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useApiMutation({
     mutationFn: (data: UploadDocumentData) => {
       const formData = new FormData();
       formData.append('file', data.file);
@@ -71,7 +73,7 @@ export function useUploadDocument() {
       return apiClient.upload<CrmDocument>('/documents', formData);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['documents'] });
+      queryClient.invalidateQueries({ queryKey: documentKeys.all });
     },
   });
 }
@@ -85,11 +87,11 @@ interface UpdateDocumentData {
 export function useUpdateDocument() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useApiMutation({
     mutationFn: ({ id, data }: { id: string; data: UpdateDocumentData }) =>
       apiClient.patch<CrmDocument>(`/documents/${id}`, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['documents'] });
+      queryClient.invalidateQueries({ queryKey: documentKeys.all });
     },
   });
 }
@@ -97,10 +99,10 @@ export function useUpdateDocument() {
 export function useDeleteDocument() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useApiMutation({
     mutationFn: (id: string) => apiClient.delete(`/documents/${id}`),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['documents'] });
+      queryClient.invalidateQueries({ queryKey: documentKeys.all });
     },
   });
 }

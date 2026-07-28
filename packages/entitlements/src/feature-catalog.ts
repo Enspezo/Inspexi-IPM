@@ -26,8 +26,11 @@ export const FEATURE_KEYS = [
   'BASIS_WORKFLOW',
   'WORKFLOW_COMPLEET',
   // Add-ons (standaard bij Compleet; voor Basis-orgs los per org bij te schakelen)
+  'PROJECT_FASEN',
   'WEBHOOKS',
   'CUSTOM_FIELDS',
+  'AI_REVIEW',
+  'ONLINE_HERSTEL',
   'AI_AGENT',
 ] as const;
 
@@ -86,6 +89,13 @@ export const FEATURE_CATALOG: Record<FeatureKey, FeatureDef> = {
     dependsOn: ['BASIS_WORKFLOW'],
   },
   // Add-ons — standaard bij Compleet; voor Basis-orgs los per org bij te schakelen.
+  PROJECT_FASEN: {
+    key: 'PROJECT_FASEN',
+    label: 'Projectfasen',
+    description:
+      'Deelprojecten (fasen) binnen een project: milestones, fasevolgers en voorbereiding voor deelfacturatie',
+    dependsOn: ['BASIS_UITVOERING'],
+  },
   WEBHOOKS: {
     key: 'WEBHOOKS',
     label: 'Webhooks (add-on)',
@@ -98,7 +108,20 @@ export const FEATURE_CATALOG: Record<FeatureKey, FeatureDef> = {
     description: 'Custom-field-definities op entiteiten',
     dependsOn: [],
   },
-  // AI-assistent (betaalde add-on, PRD-12). Minimaal Basis CRM als domein-basis.
+  AI_REVIEW: {
+    key: 'AI_REVIEW',
+    label: 'AI-rapportcontrole (add-on)',
+    description: 'AI-voorcontrole van inspectierapporten vóór de menselijke review',
+    dependsOn: ['BASIS_INSPECTIES'],
+  },
+  ONLINE_HERSTEL: {
+    key: 'ONLINE_HERSTEL',
+    label: 'Online herstel (add-on)',
+    description:
+      'Externen en klanten melden herstel van constateringen online, incl. ondertekende herstelverklaring',
+    dependsOn: ['BASIS_INSPECTIES'],
+  },
+  // AI-assistent (betaalde add-on). Minimaal Basis CRM als domein-basis.
   AI_AGENT: {
     key: 'AI_AGENT',
     label: 'AI-assistent (add-on)',

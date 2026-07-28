@@ -130,6 +130,11 @@ describe('Feature entitlements (e2e)', () => {
       await prisma.organizationFeature.deleteMany({
         where: { orgId: { in: [basisOrgId, compleetOrgId] } },
       });
+      // Defensief: een (per ongeluk) aangemaakt custom field RESTRICT't de
+      // org-delete en liet vroeger de plans achter → P2002 bij de vólgende run.
+      await prisma.customFieldDefinition.deleteMany({
+        where: { orgId: { in: [basisOrgId, compleetOrgId] } },
+      });
       await prisma.user.deleteMany({ where: { id: { in: userIds } } });
       await prisma.organization.deleteMany({
         where: { id: { in: [basisOrgId, compleetOrgId] } },
@@ -221,21 +226,32 @@ describe('Feature entitlements (e2e)', () => {
     });
   });
 
-  // Een SUPERUSER heeft geen org-context (orgId = null). Vroeger gaf dat een
+  // Een SUPERUSER heeft geen eigen org (orgId = null). Vroeger gaf dat een
   // onhandelbare 500 op de null-orgId-query van /custom-fields; nu is dat een
   // nette status (lege lijst bij lezen, 400 bij schrijven).
+  //
+  // NB (WP-B3, beslissing D2): het subdomein bepaalt sindsdien de effectieve
+  // org — een SUPERUSER op een órg-host schrijft dus legitiem in die org. De
+  // "zonder org-context"-situatie bestaat alleen nog zónder org-subdomein
+  // (unknown host, zoals 127.0.0.1 hier), dus deze tests sturen bewust géén
+  // Host-header meer mee.
   describe('/custom-fields zonder org-context (SUPERUSER)', () => {
     it('GET → 200 met lege lijst i.p.v. 500', async () => {
-      const res = await get('/api/v1/custom-fields', COMPLEET_HOST, superToken);
+      const res = await request(app.getHttpServer())
+        .get('/api/v1/custom-fields')
+        .set('Authorization', `Bearer ${superToken}`);
       expect(res.status).toBe(200);
       // /custom-fields levert de lijst rauw terug (niet in {success,data}).
       expect(res.body).toEqual([]);
     });
 
     it('POST → 400 met NL-melding i.p.v. 500', async () => {
+      // Sinds WP-B3 (#141) krijgt een SUPERUSER op een org-subdomein een
+      // effectieve orgId en slaagt een schrijf dáár bewust (201). De échte
+      // "zonder org-context"-situatie is een host zonder tenant (127.0.0.1)
+      // — daar moet de nette 400 blijven staan (was ooit een 500).
       const res = await request(app.getHttpServer())
         .post('/api/v1/custom-fields')
-        .set('Host', COMPLEET_HOST)
         .set('Authorization', `Bearer ${superToken}`)
         .send({ entityType: 'CONTACT', label: 'Test', fieldType: 'TEXT' });
       expect(res.status).toBe(400);

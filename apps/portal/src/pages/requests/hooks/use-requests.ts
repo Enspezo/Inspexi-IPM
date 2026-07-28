@@ -1,5 +1,12 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useApiMutation } from '@/hooks/use-api-mutation';
 import { apiClient } from '@/lib/api-client';
+import {
+  lostReasonKeys,
+  requestKeys,
+  requestsAllKeys,
+  userKeys,
+} from '@/lib/query-keys';
 import type {
   Request,
   PaginatedResponse,
@@ -12,7 +19,7 @@ import type {
 /** Lookup: actieve "reden verloren" opties (globaal + org-specifiek). */
 export function useLostReasons() {
   return useQuery<LostReason[]>({
-    queryKey: ['lost-reasons'],
+    queryKey: lostReasonKeys.all,
     queryFn: () => apiClient.get<LostReason[]>('/requests/lost-reasons'),
     staleTime: 5 * 60 * 1000,
   });
@@ -45,7 +52,7 @@ export function useRequests(params: ListRequestsParams = {}) {
   const endpoint = `/requests${qs ? `?${qs}` : ''}`;
 
   return useQuery<PaginatedResponse<Request>>({
-    queryKey: ['requests', params],
+    queryKey: requestKeys.list(params),
     queryFn: () => apiClient.get<PaginatedResponse<Request>>(endpoint),
     enabled: params.enabled,
   });
@@ -53,7 +60,7 @@ export function useRequests(params: ListRequestsParams = {}) {
 
 export function useRequest(id: string) {
   return useQuery<Request>({
-    queryKey: ['requests', id],
+    queryKey: requestKeys.detail(id),
     queryFn: () => apiClient.get<Request>(`/requests/${id}`),
     enabled: !!id,
   });
@@ -73,11 +80,11 @@ interface CreateRequestDto {
 export function useCreateRequest() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useApiMutation({
     mutationFn: (data: CreateRequestDto) =>
       apiClient.post<Request>('/requests', data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['requests'] });
+      queryClient.invalidateQueries({ queryKey: requestKeys.all });
     },
   });
 }
@@ -95,11 +102,11 @@ interface UpdateRequestDto {
 export function useUpdateRequest(id: string) {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useApiMutation({
     mutationFn: (data: UpdateRequestDto) =>
       apiClient.patch<Request>(`/requests/${id}`, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['requests'] });
+      queryClient.invalidateQueries({ queryKey: requestKeys.all });
     },
   });
 }
@@ -107,16 +114,19 @@ export function useUpdateRequest(id: string) {
 interface UpdateRequestStatusDto {
   status: string;
   note?: string;
+  /** B-315 §1: verplicht wanneer status VERLOREN wordt. */
+  lostReasonId?: string;
+  lostNote?: string;
 }
 
 export function useUpdateRequestStatus(id: string) {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useApiMutation({
     mutationFn: (data: UpdateRequestStatusDto) =>
       apiClient.patch<Request>(`/requests/${id}/status`, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['requests'] });
+      queryClient.invalidateQueries({ queryKey: requestKeys.all });
     },
   });
 }
@@ -124,17 +134,17 @@ export function useUpdateRequestStatus(id: string) {
 export function useDeleteRequest() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useApiMutation({
     mutationFn: (id: string) => apiClient.delete(`/requests/${id}`),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['requests'] });
+      queryClient.invalidateQueries({ queryKey: requestKeys.all });
     },
   });
 }
 
 export function useOrgUsers() {
   return useQuery<UserSummary[]>({
-    queryKey: ['users', 'org'],
+    queryKey: userKeys.org(),
     queryFn: () => apiClient.get<UserSummary[]>('/users'),
   });
 }
@@ -152,7 +162,7 @@ export function useAllRequests(params: Omit<ListRequestsParams, 'page' | 'limit'
   const endpoint = `/requests${qs ? `?${qs}` : ''}`;
 
   return useQuery<PaginatedResponse<Request>>({
-    queryKey: ['requests-all', params],
+    queryKey: requestsAllKeys.list(params),
     queryFn: () => apiClient.get<PaginatedResponse<Request>>(endpoint),
   });
 }

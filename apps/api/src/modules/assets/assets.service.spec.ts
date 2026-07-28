@@ -295,7 +295,7 @@ describe('AssetsService', () => {
 
   describe('reorder', () => {
     it('should reorder assets via a scoped transaction', async () => {
-      mockAssetNodes.listPlanNodes.mockResolvedValue([]);
+      mockAssetNodes.listPlanNodes.mockResolvedValue([{ id: 'asset-1' }, { id: 'asset-2' }]);
       mockPrismaService.assetNode.update.mockImplementation((args: unknown) => args);
       mockPrismaService.$transaction.mockResolvedValue([]);
 
@@ -317,6 +317,15 @@ describe('AssetsService', () => {
         where: { id: 'asset-1' },
         data: { sortOrder: 1 },
       });
+    });
+
+    it('should reject an asset id that is not in the plan tree (SEC-7)', async () => {
+      mockAssetNodes.listPlanNodes.mockResolvedValue([{ id: 'asset-1' }]);
+
+      await expect(
+        service.reorder('plan-1', mockUser, { assetIds: ['asset-1', 'foreign-asset'] } as any),
+      ).rejects.toThrow(BadRequestException);
+      expect(mockPrismaService.$transaction).not.toHaveBeenCalled();
     });
   });
 

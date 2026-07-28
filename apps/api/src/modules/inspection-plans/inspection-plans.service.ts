@@ -1,7 +1,9 @@
 import {
   Injectable,
+  Logger,
   ForbiddenException,
   BadRequestException,
+  HttpException,
 } from '@nestjs/common';
 import { User, Prisma, NotificationType } from '@prisma/client';
 import { PrismaService } from '@/prisma';
@@ -11,15 +13,24 @@ import {
   orgScope,
   assertFound,
   assertSameOrg,
+  resolvePhaseLink,
+  PROJECT_FASEN_FEATURE,
+  PROJECT_FASEN_REQUIRED_MESSAGE,
   requireOrg,
+  validateJsonColumn,
+  ONLINE_HERSTEL_FEATURE,
   STATUS_DRAFT,
   STATUS_IN_PROGRESS,
   STATUS_PENDING_REVIEW,
   STATUS_REVIEWED,
   STATUS_APPROVED,
+  STATUS_COMPLETED,
 } from '@/common';
+import { planMetadataSchema, PLAN_METADATA_LABEL } from './schemas/plan-metadata.schema';
+import { EntitlementsService } from '@/modules/entitlements/entitlements.service';
 import { LookupService, LOOKUP_KIND, type LookupKind } from '../lookups/lookup.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { AiReviewService } from '../ai-review/ai-review.service';
 import { AssetNodesService } from '../asset-nodes/asset-nodes.service';
 import { CreateAssetNodeDto } from '../asset-nodes/dto';
 import {
@@ -40,11 +51,15 @@ const contactSelect = {
 
 @Injectable()
 export class InspectionPlansService {
+  private readonly logger = new Logger(InspectionPlansService.name);
+
   constructor(
     private prisma: PrismaService,
     private lookups: LookupService,
     private notifications: NotificationsService,
     private assetNodes: AssetNodesService,
+    private entitlements: EntitlementsService,
+    private aiReview: AiReviewService,
   ) {}
 
   /** Template mag een systeemtemplate (orgId null) of een eigen-org template zijn. */
@@ -161,6 +176,7 @@ export class InspectionPlansService {
         contact: { select: contactSelect },
         assignedUser: { select: userSelect },
         reviewer: { select: userSelect },
+        projectPhase: { select: { id: true, name: true, sortOrder: true, status: true } },
       },
       orderBy,
       page,
@@ -179,6 +195,7 @@ export class InspectionPlansService {
         include: {
           contact: { select: contactSelect },
           project: { select: { id: true, title: true, projectNumber: true } },
+          projectPhase: { select: { id: true, name: true, sortOrder: true, status: true } },
           assignedUser: { select: userSelect },
           reviewer: { select: userSelect },
           inspectionTemplate: {
@@ -190,11 +207,53 @@ export class InspectionPlansService {
     );
   }
 
+  /**
+   * Online herstel (PRD-14): het rapportnummer (referenceNumber) is de anonieme
+   * toegangssleutel en moet dus gevuld en binnen de org uniek zijn voordat
+   * `onlineRepairEnabled` aangezet mag worden. Match case-insensitief + getrimd,
+   * conform de lookup-normalisatie in client-repair.
+   */
+  private async assertOnlineRepairReference(
+    planId: string,
+    orgId: string,
+    referenceNumber: string | null | undefined,
+  ): Promise<void> {
+    const ref = referenceNumber?.trim();
+    if (!ref) {
+      throw new BadRequestException(
+        'Online herstel vereist een uniek rapportnummer (referentienummer) — vul dit eerst in.',
+      );
+    }
+    const duplicate = await this.prisma.inspectionPlan.findFirst({
+      where: {
+        orgId,
+        deletedAt: null,
+        id: { not: planId },
+        referenceNumber: { equals: ref, mode: 'insensitive' },
+      },
+      select: { id: true },
+    });
+    if (duplicate) {
+      throw new BadRequestException(
+        'Online herstel vereist een uniek rapportnummer (referentienummer) — dit nummer is al in gebruik bij een andere inspectie.',
+      );
+    }
+  }
+
   async create(dto: CreateInspectionPlanDto, user: User) {
     const orgId = requireOrg(user);
 
+    // B-107: de regel "scope vereist een hoofdlocatie" hoort bij de invoer-
+    // validatie en moet vóór élke schrijfactie afgedwongen worden.
+    if (dto.scopeLocationIds?.length && !dto.locationId) {
+      throw new BadRequestException('scopeLocationIds vereist een hoofdlocatie (locationId)');
+    }
+
     // Cross-tenant FK-validatie vóór de schrijfactie — alle checks zijn
     // onafhankelijke reads die throwen bij falen, dus parallel uitvoeren.
+    // B-107: óók de scope-deellocaties (bestaan + org + juiste boom) worden
+    // hier gevalideerd, zodat een afgewezen create nooit een weesplan
+    // achterlaat.
     await Promise.all([
       assertSameOrg(this.prisma.contact, dto.contactId, orgId, 'Relatie'),
       assertSameOrg(this.prisma.project, dto.projectId, orgId, 'Project'),
@@ -205,46 +264,92 @@ export class InspectionPlansService {
       this.assertTemplateUsable(dto.inspectionTemplateId, orgId),
       this.assertNormExists(dto.normTypeCode),
       this.assertLookup(LOOKUP_KIND.INSPECTION_TYPES, dto.inspectionTypeCode, orgId),
+      ...(dto.locationId
+        ? (dto.scopeLocationIds ?? []).map((assetNodeId) =>
+            this.assetNodes.assertValidScopeLocation(assetNodeId, dto.locationId!, orgId),
+          )
+        : []),
     ]);
 
-    const plan = await this.prisma.inspectionPlan.create({
-      data: {
-        orgId,
-        contactId: dto.contactId,
-        projectId: dto.projectId ?? null,
-        locationId: dto.locationId ?? null,
-        inspectionTemplateId: dto.inspectionTemplateId ?? null,
-        projectName: dto.projectName,
-        description: dto.description ?? null,
-        referenceNumber: dto.referenceNumber ?? null,
-        normTypeCode: dto.normTypeCode,
-        inspectionTypeCode: dto.inspectionTypeCode ?? 'initial',
-        statusCode: STATUS_DRAFT,
-        addressStreet: dto.addressStreet ?? null,
-        addressHouseNumber: dto.addressHouseNumber ?? null,
-        addressPostalCode: dto.addressPostalCode ?? null,
-        addressCity: dto.addressCity ?? null,
-        gpsLatitude: dto.gpsLatitude ?? null,
-        gpsLongitude: dto.gpsLongitude ?? null,
-        plannedDate: dto.plannedDate ? new Date(dto.plannedDate) : null,
-        deadline: dto.deadline ? new Date(dto.deadline) : null,
-        assignedTo: dto.assignedTo ?? null,
-        reviewerId: dto.reviewerId ?? null,
-        installationResponsibleId: dto.installationResponsibleId ?? null,
-        notes: dto.notes ?? null,
-        createdBy: user.id,
-      },
+    // Online herstel (PRD-14): default vanuit de org-instelling, maar alleen
+    // wanneer het ONLINE_HERSTEL-entitlement actief is. Wijzigen van de
+    // org-default raakt bestaande plannen bewust niet (voorspelbaar gedrag).
+    // Invariant (review PR #128 #4): de vlag mag alleen aan mét een gevuld,
+    // binnen de org uniek rapportnummer — anders blijft hij stil uit (het
+    // create-formulier kent geen toggle; staf kan hem later alsnog aanzetten).
+    let onlineRepairEnabled = false;
+    const orgSettings = await this.prisma.organization.findUnique({
+      where: { id: orgId },
+      select: { onlineRepairDefault: true },
     });
-
-    // Werkboom: maak de wortel-LOCATION-node lazily aan + zet scope-deellocaties.
-    if (plan.locationId) {
-      await this.assetNodes.ensureRootNode(plan.locationId, user);
-      if (dto.scopeLocationIds?.length) {
-        await this.replaceScopeLocations(plan.id, orgId, plan.locationId, dto.scopeLocationIds);
+    if (orgSettings?.onlineRepairDefault) {
+      const features = await this.entitlements.getEnabledFeatures(orgId);
+      const createRef = dto.referenceNumber?.trim();
+      if (features.includes(ONLINE_HERSTEL_FEATURE) && createRef) {
+        const duplicate = await this.prisma.inspectionPlan.findFirst({
+          where: {
+            orgId,
+            deletedAt: null,
+            referenceNumber: { equals: createRef, mode: 'insensitive' },
+          },
+          select: { id: true },
+        });
+        onlineRepairEnabled = !duplicate;
       }
-    } else if (dto.scopeLocationIds?.length) {
-      throw new BadRequestException('scopeLocationIds vereist een hoofdlocatie (locationId)');
     }
+
+    // Werkboom: wortel-LOCATION-node idempotent aanmaken VÓÓR het plan. Bewust
+    // búiten de transactie hieronder: de node is persistente, plan-onafhankelijke
+    // boomdata (dezelfde node ontstaat bij elk eerste gebruik van deze locatie)
+    // en de numbering-engine draait zijn eigen `$transaction` met een
+    // P2002-retry-loop — genest in een outer interactive tx zou die retry op een
+    // al geaborteerde transactie stuklopen. Een achtergebleven wortel-node bij
+    // een latere fout is onschadelijk (idempotent, geen plan-koppeling).
+    if (dto.locationId) {
+      await this.assetNodes.ensureRootNode(dto.locationId, user);
+    }
+
+    // B-107: plan + scope-rijen in één transactie — een fout in de scope-write
+    // draait ook het plan terug (geen weesplannen meer bij een afgewezen create).
+    const plan = await this.prisma.$transaction(async (tx) => {
+      const created = await tx.inspectionPlan.create({
+        data: {
+          orgId,
+          onlineRepairEnabled,
+          contactId: dto.contactId,
+          projectId: dto.projectId ?? null,
+          locationId: dto.locationId ?? null,
+          inspectionTemplateId: dto.inspectionTemplateId ?? null,
+          projectName: dto.projectName,
+          description: dto.description ?? null,
+          // Getrimd opslaan (review #10): de uniciteitscheck en de anonieme
+          // lookup vergelijken getrimd — padded opslag zou daar doorheen glippen.
+          referenceNumber: dto.referenceNumber?.trim() || null,
+          normTypeCode: dto.normTypeCode,
+          inspectionTypeCode: dto.inspectionTypeCode ?? 'initial',
+          statusCode: STATUS_DRAFT,
+          addressStreet: dto.addressStreet ?? null,
+          addressHouseNumber: dto.addressHouseNumber ?? null,
+          addressPostalCode: dto.addressPostalCode ?? null,
+          addressCity: dto.addressCity ?? null,
+          gpsLatitude: dto.gpsLatitude ?? null,
+          gpsLongitude: dto.gpsLongitude ?? null,
+          plannedDate: dto.plannedDate ? new Date(dto.plannedDate) : null,
+          deadline: dto.deadline ? new Date(dto.deadline) : null,
+          assignedTo: dto.assignedTo ?? null,
+          reviewerId: dto.reviewerId ?? null,
+          installationResponsibleId: dto.installationResponsibleId ?? null,
+          notes: dto.notes ?? null,
+          createdBy: user.id,
+        },
+      });
+
+      if (created.locationId && dto.scopeLocationIds?.length) {
+        await this.writeScopeLocations(tx, created.id, orgId, dto.scopeLocationIds);
+      }
+
+      return created;
+    });
 
     // Notify de toegewezen inspecteur (tenzij dat de aanmaker zelf is)
     if (plan.assignedTo && plan.assignedTo !== user.id) {
@@ -261,6 +366,14 @@ export class InspectionPlansService {
     const orgId = existing.orgId;
     const oldAssignedTo = existing.assignedTo;
 
+    // B-107: scope-validatie hoort vóór de write (zelfde patroon als create()) —
+    // anders is het plan al gewijzigd wanneer de scope wordt afgekeurd.
+    const effectiveLocationId =
+      dto.locationId !== undefined ? dto.locationId : existing.locationId;
+    if (dto.scopeLocationIds !== undefined && dto.scopeLocationIds.length > 0 && !effectiveLocationId) {
+      throw new BadRequestException('scopeLocationIds vereist een hoofdlocatie (locationId)');
+    }
+
     // Onafhankelijke validaties parallel (zie create()).
     await Promise.all([
       assertSameOrg(this.prisma.contact, dto.contactId, orgId, 'Relatie'),
@@ -272,6 +385,11 @@ export class InspectionPlansService {
       this.assertTemplateUsable(dto.inspectionTemplateId, orgId),
       dto.normTypeCode ? this.assertNormExists(dto.normTypeCode) : Promise.resolve(),
       this.assertLookup(LOOKUP_KIND.INSPECTION_TYPES, dto.inspectionTypeCode, orgId),
+      ...(effectiveLocationId
+        ? (dto.scopeLocationIds ?? []).map((assetNodeId) =>
+            this.assetNodes.assertValidScopeLocation(assetNodeId, effectiveLocationId, orgId),
+          )
+        : []),
     ]);
 
     const data: Prisma.InspectionPlanUpdateInput = {};
@@ -279,7 +397,7 @@ export class InspectionPlansService {
     if (dto.projectName !== undefined) data.projectName = dto.projectName;
     if (dto.description !== undefined) data.description = dto.description ?? null;
     if (dto.referenceNumber !== undefined)
-      data.referenceNumber = dto.referenceNumber ?? null;
+      data.referenceNumber = dto.referenceNumber?.trim() || null;
     if (dto.normTypeCode !== undefined) data.normTypeCode = dto.normTypeCode;
     if (dto.inspectionTypeCode !== undefined)
       data.inspectionTypeCode = dto.inspectionTypeCode;
@@ -288,15 +406,65 @@ export class InspectionPlansService {
     if (dto.deadline !== undefined)
       data.deadline = dto.deadline ? new Date(dto.deadline) : null;
     if (dto.notes !== undefined) data.notes = dto.notes ?? null;
+    // B-313 (zelfde klasse): deze DTO-velden werden wél geaccepteerd maar nooit
+    // gemapt — een PATCH gaf 200 zonder effect. Gevonden via de generieke
+    // DTO↔mapping-regressietest.
+    if (dto.addressStreet !== undefined) data.addressStreet = dto.addressStreet ?? null;
+    if (dto.addressHouseNumber !== undefined)
+      data.addressHouseNumber = dto.addressHouseNumber ?? null;
+    if (dto.addressPostalCode !== undefined)
+      data.addressPostalCode = dto.addressPostalCode ?? null;
+    if (dto.addressCity !== undefined) data.addressCity = dto.addressCity ?? null;
+    if (dto.gpsLatitude !== undefined) data.gpsLatitude = dto.gpsLatitude ?? null;
+    if (dto.gpsLongitude !== undefined) data.gpsLongitude = dto.gpsLongitude ?? null;
+    if (dto.installationResponsibleId !== undefined)
+      data.installationResponsible = dto.installationResponsibleId
+        ? { connect: { id: dto.installationResponsibleId } }
+        : { disconnect: true };
     if (dto.contactId !== undefined)
       data.contact = { connect: { id: dto.contactId } };
     if (dto.projectId !== undefined)
       data.project = dto.projectId
         ? { connect: { id: dto.projectId } }
         : { disconnect: true };
+
+    // Projectfase-koppeling (PRD-12): valideer org + projectconsistentie t.o.v. het
+    // effectieve project (een in dezelfde PATCH gewijzigd projectId telt mee) en
+    // cascadeer het project van de fase wanneer het plan er nog geen heeft.
+    const effectiveProjectId =
+      dto.projectId !== undefined ? dto.projectId : existing.projectId;
+    // Alleen bij een DAADWERKELIJKE wijziging van projectPhaseId de
+    // PROJECT_FASEN-entitlement afdwingen (§Fase E).
+    if (dto.projectPhaseId !== undefined) {
+      await this.entitlements.assertFeature(
+        orgId, PROJECT_FASEN_FEATURE, PROJECT_FASEN_REQUIRED_MESSAGE,
+      );
+    }
+    const phaseLink = await resolvePhaseLink(
+      this.prisma.projectPhase, dto.projectPhaseId, orgId, effectiveProjectId,
+    );
+    if (phaseLink !== undefined) {
+      data.projectPhase = phaseLink.phaseId
+        ? { connect: { id: phaseLink.phaseId } }
+        : { disconnect: true };
+      if (phaseLink.projectId && effectiveProjectId == null) {
+        data.project = { connect: { id: phaseLink.projectId } };
+      }
+    }
     if (dto.locationId !== undefined)
       data.location = dto.locationId
         ? { connect: { id: dto.locationId } }
+        : { disconnect: true };
+    // B-313: het veld werd wél gevalideerd (assertTemplateUsable hierboven) maar
+    // nooit naar `data` gemapt — een PATCH gaf 200 zonder effect en een plan
+    // zonder template kon nooit meer een template krijgen (documentgeneratie
+    // blokkeerde permanent). Bewuste keuze: koppelen/wisselen mag in elke
+    // status, consistent met contactId/locationId/normTypeCode die hier ook
+    // onbeperkt muteerbaar zijn — dit is juist het herstelpad voor bestaande
+    // plannen zonder template.
+    if (dto.inspectionTemplateId !== undefined)
+      data.inspectionTemplate = dto.inspectionTemplateId
+        ? { connect: { id: dto.inspectionTemplateId } }
         : { disconnect: true };
     if (dto.assignedTo !== undefined)
       data.assignedUser = dto.assignedTo
@@ -318,39 +486,80 @@ export class InspectionPlansService {
       if (!row) {
         throw new BadRequestException(`Onbekende planstatus: ${dto.statusCode}`);
       }
+      // Vier-ogen-gate (PRD-13 §13.3 besluit 5): met de org-toggle aan mag een
+      // plan pas naar completed/approved als er een menselijke review is geweest.
+      // De org-query draait alleen op deze (zeldzame) transitie, niet per request;
+      // de /sync-push van de PWA loopt niet via update() en blijft ongemoeid.
+      if (
+        (dto.statusCode === STATUS_COMPLETED || dto.statusCode === STATUS_APPROVED) &&
+        !existing.reviewedAt
+      ) {
+        const org = await this.prisma.organization.findUnique({
+          where: { id: orgId },
+          select: { inspectionReviewEnabled: true },
+        });
+        if (org?.inspectionReviewEnabled) {
+          throw new BadRequestException(
+            'Dit plan moet eerst beoordeeld worden (vier-ogen-principe)',
+          );
+        }
+      }
       data.statusCode = dto.statusCode;
     }
     if (dto.startedAt !== undefined)
       data.startedAt = dto.startedAt ? new Date(dto.startedAt) : null;
     if (dto.internalNotes !== undefined)
       data.internalNotes = dto.internalNotes ?? null;
-    if (dto.metadata !== undefined)
+    if (dto.metadata !== undefined) {
+      validateJsonColumn(planMetadataSchema, dto.metadata, PLAN_METADATA_LABEL);
       data.metadata = dto.metadata as Prisma.InputJsonValue;
+    }
+
+    // Online herstel (PRD-14): aanzetten vereist een gevuld én binnen de org
+    // uniek rapportnummer (referenceNumber) — de anonieme lookup matcht erop.
+    // De invariant geldt ook andersom (review #3): zolang de vlag (effectief)
+    // aan staat mag het rapportnummer niet geleegd of gedupliceerd worden.
+    const effectiveOnlineRepair =
+      dto.onlineRepairEnabled !== undefined ? dto.onlineRepairEnabled : existing.onlineRepairEnabled;
+    if (
+      dto.onlineRepairEnabled === true ||
+      (dto.referenceNumber !== undefined && effectiveOnlineRepair)
+    ) {
+      const effectiveRef =
+        dto.referenceNumber !== undefined ? dto.referenceNumber : existing.referenceNumber;
+      await this.assertOnlineRepairReference(existing.id, orgId, effectiveRef);
+    }
+    if (dto.onlineRepairEnabled !== undefined) {
+      data.onlineRepairEnabled = dto.onlineRepairEnabled;
+    }
 
     data.lastModifiedByUser = { connect: { id: user.id } };
 
-    const plan = await this.prisma.inspectionPlan.update({
-      where: { id: existing.id },
-      data,
-    });
-
-    // Werkboom + scope-deellocaties bijhouden.
-    const effectiveLocationId =
-      dto.locationId !== undefined ? dto.locationId : existing.locationId;
+    // Werkboom: wortel-node idempotent vóór de transactie (zie create() voor
+    // waarom dit búiten de tx moet — numbering-engine met eigen transacties).
     if (dto.locationId) {
       await this.assetNodes.ensureRootNode(dto.locationId, user);
     }
-    if (dto.scopeLocationIds !== undefined) {
-      if (!effectiveLocationId) {
-        throw new BadRequestException('scopeLocationIds vereist een hoofdlocatie (locationId)');
-      }
-      await this.replaceScopeLocations(plan.id, orgId, effectiveLocationId, dto.scopeLocationIds);
-    } else if (dto.locationId !== undefined && dto.locationId !== existing.locationId) {
-      // Hoofdlocatie gewijzigd → bestaande scope-deellocaties horen bij de oude boom.
-      await this.prisma.inspectionPlanLocation.deleteMany({
-        where: { inspectionPlanId: plan.id },
+
+    // B-107: plan-update + scope-wijzigingen in één transactie, zodat een fout
+    // in de scope-write ook de planwijziging terugdraait.
+    const plan = await this.prisma.$transaction(async (tx) => {
+      const updated = await tx.inspectionPlan.update({
+        where: { id: existing.id },
+        data,
       });
-    }
+
+      if (dto.scopeLocationIds !== undefined) {
+        await this.writeScopeLocations(tx, updated.id, orgId, dto.scopeLocationIds);
+      } else if (dto.locationId !== undefined && dto.locationId !== existing.locationId) {
+        // Hoofdlocatie gewijzigd → bestaande scope-deellocaties horen bij de oude boom.
+        await tx.inspectionPlanLocation.deleteMany({
+          where: { inspectionPlanId: updated.id },
+        });
+      }
+
+      return updated;
+    });
 
     // Notify bij wijziging van de toegewezen inspecteur (tenzij naar de aanmaker zelf).
     if (
@@ -401,13 +610,62 @@ export class InspectionPlansService {
       },
     });
 
-    if (reviewerId && reviewerId !== user.id) {
-      this.notify(NotificationType.INSPECTIEPLAN_TER_REVIEW, updated, [
-        reviewerId,
-      ]);
-    }
+    await this.dispatchSubmitSideEffects(updated.id, user);
 
     return updated;
+  }
+
+  /**
+   * Kern-side-effects van een indiening ter review, gedeeld door {@link submit}
+   * (REST) en het `/sync`-pad (WP-C3 / B-218): een PWA-indiening naar
+   * `pending_review` moet dezelfde keten starten als de REST-submit.
+   *
+   * - Notificatie `INSPECTIEPLAN_TER_REVIEW` naar de reviewer, met fallback
+   *   reviewer → project-PM → toegewezen inspecteur (zelfde keten als de
+   *   PRD-14 PM-resolutie) zodat er altijd een geadresseerde is; de indiener
+   *   zelf wordt overgeslagen.
+   * - AI-voorcontrole (PRD-13 §13.3 besluit 2): fire-and-forget; de
+   *   guard-checks (AI_REVIEW-entitlement, org-toggle, API-key, concurrency)
+   *   zitten in startRun zelf.
+   *
+   * Gooit nooit richting de caller — een falende notificatie/AI-start mag de
+   * submit of de sync-push niet raken.
+   */
+  async dispatchSubmitSideEffects(planId: string, submitter: User): Promise<void> {
+    try {
+      const plan = await this.prisma.inspectionPlan.findFirst({
+        where: { id: planId, deletedAt: null },
+        select: {
+          id: true,
+          orgId: true,
+          projectName: true,
+          reviewerId: true,
+          assignedTo: true,
+          project: { select: { projectManagerId: true } },
+        },
+      });
+      if (!plan) return;
+
+      const recipient =
+        plan.reviewerId ?? plan.project?.projectManagerId ?? plan.assignedTo;
+      if (recipient && recipient !== submitter.id) {
+        this.notify(NotificationType.INSPECTIEPLAN_TER_REVIEW, plan, [recipient]);
+      }
+
+      this.aiReview.startRun(plan.id, submitter).catch((e) => {
+        if (e instanceof HttpException) {
+          this.logger.debug(`AI-review niet gestart voor plan ${plan.id}: ${e.message}`);
+        } else {
+          this.logger.error(`AI-review starten mislukt voor plan ${plan.id}: ${e?.message}`, e?.stack);
+        }
+      });
+    } catch (e) {
+      const err = e as Error;
+      this.logger.error(
+        `Submit-side-effects mislukt voor plan ${planId}: ${err?.message}`,
+        err?.stack,
+      );
+    }
   }
 
   /**
@@ -426,12 +684,26 @@ export class InspectionPlansService {
     const approved = dto.decision === 'approve';
     const newStatus = approved ? STATUS_APPROVED : STATUS_REVIEWED;
 
+    // B-315 §8: afkeuren zonder toelichting laat de inspecteur raden wat er
+    // mis is — maak de opmerking verplicht bij een afwijzing.
+    if (!approved && !dto.notes?.trim()) {
+      throw new BadRequestException(
+        'Geef een toelichting bij het afkeuren, zodat de inspecteur weet wat er aangepast moet worden',
+      );
+    }
+
     const updated = await this.prisma.inspectionPlan.update({
       where: { id: plan.id },
       data: {
         statusCode: newStatus,
         reviewedAt: new Date(),
         approvedAt: approved ? new Date() : undefined,
+        // B-315 §9: leg vast wíe de beoordeling deed. Er is geen aparte
+        // reviewedBy-kolom (geen migraties in dit werkpakket), dus reviewerId
+        // wordt bij de beoordeling op de daadwerkelijke beoordelaar gezet —
+        // een eventueel vooraf toegewezen reviewer die het niet werd, wordt
+        // hier bewust overschreven (de audit-log bewaart de historie).
+        reviewer: { connect: { id: user.id } },
         internalNotes: dto.notes
           ? `${plan.internalNotes ?? ''}\n\nReview notes: ${dto.notes}`
           : plan.internalNotes,
@@ -457,34 +729,30 @@ export class InspectionPlansService {
   // ─── Scope-deellocaties (InspectionPlanLocation) ───────────
 
   /**
-   * Vervangt de volledige scope-set van een plan. Valideert elke node
-   * (LOCATION + in de boom van `locationId`) vóór het schrijven. De eerste node
-   * wordt als `isPrimary` gemarkeerd.
+   * Vervangt de volledige scope-set van een plan op de meegegeven
+   * transaction-client. De validatie van de nodes (bestaan + org + juiste boom)
+   * gebeurt VÓÓR de omvattende transactie in create()/update() (B-107); deze
+   * helper schrijft alleen. De eerste node wordt als `isPrimary` gemarkeerd.
    */
-  private async replaceScopeLocations(
+  private async writeScopeLocations(
+    tx: Prisma.TransactionClient,
     planId: string,
     orgId: string,
-    locationId: string,
     assetNodeIds: string[],
   ): Promise<void> {
-    for (const assetNodeId of assetNodeIds) {
-      await this.assetNodes.assertValidScopeLocation(assetNodeId, locationId, orgId);
+    await tx.inspectionPlanLocation.deleteMany({
+      where: { inspectionPlanId: planId },
+    });
+    for (const [index, assetNodeId] of assetNodeIds.entries()) {
+      await tx.inspectionPlanLocation.create({
+        data: {
+          orgId,
+          inspectionPlanId: planId,
+          assetNodeId,
+          isPrimary: index === 0,
+        },
+      });
     }
-    await this.prisma.$transaction([
-      this.prisma.inspectionPlanLocation.deleteMany({
-        where: { inspectionPlanId: planId },
-      }),
-      ...assetNodeIds.map((assetNodeId, index) =>
-        this.prisma.inspectionPlanLocation.create({
-          data: {
-            orgId,
-            inspectionPlanId: planId,
-            assetNodeId,
-            isPrimary: index === 0,
-          },
-        }),
-      ),
-    ]);
   }
 
   /** Lijst van scope-deellocaties van een plan. */

@@ -10,8 +10,18 @@
  *
  * Plus dropdown-data voor het koppelen van een marker aan een bestaande entiteit.
  */
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useApiMutation } from '@/hooks/use-api-mutation';
 import { apiClient, ApiClientError } from '@/lib/api-client';
+import {
+  assetFindingKeys,
+  assetKeys,
+  inspectionAssetKeys,
+  inspectionLocationKeys,
+  inspectionPlanKeys,
+  locationImageKeys,
+  standaloneMeasurementKeys,
+} from '@/lib/query-keys';
 import type {
   Asset,
   Finding,
@@ -25,7 +35,7 @@ import type {
 // ── Locaties van een plan (voor de locatie-selector) ──
 export function useInspectionLocations(planId: string | undefined) {
   return useQuery<InspectionLocation[]>({
-    queryKey: ['inspection-locations', planId, 'flat'],
+    queryKey: inspectionLocationKeys.flat(planId ?? ''),
     queryFn: () => apiClient.get<InspectionLocation[]>(`/inspection-plans/${planId}/locations?flat=true`),
     enabled: !!planId,
   });
@@ -34,7 +44,7 @@ export function useInspectionLocations(planId: string | undefined) {
 // ── Afbeelding + markers van één locatie (404 → null = nog geen afbeelding) ──
 export function useLocationImage(locationId: string | undefined) {
   return useQuery<LocationImage | null>({
-    queryKey: ['location-image', locationId],
+    queryKey: locationImageKeys.byLocation(locationId ?? ''),
     enabled: !!locationId,
     retry: false,
     queryFn: async () => {
@@ -50,21 +60,21 @@ export function useLocationImage(locationId: string | undefined) {
 
 export function useUploadLocationImage(locationId: string) {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (file: File) => {
       const formData = new FormData();
       formData.append('file', file);
       return apiClient.upload<LocationImage>(`/locations/${locationId}/image`, formData);
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['location-image', locationId] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: locationImageKeys.byLocation(locationId) }),
   });
 }
 
 export function useDeleteLocationImage(locationId: string) {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: () => apiClient.delete(`/locations/${locationId}/image`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['location-image', locationId] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: locationImageKeys.byLocation(locationId) }),
   });
 }
 
@@ -94,17 +104,17 @@ export interface UpdateMarkerInput {
 /** locationId alleen om de juiste image-query te invalideren. */
 export function useCreateMarker(locationId: string) {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: ({ imageId, data }: { imageId: string; data: CreateMarkerInput }) =>
       apiClient.post<LocationImageMarker>(`/location-images/${imageId}/markers`, data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['location-image', locationId] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: locationImageKeys.byLocation(locationId) }),
   });
 }
 
 export function useUpdateMarker(locationId: string) {
   const qc = useQueryClient();
-  const key = ['location-image', locationId];
-  return useMutation({
+  const key = locationImageKeys.byLocation(locationId);
+  return useApiMutation({
     mutationFn: ({ imageId, markerId, data }: { imageId: string; markerId: string; data: UpdateMarkerInput }) =>
       apiClient.patch<LocationImageMarker>(`/location-images/${imageId}/markers/${markerId}`, data),
     // Optimistisch bijwerken zodat slepen niet zichtbaar terugspringt tijdens de refetch.
@@ -128,17 +138,17 @@ export function useUpdateMarker(locationId: string) {
 
 export function useDeleteMarker(locationId: string) {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: ({ imageId, markerId }: { imageId: string; markerId: string }) =>
       apiClient.delete(`/location-images/${imageId}/markers/${markerId}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['location-image', locationId] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: locationImageKeys.byLocation(locationId) }),
   });
 }
 
 // ── Dropdown-data voor het koppelen van een marker aan een bestaande entiteit ──
 export function useInspectionAssets(planId: string | undefined) {
   return useQuery<Asset[]>({
-    queryKey: ['inspection-assets', planId, 'flat'],
+    queryKey: inspectionAssetKeys.flat(planId ?? ''),
     queryFn: () => apiClient.get<Asset[]>(`/inspection-plans/${planId}/assets?flat=true`),
     enabled: !!planId,
   });
@@ -156,20 +166,20 @@ export interface CreateAssetInput {
 
 export function useCreateAsset() {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: ({ planId, data }: { planId: string; data: CreateAssetInput }) =>
       apiClient.post<Asset>(`/inspection-plans/${planId}/assets`, data),
     onSuccess: (_d, { planId }) => {
-      qc.invalidateQueries({ queryKey: ['inspection-assets', planId] });
-      qc.invalidateQueries({ queryKey: ['inspection-plans', planId] });
-      qc.invalidateQueries({ queryKey: ['assets'] });
+      qc.invalidateQueries({ queryKey: inspectionAssetKeys.byPlan(planId) });
+      qc.invalidateQueries({ queryKey: inspectionPlanKeys.detail(planId) });
+      qc.invalidateQueries({ queryKey: assetKeys.all });
     },
   });
 }
 
 export function useStandaloneMeasurements(planId: string | undefined) {
   return useQuery<StandaloneMeasurement[]>({
-    queryKey: ['standalone-measurements', planId],
+    queryKey: standaloneMeasurementKeys.byPlan(planId ?? ''),
     queryFn: () => apiClient.get<StandaloneMeasurement[]>(`/inspection-plans/${planId}/standalone-measurements`),
     enabled: !!planId,
   });
@@ -177,7 +187,7 @@ export function useStandaloneMeasurements(planId: string | undefined) {
 
 export function useAssetFindings(assetId: string | undefined) {
   return useQuery<Finding[]>({
-    queryKey: ['asset-findings', assetId],
+    queryKey: assetFindingKeys.byAsset(assetId ?? ''),
     queryFn: () => apiClient.get<Finding[]>(`/assets/${assetId}/findings`),
     enabled: !!assetId,
   });

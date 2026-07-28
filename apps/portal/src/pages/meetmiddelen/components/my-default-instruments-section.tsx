@@ -26,8 +26,8 @@ export function MyDefaultInstrumentsSection() {
       await setMutation.mutateAsync(value);
       setDraft(null);
       showToast('Standaard-meetmiddelen opgeslagen', 'success');
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Opslaan mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 

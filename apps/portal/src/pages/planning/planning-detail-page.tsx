@@ -193,8 +193,8 @@ function PlanningDetailView({ id }: { id: string }) {
     try {
       await addSession.mutateAsync({});
       showToast('Sessie toegevoegd', 'success');
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Fout bij toevoegen sessie'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 

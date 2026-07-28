@@ -117,13 +117,15 @@ describe('LocationImages (e2e)', () => {
     });
     testPlanId = plan.id;
 
+    // shortCode is sinds WP-C3 (B-203) verplicht gevuld voor de numbering-engine:
+    // een leeg-resolvende `[typecode]` wordt geweigerd bij asset-creatie via de API.
     const assetType = await prisma.assetTypeDefinition.create({
-      data: { orgId: org.id, code: 'e2elikast', name: 'Kast', isSystem: false },
+      data: { orgId: org.id, code: 'e2elikast', name: 'Kast', shortCode: 'EK', isSystem: false },
     });
     testAssetTypeId = assetType.id;
 
     const locationType = await prisma.locationTypeDefinition.create({
-      data: { orgId: org.id, code: 'e2eliruimte', name: 'Ruimte', isSystem: false },
+      data: { orgId: org.id, code: 'e2eliruimte', name: 'Ruimte', shortCode: 'RU', isSystem: false },
     });
     testLocationTypeId = locationType.id;
 

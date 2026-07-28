@@ -1,5 +1,11 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { ConflictException, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { OrganizationsService } from './organizations.service';
 import { STORAGE_PROVIDER } from '@/common/services/storage/storage.interface';
 import { TenantCacheService } from '@/common/services/tenant-cache.service';
@@ -32,6 +38,19 @@ describe('OrganizationsService', () => {
     },
   };
 
+  const mockStorage = {
+    upload: jest.fn(),
+    download: jest.fn(),
+    delete: jest.fn(),
+    exists: jest.fn(),
+  };
+
+  const mockEntitlements = {
+    invalidate: jest.fn(),
+    clear: jest.fn(),
+    assertFeature: jest.fn(),
+  };
+
   beforeEach(async () => {
     jest.clearAllMocks();
 
@@ -39,19 +58,13 @@ describe('OrganizationsService', () => {
       providers: [
         OrganizationsService,
         { provide: PrismaService, useValue: mockPrismaService },
-        {
-          provide: STORAGE_PROVIDER,
-          useValue: {
-            upload: jest.fn(),
-            download: jest.fn(),
-            delete: jest.fn(),
-            exists: jest.fn(),
-          },
-        },
+        { provide: STORAGE_PROVIDER, useValue: mockStorage },
         TenantCacheService,
+        { provide: EntitlementsService, useValue: mockEntitlements },
         {
-          provide: EntitlementsService,
-          useValue: { invalidate: jest.fn(), clear: jest.fn() },
+          // B-505: assertSlugAllowed leest het geconfigureerde SUPERUSER_SUBDOMAIN.
+          provide: ConfigService,
+          useValue: { get: jest.fn((_key: string, def?: string) => def ?? 'mijn') },
         },
       ],
     }).compile();
@@ -204,6 +217,169 @@ describe('OrganizationsService', () => {
       await expect(
         service.update('org-1', { slug: 'taken-slug' }),
       ).rejects.toThrow('Slug is al in gebruik');
+    });
+  });
+
+  // B-505 — gereserveerde slugs (statische lijst + runtime SUPERUSER_SUBDOMAIN).
+  describe('reserved slugs (B-505)', () => {
+    it.each(['mijn', 'www', 'api', 'admin', 'mail'])(
+      'weigert create met gereserveerde slug "%s" met een NL 400',
+      async (slug) => {
+        await expect(service.create({ name: 'X BV', slug })).rejects.toThrow(
+          BadRequestException,
+        );
+        await expect(service.create({ name: 'X BV', slug })).rejects.toThrow(
+          'Deze slug is gereserveerd',
+        );
+        expect(mockPrismaService.organization.create).not.toHaveBeenCalled();
+      },
+    );
+
+    it('weigert óók een slug-wijziging naar een gereserveerde waarde', async () => {
+      mockPrismaService.organization.findUnique.mockResolvedValue(mockOrganization);
+
+      await expect(service.update('org-1', { slug: 'mijn' })).rejects.toThrow(
+        BadRequestException,
+      );
+      expect(mockPrismaService.organization.update).not.toHaveBeenCalled();
+    });
+
+    it('staat een gewone slug gewoon toe', async () => {
+      mockPrismaService.organization.findUnique.mockResolvedValue(null);
+      mockPrismaService.organization.create.mockResolvedValue({
+        id: 'org-2',
+        slug: 'gewoonbedrijf',
+      });
+
+      await expect(
+        service.create({ name: 'Gewoon Bedrijf', slug: 'gewoonbedrijf' }),
+      ).resolves.toBeDefined();
+    });
+  });
+
+  // B-510 — entitlement-gate op de true-transitie van aiReviewEnabled/onlineRepairDefault.
+  describe('entitlement-gated org flags (B-510)', () => {
+    it('gate-t aiReviewEnabled false→true via assertFeature (403 zonder abonnement)', async () => {
+      mockPrismaService.organization.findUnique.mockResolvedValue({
+        ...mockOrganization,
+        aiReviewEnabled: false,
+      });
+      mockEntitlements.assertFeature.mockRejectedValue(
+        new ForbiddenException('AI-voorcontrole zit niet in uw abonnement'),
+      );
+
+      await expect(
+        service.update('org-1', { aiReviewEnabled: true }),
+      ).rejects.toThrow(ForbiddenException);
+      expect(mockEntitlements.assertFeature).toHaveBeenCalledWith(
+        'org-1',
+        'AI_REVIEW',
+        expect.any(String),
+      );
+      expect(mockPrismaService.organization.update).not.toHaveBeenCalled();
+    });
+
+    it('gate-t onlineRepairDefault false→true via assertFeature (ONLINE_HERSTEL)', async () => {
+      mockPrismaService.organization.findUnique.mockResolvedValue({
+        ...mockOrganization,
+        onlineRepairDefault: false,
+      });
+      mockEntitlements.assertFeature.mockRejectedValue(
+        new ForbiddenException('Online herstel zit niet in uw abonnement'),
+      );
+
+      await expect(
+        service.update('org-1', { onlineRepairDefault: true }),
+      ).rejects.toThrow(ForbiddenException);
+      expect(mockEntitlements.assertFeature).toHaveBeenCalledWith(
+        'org-1',
+        'ONLINE_HERSTEL',
+        expect.any(String),
+      );
+    });
+
+    it('uitzetten mag altijd — geen assertFeature bij true→false', async () => {
+      mockPrismaService.organization.findUnique.mockResolvedValue({
+        ...mockOrganization,
+        aiReviewEnabled: true,
+        onlineRepairDefault: true,
+      });
+      mockPrismaService.organization.update.mockResolvedValue({
+        ...mockOrganization,
+        aiReviewEnabled: false,
+      });
+
+      await service.update('org-1', {
+        aiReviewEnabled: false,
+        onlineRepairDefault: false,
+      });
+      expect(mockEntitlements.assertFeature).not.toHaveBeenCalled();
+    });
+
+    it('true→true (al aan) triggert de gate niet (idempotente PATCH blijft werken)', async () => {
+      mockPrismaService.organization.findUnique.mockResolvedValue({
+        ...mockOrganization,
+        aiReviewEnabled: true,
+      });
+      mockPrismaService.organization.update.mockResolvedValue({
+        ...mockOrganization,
+        aiReviewEnabled: true,
+      });
+
+      await service.update('org-1', { aiReviewEnabled: true });
+      expect(mockEntitlements.assertFeature).not.toHaveBeenCalled();
+    });
+  });
+
+  // B-507 / WP-B4 — de bedrading tussen de magic-byte-check en de opslag.
+  describe('uploadLogo() / downloadLogo()', () => {
+    const pngBuffer = Buffer.concat([
+      Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+      Buffer.from([0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52]),
+    ]);
+    const svgBuffer = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"><script/></svg>');
+
+    beforeEach(() => {
+      mockPrismaService.organization.findUnique.mockResolvedValue(mockOrganization);
+      mockPrismaService.organization.update.mockResolvedValue(mockOrganization);
+    });
+
+    it('leidt sleutel én opgeslagen mimetype af uit de bytes, niet uit de bestandsnaam', async () => {
+      const key = await service.uploadLogo('org-1', {
+        buffer: pngBuffer,
+        mimetype: 'image/png',
+        originalname: 'evil.svg',
+      } as Express.Multer.File);
+
+      expect(key).toMatch(/^logos\/org-1\/.+\.png$/);
+      expect(key).not.toContain('svg');
+      expect(mockStorage.upload).toHaveBeenCalledWith(key, pngBuffer, 'image/png');
+    });
+
+    it('weigert inhoud die geen PNG/JPEG/WebP is en raakt de opslag niet aan', async () => {
+      await expect(
+        service.uploadLogo('org-1', {
+          buffer: svgBuffer,
+          mimetype: 'image/png',
+          originalname: 'evil.svg',
+        } as Express.Multer.File),
+      ).rejects.toThrow(/geen geldige PNG-, JPEG- of WebP-afbeelding/);
+
+      expect(mockStorage.upload).not.toHaveBeenCalled();
+    });
+
+    it('serveert een legacy .svg-sleutel als octet-stream, nooit als image/svg+xml', async () => {
+      mockPrismaService.organization.findUnique.mockResolvedValue({
+        ...mockOrganization,
+        logoUrl: 'logos/org-1/legacy.svg',
+      });
+      mockStorage.download.mockResolvedValue(svgBuffer);
+
+      const result = await service.downloadLogo('org-1');
+
+      expect(result.mimeType).toBe('application/octet-stream');
+      expect(result.disposition).toBe('attachment');
+      expect(result.storageKey).toBe('logos/org-1/legacy.svg');
     });
   });
 });

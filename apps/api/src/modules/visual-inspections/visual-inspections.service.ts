@@ -10,7 +10,8 @@
 import { Injectable } from '@nestjs/common';
 import { User, Prisma, InspectionExecStatus } from '@prisma/client';
 import { PrismaService } from '@/prisma';
-import { orgScope, assertFound, assertSameOrg, requireOrg } from '@/common';
+import { orgScope, assertFound, assertSameOrg, requireOrg, validateJsonColumn } from '@/common';
+import { checklistResultsSchema, CHECKLIST_RESULTS_LABEL } from './schemas/checklist-results.schema';
 import { AssetNodesService } from '../asset-nodes/asset-nodes.service';
 import { CreateVisualInspectionDto, UpdateVisualInspectionDto } from './dto';
 
@@ -58,7 +59,7 @@ export class VisualInspectionsService {
         updatedAt: true,
         syncedAt: true,
         deviceId: true,
-        _count: { select: { findings: true } },
+        _count: { select: { findings: { where: { deletedAt: null } } } },
       },
     });
   }
@@ -87,6 +88,7 @@ export class VisualInspectionsService {
 
   async create(assetNodeId: string, user: User, dto: CreateVisualInspectionDto, deviceId?: string) {
     const orgId = requireOrg(user);
+    validateJsonColumn(checklistResultsSchema, dto.checklistResults, CHECKLIST_RESULTS_LABEL);
 
     // Plan binnen de org + de asset-node binnen de boom van dit plan.
     const plan = assertFound(
@@ -126,6 +128,7 @@ export class VisualInspectionsService {
 
   async update(id: string, user: User, dto: UpdateVisualInspectionDto) {
     requireOrg(user);
+    validateJsonColumn(checklistResultsSchema, dto.checklistResults, CHECKLIST_RESULTS_LABEL);
     const inspection = await this.getInOrg(id, user);
 
     const data: Prisma.VisualInspectionUpdateInput = {};

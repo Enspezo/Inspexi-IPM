@@ -80,8 +80,8 @@ function ExtendedInspectionFields({
       await updateMutation.mutateAsync({ id: root.id, data: { technicalData: draft } });
       showToast('Inspectiegegevens bijgewerkt', 'success');
       setIsEditing(false);
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Opslaan mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 

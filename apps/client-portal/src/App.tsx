@@ -3,6 +3,7 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 import { ProtectedRoute } from '@/components/auth/protected-route';
 import { ClientFeatureGate } from '@/components/auth/feature-gate';
 import { ClientLayout } from '@/components/layout/client-layout';
+import { PublicKbLayout } from '@/components/layout/public-kb-layout';
 import { Spinner } from '@/components/ui';
 
 // Lazy-loaded pagina's (elke pagina is een `export default function`).
@@ -17,6 +18,13 @@ const InspectionDetailPage = lazy(() => import('@/pages/inspections/inspection-d
 const DocumentViewerPage = lazy(() => import('@/pages/documents/document-viewer-page'));
 const RequestsPage = lazy(() => import('@/pages/requests/requests-page'));
 const NewRequestPage = lazy(() => import('@/pages/requests/new-request-page'));
+const KennisbankPage = lazy(() => import('@/pages/kennisbank/kennisbank-page'));
+const KennisbankArticlePage = lazy(
+  () => import('@/pages/kennisbank/kennisbank-article-page'),
+);
+const HerstelLookupPage = lazy(() => import('@/pages/herstel/herstel-lookup-page'));
+const HerstelOverzichtPage = lazy(() => import('@/pages/herstel/herstel-overzicht-page'));
+const HerstelAfrondenPage = lazy(() => import('@/pages/herstel/herstel-afronden-page'));
 
 function PageLoader() {
   return (
@@ -40,6 +48,24 @@ export default function App() {
           <Route path="/reset-password" element={<ResetPasswordPage />} />
           <Route path="/reset-password/:token" element={<ResetPasswordPage />} />
 
+          {/* Publieke kennisbank (zonder login) — eigen zelfstandige layout */}
+          <Route element={<PublicKbLayout />}>
+            <Route
+              path="/kennisbank-openbaar"
+              element={<KennisbankPage publicMode />}
+            />
+            <Route
+              path="/kennisbank-openbaar/:slug"
+              element={<KennisbankArticlePage publicMode />}
+            />
+          </Route>
+
+          {/* Publiek — online herstel (PRD-14): anonieme toegang met rapportnummer +
+              postcode; overzicht/afronden draaien op het herstelsessie-token (geen login). */}
+          <Route path="/herstel" element={<HerstelLookupPage />} />
+          <Route path="/herstel/overzicht" element={<HerstelOverzichtPage />} />
+          <Route path="/herstel/afronden" element={<HerstelAfrondenPage />} />
+
           {/* Root → dashboard */}
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
 
@@ -52,6 +78,8 @@ export default function App() {
               <Route path="/documents/:id" element={<DocumentViewerPage />} />
               <Route path="/requests" element={<RequestsPage />} />
               <Route path="/requests/new" element={<NewRequestPage />} />
+              <Route path="/kennisbank" element={<KennisbankPage />} />
+              <Route path="/kennisbank/:slug" element={<KennisbankArticlePage />} />
             </Route>
           </Route>
 

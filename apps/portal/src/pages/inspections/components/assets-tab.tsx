@@ -15,6 +15,10 @@ import { useAssetFindings } from '../hooks/use-location-images';
 import { useAssetMeasurementRecords } from '../hooks/use-measurement-records';
 import { useMeetmiddelen } from '@/pages/meetmiddelen/hooks/use-meetmiddelen';
 import { ScopeLocationsManager } from './scope-locations-manager';
+import { FindingRepairInfo } from './finding-repair-info';
+
+// Systeemcode van de opgelost-status (finding-status-types) — zie STATUS_RESOLVED in de API.
+const FINDING_STATUS_RESOLVED = 'resolved';
 
 export function AssetsTab({ planId, canWrite }: { planId: string; canWrite: boolean }) {
   const { data: treeData, isLoading } = usePlanTree(planId);
@@ -71,22 +75,33 @@ function NodeExecutionDetail({ nodeId }: { nodeId: string }) {
           </div>
         ) : findings && findings.length > 0 ? (
           <ul className="space-y-2">
-            {findings.map((f) => (
-              <li key={f.id} className="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium text-gray-900">{f.shortDescription}</p>
-                    {f.longDescription && (
-                      <p className="mt-0.5 text-xs text-gray-600">{f.longDescription}</p>
-                    )}
-                    {f.normReference && (
-                      <p className="mt-0.5 text-xs text-gray-400">Norm: {f.normReference}</p>
-                    )}
+            {findings.map((f) => {
+              // Herstelde constateringen gedimd tonen (PRD-14 §14.10); de
+              // herstel-/conflictblokken eronder blijven volledig leesbaar.
+              const isResolved = f.statusCode === FINDING_STATUS_RESOLVED;
+              return (
+                <li
+                  key={f.id}
+                  className={`rounded-lg border border-gray-100 px-3 py-2 ${
+                    isResolved ? 'bg-gray-100' : 'bg-gray-50'
+                  }`}
+                >
+                  <div className={`flex items-start justify-between gap-3 ${isResolved ? 'opacity-60' : ''}`}>
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-gray-900">{f.shortDescription}</p>
+                      {f.longDescription && (
+                        <p className="mt-0.5 text-xs text-gray-600">{f.longDescription}</p>
+                      )}
+                      {f.normReference && (
+                        <p className="mt-0.5 text-xs text-gray-400">Norm: {f.normReference}</p>
+                      )}
+                    </div>
+                    <LookupBadge kind="finding-status-types" code={f.statusCode} />
                   </div>
-                  <LookupBadge kind="finding-status-types" code={f.statusCode} />
-                </div>
-              </li>
-            ))}
+                  <FindingRepairInfo finding={f} />
+                </li>
+              );
+            })}
           </ul>
         ) : (
           <p className="py-1 text-sm text-gray-500">Geen bevindingen voor dit object.</p>

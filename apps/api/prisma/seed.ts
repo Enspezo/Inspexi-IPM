@@ -1,4 +1,4 @@
-import { PrismaClient, Role, ContactType, LogType, PriceType, RequestSource, RequestStatus, Priority, QuoteStatus, NotificationType, PlanningStatus, AcceptanceStatus, ProjectStatus, AssetFieldType, ChecklistStatus, TemplateStatus, MeasurementSheetTemplateStatus, MeasurementSheetFieldType, FindingInspectionType, DocumentType, DocumentEntityType, TemplateMode, SectionType, ClientUserStatus, ClientAccessRole, GeneratedDocumentStatus, SignatureStatus, MarkerType, MeasurementSheetRecordStatus, InspectionExecStatus, PassFailOperator, LocationTypeScope, Availability, ChatThreadType, ChatThreadStatus, ContactDisplayMode } from '@prisma/client';
+import { PrismaClient, Role, ContactType, LogType, PriceType, RequestSource, RequestStatus, Priority, QuoteStatus, NotificationType, PlanningStatus, AcceptanceStatus, ProjectStatus, AssetFieldType, ChecklistStatus, TemplateStatus, MeasurementSheetTemplateStatus, MeasurementSheetFieldType, FindingInspectionType, DocumentType, DocumentEntityType, TemplateMode, SectionType, ClientUserStatus, ClientAccessRole, GeneratedDocumentStatus, SignatureStatus, MarkerType, MeasurementSheetRecordStatus, InspectionExecStatus, PassFailOperator, LocationTypeScope, Availability, ChatThreadType, ChatThreadStatus, ContactDisplayMode, PhaseStatus, EmploymentType, AvailabilityExceptionType, AiReviewRunStatus, AiReviewItemSeverity, AiReviewItemStatus, RepairAccessType, RepairSessionStatus } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { randomUUID } from 'crypto';
 import * as fs from 'fs';
@@ -9,6 +9,16 @@ import { backfillNumbering } from './backfill-numbering';
 import { DEFAULT_VOICE_BASE_PROMPT } from '../src/modules/voice/default-base-prompt';
 import { FEATURE_KEYS } from '@inspexi/entitlements';
 import { addMonths } from '@inspexi/calibration';
+import { assertSeedAllowed } from '../src/common/config/assert-seed-allowed';
+
+// Productie-guard (audit §7.5): dit script wist de hele database. Moet vóór
+// élke databaseactie staan — bij weigering is er gegarandeerd niets geraakt.
+try {
+  assertSeedAllowed(process.env);
+} catch (e) {
+  console.error((e as Error).message);
+  process.exit(1);
+}
 
 const prisma = new PrismaClient();
 
@@ -514,12 +524,15 @@ async function main() {
   // client-portal
   await prisma.findingResolutionPhoto.deleteMany();
   await prisma.findingResolution.deleteMany();
+  // Online herstel (PRD-14): vóór generatedDocument/clientUser/inspectionPlan (FK's SetNull/Cascade)
+  await prisma.repairSession.deleteMany();
   await prisma.messageAttachment.deleteMany();
   await prisma.inspectionMessage.deleteMany();
   await prisma.clientMagicLink.deleteMany();
   await prisma.inspectionClientAccess.deleteMany();
   await prisma.clientAccess.deleteMany();
   await prisma.clientRequest.deleteMany();
+  await prisma.clientRefreshToken.deleteMany();
   await prisma.clientUser.deleteMany();
   // sync & devices
   await prisma.syncQueue.deleteMany();
@@ -528,6 +541,10 @@ async function main() {
   await prisma.voiceUserPrompt.deleteMany();
   await prisma.voiceTemplatePrompt.deleteMany();
   await prisma.voiceBasePrompt.deleteMany();
+  // AI-review (PRD-13) — items cascaden op run; run cascadeert op inspectionPlan,
+  // dus vóór de inspectionPlan/assetNode/finding-cleanup (kinderen eerst)
+  await prisma.aiReviewItem.deleteMany();
+  await prisma.aiReviewRun.deleteMany();
   // document generation
   await prisma.documentSignature.deleteMany();
   await prisma.generatedDocument.deleteMany();
@@ -640,6 +657,11 @@ async function main() {
   await prisma.planningHistory.deleteMany();
   await prisma.planningInspector.deleteMany();
   await prisma.planningItem.deleteMany();
+  // Projectfasen (PRD-12) — kinderen eerst; entiteiten met project_phase_id (quotes/
+  // planning/werkbonnen/inspectieplannen) zijn hierboven al opgeruimd, FK's zijn nullable.
+  await prisma.phaseMilestone.deleteMany();
+  await prisma.projectPhaseFollower.deleteMany();
+  await prisma.projectPhase.deleteMany();
   // Projects (dependent on contacts/locations/users; referenced by nullable FK from requests/quotes/planning)
   await prisma.projectFollower.deleteMany();
   await prisma.project.deleteMany();
@@ -675,6 +697,11 @@ async function main() {
   await prisma.document.deleteMany();
   await prisma.documentTag.deleteMany();
   await prisma.task.deleteMany();
+  // Beschikbaarheid inspecteurs (PRD-12) — kinderen eerst (FK → user + organization + template)
+  await prisma.availabilityException.deleteMany();
+  await prisma.userScheduleAssignment.deleteMany();
+  await prisma.availabilityTemplateSlot.deleteMany();
+  await prisma.availabilityTemplate.deleteMany();
   // Inspecteur-certificaten (PRD-11, FK → user + organization)
   await prisma.inspectorCertificate.deleteMany();
   // Custom fields & email templates
@@ -689,7 +716,7 @@ async function main() {
   // de org/plan zelf; het plan ná de organization (Organization.planId → Plan).
   await prisma.organizationFeature.deleteMany();
   await prisma.planFeature.deleteMany();
-  // AI-assistent (add-on, PRD-12) — kinderen eerst; usageLog verwijst (scalar)
+  // AI-assistent (add-on) — kinderen eerst; usageLog verwijst (scalar)
   // naar conversation, dus vóór aiConversation opruimen.
   await prisma.aiPendingAction.deleteMany();
   await prisma.aiMessage.deleteMany();
@@ -704,11 +731,13 @@ async function main() {
   await prisma.plan.deleteMany();
 
   // ─── SaaS-abonnementen: plannen (templates, PRD-09 §7.2) ──
-  // "Basis" = 4 basisfeatures; "Compleet" = alle 9 keys incl. add-ons
-  // (WEBHOOKS + CUSTOM_FIELDS). De catalogus (FEATURE_KEYS) is bron-van-waarheid;
-  // de DB verwijst alleen naar de keys. Per-org afwijkingen gaan via
-  // OrganizationFeature (hier nog niet geseed — beide demo-orgs draaien puur op
-  // hun plan).
+  // "Basis" = 4 basisfeatures (géén add-ons); "Compleet" = alle catalogus-keys
+  // incl. add-ons (PROJECT_FASEN, WEBHOOKS, CUSTOM_FIELDS, AI_REVIEW, ONLINE_HERSTEL). De catalogus
+  // (FEATURE_KEYS) is bron-van-waarheid; de DB verwijst alleen naar de keys. De
+  // demo-org draait op Compleet en heeft dus PROJECT_FASEN (fasen-tab + demo-fasen
+  // werken); een Basis-org (bv. Test Bedrijf) heeft de feature bewust NIET, zodat het
+  // uit-scenario testbaar is (PRD-12 §Fase E). Per-org afwijkingen gaan via
+  // OrganizationFeature.
   const basisPlan = await prisma.plan.create({
     data: {
       name: 'Basis',
@@ -941,6 +970,111 @@ async function main() {
     createdOrg2Users[u.roles[0]] = created.id;
     console.log(`  ✓ User: ${u.email} (${u.roles[0]})`);
   }
+
+  // ─── Beschikbaarheid inspecteurs (PRD-12) ───
+  // Org 1 (InspeXi Demo): twee templates. "Standaard" (ma–vr 08:00–17:30 = 40u,
+  // pauze-aftrek buiten scope) en "Parttime ma/wo/do" (07:00–15:00).
+  const org1AvailAdminId = createdOrg1Users[Role.ORG_ADMIN];
+  const org1InspecteurId = createdOrg1Users[Role.INSPECTEUR];
+  const org2InspecteurId = createdOrg2Users[Role.INSPECTEUR];
+
+  const standaardTemplate = await prisma.availabilityTemplate.create({
+    data: {
+      orgId: org1.id,
+      name: 'Standaard',
+      description: 'Fulltime ma–vr 08:00–17:30',
+      slots: {
+        create: [1, 2, 3, 4, 5].map((weekday) => ({
+          weekday,
+          startMinute: 8 * 60, // 08:00
+          endMinute: 17 * 60 + 30, // 17:30
+        })),
+      },
+    },
+  });
+
+  await prisma.availabilityTemplate.create({
+    data: {
+      orgId: org1.id,
+      name: 'Parttime ma/wo/do',
+      description: 'Parttime maandag, woensdag, donderdag 07:00–15:00',
+      slots: {
+        create: [1, 3, 4].map((weekday) => ({
+          weekday,
+          startMinute: 7 * 60, // 07:00
+          endMinute: 15 * 60, // 15:00
+        })),
+      },
+    },
+  });
+
+  // Tom Visser (inspecteur@inspexi-demo.nl) → DIENSTVERBAND + "Standaard" +
+  // één eenmalige en één wekelijkse GEBLOKKEERD-uitzondering.
+  await prisma.user.update({
+    where: { id: org1InspecteurId },
+    data: { employmentType: EmploymentType.DIENSTVERBAND },
+  });
+  await prisma.userScheduleAssignment.create({
+    data: {
+      orgId: org1.id,
+      userId: org1InspecteurId,
+      templateId: standaardTemplate.id,
+      validFrom: new Date('2026-01-01'),
+      createdById: org1AvailAdminId,
+    },
+  });
+  await prisma.availabilityException.create({
+    data: {
+      orgId: org1.id,
+      userId: org1InspecteurId,
+      type: AvailabilityExceptionType.GEBLOKKEERD,
+      // Expliciete Z: de resolutie-kern rekent in UTC; zonder Z parseert dit als
+      // lokale tijd en raakt de all-day-blokkade op een UTC+x-machine ook 2 aug.
+      startsAt: new Date('2026-08-03T00:00:00Z'),
+      endsAt: new Date('2026-08-15T00:00:00Z'),
+      allDay: true,
+      reason: 'Vakantie',
+      createdById: org1AvailAdminId,
+    },
+  });
+  await prisma.availabilityException.create({
+    data: {
+      orgId: org1.id,
+      userId: org1InspecteurId,
+      type: AvailabilityExceptionType.GEBLOKKEERD,
+      isRecurring: true,
+      weekdays: [5], // elke vrijdagmiddag geblokkeerd
+      startMinute: 13 * 60, // 13:00
+      endMinute: 17 * 60 + 30, // 17:30
+      intervalWeeks: 1,
+      recurStartDate: new Date('2026-01-01'),
+      reason: 'Vaste studiemiddag',
+      createdById: org1AvailAdminId,
+    },
+  });
+
+  // Henk Groot (inspecteur@testbedrijf.nl) → FREELANCE + wekelijkse BESCHIKBAAR
+  // op dinsdag + donderdag.
+  await prisma.user.update({
+    where: { id: org2InspecteurId },
+    data: { employmentType: EmploymentType.FREELANCE },
+  });
+  await prisma.availabilityException.create({
+    data: {
+      orgId: org2.id,
+      userId: org2InspecteurId,
+      type: AvailabilityExceptionType.BESCHIKBAAR,
+      isRecurring: true,
+      weekdays: [2, 4], // dinsdag + donderdag
+      startMinute: 9 * 60, // 09:00
+      endMinute: 16 * 60, // 16:00
+      intervalWeeks: 1,
+      recurStartDate: new Date('2026-01-01'),
+      reason: 'Vaste beschikbare dagen',
+      createdById: createdOrg2Users[Role.ORG_ADMIN],
+    },
+  });
+  console.log('  ✓ Beschikbaarheid: 2 templates + dienstvorm/toewijzing/uitzonderingen (PRD-12)');
 
   // ─── Sample Invitations ────────────────────────────────
   await prisma.invitation.create({
@@ -2136,6 +2270,76 @@ async function main() {
     },
   });
 
+  // ─── PRD-12: Projectfasen op het demo-project ──────────────
+  const phase1 = await prisma.projectPhase.create({
+    data: {
+      orgId: org1.id,
+      projectId: project1.id,
+      name: 'Fase 1 — Kantoorpand Zuidas',
+      description: 'Initiële inspectie van het hoofdpand aan de Zuidas.',
+      status: PhaseStatus.ACTIEF,
+      sortOrder: 0,
+      locationId: loc1Kantoor.id,
+      startDate: new Date('2026-06-01'),
+      expectedEndDate: new Date('2026-07-15'),
+      budgetAmount: 4500,
+      createdBy: createdOrg1Users[Role.MANAGER],
+    },
+  });
+  const phase2 = await prisma.projectPhase.create({
+    data: {
+      orgId: org1.id,
+      projectId: project1.id,
+      name: 'Fase 2 — Herinspectie',
+      description: 'Herinspectie na uitvoering van herstelwerkzaamheden.',
+      status: PhaseStatus.NIET_GESTART,
+      sortOrder: 1,
+      createdBy: createdOrg1Users[Role.MANAGER],
+    },
+  });
+
+  // Milestones: één met dueDate binnen 7 dagen (voor de reminder-demo).
+  const milestoneSoon = new Date();
+  milestoneSoon.setDate(milestoneSoon.getDate() + 5);
+  await prisma.phaseMilestone.createMany({
+    data: [
+      {
+        orgId: org1.id,
+        phaseId: phase1.id,
+        title: 'Rapportage pand A gereed',
+        description: 'Concept-rapportage opleveren aan de projectmanager.',
+        dueDate: milestoneSoon,
+        assigneeId: createdOrg1Users[Role.INSPECTEUR],
+        reminderDaysBefore: 7,
+        sortOrder: 0,
+      },
+      {
+        orgId: org1.id,
+        phaseId: phase1.id,
+        title: 'Oplevering aan klant',
+        dueDate: new Date('2026-07-20'),
+        sortOrder: 1,
+      },
+      {
+        orgId: org1.id,
+        phaseId: phase2.id,
+        title: 'Herinspectie ingepland',
+        dueDate: new Date('2026-08-15'),
+        assigneeId: createdOrg1Users[Role.MANAGER],
+        sortOrder: 0,
+      },
+    ],
+  });
+
+  // Eén (interne) volger per fase.
+  await prisma.projectPhaseFollower.createMany({
+    data: [
+      { phaseId: phase1.id, userId: createdOrg1Users[Role.ORG_ADMIN] },
+      { phaseId: phase2.id, userId: createdOrg1Users[Role.ORG_ADMIN] },
+    ],
+  });
+  console.log(`  ✓ Projectfasen: 2 fasen op ${project1.projectNumber} (Fase 1 ACTIEF)`);
+
   const project2 = await prisma.project.create({
     data: {
       orgId: org1.id,
@@ -2238,6 +2442,87 @@ async function main() {
           authorId: demoAdmin?.id ?? null,
         },
       });
+    }
+  }
+
+  // Externe KB (klantportaal) — per-org, eigen externe categorieën.
+  // Eén publieke categorie (zonder login zichtbaar) + één afgeschermde (na klant-login).
+  if (demoOrg) {
+    const externalCats = [
+      {
+        slug: 'veelgestelde-vragen',
+        name: 'Veelgestelde vragen',
+        icon: 'help-circle',
+        order: 1,
+        isPublic: true,
+        articles: [
+          {
+            title: 'Hoe vraag ik een inspectie aan?',
+            excerpt: 'De stappen om een nieuwe inspectie-aanvraag in te dienen.',
+            body: '# Een inspectie aanvragen\n\n1. Log in op het klantportaal.\n2. Ga naar **Aanvragen** en klik op **Nieuwe aanvraag**.\n3. Vul de gegevens in en verstuur.\n\nWe nemen daarna contact met u op.',
+          },
+          {
+            title: 'Wanneer ontvang ik mijn rapport?',
+            excerpt: 'Wat u kunt verwachten na een uitgevoerde inspectie.',
+            body: '# Uw inspectierapport\n\nNa afronding van de inspectie stellen wij het rapport op. Zodra het klaarstaat vindt u het onder **Documenten** in het klantportaal en ontvangt u een melding.',
+          },
+        ],
+      },
+      {
+        slug: 'mijn-inspecties',
+        name: 'Werken met uw inspecties',
+        icon: 'clipboard',
+        order: 2,
+        isPublic: false,
+        articles: [
+          {
+            title: 'Een constatering oplossen',
+            excerpt: 'Hoe u een geconstateerd gebrek als opgelost markeert.',
+            body: '# Constatering oplossen\n\nOpen de inspectie, ga naar de constatering en klik op **Oplossen**. U kunt een foto van de herstelde situatie toevoegen.',
+          },
+          {
+            title: 'Een document ondertekenen',
+            excerpt: 'Digitaal akkoord geven op een rapport of verklaring.',
+            body: '# Document ondertekenen\n\nOnder **Documenten** ziet u welke stukken uw handtekening vereisen. Open het document en volg de stappen om digitaal te ondertekenen.',
+          },
+        ],
+      },
+    ];
+
+    for (const cat of externalCats) {
+      const category = await prisma.helpCategory.create({
+        data: {
+          orgId: demoOrg.id,
+          slug: cat.slug,
+          name: cat.name,
+          icon: cat.icon,
+          order: cat.order,
+          isPublished: true,
+          audience: 'EXTERNAL',
+          isPublic: cat.isPublic,
+        },
+      });
+      let i = 1;
+      for (const art of cat.articles) {
+        await prisma.helpArticle.create({
+          data: {
+            orgId: demoOrg.id,
+            categoryId: category.id,
+            slug: `${cat.slug}-${i}`,
+            title: art.title,
+            excerpt: art.excerpt,
+            body: art.body,
+            status: 'PUBLISHED',
+            publishedAt: new Date(),
+            audience: 'EXTERNAL',
+            moduleKeys: [],
+            tags: [cat.slug],
+            order: i,
+            authorId: demoAdmin?.id ?? null,
+          },
+        });
+        i++;
+      }
     }
   }
 
@@ -2646,6 +2931,12 @@ async function main() {
     },
   });
 
+  // PRD-12: koppel het demo-inspectieplan aan Fase 1 (project + fase consistent).
+  await prisma.inspectionPlan.update({
+    where: { id: demoPlan.id },
+    data: { projectId: project1.id, projectPhaseId: phase1.id },
+  });
+
   // AssetNode-boom: wortel-LOCATION (1:1 aan de CRM-Locatie) → deellocatie
   // "Verdieping 1" → 2 assets. path/depth worden door de DB-trigger gevuld, dus
   // parents vóór kinderen inserten.
@@ -2721,7 +3012,7 @@ async function main() {
       statusCode: 'open',
     },
   });
-  await prisma.finding.create({
+  const finding2 = await prisma.finding.create({
     data: {
       orgId: org1.id,
       assetNodeId: asset2.id,
@@ -3194,6 +3485,256 @@ async function main() {
     console.log('  ⏭️  ClientMagicLink "demo-klant-magic" overgeslagen (zet SEED_DEMO=1 om aan te maken)');
   }
 
+  // ─── AI-voorcontrole demo (PRD-13 §13.11) — alleen bij SEED_DEMO=1 ───────
+  // Eén afgeronde AiReviewRun met items op het demo-plan, zodat het AI-paneel
+  // op de inspectie-detailpagina direct gevuld is. De demo-org krijgt de
+  // org-toggle aan plus een expliciete AI_REVIEW-override (belt-and-braces:
+  // het Compleet-plan bevat de key al, maar de override houdt de demo werkend
+  // als de plan-koppeling ooit wijzigt). Standaard-seed slaat dit over; de
+  // cleanup bovenin (aiReviewItem → aiReviewRun) ruimt de records weer op.
+  if (process.env.SEED_DEMO === '1') {
+    await prisma.organization.update({
+      where: { id: org1.id },
+      data: { aiReviewEnabled: true },
+    });
+    await prisma.organizationFeature.create({
+      data: {
+        orgId: org1.id,
+        featureKey: 'AI_REVIEW',
+        enabled: true,
+        updatedById: orgAdminId,
+      },
+    });
+
+    const managerId = createdOrg1Users[Role.MANAGER];
+    await prisma.aiReviewRun.create({
+      data: {
+        orgId: org1.id,
+        inspectionPlanId: demoPlan.id,
+        status: AiReviewRunStatus.COMPLETED,
+        triggeredBy: managerId,
+        model: 'claude-sonnet-4-6',
+        summary:
+          'Het rapport is grotendeels compleet. Belangrijkste aandachtspunt: de kritieke bevinding op de hoofdverdeler mist een aanbeveling. Daarnaast één inconsistentie tussen meting en bevinding en enkele kleinere tekstuele punten.',
+        inputTokens: 4210,
+        outputTokens: 612,
+        startedAt: new Date('2026-06-16T09:00:00Z'),
+        completedAt: new Date('2026-06-16T09:01:30Z'),
+        items: {
+          create: [
+            {
+              orgId: org1.id,
+              severity: AiReviewItemSeverity.CRITICAL,
+              category: 'VOLLEDIGHEID',
+              title: 'Kritieke bevinding zonder aanbeveling',
+              description:
+                'De bevinding "Ontbrekende afdekking op verdeelinrichting" (aanraakgevaar) bevat geen aanbeveling voor herstel. Voeg een concrete herstelmaatregel en termijn toe.',
+              findingId: finding1.id,
+              sortOrder: 0,
+            },
+            {
+              orgId: org1.id,
+              severity: AiReviewItemSeverity.WARNING,
+              category: 'CONSISTENTIE',
+              title: 'Meting spreekt bevinding tegen',
+              description:
+                'De standalone isolatieweerstandsmeting op verdieping 1 is goedgekeurd (210 MΩ), terwijl een bevinding op de onderverdeler een isolatieweerstand onder norm rapporteert (0,3 MΩ). Controleer of beide waardes kloppen en op verschillende groepen betrekking hebben.',
+              assetNodeId: asset1.id,
+              sortOrder: 1,
+            },
+            {
+              orgId: org1.id,
+              severity: AiReviewItemSeverity.WARNING,
+              category: 'NORMERING',
+              title: 'Normverwijzing controleren',
+              description:
+                'De verwijzing "NEN 1010 art. 412" bij de afdekking-bevinding lijkt niet te passen; aanraakbescherming van verdeelinrichtingen valt doorgaans onder art. 410/512. Verifieer het artikelnummer.',
+              sortOrder: 2,
+            },
+            {
+              orgId: org1.id,
+              severity: AiReviewItemSeverity.SUGGESTION,
+              category: 'TAAL',
+              title: 'Afkortingen eenmalig uitschrijven',
+              description:
+                'HVK en OVK worden zonder toelichting gebruikt. Schrijf afkortingen bij eerste gebruik voluit voor de leesbaarheid richting de opdrachtgever.',
+              status: AiReviewItemStatus.CHECKED,
+              checkedBy: managerId,
+              checkedAt: new Date('2026-06-16T10:15:00Z'),
+              sortOrder: 3,
+            },
+            {
+              orgId: org1.id,
+              severity: AiReviewItemSeverity.INFO,
+              category: 'OVERIG',
+              title: 'Plattegrond zonder marker-legenda',
+              description:
+                'De plattegrond bevat markers zonder legenda in het rapport. Overweeg een korte legenda toe te voegen zodat de opdrachtgever de markers kan duiden.',
+              sortOrder: 4,
+            },
+          ],
+        },
+      },
+    });
+    console.log(
+      '  ✓ AI-voorcontrole: org-toggle + AI_REVIEW-override + 1 COMPLETED run met 5 items (1 afgevinkt door manager) (SEED_DEMO=1)',
+    );
+  } else {
+    console.log('  ⏭️  AI-voorcontrole demo-run overgeslagen (zet SEED_DEMO=1 om aan te maken)');
+  }
+
+  // ─── AI-assistent demo (PRD-15) — alleen bij SEED_DEMO=1 ────────────────
+  // Zelfde belt-and-braces als AI_REVIEW hierboven: expliciete AI_AGENT-override
+  // op de demo-org zodat de assistent-drawer in de demo altijd beschikbaar is
+  // (de kill-switch `aiAgentEnabled` staat schema-default al aan). Zonder
+  // ANTHROPIC_API_KEY meldt de assistent zelf dat hij niet geconfigureerd is.
+  if (process.env.SEED_DEMO === '1') {
+    await prisma.organizationFeature.create({
+      data: {
+        orgId: org1.id,
+        featureKey: 'AI_AGENT',
+        enabled: true,
+        updatedById: orgAdminId,
+      },
+    });
+    console.log('  ✓ AI-assistent: AI_AGENT-override op de demo-org (SEED_DEMO=1)');
+  } else {
+    console.log('  ⏭️  AI-assistent-override overgeslagen (zet SEED_DEMO=1 om aan te maken)');
+  }
+
+  // ─── Online herstel demo (PRD-14 §14.12) — alleen bij SEED_DEMO=1 ────────
+  // De demo-org krijgt het ONLINE_HERSTEL-entitlement (override, belt-and-braces
+  // naast het Compleet-plan) + org-default aan; het demo-plan krijgt het
+  // demo-rapportnummer 'RAP-2026-001' en de plan-vlag aan. Eén classificatie-
+  // optie (NEN C1) wordt kritiek → finding1 is een OPEN kritieke constatering
+  // (zo blijft de herinspectie-trigger demo-baar). Op finding2 staat een
+  // afgeronde ANONIEME herstelsessie met REPORTED-resolutie, bewijsfoto en een
+  // ondertekende herstelverklaring (incl. echt PDF-bestand in de storage).
+  if (process.env.SEED_DEMO === '1') {
+    await prisma.organization.update({
+      where: { id: org1.id },
+      data: { onlineRepairDefault: true },
+    });
+    await prisma.organizationFeature.create({
+      data: {
+        orgId: org1.id,
+        featureKey: 'ONLINE_HERSTEL',
+        enabled: true,
+        updatedById: orgAdminId,
+      },
+    });
+    await prisma.inspectionPlan.update({
+      where: { id: demoPlan.id },
+      data: { referenceNumber: 'RAP-2026-001', onlineRepairEnabled: true },
+    });
+
+    await prisma.classificationOption.updateMany({
+      where: {
+        code: 'C1',
+        characteristic: { code: 'SEVERITY', classificationModelId: classModelNen.id },
+      },
+      data: { isCritical: true },
+    });
+    await prisma.finding.update({
+      where: { id: finding1.id },
+      data: { classificationValues: { SEVERITY: 'C1' }, isCritical: true },
+    });
+
+    const repairSignedAt = new Date('2026-07-10T09:30:00Z');
+    await prisma.finding.update({
+      where: { id: finding2.id },
+      data: { statusCode: 'resolved', resolvedAt: repairSignedAt },
+    });
+
+    const declarationHtml = [
+      '<!DOCTYPE html><html lang="nl"><head><meta charset="utf-8" /><title>Herstelverklaring RAP-2026-001</title></head><body>',
+      '<h1>Herstelverklaring</h1>',
+      '<p>Rapportnummer: RAP-2026-001 — NEN 1010 inspectie hoofdkantoor De Vries</p>',
+      '<p>Ingevuld door: Jan de Installateur (Installatiebedrijf Jansen)</p>',
+      '<h2>Herstelde constateringen</h2>',
+      '<ol start="2"><li>Isolatieweerstand onder norm op groep 3 — groep 3 opnieuw afgemonteerd; gemeten 2,1 MΩ.</li></ol>',
+      '<p>Ondergetekende verklaart dat de bovengenoemde constateringen zijn hersteld zoals omschreven.</p>',
+      '<p>Ondertekend op 10 juli 2026 (IP: 203.0.113.10)</p>',
+      '</body></html>',
+    ].join('\n');
+    const declaration = await prisma.generatedDocument.create({
+      data: {
+        orgId: org1.id,
+        inspectionPlanId: demoPlan.id,
+        documentType: DocumentType.HERSTELVERKLARING,
+        htmlContent: declarationHtml,
+        status: GeneratedDocumentStatus.SIGNED,
+        signatures: {
+          create: {
+            signerRoleCode: 'HERSTELLER',
+            signerName: 'Jan de Installateur',
+            signerEmail: 'installateur@jansen-demo.nl',
+            status: SignatureStatus.SIGNED,
+            signedAt: repairSignedAt,
+            signedIpAddress: '203.0.113.10',
+            signatureImage: 'data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=',
+          },
+        },
+      },
+    });
+    const declarationPdfKey = `${org1.id}/documents/${declaration.id}.pdf`;
+    const declarationPdfPath = path.join(process.env.UPLOAD_DIR || './uploads', declarationPdfKey);
+    fs.mkdirSync(path.dirname(declarationPdfPath), { recursive: true });
+    fs.writeFileSync(declarationPdfPath, makeCertificatePdf('Herstelverklaring RAP-2026-001 - InspeXi Demo'));
+    await prisma.generatedDocument.update({
+      where: { id: declaration.id },
+      data: { pdfUrl: declarationPdfKey },
+    });
+
+    const repairSession = await prisma.repairSession.create({
+      data: {
+        orgId: org1.id,
+        inspectionPlanId: demoPlan.id,
+        accessType: RepairAccessType.ANONYMOUS,
+        status: RepairSessionStatus.COMPLETED,
+        token: 'demo-herstel-sessie', // vaste demo-token; sessie is afgerond (en verlopen expiresAt is prima)
+        contactName: 'Jan de Installateur',
+        companyName: 'Installatiebedrijf Jansen',
+        email: 'installateur@jansen-demo.nl',
+        generatedDocumentId: declaration.id,
+        expiresAt: new Date('2026-07-11T09:00:00Z'),
+        completedAt: repairSignedAt,
+        createdIpAddress: '203.0.113.10',
+        lastActivityAt: repairSignedAt,
+        createdAt: new Date('2026-07-10T08:15:00Z'),
+      },
+    });
+
+    // Bewijsfoto (1×1 JPEG) écht naar de lokale storage, zodat de foto-stream werkt.
+    const repairPhotoKey = `${org1.id}/finding-photos/${randomUUID()}.jpg`;
+    const repairPhotoPath = path.join(process.env.UPLOAD_DIR || './uploads', repairPhotoKey);
+    fs.mkdirSync(path.dirname(repairPhotoPath), { recursive: true });
+    fs.writeFileSync(
+      repairPhotoPath,
+      Buffer.from(
+        '/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/2wBDAQkJCQwLDBgNDRgyIRwhMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjL/wAARCAABAAEDASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/9oADAMBAAIRAxEAPwD3+iiigD//2Q==',
+        'base64',
+      ),
+    );
+
+    await prisma.findingResolution.create({
+      data: {
+        findingId: finding2.id,
+        repairSessionId: repairSession.id,
+        description: 'Groep 3 opnieuw afgemonteerd en isolatieweerstand gemeten: 2,1 MΩ (boven de norm).',
+        statusCode: 'REPORTED',
+        resolvedAt: repairSignedAt,
+        photos: { create: [{ photoUrl: repairPhotoKey }] },
+      },
+    });
+
+    console.log(
+      '  ✓ Online herstel: ONLINE_HERSTEL-override + org-default + plan RAP-2026-001 aan, C1 kritiek (finding1 open-kritiek), afgeronde anonieme sessie + ondertekende herstelverklaring op finding2 (SEED_DEMO=1)',
+    );
+  } else {
+    console.log('  ⏭️  Online-herstel demo overgeslagen (zet SEED_DEMO=1 om aan te maken)');
+  }
+
   // ─── SaaS-varianten (PRD-09 §7.1) — testmatrix-orgs ─────────────────────
   // Drie extra orgs, los van de rijke demo-org, om de §7.3-testmatrix per
   // variant af te lopen: Basis blokkeert Compleet-functies, Compleet is overal
@@ -3254,6 +3795,19 @@ async function main() {
   // ─── Nummering: default schemes + numbers + counters-after-max ──────────
   await backfillNumbering(prisma);
   console.log('  ✓ Nummering: standaard-schemas, nummers en tellers geseed (per org, per model)');
+
+  // ─── WP-D1 (besluit A1): synced_at vullen op alle geseede sync-entiteiten ──
+  // De seed draait buiten de API (geen sync-anchor-middleware), dus één rauwe
+  // pass per tabel: synced_at = updated_at. Zonder deze basis zou elke geseede
+  // rij bij de eerste PWA-push fail-closed in conflict gaan (B-209).
+  await prisma.$executeRaw`UPDATE imp_inspection_plans SET synced_at = updated_at WHERE synced_at IS NULL`;
+  await prisma.$executeRaw`UPDATE imp_asset_nodes SET synced_at = updated_at WHERE synced_at IS NULL`;
+  await prisma.$executeRaw`UPDATE imp_findings SET synced_at = updated_at WHERE synced_at IS NULL`;
+  await prisma.$executeRaw`UPDATE imp_visual_inspections SET synced_at = updated_at WHERE synced_at IS NULL`;
+  await prisma.$executeRaw`UPDATE imp_measurement_records SET synced_at = updated_at WHERE synced_at IS NULL`;
+  await prisma.$executeRaw`UPDATE imp_measurement_sheet_records SET synced_at = updated_at WHERE synced_at IS NULL`;
+  await prisma.$executeRaw`UPDATE imp_standalone_measurements SET synced_at = updated_at WHERE synced_at IS NULL`;
+  console.log('  ✓ Sync-basis: synced_at = updated_at gezet op alle geseede sync-entiteiten (WP-D1)');
 
   console.log('\n✅ Seed completed successfully!');
   console.log('\n📋 Login credentials (all use Password123!):');

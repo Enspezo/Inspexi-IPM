@@ -54,7 +54,7 @@ export default function NewTicketPage() {
       showToast('Ticket aangemaakt', 'success');
       navigate(`/help/tickets/${ticket.id}`);
     } catch {
-      showToast('Aanmaken mislukt', 'error');
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   }
 

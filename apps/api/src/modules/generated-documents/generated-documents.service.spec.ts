@@ -1,12 +1,10 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { BadRequestException, ForbiddenException } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { DocumentType, GeneratedDocumentStatus, SignatureStatus, Role } from '@prisma/client';
 import { GeneratedDocumentsService } from './generated-documents.service';
+import { GenerationContextService } from './generation-context.service';
 import { PrismaService } from '@/prisma';
 import { STORAGE_PROVIDER } from '@/common/services/storage/storage.interface';
-import { EmailService } from '@/common/services/email.service';
-import { LookupService } from '../lookups/lookup.service';
 import { DocumentRenderService } from '../document-generation/document-render.service';
 import { PdfGenerationService } from '../document-generation/pdf-generation.service';
 import { WordExportService } from '../document-generation/word-export.service';
@@ -31,6 +29,7 @@ describe('GeneratedDocumentsService', () => {
       findFirst: jest.fn(),
       findMany: jest.fn(),
       update: jest.fn(),
+      count: jest.fn(),
     },
     photo: { findMany: jest.fn() },
     normTypeDefinition: { findFirst: jest.fn() },
@@ -43,9 +42,6 @@ describe('GeneratedDocumentsService', () => {
   const mockPdf = { renderPdf: jest.fn() };
   const mockWord = { htmlToDocx: jest.fn() };
   const mockStorage = { upload: jest.fn(), download: jest.fn(), delete: jest.fn(), exists: jest.fn() };
-  const mockEmail = { sendNotificationEmail: jest.fn() };
-  const mockLookups = { resolveLookup: jest.fn() };
-  const mockConfig = { get: jest.fn((_k: string, def?: string) => def) };
   // Asset nodes are assembled from the AssetNode tree (Fase 2b) instead of plan.assets.
   const mockAssetNodes = { listLocationNodesByOrg: jest.fn().mockResolvedValue([]) };
 
@@ -108,23 +104,22 @@ describe('GeneratedDocumentsService', () => {
 
   beforeEach(async () => {
     jest.clearAllMocks();
-    mockEmail.sendNotificationEmail.mockResolvedValue(undefined);
     mockAssetNodes.listLocationNodesByOrg.mockResolvedValue([]);
     mockPrisma.finding.findMany.mockResolvedValue([]);
     mockPrisma.measurementSheetRecord.findMany.mockResolvedValue([]);
     mockPrisma.measurementInstrument.findMany.mockResolvedValue([]);
+    // WP-A3: default géén SIGNED-handtekeningen (hasSignedSignature → false).
+    mockPrisma.documentSignature.count.mockResolvedValue(0);
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         GeneratedDocumentsService,
+        GenerationContextService,
         { provide: PrismaService, useValue: mockPrisma },
         { provide: DocumentRenderService, useValue: mockRender },
         { provide: PdfGenerationService, useValue: mockPdf },
         { provide: WordExportService, useValue: mockWord },
         { provide: STORAGE_PROVIDER, useValue: mockStorage },
-        { provide: EmailService, useValue: mockEmail },
-        { provide: ConfigService, useValue: mockConfig },
-        { provide: LookupService, useValue: mockLookups },
         { provide: AssetNodesService, useValue: mockAssetNodes },
       ],
     }).compile();
@@ -189,6 +184,98 @@ describe('GeneratedDocumentsService', () => {
         ForbiddenException,
       );
     });
+
+    it('blocks editing a signed document (SYNC-5)', async () => {
+      mockPrisma.generatedDocument.findUnique.mockResolvedValue({ orgId: 'org-1' });
+      mockPrisma.generatedDocument.findFirst.mockResolvedValue({
+        id: 'gd-1',
+        status: GeneratedDocumentStatus.SIGNED,
+      });
+      await expect(service.updateEditedContent('gd-1', user, '<p>x</p>')).rejects.toThrow(
+        ForbiddenException,
+      );
+      expect(mockPrisma.generatedDocument.update).not.toHaveBeenCalled();
+    });
+
+    // WP-A3 (B-104): de poort is het bestaan van een SIGNED-handtekeningrij,
+    // niet alleen de documentstatus — PENDING_SIGNATURES met een eerste
+    // handtekening is óók bevroren.
+    it('blocks editing at PENDING_SIGNATURES once a SIGNED signature row exists (B-104)', async () => {
+      mockPrisma.generatedDocument.findUnique.mockResolvedValue({ orgId: 'org-1' });
+      mockPrisma.generatedDocument.findFirst.mockResolvedValue({
+        id: 'gd-1',
+        status: GeneratedDocumentStatus.PENDING_SIGNATURES,
+      });
+      mockPrisma.documentSignature.count.mockResolvedValue(1);
+
+      await expect(service.updateEditedContent('gd-1', user, '<p>x</p>')).rejects.toThrow(
+        ForbiddenException,
+      );
+      expect(mockPrisma.documentSignature.count).toHaveBeenCalledWith({
+        where: { generatedDocumentId: 'gd-1', status: SignatureStatus.SIGNED },
+      });
+      expect(mockPrisma.generatedDocument.update).not.toHaveBeenCalled();
+    });
+
+    it('allows editing at PENDING_SIGNATURES while no signature is SIGNED yet', async () => {
+      mockPrisma.generatedDocument.findUnique.mockResolvedValue({ orgId: 'org-1' });
+      mockPrisma.generatedDocument.findFirst.mockResolvedValue({
+        id: 'gd-1',
+        status: GeneratedDocumentStatus.PENDING_SIGNATURES,
+      });
+      mockPrisma.generatedDocument.update.mockResolvedValue({ id: 'gd-1', isEdited: true });
+
+      await service.updateEditedContent('gd-1', user, '<p>x</p>');
+
+      expect(mockPrisma.generatedDocument.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'gd-1' },
+          data: expect.objectContaining({ isEdited: true, editedBy: 'user-1' }),
+        }),
+      );
+    });
+  });
+
+  // WP-A3 (B-102): verwijderen — FINALIZED → 403; ≥1 SIGNED-handtekening → 400.
+  describe('delete', () => {
+    it('blocks deleting a finalized document (403)', async () => {
+      mockPrisma.generatedDocument.findUnique.mockResolvedValue({ orgId: 'org-1' });
+      mockPrisma.generatedDocument.findFirst.mockResolvedValue({
+        id: 'gd-1',
+        status: GeneratedDocumentStatus.FINALIZED,
+      });
+      await expect(service.delete('gd-1', user)).rejects.toThrow(ForbiddenException);
+      expect(mockPrisma.generatedDocument.delete).not.toHaveBeenCalled();
+    });
+
+    it('blocks deleting a document with a SIGNED signature (400, B-102)', async () => {
+      mockPrisma.generatedDocument.findUnique.mockResolvedValue({ orgId: 'org-1' });
+      mockPrisma.generatedDocument.findFirst.mockResolvedValue({
+        id: 'gd-1',
+        status: GeneratedDocumentStatus.PENDING_SIGNATURES,
+        pdfUrl: null,
+        wordUrl: null,
+      });
+      mockPrisma.documentSignature.count.mockResolvedValue(1);
+
+      await expect(service.delete('gd-1', user)).rejects.toThrow(BadRequestException);
+      expect(mockPrisma.generatedDocument.delete).not.toHaveBeenCalled();
+    });
+
+    it('deletes an unsigned document', async () => {
+      mockPrisma.generatedDocument.findUnique.mockResolvedValue({ orgId: 'org-1' });
+      mockPrisma.generatedDocument.findFirst.mockResolvedValue({
+        id: 'gd-1',
+        status: GeneratedDocumentStatus.DRAFT,
+        pdfUrl: null,
+        wordUrl: null,
+      });
+      mockPrisma.generatedDocument.delete.mockResolvedValue({ id: 'gd-1' });
+
+      await service.delete('gd-1', user);
+
+      expect(mockPrisma.generatedDocument.delete).toHaveBeenCalledWith({ where: { id: 'gd-1' } });
+    });
   });
 
   describe('finalizeDocument', () => {
@@ -213,6 +300,7 @@ describe('GeneratedDocumentsService', () => {
       id: 'gd-1',
       orgId: 'org-1',
       documentTemplateId: 'tpl-1',
+      inspectionPlanId: 'plan-1',
       isEdited: false,
       editedContent: null,
       htmlContent: '<html>body</html>',
@@ -256,126 +344,137 @@ describe('GeneratedDocumentsService', () => {
       );
       expect(url).toBe('/api/v1/generated-documents/gd-1/download?format=word');
     });
-  });
 
-  describe('requestSignature', () => {
-    const doc = { id: 'gd-1', orgId: 'org-1', status: GeneratedDocumentStatus.DRAFT };
-
-    it('validates the role, creates a REQUESTED signature, mails the link and flips status', async () => {
+    // B-311: header/footer met datalaag-placeholders krijgen bij preview/export
+    // de (lichte) header-context + template-id mee naar de PDF-laag.
+    it('geeft headerFooterContext + templateId mee wanneer header/footer data-placeholders bevatten', async () => {
       mockPrisma.generatedDocument.findUnique.mockResolvedValue({ orgId: 'org-1' });
       mockPrisma.generatedDocument.findFirst.mockResolvedValue(doc);
-      mockLookups.resolveLookup.mockResolvedValue({ code: 'INSPECTOR', label: 'Inspecteur' });
-      mockPrisma.documentSignature.create.mockImplementation(({ data }: any) => ({ id: 'sig-1', ...data }));
-      mockPrisma.generatedDocument.update.mockResolvedValue(doc);
+      mockPrisma.documentSignature.findMany.mockResolvedValue([]);
+      mockPrisma.documentTemplate.findUnique.mockResolvedValue({
+        ...renderTemplate,
+        headerHtml: '<div>{{organization.name}} — Inspectieplan</div>',
+        footerHtml: '<div>Pagina {{pageNumber}} van {{totalPages}}</div>',
+      });
+      mockPrisma.inspectionPlan.findFirst.mockResolvedValue(fullPlan());
+      mockPrisma.normTypeDefinition.findFirst.mockResolvedValue({ label: 'NEN 1010' });
+      mockPdf.renderPdf.mockResolvedValue(Buffer.from('%PDF'));
 
-      const sig = await service.requestSignature('gd-1', user, {
-        signerRoleCode: 'INSPECTOR',
-        signerName: 'Jan Klant',
-        signerEmail: 'jan@klant.nl',
-      } as any);
+      await service.generatePreview('gd-1', user);
 
-      expect(mockLookups.resolveLookup).toHaveBeenCalledWith('signer-roles', 'INSPECTOR', 'org-1');
-      expect(mockPrisma.documentSignature.create).toHaveBeenCalledWith(
+      expect(mockPdf.renderPdf).toHaveBeenCalledWith(
+        expect.any(String),
         expect.objectContaining({
-          data: expect.objectContaining({
-            generatedDocumentId: 'gd-1',
-            signerRoleCode: 'INSPECTOR',
-            status: SignatureStatus.REQUESTED,
-            signatureRequestUrl: expect.stringContaining('/sign/'),
+          headerHtml: '<div>{{organization.name}} — Inspectieplan</div>',
+          templateId: 'tpl-1',
+          headerFooterContext: expect.objectContaining({
+            organization: expect.objectContaining({ name: 'Org 1' }),
+            client: expect.objectContaining({ name: 'Klant BV' }),
           }),
         }),
       );
-      expect(mockPrisma.generatedDocument.update).toHaveBeenCalledWith(
-        expect.objectContaining({ data: { status: GeneratedDocumentStatus.PENDING_SIGNATURES } }),
+      // De header-context is de lichte variant (header-only query).
+      expect(mockPrisma.inspectionPlan.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({ where: expect.objectContaining({ id: 'plan-1', orgId: 'org-1' }) }),
       );
-      expect(mockEmail.sendNotificationEmail).toHaveBeenCalledWith(
-        'jan@klant.nl',
-        'Ondertekenverzoek',
-        expect.stringContaining('/sign/'),
-        expect.objectContaining({ orgId: 'org-1' }),
-      );
-      expect(sig.signatureRequestId).toBeDefined();
     });
 
-    it('rejects an unknown signer role', async () => {
+    it('slaat de context-query over wanneer header/footer alleen Puppeteer-tokens bevatten', async () => {
       mockPrisma.generatedDocument.findUnique.mockResolvedValue({ orgId: 'org-1' });
       mockPrisma.generatedDocument.findFirst.mockResolvedValue(doc);
-      mockLookups.resolveLookup.mockResolvedValue(null);
+      mockPrisma.documentSignature.findMany.mockResolvedValue([]);
+      mockPrisma.documentTemplate.findUnique.mockResolvedValue({
+        ...renderTemplate,
+        footerHtml: '<div>Pagina {{pageNumber}} van {{totalPages}}</div>',
+      });
+      mockPdf.renderPdf.mockResolvedValue(Buffer.from('%PDF'));
 
-      await expect(
-        service.requestSignature('gd-1', user, {
-          signerRoleCode: 'NOPE',
-          signerName: 'X',
-          signerEmail: 'x@y.nl',
-        } as any),
-      ).rejects.toThrow(BadRequestException);
-      expect(mockPrisma.documentSignature.create).not.toHaveBeenCalled();
+      await service.generatePreview('gd-1', user);
+
+      expect(mockPrisma.inspectionPlan.findFirst).not.toHaveBeenCalled();
+      expect(mockPdf.renderPdf).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({ headerFooterContext: undefined, templateId: 'tpl-1' }),
+      );
+    });
+
+    it('levert bruikbare PdfOptions zonder context wanneer het plan verdwenen is (vangnet strips)', async () => {
+      mockPrisma.generatedDocument.findUnique.mockResolvedValue({ orgId: 'org-1' });
+      mockPrisma.generatedDocument.findFirst.mockResolvedValue(doc);
+      mockPrisma.documentSignature.findMany.mockResolvedValue([]);
+      mockPrisma.documentTemplate.findUnique.mockResolvedValue({
+        ...renderTemplate,
+        headerHtml: '<div>{{organization.name}}</div>',
+      });
+      mockPrisma.inspectionPlan.findFirst.mockResolvedValue(null);
+      mockPdf.renderPdf.mockResolvedValue(Buffer.from('%PDF'));
+
+      await service.generatePreview('gd-1', user);
+
+      expect(mockPdf.renderPdf).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({ headerFooterContext: undefined }),
+      );
     });
   });
 
-  describe('public signing', () => {
-    it('getSignatureRequest returns only the document HTML + sign fields', async () => {
-      mockPrisma.documentSignature.findFirst.mockResolvedValue({
-        id: 'sig-1',
-        status: SignatureStatus.REQUESTED,
-        signatureRequestSentAt: new Date(),
-        signerRoleCode: 'INSPECTOR',
-        signerName: 'Jan Klant',
-        generatedDocumentId: 'gd-1',
-        generatedDocument: {
-          id: 'gd-1',
-          documentType: DocumentType.PLAN,
-          htmlContent: '<html>te tekenen</html>',
-          editedContent: null,
-          isEdited: false,
-          inspectionPlan: { projectName: 'Demo', referenceNumber: 'INSP-1' },
+  // Defensieve laag vlak vóór interpolatie in de render-HTML (naast DTO-validatie).
+  describe('injectSignaturesIntoHtml — injection hardening', () => {
+    const inject = (html: string) =>
+      (service as any).injectSignaturesIntoHtml('gd-1', html) as Promise<string>;
+
+    it('HTML-escapes signerName and signerFunction', async () => {
+      mockPrisma.documentSignature.findMany.mockResolvedValue([
+        {
+          signerName: '<img src=x onerror="alert(1)">',
+          signerFunction: 'Chef "Inspectie"',
+          signerRoleCode: 'INSPECTOR',
+          signatureImage: null,
+          signedAt: new Date('2026-07-01'),
+          status: SignatureStatus.SIGNED,
         },
-      });
+      ]);
 
-      const result = await service.getSignatureRequest('req-1');
+      const out = await inject('<html><body>doc</body></html>');
 
-      expect(result.html).toBe('<html>te tekenen</html>');
-      expect(result.signerRoleCode).toBe('INSPECTOR');
-      expect(result.status).toBe(SignatureStatus.REQUESTED);
-      // Geen overige org-data gelekt.
-      expect(result).not.toHaveProperty('signerEmail');
-      expect(JSON.stringify(result)).not.toContain('internalNotes');
+      expect(out).not.toContain('<img src=x onerror=');
+      expect(out).toContain('&lt;img src=x onerror=&quot;alert(1)&quot;&gt;');
+      expect(out).toContain('Chef &quot;Inspectie&quot;');
     });
 
-    it('getSignatureRequest rejects an already-signed request', async () => {
-      mockPrisma.documentSignature.findFirst.mockResolvedValue({
-        id: 'sig-1',
-        status: SignatureStatus.SIGNED,
-        signatureRequestSentAt: new Date(),
-        generatedDocument: { id: 'gd-1', documentType: 'PLAN', htmlContent: '', editedContent: null, isEdited: false, inspectionPlan: { projectName: 'x', referenceNumber: 'y' } },
-      });
-      await expect(service.getSignatureRequest('req-1')).rejects.toThrow(BadRequestException);
+    it('drops a signatureImage that is not a safe data: URL (SSRF)', async () => {
+      mockPrisma.documentSignature.findMany.mockResolvedValue([
+        {
+          signerName: 'Jan',
+          signerRoleCode: 'INSPECTOR',
+          signatureImage: 'file:///etc/passwd',
+          signedAt: new Date('2026-07-01'),
+          status: SignatureStatus.SIGNED,
+        },
+      ]);
+
+      const out = await inject('<html><body>doc</body></html>');
+
+      expect(out).not.toContain('file:///etc/passwd');
+      expect(out).not.toContain('<img');
     });
 
-    it('signViaRequest marks the signature SIGNED and recomputes the document status', async () => {
-      mockPrisma.documentSignature.findFirst.mockResolvedValue({
-        id: 'sig-1',
-        status: SignatureStatus.REQUESTED,
-        signatureRequestSentAt: new Date(),
-        generatedDocumentId: 'gd-1',
-        signerName: 'Jan Klant',
-      });
-      mockPrisma.documentSignature.update.mockResolvedValue({ id: 'sig-1', status: 'SIGNED' });
-      mockPrisma.documentSignature.findMany.mockResolvedValue([{ status: SignatureStatus.SIGNED }]);
-      mockPrisma.generatedDocument.findUnique.mockResolvedValue({
-        id: 'gd-1',
-        status: GeneratedDocumentStatus.PENDING_SIGNATURES,
-      });
-      mockPrisma.generatedDocument.update.mockResolvedValue({ id: 'gd-1' });
+    it('keeps a valid base64 data: image', async () => {
+      const png =
+        'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+      mockPrisma.documentSignature.findMany.mockResolvedValue([
+        {
+          signerName: 'Jan',
+          signerRoleCode: 'INSPECTOR',
+          signatureImage: png,
+          signedAt: new Date('2026-07-01'),
+          status: SignatureStatus.SIGNED,
+        },
+      ]);
 
-      await service.signViaRequest('req-1', { signatureImage: 'data:image/png;base64,AAA' } as any);
+      const out = await inject('<html><body>doc</body></html>');
 
-      expect(mockPrisma.documentSignature.update).toHaveBeenCalledWith(
-        expect.objectContaining({ data: expect.objectContaining({ status: SignatureStatus.SIGNED }) }),
-      );
-      expect(mockPrisma.generatedDocument.update).toHaveBeenCalledWith(
-        expect.objectContaining({ data: { status: GeneratedDocumentStatus.SIGNED } }),
-      );
+      expect(out).toContain(`<img src="${png}"`);
     });
   });
 });

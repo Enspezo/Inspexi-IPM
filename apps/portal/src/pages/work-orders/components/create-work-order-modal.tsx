@@ -56,11 +56,8 @@ export function CreateWorkOrderModal({
       if (onSuccess && result) {
         onSuccess(result.id);
       }
-    } catch (err) {
-      showToast(
-        err instanceof Error ? err.message : 'Aanmaken mislukt',
-        'error',
-      );
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 

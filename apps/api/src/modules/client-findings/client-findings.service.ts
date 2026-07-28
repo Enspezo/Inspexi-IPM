@@ -12,6 +12,7 @@ import {
 } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { PrismaService } from '@/prisma';
+import { detectImageType } from '@/common';
 import { STORAGE_PROVIDER } from '@/common/services/storage/storage.interface';
 import type { StorageProvider } from '@/common/services/storage/storage.interface';
 import type { CurrentClientUserData } from '@/common/decorators/current-client-user.decorator';
@@ -20,7 +21,6 @@ import { ResolveFindingDto } from './dto';
 
 const PENDING = 'PENDING_VERIFICATION';
 const MAX_PHOTOS = 5;
-const EXT: Record<string, string> = { 'image/jpeg': 'jpg', 'image/png': 'png' };
 
 /** Publieke URL naar de authenticated foto-download-route (verbergt de storage-key). */
 function photoDownloadUrl(id: string): string {
@@ -46,6 +46,11 @@ export class ClientFindingsService {
     });
     if (!finding) throw new NotFoundException('Constatering niet gevonden');
     await this.inspections.assertInspectionAccess(user.id, org, finding.inspectionPlanId);
+    // B-412 (WP-B9): constateringen van een nog niet gereviewd rapport zijn niet
+    // klant-zichtbaar — zelfde 404 als een onbekende constatering (geen oracle).
+    if (!(await this.inspections.isPlanContentReleased(org, finding.inspectionPlanId))) {
+      throw new NotFoundException('Constatering niet gevonden');
+    }
     return finding;
   }
 
@@ -60,6 +65,24 @@ export class ClientFindingsService {
           include: {
             photos: { orderBy: { uploadedAt: 'asc' } },
             resolvedByClientUser: { select: { id: true, firstName: true, lastName: true } },
+            // B-409 (beslispunt A4, 2026-07-28): de herstelverklaring is leidend —
+            // klant-zijdig tonen we dát er een (ondertekende) verklaring bestaat.
+            // Alleen het document-id + de HERSTELLER-ondertekendatum; de sessie
+            // zelf (contactName/email) wordt hieronder weggelaten.
+            repairSession: {
+              select: {
+                generatedDocument: {
+                  select: {
+                    id: true,
+                    signatures: {
+                      where: { signerRoleCode: 'HERSTELLER', status: 'SIGNED' },
+                      select: { signedAt: true },
+                      take: 1,
+                    },
+                  },
+                },
+              },
+            },
           },
         },
       },
@@ -67,17 +90,35 @@ export class ClientFindingsService {
     if (!finding) throw new NotFoundException('Constatering niet gevonden');
 
     // Storage-keys verbergen: elke foto krijgt een download-URL.
+    // Anonimiteit (PRD-14 §14.3 besluit 4): bij herstel-flow-resoluties
+    // (REPORTED/CONFLICT) mag het klantportaal nooit zien wíe herstelde —
+    // ook niet wanneer een ingelogde klant de hersteller was. Staf ziet de
+    // invullergegevens wél (via de staf-serializer in findings.service).
     return {
       ...finding,
-      resolutions: finding.resolutions.map((r) => ({
-        ...r,
-        photos: r.photos.map((p) => ({
-          id: p.id,
-          caption: p.caption,
-          uploadedAt: p.uploadedAt,
-          url: photoDownloadUrl(p.id),
-        })),
-      })),
+      resolutions: finding.resolutions.map((rWithSession) => {
+        const { repairSession, ...r } = rWithSession;
+        const anonymous = r.statusCode === 'REPORTED' || r.statusCode === 'CONFLICT';
+        // B-409 (beslispunt A4): de verklaring is leidend. Bij een geslaagde
+        // herstel-flow-resolutie (REPORTED) verwijzen we naar de herstelverklaring
+        // (zichtbaar op de Documenten-tab), zodat het portaal niet langer de
+        // schijn wekt dat de invullergegevens afgeschermd zijn.
+        const statementDoc = r.statusCode === 'REPORTED' ? repairSession?.generatedDocument : null;
+        return {
+          ...r,
+          resolvedByClientUserId: anonymous ? null : r.resolvedByClientUserId,
+          resolvedByClientUser: anonymous ? null : r.resolvedByClientUser,
+          repairStatement: statementDoc
+            ? { documentId: statementDoc.id, signedAt: statementDoc.signatures[0]?.signedAt ?? null }
+            : null,
+          photos: r.photos.map((p) => ({
+            id: p.id,
+            caption: p.caption,
+            uploadedAt: p.uploadedAt,
+            url: photoDownloadUrl(p.id),
+          })),
+        };
+      }),
     };
   }
 
@@ -128,11 +169,21 @@ export class ClientFindingsService {
       );
     }
 
+    // WP-B4: magic bytes beslissen type + opslagextensie; de multer-fileFilter
+    // op de client-claim is alleen de poort. Eerst álle bestanden valideren,
+    // zodat een afgekeurd bestand geen wees-uploads achterlaat.
+    const detectedTypes = files.map((file) => {
+      const detected = detectImageType(file.buffer);
+      if (!detected || detected.mimeType === 'image/webp') {
+        throw new BadRequestException('Alleen JPG en PNG bestanden zijn toegestaan');
+      }
+      return detected;
+    });
+
     const created = await Promise.all(
-      files.map(async (file) => {
-        const ext = EXT[file.mimetype] ?? 'jpg';
-        const key = `${finding.orgId}/finding-photos/${randomUUID()}.${ext}`;
-        await this.storage.upload(key, file.buffer, file.mimetype);
+      files.map(async (file, i) => {
+        const key = `${finding.orgId}/finding-photos/${randomUUID()}.${detectedTypes[i].extension}`;
+        await this.storage.upload(key, file.buffer, detectedTypes[i].mimeType);
         return this.prisma.findingResolutionPhoto.create({
           data: { resolutionId: resolution.id, photoUrl: key },
         });
@@ -186,6 +237,15 @@ export class ClientFindingsService {
       org,
       photo.resolution.finding.inspectionPlanId,
     );
+    // B-412: resolutie-foto's horen bij de constatering-inhoud → zelfde gate.
+    if (
+      !(await this.inspections.isPlanContentReleased(
+        org,
+        photo.resolution.finding.inspectionPlanId,
+      ))
+    ) {
+      throw new NotFoundException('Foto niet gevonden');
+    }
     const buffer = await this.storage.download(photo.photoUrl);
     return { buffer, mimeType: photo.photoUrl.endsWith('.png') ? 'image/png' : 'image/jpeg' };
   }

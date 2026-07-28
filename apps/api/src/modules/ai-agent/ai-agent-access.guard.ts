@@ -10,7 +10,7 @@ import { TenantContext } from '@/common/interfaces/tenant-context.interface';
 import { DEFAULT_AI_AGENT_ROLES } from './ai-config';
 
 /**
- * Per-org kill-switch + toegestane-rollen voor de AI-assistent (PRD-12 §7.3/§7.5).
+ * Per-org kill-switch + toegestane-rollen voor de AI-assistent (PRD-15 §7.3/§7.5).
  * Draait ná de globale guards (Jwt → Roles → Tenant → Feature), dus `request.user`
  * en `request.tenant.organization` (volledige, gecachte org-rij) zijn beschikbaar.
  * SUPERUSER omzeilt; op localhost/onbekende host valt hij open (mirrors

@@ -175,6 +175,14 @@ export interface PdfOptions {
   marginRightMm?: number;
   headerHtml?: string;
   footerHtml?: string;
+  /**
+   * B-311: data-context waarmee `{{…}}`-placeholders in header/footer door
+   * dezelfde Handlebars-resolver als de body worden opgelost. Zonder context
+   * blijven alleen de vijf Puppeteer-tokens werken en strips het vangnet de rest.
+   */
+  headerFooterContext?: DocumentData;
+  /** Template-id, uitsluitend voor logging bij het placeholder-vangnet (B-311). */
+  templateId?: string;
 }
 
 /** Document template settings from the database (subset used for rendering). */

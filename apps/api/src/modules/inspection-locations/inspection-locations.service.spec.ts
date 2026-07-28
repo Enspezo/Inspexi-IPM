@@ -287,7 +287,7 @@ describe('InspectionLocationsService', () => {
 
   describe('reorder', () => {
     it('should reorder locations via a scoped transaction', async () => {
-      mockAssetNodes.listPlanNodes.mockResolvedValue([]);
+      mockAssetNodes.listPlanNodes.mockResolvedValue([{ id: 'loc-1' }, { id: 'loc-2' }]);
       mockPrismaService.assetNode.update.mockImplementation((args: unknown) => args);
       mockPrismaService.$transaction.mockResolvedValue([]);
 
@@ -309,6 +309,15 @@ describe('InspectionLocationsService', () => {
         where: { id: 'loc-1' },
         data: { sortOrder: 1 },
       });
+    });
+
+    it('should reject a location id that is not in the plan tree (SEC-7)', async () => {
+      mockAssetNodes.listPlanNodes.mockResolvedValue([{ id: 'loc-1' }]);
+
+      await expect(
+        service.reorder('plan-1', mockUser, { locationIds: ['loc-1', 'foreign-loc'] } as any),
+      ).rejects.toThrow(BadRequestException);
+      expect(mockPrismaService.$transaction).not.toHaveBeenCalled();
     });
   });
 

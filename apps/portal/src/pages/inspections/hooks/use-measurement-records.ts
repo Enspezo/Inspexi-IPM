@@ -3,21 +3,24 @@
  * Read-only voor de staf — invullen gebeurt in het veld (PWA).
  *
  * Endpoints:
- *   GET /measurement-sheet-records?assetId=…   → flat array (geen paginatie),
- *                                                 incl. templateSnapshot + data + finalCheckResults
- *   GET /measurement-sheet-records/:id          → één record (incl. snapshot)
+ *   GET /measurement-sheet-records?assetNodeId=…  → flat array (geen paginatie),
+ *                                                    incl. templateSnapshot + data + finalCheckResults
+ *   GET /measurement-sheet-records/:id            → één record (incl. snapshot)
  */
 import { useQuery } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api-client';
+import { measurementSheetRecordKeys } from '@/lib/query-keys';
 import type { MeasurementSheetRecord } from '@/types';
 
-/** Ingevulde meetstaat-records van één asset. Enabled zodra assetId bekend is. */
-export function useAssetMeasurementRecords(assetId: string | undefined) {
+/** Ingevulde meetstaat-records van één asset(-node). Enabled zodra het id bekend is. */
+export function useAssetMeasurementRecords(assetNodeId: string | undefined) {
   return useQuery<MeasurementSheetRecord[]>({
-    queryKey: ['measurement-sheet-records', 'asset', assetId],
+    queryKey: measurementSheetRecordKeys.byAsset(assetNodeId ?? ''),
     queryFn: () =>
-      apiClient.get<MeasurementSheetRecord[]>(`/measurement-sheet-records?assetId=${assetId}`),
-    enabled: !!assetId,
+      apiClient.get<MeasurementSheetRecord[]>(
+        `/measurement-sheet-records?assetNodeId=${assetNodeId}`,
+      ),
+    enabled: !!assetNodeId,
   });
 }
 
@@ -29,7 +32,7 @@ export function useAssetMeasurementRecords(assetId: string | undefined) {
  */
 export function useMeasurementRecord(id: string | undefined) {
   return useQuery<MeasurementSheetRecord>({
-    queryKey: ['measurement-sheet-records', id],
+    queryKey: measurementSheetRecordKeys.detail(id ?? ''),
     queryFn: () => apiClient.get<MeasurementSheetRecord>(`/measurement-sheet-records/${id}`),
     enabled: !!id,
   });

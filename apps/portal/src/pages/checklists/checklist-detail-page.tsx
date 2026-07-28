@@ -152,8 +152,8 @@ export default function ChecklistDetailPage() {
       });
       showToast('Checklist bijgewerkt', 'success');
       setIsEditing(false);
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Bijwerken mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 
@@ -180,8 +180,8 @@ export default function ChecklistDetailPage() {
       });
       showToast('Checklist gepubliceerd', 'success');
       setLifecycleAction(null);
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Publiceren mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 
@@ -193,8 +193,8 @@ export default function ChecklistDetailPage() {
       });
       showToast('Checklist ingetrokken', 'success');
       setLifecycleAction(null);
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Intrekken mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 
@@ -206,8 +206,8 @@ export default function ChecklistDetailPage() {
       showToast('Nieuwe versie aangemaakt', 'success');
       setLifecycleAction(null);
       navigate(`/checklists/${created.id}`);
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Nieuwe versie maken mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 
@@ -223,8 +223,8 @@ export default function ChecklistDetailPage() {
       await deleteMutation.mutateAsync();
       showToast('Checklist verwijderd', 'success');
       navigate('/checklists');
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Verwijderen mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 

@@ -69,6 +69,7 @@ describe('QuoteTemplatesService', () => {
   const mockPrismaService = {
     quoteTemplate: {
       findMany: jest.fn(),
+      findFirst: jest.fn(),
       findUnique: jest.fn(),
       create: jest.fn(),
       update: jest.fn(),
@@ -149,22 +150,22 @@ describe('QuoteTemplatesService', () => {
 
   describe('findOne()', () => {
     it('should return template when found and same org', async () => {
-      mockPrismaService.quoteTemplate.findUnique.mockResolvedValue(
+      mockPrismaService.quoteTemplate.findFirst.mockResolvedValue(
         mockTemplate,
       );
 
       const result = await service.findOne('template-1', mockUser);
 
       expect(result).toEqual(mockTemplate);
-      expect(mockPrismaService.quoteTemplate.findUnique).toHaveBeenCalledWith(
+      expect(mockPrismaService.quoteTemplate.findFirst).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: { id: 'template-1' },
+          where: { id: 'template-1', orgId: 'org-1' },
         }),
       );
     });
 
     it('should throw NotFoundException when template not found', async () => {
-      mockPrismaService.quoteTemplate.findUnique.mockResolvedValue(null);
+      mockPrismaService.quoteTemplate.findFirst.mockResolvedValue(null);
 
       await expect(
         service.findOne('non-existent', mockUser),
@@ -219,7 +220,7 @@ describe('QuoteTemplatesService', () => {
 
   describe('update()', () => {
     it('should update template fields', async () => {
-      mockPrismaService.quoteTemplate.findUnique.mockResolvedValue(
+      mockPrismaService.quoteTemplate.findFirst.mockResolvedValue(
         mockTemplate,
       );
       const updatedTemplate = {
@@ -255,7 +256,7 @@ describe('QuoteTemplatesService', () => {
 
   describe('deactivate()', () => {
     it('should set isActive to false', async () => {
-      mockPrismaService.quoteTemplate.findUnique.mockResolvedValue(
+      mockPrismaService.quoteTemplate.findFirst.mockResolvedValue(
         mockTemplate,
       );
       const deactivatedTemplate = { ...mockTemplate, isActive: false };
@@ -273,17 +274,21 @@ describe('QuoteTemplatesService', () => {
     });
   });
 
-  // ─── ForbiddenException cross-org ────────────────────────────────────
+  // ─── Cross-org = zelfde 404 (WP-C1) ─────────────────────────────────
 
   describe('cross-org access', () => {
-    it('should throw ForbiddenException when different org user accesses template', async () => {
-      mockPrismaService.quoteTemplate.findUnique.mockResolvedValue(
-        mockTemplate,
-      );
+    it('should throw the same NotFound when a different org user accesses the template (404-oracle)', async () => {
+      // Org-scope in de where-clausule: andermans template komt niet terug.
+      mockPrismaService.quoteTemplate.findFirst.mockResolvedValue(null);
 
       await expect(
         service.findOne('template-1', mockOtherOrgUser),
-      ).rejects.toThrow(ForbiddenException);
+      ).rejects.toThrow('Template niet gevonden');
+      expect(mockPrismaService.quoteTemplate.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ orgId: 'org-2' }),
+        }),
+      );
     });
   });
 });

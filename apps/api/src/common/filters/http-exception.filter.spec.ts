@@ -8,6 +8,7 @@ import {
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { AllExceptionsFilter } from './http-exception.filter';
+import { StorageObjectNotFoundError } from '../services/storage/storage.interface';
 
 describe('AllExceptionsFilter', () => {
   let filter: AllExceptionsFilter;
@@ -57,6 +58,23 @@ describe('AllExceptionsFilter', () => {
     });
   });
 
+  // B-154: ontbrekend storage-object → centrale NL 404 (nooit een Engelse 500).
+  it('B-154: maps StorageObjectNotFoundError to a Dutch 404 without leaking the key', () => {
+    const exception = new StorageObjectNotFoundError('org-1/documents/weg.pdf');
+
+    filter.catch(exception, mockHost);
+
+    expect(mockStatus).toHaveBeenCalledWith(HttpStatus.NOT_FOUND);
+    expect(mockJson).toHaveBeenCalledWith({
+      success: false,
+      message: 'Het opgevraagde bestand is niet (meer) beschikbaar',
+      statusCode: HttpStatus.NOT_FOUND,
+    });
+    // De storage-key hoort in de logs, nooit in de response-body.
+    const body = mockJson.mock.calls[0][0];
+    expect(JSON.stringify(body)).not.toContain('org-1/documents/weg.pdf');
+  });
+
   it('should handle BadRequestException with validation errors (array message)', () => {
     const exception = new BadRequestException({
       message: ['email must be an email', 'name should not be empty'],
@@ -94,6 +112,9 @@ describe('AllExceptionsFilter', () => {
     ['P2002', HttpStatus.CONFLICT, 'Deze waarde bestaat al'],
     ['P2025', HttpStatus.NOT_FOUND, 'Gegevens niet gevonden'],
     ['P2003', HttpStatus.BAD_REQUEST, 'Verwijzing naar niet-bestaande gegevens'],
+    ['P2011', HttpStatus.BAD_REQUEST, 'Verplicht veld ontbreekt'],
+    // B-303: waarde buiten kolomtype-bereik (bv. numeric overflow) → 400 i.p.v. 500
+    ['P2020', HttpStatus.BAD_REQUEST, 'Een waarde valt buiten het toegestane bereik'],
   ])('should map Prisma %s to %s', (code, status, message) => {
     const exception = new Prisma.PrismaClientKnownRequestError('db error', {
       code,
@@ -113,6 +134,49 @@ describe('AllExceptionsFilter', () => {
   it('should map unknown Prisma codes to 500', () => {
     const exception = new Prisma.PrismaClientKnownRequestError('db error', {
       code: 'P1001',
+      clientVersion: 'test',
+    });
+
+    filter.catch(exception, mockHost);
+
+    expect(mockStatus).toHaveBeenCalledWith(HttpStatus.INTERNAL_SERVER_ERROR);
+  });
+
+  it('should map PrismaClientValidationError to 400 (WP-B3, B-503)', () => {
+    // Bv. `orgId: null` in een verplichte FK-kolom — ongeldige invoer, geen 500.
+    const exception = new Prisma.PrismaClientValidationError(
+      'Argument `orgId` must not be null.',
+      { clientVersion: 'test' },
+    );
+
+    filter.catch(exception, mockHost);
+
+    expect(mockStatus).toHaveBeenCalledWith(HttpStatus.BAD_REQUEST);
+    expect(mockJson).toHaveBeenCalledWith({
+      success: false,
+      message: 'Ongeldige gegevens',
+      statusCode: HttpStatus.BAD_REQUEST,
+    });
+  });
+
+  it('should map a Postgres numeric field overflow (unknown request error) to 400 NL (B-303)', () => {
+    const exception = new Prisma.PrismaClientUnknownRequestError(
+      'Error occurred during query execution: numeric field overflow',
+      { clientVersion: 'test' },
+    );
+
+    filter.catch(exception, mockHost);
+
+    expect(mockStatus).toHaveBeenCalledWith(HttpStatus.BAD_REQUEST);
+    expect(mockJson).toHaveBeenCalledWith({
+      success: false,
+      message: 'Een bedrag of aantal is te groot om op te slaan',
+      statusCode: HttpStatus.BAD_REQUEST,
+    });
+  });
+
+  it('should keep other unknown Prisma request errors as 500', () => {
+    const exception = new Prisma.PrismaClientUnknownRequestError('something else broke', {
       clientVersion: 'test',
     });
 
@@ -142,9 +206,46 @@ describe('AllExceptionsFilter', () => {
     expect(mockStatus).toHaveBeenCalledWith(HttpStatus.INTERNAL_SERVER_ERROR);
     expect(mockJson).toHaveBeenCalledWith({
       success: false,
-      message: 'Internal server error',
+      message: 'Er is een onverwachte fout opgetreden',
       requestId: 'req-test-123',
       statusCode: HttpStatus.INTERNAL_SERVER_ERROR,
+    });
+  });
+
+  it('should map a body-parser PayloadTooLargeError to 413', () => {
+    // Express body-parser gooit een gewone Error met numerieke status, geen HttpException.
+    const exception = Object.assign(new Error('request entity too large'), {
+      status: 413,
+      statusCode: 413,
+      type: 'entity.too.large',
+      expose: true,
+    });
+
+    filter.catch(exception, mockHost);
+
+    expect(mockStatus).toHaveBeenCalledWith(HttpStatus.PAYLOAD_TOO_LARGE);
+    expect(mockJson).toHaveBeenCalledWith({
+      success: false,
+      message: 'Verzoek te groot',
+      statusCode: HttpStatus.PAYLOAD_TOO_LARGE,
+    });
+  });
+
+  it('should map malformed-JSON body-parser error to 400 with exposed message', () => {
+    const exception = Object.assign(new SyntaxError('Unexpected token b in JSON'), {
+      status: 400,
+      statusCode: 400,
+      type: 'entity.parse.failed',
+      expose: true,
+    });
+
+    filter.catch(exception, mockHost);
+
+    expect(mockStatus).toHaveBeenCalledWith(HttpStatus.BAD_REQUEST);
+    expect(mockJson).toHaveBeenCalledWith({
+      success: false,
+      message: 'Unexpected token b in JSON',
+      statusCode: HttpStatus.BAD_REQUEST,
     });
   });
 
@@ -154,7 +255,7 @@ describe('AllExceptionsFilter', () => {
     expect(mockStatus).toHaveBeenCalledWith(HttpStatus.INTERNAL_SERVER_ERROR);
     expect(mockJson).toHaveBeenCalledWith({
       success: false,
-      message: 'Internal server error',
+      message: 'Er is een onverwachte fout opgetreden',
       requestId: 'req-test-123',
       statusCode: HttpStatus.INTERNAL_SERVER_ERROR,
     });

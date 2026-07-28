@@ -1,5 +1,5 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsOptional, IsDateString, IsNumber, Min, IsString } from 'class-validator';
+import { IsOptional, IsDateString, IsNumber, Min, IsString, IsBoolean } from 'class-validator';
 
 export class UpdateSessionDto {
   @ApiPropertyOptional({ example: '2026-03-15T09:00:00Z', description: 'Nieuwe datum en tijd van de sessie (null = verwijder datum)' })
@@ -17,4 +17,9 @@ export class UpdateSessionDto {
   @IsOptional()
   @IsString()
   notes?: string | null;
+
+  @ApiPropertyOptional({ description: 'Negeer beschikbaarheidswaarschuwingen bij het verzetten van de sessie (PRD-12 §12.9)' })
+  @IsOptional()
+  @IsBoolean()
+  overrideAvailabilityWarnings?: boolean;
 }

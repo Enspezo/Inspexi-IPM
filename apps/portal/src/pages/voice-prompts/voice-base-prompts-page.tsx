@@ -33,8 +33,8 @@ export default function VoiceBasePromptsPage() {
     try {
       await activateMutation.mutateAsync(p.id);
       showToast('Base-prompt geactiveerd', 'success');
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Activeren mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 
@@ -48,8 +48,8 @@ export default function VoiceBasePromptsPage() {
     try {
       await deleteMutation.mutateAsync(p.id);
       showToast('Base-prompt verwijderd', 'success');
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Verwijderen mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 

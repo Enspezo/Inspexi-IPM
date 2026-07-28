@@ -8,7 +8,6 @@ import {
   Body,
   Headers,
   Res,
-  ParseUUIDPipe,
   UseInterceptors,
   UploadedFile,
   ParseFilePipe,
@@ -29,6 +28,8 @@ import type { Response } from 'express';
 import { User } from '@prisma/client';
 import { Roles, CurrentUser } from '@/common/decorators';
 import { ALL_STAFF } from '@/common/auth/roles';
+import { resolveImageResponseType, setBinaryResponseHeaders } from '@/common';
+import { createHash } from 'crypto';
 import { LocationImagesService } from './location-images.service';
 import {
   CreateMarkerDto,
@@ -37,13 +38,16 @@ import {
   QuickCreateMeasurementDto,
   QuickCreateFindingDto,
 } from './dto';
+import { ParseUuidPipe } from '@/common';
 
 /**
  * Image-only MIME validator (zie documents.controller MimeTypeValidator).
- * NestJS' ingebouwde FileTypeValidator gebruikt magic bytes; deze checkt de
- * door multer geleverde mimetype en staat alleen afbeeldingen toe.
+ * Checkt de door multer geleverde mimetype als eerste poort; de inhoud
+ * (magic bytes) wordt daarna in de service gevalideerd (WP-B4). SVG is niet
+ * meer toegestaan: de plattegrond wordt inline op het app-origin geserveerd
+ * en een SVG met script was daar een stored-XSS-vector (B-507-klasse).
  */
-const ALLOWED_IMAGE_MIME_REGEX = /^image\/(jpeg|png|webp|svg\+xml)$/;
+const ALLOWED_IMAGE_MIME_REGEX = /^image\/(jpeg|png|webp)$/;
 
 class ImageMimeTypeValidator extends FileValidator {
   constructor() {
@@ -56,7 +60,7 @@ class ImageMimeTypeValidator extends FileValidator {
   }
 
   buildErrorMessage(): string {
-    return 'Bestandstype niet toegestaan. Alleen afbeeldingen (JPEG, PNG, WebP, SVG).';
+    return 'Bestandstype niet toegestaan. Alleen afbeeldingen (JPEG, PNG, WebP).';
   }
 }
 
@@ -75,7 +79,7 @@ export class LocationImagesController {
   @Roles(...ALL)
   @ApiOperation({ summary: 'Locatie-afbeelding ophalen (incl. markers)' })
   async getImage(
-    @Param('locationId', ParseUUIDPipe) locationId: string,
+    @Param('locationId', ParseUuidPipe) locationId: string,
     @CurrentUser() user: User,
   ) {
     return { success: true, data: await this.service.getImageByLocation(locationId, user) };
@@ -85,17 +89,24 @@ export class LocationImagesController {
   @Roles(...ALL)
   @ApiOperation({ summary: 'Locatie-afbeelding (bytes) streamen voor preview/download' })
   async getImageFile(
-    @Param('locationId', ParseUUIDPipe) locationId: string,
+    @Param('locationId', ParseUuidPipe) locationId: string,
     @CurrentUser() user: User,
     @Res() res: Response,
   ) {
     const { buffer, image } = await this.service.getImageFile(locationId, user);
-    res.set({
-      'Content-Type': image.mimeType,
-      'Content-Disposition': `inline; filename="${encodeURIComponent(
-        image.originalFilename ?? 'afbeelding',
-      )}"`,
-      'Content-Length': buffer.length.toString(),
+    // WP-B4: bytes bepalen het Content-Type (het opgeslagen mimetype was
+    // client-supplied — een SVG/HTML-upload werd hier inline uitvoerbaar op
+    // het app-origin). De URL is per locatie constant terwijl de afbeelding
+    // vervangen kan worden → ETag volgt de opslagsleutel (nieuwe UUID per
+    // upload), zoals bij het organisatielogo.
+    const resolved = resolveImageResponseType(buffer, 'plattegrond');
+    setBinaryResponseHeaders(res, {
+      mimeType: resolved.mimeType,
+      contentLength: buffer.length,
+      filename: resolved.filename,
+      disposition: resolved.disposition,
+      cacheControl: 'private, max-age=300, must-revalidate',
+      etag: `"${createHash('sha256').update(image.storagePath).digest('hex').slice(0, 32)}"`,
     });
     res.send(buffer);
   }
@@ -111,7 +122,7 @@ export class LocationImagesController {
   @ApiConsumes('multipart/form-data')
   @ApiOperation({ summary: 'Locatie-afbeelding uploaden (één per locatie)' })
   async uploadImage(
-    @Param('locationId', ParseUUIDPipe) locationId: string,
+    @Param('locationId', ParseUuidPipe) locationId: string,
     @UploadedFile(
       new ParseFilePipe({
         errorHttpStatusCode: HttpStatus.UNPROCESSABLE_ENTITY,
@@ -135,7 +146,7 @@ export class LocationImagesController {
   @Roles(...ALL)
   @ApiOperation({ summary: 'Locatie-afbeelding verwijderen (markers cascaden mee)' })
   async deleteImage(
-    @Param('locationId', ParseUUIDPipe) locationId: string,
+    @Param('locationId', ParseUuidPipe) locationId: string,
     @CurrentUser() user: User,
   ) {
     return { success: true, data: await this.service.deleteImage(locationId, user) };
@@ -147,7 +158,7 @@ export class LocationImagesController {
   @Roles(...ALL)
   @ApiOperation({ summary: 'Markers van een afbeelding ophalen' })
   async listMarkers(
-    @Param('imageId', ParseUUIDPipe) imageId: string,
+    @Param('imageId', ParseUuidPipe) imageId: string,
     @CurrentUser() user: User,
   ) {
     return { success: true, data: await this.service.listMarkers(imageId, user) };
@@ -157,7 +168,7 @@ export class LocationImagesController {
   @Roles(...ALL)
   @ApiOperation({ summary: 'Marker aanmaken' })
   async createMarker(
-    @Param('imageId', ParseUUIDPipe) imageId: string,
+    @Param('imageId', ParseUuidPipe) imageId: string,
     @CurrentUser() user: User,
     @Body() dto: CreateMarkerDto,
     @Headers('x-device-id') deviceId?: string,
@@ -169,8 +180,8 @@ export class LocationImagesController {
   @Roles(...ALL)
   @ApiOperation({ summary: 'Marker bijwerken' })
   async updateMarker(
-    @Param('imageId', ParseUUIDPipe) imageId: string,
-    @Param('markerId', ParseUUIDPipe) markerId: string,
+    @Param('imageId', ParseUuidPipe) imageId: string,
+    @Param('markerId', ParseUuidPipe) markerId: string,
     @CurrentUser() user: User,
     @Body() dto: UpdateMarkerDto,
   ) {
@@ -184,8 +195,8 @@ export class LocationImagesController {
   @Roles(...ALL)
   @ApiOperation({ summary: 'Marker verwijderen' })
   async deleteMarker(
-    @Param('imageId', ParseUUIDPipe) imageId: string,
-    @Param('markerId', ParseUUIDPipe) markerId: string,
+    @Param('imageId', ParseUuidPipe) imageId: string,
+    @Param('markerId', ParseUuidPipe) markerId: string,
     @CurrentUser() user: User,
   ) {
     return { success: true, data: await this.service.deleteMarker(imageId, markerId, user) };
@@ -197,7 +208,7 @@ export class LocationImagesController {
   @Roles(...ALL)
   @ApiOperation({ summary: 'Asset + marker aanmaken vanaf de afbeelding' })
   async quickCreateAsset(
-    @Param('imageId', ParseUUIDPipe) imageId: string,
+    @Param('imageId', ParseUuidPipe) imageId: string,
     @CurrentUser() user: User,
     @Body() dto: QuickCreateAssetDto,
     @Headers('x-device-id') deviceId?: string,
@@ -212,7 +223,7 @@ export class LocationImagesController {
   @Roles(...ALL)
   @ApiOperation({ summary: 'Meting + marker aanmaken vanaf de afbeelding' })
   async quickCreateMeasurement(
-    @Param('imageId', ParseUUIDPipe) imageId: string,
+    @Param('imageId', ParseUuidPipe) imageId: string,
     @CurrentUser() user: User,
     @Body() dto: QuickCreateMeasurementDto,
     @Headers('x-device-id') deviceId?: string,
@@ -227,7 +238,7 @@ export class LocationImagesController {
   @Roles(...ALL)
   @ApiOperation({ summary: 'Constatering + marker aanmaken vanaf de afbeelding' })
   async quickCreateFinding(
-    @Param('imageId', ParseUUIDPipe) imageId: string,
+    @Param('imageId', ParseUuidPipe) imageId: string,
     @CurrentUser() user: User,
     @Body() dto: QuickCreateFindingDto,
     @Headers('x-device-id') deviceId?: string,

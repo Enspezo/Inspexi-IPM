@@ -22,8 +22,10 @@ import { AddressSearchInput } from '@/components/ui';
 import type { ParsedAddress } from '@/lib/geocoding';
 import { getErrorMessage } from '@/lib/api-client';
 import { InspectorCertificatesSection } from '@/components/inspector-certificates';
+import { UserAvailabilitySection } from '@/components/availability';
+import { MANAGEMENT_ROLES } from '@/lib/roles';
 
-type Tab = 'overzicht' | 'certificering' | 'instellingen';
+type Tab = 'overzicht' | 'certificering' | 'beschikbaarheid' | 'instellingen';
 
 const canWrite = [Role.SUPERUSER, Role.ORG_ADMIN];
 
@@ -160,11 +162,8 @@ export default function UserDetailPage() {
       });
       showToast('Gebruiker bijgewerkt', 'success');
       setIsEditing(false);
-    } catch (err) {
-      showToast(
-        err instanceof Error ? err.message : 'Bijwerken mislukt',
-        'error',
-      );
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 
@@ -172,8 +171,8 @@ export default function UserDetailPage() {
     try {
       await deactivateMutation.mutateAsync(userRecord.id);
       showToast('Gebruiker gedeactiveerd', 'success');
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Deactiveren mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 
@@ -181,8 +180,8 @@ export default function UserDetailPage() {
     try {
       await activateMutation.mutateAsync(userRecord.id);
       showToast('Gebruiker geactiveerd', 'success');
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Activeren mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 
@@ -199,8 +198,8 @@ export default function UserDetailPage() {
     const newStatus = task.status === TaskStatus.VOLTOOID ? TaskStatus.TE_DOEN : TaskStatus.VOLTOOID;
     try {
       await updateTaskMutation.mutateAsync({ id: task.id, data: { status: newStatus } });
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Status wijzigen mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 
@@ -213,11 +212,17 @@ export default function UserDetailPage() {
     ? `${currentStreet} ${currentHouseNumber}, ${currentPostalCode} ${currentCity}`
     : undefined;
 
-  // De certificering-tab is alleen relevant voor inspecteurs (PRD-11).
+  // De certificering- en beschikbaarheid-tabs zijn alleen relevant voor inspecteurs (PRD-11/PRD-12).
   const isInspector = userRecord.roles.includes(Role.INSPECTEUR);
+  const isManagement = !!currentUser && currentUser.roles.some((r) => MANAGEMENT_ROLES.includes(r));
   const tabs: { key: Tab; label: string }[] = [
     { key: 'overzicht', label: 'Overzicht' },
-    ...(isInspector ? [{ key: 'certificering' as Tab, label: 'Certificering' }] : []),
+    ...(isInspector
+      ? [
+          { key: 'certificering' as Tab, label: 'Certificering' },
+          { key: 'beschikbaarheid' as Tab, label: 'Beschikbaarheid' },
+        ]
+      : []),
     { key: 'instellingen', label: 'Instellingen' },
   ];
 
@@ -594,6 +599,14 @@ export default function UserDetailPage() {
 
         {activeTab === 'certificering' && (
           <InspectorCertificatesSection userId={userRecord.id} canEdit />
+        )}
+
+        {activeTab === 'beschikbaarheid' && (
+          <UserAvailabilitySection
+            userId={userRecord.id}
+            canManage={isManagement}
+            employmentType={userRecord.employmentType ?? null}
+          />
         )}
 
         {activeTab === 'instellingen' && (

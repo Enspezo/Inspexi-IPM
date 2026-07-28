@@ -1,4 +1,9 @@
+import { downloadFromPath as coreDownloadFromPath } from '@inspexi/shared-web';
 import { getAccessToken } from './api-client';
+
+// Staf-portal-download-helpers: authenticated blob-download via de gedeelde
+// @inspexi/shared-web-kern, met de portal-defaults (base-URL `/api/v1` +
+// `credentials: 'include'`).
 
 const BASE_URL = '/api/v1';
 
@@ -6,28 +11,12 @@ const BASE_URL = '/api/v1';
  * Authenticated blob-download van een willekeurig API-pad: voegt de Bearer-token
  * toe, haalt de blob op en triggert een tijdelijke download-link.
  */
-export async function downloadFromPath(
-  path: string,
-  fileName: string,
-): Promise<void> {
-  const token = getAccessToken();
-
-  const response = await fetch(`${BASE_URL}${path}`, {
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
+export function downloadFromPath(path: string, fileName: string): Promise<void> {
+  return coreDownloadFromPath(path, fileName, {
+    baseUrl: BASE_URL,
+    getToken: getAccessToken,
     credentials: 'include',
   });
-
-  if (!response.ok) {
-    throw new Error('Download mislukt');
-  }
-
-  const blob = await response.blob();
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = fileName;
-  a.click();
-  URL.revokeObjectURL(url);
 }
 
 /** Document uit het DMS (/documents) downloaden. */

@@ -36,6 +36,7 @@ describe('Requests API (e2e)', () => {
 
   // IDs of resources created during tests (for cleanup)
   const createdRequestIds: string[] = [];
+  const createdQuoteIds: string[] = [];
 
   /** Helper: login and return { accessToken, cookies } */
   async function login(email: string, password = 'Password123!') {
@@ -85,18 +86,34 @@ describe('Requests API (e2e)', () => {
   });
 
   afterAll(async () => {
-    // Clean up resources created during tests
-    if (createdRequestIds.length > 0) {
-      // Delete status history first (FK to request)
-      await prisma.requestStatusHistory.deleteMany({
-        where: { requestId: { in: createdRequestIds } },
-      });
-      await prisma.request.deleteMany({
-        where: { id: { in: createdRequestIds } },
-      });
+    try {
+      // Clean up resources created during tests (children before parents).
+      // Quotes first: the POST :id/quote test creates a quote whose requestId
+      // FK is SetNull on request delete — without this cleanup the quote
+      // lingers in the shared dev DB after every run.
+      if (createdQuoteIds.length > 0) {
+        await prisma.quoteApprovalRequest.deleteMany({
+          where: { quoteId: { in: createdQuoteIds } },
+        });
+        await prisma.quoteLine.deleteMany({
+          where: { quoteId: { in: createdQuoteIds } },
+        });
+        await prisma.quote.deleteMany({
+          where: { id: { in: createdQuoteIds } },
+        });
+      }
+      if (createdRequestIds.length > 0) {
+        // Delete status history first (FK to request)
+        await prisma.requestStatusHistory.deleteMany({
+          where: { requestId: { in: createdRequestIds } },
+        });
+        await prisma.request.deleteMany({
+          where: { id: { in: createdRequestIds } },
+        });
+      }
+    } finally {
+      await app.close();
     }
-
-    await app.close();
   });
 
   // ─── GET /requests ──────────────────────────────────────
@@ -412,6 +429,8 @@ describe('Requests API (e2e)', () => {
       expect(res.body.data).toBeDefined();
       expect(res.body.data.requestId).toBe(seededRequest.id);
       expect(res.body.data.quoteNumber).toBeDefined();
+
+      createdQuoteIds.push(res.body.data.id);
     });
   });
 

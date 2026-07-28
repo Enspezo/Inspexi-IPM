@@ -1,12 +1,37 @@
-import { type ReactNode } from 'react';
+import { isValidElement, type ReactNode } from 'react';
 import { clsx } from 'clsx';
 
 export interface Column<T> {
   key: string;
   header: string;
   render: (item: T) => ReactNode;
+  /**
+   * Extra klassen voor de th/td. Cellen krijgen standaard `max-w-xs truncate`
+   * (B-301: een extreem lange waarde mag de kolom niet oprekken); geef een eigen
+   * `max-w-*`-klasse (bv. `max-w-none`) mee om die begrenzing uit te zetten.
+   */
   className?: string;
   sortable?: boolean;
+}
+
+/**
+ * Platte tekstinhoud van een gerenderde cel — voor het `title`-attribuut zodat
+ * de volledige waarde van een afgekapte cel via de native tooltip leesbaar is.
+ */
+export function extractTextContent(node: ReactNode): string {
+  if (node === null || node === undefined || typeof node === 'boolean') return '';
+  if (typeof node === 'string' || typeof node === 'number') return String(node);
+  if (Array.isArray(node)) {
+    return node
+      .map(extractTextContent)
+      .filter(Boolean)
+      .join(' ')
+      .replace(/\s+/g, ' ');
+  }
+  if (isValidElement(node)) {
+    return extractTextContent((node.props as { children?: ReactNode }).children);
+  }
+  return '';
 }
 
 export interface TableSort {
@@ -108,17 +133,28 @@ export function Table<T>({
                   key={keyExtractor(item)}
                   className="transition-colors hover:bg-gray-50"
                 >
-                  {columns.map((column) => (
-                    <td
-                      key={column.key}
-                      className={clsx(
-                        'whitespace-nowrap px-6 py-4 text-sm text-gray-900',
-                        column.className,
-                      )}
-                    >
-                      {column.render(item)}
-                    </td>
-                  ))}
+                  {columns.map((column) => {
+                    const content = column.render(item);
+                    // B-301: cellen kappen standaard af op max-w-xs zodat één
+                    // extreem lange waarde de overige kolommen niet uit beeld
+                    // duwt; een eigen `max-w-*`-klasse (bv. `max-w-none`) op de
+                    // kolom zet dat uit en behoudt het oude nowrap-gedrag.
+                    const hasWidthOverride = /(^|\s)max-w-/.test(column.className ?? '');
+                    const text = extractTextContent(content).trim();
+                    return (
+                      <td
+                        key={column.key}
+                        title={text.length > 0 ? text : undefined}
+                        className={clsx(
+                          'px-6 py-4 text-sm text-gray-900',
+                          hasWidthOverride ? 'whitespace-nowrap' : 'max-w-xs truncate',
+                          column.className,
+                        )}
+                      >
+                        {content}
+                      </td>
+                    );
+                  })}
                 </tr>
               ))
             )}

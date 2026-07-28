@@ -77,6 +77,12 @@ const enumLabels: Record<string, string> = {
   // AFGEROND already defined above
   GEANNULEERD: 'Geannuleerd',
 
+  // PhaseStatus (PRD-12) — ACTIEF/ON_HOLD/AFGEROND/GEANNULEERD al gedefinieerd
+  NIET_GESTART: 'Niet gestart',
+  // MilestoneStatus (PRD-12) — VERVALLEN al gedefinieerd hierboven
+  OPEN: 'Open',
+  BEHAALD: 'Behaald',
+
   // AcceptanceStatus
   PENDING: 'In afwachting',
   ACCEPTED: 'Geaccepteerd',
@@ -125,8 +131,21 @@ const enumLabels: Record<string, string> = {
   BASIS_INSPECTIES: 'Basis Inspecties',
   BASIS_WORKFLOW: 'Basis Workflow',
   WORKFLOW_COMPLEET: 'Workflow Compleet',
+  PROJECT_FASEN: 'Projectfasen',
   WEBHOOKS: 'Webhooks (add-on)',
   CUSTOM_FIELDS: 'Aangepaste velden (add-on)',
+  AI_REVIEW: 'AI-rapportcontrole (add-on)',
+  ONLINE_HERSTEL: 'Online herstel (add-on)',
+
+  // Online herstel (PRD-14) — RepairSession.accessType/status + resolutie-statussen
+  CLIENT_USER: 'Ingelogde klant',
+  ANONYMOUS: 'Anoniem (rapportnummer + postcode)',
+  ACTIVE: 'Actief',
+  EXPIRED: 'Verlopen',
+  PENDING_VERIFICATION: 'Wacht op verificatie',
+  VERIFIED: 'Geverifieerd',
+  REPORTED: 'Hersteld gemeld',
+  CONFLICT: 'Conflict — niet doorgevoerd',
 
   // SupportTicket (PRD-10) — NIEUW/IN_BEHANDELING/WACHT_OP_KLANT al hierboven
   OPGELOST: 'Opgelost',
@@ -136,6 +155,23 @@ const enumLabels: Record<string, string> = {
   NORMAAL: 'Normaal',
   HOOG: 'Hoog',
   URGENT: 'Urgent',
+  // EmploymentType (PRD-12)
+  DIENSTVERBAND: 'Dienstverband',
+  FREELANCE: 'Freelance',
+
+  // AvailabilityExceptionType (PRD-12) — BESCHIKBAAR hieronder los van chat-presence
+  BESCHIKBAAR: 'Beschikbaar',
+  GEBLOKKEERD: 'Geblokkeerd',
+
+  // AiReviewItemSeverity (PRD-13)
+  CRITICAL: 'Kritiek',
+  WARNING: 'Waarschuwing',
+  SUGGESTION: 'Suggestie',
+  INFO: 'Informatie',
+  // AiReviewItemStatus (PRD-13) — OPEN al gedefinieerd hierboven
+  CHECKED: 'Afgevinkt',
+  DISMISSED: 'Afgewezen',
+
   // SupportTicketCategory
   VRAAG: 'Vraag',
   PROBLEEM: 'Probleem',
@@ -154,6 +190,7 @@ const currencyFields = new Set([
   'discountTotal',
   'vatTotal',
   'total',
+  'budgetAmount',
 ]);
 
 /** Fields containing date/datetime ISO strings */
@@ -171,6 +208,19 @@ const dateFields = new Set([
   'endDate',
   'startTime',
   'endTime',
+  'completedAt',
+  'startsAt',
+  'endsAt',
+  'validFrom',
+  'validUntil',
+  'recurStartDate',
+  'recurEndDate',
+  'checkedAt',
+  // Online herstel (PRD-14)
+  'expiresAt',
+  'lastActivityAt',
+  'resolvedAt',
+  'verifiedAt',
 ]);
 
 /** UUID v4 pattern — used to detect unresolved UUIDs */
@@ -200,6 +250,18 @@ const FK_FIELDS = new Set([
   'roleId',
   'planId',
   'updatedById',
+  'phaseId',
+  'contactPersonId',
+  'assigneeId',
+  'createdById',
+  // Online herstel (PRD-14)
+  'inspectionPlanId',
+  'clientUserId',
+  'generatedDocumentId',
+  'findingId',
+  'repairSessionId',
+  'resolvedByClientUserId',
+  'verifiedBy',
 ]);
 
 const currencyFormatter = new Intl.NumberFormat('nl-NL', {

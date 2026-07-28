@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useApiMutation } from '@/hooks/use-api-mutation';
 import { apiClient } from '@/lib/api-client';
 import type {
   Availability,
@@ -10,6 +11,7 @@ import type {
   Role,
   UserPresence,
 } from '@/types';
+import { chatKeys } from '@/lib/query-keys';
 
 export interface CreateThreadInput {
   type: 'DIRECT' | 'TEAM';
@@ -27,9 +29,9 @@ export interface SendMessageInput {
   referenceEntityId?: string;
 }
 
-const THREADS_KEY = ['chat', 'threads'];
-const UNREAD_KEY = ['chat', 'unread'];
-const PRESENCE_KEY = ['chat', 'presence'];
+const THREADS_KEY = chatKeys.threads();
+const UNREAD_KEY = chatKeys.unread();
+const PRESENCE_KEY = chatKeys.presence();
 
 // ─── Threads + unread badge (polled) ──────────────────────
 
@@ -44,7 +46,7 @@ export function useChatThreads(enabled = true) {
 
 export function useChatThread(threadId: string | null) {
   return useQuery<ChatThread>({
-    queryKey: ['chat', 'thread', threadId],
+    queryKey: chatKeys.thread(threadId as string),
     queryFn: () => apiClient.get<ChatThread>(`/chat/threads/${threadId}`),
     enabled: !!threadId,
     refetchInterval: 20_000,
@@ -63,7 +65,7 @@ export function useChatUnread(enabled = true) {
 
 export function useChatUsers(q: string, enabled = true) {
   return useQuery<ChatUser[]>({
-    queryKey: ['chat', 'users', q],
+    queryKey: chatKeys.users(q),
     queryFn: () =>
       apiClient.get<ChatUser[]>(`/chat/users${q ? `?q=${encodeURIComponent(q)}` : ''}`),
     staleTime: 30_000,
@@ -75,7 +77,7 @@ export function useChatUsers(q: string, enabled = true) {
 
 export function useCreateThread() {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (body: CreateThreadInput) => apiClient.post<ChatThread>('/chat/threads', body),
     onSuccess: () => qc.invalidateQueries({ queryKey: THREADS_KEY }),
   });
@@ -83,7 +85,7 @@ export function useCreateThread() {
 
 export function useSendMessage(threadId: string) {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (body: SendMessageInput) =>
       apiClient.post<ChatMessage>(`/chat/threads/${threadId}/messages`, body),
     onSuccess: () => {
@@ -95,7 +97,7 @@ export function useSendMessage(threadId: string) {
 
 export function useMarkThreadRead() {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (threadId: string) => apiClient.post(`/chat/threads/${threadId}/read`),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: THREADS_KEY });
@@ -106,7 +108,7 @@ export function useMarkThreadRead() {
 
 export function useCloseThread() {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (threadId: string) => apiClient.post<ChatThread>(`/chat/threads/${threadId}/close`),
     onSuccess: () => qc.invalidateQueries({ queryKey: THREADS_KEY }),
   });
@@ -123,7 +125,7 @@ export function usePresence() {
 
 export function useUpdatePresence() {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (body: { availability: Availability; availabilityNote?: string }) =>
       apiClient.patch<UserPresence>('/users/me/presence', body),
     onSuccess: () => {

@@ -66,8 +66,8 @@ export function CreateProductModal({ isOpen, onClose }: CreateProductModalProps)
       showToast('Product aangemaakt!', 'success');
       reset();
       onClose();
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Aanmaken mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 

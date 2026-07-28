@@ -87,6 +87,12 @@ export const AUDITED_ENTITIES: readonly AuditedEntity[] = [
   { model: 'NumberingScheme', table: 'imp_numbering_schemes', displayFields: ['model'] },
   { model: 'EmailTemplate', table: 'imp_email_templates', displayFields: ['name', 'subject'] },
   { model: 'Project', table: 'imp_projects', displayFields: ['projectNumber', 'title'] },
+  { model: 'ProjectPhase', table: 'imp_project_phases', displayFields: ['name'] },
+  {
+    model: 'PhaseMilestone',
+    table: 'imp_project_phase_milestones',
+    displayFields: ['title'],
+  },
   { model: 'WorkOrder', table: 'imp_work_orders', displayFields: ['workOrderNumber'] },
   { model: 'WorkOrderLine', table: 'imp_work_order_lines', displayFields: ['description'] },
 
@@ -199,6 +205,36 @@ export const AUDITED_ENTITIES: readonly AuditedEntity[] = [
     model: 'Calibration',
     table: 'imp_measurement_instrument_calibrations',
     display: (r) => `Kalibratie #${shortId(r)}`,
+  },
+
+  // AI-review (PRD-13) — de run zelf is machine-gegenereerd en niet geaudit;
+  // het afvinken/afwijzen van items (checkedBy) is wél een menselijke handeling.
+  { model: 'AiReviewItem', table: 'imp_ai_review_items', displayFields: ['title'] },
+
+  // Online herstel (PRD-14). NB: client-/anonieme mutaties lopen buiten de
+  // staf-audit-context (geen userId) en worden dus niet geaudit — alleen
+  // staf-handelingen op deze modellen. Traceerbaarheid van anonieme sessies zit
+  // in de records zelf (createdIpAddress, repairSessionId).
+  { model: 'RepairSession', table: 'imp_repair_sessions', displayFields: ['contactName'] },
+  { model: 'FindingResolution', table: 'imp_finding_resolutions', displayFields: ['description'] },
+
+  // Beschikbaarheid inspecteurs (PRD-12) — templateslots worden niet los geaudit
+  // (ze horen bij hun template en worden integraal vervangen).
+  {
+    model: 'AvailabilityTemplate',
+    table: 'imp_availability_templates',
+    displayFields: ['name'],
+  },
+  {
+    model: 'UserScheduleAssignment',
+    table: 'imp_user_schedule_assignments',
+    display: (r) => `Schema-toewijzing #${shortId(r)}`,
+  },
+  {
+    model: 'AvailabilityException',
+    table: 'imp_availability_exceptions',
+    display: (r) =>
+      r.reason ? `Uitzondering: ${r.reason}` : `Uitzondering #${shortId(r)}`,
   },
 ];
 

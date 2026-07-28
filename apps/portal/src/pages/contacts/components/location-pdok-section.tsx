@@ -79,8 +79,8 @@ export function LocationPdokSection({ location, userCanWrite }: LocationPdokSect
           : 'PDOK-gegevens zijn al actueel',
         'success',
       );
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Verversen vanuit PDOK mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 

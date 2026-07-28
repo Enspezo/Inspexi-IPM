@@ -94,8 +94,8 @@ export function ChatThreadView({ threadId }: { threadId: string }) {
         hasReference ? 'Gesprek afgerond — transcript opgeslagen als notitie' : 'Gesprek afgerond',
         'success',
       );
-    } catch (err) {
-      showToast(err instanceof Error ? err.message : 'Afronden mislukt', 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   }
 

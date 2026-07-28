@@ -3,20 +3,24 @@ import {
   Inject,
   Logger,
   NotFoundException,
-  ForbiddenException,
   BadRequestException,
 } from '@nestjs/common';
 import { randomUUID } from 'crypto';
-import { User, Role, Prisma, EmailTemplateType } from '@prisma/client';
+import { User, Prisma, EmailTemplateType } from '@prisma/client';
 import { PrismaService } from '@/prisma';
 import { STORAGE_PROVIDER, type StorageProvider } from '@/common/services/storage/storage.interface';
-import { paginate, orgScope, assertFound, sanitizeStorageFilename } from '@/common';
+import {
+  paginate,
+  orgScope,
+  assertFound,
+  sanitizeStorageFilename,
+  requireOrg,
+  assertAllowedAttachmentUpload,
+} from '@/common';
 import { CreateEmailTemplateDto } from './dto/create-email-template.dto';
 import { UpdateEmailTemplateDto } from './dto/update-email-template.dto';
 import { TEMPLATE_TYPE_PLACEHOLDERS, EMAIL_TEMPLATE_TYPE_LABELS } from './placeholder.config';
 import { renderTemplate, wrapInEmailLayout } from './template-renderer';
-
-const ALLOWED_ATTACHMENT_MIMES = /^(application\/pdf|image\/(jpeg|png|svg\+xml|webp)|application\/vnd\.(ms-excel|ms-powerpoint|openxmlformats-officedocument\.(spreadsheetml\.sheet|wordprocessingml\.document|presentationml\.presentation))|application\/msword|application\/zip|text\/csv)$/;
 
 @Injectable()
 export class EmailTemplatesService {
@@ -59,9 +63,10 @@ export class EmailTemplatesService {
   }
 
   async findOne(id: string, user: User) {
-    const template = assertFound(
-      await this.prisma.emailTemplate.findUnique({
-        where: { id },
+    // WP-C1 (B-105): org-scope in de query — cross-tenant id → zelfde 404.
+    return assertFound(
+      await this.prisma.emailTemplate.findFirst({
+        where: { id, ...orgScope(user) },
         include: {
           creator: { select: { id: true, firstName: true, lastName: true } },
           attachments: { orderBy: { sortOrder: 'asc' } },
@@ -69,19 +74,12 @@ export class EmailTemplatesService {
       }),
       'E-mailsjabloon',
     );
-
-    if (!user.roles.includes(Role.SUPERUSER) && template.orgId !== user.orgId) {
-      throw new ForbiddenException();
-    }
-
-    return template;
   }
 
   async create(dto: CreateEmailTemplateDto, user: User) {
-    const orgId = user.orgId;
-    if (!orgId) {
-      throw new ForbiddenException('Geen organisatie gekoppeld');
-    }
+    // WP-B3 (B-503): effectieve org (SUPERUSER op org-subdomein → tenant-org);
+    // zonder org een nette NL-400 i.p.v. een 403.
+    const orgId = requireOrg(user);
 
     // Auto-deactivate existing active template of same type
     return this.prisma.$transaction(async (tx) => {
@@ -315,9 +313,7 @@ export class EmailTemplatesService {
   async uploadAttachment(id: string, file: Express.Multer.File, user: User) {
     const template = await this.findOne(id, user);
 
-    if (!ALLOWED_ATTACHMENT_MIMES.test(file.mimetype)) {
-      throw new BadRequestException('Bestandstype niet toegestaan');
-    }
+    assertAllowedAttachmentUpload(file);
 
     const storageKey = `${template.orgId}/et/${template.id}/${randomUUID()}-${sanitizeStorageFilename(file.originalname)}`;
     await this.storage.upload(storageKey, file.buffer, file.mimetype);

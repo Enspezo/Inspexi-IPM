@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { Role, User } from '@prisma/client';
 import { PortalStatsService } from './portal-stats.service';
 import { PrismaService } from '@/prisma';
+import { EntitlementsService } from '@/modules/entitlements/entitlements.service';
 import { STATUS_PENDING_REVIEW, STATUS_APPROVED, STATUS_OPEN } from '@/common';
 
 describe('PortalStatsService', () => {
@@ -23,6 +24,16 @@ describe('PortalStatsService', () => {
     contact: {
       findMany: jest.fn(),
     },
+    user: {
+      count: jest.fn(),
+    },
+    generatedDocument: {
+      count: jest.fn(),
+    },
+  };
+
+  const mockEntitlements = {
+    getEnabledFeatures: jest.fn(),
   };
 
   const orgUser = {
@@ -44,6 +55,7 @@ describe('PortalStatsService', () => {
       providers: [
         PortalStatsService,
         { provide: PrismaService, useValue: mockPrismaService },
+        { provide: EntitlementsService, useValue: mockEntitlements },
       ],
     }).compile();
 
@@ -55,6 +67,59 @@ describe('PortalStatsService', () => {
     mockPrismaService.assetNode.count.mockResolvedValue(0);
     mockPrismaService.inspectionPlan.findMany.mockResolvedValue([]);
     mockPrismaService.contact.findMany.mockResolvedValue([]);
+    mockPrismaService.user.count.mockResolvedValue(0);
+    mockPrismaService.generatedDocument.count.mockResolvedValue(0);
+    mockEntitlements.getEnabledFeatures.mockResolvedValue(['BASIS_INSPECTIES']);
+  });
+
+  // ── B-001: KPI-tegels staf-dashboard ──
+  describe('getStaffDashboardStats (B-001)', () => {
+    it('telt actieve inspecties, actieve gebruikers en rapporten org-scoped', async () => {
+      mockPrismaService.user.count.mockResolvedValue(7);
+      mockPrismaService.inspectionPlan.count.mockResolvedValue(4);
+      mockPrismaService.generatedDocument.count.mockResolvedValue(3);
+
+      const result = await service.getStaffDashboardStats(orgUser);
+
+      expect(result).toEqual({ activeInspections: 4, activeUsers: 7, reports: 3 });
+      expect(mockPrismaService.user.count).toHaveBeenCalledWith({
+        where: { orgId: 'org-1', isActive: true },
+      });
+      // "Actief" = nog niet approved/completed/cancelled, niet soft-deleted.
+      expect(mockPrismaService.inspectionPlan.count).toHaveBeenCalledWith({
+        where: expect.objectContaining({
+          orgId: 'org-1',
+          deletedAt: null,
+          statusCode: { notIn: [STATUS_APPROVED, 'completed', 'cancelled'] },
+        }),
+      });
+    });
+
+    it('geeft null voor inspectie-tellingen zonder BASIS_INSPECTIES (zelfde gating als sidebar)', async () => {
+      mockEntitlements.getEnabledFeatures.mockResolvedValue(['BASIS_CRM']);
+      mockPrismaService.user.count.mockResolvedValue(2);
+
+      const result = await service.getStaffDashboardStats(orgUser);
+
+      expect(result).toEqual({ activeInspections: null, activeUsers: 2, reports: null });
+      expect(mockPrismaService.inspectionPlan.count).not.toHaveBeenCalled();
+      expect(mockPrismaService.generatedDocument.count).not.toHaveBeenCalled();
+    });
+
+    it('SUPERUSER (orgId null) telt over alle orgs en heeft impliciet alle features', async () => {
+      mockPrismaService.user.count.mockResolvedValue(19);
+      mockPrismaService.inspectionPlan.count.mockResolvedValue(12);
+      mockPrismaService.generatedDocument.count.mockResolvedValue(6);
+
+      const result = await service.getStaffDashboardStats(superUser);
+
+      expect(result.activeUsers).toBe(19);
+      expect(result.activeInspections).toBe(12);
+      expect(mockEntitlements.getEnabledFeatures).not.toHaveBeenCalled();
+      expect(mockPrismaService.user.count).toHaveBeenCalledWith({
+        where: { isActive: true },
+      });
+    });
   });
 
   describe('getDashboardStats', () => {

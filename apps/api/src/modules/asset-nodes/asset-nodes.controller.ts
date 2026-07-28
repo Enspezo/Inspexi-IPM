@@ -7,7 +7,6 @@ import {
   Param,
   Body,
   Headers,
-  ParseUUIDPipe,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { User } from '@prisma/client';
@@ -16,6 +15,7 @@ import { ALL_STAFF } from '@/common/auth/roles';
 import { RequiresFeature } from '@/common/decorators/requires-feature.decorator';
 import { AssetNodesService } from './asset-nodes.service';
 import { CreateAssetNodeDto, UpdateAssetNodeDto, MoveAssetNodeDto } from './dto';
+import { ParseUuidPipe } from '@/common';
 
 const ALL = ALL_STAFF;
 
@@ -30,7 +30,7 @@ export class AssetNodesController {
   @Roles(...ALL)
   @ApiOperation({ summary: 'Hele AssetNode-boom voor een CRM-Locatie (maakt wortel aan)' })
   async treeForLocation(
-    @Param('locationId', ParseUUIDPipe) locationId: string,
+    @Param('locationId', ParseUuidPipe) locationId: string,
     @CurrentUser() user: User,
   ) {
     return { success: true, data: await this.service.getTreeForLocation(locationId, user) };
@@ -40,7 +40,7 @@ export class AssetNodesController {
   @Roles(...ALL)
   @ApiOperation({ summary: 'Boom van de hoofdlocatie van een inspectieplan (scope gemarkeerd)' })
   async treeForPlan(
-    @Param('planId', ParseUUIDPipe) planId: string,
+    @Param('planId', ParseUuidPipe) planId: string,
     @CurrentUser() user: User,
   ) {
     return { success: true, data: await this.service.getTreeForPlan(planId, user) };
@@ -49,7 +49,7 @@ export class AssetNodesController {
   @Get('asset-nodes/:id')
   @Roles(...ALL)
   @ApiOperation({ summary: 'Node-detail' })
-  async findById(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: User) {
+  async findById(@Param('id', ParseUuidPipe) id: string, @CurrentUser() user: User) {
     return { success: true, data: await this.service.findById(id, user) };
   }
 
@@ -68,7 +68,7 @@ export class AssetNodesController {
   @Roles(...ALL)
   @ApiOperation({ summary: 'Node bijwerken (inhoud; niet de hiërarchie)' })
   async update(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @CurrentUser() user: User,
     @Body() dto: UpdateAssetNodeDto,
   ) {
@@ -79,7 +79,7 @@ export class AssetNodesController {
   @Roles(...ALL)
   @ApiOperation({ summary: 'Node verplaatsen in de boom (subtree-pad via DB-trigger)' })
   async move(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @CurrentUser() user: User,
     @Body() dto: MoveAssetNodeDto,
   ) {
@@ -89,7 +89,7 @@ export class AssetNodesController {
   @Delete('asset-nodes/:id')
   @Roles(...ALL)
   @ApiOperation({ summary: 'Node + subtree verwijderen (soft-delete)' })
-  async delete(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: User) {
+  async delete(@Param('id', ParseUuidPipe) id: string, @CurrentUser() user: User) {
     return { success: true, data: await this.service.delete(id, user) };
   }
 }

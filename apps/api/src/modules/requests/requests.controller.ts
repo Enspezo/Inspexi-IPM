@@ -7,7 +7,6 @@ import {
   Param,
   Body,
   Query,
-  ParseUUIDPipe,
 } from '@nestjs/common';
 import { RequiresFeature } from '@/common/decorators/requires-feature.decorator';
 import {
@@ -26,6 +25,7 @@ import {
   ListRequestsQueryDto,
 } from './dto';
 import { Roles, CurrentUser } from '@/common/decorators';
+import { ParseUuidPipe } from '@/common';
 
 @ApiTags('Requests')
 @ApiBearerAuth()
@@ -70,7 +70,7 @@ export class RequestsController {
   @ApiResponse({ status: 200, description: 'Aanvraag details' })
   @ApiResponse({ status: 404, description: 'Niet gevonden' })
   async findOne(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @CurrentUser() user: User,
   ) {
     const request = await this.requestsService.findOne(id, user);
@@ -82,7 +82,7 @@ export class RequestsController {
   @ApiOperation({ summary: 'Aanvraag bijwerken' })
   @ApiResponse({ status: 200, description: 'Aanvraag bijgewerkt' })
   async update(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @Body() dto: UpdateRequestDto,
     @CurrentUser() user: User,
   ) {
@@ -95,7 +95,7 @@ export class RequestsController {
   @ApiOperation({ summary: 'Aanvraag status wijzigen' })
   @ApiResponse({ status: 200, description: 'Status bijgewerkt' })
   async updateStatus(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @Body() dto: UpdateRequestStatusDto,
     @CurrentUser() user: User,
   ) {
@@ -108,7 +108,7 @@ export class RequestsController {
   @ApiOperation({ summary: 'Offerte aanmaken vanuit aanvraag' })
   @ApiResponse({ status: 201, description: 'Offerte aangemaakt' })
   async createQuote(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @CurrentUser() user: User,
   ) {
     const quote = await this.requestsService.createQuote(id, user);
@@ -120,7 +120,7 @@ export class RequestsController {
   @ApiOperation({ summary: 'Aanvraag verwijderen (soft delete)' })
   @ApiResponse({ status: 200, description: 'Aanvraag verwijderd' })
   async remove(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @CurrentUser() user: User,
   ) {
     await this.requestsService.softDelete(id, user);

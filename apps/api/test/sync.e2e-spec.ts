@@ -139,7 +139,8 @@ describe('Sync v2 round-trip (e2e)', () => {
     expect(Array.isArray(data.standaloneMeasurements)).toBe(true);
     expect(Array.isArray(data.photos)).toBe(true);
     expect(Array.isArray(data.contacts)).toBe(true);
-    expect(data.contractVersion).toBe(3);
+    expect(Array.isArray(data.openConflicts)).toBe(true);
+    expect(data.contractVersion).toBe(4);
     expect(data.deletedIds).toBeDefined();
     expect(Array.isArray(data.deletedIds.inspectionPlans)).toBe(true);
     expect(Array.isArray(data.deletedIds.assetNodes)).toBe(true);
@@ -183,6 +184,17 @@ describe('Sync v2 round-trip (e2e)', () => {
     expect(persisted).not.toBeNull();
     expect(persisted?.orgId).toBe(orgAId);
     expect(persisted?.projectName).toBe('E2E Plan');
+
+    // v4 (WP-D1): elke serverwrite vult synced_at (middleware/sync-pad) en de
+    // push-respons draagt de nieuwe base-versie per record (applied[]).
+    expect(persisted?.syncedAt).not.toBeNull();
+    expect(res.body.data.applied).toEqual([
+      {
+        entityType: 'inspectionPlan',
+        entityId: planId,
+        serverVersion: persisted!.updatedAt.toISOString(),
+      },
+    ]);
   });
 
   it('3. push create asset node + finding → both processed', async () => {
@@ -276,14 +288,45 @@ describe('Sync v2 round-trip (e2e)', () => {
 
     expect(res.body.success).toBe(true);
     expect(res.body.data.conflicts).toHaveLength(1);
-    expect(res.body.data.conflicts[0].entityType).toBe('inspectionPlan');
-    expect(res.body.data.conflicts[0].entityId).toBe(planId);
+    const conflict = res.body.data.conflicts[0];
+    expect(conflict.entityType).toBe('inspectionPlan');
+    expect(conflict.entityId).toBe(planId);
+    // Gedeeld contract: elk conflict draagt serverVersion (ISO) + serverData + clientData.
+    expect(typeof conflict.serverVersion).toBe('string');
+    expect(new Date(conflict.serverVersion).toISOString()).toBe(conflict.serverVersion);
+    expect(conflict.serverData.projectName).toBe('SERVER EDIT');
+    expect(conflict.clientData.projectName).toBe('CLIENT EDIT');
 
-    // A conflict row is parked in the sync queue.
-    const queued = await prisma.syncQueue.findFirst({
+    // Push hetzelfde conflict nogmaals → detectie herhaalt zich, maar de queue-rij
+    // wordt geüpdatet i.p.v. gestapeld (dedup).
+    const res2 = await request(app.getHttpServer())
+      .post('/api/v1/sync/push')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        deviceId,
+        changes: {
+          inspectionPlans: [
+            {
+              operation: 'update',
+              data: {
+                id: planId,
+                projectName: 'CLIENT EDIT 2',
+                syncedAt: new Date(Date.now() - 86400_000).toISOString(),
+              },
+            },
+          ],
+        },
+      })
+      .expect(201);
+    expect(res2.body.data.conflicts).toHaveLength(1);
+
+    // Dedup: hooguit één open conflictrij ondanks twee pushes van hetzelfde record.
+    const queued = await prisma.syncQueue.findMany({
       where: { entityId: planId, status: 'conflict' },
     });
-    expect(queued).not.toBeNull();
+    expect(queued).toHaveLength(1);
+    // De queue-rij draagt de laatst-gepushte client-payload.
+    expect((queued[0].payload as { projectName?: string }).projectName).toBe('CLIENT EDIT 2');
 
     // Server copy is untouched (client payload not applied).
     const plan = await prisma.inspectionPlan.findUnique({ where: { id: planId } });
@@ -304,6 +347,14 @@ describe('Sync v2 round-trip (e2e)', () => {
 
     expect(res.body.success).toBe(true);
     expect(res.body.data.resolved).toBe(1);
+    expect(res.body.data.errors).toHaveLength(0);
+    // Gat 2: results[] draagt per opgelost item de nieuwe base-versie (ISO updatedAt).
+    expect(res.body.data.results).toHaveLength(1);
+    const resolvedResult = res.body.data.results[0];
+    expect(resolvedResult.entityType).toBe('inspectionPlan');
+    expect(resolvedResult.entityId).toBe(planId);
+    expect(typeof resolvedResult.serverVersion).toBe('string');
+    expect(new Date(resolvedResult.serverVersion).toISOString()).toBe(resolvedResult.serverVersion);
 
     const queued = await prisma.syncQueue.findFirst({
       where: { entityId: planId },
@@ -312,7 +363,145 @@ describe('Sync v2 round-trip (e2e)', () => {
     expect(queued?.status).toBe('completed');
 
     const plan = await prisma.inspectionPlan.findUnique({ where: { id: planId } });
-    expect(plan?.projectName).toBe('CLIENT EDIT');
+    // De client koos 'client' → de laatst-gepushte payload ('CLIENT EDIT 2') wint.
+    expect(plan?.projectName).toBe('CLIENT EDIT 2');
+    // De nieuwe serverVersion lijnt uit met de daadwerkelijke updatedAt.
+    expect(plan?.updatedAt.toISOString()).toBe(resolvedResult.serverVersion);
+
+    // Regressie: de conflict-resolve moet een geldige UPDATE-audit-row opleveren.
+    // Vóór de fix deed resolve() de update met `select: { updatedAt: true }`,
+    // waardoor de audit-middleware geen entityId had en de write stil faalde
+    // op entity_id NOT NULL (23502) — de audit van elke resolve ging verloren.
+    const auditRow = await prisma.auditLog.findFirst({
+      where: { entityType: 'InspectionPlan', entityId: planId, action: 'UPDATE' },
+      orderBy: { createdAt: 'desc' },
+    });
+    expect(auditRow).not.toBeNull();
+    const changes = auditRow?.changes as Record<string, { from: unknown; to: unknown }>;
+    expect(changes.projectName).toEqual({ from: 'SERVER EDIT', to: 'CLIENT EDIT 2' });
+    // Geen bogus `id → null`-diff (de narrow-select-symptomen).
+    expect(changes.id).toBeUndefined();
+  });
+
+  it('6b. B-209: a server-side edit after the pull conflicts on an ANCHOR-LESS push (fail-closed) instead of being silently overwritten', async () => {
+    // Portal/backoffice wijzigt het record ná de laatste pull van de PWA…
+    await prisma.inspectionPlan.update({
+      where: { id: planId },
+      data: { projectName: 'BACKOFFICE CORRECTIE' },
+    });
+
+    // …en de PWA pusht daarna zijn eigen versie ZONDER versie-anker (het
+    // B-209-scenario: lokaal syncedAt undefined → vóór WP-D1 een stille
+    // overschrijving zonder conflictrij).
+    const res = await request(app.getHttpServer())
+      .post('/api/v1/sync/push')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        deviceId,
+        changes: {
+          inspectionPlans: [
+            { operation: 'update', data: { id: planId, projectName: 'STALE CLIENTVERSIE' } },
+          ],
+        },
+      })
+      .expect(201);
+
+    expect(res.body.data.conflicts).toHaveLength(1);
+    expect(res.body.data.conflicts[0].entityId).toBe(planId);
+    expect(res.body.data.processed.inspectionPlans).toBe(0);
+
+    // De backoffice-correctie staat er nog; er is een open conflictrij mét org-scope.
+    const plan = await prisma.inspectionPlan.findUnique({ where: { id: planId } });
+    expect(plan?.projectName).toBe('BACKOFFICE CORRECTIE');
+    const queued = await prisma.syncQueue.findFirst({
+      where: { entityId: planId, status: 'conflict' },
+    });
+    expect(queued).not.toBeNull();
+    expect(queued?.orgId).toBe(orgAId);
+  });
+
+  it('6c. B-223e: the open conflict travels in the pull envelope (visible in a fresh session) and disappears after resolve', async () => {
+    // Verse sessie/nieuw toestel = een kale pull (geen lokale sync_queue).
+    const pullRes = await request(app.getHttpServer())
+      .get('/api/v1/sync/pull')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+
+    const open = pullRes.body.data.openConflicts;
+    expect(Array.isArray(open)).toBe(true);
+    const conflict = open.find((c: { entityId: string }) => c.entityId === planId);
+    expect(conflict).toBeDefined();
+    expect(conflict.entityType).toBe('inspectionPlan');
+    expect(conflict.serverData.projectName).toBe('BACKOFFICE CORRECTIE');
+    expect(conflict.clientData.projectName).toBe('STALE CLIENTVERSIE');
+    expect(typeof conflict.serverVersion).toBe('string');
+    expect(typeof conflict.conflictAt).toBe('string');
+
+    // Ná resolve (serverversie behouden) verdwijnt het conflict uit de envelope.
+    const resolveRes = await request(app.getHttpServer())
+      .post('/api/v1/sync/resolve')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        deviceId,
+        resolutions: [
+          { entityType: 'inspectionPlan', entityId: planId, resolution: 'server' },
+        ],
+      })
+      .expect(201);
+    expect(resolveRes.body.data.resolved).toBe(1);
+
+    const pullAfter = await request(app.getHttpServer())
+      .get('/api/v1/sync/pull')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+    expect(
+      pullAfter.body.data.openConflicts.filter(
+        (c: { entityId: string }) => c.entityId === planId,
+      ),
+    ).toHaveLength(0);
+
+    // Serverversie is behouden gebleven.
+    const plan = await prisma.inspectionPlan.findUnique({ where: { id: planId } });
+    expect(plan?.projectName).toBe('BACKOFFICE CORRECTIE');
+  });
+
+  it('6d. v4: an update carrying the fresh baseVersion applies cleanly (no conflict)', async () => {
+    const current = await prisma.inspectionPlan.findUnique({ where: { id: planId } });
+
+    const res = await request(app.getHttpServer())
+      .post('/api/v1/sync/push')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        deviceId,
+        changes: {
+          inspectionPlans: [
+            {
+              operation: 'update',
+              data: {
+                id: planId,
+                projectName: 'V4 CLIENT EDIT',
+                baseVersion: current!.updatedAt.toISOString(),
+              },
+            },
+          ],
+        },
+      })
+      .expect(201);
+
+    expect(res.body.data.conflicts).toHaveLength(0);
+    expect(res.body.data.errors).toHaveLength(0);
+    expect(res.body.data.processed.inspectionPlans).toBe(1);
+    // applied[] draagt de nieuwe base = de geschreven updatedAt (gedeelde stempel).
+    const plan = await prisma.inspectionPlan.findUnique({ where: { id: planId } });
+    expect(plan?.projectName).toBe('V4 CLIENT EDIT');
+    expect(res.body.data.applied).toEqual([
+      {
+        entityType: 'inspectionPlan',
+        entityId: planId,
+        serverVersion: plan!.updatedAt.toISOString(),
+      },
+    ]);
+    expect(plan?.syncedAt?.toISOString()).toBe(plan?.updatedAt.toISOString());
   });
 
   it('7. push delete finding → tombstone surfaces in pull deletedIds', async () => {

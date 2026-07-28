@@ -8,7 +8,6 @@ import {
   Param,
   Query,
   Res,
-  ParseUUIDPipe,
   UseInterceptors,
   UploadedFile,
   BadRequestException,
@@ -20,6 +19,11 @@ import { ApiTags, ApiOperation, ApiConsumes } from '@nestjs/swagger';
 import { User } from '@prisma/client';
 import { OFFICE_ROLES, ORG_ADMINS } from '@/common/auth/roles';
 import { Response } from 'express';
+import {
+  resolveImageResponseType,
+  setBinaryResponseHeaders,
+  sanitizeDispositionFilename,
+} from '@/common';
 import { Roles } from '@/common/decorators/roles.decorator';
 import { CurrentUser } from '@/common/decorators/current-user.decorator';
 import { QuoteTemplatesService } from './quote-templates.service';
@@ -30,6 +34,7 @@ import {
   CreateFollowUpDto,
   UpdateFollowUpDto,
 } from './dto';
+import { ParseUuidPipe } from '@/common';
 
 @ApiTags('quote-templates')
 @RequiresFeature('CRM_COMPLEET')
@@ -73,7 +78,7 @@ export class QuoteTemplatesController {
   @ApiConsumes('multipart/form-data')
   async uploadDocx(
     @CurrentUser() user: User,
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @UploadedFile() file: Express.Multer.File,
   ) {
     if (!file) {
@@ -88,16 +93,18 @@ export class QuoteTemplatesController {
   @Roles(...OFFICE_ROLES)
   async downloadDocx(
     @CurrentUser() user: User,
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @Res() res: Response,
   ) {
     const { buffer, fileName, mimeType } =
       await this.service.downloadDocx(id, user);
-    res.set('Content-Type', mimeType);
-    res.set(
-      'Content-Disposition',
-      `attachment; filename="${fileName}"`,
-    );
+    setBinaryResponseHeaders(res, {
+      mimeType,
+      contentLength: buffer.length,
+      filename: sanitizeDispositionFilename(fileName, 'sjabloon.docx'),
+      disposition: 'attachment',
+      cacheControl: 'private, no-store',
+    });
     res.send(buffer);
   }
 
@@ -106,7 +113,7 @@ export class QuoteTemplatesController {
   @Roles(...OFFICE_ROLES)
   async getDocxRevisions(
     @CurrentUser() user: User,
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
   ) {
     const data = await this.service.getDocxRevisions(id, user);
     return { success: true, data };
@@ -117,17 +124,19 @@ export class QuoteTemplatesController {
   @Roles(...OFFICE_ROLES)
   async downloadDocxRevision(
     @CurrentUser() user: User,
-    @Param('id', ParseUUIDPipe) id: string,
-    @Param('revisionId', ParseUUIDPipe) revisionId: string,
+    @Param('id', ParseUuidPipe) id: string,
+    @Param('revisionId', ParseUuidPipe) revisionId: string,
     @Res() res: Response,
   ) {
     const { buffer, fileName, mimeType } =
       await this.service.downloadDocxRevision(id, revisionId, user);
-    res.set('Content-Type', mimeType);
-    res.set(
-      'Content-Disposition',
-      `attachment; filename="${fileName}"`,
-    );
+    setBinaryResponseHeaders(res, {
+      mimeType,
+      contentLength: buffer.length,
+      filename: sanitizeDispositionFilename(fileName, 'sjabloon.docx'),
+      disposition: 'attachment',
+      cacheControl: 'private, no-store',
+    });
     res.send(buffer);
   }
 
@@ -145,7 +154,7 @@ export class QuoteTemplatesController {
   @ApiConsumes('multipart/form-data')
   async uploadImage(
     @CurrentUser() user: User,
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @UploadedFile() file: Express.Multer.File,
   ) {
     if (!file) {
@@ -160,21 +169,23 @@ export class QuoteTemplatesController {
   @Roles(...OFFICE_ROLES)
   async getImage(
     @CurrentUser() user: User,
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @Param('key') key: string,
     @Res() res: Response,
   ) {
     const buffer = await this.service.getImage(id, key, user);
-    const ext = key.split('.').pop()?.toLowerCase();
-    const mimeMap: Record<string, string> = {
-      jpg: 'image/jpeg',
-      jpeg: 'image/jpeg',
-      png: 'image/png',
-      svg: 'image/svg+xml',
-      webp: 'image/webp',
-    };
-    res.set('Content-Type', mimeMap[ext ?? ''] ?? 'application/octet-stream');
-    res.set('Cache-Control', 'private, max-age=3600');
+    // WP-B4: de bytes — niet de sleutel-extensie — bepalen het Content-Type.
+    // Legacy `.svg`-sleutels (van vóór deze fix) degraderen zo naar
+    // `application/octet-stream` + attachment en zijn nooit meer uitvoerbaar
+    // op het app-origin.
+    const resolved = resolveImageResponseType(buffer, 'sjabloonafbeelding');
+    setBinaryResponseHeaders(res, {
+      mimeType: resolved.mimeType,
+      contentLength: buffer.length,
+      filename: resolved.filename,
+      disposition: resolved.disposition,
+      cacheControl: 'private, max-age=3600',
+    });
     res.send(buffer);
   }
 
@@ -185,7 +196,7 @@ export class QuoteTemplatesController {
   @Roles(...OFFICE_ROLES)
   async getAttachments(
     @CurrentUser() user: User,
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
   ) {
     const data = await this.service.getAttachments(id, user);
     return { success: true, data };
@@ -203,7 +214,7 @@ export class QuoteTemplatesController {
   @ApiConsumes('multipart/form-data')
   async uploadAttachment(
     @CurrentUser() user: User,
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @UploadedFile() file: Express.Multer.File,
   ) {
     if (!file) {
@@ -218,7 +229,7 @@ export class QuoteTemplatesController {
   @Roles(...ORG_ADMINS)
   async reorderAttachments(
     @CurrentUser() user: User,
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @Body() body: { attachmentIds: string[] },
   ) {
     const data = await this.service.reorderAttachments(
@@ -234,8 +245,8 @@ export class QuoteTemplatesController {
   @Roles(...OFFICE_ROLES)
   async downloadAttachment(
     @CurrentUser() user: User,
-    @Param('id', ParseUUIDPipe) id: string,
-    @Param('attachmentId', ParseUUIDPipe) attachmentId: string,
+    @Param('id', ParseUuidPipe) id: string,
+    @Param('attachmentId', ParseUuidPipe) attachmentId: string,
     @Res() res: Response,
   ) {
     const { buffer, attachment } = await this.service.downloadAttachment(
@@ -243,11 +254,13 @@ export class QuoteTemplatesController {
       attachmentId,
       user,
     );
-    res.set('Content-Type', attachment.mimeType);
-    res.set(
-      'Content-Disposition',
-      `attachment; filename="${attachment.fileName}"`,
-    );
+    setBinaryResponseHeaders(res, {
+      mimeType: attachment.mimeType,
+      contentLength: buffer.length,
+      filename: sanitizeDispositionFilename(attachment.fileName),
+      disposition: 'attachment',
+      cacheControl: 'private, no-store',
+    });
     res.send(buffer);
   }
 
@@ -256,8 +269,8 @@ export class QuoteTemplatesController {
   @Roles(...ORG_ADMINS)
   async deleteAttachment(
     @CurrentUser() user: User,
-    @Param('id', ParseUUIDPipe) id: string,
-    @Param('attachmentId', ParseUUIDPipe) attachmentId: string,
+    @Param('id', ParseUuidPipe) id: string,
+    @Param('attachmentId', ParseUuidPipe) attachmentId: string,
   ) {
     await this.service.deleteAttachment(id, attachmentId, user);
     return { success: true };
@@ -270,7 +283,7 @@ export class QuoteTemplatesController {
   @Roles(...OFFICE_ROLES)
   async getFollowUpRules(
     @CurrentUser() user: User,
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
   ) {
     const data = await this.service.getFollowUpRules(id, user);
     return { success: true, data };
@@ -281,7 +294,7 @@ export class QuoteTemplatesController {
   @Roles(...ORG_ADMINS)
   async createFollowUp(
     @CurrentUser() user: User,
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @Body() dto: CreateFollowUpDto,
   ) {
     const data = await this.service.createFollowUp(id, dto, user);
@@ -293,8 +306,8 @@ export class QuoteTemplatesController {
   @Roles(...ORG_ADMINS)
   async updateFollowUp(
     @CurrentUser() user: User,
-    @Param('id', ParseUUIDPipe) id: string,
-    @Param('followUpId', ParseUUIDPipe) followUpId: string,
+    @Param('id', ParseUuidPipe) id: string,
+    @Param('followUpId', ParseUuidPipe) followUpId: string,
     @Body() dto: UpdateFollowUpDto,
   ) {
     const data = await this.service.updateFollowUp(id, followUpId, dto, user);
@@ -306,8 +319,8 @@ export class QuoteTemplatesController {
   @Roles(...ORG_ADMINS)
   async deleteFollowUp(
     @CurrentUser() user: User,
-    @Param('id', ParseUUIDPipe) id: string,
-    @Param('followUpId', ParseUUIDPipe) followUpId: string,
+    @Param('id', ParseUuidPipe) id: string,
+    @Param('followUpId', ParseUuidPipe) followUpId: string,
   ) {
     await this.service.deleteFollowUp(id, followUpId, user);
     return { success: true };
@@ -320,7 +333,7 @@ export class QuoteTemplatesController {
   @Roles(...OFFICE_ROLES)
   async findOne(
     @CurrentUser() user: User,
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
   ) {
     const data = await this.service.findOne(id, user);
     return { success: true, data };
@@ -331,7 +344,7 @@ export class QuoteTemplatesController {
   @Roles(...ORG_ADMINS)
   async update(
     @CurrentUser() user: User,
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @Body() dto: UpdateQuoteTemplateDto,
   ) {
     const data = await this.service.update(id, dto, user);
@@ -343,7 +356,7 @@ export class QuoteTemplatesController {
   @Roles(...ORG_ADMINS)
   async deactivate(
     @CurrentUser() user: User,
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
   ) {
     const data = await this.service.deactivate(id, user);
     return { success: true, data };

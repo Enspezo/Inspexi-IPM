@@ -186,8 +186,8 @@ export default function FindingTemplateDetailPage() {
       });
       showToast('Constatering-template bijgewerkt', 'success');
       setIsEditing(false);
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Bijwerken mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 
@@ -204,8 +204,8 @@ export default function FindingTemplateDetailPage() {
       const created = await duplicateMutation.mutateAsync({ id: id! });
       showToast('Constatering-template gedupliceerd', 'success');
       navigate(`/finding-templates/${created.id}`);
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Dupliceren mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 
@@ -221,8 +221,8 @@ export default function FindingTemplateDetailPage() {
       await deleteMutation.mutateAsync(id!);
       showToast('Constatering-template verwijderd', 'success');
       navigate('/finding-templates');
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Verwijderen mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { Quote } from '@/types';
-import { Select, useConfirm } from '@/components/ui';
+import { QueryErrorNotice, Select, useConfirm } from '@/components/ui';
 import { getErrorMessage } from '@/lib/api-client';
 import { useQuoteTemplates } from '../hooks/use-quote-templates';
 import type { useUpdateQuote } from '../hooks/use-quotes';
@@ -22,7 +22,11 @@ export function QuoteTemplateSwitcher({
   showToast: (message: string, type?: 'success' | 'error' | 'info') => void;
 }) {
   const confirm = useConfirm();
-  const { data: templatesData } = useQuoteTemplates({ isActive: true, limit: 200 });
+  const {
+    data: templatesData,
+    error: templatesError,
+    refetch: refetchTemplates,
+  } = useQuoteTemplates({ isActive: true, limit: 200 });
   const [isSaving, setIsSaving] = useState(false);
 
   const templates = templatesData?.data ?? [];
@@ -55,20 +59,28 @@ export function QuoteTemplateSwitcher({
     try {
       await updateQuoteMutation.mutateAsync({ templateId: next === NO_TEMPLATE ? null : next });
       showToast(next === NO_TEMPLATE ? 'Sjabloon ontkoppeld' : 'Sjabloon gewijzigd', 'success');
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Sjabloon wijzigen mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     } finally {
       setIsSaving(false);
     }
   };
 
   return (
-    <Select
-      value={currentValue}
-      options={options}
-      onChange={handleChange}
-      disabled={isSaving}
-      aria-label="Sjabloon"
-    />
+    <div>
+      <Select
+        value={currentValue}
+        options={options}
+        onChange={handleChange}
+        disabled={isSaving}
+        aria-label="Sjabloon"
+      />
+      <QueryErrorNotice
+        error={templatesError}
+        label="Sjablonen"
+        onRetry={refetchTemplates}
+        className="mt-2"
+      />
+    </div>
   );
 }

@@ -1,4 +1,5 @@
 import { ConfigService } from '@nestjs/config';
+import { AnthropicClientService } from '@/common/services/anthropic/anthropic-client.service';
 import { VoiceParseService, ParseMeasurementInput } from './voice-parse.service';
 import { VoicePromptService } from './voice-prompt.service';
 
@@ -21,8 +22,14 @@ describe('VoiceParseService', () => {
       }),
     }) as unknown as ConfigService;
 
-  const build = (apiKey?: string, model?: string) =>
-    new VoiceParseService(makeConfig(apiKey, model), prompts as unknown as VoicePromptService);
+  const build = (apiKey?: string, model?: string) => {
+    const config = makeConfig(apiKey, model);
+    return new VoiceParseService(
+      config,
+      prompts as unknown as VoicePromptService,
+      new AnthropicClientService(config),
+    );
+  };
 
   const input: ParseMeasurementInput = {
     transcript: 'Groep 1 isolatie 500 megaohm',

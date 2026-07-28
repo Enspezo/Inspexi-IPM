@@ -43,8 +43,8 @@ export default function LookupManagePage() {
     try {
       await deleteMutation.mutateAsync(row.id);
       showToast('Waarde verwijderd', 'success');
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Verwijderen mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 

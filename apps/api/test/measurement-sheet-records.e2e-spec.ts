@@ -305,6 +305,56 @@ describe('MeasurementSheetRecords (e2e)', () => {
     });
   });
 
+  describe('PATCH — canonieke datavorm afgedwongen (WP-D2 · B-205 deel 2)', () => {
+    it('rejects the legacy PWA form ({sections:{…}}) with a targeted NL message', async () => {
+      const id = createdRecordIds[0];
+      const res = await request(app.getHttpServer())
+        .patch(`/api/v1/measurement-sheet-records/${id}`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({
+          data: { sections: { algemeen: { rows: [{ spanning: 230 }] } } },
+        })
+        .expect(400);
+
+      expect(res.body.success).toBe(false);
+      expect(res.body.message).toContain('meetstaatgegevens');
+      expect(res.body.message).toContain('verouderde app-vorm');
+    });
+
+    it('rejects flat field values (leaf without { value }-wrapper)', async () => {
+      const id = createdRecordIds[0];
+      const res = await request(app.getHttpServer())
+        .patch(`/api/v1/measurement-sheet-records/${id}`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ data: { algemeen: { '0': { spanning: 230 } } } })
+        .expect(400);
+
+      expect(res.body.message).toContain('{ value, passFail? }');
+    });
+
+    it('rejects non-numeric row keys', async () => {
+      const id = createdRecordIds[0];
+      const res = await request(app.getHttpServer())
+        .patch(`/api/v1/measurement-sheet-records/${id}`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ data: { algemeen: { rows: { spanning: { value: 230 } } } } })
+        .expect(400);
+
+      expect(res.body.message).toContain("rij-sleutel 'rows'");
+    });
+
+    it('still accepts the canonical form after the rejections (record intact)', async () => {
+      const id = createdRecordIds[0];
+      const res = await request(app.getHttpServer())
+        .patch(`/api/v1/measurement-sheet-records/${id}`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ data: { algemeen: { '0': { spanning: { value: 231 } } } } })
+        .expect(200);
+
+      expect(res.body.data.data.algemeen['0'].spanning.value).toBe(231);
+    });
+  });
+
   describe('POST /api/v1/measurement-sheet-records/:id/validate', () => {
     it('should validate the record against the snapshot (valid)', async () => {
       const id = createdRecordIds[0];

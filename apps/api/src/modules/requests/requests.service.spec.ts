@@ -151,6 +151,7 @@ describe('RequestsService', () => {
   const mockPrismaService = {
     request: {
       findMany: jest.fn(),
+      findFirst: jest.fn(),
       findUnique: jest.fn(),
       create: jest.fn(),
       update: jest.fn(),
@@ -164,6 +165,9 @@ describe('RequestsService', () => {
     },
     requestStatusHistory: {
       create: jest.fn(),
+    },
+    lostReason: {
+      findFirst: jest.fn(),
     },
     $transaction: jest.fn((cb: (tx: typeof mockTx) => Promise<unknown>) =>
       cb(mockTx),
@@ -328,13 +332,13 @@ describe('RequestsService', () => {
 
   describe('findOne()', () => {
     it('should return request with all includes', async () => {
-      mockPrismaService.request.findUnique.mockResolvedValue(mockRequestWithIncludes);
+      mockPrismaService.request.findFirst.mockResolvedValue(mockRequestWithIncludes);
 
       const result = await service.findOne('request-1', mockUser);
 
       expect(result).toEqual(mockRequestWithIncludes);
-      expect(mockPrismaService.request.findUnique).toHaveBeenCalledWith({
-        where: { id: 'request-1' },
+      expect(mockPrismaService.request.findFirst).toHaveBeenCalledWith({
+        where: { id: 'request-1', orgId: 'org-1' },
         include: {
           contact: {
             select: {
@@ -396,7 +400,7 @@ describe('RequestsService', () => {
     });
 
     it('should throw NotFoundException when request not found', async () => {
-      mockPrismaService.request.findUnique.mockResolvedValue(null);
+      mockPrismaService.request.findFirst.mockResolvedValue(null);
 
       await expect(
         service.findOne('non-existent', mockUser),
@@ -406,12 +410,18 @@ describe('RequestsService', () => {
       ).rejects.toThrow('Aanvraag niet gevonden');
     });
 
-    it('should throw ForbiddenException when different org (non-SUPERUSER)', async () => {
-      mockPrismaService.request.findUnique.mockResolvedValue(mockRequestWithIncludes);
+    it('should throw the same NotFound when different org (WP-C1: 404-oracle)', async () => {
+      // Org-scope in de where-clausule: andermans aanvraag komt niet terug.
+      mockPrismaService.request.findFirst.mockResolvedValue(null);
 
       await expect(
         service.findOne('request-1', mockOtherOrgUser),
-      ).rejects.toThrow(ForbiddenException);
+      ).rejects.toThrow('Aanvraag niet gevonden');
+      expect(mockPrismaService.request.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ orgId: 'org-2' }),
+        }),
+      );
     });
   });
 
@@ -531,7 +541,7 @@ describe('RequestsService', () => {
         title: 'Bijgewerkte titel',
         priority: Priority.HIGH,
       };
-      mockPrismaService.request.findUnique.mockResolvedValue(mockRequestWithIncludes);
+      mockPrismaService.request.findFirst.mockResolvedValue(mockRequestWithIncludes);
       mockPrismaService.request.update.mockResolvedValue(updatedRequest);
 
       const result = await service.update('request-1', updateDto, mockUser);
@@ -547,12 +557,12 @@ describe('RequestsService', () => {
       });
     });
 
-    it('should throw ForbiddenException for cross-org access via findOne check', async () => {
-      mockPrismaService.request.findUnique.mockResolvedValue(mockRequestWithIncludes);
+    it('should throw the same NotFound for cross-org access via findOne check (WP-C1)', async () => {
+      mockPrismaService.request.findFirst.mockResolvedValue(null);
 
       await expect(
         service.update('request-1', updateDto, mockOtherOrgUser),
-      ).rejects.toThrow(ForbiddenException);
+      ).rejects.toThrow(NotFoundException);
 
       expect(mockPrismaService.request.update).not.toHaveBeenCalled();
     });
@@ -566,7 +576,7 @@ describe('RequestsService', () => {
         ...mockRequest,
         status: RequestStatus.IN_BEHANDELING,
       };
-      mockPrismaService.request.findUnique.mockResolvedValue(mockRequestWithIncludes);
+      mockPrismaService.request.findFirst.mockResolvedValue(mockRequestWithIncludes);
       mockTx.request.update.mockResolvedValue(updatedRequest);
       mockTx.requestStatusHistory.create.mockResolvedValue({});
 
@@ -598,7 +608,7 @@ describe('RequestsService', () => {
         ...mockRequest,
         status: RequestStatus.ON_HOLD,
       };
-      mockPrismaService.request.findUnique.mockResolvedValue(mockRequestWithIncludes);
+      mockPrismaService.request.findFirst.mockResolvedValue(mockRequestWithIncludes);
       mockTx.request.update.mockResolvedValue(updatedRequest);
       mockTx.requestStatusHistory.create.mockResolvedValue({});
 
@@ -620,7 +630,7 @@ describe('RequestsService', () => {
         ...mockRequest,
         status: RequestStatus.IN_BEHANDELING,
       };
-      mockPrismaService.request.findUnique.mockResolvedValue(mockRequestWithIncludes);
+      mockPrismaService.request.findFirst.mockResolvedValue(mockRequestWithIncludes);
       mockTx.request.update.mockResolvedValue(updatedRequest);
       mockTx.requestStatusHistory.create.mockResolvedValue({});
 
@@ -636,6 +646,49 @@ describe('RequestsService', () => {
         }),
       });
     });
+
+    // ── B-315 §1: VERLOREN vereist een reden ──
+    it('B-315 §1: VERLOREN zonder lostReasonId → 400 met NL-melding, geen write', async () => {
+      mockPrismaService.request.findUnique.mockResolvedValue(mockRequestWithIncludes);
+
+      await expect(
+        service.updateStatus(
+          'request-1',
+          { status: RequestStatus.VERLOREN },
+          mockUser,
+        ),
+      ).rejects.toThrow('Kies een reden waarom deze aanvraag verloren is gegaan');
+      expect(mockTx.request.update).not.toHaveBeenCalled();
+    });
+
+    it('B-315 §1: VERLOREN mét geldige reden schrijft lostReasonId + lostNote weg', async () => {
+      mockPrismaService.request.findUnique.mockResolvedValue(mockRequestWithIncludes);
+      mockPrismaService.lostReason.findFirst.mockResolvedValue({ id: 'reden-1' });
+      mockTx.request.update.mockResolvedValue({
+        ...mockRequest,
+        status: RequestStatus.VERLOREN,
+      });
+      mockTx.requestStatusHistory.create.mockResolvedValue({});
+
+      await service.updateStatus(
+        'request-1',
+        {
+          status: RequestStatus.VERLOREN,
+          lostReasonId: 'reden-1',
+          lostNote: 'Gekozen voor concurrent',
+        },
+        mockUser,
+      );
+
+      expect(mockTx.request.update).toHaveBeenCalledWith({
+        where: { id: 'request-1' },
+        data: expect.objectContaining({
+          status: RequestStatus.VERLOREN,
+          lostReasonId: 'reden-1',
+          lostNote: 'Gekozen voor concurrent',
+        }),
+      });
+    });
   });
 
   // ─── softDelete ──────────────────────────────────────────────────────
@@ -643,7 +696,7 @@ describe('RequestsService', () => {
   describe('softDelete()', () => {
     it('should set isDeleted to true', async () => {
       const deletedRequest = { ...mockRequest, isDeleted: true };
-      mockPrismaService.request.findUnique.mockResolvedValue(mockRequestWithIncludes);
+      mockPrismaService.request.findFirst.mockResolvedValue(mockRequestWithIncludes);
       mockPrismaService.request.update.mockResolvedValue(deletedRequest);
 
       const result = await service.softDelete('request-1', mockUser);
@@ -656,7 +709,7 @@ describe('RequestsService', () => {
     });
 
     it('should throw NotFoundException for non-existent request', async () => {
-      mockPrismaService.request.findUnique.mockResolvedValue(null);
+      mockPrismaService.request.findFirst.mockResolvedValue(null);
 
       await expect(
         service.softDelete('non-existent', mockUser),

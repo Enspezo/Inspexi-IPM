@@ -10,10 +10,19 @@ import {
 import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcrypt';
 import { randomUUID } from 'crypto';
-import { User, Role, TaskStatus, Availability } from '@prisma/client';
+import { User, Role, TaskStatus, Availability, NotificationType } from '@prisma/client';
 import { PrismaService } from '@/prisma';
-import { assertFound, assertSameOrg, sanitizeStorageExtension } from '@/common';
+import {
+  assertFound,
+  assertSameOrg,
+  assertAllowedImageUpload,
+  resolveImageResponseType,
+  isManagement,
+  hasRole,
+  ORG_ADMINS,
+} from '@/common';
 import { EmailService } from '@/common/services/email.service';
+import { NotificationsService } from '@/modules/notifications/notifications.service';
 import {
   STORAGE_PROVIDER,
   StorageProvider,
@@ -36,6 +45,7 @@ export class UsersService {
     private emailService: EmailService,
     private config: ConfigService,
     @Inject(STORAGE_PROVIDER) private storage: StorageProvider,
+    private notifications: NotificationsService,
   ) {}
 
   async findAllByOrg(orgId: string | null, isSuperuser: boolean) {
@@ -48,7 +58,7 @@ export class UsersService {
     }
 
     if (!orgId) {
-      throw new ForbiddenException();
+      throw new ForbiddenException('Geen organisatie gekoppeld aan uw account');
     }
 
     return this.prisma.user.findMany({
@@ -200,6 +210,38 @@ export class UsersService {
     return updated;
   }
 
+  /**
+   * B-511 §7: valideer een uitnodigingstoken vóórdat de invite-pagina het
+   * registratieformulier toont — voorheen ontdekte de gebruiker pas ná het
+   * invullen van naam + wachtwoord dat de uitnodiging verlopen of al gebruikt
+   * was. Zelfde checks en meldingen als acceptInvitation(); het token is een
+   * hoog-entropie geheim, dus de e-mail/organisatie teruggeven aan de houder
+   * ervan lekt niets.
+   */
+  async getInvitationByToken(token: string) {
+    const invitation = await this.prisma.invitation.findUnique({
+      where: { token },
+      include: { organization: { select: { name: true } } },
+    });
+
+    if (!invitation) {
+      throw new BadRequestException('Ongeldige uitnodiging');
+    }
+    if (invitation.acceptedAt) {
+      throw new BadRequestException('Uitnodiging is al geaccepteerd');
+    }
+    if (invitation.expiresAt < new Date()) {
+      throw new BadRequestException('Uitnodiging is verlopen');
+    }
+
+    return {
+      email: invitation.email,
+      role: invitation.role,
+      organizationName: invitation.organization.name,
+      expiresAt: invitation.expiresAt,
+    };
+  }
+
   async acceptInvitation(dto: AcceptInvitationDto) {
     const invitation = await this.prisma.invitation.findUnique({
       where: { token: dto.token },
@@ -257,12 +299,12 @@ export class UsersService {
 
     const user = await this.findOne(id);
 
-    // Check tenant isolation
+    // Tenant-isolatie (WP-C1 / B-105): cross-tenant id → zelfde 404 als "bestaat niet".
     if (
       !currentUser.roles.includes(Role.SUPERUSER) &&
       user.orgId !== currentUser.orgId
     ) {
-      throw new ForbiddenException();
+      throw new NotFoundException('Gebruiker niet gevonden');
     }
 
     await this.prisma.user.update({
@@ -284,7 +326,7 @@ export class UsersService {
       !currentUser.roles.includes(Role.SUPERUSER) &&
       user.orgId !== currentUser.orgId
     ) {
-      throw new ForbiddenException();
+      throw new NotFoundException('Gebruiker niet gevonden');
     }
 
     await this.prisma.user.update({
@@ -300,12 +342,12 @@ export class UsersService {
 
     const user = await this.findOne(id);
 
-    // Check tenant isolation
+    // Tenant-isolatie (WP-C1 / B-105): cross-tenant id → zelfde 404 als "bestaat niet".
     if (
       !currentUser.roles.includes(Role.SUPERUSER) &&
       user.orgId !== currentUser.orgId
     ) {
-      throw new ForbiddenException();
+      throw new NotFoundException('Gebruiker niet gevonden');
     }
 
     // Alleen SUPERUSER mag SUPERUSER-rol toewijzen
@@ -341,12 +383,12 @@ export class UsersService {
 
     const user = await this.findOne(id);
 
-    // Tenant isolatie
+    // Tenant-isolatie (WP-C1 / B-105): cross-tenant id → zelfde 404 als "bestaat niet".
     if (
       !currentUser.roles.includes(Role.SUPERUSER) &&
       user.orgId !== currentUser.orgId
     ) {
-      throw new ForbiddenException();
+      throw new NotFoundException('Gebruiker niet gevonden');
     }
 
     // ORG_ADMIN mag geen andere ORG_ADMIN of SUPERUSER resetten
@@ -431,8 +473,24 @@ export class UsersService {
 
   async adminUpdateUser(id: string, dto: AdminUpdateUserDto, actor: User) {
     const target = await this.findOne(id);
+    // Tenant-isolatie (WP-C1 / B-105): cross-tenant id → zelfde 404 als "bestaat niet".
     if (!actor.roles.includes(Role.SUPERUSER) && target.orgId !== actor.orgId) {
-      throw new ForbiddenException();
+      throw new NotFoundException('Gebruiker niet gevonden');
+    }
+
+    // PRD-12: de route is verbreed naar MANAGEMENT_ROLES zodat een MANAGER de
+    // dienstvorm kan zetten. Een MANAGER (zonder ORG_ADMIN/SUPERUSER) mag via
+    // deze generieke admin-update echter uitsluitend `employmentType` muteren —
+    // elk ander (gedefinieerd) veld levert 403 op.
+    if (!hasRole(actor, ORG_ADMINS)) {
+      const touchesOtherField = Object.keys(dto).some(
+        (key) => key !== 'employmentType' && (dto as Record<string, unknown>)[key] !== undefined,
+      );
+      if (touchesOtherField) {
+        throw new ForbiddenException(
+          'Als manager kunt u alleen de dienstvorm van een gebruiker wijzigen',
+        );
+      }
     }
 
     const data: any = {};
@@ -468,21 +526,54 @@ export class UsersService {
     if (dto.contactPhone !== undefined && !data.contactPhone) data.sharePhoneWithClients = false;
     if (dto.contactEmail !== undefined && !data.contactEmail) data.shareEmailWithClients = false;
 
+    // Dienstvorm (PRD-12): alleen MANAGEMENT_ROLES mag dit veld muteren.
+    // NB: `dto.employmentType !== undefined` (niet `'employmentType' in dto`) —
+    // class-transformer maakt alle DTO-keys aan, dus `in` zou altijd waar zijn.
+    if (dto.employmentType !== undefined) {
+      if (!isManagement(actor)) {
+        throw new ForbiddenException('U mag de dienstvorm niet wijzigen');
+      }
+      data.employmentType = dto.employmentType ?? null;
+    }
+
     const updated = await this.prisma.user.update({
       where: { id },
       data,
       include: { organization: true },
     });
+
+    // PRD-12: een manager die de dienstvorm van een ander wijzigt → notificeer de
+    // betreffende inspecteur (fire-and-forget, blokkeert de update niet).
+    if (
+      dto.employmentType !== undefined &&
+      updated.employmentType !== target.employmentType &&
+      actor.id !== updated.id &&
+      updated.orgId
+    ) {
+      this.notifications.dispatch({
+        type: NotificationType.BESCHIKBAARHEID_GEWIJZIGD_DOOR_MANAGER,
+        orgId: updated.orgId,
+        recipientUserIds: [updated.id],
+        title: 'Beschikbaarheid gewijzigd',
+        body: `${actor.firstName ?? ''} ${actor.lastName ?? ''}`.trim() +
+          ' heeft jouw dienstvorm gewijzigd.',
+        entityType: 'user',
+        entityId: updated.id,
+      });
+    }
+
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { passwordHash, ...rest } = updated;
     return rest;
   }
 
+  /**
+   * B-507 / WP-B4: zelfde behandeling als het organisatielogo — de magic bytes
+   * bepalen wat er opgeslagen én teruggeserveerd wordt, niet `file.mimetype`
+   * (client-header) of `file.originalname` (bestandsnaam).
+   */
   async uploadAvatar(userId: string, file: Express.Multer.File): Promise<string> {
-    const allowed = ['image/png', 'image/jpeg', 'image/webp'];
-    if (!allowed.includes(file.mimetype)) {
-      throw new BadRequestException('Alleen PNG, JPEG en WebP afbeeldingen zijn toegestaan');
-    }
+    const detected = assertAllowedImageUpload(file);
 
     const user = assertFound(
       await this.prisma.user.findUnique({ where: { id: userId } }),
@@ -494,27 +585,26 @@ export class UsersService {
       await this.storage.delete(user.avatarUrl).catch(() => {});
     }
 
-    const ext = sanitizeStorageExtension(file.originalname, 'png');
-    const storageKey = `avatars/${userId}/${randomUUID()}.${ext}`;
-    await this.storage.upload(storageKey, file.buffer, file.mimetype);
+    const storageKey = `avatars/${userId}/${randomUUID()}.${detected.extension}`;
+    await this.storage.upload(storageKey, file.buffer, detected.mimeType);
 
     await this.prisma.user.update({ where: { id: userId }, data: { avatarUrl: storageKey } });
     return storageKey;
   }
 
-  async downloadAvatar(userId: string): Promise<{ buffer: Buffer; mimeType: string }> {
+  async downloadAvatar(userId: string): Promise<{
+    buffer: Buffer;
+    mimeType: string;
+    filename: string;
+    disposition: 'inline' | 'attachment';
+    storageKey: string;
+  }> {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user?.avatarUrl) throw new NotFoundException('Geen avatar gevonden');
 
     const buffer = await this.storage.download(user.avatarUrl);
-    const ext = user.avatarUrl.split('.').pop()?.toLowerCase() ?? 'png';
-    const mimeMap: Record<string, string> = {
-      png: 'image/png',
-      jpg: 'image/jpeg',
-      jpeg: 'image/jpeg',
-      webp: 'image/webp',
-    };
-    return { buffer, mimeType: mimeMap[ext] ?? 'image/png' };
+    const { mimeType, filename, disposition } = resolveImageResponseType(buffer, 'avatar');
+    return { buffer, mimeType, filename, disposition, storageKey: user.avatarUrl };
   }
 
   async deleteAvatar(userId: string): Promise<void> {
@@ -698,12 +788,12 @@ export class UsersService {
       throw new BadRequestException('Gebruiker is al verwijderd');
     }
 
-    // Tenant isolation
+    // Tenant-isolatie (WP-C1 / B-105): cross-tenant id → zelfde 404 als "bestaat niet".
     if (
       !currentUser.roles.includes(Role.SUPERUSER) &&
       targetUser.orgId !== currentUser.orgId
     ) {
-      throw new ForbiddenException();
+      throw new NotFoundException('Gebruiker niet gevonden');
     }
 
     // ORG_ADMIN cannot delete SUPERUSER
@@ -727,9 +817,9 @@ export class UsersService {
       throw new ForbiddenException('Geen bevoegdheid om de kleur van deze gebruiker te wijzigen');
     }
 
-    // Tenant isolation for non-superusers
+    // Tenant-isolatie (WP-C1 / B-105): cross-tenant id → zelfde 404 als "bestaat niet".
     if (!actor.roles.includes(Role.SUPERUSER) && target.orgId !== actor.orgId) {
-      throw new ForbiddenException();
+      throw new NotFoundException('Gebruiker niet gevonden');
     }
 
     return this.prisma.user.update({

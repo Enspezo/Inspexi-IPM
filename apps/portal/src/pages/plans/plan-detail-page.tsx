@@ -101,8 +101,8 @@ export default function PlanDetailPage() {
       });
       showToast('Abonnement bijgewerkt', 'success');
       setIsEditing(false);
-    } catch (err) {
-      showToast(err instanceof Error ? err.message : 'Opslaan mislukt', 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 
@@ -110,8 +110,8 @@ export default function PlanDetailPage() {
     try {
       await updateMutation.mutateAsync({ featureKeys: selected });
       showToast('Functies bijgewerkt', 'success');
-    } catch (err) {
-      showToast(err instanceof Error ? err.message : 'Opslaan mislukt', 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 
@@ -133,8 +133,8 @@ export default function PlanDetailPage() {
       await deleteMutation.mutateAsync(plan.id);
       showToast('Abonnement verwijderd', 'success');
       navigate('/plans');
-    } catch (err) {
-      showToast(err instanceof Error ? err.message : 'Verwijderen mislukt', 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 

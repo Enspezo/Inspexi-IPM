@@ -14,6 +14,16 @@ const ALL = ALL_STAFF;
 export class PortalStatsController {
   constructor(private readonly service: PortalStatsService) {}
 
+  @Get('staff-dashboard')
+  @Roles(...ALL)
+  @ApiOperation({
+    summary:
+      'KPI-tegels staf-dashboard (B-001): actieve inspecties, gebruikers, rapporten — org-scoped, feature-bewust',
+  })
+  async getStaffDashboardStats(@CurrentUser() user: User) {
+    return { success: true, data: await this.service.getStaffDashboardStats(user) };
+  }
+
   @Get('dashboard')
   @Roles(...ALL)
   @ApiOperation({ summary: 'Dashboard-samenvatting (org-scoped tellingen)' })

@@ -6,6 +6,7 @@ import {
   type ReactNode,
 } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { orgBrandingKeys } from '@/lib/query-keys';
 import { getTenantInfo, type TenantInfo } from '@/lib/tenant';
 
 export interface OrgBranding {
@@ -16,7 +17,11 @@ export interface OrgBranding {
   primaryColor: string | null;
   /** Interne chat aan/uit voor deze organisatie (REQ1). */
   chatEnabled?: boolean;
-  /** AI-assistent kill-switch voor deze organisatie (PRD-12). */
+  /** Vier-ogen-controle verplicht op inspectieplannen (PRD-13). */
+  inspectionReviewEnabled?: boolean;
+  /** AI-voorcontrole van inspectierapporten aan/uit (PRD-13). */
+  aiReviewEnabled?: boolean;
+  /** AI-assistent kill-switch voor deze organisatie. */
   aiAgentEnabled?: boolean;
 }
 
@@ -121,7 +126,7 @@ export function TenantProvider({ children }: TenantProviderProps) {
     isLoading,
     error: queryError,
   } = useQuery<OrgBranding>({
-    queryKey: ['org-branding', tenantInfo.slug],
+    queryKey: orgBrandingKeys.bySlug(tenantInfo.slug),
     queryFn: () => fetchBranding(tenantInfo.slug!),
     enabled: !!tenantInfo.slug,
     staleTime: 30 * 60 * 1000, // 30 min — branding rarely changes

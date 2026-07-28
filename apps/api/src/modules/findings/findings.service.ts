@@ -10,22 +10,90 @@
 
 import {
   Injectable,
+  Inject,
+  Logger,
   BadRequestException,
 } from '@nestjs/common';
 import { User, Prisma } from '@prisma/client';
+import { isDeepStrictEqual } from 'util';
 import { PrismaService } from '@/prisma';
-import { orgScope, assertFound, requireOrg, STATUS_OPEN, STATUS_RESOLVED } from '@/common';
+import {
+  orgScope,
+  assertFound,
+  requireOrg,
+  validateJsonColumn,
+  STATUS_OPEN,
+  STATUS_RESOLVED,
+  computeFindingIsCriticalAny,
+  loadPlanCriticalModel,
+  loadFindingTemplateCriticalModel,
+  assertClassificationValuesKnown,
+  findClassificationValueIssues,
+  formatClassificationValueIssues,
+  type ClassificationModelForCritical,
+} from '@/common';
+import { STORAGE_PROVIDER } from '@/common/services/storage/storage.interface';
+import type { StorageProvider } from '@/common/services/storage/storage.interface';
 import { LookupService, LOOKUP_KIND } from '../lookups/lookup.service';
 import { AssetNodesService } from '../asset-nodes/asset-nodes.service';
 import { CreateFindingDto, UpdateFindingDto } from './dto';
+import { classificationValuesSchema, CLASSIFICATION_VALUES_LABEL } from './schemas/classification-values.schema';
+
+// ── Online herstel (PRD-14): resoluties meesturen richting staf ──
+// Select-based zodat de storage-keys (photoUrl) nooit het API-vlak bereiken;
+// elke foto krijgt een staf-download-URL (zelfde aanpak als client-findings).
+const RESOLUTION_SELECT = {
+  id: true,
+  statusCode: true,
+  description: true,
+  resolvedAt: true,
+  photos: {
+    orderBy: { uploadedAt: 'asc' as const },
+    select: { id: true, caption: true, uploadedAt: true },
+  },
+  repairSession: {
+    select: { contactName: true, companyName: true, email: true, accessType: true },
+  },
+} satisfies Prisma.FindingResolutionSelect;
+
+type ResolutionRow = Prisma.FindingResolutionGetPayload<{ select: typeof RESOLUTION_SELECT }>;
+
+/** Publieke URL naar de staf-foto-download-route (verbergt de storage-key). */
+function resolutionPhotoUrl(id: string): string {
+  return `/api/v1/findings/resolution-photos/${id}`;
+}
+
+function serializeResolutions(resolutions: ResolutionRow[] | undefined) {
+  return (resolutions ?? []).map((r) => ({
+    ...r,
+    photos: r.photos.map((p) => ({ ...p, url: resolutionPhotoUrl(p.id) })),
+  }));
+}
 
 @Injectable()
 export class FindingsService {
+  private readonly logger = new Logger(FindingsService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly lookups: LookupService,
     private readonly assetNodes: AssetNodesService,
+    @Inject(STORAGE_PROVIDER) private readonly storage: StorageProvider,
   ) {}
+
+  /**
+   * WP-B10 (B-222): toepasselijke classificatiemodellen voor een finding —
+   * het plan-model (inspectie-template → normtype-fallback) plus het model van
+   * het finding-template wanneer aanwezig.
+   */
+  private async loadApplicableModels(
+    planId: string,
+    findingTemplateId?: string | null,
+  ): Promise<Array<ClassificationModelForCritical | null>> {
+    const planModel = await loadPlanCriticalModel(this.prisma, planId);
+    if (!findingTemplateId) return [planModel];
+    return [planModel, await loadFindingTemplateCriticalModel(this.prisma, findingTemplateId)];
+  }
 
   private async assertStatus(code: string | undefined, orgId: string): Promise<void> {
     if (!code) return;
@@ -54,6 +122,7 @@ export class FindingsService {
         shortDescription: true, longDescription: true, classificationValues: true,
         locationDescription: true, recommendation: true, recommendationCustom: true,
         normReference: true, statusCode: true, resolvedAt: true, resolutionNotes: true,
+        isCritical: true,
         createdAt: true, updatedAt: true, createdBy: true,
         findingTemplate: {
           select: {
@@ -61,6 +130,8 @@ export class FindingsService {
             classificationModel: { select: { id: true, code: true, name: true } },
           },
         },
+        // Herstelmeldingen (PRD-14): omschrijving, foto's en invullergegevens per resolutie.
+        resolutions: { orderBy: { resolvedAt: 'asc' }, select: RESOLUTION_SELECT },
       },
     });
 
@@ -93,6 +164,7 @@ export class FindingsService {
         ...f,
         createdByUser: u ? { id: u.id, name: `${u.firstName} ${u.lastName}` } : null,
         photos: photosByFinding[f.id] || [],
+        resolutions: serializeResolutions(f.resolutions),
       };
     });
   }
@@ -114,6 +186,8 @@ export class FindingsService {
               },
             },
           },
+          // Herstelmeldingen (PRD-14): omschrijving, foto's en invullergegevens per resolutie.
+          resolutions: { orderBy: { resolvedAt: 'asc' }, select: RESOLUTION_SELECT },
         },
       }),
       'Constatering',
@@ -128,11 +202,39 @@ export class FindingsService {
         : null,
     ]);
 
-    return { ...finding, createdByUser, resolvedByUser };
+    return {
+      ...finding,
+      createdByUser,
+      resolvedByUser,
+      resolutions: serializeResolutions(finding.resolutions),
+    };
+  }
+
+  /**
+   * Buffer + mime voor de staf-foto-download-route (PRD-14). Org-scoped via het
+   * finding van de resolutie; SUPERUSER (orgId null) mag alles (orgScope → {}).
+   */
+  async getResolutionPhoto(
+    photoId: string,
+    user: User,
+  ): Promise<{ buffer: Buffer; mimeType: string }> {
+    const photo = assertFound(
+      await this.prisma.findingResolutionPhoto.findFirst({
+        where: {
+          id: photoId,
+          resolution: { finding: { ...orgScope(user), deletedAt: null } },
+        },
+        select: { photoUrl: true },
+      }),
+      'Foto',
+    );
+    const buffer = await this.storage.download(photo.photoUrl);
+    return { buffer, mimeType: photo.photoUrl.endsWith('.png') ? 'image/png' : 'image/jpeg' };
   }
 
   async create(assetNodeId: string, user: User, dto: CreateFindingDto, deviceId?: string) {
     const orgId = requireOrg(user);
+    validateJsonColumn(classificationValuesSchema, dto.classificationValues, CLASSIFICATION_VALUES_LABEL);
 
     // Plan binnen de org + de asset-node binnen de boom van dit plan (rootLocationId === plan.locationId).
     const plan = assertFound(
@@ -165,12 +267,41 @@ export class FindingsService {
         'Constatering-template',
       );
     }
+    // Checklist-item: eigen org of een systeem-item (cross-tenant guard).
+    if (dto.checklistItemId) {
+      assertFound(
+        await this.prisma.checklistItem.findFirst({
+          where: { id: dto.checklistItemId, OR: [{ orgId }, { orgId: null, isSystem: true }] },
+        }),
+        'Checklist-item',
+      );
+    }
+
+    // Finding.isCritical is server-owned (PRD-14): afgeleid van classificationValues
+    // × de isCritical-vlaggen van de toepasselijke classificatiemodellen.
+    // WP-B10 (B-222): nieuwe findings zijn streng — onbekende kenmerk-/optiecodes
+    // (fictief vocabulaire zoals {"risico":"kritiek"}) geven een NL-400 in plaats
+    // van stille datavervuiling die de PRD-14-keten dood laat.
+    const models = await this.loadApplicableModels(plan.id, dto.findingTemplateId);
+    assertClassificationValuesKnown(dto.classificationValues ?? {}, models);
+    const isCritical = computeFindingIsCriticalAny(dto.classificationValues ?? {}, models);
+
+    // Nieuwe open kritieke constatering → herinspectie-trigger her-armen
+    // (review #7): een eerder gevuurde melding blokkeert anders een tweede
+    // terwijl er wél weer een kritiek punt open staat.
+    if (isCritical) {
+      await this.prisma.inspectionPlan.updateMany({
+        where: { id: plan.id, criticalRepairNotifiedAt: { not: null } },
+        data: { criticalRepairNotifiedAt: null },
+      });
+    }
 
     return this.prisma.finding.create({
       data: {
         orgId,
         assetNodeId,
         inspectionPlanId: plan.id,
+        isCritical,
         inspectionType: dto.inspectionType,
         visualInspectionId: dto.visualInspectionId,
         measurementRecordId: dto.measurementRecordId,
@@ -193,6 +324,7 @@ export class FindingsService {
 
   async update(id: string, user: User, dto: UpdateFindingDto) {
     const orgId = requireOrg(user);
+    validateJsonColumn(classificationValuesSchema, dto.classificationValues, CLASSIFICATION_VALUES_LABEL);
     const finding = assertFound(
       await this.prisma.finding.findFirst({ where: { id, ...orgScope(user), deletedAt: null } }),
       'Constatering',
@@ -202,7 +334,34 @@ export class FindingsService {
     const data: Prisma.FindingUpdateInput = {};
     if (dto.shortDescription !== undefined) data.shortDescription = dto.shortDescription;
     if (dto.longDescription !== undefined) data.longDescription = dto.longDescription;
-    if (dto.classificationValues !== undefined) data.classificationValues = dto.classificationValues as Prisma.InputJsonValue;
+    if (dto.classificationValues !== undefined) {
+      // WP-B10 (B-222) — gefaseerde validatie: een daadwerkelijk gewijzigde
+      // classificatie moet uit het model komen (NL-400 bij onbekende codes);
+      // een ongewijzigde echo van bestaande (legacy-)waarden blijft werken en
+      // wordt alleen gelogd.
+      const models = await this.loadApplicableModels(
+        finding.inspectionPlanId,
+        finding.findingTemplateId,
+      );
+      const unchangedEcho = isDeepStrictEqual(
+        finding.classificationValues ?? {},
+        dto.classificationValues,
+      );
+      if (unchangedEcho) {
+        const issues = findClassificationValueIssues(dto.classificationValues, models);
+        if (issues.length > 0) {
+          this.logger.warn(
+            `Finding ${finding.id} echo't legacy-classificatie (toegestaan op update): ` +
+              formatClassificationValueIssues(issues),
+          );
+        }
+      } else {
+        assertClassificationValuesKnown(dto.classificationValues, models);
+      }
+      data.classificationValues = dto.classificationValues as Prisma.InputJsonValue;
+      // isCritical volgt de classificatie (PRD-14, server-owned)
+      data.isCritical = computeFindingIsCriticalAny(dto.classificationValues, models);
+    }
     if (dto.locationDescription !== undefined) data.locationDescription = dto.locationDescription;
     if (dto.recommendation !== undefined) data.recommendation = dto.recommendation;
     if (dto.recommendationCustom !== undefined) data.recommendationCustom = dto.recommendationCustom;
@@ -216,11 +375,32 @@ export class FindingsService {
       data.resolutionNotes = dto.resolutionNotes;
     }
 
-    return this.prisma.finding.update({
+    const updated = await this.prisma.finding.update({
       where: { id: finding.id },
       data,
       select: { id: true, classificationValues: true, statusCode: true, resolvedAt: true, updatedAt: true },
     });
+
+    // Herinspectie-trigger her-armen (PRD-14 besluit 9 + review #7):
+    //  - heropenen van een kritieke constatering (resolved → open status), of
+    //  - een open constatering die door een classificatiewijziging kritiek wordt.
+    const reopenedCritical =
+      dto.statusCode !== undefined &&
+      dto.statusCode !== STATUS_RESOLVED &&
+      finding.statusCode === STATUS_RESOLVED &&
+      finding.isCritical;
+    const becameOpenCritical =
+      data.isCritical === true &&
+      !finding.isCritical &&
+      (dto.statusCode ?? finding.statusCode) !== STATUS_RESOLVED;
+    if (reopenedCritical || becameOpenCritical) {
+      await this.prisma.inspectionPlan.updateMany({
+        where: { id: finding.inspectionPlanId, criticalRepairNotifiedAt: { not: null } },
+        data: { criticalRepairNotifiedAt: null },
+      });
+    }
+
+    return updated;
   }
 
   async delete(id: string, user: User) {

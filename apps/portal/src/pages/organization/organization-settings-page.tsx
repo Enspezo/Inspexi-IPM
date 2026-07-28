@@ -3,13 +3,14 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useAuth } from '@/providers/auth-provider';
-import { Card, Input, Button, Select, Spinner, Tabs, Checkbox, useToast } from '@/components/ui';
+import { Card, ErrorBox, Input, Button, Select, Spinner, Tabs, Checkbox, useToast } from '@/components/ui';
 import {
   useOrganization,
   useUpdateOrganization,
   useUploadLogo,
   useDeleteLogo,
   getLogoUrl,
+  type UpdateOrganizationDto,
 } from './hooks/use-organization';
 import { CustomFieldsManagement } from './components/custom-fields-management';
 import { DocumentTagsManagement } from './components/document-tags-management';
@@ -23,6 +24,8 @@ import {
 import { ContactDisplayMode, NotificationType, Role } from '@/types';
 import { getTypeLabel } from '@/lib/notifications';
 import { getErrorMessage } from '@/lib/api-client';
+import { useFeatures } from '@/providers/feature-provider';
+import { useAiReviewStatus } from '@/pages/inspections/hooks/use-ai-review';
 
 const CONTACT_DISPLAY_OPTIONS = [
   { value: ContactDisplayMode.NONE, label: 'Geen' },
@@ -30,7 +33,21 @@ const CONTACT_DISPLAY_OPTIONS = [
   { value: ContactDisplayMode.INSPECTOR, label: 'Inspecteur (met statische terugval)' },
 ];
 
-const orgSchema = z.object({
+/**
+ * B-508: een optioneel numeriek veld mag NOOIT als
+ * `z.union([z.coerce.number(), z.literal('')])` gemodelleerd worden —
+ * `z.coerce.number()` maakt van `''` een `0` (Number('') === 0) vóórdat de
+ * union ooit bij `z.literal('')` komt, dus de lege-veld-tak is dode code en
+ * "leeg" wordt stilzwijgend `0`. Deze preprocess mapt leeg expliciet naar
+ * `null` zodat "geen drempel" (null) en "drempel 0" (0) twee verschillende,
+ * ronde-tripbare toestanden zijn.
+ */
+const optionalAmount = z.preprocess(
+  (v) => (v === '' || v === null || v === undefined ? null : v),
+  z.coerce.number().min(0, 'Bedrag moet minimaal 0 zijn').nullable(),
+);
+
+export const orgSchema = z.object({
   name: z.string().min(1, 'Organisatienaam is verplicht'),
   slug: z.string(),
   primaryColor: z.string().nullable().optional(),
@@ -54,18 +71,21 @@ const orgSchema = z.object({
   inspectorStaticEmail: z
     .union([z.string().email('Voer een geldig e-mailadres in'), z.literal('')])
     .optional(),
-  quoteApprovalThreshold: z
-    .union([z.coerce.number().min(0, 'Bedrag moet minimaal 0 zijn'), z.literal('')])
-    .optional(),
+  quoteApprovalThreshold: optionalAmount,
   quoteApprovalRequiredRole: z.union([z.nativeEnum(Role), z.literal('')]).optional(),
+  quoteApprovalSelfApprovalAllowed: z.boolean(),
   chatEnabled: z.boolean(),
+  inspectionReviewEnabled: z.boolean(),
+  aiReviewEnabled: z.boolean(),
+  aiReviewInstructions: z.string().max(2000, 'Maximaal 2000 tekens').optional(),
+  onlineRepairDefault: z.boolean(),
   aiAgentEnabled: z.boolean(),
   aiAgentAllowedRoles: z.array(z.nativeEnum(Role)),
 }).refine((d) => d.workdayEnd > d.workdayStart, {
   message: 'Eindtijd moet na begintijd liggen',
   path: ['workdayEnd'],
 }).refine(
-  (d) => d.quoteApprovalThreshold === '' || d.quoteApprovalThreshold === undefined || !!d.quoteApprovalRequiredRole,
+  (d) => d.quoteApprovalThreshold === null || !!d.quoteApprovalRequiredRole,
   { message: 'Kies een vereiste rol wanneer u een goedkeuringsgrens instelt', path: ['quoteApprovalRequiredRole'] },
 );
 
@@ -156,8 +176,8 @@ function GroupNotificationPrefsCard() {
         })),
       );
       showToast('Standaard notificatie-instellingen opgeslagen', 'success');
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Opslaan mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 
@@ -261,13 +281,13 @@ function GroupNotificationPrefsCard() {
 export default function OrganizationSettingsPage() {
   const { user } = useAuth();
   const { showToast } = useToast();
-  const { data: organization, isLoading } = useOrganization(user?.orgId);
+  const { data: organization, isLoading, error: loadError } = useOrganization(user?.orgId);
   const updateMutation = useUpdateOrganization(user?.orgId);
   const uploadLogoMutation = useUploadLogo(user?.orgId);
   const deleteLogoMutation = useDeleteLogo(user?.orgId);
 
   // Tab state
-  const [activeTab, setActiveTab] = useState<'huisstijl' | 'financieel' | 'communicatie' | 'inspecteur-portal' | 'notificaties' | 'eigen-velden' | 'document-tags' | 'nummering' | 'quota' | 'support'>('huisstijl');
+  const [activeTab, setActiveTab] = useState<'huisstijl' | 'financieel' | 'communicatie' | 'inspecties' | 'inspecteur-portal' | 'notificaties' | 'eigen-velden' | 'document-tags' | 'nummering' | 'quota' | 'support'>('huisstijl');
 
   // Logo preview state
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
@@ -282,13 +302,27 @@ export default function OrganizationSettingsPage() {
     reset,
     watch,
     setValue,
-    formState: { errors, isDirty },
+    formState: { errors, isDirty, dirtyFields },
   } = useForm<OrgFormData>({
     resolver: zodResolver(orgSchema),
   });
 
   const phoneDisplayMode = watch('inspectorPhoneDisplay');
   const emailDisplayMode = watch('inspectorEmailDisplay');
+
+  // PRD-13 §13.9.2: AI-toggle alleen actief met het AI_REVIEW-entitlement én een
+  // geconfigureerde AI-dienst; de instructies-textarea alleen als de toggle aan staat.
+  const { hasFeature } = useFeatures();
+  const { data: aiStatus } = useAiReviewStatus();
+  const hasAiEntitlement = hasFeature('AI_REVIEW');
+  const aiServiceUnavailable = aiStatus?.available === false;
+  const aiToggleDisabled = !hasAiEntitlement || aiServiceUnavailable;
+  const aiReviewOn = watch('aiReviewEnabled');
+  // PRD-14 §14.4: online-herstel-default alleen instelbaar met het ONLINE_HERSTEL-entitlement.
+  const hasOnlineRepairEntitlement = hasFeature('ONLINE_HERSTEL');
+  // AI-assistent (add-on): kill-switch/rollen alleen instelbaar mét het AI_AGENT-entitlement
+  // (B-510: aanzetten zonder abonnement weigert de backend ook).
+  const hasAiAgentEntitlement = hasFeature('AI_AGENT');
 
   useEffect(() => {
     if (organization) {
@@ -306,9 +340,16 @@ export default function OrganizationSettingsPage() {
         inspectorEmailDisplay: organization.inspectorEmailDisplay ?? ContactDisplayMode.NONE,
         inspectorStaticPhone: organization.inspectorStaticPhone ?? '',
         inspectorStaticEmail: organization.inspectorStaticEmail ?? '',
-        quoteApprovalThreshold: organization.quoteApprovalThreshold ?? '',
+        // B-508: null ("geen drempel") blijft null → het veld rendert leeg en
+        // is daarmee te onderscheiden van een expliciete drempel van 0.
+        quoteApprovalThreshold: organization.quoteApprovalThreshold ?? null,
         quoteApprovalRequiredRole: organization.quoteApprovalRequiredRole ?? '',
+        quoteApprovalSelfApprovalAllowed: organization.quoteApprovalSelfApprovalAllowed ?? false,
         chatEnabled: organization.chatEnabled ?? true,
+        inspectionReviewEnabled: organization.inspectionReviewEnabled ?? true,
+        aiReviewEnabled: organization.aiReviewEnabled ?? false,
+        aiReviewInstructions: organization.aiReviewInstructions ?? '',
+        onlineRepairDefault: organization.onlineRepairDefault ?? false,
         aiAgentEnabled: organization.aiAgentEnabled ?? true,
         aiAgentAllowedRoles: organization.aiAgentAllowedRoles ?? [],
       });
@@ -316,42 +357,73 @@ export default function OrganizationSettingsPage() {
   }, [organization, reset]);
 
   const onSubmit = async (data: OrgFormData) => {
+    // B-508: elk tabblad heeft een eigen <form> op dezelfde formulierstate.
+    // Verstuur alléén de velden die de gebruiker daadwerkelijk wijzigde
+    // (dirtyFields), zodat "Opslaan" op bijv. het Inspecties-tab nooit
+    // ongemerkt de goedkeuringsdrempel (of een ander veld van een ander tab)
+    // overschrijft — en twee beheerders op verschillende tabbladen elkaars
+    // werk niet meer wegschrijven.
+    const serialized: Required<UpdateOrganizationDto> = {
+      name: data.name,
+      primaryColor: data.primaryColor ?? null,
+      defaultVat: data.defaultVat,
+      defaultValidityDays: data.defaultValidityDays,
+      senderName: data.senderName || null,
+      senderEmail: data.senderEmail || null,
+      workdayStart: data.workdayStart,
+      workdayEnd: data.workdayEnd,
+      inspectorPhoneDisplay: data.inspectorPhoneDisplay,
+      inspectorEmailDisplay: data.inspectorEmailDisplay,
+      inspectorStaticPhone: data.inspectorStaticPhone?.trim() || null,
+      inspectorStaticEmail: data.inspectorStaticEmail?.trim() || null,
+      // '' is door de zod-preprocess al null geworden; 0 blijft 0.
+      quoteApprovalThreshold: data.quoteApprovalThreshold,
+      quoteApprovalRequiredRole: data.quoteApprovalRequiredRole || null,
+      quoteApprovalSelfApprovalAllowed: data.quoteApprovalSelfApprovalAllowed,
+      chatEnabled: data.chatEnabled,
+      inspectionReviewEnabled: data.inspectionReviewEnabled,
+      aiReviewEnabled: data.aiReviewEnabled,
+      aiReviewInstructions: data.aiReviewInstructions?.trim() || null,
+      onlineRepairDefault: data.onlineRepairDefault,
+      aiAgentEnabled: data.aiAgentEnabled,
+      aiAgentAllowedRoles: data.aiAgentAllowedRoles,
+    };
+
+    // Drempel en rol horen bij elkaar (backend-validatie + refine hierboven):
+    // wijzigt één van de twee, stuur ze samen.
+    const linkedFields: Record<string, string[]> = {
+      quoteApprovalThreshold: ['quoteApprovalRequiredRole'],
+      quoteApprovalRequiredRole: ['quoteApprovalThreshold'],
+    };
+
+    const dirtyKeys = new Set(
+      Object.keys(dirtyFields).filter(
+        (key) => dirtyFields[key as keyof typeof dirtyFields],
+      ),
+    );
+    for (const key of [...dirtyKeys]) {
+      for (const linked of linkedFields[key] ?? []) dirtyKeys.add(linked);
+    }
+
+    const payload = Object.fromEntries(
+      Object.entries(serialized).filter(([key]) => dirtyKeys.has(key)),
+    ) as UpdateOrganizationDto;
+    if (Object.keys(payload).length === 0) return;
+
     try {
-      await updateMutation.mutateAsync({
-        name: data.name,
-        primaryColor: data.primaryColor,
-        defaultVat: data.defaultVat,
-        defaultValidityDays: data.defaultValidityDays,
-        senderName: data.senderName || null,
-        senderEmail: data.senderEmail || null,
-        workdayStart: data.workdayStart,
-        workdayEnd: data.workdayEnd,
-        inspectorPhoneDisplay: data.inspectorPhoneDisplay,
-        inspectorEmailDisplay: data.inspectorEmailDisplay,
-        inspectorStaticPhone: data.inspectorStaticPhone?.trim() || null,
-        inspectorStaticEmail: data.inspectorStaticEmail?.trim() || null,
-        quoteApprovalThreshold:
-          data.quoteApprovalThreshold === '' || data.quoteApprovalThreshold === undefined
-            ? null
-            : Number(data.quoteApprovalThreshold),
-        quoteApprovalRequiredRole: data.quoteApprovalRequiredRole || null,
-        chatEnabled: data.chatEnabled,
-        aiAgentEnabled: data.aiAgentEnabled,
-        aiAgentAllowedRoles: data.aiAgentAllowedRoles,
-      });
+      await updateMutation.mutateAsync(payload);
       showToast('Organisatie-instellingen opgeslagen', 'success');
-    } catch (err) {
-      showToast(
-        err instanceof Error ? err.message : 'Opslaan mislukt',
-        'error',
-      );
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 
   const handleFileSelected = async (file: File) => {
-    const allowed = ['image/png', 'image/jpeg', 'image/svg+xml', 'image/webp'];
+    // SVG is bewust geschrapt (WP-B4/B-507): een SVG kan scripts bevatten en werd
+    // vanaf het app-origin teruggeserveerd. De API weigert het type ook.
+    const allowed = ['image/png', 'image/jpeg', 'image/webp'];
     if (!allowed.includes(file.type)) {
-      showToast('Alleen PNG, JPEG, SVG en WebP zijn toegestaan', 'error');
+      showToast('Alleen PNG, JPEG en WebP zijn toegestaan', 'error');
       return;
     }
     if (file.size > 5 * 1024 * 1024) {
@@ -369,12 +441,9 @@ export default function OrganizationSettingsPage() {
       setLogoCacheBust(Date.now());
       setLogoPreview(null);
       showToast('Logo geüpload', 'success');
-    } catch (err) {
+    } catch {
       setLogoPreview(null);
-      showToast(
-        err instanceof Error ? err.message : 'Upload mislukt',
-        'error',
-      );
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 
@@ -397,11 +466,8 @@ export default function OrganizationSettingsPage() {
       await deleteLogoMutation.mutateAsync();
       setLogoCacheBust(Date.now());
       showToast('Logo verwijderd', 'success');
-    } catch (err) {
-      showToast(
-        err instanceof Error ? err.message : 'Verwijderen mislukt',
-        'error',
-      );
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 
@@ -418,10 +484,27 @@ export default function OrganizationSettingsPage() {
     );
   }
 
+  // WP-C1 (B-509): bij een mislukte load (bv. 403 voor een rol zonder toegang)
+  // GEEN leeg-maar-bewerkbaar formulier renderen, maar een nette errorstate.
+  if (loadError || !organization) {
+    return (
+      <div>
+        <h1 className="mb-6 text-2xl font-bold text-gray-900">
+          Organisatie-instellingen
+        </h1>
+        <ErrorBox>
+          De organisatiegegevens konden niet geladen worden. Controleer of u de juiste
+          rechten heeft of probeer het later opnieuw.
+        </ErrorBox>
+      </div>
+    );
+  }
+
   const tabs: { key: typeof activeTab; label: string }[] = [
     { key: 'huisstijl', label: 'Huisstijl' },
     { key: 'financieel', label: 'Financieel' },
     { key: 'communicatie', label: 'Communicatie' },
+    { key: 'inspecties', label: 'Inspecties' },
     { key: 'inspecteur-portal', label: 'Inspecteur klantportaal' },
     { key: 'notificaties', label: 'Notificaties' },
     { key: 'eigen-velden', label: 'Eigen velden' },
@@ -469,7 +552,7 @@ export default function OrganizationSettingsPage() {
               Organisatielogo
             </h3>
             <p className="mt-1 text-sm text-gray-500">
-              Upload een logo in PNG, JPEG, SVG of WebP formaat (max 5 MB).
+              Upload een logo in PNG, JPEG of WebP formaat (max 5 MB).
               Het logo wordt getoond op de loginpagina en in offertes.
             </p>
           </div>
@@ -553,12 +636,12 @@ export default function OrganizationSettingsPage() {
                   of sleep een bestand hierheen
                 </p>
                 <p className="mt-1 text-xs text-gray-400">
-                  PNG, JPEG, SVG, WebP — max 5 MB
+                  PNG, JPEG, WebP — max 5 MB
                 </p>
                 <input
                   ref={fileInputRef}
                   type="file"
-                  accept="image/png,image/jpeg,image/svg+xml,image/webp"
+                  accept="image/png,image/jpeg,image/webp"
                   className="hidden"
                   onChange={handleInputChange}
                 />
@@ -671,6 +754,16 @@ export default function OrganizationSettingsPage() {
                 {...register('quoteApprovalRequiredRole')}
               />
             </div>
+            <div className="mt-4">
+              <Checkbox
+                label="Aanvrager mag eigen goedkeuringsverzoek afhandelen (self-approval)"
+                {...register('quoteApprovalSelfApprovalAllowed')}
+              />
+              <p className="mt-1 text-xs text-gray-500">
+                Standaard uit (vier-ogen-principe). Alleen aanzetten als uw organisatie maar
+                één persoon met de vereiste goedkeur-rol heeft.
+              </p>
+            </div>
           </div>
 
           <div className="flex justify-end border-t border-gray-200 pt-4">
@@ -782,8 +875,15 @@ export default function OrganizationSettingsPage() {
               De AI-assistent (add-on) helpt medewerkers met backofficewerk. Uitschakelen verbergt de assistent voor iedereen in deze organisatie. Kies daaronder welke rollen hem mogen gebruiken (leeg = standaard: alle staf behalve inspecteur).
             </p>
             <div className="mt-3">
-              <Checkbox label="AI-assistent inschakelen" {...register('aiAgentEnabled')} />
+              <Checkbox
+                label="AI-assistent inschakelen"
+                disabled={!hasAiAgentEntitlement}
+                {...register('aiAgentEnabled')}
+              />
             </div>
+            {!hasAiAgentEntitlement && (
+              <p className="mt-2 text-xs text-gray-500">Niet beschikbaar in uw abonnement.</p>
+            )}
             <div className="mt-3">
               <p className="mb-1 text-sm font-medium text-gray-700">Toegestane rollen</p>
               <div className="flex flex-wrap gap-3">
@@ -795,6 +895,7 @@ export default function OrganizationSettingsPage() {
                       <input
                         type="checkbox"
                         checked={checked}
+                        disabled={!hasAiAgentEntitlement}
                         onChange={(e) => {
                           const next = e.target.checked
                             ? [...selected, role]
@@ -816,6 +917,95 @@ export default function OrganizationSettingsPage() {
               isLoading={updateMutation.isPending}
               disabled={!isDirty}
             >
+              Opslaan
+            </Button>
+          </div>
+        </form>
+      </Card>
+      )}
+
+      {activeTab === 'inspecties' && (
+      <Card>
+        <form onSubmit={handleSubmit(onSubmit)} className="space-y-8">
+          <div>
+            <h3 className="text-base font-semibold text-gray-900">Vier-ogen-controle</h3>
+            <p className="mt-1 text-sm text-gray-500">
+              Met deze controle aan moet een inspectieplan eerst ingediend en door een tweede
+              persoon beoordeeld worden voordat het afgerond kan worden. Uitschakelen laat
+              inspecties direct afronden zonder beoordelingsstap.
+            </p>
+            <div className="mt-3">
+              <Checkbox label="Vier-ogen-controle verplicht" {...register('inspectionReviewEnabled')} />
+            </div>
+          </div>
+
+          <div>
+            <h3 className="text-base font-semibold text-gray-900">AI-voorcontrole</h3>
+            <p className="mt-1 text-sm text-gray-500">
+              Laat een AI-model ingediende inspectierapporten voorcontroleren op volledigheid,
+              consistentie en normering. De aandachtspunten zijn adviserend: alleen de menselijke
+              beoordelaar bepaalt of een rapport wordt goedgekeurd. Bij de analyse wordt uitsluitend
+              de inspectie-inhoud (assets, constateringen, metingen) naar de AI-dienst (Anthropic)
+              gestuurd — geen klantcontactgegevens of foto&apos;s.
+            </p>
+            <div className="mt-3">
+              <Checkbox
+                label="AI-voorcontrole inschakelen"
+                disabled={aiToggleDisabled}
+                {...register('aiReviewEnabled')}
+              />
+            </div>
+            {!hasAiEntitlement && (
+              <p className="mt-2 text-xs text-gray-500">Niet beschikbaar in uw abonnement.</p>
+            )}
+            {hasAiEntitlement && aiServiceUnavailable && (
+              <p className="mt-2 text-xs text-gray-500">AI-dienst niet geconfigureerd.</p>
+            )}
+          </div>
+
+          <div>
+            <label className="mb-1 block text-sm font-medium text-gray-700">
+              Extra AI-instructies
+            </label>
+            <textarea
+              {...register('aiReviewInstructions')}
+              rows={4}
+              maxLength={2000}
+              disabled={aiToggleDisabled || !aiReviewOn}
+              placeholder="Bijv. Let extra op NEN 3140-terminologie."
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:ring-primary-500 disabled:cursor-not-allowed disabled:bg-gray-50 disabled:text-gray-400"
+            />
+            <p className="mt-1 text-xs text-gray-500">
+              Optionele organisatie-specifieke aanwijzingen voor de AI-voorcontrole (max 2000 tekens).
+            </p>
+            {errors.aiReviewInstructions && (
+              <p className="mt-1 text-xs text-red-600">{errors.aiReviewInstructions.message}</p>
+            )}
+          </div>
+
+          <div>
+            <h3 className="text-base font-semibold text-gray-900">Online herstel</h3>
+            <p className="mt-1 text-sm text-gray-500">
+              Met online herstel kunnen externen en klanten hersteld werk aan constateringen
+              online melden en afronden met een ondertekende herstelverklaring. Deze instelling
+              bepaalt de standaardwaarde voor <strong>nieuwe</strong> inspecties; per inspectie
+              blijft de toggle aanpasbaar. Het e-mailadres van de invuller wordt uitsluitend
+              gebruikt voor de bevestiging en eventuele conflictafhandeling (AVG).
+            </p>
+            <div className="mt-3">
+              <Checkbox
+                label="Online herstel standaard aan voor nieuwe inspecties"
+                disabled={!hasOnlineRepairEntitlement}
+                {...register('onlineRepairDefault')}
+              />
+            </div>
+            {!hasOnlineRepairEntitlement && (
+              <p className="mt-2 text-xs text-gray-500">Niet beschikbaar in uw abonnement.</p>
+            )}
+          </div>
+
+          <div className="flex justify-end border-t border-gray-200 pt-4">
+            <Button type="submit" isLoading={updateMutation.isPending} disabled={!isDirty}>
               Opslaan
             </Button>
           </div>

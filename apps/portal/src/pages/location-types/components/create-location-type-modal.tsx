@@ -10,10 +10,12 @@ import { getErrorMessage } from '@/lib/api-client';
 import { useCreateLocationType } from '../hooks/use-location-types';
 
 const schema = z.object({
+  // B-511 §6: underscores toestaan — consistent met de geseede systeemtypes
+  // (bijv. `electrical_installation`) en het asset-type-formulier.
   code: z
     .string()
     .min(1, 'Code is verplicht')
-    .regex(/^[a-z0-9]+$/, 'alleen kleine letters en cijfers'),
+    .regex(/^[a-z0-9_]+$/, 'alleen kleine letters, cijfers en underscores'),
   shortCode: z.string().optional(),
   name: z.string().min(1, 'Naam is verplicht'),
   description: z.string().optional(),
@@ -78,8 +80,8 @@ export function CreateLocationTypeModal({ isOpen, onClose }: Props) {
       showToast('Locatie-type aangemaakt', 'success');
       onClose();
       navigate(`/location-types/${created.id}`);
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Aanmaken mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 

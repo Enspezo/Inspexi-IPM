@@ -30,7 +30,7 @@ function dispatch(event: string, data: any, h: StreamHandlers) {
 }
 
 /**
- * POST + Server-Sent-Events lezer voor de AI-assistent (PRD-12). `apiClient`
+ * POST + Server-Sent-Events lezer voor de AI-assistent (PRD-15). `apiClient`
  * kent geen streaming, dus een rauwe `fetch` met de bearer-token (zoals de
  * bestaande authenticated downloads), en we lezen `response.body` zelf.
  */

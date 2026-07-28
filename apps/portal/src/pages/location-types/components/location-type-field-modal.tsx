@@ -149,8 +149,8 @@ export function LocationTypeFieldModal({ isOpen, onClose, locationTypeId, field 
         showToast('Veld toegevoegd', 'success');
       }
       onClose();
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Opslaan mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 

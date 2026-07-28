@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api-client';
+import { assetKeys } from '@/lib/query-keys';
 import type { Asset, Finding, PaginatedResponse } from '@/types';
 
 /**
@@ -38,7 +39,7 @@ export function useAssets(params: ListAssetsParams = {}) {
   const qs = qp.toString();
 
   return useQuery<PaginatedResponse<Asset>>({
-    queryKey: ['assets', params],
+    queryKey: assetKeys.list(params),
     queryFn: () => apiClient.get<PaginatedResponse<Asset>>(`/assets${qs ? `?${qs}` : ''}`),
   });
 }
@@ -46,7 +47,7 @@ export function useAssets(params: ListAssetsParams = {}) {
 /** Detail van één asset, inclusief findings, child-assets en meet-/visuele records. */
 export function useAsset(id: string) {
   return useQuery<AssetDetail>({
-    queryKey: ['assets', id],
+    queryKey: assetKeys.detail(id),
     queryFn: () => apiClient.get<AssetDetail>(`/assets/${id}`),
     enabled: !!id,
   });

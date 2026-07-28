@@ -6,7 +6,6 @@ import {
   Param,
   Query,
   Body,
-  ParseUUIDPipe,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { User } from '@prisma/client';
@@ -19,6 +18,7 @@ import {
   UpdateSupportTicketDto,
   ListSupportTicketsDto,
 } from './dto';
+import { ParseUuidPipe } from '@/common';
 
 @ApiTags('Support tickets')
 @ApiBearerAuth()
@@ -58,7 +58,7 @@ export class SupportTicketsController {
   @ApiOperation({ summary: 'Ticketdetail incl. berichten-thread' })
   async findOne(
     @CurrentUser() user: User,
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
   ) {
     return { success: true, data: await this.tickets.findOne(user, id) };
   }
@@ -68,7 +68,7 @@ export class SupportTicketsController {
   @ApiOperation({ summary: 'Reactie of interne notitie toevoegen' })
   async addMessage(
     @CurrentUser() user: User,
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @Body() dto: AddTicketMessageDto,
   ) {
     return { success: true, data: await this.tickets.addMessage(user, id, dto) };
@@ -80,7 +80,7 @@ export class SupportTicketsController {
   @ApiOperation({ summary: 'Status/prioriteit/toewijzing bijwerken' })
   async update(
     @CurrentUser() user: User,
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @Body() dto: UpdateSupportTicketDto,
   ) {
     return { success: true, data: await this.tickets.update(user, id, dto) };

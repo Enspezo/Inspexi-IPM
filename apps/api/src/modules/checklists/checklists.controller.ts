@@ -7,7 +7,6 @@ import {
   Param,
   Body,
   Query,
-  ParseUUIDPipe,
   BadRequestException,
 } from '@nestjs/common';
 import { RequiresFeature } from '@/common/decorators/requires-feature.decorator';
@@ -27,6 +26,7 @@ import {
   NewVersionDto,
   ImportChecklistDto,
 } from './dto';
+import { ParseUuidPipe } from '@/common';
 
 const READ_ROLES = ALL_STAFF;
 const WRITE_ROLES = ORG_ADMINS;
@@ -93,28 +93,28 @@ export class ChecklistsController {
   @Get(':id')
   @Roles(...READ_ROLES)
   @ApiOperation({ summary: 'Checklist detail (met items)' })
-  async findById(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: User) {
+  async findById(@Param('id', ParseUuidPipe) id: string, @CurrentUser() user: User) {
     return { success: true, data: await this.service.findById(id, user) };
   }
 
   @Get(':id/preview')
   @Roles(...READ_ROLES)
   @ApiOperation({ summary: 'Preview voor PWA-weergave' })
-  async getPreview(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: User) {
+  async getPreview(@Param('id', ParseUuidPipe) id: string, @CurrentUser() user: User) {
     return { success: true, data: await this.service.getPreview(id, user) };
   }
 
   @Get(':id/export')
   @Roles(...READ_ROLES)
   @ApiOperation({ summary: 'Checklist exporteren als JSON' })
-  async export(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: User) {
+  async export(@Param('id', ParseUuidPipe) id: string, @CurrentUser() user: User) {
     return this.service.export(id, user);
   }
 
   @Get(':id/history')
   @Roles(...READ_ROLES)
   @ApiOperation({ summary: 'Versie-historie' })
-  async getHistory(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: User) {
+  async getHistory(@Param('id', ParseUuidPipe) id: string, @CurrentUser() user: User) {
     return { success: true, data: await this.service.getHistory(id, user) };
   }
 
@@ -129,7 +129,7 @@ export class ChecklistsController {
   @Roles(...WRITE_ROLES)
   @ApiOperation({ summary: 'Checklist bijwerken (alleen CONCEPT)' })
   async update(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @CurrentUser() user: User,
     @Body() dto: UpdateChecklistDto,
   ) {
@@ -139,7 +139,7 @@ export class ChecklistsController {
   @Delete(':id')
   @Roles(...WRITE_ROLES)
   @ApiOperation({ summary: 'Checklist verwijderen (alleen CONCEPT)' })
-  async delete(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: User) {
+  async delete(@Param('id', ParseUuidPipe) id: string, @CurrentUser() user: User) {
     return { success: true, data: await this.service.delete(id, user) };
   }
 
@@ -149,7 +149,7 @@ export class ChecklistsController {
   @Roles(...WRITE_ROLES)
   @ApiOperation({ summary: 'Item aan checklist koppelen' })
   async addItem(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @CurrentUser() user: User,
     @Body() dto: AddItemToChecklistDto,
   ) {
@@ -160,7 +160,7 @@ export class ChecklistsController {
   @Roles(...WRITE_ROLES)
   @ApiOperation({ summary: 'Items herordenen (drag & drop)' })
   async reorderItems(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @CurrentUser() user: User,
     @Body() dto: ReorderItemsDto,
   ) {
@@ -171,7 +171,7 @@ export class ChecklistsController {
   @Roles(...WRITE_ROLES)
   @ApiOperation({ summary: 'Item-koppeling bijwerken' })
   async updateItemLink(
-    @Param('linkId', ParseUUIDPipe) linkId: string,
+    @Param('linkId', ParseUuidPipe) linkId: string,
     @CurrentUser() user: User,
     @Body() dto: UpdateItemLinkDto,
   ) {
@@ -182,7 +182,7 @@ export class ChecklistsController {
   @Roles(...WRITE_ROLES)
   @ApiOperation({ summary: 'Item uit checklist verwijderen' })
   async removeItem(
-    @Param('linkId', ParseUUIDPipe) linkId: string,
+    @Param('linkId', ParseUuidPipe) linkId: string,
     @CurrentUser() user: User,
   ) {
     return { success: true, data: await this.service.removeItem(linkId, user) };
@@ -194,7 +194,7 @@ export class ChecklistsController {
   @Roles(...WRITE_ROLES)
   @ApiOperation({ summary: 'Checklist publiceren (CONCEPT → ACTIEF)' })
   async publish(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @CurrentUser() user: User,
     @Body() dto: PublishChecklistDto,
   ) {
@@ -205,7 +205,7 @@ export class ChecklistsController {
   @Roles(...WRITE_ROLES)
   @ApiOperation({ summary: 'Checklist vervallen verklaren (ACTIEF → VERVALLEN)' })
   async retire(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @CurrentUser() user: User,
     @Body() dto: RetireChecklistDto,
   ) {
@@ -216,7 +216,7 @@ export class ChecklistsController {
   @Roles(...WRITE_ROLES)
   @ApiOperation({ summary: 'Nieuwe versie aanmaken (kloon naar CONCEPT)' })
   async createNewVersion(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseUuidPipe) id: string,
     @CurrentUser() user: User,
     @Body() dto: NewVersionDto,
   ) {

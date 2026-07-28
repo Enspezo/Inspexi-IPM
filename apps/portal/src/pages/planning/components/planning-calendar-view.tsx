@@ -98,6 +98,20 @@ export function addDays(date: Date, n: number): Date {
   return d;
 }
 
+/** Lokale kalenderdag → 'YYYY-MM-DD' (matcht de resolved availability-date-keys). */
+export function localDateKey(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+/** Subtiele "niet beschikbaar"-arcering (diagonale grijstint) voor kalenderdagen. */
+const UNAVAILABLE_STYLE: React.CSSProperties = {
+  backgroundImage:
+    'repeating-linear-gradient(45deg, rgba(107,114,128,0.10) 0, rgba(107,114,128,0.10) 6px, transparent 6px, transparent 12px)',
+};
+
 function isSameDay(a: Date, b: Date): boolean {
   return (
     a.getFullYear() === b.getFullYear() &&
@@ -175,12 +189,14 @@ function MonthView({
   onDayClick,
   onItemClick,
   onWeekClick,
+  unavailableDates,
 }: {
   events: CalendarEvent[];
   currentDate: Date;
   onDayClick: (date: Date) => void;
   onItemClick: CalendarItemClick;
   onWeekClick: (date: Date) => void;
+  unavailableDates?: Set<string>;
 }) {
   const year = currentDate.getFullYear();
   const month = currentDate.getMonth();
@@ -228,6 +244,7 @@ function MonthView({
                 const dayEvents = getEventsForDay(events, day);
                 const inMonth = day.getMonth() === month;
                 const today = isToday(day);
+                const unavailable = unavailableDates?.has(localDateKey(day)) ?? false;
 
                 return (
                   <div
@@ -235,6 +252,8 @@ function MonthView({
                     className={`flex-1 border-r border-gray-100 last:border-r-0 p-1.5 cursor-pointer hover:bg-gray-50 transition-colors overflow-hidden ${
                       !inMonth ? 'bg-gray-50/60' : ''
                     }`}
+                    style={unavailable ? UNAVAILABLE_STYLE : undefined}
+                    title={unavailable ? 'Niet beschikbaar' : undefined}
                     onClick={() => onDayClick(day)}
                   >
                     {/* Day number */}
@@ -283,6 +302,7 @@ function TimeGrid({
   onDayHeaderClick,
   dayStart,
   dayEnd,
+  unavailableDates,
 }: {
   days: Date[];
   events: CalendarEvent[];
@@ -291,6 +311,7 @@ function TimeGrid({
   onDayHeaderClick?: (date: Date) => void;
   dayStart: number;
   dayEnd: number;
+  unavailableDates?: Set<string>;
 }) {
   const hoursCount = dayEnd - dayStart;
   const now = new Date();
@@ -370,6 +391,7 @@ function TimeGrid({
         {days.map((day, dayIdx) => {
           const dayEvents = getEventsForDay(events, day);
           const todayCol = isToday(day);
+          const unavailable = unavailableDates?.has(localDateKey(day)) ?? false;
 
           return (
             <div
@@ -377,7 +399,12 @@ function TimeGrid({
               className={`relative flex-1 border-l border-gray-100 ${
                 todayCol ? 'bg-blue-50/20' : ''
               }`}
-              style={{ height: hoursCount * HOUR_HEIGHT, minHeight: hoursCount * HOUR_HEIGHT }}
+              title={unavailable ? 'Niet beschikbaar' : undefined}
+              style={{
+                height: hoursCount * HOUR_HEIGHT,
+                minHeight: hoursCount * HOUR_HEIGHT,
+                ...(unavailable ? UNAVAILABLE_STYLE : {}),
+              }}
             >
               {/* Horizontal hour lines */}
               {Array.from({ length: hoursCount }, (_, i) => (
@@ -462,6 +489,7 @@ function WeekView({
   onDayClick,
   dayStart,
   dayEnd,
+  unavailableDates,
 }: {
   events: CalendarEvent[];
   currentDate: Date;
@@ -469,6 +497,7 @@ function WeekView({
   onDayClick: (date: Date) => void;
   dayStart: number;
   dayEnd: number;
+  unavailableDates?: Set<string>;
 }) {
   const monday = getMonday(currentDate);
   const days = Array.from({ length: 7 }, (_, i) => addDays(monday, i));
@@ -480,6 +509,7 @@ function WeekView({
       onDayHeaderClick={onDayClick}
       dayStart={dayStart}
       dayEnd={dayEnd}
+      unavailableDates={unavailableDates}
     />
   );
 }
@@ -492,12 +522,14 @@ function DayView({
   onItemClick,
   dayStart,
   dayEnd,
+  unavailableDates,
 }: {
   events: CalendarEvent[];
   currentDate: Date;
   onItemClick: CalendarItemClick;
   dayStart: number;
   dayEnd: number;
+  unavailableDates?: Set<string>;
 }) {
   return (
     <TimeGrid
@@ -506,6 +538,7 @@ function DayView({
       onItemClick={onItemClick}
       dayStart={dayStart}
       dayEnd={dayEnd}
+      unavailableDates={unavailableDates}
     />
   );
 }
@@ -528,6 +561,11 @@ interface PlanningCalendarViewProps {
   dayStart?: number;
   /** End of the visible time window (hour, 1–24). Default: 17 */
   dayEnd?: number;
+  /**
+   * Date-keys ('YYYY-MM-DD') waarop de (enkel gefilterde) inspecteur niet
+   * beschikbaar is; die dagen worden gedempt weergegeven (PRD-12 §12.9).
+   */
+  unavailableDates?: Set<string>;
 }
 
 export function PlanningCalendarView({
@@ -539,6 +577,7 @@ export function PlanningCalendarView({
   onItemClick,
   dayStart = 8,
   dayEnd = 17,
+  unavailableDates,
 }: PlanningCalendarViewProps) {
   // Flatten planning items (including multi-day sessions) into calendar events
   const events = flattenToCalendarEvents(items);
@@ -551,6 +590,7 @@ export function PlanningCalendarView({
         onDayClick={onDayClick}
         onItemClick={onItemClick}
         onWeekClick={onWeekClick}
+        unavailableDates={unavailableDates}
       />
     );
   }
@@ -563,6 +603,7 @@ export function PlanningCalendarView({
         onDayClick={onDayClick}
         dayStart={dayStart}
         dayEnd={dayEnd}
+        unavailableDates={unavailableDates}
       />
     );
   }
@@ -573,6 +614,7 @@ export function PlanningCalendarView({
       onItemClick={onItemClick}
       dayStart={dayStart}
       dayEnd={dayEnd}
+      unavailableDates={unavailableDates}
     />
   );
 }

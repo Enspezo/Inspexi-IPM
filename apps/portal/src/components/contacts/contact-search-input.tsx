@@ -1,7 +1,8 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Spinner } from '@/components/ui/spinner';
+import { Spinner } from '@/components/ui';
 import { apiClient } from '@/lib/api-client';
+import { contactKeys } from '@/lib/query-keys';
 import type { Contact, PaginatedResponse } from '@/types';
 import { ContactType } from '@/types';
 import { CreateContactModal } from '@/pages/contacts/components/create-contact-modal';
@@ -49,9 +50,7 @@ export function ContactSearchInput({
 }: ContactSearchInputProps) {
   const [inputValue, setInputValue] = useState('');
   const [isSelected, setIsSelected] = useState(false);
-  const [results, setResults] = useState<Contact[]>([]);
   const [isOpen, setIsOpen] = useState(false);
-  const [isSearching, setIsSearching] = useState(false);
   const [activeIndex, setActiveIndex] = useState(-1);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
 
@@ -60,7 +59,7 @@ export function ContactSearchInput({
 
   // Auto-fetch the display name when value is provided but displayValue is not
   const { data: fetchedContact } = useQuery<Contact>({
-    queryKey: ['contacts', value],
+    queryKey: contactKeys.detail(value),
     queryFn: () => apiClient.get<Contact>(`/contacts/${value}`),
     enabled: !!value && !displayValue,
     staleTime: 5 * 60 * 1000,
@@ -85,38 +84,31 @@ export function ContactSearchInput({
   }, [value, displayValue, fetchedContact]);
 
   const debouncedQuery = useDebounce(isSelected ? '' : inputValue, 300);
+  const trimmedQuery = debouncedQuery.trim();
 
-  // Search when debounced query changes
+  // Search via TanStack Query (cached, deduped, race-safe) instead of a manual fetch.
+  const { data: searchData, isFetching: isSearching } = useQuery<PaginatedResponse<Contact>>({
+    queryKey: contactKeys.search(trimmedQuery),
+    queryFn: () =>
+      apiClient.get<PaginatedResponse<Contact>>(
+        `/contacts?search=${encodeURIComponent(trimmedQuery)}&limit=10`,
+      ),
+    enabled: trimmedQuery.length >= 2,
+    staleTime: 30 * 1000,
+  });
+  const results = searchData?.data ?? [];
+
+  // Open the dropdown when fresh results arrive for the current query; close otherwise.
   useEffect(() => {
-    if (debouncedQuery.trim().length < 2) {
-      setResults([]);
+    if (trimmedQuery.length >= 2 && results.length > 0) {
+      setIsOpen(true);
+      setActiveIndex(-1);
+    } else {
       setIsOpen(false);
-      return;
     }
-    let cancelled = false;
-    setIsSearching(true);
-    apiClient
-      .get<PaginatedResponse<Contact>>(
-        `/contacts?search=${encodeURIComponent(debouncedQuery)}&limit=10`,
-      )
-      .then((res) => {
-        if (!cancelled) {
-          const list = res.data || [];
-          setResults(list);
-          setIsOpen(list.length > 0);
-          setActiveIndex(-1);
-        }
-      })
-      .catch(() => {
-        if (!cancelled) setResults([]);
-      })
-      .finally(() => {
-        if (!cancelled) setIsSearching(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [debouncedQuery]);
+    // `searchData` identity changes per resolved query — stable, unlike `results`.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [trimmedQuery, searchData]);
 
   // Close on outside click
   useEffect(() => {
@@ -135,7 +127,6 @@ export function ContactSearchInput({
       setInputValue(name);
       setIsSelected(true);
       setIsOpen(false);
-      setResults([]);
       onSelect(contact.id, name);
     },
     [onSelect],
@@ -144,7 +135,6 @@ export function ContactSearchInput({
   const handleClear = () => {
     setInputValue('');
     setIsSelected(false);
-    setResults([]);
     setIsOpen(false);
     onSelect('', '');
     setTimeout(() => inputRef.current?.focus(), 0);

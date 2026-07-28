@@ -362,12 +362,13 @@ describe('Contacts API (e2e)', () => {
         .expect(404);
     });
 
-    it('returns 403 for other org contact', async () => {
-      // Org1 admin tries to access org2 contact
+    it('returns the same 404 for other org contact (WP-C1: 404-oracle, geen 403)', async () => {
+      // Org1 admin tries to access org2 contact — cross-tenant mag niet van
+      // "bestaat niet" te onderscheiden zijn (B-105).
       await request(app.getHttpServer())
         .get(`/api/v1/contacts/${org2ContactId}`)
         .set('Authorization', `Bearer ${org1AdminToken}`)
-        .expect(403);
+        .expect(404);
     });
   });
 

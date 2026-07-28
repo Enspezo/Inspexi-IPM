@@ -7,7 +7,7 @@ import {
 } from '@nestjs/common';
 import { User, Role, Prisma } from '@prisma/client';
 import { PrismaService } from '@/prisma';
-import { paginate, buildOrderBy, orgScope, assertAllSameOrg } from '@/common';
+import { paginate, buildOrderBy, orgScope, assertSameOrg, assertAllSameOrg, requireOrg } from '@/common';
 import { requestContext } from '@/common/services/request-context';
 import { EmailService } from '@/common/services/email.service';
 import { CustomFieldsValidator } from '@/modules/custom-fields/custom-fields.validator';
@@ -98,8 +98,10 @@ export class ContactsService {
   }
 
   async findOne(id: string, user: User) {
-    const contact = await this.prisma.contact.findUnique({
-      where: { id },
+    // WP-C1 (B-105): org-scope in de query zelf — een relatie van een andere
+    // org valt buiten het filter en geeft dezelfde 404 als "bestaat niet".
+    const contact = await this.prisma.contact.findFirst({
+      where: { id, ...orgScope(user) },
       include: {
         addresses: true,
         owner: { select: { id: true, firstName: true, lastName: true } },
@@ -150,27 +152,25 @@ export class ContactsService {
       throw new NotFoundException('Relatie niet gevonden');
     }
 
-    // Check org scoping
-    if (!user.roles.includes(Role.SUPERUSER) && contact.orgId !== user.orgId) {
-      throw new ForbiddenException();
-    }
-
     return contact;
   }
 
   async create(dto: CreateContactDto, user: User) {
-    const orgId = user.orgId;
-    if (!orgId && !user.roles.includes(Role.SUPERUSER)) {
-      throw new ForbiddenException('Geen organisatie gekoppeld');
-    }
+    // WP-B3 (B-503): effectieve org — voor een SUPERUSER op een org-subdomein
+    // is dat de tenant-org (via de TenantGuard); zonder org een nette NL-400
+    // in plaats van een Prisma-fout (500).
+    const orgId = requireOrg(user);
 
     const customFields = dto.customFields
-      ? await this.customFieldsValidator.validateAndSanitize(orgId!, 'CONTACT', dto.customFields)
+      ? await this.customFieldsValidator.validateAndSanitize(orgId, 'CONTACT', dto.customFields)
       : null;
+
+    // A supplied owner is read back by findOne — verify it is a user in the caller's org.
+    await assertSameOrg(this.prisma.user, dto.ownerId, orgId, 'Eigenaar');
 
     return this.prisma.contact.create({
       data: {
-        orgId: orgId!,
+        orgId,
         type: dto.type,
         companyName: dto.companyName,
         firstName: dto.firstName,
@@ -199,6 +199,8 @@ export class ContactsService {
     // Eigenaar wijzigen: alleen eigenaar, ORG_ADMIN of SUPERUSER
     if (dto.ownerId !== undefined) {
       this.assertOwnerOrAdmin(contact, user);
+      // The new owner is read back by findOne — verify it is a user in the caller's org.
+      await assertSameOrg(this.prisma.user, dto.ownerId, user.orgId, 'Eigenaar');
     }
 
     const oldCompanyName = contact.companyName;

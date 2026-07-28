@@ -84,6 +84,8 @@ export default function WorkOrderDetailPage() {
   const [isEditing, setIsEditing] = useState(false);
   const [statusChangeOpen, setStatusChangeOpen] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  // Fase-koppeling via custom control (buiten react-hook-form).
+  const [phaseId, setPhaseId] = useState<string | null>(null);
 
   // Meerwerk state
   const [lines, setLines] = useState<LineFormValues[]>([]);
@@ -113,6 +115,7 @@ export default function WorkOrderDetailPage() {
         startTime: toDatetimeLocal(workOrder.startTime),
         endTime: toDatetimeLocal(workOrder.endTime),
       });
+      setPhaseId(workOrder.projectPhaseId ?? null);
     }
   }, [workOrder, resetForm]);
 
@@ -176,6 +179,14 @@ export default function WorkOrderDetailPage() {
 
   const availableTransitions = statusTransitions[workOrder.status] ?? [];
 
+  // Werkbon heeft geen eigen projectId; het projectcontext komt van de planregel
+  // of van de al-gekoppelde fase (§12.4.2).
+  const workOrderProjectId =
+    workOrder.planningItem?.project?.id ??
+    workOrder.projectPhase?.projectId ??
+    null;
+  const phaseDirty = phaseId !== (workOrder.projectPhaseId ?? null);
+
   const lineTotals = lines.map(
     (l) => l.quantity * l.unitPrice,
   );
@@ -189,11 +200,12 @@ export default function WorkOrderDetailPage() {
         internalNotes: data.internalNotes || undefined,
         startTime: data.startTime ? new Date(data.startTime).toISOString() : undefined,
         endTime: data.endTime ? new Date(data.endTime).toISOString() : undefined,
+        ...(phaseDirty ? { projectPhaseId: phaseId } : {}),
       });
       setIsEditing(false);
       showToast('Werkbon bijgewerkt', 'success');
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Fout bij opslaan'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 
@@ -203,6 +215,7 @@ export default function WorkOrderDetailPage() {
       startTime: toDatetimeLocal(workOrder.startTime),
       endTime: toDatetimeLocal(workOrder.endTime),
     });
+    setPhaseId(workOrder.projectPhaseId ?? null);
     setIsEditing(false);
   };
 
@@ -230,8 +243,8 @@ export default function WorkOrderDetailPage() {
         })),
       });
       showToast('Meerwerk opgeslagen', 'success');
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Fout bij opslaan meerwerk'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 
@@ -339,6 +352,10 @@ export default function WorkOrderDetailPage() {
             onSubmit={handleSubmit(handleSaveEdit)}
             handleCancelEdit={handleCancelEdit}
             updateWorkOrder={updateWorkOrder}
+            projectId={workOrderProjectId}
+            phaseId={phaseId}
+            setPhaseId={setPhaseId}
+            phaseDirty={phaseDirty}
           />
         )}
 

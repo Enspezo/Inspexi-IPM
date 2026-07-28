@@ -222,9 +222,9 @@ export default function QuoteTemplateDetailPage() {
       setAutosaveStatus('saved');
       setIsDirty(false);
       showToast('Template opgeslagen', 'success');
-    } catch (err) {
+    } catch {
       setAutosaveStatus('error');
-      showToast(getErrorMessage(err, 'Opslaan mislukt'), 'error');
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 
@@ -250,8 +250,8 @@ export default function QuoteTemplateDetailPage() {
       await deleteMutation.mutateAsync(id!);
       showToast('Template gedeactiveerd', 'success');
       navigate('/quote-templates');
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Deactiveren mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 
@@ -268,8 +268,8 @@ export default function QuoteTemplateDetailPage() {
       try {
         await uploadAttachmentMutation.mutateAsync(formData);
         showToast('Bijlage toegevoegd', 'success');
-      } catch (err) {
-        showToast(getErrorMessage(err, 'Upload mislukt'), 'error');
+      } catch {
+        /* foutmelding wordt centraal getoond via useApiMutation */
       }
     };
     input.click();
@@ -307,8 +307,8 @@ export default function QuoteTemplateDetailPage() {
     try {
       await deleteAttachmentMutation.mutateAsync(attId);
       showToast('Bijlage verwijderd', 'success');
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Verwijderen mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 
@@ -326,9 +326,8 @@ export default function QuoteTemplateDetailPage() {
         await uploadDocxMutation.mutateAsync(formData);
         setDocxPreviewVersion((v) => v + 1);
         showToast('DOCX bestand geüpload', 'success');
-      } catch (err: any) {
-        const msg = err?.message || 'Upload mislukt';
-        showToast(msg, 'error');
+      } catch {
+        /* foutmelding wordt centraal getoond via useApiMutation */
       }
     };
     input.click();
@@ -542,7 +541,7 @@ export default function QuoteTemplateDetailPage() {
             try {
               await updateMutation.mutateAsync({ [linkModalField]: emailTemplateId });
               showToast('E-mailsjabloon gekoppeld', 'success');
-            } catch (err) { showToast(getErrorMessage(err, 'Koppelen mislukt'), 'error'); }
+            } catch { /* foutmelding wordt centraal getoond via useApiMutation */ }
           }}
         />
 

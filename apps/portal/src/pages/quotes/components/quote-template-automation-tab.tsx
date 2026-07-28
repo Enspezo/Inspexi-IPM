@@ -49,7 +49,9 @@ export function AutomationTab({
           try {
             await updateMutation.mutateAsync({ sendEmailTemplateId: null });
             showToast('E-mailsjabloon ontkoppeld', 'success');
-          } catch (err) { showToast(getErrorMessage(err, 'Ontkoppelen mislukt'), 'error'); }
+          } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
+    }
         }}
         onCreate={async () => {
           try {
@@ -62,7 +64,9 @@ export function AutomationTab({
             await updateMutation.mutateAsync({ sendEmailTemplateId: created.id });
             showToast('E-mailsjabloon aangemaakt en gekoppeld', 'success');
             navigate(`/email-templates/${created.id}`);
-          } catch (err) { showToast(getErrorMessage(err, 'Aanmaken mislukt'), 'error'); }
+          } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
+    }
         }}
         onLinkExisting={() => {
           setLinkModalType(EmailTemplateType.OFFERTE_VERSTUURD);
@@ -73,7 +77,9 @@ export function AutomationTab({
           try {
             await updateMutation.mutateAsync({ sendEmailEnabled: enabled });
             showToast(enabled ? 'E-mailsjabloon ingeschakeld' : 'E-mailsjabloon uitgeschakeld', 'success');
-          } catch (err) { showToast(getErrorMessage(err, 'Wijziging mislukt'), 'error'); }
+          } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
+    }
         }}
         isCreating={createEmailTemplateMutation.isPending}
         isUnlinking={updateMutation.isPending}
@@ -102,7 +108,9 @@ export function AutomationTab({
           try {
             await updateMutation.mutateAsync({ acceptedEmailTemplateId: null });
             showToast('E-mailsjabloon ontkoppeld', 'success');
-          } catch (err) { showToast(getErrorMessage(err, 'Ontkoppelen mislukt'), 'error'); }
+          } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
+    }
         }}
         onCreate={async () => {
           try {
@@ -115,7 +123,9 @@ export function AutomationTab({
             await updateMutation.mutateAsync({ acceptedEmailTemplateId: created.id });
             showToast('E-mailsjabloon aangemaakt en gekoppeld', 'success');
             navigate(`/email-templates/${created.id}`);
-          } catch (err) { showToast(getErrorMessage(err, 'Aanmaken mislukt'), 'error'); }
+          } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
+    }
         }}
         onLinkExisting={() => {
           setLinkModalType(EmailTemplateType.OFFERTE_GEACCEPTEERD);
@@ -126,7 +136,9 @@ export function AutomationTab({
           try {
             await updateMutation.mutateAsync({ acceptedEmailEnabled: enabled });
             showToast(enabled ? 'E-mailsjabloon ingeschakeld' : 'E-mailsjabloon uitgeschakeld', 'success');
-          } catch (err) { showToast(getErrorMessage(err, 'Wijziging mislukt'), 'error'); }
+          } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
+    }
         }}
         isCreating={createEmailTemplateMutation.isPending}
         isUnlinking={updateMutation.isPending}

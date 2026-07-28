@@ -5,7 +5,7 @@ import { useEffect, useMemo } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { Modal, Input, Select, Button, useToast } from '@/components/ui';
+import { Modal, Input, QueryErrorNotice, Select, Button, useToast } from '@/components/ui';
 import { getErrorMessage } from '@/lib/api-client';
 import { useAssetTypes } from '@/pages/asset-types/hooks/use-asset-types';
 import { useCreateAsset } from '../hooks/use-location-images';
@@ -35,7 +35,11 @@ export function CreateAssetModal({ isOpen, onClose, planId }: Props) {
 
   const needsPlanSelect = !planId;
   // Plannen alleen ophalen wanneer de selector nodig is en de modal open is.
-  const { data: plansData } = useInspectionPlans(
+  const {
+    data: plansData,
+    error: plansError,
+    refetch: refetchPlans,
+  } = useInspectionPlans(
     needsPlanSelect && isOpen ? { limit: 200, sortBy: 'createdAt', sortOrder: 'desc' } : {},
   );
 
@@ -89,8 +93,8 @@ export function CreateAssetModal({ isOpen, onClose, planId }: Props) {
       });
       showToast('Asset aangemaakt', 'success');
       onClose();
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Aanmaken mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 
@@ -98,12 +102,15 @@ export function CreateAssetModal({ isOpen, onClose, planId }: Props) {
     <Modal isOpen={isOpen} onClose={onClose} title="Nieuwe asset">
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
         {needsPlanSelect && (
-          <Select
-            label="Inspectie"
-            options={planOptions}
-            error={errors.planId?.message}
-            {...register('planId')}
-          />
+          <>
+            <Select
+              label="Inspectie"
+              options={planOptions}
+              error={errors.planId?.message}
+              {...register('planId')}
+            />
+            <QueryErrorNotice error={plansError} label="Inspecties" onRetry={refetchPlans} />
+          </>
         )}
 
         <Select

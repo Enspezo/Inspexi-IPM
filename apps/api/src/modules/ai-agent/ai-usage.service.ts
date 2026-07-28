@@ -16,7 +16,7 @@ export interface AnthropicUsage {
 }
 
 /**
- * Metering + fair-use-quota voor de AI-assistent (PRD-12 §7.5). Vast maandbedrag
+ * Metering + fair-use-quota voor de AI-assistent (PRD-15 §7.5). Vast maandbedrag
  * per org; het token-plafond is een misbruik-grens, geen doorbelasting.
  */
 @Injectable()

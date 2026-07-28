@@ -1,9 +1,8 @@
-import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
+import { useApiMutation } from '@/hooks/use-api-mutation';
 import { apiClient } from '@/lib/api-client';
+import { calibrationKeys, measurementInstrumentKeys } from '@/lib/query-keys';
 import type { Calibration } from '@/types';
-
-const CAL_KEY = 'calibrations';
-const INSTRUMENT_KEY = 'measurement-instruments';
 
 /** Velden van het kalibratie-formulier (datum als ISO yyyy-MM-dd). */
 export interface CalibrationFormValues {
@@ -26,13 +25,13 @@ function toFormData(values: CalibrationFormValues): FormData {
 
 /** Een kalibratie-mutatie herberekent de cache op het meetmiddel → ook instrument-queries invalideren. */
 function invalidate(qc: QueryClient, instrumentId: string) {
-  qc.invalidateQueries({ queryKey: [CAL_KEY, instrumentId] });
-  qc.invalidateQueries({ queryKey: [INSTRUMENT_KEY] });
+  qc.invalidateQueries({ queryKey: calibrationKeys.byInstrument(instrumentId) });
+  qc.invalidateQueries({ queryKey: measurementInstrumentKeys.all });
 }
 
 export function useCalibrations(instrumentId: string | undefined) {
   return useQuery<Calibration[]>({
-    queryKey: [CAL_KEY, instrumentId],
+    queryKey: calibrationKeys.byInstrument(instrumentId as string),
     queryFn: () =>
       apiClient.get<Calibration[]>(`/measurement-instruments/${instrumentId}/calibrations`),
     enabled: !!instrumentId,
@@ -41,7 +40,7 @@ export function useCalibrations(instrumentId: string | undefined) {
 
 export function useCreateCalibration(instrumentId: string) {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (values: CalibrationFormValues) =>
       apiClient.upload<Calibration>(
         `/measurement-instruments/${instrumentId}/calibrations`,
@@ -53,7 +52,7 @@ export function useCreateCalibration(instrumentId: string) {
 
 export function useUpdateCalibration(instrumentId: string) {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: ({ calId, values }: { calId: string; values: CalibrationFormValues }) =>
       apiClient.upload<Calibration>(
         `/measurement-instruments/${instrumentId}/calibrations/${calId}`,
@@ -66,7 +65,7 @@ export function useUpdateCalibration(instrumentId: string) {
 
 export function useDeleteCalibration(instrumentId: string) {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (calId: string) =>
       apiClient.delete(`/measurement-instruments/${instrumentId}/calibrations/${calId}`),
     onSuccess: () => invalidate(qc, instrumentId),
@@ -76,7 +75,7 @@ export function useDeleteCalibration(instrumentId: string) {
 /** Alleen het certificaat verwijderen; de kalibratie blijft bestaan. */
 export function useDeleteCalibrationDocument(instrumentId: string) {
   const qc = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (calId: string) =>
       apiClient.delete<Calibration>(
         `/measurement-instruments/${instrumentId}/calibrations/${calId}/document`,

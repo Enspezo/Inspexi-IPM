@@ -130,8 +130,8 @@ function NumberingSchemeCard({ scheme }: { scheme: NumberingScheme }) {
     try {
       await updateMutation.mutateAsync({ model: scheme.model, data });
       showToast('Nummering opgeslagen', 'success');
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Opslaan mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 

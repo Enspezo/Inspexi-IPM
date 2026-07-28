@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/providers/auth-provider';
 import { useTenant } from '@/providers/tenant-provider';
 import { apiClient } from '@/lib/api-client';
+import { organizationKeys } from '@/lib/query-keys';
 import { getOrgUrl, getBaseDomainUrl } from '@/lib/tenant';
 import { Role } from '@/types';
 import type { Organization } from '@/types';
@@ -21,7 +22,7 @@ export function OrgSwitcher() {
 
   // Fetch all organizations
   const { data: orgs } = useQuery({
-    queryKey: ['organizations'],
+    queryKey: organizationKeys.all,
     queryFn: () =>
       apiClient.get<Organization[]>('/organizations').then((data) => data),
     staleTime: 5 * 60 * 1000,

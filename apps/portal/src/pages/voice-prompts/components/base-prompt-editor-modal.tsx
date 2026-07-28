@@ -52,8 +52,8 @@ export function BasePromptEditorModal({ isOpen, onClose, prompt }: Props) {
         showToast('Base-prompt aangemaakt (nog niet actief)', 'success');
       }
       onClose();
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Opslaan mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   };
 

@@ -1,6 +1,8 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useApiMutation } from '@/hooks/use-api-mutation';
 import { apiClient } from '@/lib/api-client';
 import type { Note, NoteEntityType, PaginatedResponse } from '@/types';
+import { noteKeys } from '@/lib/query-keys';
 
 interface ListNotesParams {
   search?: string;
@@ -28,7 +30,7 @@ export function useNotes(
   const qs = searchParams.toString();
 
   return useQuery<PaginatedResponse<Note>>({
-    queryKey: ['notes', params],
+    queryKey: noteKeys.list(params),
     queryFn: () => apiClient.get<PaginatedResponse<Note>>(`/notes${qs ? `?${qs}` : ''}`),
     enabled: options?.enabled,
   });
@@ -36,7 +38,7 @@ export function useNotes(
 
 export function useEntityNotes(entityType: NoteEntityType, entityId: string) {
   return useQuery<Note[]>({
-    queryKey: ['notes', 'entity', entityType, entityId],
+    queryKey: noteKeys.byEntity(entityType, entityId),
     queryFn: () =>
       apiClient.get<Note[]>(`/notes/by-entity?entityType=${entityType}&entityId=${entityId}`),
     enabled: !!entityId,
@@ -52,12 +54,12 @@ interface CreateNoteDto {
 
 export function useCreateNote() {
   const queryClient = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (data: CreateNoteDto) => apiClient.post<Note>('/notes', data),
     onSuccess: (_data, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['notes'] });
+      queryClient.invalidateQueries({ queryKey: noteKeys.all });
       queryClient.invalidateQueries({
-        queryKey: ['notes', 'entity', variables.entityType, variables.entityId],
+        queryKey: noteKeys.byEntity(variables.entityType, variables.entityId),
       });
     },
   });
@@ -65,21 +67,21 @@ export function useCreateNote() {
 
 export function useUpdateNote() {
   const queryClient = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: ({ id, content }: { id: string; content: string }) =>
       apiClient.patch<Note>(`/notes/${id}`, { content }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['notes'] });
+      queryClient.invalidateQueries({ queryKey: noteKeys.all });
     },
   });
 }
 
 export function useDeleteNote() {
   const queryClient = useQueryClient();
-  return useMutation({
+  return useApiMutation({
     mutationFn: (id: string) => apiClient.delete(`/notes/${id}`),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['notes'] });
+      queryClient.invalidateQueries({ queryKey: noteKeys.all });
     },
   });
 }

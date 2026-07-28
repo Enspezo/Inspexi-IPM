@@ -2,10 +2,14 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { z } from 'zod';
+import { nlErrorMap } from '@/lib/zod-error-map';
 import { TenantProvider } from '@/providers/tenant-provider';
 import { AuthProvider } from '@/providers/auth-provider';
 import { FeatureProvider } from '@/providers/feature-provider';
 import { ConfirmProvider, ToastProvider } from '@/components/ui';
+import { QueryErrorToastBridge } from '@/components/query-error-toast-bridge';
+import { createAppQueryCache } from '@/lib/query-error-toast';
 import { QuickCreateProvider } from '@/providers/quick-create-provider';
 import { WindowTabsProvider } from '@/providers/window-tabs';
 import { ChatProvider } from '@/providers/chat-provider';
@@ -17,7 +21,13 @@ import './styles/index.css';
 
 registerGlobalErrorReporter();
 
+// Nederlandse zod-defaults (WP-C1 / B-501) — expliciete messages blijven leidend.
+z.setErrorMap(nlErrorMap);
+
 const queryClient = new QueryClient({
+  // Query-fouten nooit stil laten falen: console.error + (gededupte) toast
+  // via de bridge in de ToastProvider (WP-B6 / B-305).
+  queryCache: createAppQueryCache(),
   defaultOptions: {
     queries: {
       retry: 1,
@@ -35,6 +45,7 @@ createRoot(document.getElementById('root')!).render(
           <AuthProvider>
             <FeatureProvider>
               <ToastProvider>
+                <QueryErrorToastBridge />
                 <ConfirmProvider>
                   <ChatProvider>
                     <AiAgentProvider>

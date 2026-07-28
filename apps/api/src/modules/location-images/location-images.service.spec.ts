@@ -88,11 +88,17 @@ describe('LocationImagesService', () => {
 
   // ── uploadImage ──
   describe('uploadImage', () => {
+    // Echte PNG magic bytes — de upload valideert sinds WP-B4 op inhoud en
+    // bepaalt daaruit ook de opslagextensie (niet meer uit `originalname`).
+    const pngBuffer = Buffer.concat([
+      Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+      Buffer.from([0x00, 0x00, 0x00, 0x0d]),
+    ]);
     const file = {
       originalname: 'plan.png',
-      buffer: Buffer.from('data'),
+      buffer: pngBuffer,
       mimetype: 'image/png',
-      size: 4,
+      size: pngBuffer.length,
     } as Express.Multer.File;
 
     it('uploads with the org-scoped key pattern and upserts (no existing image)', async () => {
@@ -105,10 +111,11 @@ describe('LocationImagesService', () => {
 
       const result = await service.uploadImage('loc-1', user, file, 'device-9');
 
-      // storage.upload called with key `${orgId}/${uuid}-${filename}`
+      // storage.upload called with key `${orgId}/${uuid}.{ext}` — extensie uit
+      // de gedetecteerde inhoud, niet uit `originalname` (WP-B4)
       expect(mockStorage.upload).toHaveBeenCalledTimes(1);
       const [key, buffer, mime] = mockStorage.upload.mock.calls[0];
-      expect(key).toMatch(/^org-1\/[0-9a-f-]{36}-plan\.png$/);
+      expect(key).toMatch(/^org-1\/[0-9a-f-]{36}\.png$/);
       expect(buffer).toBe(file.buffer);
       expect(mime).toBe('image/png');
 

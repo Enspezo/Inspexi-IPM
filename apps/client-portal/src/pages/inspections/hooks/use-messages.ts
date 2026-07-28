@@ -1,10 +1,11 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api-client';
+import { clientMessageKeys } from '@/lib/query-keys';
 import type { InspectionMessage } from '@/types';
 
 export function useMessages(inspectionId: string | undefined) {
   return useQuery<InspectionMessage[]>({
-    queryKey: ['client-messages', inspectionId],
+    queryKey: clientMessageKeys.byInspection(inspectionId as string),
     queryFn: () => apiClient.get<InspectionMessage[]>(`/client/inspections/${inspectionId}/messages`),
     enabled: !!inspectionId,
     refetchInterval: 15000, // lichte polling voor nieuwe staf-berichten
@@ -16,7 +17,8 @@ export function useSendMessage(inspectionId: string) {
   return useMutation({
     mutationFn: (content: string) =>
       apiClient.post(`/client/inspections/${inspectionId}/messages`, { content }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['client-messages', inspectionId] }),
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: clientMessageKeys.byInspection(inspectionId) }),
   });
 }
 

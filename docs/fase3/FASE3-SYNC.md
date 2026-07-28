@@ -197,3 +197,240 @@ Aparte PR in de PWA-repo.
 > **PWA-cutover (aparte repo):** zie **`docs/fase3/PWA-CUTOVER-ASSET-NODE.md`** — nieuw
 > contract, Dexie v9→v10 (merge assets+locations → `assetNodes`), offline aanmaken zonder
 > plan-link, en de cutover-volgorde met rollback.
+
+## 9. WP-C3 — sync-hardening serverzijde (additief, geen contract-bump)
+
+> Wijzigingen uit het herstelplan (B-203/B-212/B-216/B-217/B-218). Alles hieronder is
+> **additief of server-side afdwingend** binnen contract v3 — geen versie-bump; een oude
+> PWA blijft werken (onbekende keys negeren, extra validatie uit zich als bestaande
+> `errors[]`-records).
+
+### 9.1 Push-respons: `assigned[]` (B-203 — server-toegekende waarden)
+De push-respons draagt een **nieuwe top-level key** naast `processed`/`conflicts`/`errors`:
+
+```jsonc
+{ "success": true, "data": {
+  "processed": { ... },
+  "assigned": [
+    { "entityType": "assetNode", "entityId": "<client-UUID>", "nodeNumber": "EI-0035" }
+  ],
+  "conflicts": [ ... ], "errors": [ ... ], "serverTime": "ISO"
+} }
+```
+
+- Eén record per **succesvolle** assetNode-write waarvoor de server een waarde heeft
+  toegekend: bij `create` het vers gegenereerde `nodeNumber`, bij een idempotente
+  create-retry of `update` het bestaande server-nummer.
+- **Clientafspraak:** neem `nodeNumber` direct over in het lokale record (vervang
+  "concept") — wacht niet op de volgende pull; de pull-cursor ligt ná de push en levert
+  het record niet opnieuw.
+- De set server-toegekende velden kan later additief groeien; onbekende velden in een
+  `assigned`-record negeren.
+
+### 9.2 Per-record fouten zijn functioneel NL (B-212)
+`errors[].error` (push én resolve) bevat nooit meer implementatiedetails (serverpad,
+broncoderegels, payload, constraintnamen). Eigen validatiefouten blijven ongewijzigde
+NL-meldingen; onverwachte fouten worden gemapt (bv. P2003 → "Verwijzing naar
+niet-bestaande gegevens", P2002 → "Deze waarde bestaat al") met een suffix
+`(referentie <id>)` dat aan de serverlog koppelt. De PWA kan `errors[].error` dus
+onbewerkt in `syncRetryMeta.lastError` bewaren.
+
+### 9.3 Serverzijdige validaties (uiten zich als `errors[]`-records)
+- **`typeCode` gevalideerd (B-203):** een assetNode-`create` (en een `update` die
+  `typeCode` wijzigt) vereist een bestaande `AssetTypeDefinition`
+  (ASSET) of `LocationTypeDefinition` (LOCATION), org-eigen of systeem. Lege/onbekende
+  waarde → `Geen assettype opgegeven…` / `Onbekend assettype "…"`. Een ongewijzigde
+  echo van legacy records blijft werken. Nummering weigert bovendien een
+  leeg-resolvende `[typecode]`-placeholder (geen `-0033`-nummers meer).
+- **Dieptegrens (B-216):** `MAX_ASSET_DEPTH = 10` (wortel = diepte 0) wordt op **nieuwe**
+  creates en re-parents gehandhaafd (`Maximale nestdiepte (10) bereikt`); bestaande te
+  diepe bomen blijven leesbaar/bewerkbaar.
+- **Toewijzings-rolguard (B-217, beslispunt A6-optie b):** `assignedTo`/`reviewerId` op
+  een inspectieplan mogen alleen door REVIEW_ROLES (SUPERUSER/ORG_ADMIN/MANAGER/
+  WERKVOORBEREIDER) **gewijzigd** worden. Een ongewijzigde echo (de PWA pusht volledige
+  records) passeert altijd; een INSPECTEUR mag een zelf offline aangemaakt plan wel aan
+  zichzelf toewijzen. Geweigerde wijziging → `errors[]` met NL-melding; de velden blijven
+  in de whitelist (geen contractversmalling).
+- Al deze guards gelden ook voor `resolve` (client/merge-resoluties).
+
+### 9.4 Submit-side-effects via sync (B-218)
+Een push (of resolve) die een plan naar `pending_review` brengt start server-side
+dezelfde keten als de REST-submit: notificatie `INSPECTIEPLAN_TER_REVIEW` aan
+reviewer → project-PM → toegewezen inspecteur (indiener uitgesloten) + de automatische
+AI-voorcontrole (PRD-13, guards in `startRun`). Ontbreekt `submittedAt` in de payload,
+dan vult de server hem in dezelfde write. Fire-and-forget: kan de push nooit laten falen.
+
+## 10. v4 — universeel versie-anker `updatedAt` + conflicten in de pull (WP-D1)
+
+> **Contract-bump v3 → v4** (`contractVersion: 4` in elke pull). Eigenaarsbesluit **A1**
+> (28-07-2026): `updatedAt` is het universele versie-anker voor sync-conflictdetectie.
+> Bevindingen: **B-209** (stille overschrijving zolang `synced_at` NULL was) en
+> **B-223e** (conflicten onzichtbaar in een nieuwe sessie).
+
+### 10.1 Versie-anker: `baseVersion` (push)
+
+- Elke **update** (en elke create-adoptie van een al bestaand record) draagt
+  **`data.baseVersion`**: de nieuwste server-`updatedAt` (ISO) die de client voor dat
+  record heeft gezien — gevuld bij de pull en bijgewerkt bij elke push-ack (zie 10.2).
+- Serverbeslissing: `server.updatedAt > baseVersion` → **conflict**. De vergelijking is
+  `>` (niet `≠`): een basis die ná de serverstaat ligt (bv. de push-ack-`serverTime`
+  van een v3-transitieclient) geeft géén vals zelf-conflict.
+- **Fail-closed (kern van B-209):** ontbreekt élk anker bij een update/adoptie van een
+  bestaand record — of is het onparseerbaar — dan is dat een **conflict**. "Geen basis
+  bekend" betekent nooit meer "geen conflict".
+- **Benigne create-retry:** een create voor een al bestaand record zónder anker waarvan
+  de payload **byte-identiek** aan de serverstaat is (de klassieke retry nadat de
+  push-respons verloren ging) is een veilige no-op-success — elke inhoudelijke afwijking
+  valt in het fail-closed conflictpad.
+- Echte creates (record bestaat nog niet) hebben geen anker nodig.
+- Legacy: `data.syncedAt` (v3-anker) wordt alléén nog gelezen als `baseVersion` ontbreekt
+  (in-flight v3-pushes tijdens de deploy-overgang); het pad is verder identiek.
+
+### 10.2 Push-respons: `applied[]`
+
+Naast `processed`/`assigned`/`conflicts`/`errors` draagt de push-respons per **geslaagde
+create/update** de nieuwe base-versie:
+
+```jsonc
+{ "applied": [
+  { "entityType": "inspectionPlan", "entityId": "<uuid>", "serverVersion": "ISO-updatedAt" }
+] }
+```
+
+**Clientafspraak:** zet lokaal `serverUpdatedAt = serverVersion` per record (exacter dan
+de globale `serverTime`, die een portal-write bínnen het push-venster zou maskeren).
+Deletes hebben geen `applied`-record. `/sync/resolve` gaf de nieuwe versie al terug via
+`results[].serverVersion` — dat blijft ongewijzigd.
+
+### 10.3 Pull-envelope: `openConflicts[]` (B-223e)
+
+Elke pull draagt de **volledige** set openstaande conflicten van de **ingelogde
+gebruiker** (org- én user-gescoped, bewust NIET `since`-gefilterd; max. één per record
+door de bestaande dedup):
+
+```jsonc
+{ "openConflicts": [
+  {
+    "entityType": "assetNode", "entityId": "<uuid>", "deviceId": "…",
+    "conflictAt": "ISO", "serverVersion": "ISO-updatedAt op conflictmoment",
+    "serverData": { "…": "wire-gestript (nooit internalNotes)" },
+    "clientData": { "…": "de niet-toegepaste client-payload" }
+  }
+] }
+```
+
+**Clientafspraak:** registreer elk item in de lokale conflictadministratie (badge-/
+bannerflow) en **reconcilieer**: een lokaal openstaand conflict dat NIET in de gepulde
+set zit is elders opgelost → lokaal opruimen. De sleutel is altijd aanwezig in v4
+(desnoods leeg); een afwezige sleutel betekent een pre-v4-server en is geen reden om
+lokale conflicten te wissen. Serverzijde: `imp_sync_queue` kreeg hiervoor een
+`org_id`-kolom (gebackfilld via de pushende gebruiker).
+
+### 10.4 `synced_at` is overal gevuld
+
+- **Backfill (migratie `20260728061433_wp_d1_sync_queue_org_backfill_synced_at`):**
+  `synced_at = updated_at WHERE synced_at IS NULL` op alle zeven sync-tabellen —
+  verplicht vóór release (besluit A1).
+- **Middleware:** elke serverwrite (REST/portal-services, client-repair, seeds via de
+  API) op de zeven sync-modellen stempelt voortaan `syncedAt` — met `updatedAt` en
+  `syncedAt` uit ÉÉN stempel (geen ms-skew, zie PR #144). De `/sync`-paden stempelden
+  al zelf en worden niet dubbel gestempeld. De seed zet dezelfde basis via een rauwe
+  UPDATE-pass.
+
+### 10.5 Compatibiliteit & uitrol
+
+- **Oude (v3-)PWA tegen v4-server:** de pull-guard van de PWA eist gelijkheid en
+  blokkeert de sync met "App bijwerken nodig"; omdat elke synccyclus met de pull begint,
+  bereikt een v3-client de push daarna niet. Een **in-flight** v3-push (race tijdens de
+  deploy) draagt `syncedAt` en valt op het legacy-anker terug — bij een record zonder
+  `syncedAt` geldt fail-closed = conflict, nooit stille overschrijving.
+- **Nieuwe (v4-)PWA tegen v3-server:** dezelfde guard blokkeert (contract 3 ≠ 4).
+- **Uitrolvolgorde:** Beheer-API en PWA samen deployen (API eerst); de PWA-build v4
+  activeert bij de eerstvolgende refresh (vite-plugin-pwa). In het tussenvenster werken
+  inspecteurs offline door; er gaat niets verloren.
+- **Pre-deploy prod:** migratie draaien (bevat de verplichte backfill; zie ook
+  `apps/api/scripts/backfill-synced-at-skew.ts` voor de eerdere skew-reparatie).
+
+## 11. Canonieke `MeasurementSheetRecord.data`-vorm (WP-D2, binnen v4)
+
+> Eigenaarsbesluit **A2** (28-07-2026): de **servervorm is canoniek**. Bevinding:
+> **B-205 deel 2** (contractdivergentie tussen de twee schrijvers van
+> `MeasurementSheetRecord.data`). **Géén contract-bump** — zie 11.4.
+
+### 11.1 De canonieke vorm
+
+```jsonc
+{
+  "<sectionCode>": {                 // sectie uit de template(-snapshot)
+    "<rijnummer>": {                 // rij-sleutel: uitsluitend cijfers ("0", "1", …)
+      "<fieldCode>": {
+        "value": "…",                // ingevulde waarde (verplicht aanwezig, mag null)
+        "passFail": "pass|fail|null" // uitkomst pass/fail-evaluatie (optioneel)
+      }
+    }
+  },
+  "__usedInstrumentsSnapshot": []    // server-owned metadata; __-prefix = gereserveerd
+}
+```
+
+- **Niet-herhalende secties zijn gewoon rij `"0"`** — de datavorm kent geen
+  `rows`/`values`-onderscheid; dat onderscheid leeft in de template.
+- De verouderde PWA-runtimevorm
+  `{ "sections": { "<code>": { "rows": [ { veld: waarde } ] } | { "values": {…} } } }`
+  is **niet langer geldig op de wire**.
+
+### 11.2 Afdwinging (server)
+
+`sheetRecordDataSchema` (`apps/api/src/modules/measurement-sheet-records/schemas/`)
+is niet langer een permissieve placeholder maar valideert de vorm hierboven, op:
+
+- **REST** `PATCH /measurement-sheet-records/:id` (create accepteert geen client-data);
+- de **`/sync`-push** (create + update, via `toDbData`) — een afwijkende vorm wordt een
+  per-record `errors[]`-item met een gerichte NL-melding
+  (`Ongeldige meetstaatgegevens: heeft de verouderde app-vorm …`);
+- **`/sync/resolve`** (de bewaarde conflict-payloads lopen door hetzelfde pad).
+
+Er is **géén echo-tolerantie** voor de oude vorm: de push verstuurt uitsluitend lokaal
+geschreven records, en een bijgewerkte PWA schrijft (en migreert, zie 11.3) altijd de
+canonieke vorm. Een pre-D2-app die de oude vorm pusht krijgt een nette fout, het record
+blijft lokaal pending en de eerstvolgende app-update herstelt het vanzelf
+(Dexie-migratie → re-push) — fail-safe, nooit stille dataverlies.
+
+### 11.3 Datamigraties (beide kanten)
+
+- **Server** (migratie `20260728100000_canonicalize_sheet_record_data`): pakt de
+  `sections`-wrapper uit naar de canonieke vorm — `rows[i]` → rij-sleutel `"i"` (dicht
+  hernummerd), `values` → rij `"0"`, platte veldwaarde → `{ value, passFail: null }`
+  (de legacy-vorm droeg nooit een pass/fail-uitkomst). Bij de **gemengde vorm**
+  (`{ …serverkeys, sections: {…} }`, ontstaan ná de WP-B1-crashguard) wint de
+  sections-inhoud per sectie. Ook openstaande `imp_sync_queue`-conflicten voor
+  `measurementSheetRecord` worden geconverteerd (payload + bewaarde serverstaat), anders
+  zou `/sync/resolve` ze na de afdwinging niet meer kunnen toepassen. `updated_at`/
+  `synced_at` blijven onaangeraakt — anders zou elk gemigreerd record een vals
+  v4-versieanker-conflict geven. Idempotent.
+- **PWA** (Dexie **v17 → v18**): dezelfde uitpak-regels voor lokale
+  `measurementSheetRecords` (incl. pending records — die pushen daarna vanzelf de
+  canonieke vorm) én voor de bewaarde conflict-snapshots in `syncRetryMeta`
+  (`serverData`/`clientData`). De PWA-schrijfpaden (`setFieldValue`/`addRow`/…)
+  produceren sindsdien native de canonieke vorm; `asRecordData()` houdt een
+  transitionele read-fallback die een onverhoopt achtergebleven legacy-vorm on-the-fly
+  converteert (en de eerstvolgende save schrijft canoniek terug).
+
+### 11.4 Waarom geen contract-bump (v4 blijft)
+
+1. De canonieke vorm **wás al het gedocumenteerde contract**: de gedeelde typedef
+   `MeasurementSheetRecordData` (PWA `@inspectie/shared`) én de REST-DTO beschreven
+   precies deze vorm; de `sections`-wrapper was een client-interne afwijking die op de
+   wire lekte — WP-D2 wijzigt het contract niet, maar dwingt het af.
+2. Een bump bestaat om incompatibele peers elkaar te laten weigeren. De enige client
+   die ooit de oude vorm stuurde is de pre-golf-4-PWA, en die is al buitengesloten
+   door de **v4-pull-guard van WP-D1**; elke v4-capabele PWA-build bevat ook D2.
+3. Voor het theoretische tussenvenster (D1-server zonder D2-PWA) is de strikte afwijzing
+   fail-safe én zelfherstellend (zie 11.2) — een v5 zou daar niets aan toevoegen.
+
+### 11.5 Pre-deploy prod
+
+1. `prisma migrate deploy` (bevat `canonicalize_sheet_record_data` — de datamigratie).
+2. Beheer-API en PWA samen deployen (API eerst), zoals bij v4 (10.5).
+3. Post-check: `SELECT count(*) FROM imp_measurement_sheet_records WHERE
+   jsonb_typeof(data->'sections') = 'object';` → moet 0 zijn.

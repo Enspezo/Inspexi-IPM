@@ -47,33 +47,55 @@ export class TenantMiddleware implements NestMiddleware {
     }
 
     // Org subdomain → look up by slug (alleen actieve orgs).
-    // Bescherm tegen brute-force enumeratie van geldige slugs: na te veel
-    // mislukte (404) lookups vanaf hetzelfde IP tijdelijk 429 + Retry-After.
+    //
+    // B-511 §3: de lookup gebeurt VÓÓR de blokkade-check zodat bestaande
+    // organisaties (actief én inactief) nooit collateral zijn van de
+    // enumeratieblokkade — drie typefouten achter één kantoor-NAT mogen een
+    // geldig subdomein niet vijf minuten platleggen. Alleen écht onbekende
+    // slugs tellen mee én worden geblokkeerd; een bestaande-maar-inactieve org
+    // geeft 404 (offboarding) zonder de teller te raken. Bewuste trade-off
+    // (beslispunt B4): de guard beperkt het témpo van onbekende-slug-probes,
+    // niet de zichtbaarheid van reeds bekende subdomeinen.
     const clientIp = req.ip ?? 'unknown';
+    const org = await this.findOrgBySlug(result.slug);
+
+    if (org) {
+      if (!org.isActive) {
+        // WP-C1 (B-601): zelfde body-shape (`success: false`) als filter-fouten.
+        res.status(404).json({
+          success: false,
+          message: `Organisatie '${result.slug}' niet gevonden`,
+          statusCode: 404,
+        });
+        return;
+      }
+      req.tenant = { slug: result.slug, organization: org, orgId: org.id, isSuperuserDomain: false };
+      return next();
+    }
+
     const blockedSeconds = this.enumerationGuard.isBlocked(clientIp);
     if (blockedSeconds > 0) {
       res.setHeader('Retry-After', String(blockedSeconds));
+      // WP-C1 (B-601): zelfde body-shape (`success: false`) als de guard-429's
+      // die via de AllExceptionsFilter lopen.
       res.status(429).json({
-        statusCode: 429,
+        success: false,
         message: 'Te veel pogingen, probeer later opnieuw',
+        statusCode: 429,
       });
       return;
     }
 
-    const org = await this.findOrgBySlug(result.slug);
-    if (!org || !org.isActive) {
-      // Tel alleen mislukte lookups (404) — een geslaagde resolutie hieronder
-      // raakt de teller nooit aan, zodat legitiem verkeer nooit blokkeert.
-      this.enumerationGuard.recordFailure(clientIp);
-      res.status(404).json({
-        statusCode: 404,
-        message: `Organisatie '${result.slug}' niet gevonden`,
-      });
-      return;
-    }
-
-    req.tenant = { slug: result.slug, organization: org, orgId: org.id, isSuperuserDomain: false };
-    return next();
+    // Tel alleen mislukte lookups van onbekende slugs — een geslaagde
+    // resolutie hierboven raakt de teller nooit aan.
+    this.enumerationGuard.recordFailure(clientIp);
+    // WP-C1 (B-601): zelfde body-shape (`success: false`) als filter-fouten.
+    res.status(404).json({
+      success: false,
+      message: `Organisatie '${result.slug}' niet gevonden`,
+      statusCode: 404,
+    });
+    return;
   }
 
   /**

@@ -10,7 +10,7 @@
 | B-409 (anonimisering hersteller) | C2 | Wacht op beslispunt A4 | `03-beslispunten-backlog.md` §A A4 |
 | B-220 (offline inloggen na uitloggen) | D3 | Wacht op beslispunt A5 | `03-beslispunten-backlog.md` §A A5 |
 | B-209/B-223e (nasleep) | D1 | **Opgelost** (#165 + InspeXi #37). Restpunten: deletes kennen geen versieanker; auto-resolve "client wint" op inspecteur-eigen typen beslecht fail-closed-conflicten daar automatisch (bestaand beleid, max 1×); `openConflicts` is bewust user-gescoped (stafbrede zichtbaarheid vergt een portal-UI); v3-`syncedAt`-fallback blijft één transitievenster server-side (schoonmaak-PR later) | PR #165-body |
-| B-205b (canonieke datavorm) | D2 | In uitvoering (A2 besloten 28-07: servervorm canoniek). Mitigatie al gemerged: defensieve asRecordData (WP-B1) | WP-D2 |
+| B-205b (nasleep) | D2 | **Opgelost** (#167 + InspeXi #38). Restpunten: uit legacy gemigreerde waarden dragen `passFail: null` tot de eerstvolgende bewerking (COMPLETED legacy-records behouden null — die uitkomst bestond in de oude vorm ook niet); `asRecordData`-fallback gemarkeerd als transitie-code. **Pre-deploy prod: `prisma migrate deploy` vóór de nieuwe API-image** (post-check-query in PR #167/§11.5) | PR #167-body + FASE3-SYNC §11 |
 | B-223a (pull-scope inspecteur) | C3 | Wacht op beslispunt A3 | `03-beslispunten-backlog.md` §A A3 |
 | B-402/B-403 (dead-end blijft) | B9 | Alleen mitigatie: klant wordt niet meer misleid + org krijgt e-mail; stafzijde = Epic 1/2 | `03-beslispunten-backlog.md` §C |
 | B-315 (lines.0.-prefix) | B5 | Geneste DTO-fouten dragen ValidationPipe-prefix voor directe API-callers; ontprefixing hoort bij WP-C1 | WP-C1 (golf 3) |

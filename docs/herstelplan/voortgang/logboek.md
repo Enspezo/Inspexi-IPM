@@ -46,6 +46,15 @@ Conform `docs/testprogramma/00-master-testplan.md` §5: API `:3001` (`NODE_ENV=t
 
 ## Chronologisch logboek
 
+### 28 juli 2026 — Follow-up F2: testprogramma-docs bijgewerkt op het A3-besluit
+
+- Branch `docs/ins01-a3-besluit`. Alleen documentatie, geen code.
+- `05-actor-inspecteur-pwa.md` INS-01-orakel herschreven naar het huidige gedrag (besluit A3, optie b — InspeXi #40): alle org-plannen zichtbaar onder de neutrale naam "Inspecties", KPI "Toegewezen" telt alleen eigen plannen, "Toegewezen aan mij"-badge.
+- `logboek-INS.md` INS-01-kanttekening gemarkeerd als destijds-waarneming met de A3-eindstand erbij.
+- `B-223.md` sub-item a gecontroleerd: stond al correct op **opgelost** met de volledige A3-uitkomst — geen wijziging nodig.
+- `restrisico.md`: rij B-223a van "Wacht op beslispunt A3" naar **Opgelost** (bewuste keuze pull-scope gedocumenteerd).
+- Reviewcorrectie (R1, 28-07): het aantal eigen toegewezen plannen in het seed-scenario is **6** (5× `assign: true` in `seed-tp/inspectie.ts` + het demoplan in `seed.ts`, allen naar dezelfde inspecteur; 9 − 3 NULL = 6), nageteld vóór de wijziging; de eerdere "4" kwam uit de unittest-fixture. INS-01 gemarkeerd als "PASS (oud orakel) — hertest open".
+
 ### 28 juli 2026 — Follow-up F3: AI-dataretentie bij offboarding (PRD-15 §6.6)
 
 - Branch `fix/ai-retention-offboarding`. PRD-15 §6.6 beloofde auto-wissen van AI-gesprekken bij deactiveren/verwijderen, maar user- én org-offboarding zijn soft-deletes — de `onDelete: Cascade` vuurde dus nooit.

@@ -141,6 +141,7 @@ const entityLabels: Record<string, Record<string, string>> = {
     shareEmailWithClients: 'E-mail tonen in klantportaal',
     defaultApprovalPersonId: 'Standaard goedkeurder',
     employmentType: 'Dienstvorm',
+    aiConversationsPurged: 'AI-gesprekken gewist (aantal)',
   },
   AvailabilityTemplate: {
     name: 'Naam',
@@ -231,6 +232,7 @@ const entityLabels: Record<string, Record<string, string>> = {
     planId: 'Abonnement',
     supportAccessEnabled: 'Support-toegang',
     supportAccessExpiresAt: 'Support-toegang verloopt op',
+    aiConversationsPurged: 'AI-gesprekken gewist (aantal)',
   },
   Plan: {
     slug: 'Slug',

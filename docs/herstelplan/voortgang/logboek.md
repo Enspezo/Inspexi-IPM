@@ -46,6 +46,14 @@ Conform `docs/testprogramma/00-master-testplan.md` §5: API `:3001` (`NODE_ENV=t
 
 ## Chronologisch logboek
 
+### 28 juli 2026 — Follow-up F3: AI-dataretentie bij offboarding (PRD-15 §6.6)
+
+- Branch `fix/ai-retention-offboarding`. PRD-15 §6.6 beloofde auto-wissen van AI-gesprekken bij deactiveren/verwijderen, maar user- én org-offboarding zijn soft-deletes — de `onDelete: Cascade` vuurde dus nooit.
+- **Fix**: expliciete `aiConversation.deleteMany` in dezelfde transactie als de statuswijziging, in drie paden: `UsersService.deactivate()`, `UsersService.softDelete()` en `OrganizationsService.update()` (alleen bij de `isActive` true→false-transitie). `AiMessage`/`AiPendingAction` cascaden mee; **`AiUsageLog` en `AuditLog` blijven bewust bewaard** (metering/herleidbaarheid, geen gespreksinhoud — conform §6.6).
+- **Herleidbaarheid**: elke purge schrijft een expliciete audit-entry (`writeAuditLog`, changes `aiConversationsPurged: {from: n, to: 0}`) op de User/Organization; NL-labels toegevoegd in `audit-field-labels.ts`. Fire-and-forget — een audit-fout blokkeert de offboarding niet.
+- Schema-comment bij `AiConversation` bijgewerkt (follow-up gesloten). **Geen migratie nodig.**
+- Tests: unit (deactivate-purge + 0-conversaties-geen-audit + softDelete-purge; org-deactivatie-purge + geen-purge bij reguliere update/al-inactief) + e2e (volledige keten: fixtures → deactivate → gesprek+cascades weg, metering intact, audit-entry aanwezig). Build 6/6, unit 2341/148, e2e users/organizations/ai-agent groen.
+
 ### 28 juli 2026 — Release-merge dev→main uitgevoerd · stale branches opgeruimd
 
 - **Voorafgaande verificatie op `origin/dev`** (eigenaarsopdracht, niet op de samenvatting vertrouwd): H1 (storage-key-guard + `storage-key.util.ts`), H4 (`validate-jwt-secrets.ts`), H5 (reset-token `type:'access'`/`pwStamp`), K3 (`SEED_DEMO`, 21 hits) en de complete `ai-agent`-module — alle zes checks groen.

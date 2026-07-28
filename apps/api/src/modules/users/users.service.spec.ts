@@ -87,6 +87,26 @@ describe('UsersService', () => {
     refreshToken: {
       updateMany: jest.fn(),
     },
+    aiConversation: {
+      deleteMany: jest.fn(),
+    },
+    contact: { updateMany: jest.fn() },
+    request: { updateMany: jest.fn() },
+    task: { updateMany: jest.fn() },
+    planningInspector: {
+      findMany: jest.fn(),
+      deleteMany: jest.fn(),
+      updateMany: jest.fn(),
+    },
+    planningSessionInspector: {
+      findMany: jest.fn(),
+      deleteMany: jest.fn(),
+      updateMany: jest.fn(),
+    },
+    planningFollower: { updateMany: jest.fn() },
+    notification: { deleteMany: jest.fn() },
+    notificationPref: { deleteMany: jest.fn() },
+    writeAuditLog: jest.fn().mockResolvedValue(undefined),
     $transaction: jest.fn(),
   };
 
@@ -366,6 +386,14 @@ describe('UsersService', () => {
   });
 
   describe('deactivate()', () => {
+    beforeEach(() => {
+      // deactivate() draait in een interactieve transactie; de tx-client is
+      // in deze mock gewoon de prisma-mock zelf.
+      mockPrismaService.$transaction.mockImplementation((cb: any) =>
+        typeof cb === 'function' ? cb(mockPrismaService) : Promise.all(cb),
+      );
+    });
+
     it('should set isActive to false', async () => {
       const targetUser = {
         ...mockUser,
@@ -382,6 +410,9 @@ describe('UsersService', () => {
       mockPrismaService.refreshToken.updateMany.mockResolvedValue({
         count: 1,
       });
+      mockPrismaService.aiConversation.deleteMany.mockResolvedValue({
+        count: 0,
+      });
 
       await service.deactivate('user-2', mockUser);
 
@@ -395,6 +426,62 @@ describe('UsersService', () => {
       });
     });
 
+    it('should purge AI conversations and audit the purge (PRD-15 §6.6)', async () => {
+      const targetUser = {
+        ...mockUser,
+        id: 'user-2',
+        organization: mockOrganization,
+      };
+
+      mockPrismaService.user.findUnique.mockResolvedValue(targetUser);
+      mockPrismaService.user.update.mockResolvedValue({
+        ...targetUser,
+        isActive: false,
+      });
+      mockPrismaService.refreshToken.updateMany.mockResolvedValue({ count: 1 });
+      mockPrismaService.aiConversation.deleteMany.mockResolvedValue({
+        count: 3,
+      });
+
+      await service.deactivate('user-2', mockUser);
+
+      expect(mockPrismaService.aiConversation.deleteMany).toHaveBeenCalledWith({
+        where: { userId: 'user-2' },
+      });
+      expect(mockPrismaService.writeAuditLog).toHaveBeenCalledWith(
+        expect.objectContaining({
+          entityType: 'User',
+          entityId: 'user-2',
+          action: 'UPDATE',
+          changes: { aiConversationsPurged: { from: 3, to: 0 } },
+          userId: mockUser.id,
+          orgId: 'org-1',
+        }),
+      );
+    });
+
+    it('should not write an audit entry when there are no AI conversations', async () => {
+      const targetUser = {
+        ...mockUser,
+        id: 'user-2',
+        organization: mockOrganization,
+      };
+
+      mockPrismaService.user.findUnique.mockResolvedValue(targetUser);
+      mockPrismaService.user.update.mockResolvedValue({
+        ...targetUser,
+        isActive: false,
+      });
+      mockPrismaService.refreshToken.updateMany.mockResolvedValue({ count: 1 });
+      mockPrismaService.aiConversation.deleteMany.mockResolvedValue({
+        count: 0,
+      });
+
+      await service.deactivate('user-2', mockUser);
+
+      expect(mockPrismaService.writeAuditLog).not.toHaveBeenCalled();
+    });
+
     it('should throw if deactivating self', async () => {
       await expect(
         service.deactivate('user-1', mockUser),
@@ -403,6 +490,68 @@ describe('UsersService', () => {
         service.deactivate('user-1', mockUser),
       ).rejects.toThrow(
         'Je kunt je eigen account niet deactiveren',
+      );
+    });
+  });
+
+  describe('softDelete()', () => {
+    it('should purge AI conversations in the delete transaction and audit it (PRD-15 §6.6)', async () => {
+      const targetUser = {
+        ...mockUser,
+        id: 'user-2',
+        isDeleted: false,
+        organization: mockOrganization,
+      };
+      const transferTo = {
+        ...mockUser,
+        id: 'user-3',
+        isDeleted: false,
+        isActive: true,
+      };
+
+      // findOne (target) en daarna de transfer-doelcheck gebruiken beide findUnique.
+      mockPrismaService.user.findUnique
+        .mockResolvedValueOnce(targetUser)
+        .mockResolvedValueOnce(transferTo);
+      mockPrismaService.$transaction.mockImplementation((cb: any) =>
+        typeof cb === 'function' ? cb(mockPrismaService) : Promise.all(cb),
+      );
+      mockPrismaService.contact.updateMany.mockResolvedValue({ count: 0 });
+      mockPrismaService.request.updateMany.mockResolvedValue({ count: 0 });
+      mockPrismaService.task.updateMany.mockResolvedValue({ count: 0 });
+      mockPrismaService.planningInspector.findMany.mockResolvedValue([]);
+      mockPrismaService.planningInspector.updateMany.mockResolvedValue({ count: 0 });
+      mockPrismaService.planningSessionInspector.findMany.mockResolvedValue([]);
+      mockPrismaService.planningSessionInspector.updateMany.mockResolvedValue({ count: 0 });
+      mockPrismaService.planningFollower.updateMany.mockResolvedValue({ count: 0 });
+      mockPrismaService.notification.deleteMany.mockResolvedValue({ count: 0 });
+      mockPrismaService.notificationPref.deleteMany.mockResolvedValue({ count: 0 });
+      mockPrismaService.aiConversation.deleteMany.mockResolvedValue({ count: 2 });
+      mockPrismaService.refreshToken.updateMany.mockResolvedValue({ count: 0 });
+      mockPrismaService.user.update.mockResolvedValue({
+        ...targetUser,
+        isDeleted: true,
+      });
+
+      await service.softDelete('user-2', 'user-3', mockUser);
+
+      expect(mockPrismaService.aiConversation.deleteMany).toHaveBeenCalledWith({
+        where: { userId: 'user-2' },
+      });
+      expect(mockPrismaService.user.update).toHaveBeenCalledWith({
+        where: { id: 'user-2' },
+        data: {
+          isDeleted: true,
+          deletedAt: expect.any(Date),
+          isActive: false,
+        },
+      });
+      expect(mockPrismaService.writeAuditLog).toHaveBeenCalledWith(
+        expect.objectContaining({
+          entityType: 'User',
+          entityId: 'user-2',
+          changes: { aiConversationsPurged: { from: 2, to: 0 } },
+        }),
       );
     });
   });

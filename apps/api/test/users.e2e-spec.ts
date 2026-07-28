@@ -204,7 +204,49 @@ describe('Users (e2e)', () => {
   });
 
   describe('PATCH /api/v1/users/:id/deactivate', () => {
-    it('should deactivate user as Org Admin', async () => {
+    it('should deactivate user and purge AI conversations, keeping usage log (PRD-15 §6.6)', async () => {
+      // AI-fixtures: één gesprek met bericht + pending action, plus een
+      // metering-regel die moet blijven bestaan.
+      const conversation = await prisma.aiConversation.create({
+        data: {
+          orgId: testOrgId,
+          userId: targetUserId,
+          title: 'E2E retentie-test',
+          model: 'claude-sonnet-5',
+        },
+      });
+      const message = await prisma.aiMessage.create({
+        data: {
+          conversationId: conversation.id,
+          orgId: testOrgId,
+          role: 'USER',
+          content: [{ type: 'text', text: 'testbericht' }],
+        },
+      });
+      await prisma.aiPendingAction.create({
+        data: {
+          conversationId: conversation.id,
+          messageId: message.id,
+          orgId: testOrgId,
+          userId: targetUserId,
+          toolName: 'e2e_tool',
+          toolUseId: 'toolu_e2e',
+          args: {},
+          summary: 'E2E pending action',
+        },
+      });
+      const usageLog = await prisma.aiUsageLog.create({
+        data: {
+          orgId: testOrgId,
+          userId: targetUserId,
+          conversationId: conversation.id,
+          model: 'claude-sonnet-5',
+          inputTokens: 10,
+          outputTokens: 5,
+          costCents: 1,
+        },
+      });
+
       const res = await request(app.getHttpServer())
         .patch(`/api/v1/users/${targetUserId}/deactivate`)
         .set('Authorization', `Bearer ${orgAdminToken}`)
@@ -217,6 +259,43 @@ describe('Users (e2e)', () => {
         where: { id: targetUserId },
       });
       expect(user?.isActive).toBe(false);
+
+      // Gesprek + cascades weg
+      expect(
+        await prisma.aiConversation.findUnique({ where: { id: conversation.id } }),
+      ).toBeNull();
+      expect(
+        await prisma.aiMessage.count({ where: { conversationId: conversation.id } }),
+      ).toBe(0);
+      expect(
+        await prisma.aiPendingAction.count({
+          where: { conversationId: conversation.id },
+        }),
+      ).toBe(0);
+
+      // Metering blijft bewaard
+      expect(
+        await prisma.aiUsageLog.findUnique({ where: { id: usageLog.id } }),
+      ).not.toBeNull();
+
+      // De verwijdering is herleidbaar in de audit-trail. De audit-write is
+      // fire-and-forget, dus kort pollen tot hij er staat.
+      let auditEntry = null;
+      for (let attempt = 0; attempt < 20 && !auditEntry; attempt++) {
+        auditEntry = await prisma.auditLog.findFirst({
+          where: {
+            entityType: 'User',
+            entityId: targetUserId,
+            action: 'UPDATE',
+            changes: { path: ['aiConversationsPurged', 'from'], equals: 1 },
+          },
+        });
+        if (!auditEntry) await new Promise((r) => setTimeout(r, 100));
+      }
+      expect(auditEntry).not.toBeNull();
+
+      // Opruimen van de metering-fixture (usage log heeft geen user-FK)
+      await prisma.aiUsageLog.delete({ where: { id: usageLog.id } });
     });
   });
 

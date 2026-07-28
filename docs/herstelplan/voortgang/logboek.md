@@ -37,13 +37,18 @@ Conform `docs/testprogramma/00-master-testplan.md` §5: API `:3001` (`NODE_ENV=t
 | C2 | `fix/wp-c2-client-hygiene` | [#147](https://github.com/Enspezo/Inspexi-IPM/pull/147) | ✅ gemerged + live geverifieerd | B-404 ✔, B-405 ✔, B-407 ✔, B-408 ✔, B-410 ✔, B-411 ✔; B-409 → beslispunt A4 | gedeelde SignatureImageDto-afdwinging, magic-link-race, 18+8 tests; fixte ook de kapotte feature-entitlements-e2e |
 | C3 | `fix/wp-c3-sync-hardening` | [#150](https://github.com/Enspezo/Inspexi-IPM/pull/150) | ✅ gemerged (A2+C3 samen: 119 sync-unit + 28 e2e groen) | B-203 ✔, B-212 ✔, B-216 ✔, B-217 ✔ (A6: rol-guard — PWA stuurt velden mee), B-218 ✔; B-223a → beslispunt A3 | sync-errors-mapper, sync-hardening-e2e 9 |
 | C4 | `fix/wp-c4-docgen-overflow` | [#148](https://github.com/Enspezo/Inspexi-IPM/pull/148) | ✅ gemerged + visueel geverifieerd (vóór/ná-PDF's + portal-tabellen) | B-311 ✔, B-312 ✔ (CJK = deploy-vereiste), B-301 ✔ | header-resolver-tests, table.test.tsx 9 |
-| C1–C5 | — | — | open (golf 3) | — | — |
 | D3 | `fix/wp-d3-offline-shell` (PWA) | [InspeXi #33](https://github.com/Enspezo/InspeXi/pull/33) | ✅ gemerged + eigen prod-e2e-run groen | B-219 ✔ **definitief S3** (dev-server-artefact; prod-denylist-gat wél gedicht); B-220 → beslispunt A5 | offline-shell-Playwright tegen productiebuild (CI-verankerd), 8 unit |
-| D1, D2 | — | — | geblokkeerd op beslispunten A1/A2 | B-209, B-223e, B-205b | — |
+| D1, D2 | — | — | 🔄 in uitvoering (A1/A2 besloten 28-07) | B-209, B-223e, B-205b | — |
 
 ---
 
 ## Chronologisch logboek
+
+### 28 juli 2026 — Golf 4 gestart: beslispunten A1/A2 door de eigenaar beantwoord
+
+- **A1 = optie (a): `updatedAt` wordt het universele versie-anker** (advies overgenomen). Consequenties: sync-contractbump, Dexie-veld + migratie in de PWA, verplichte backfill `synced_at = updated_at`, `syncedAt` voortaan gevuld bij elke serverwrite en in de seed, conflicten additief in de pull-envelope. → **WP-D1 gedeblokkeerd.**
+- **A2 = servervorm canoniek** (`{isolation:{…}}`, advies overgenomen): de PWA past zich aan (schrijft servervorm + Dexie-migratie van bestaande lokale records), `sheetRecordDataSchema` wordt een écht afgedwongen schema, bestaande PWA-vorm-rijen op de server worden gemigreerd. → **WP-D2 gedeblokkeerd.**
+- Uitvoering: **D1 eerst, daarna D2** — beide raken schema/seed én sync-contract, dus migraties strikt geserialiseerd. Het PWA-spoor draait in een verse worktree (`Inspexi-App-golf4`) omdat de door de eigenaar gestarte chip-sessies (quotes-fixture, knip-whitelist, flaky B10-test) actief zijn in de oude worktree/checkouts.
 
 ### 28 juli 2026 — B10 af → ALLE 20 UITVOERBARE WERKPAKKETTEN GEMERGED · Golf 2 formeel afgerond
 

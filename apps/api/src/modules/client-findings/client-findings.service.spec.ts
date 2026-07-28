@@ -127,6 +127,60 @@ describe('ClientFindingsService', () => {
       expect(byStatus.REPORTED.description).toBe('werkzaamheden REPORTED');
     });
 
+    // B-409 (beslispunt A4, 2026-07-28): de verklaring is leidend — een REPORTED-
+    // resolutie verwijst naar de herstelverklaring, maar de sessie-gegevens
+    // (contactName/email) lekken nooit mee.
+    it('geeft repairStatement (documentId + signedAt) voor REPORTED mét verklaring, zonder de sessie te lekken', async () => {
+      const signedAt = new Date('2026-07-25');
+      mockPrisma.finding.findUnique.mockResolvedValue({
+        ...accessCheckFinding,
+        resolutions: [
+          buildResolution('REPORTED', {
+            repairSession: {
+              generatedDocument: { id: 'doc-1', signatures: [{ signedAt }] },
+            },
+          }),
+          buildResolution('CONFLICT', {
+            repairSession: {
+              generatedDocument: { id: 'doc-1', signatures: [{ signedAt }] },
+            },
+          }),
+          buildResolution('PENDING_VERIFICATION', { repairSession: null }),
+        ],
+      });
+
+      const result = await service.getDetail(clientUser, 'org-1', 'f-1');
+      const byStatus = Object.fromEntries(
+        result.resolutions.map((r: any) => [r.statusCode, r]),
+      );
+
+      expect(byStatus.REPORTED.repairStatement).toEqual({ documentId: 'doc-1', signedAt });
+      // CONFLICT: de finding is door een ander hersteld — geen verwijzing.
+      expect(byStatus.CONFLICT.repairStatement).toBeNull();
+      expect(byStatus.PENDING_VERIFICATION.repairStatement).toBeNull();
+      // De sessie zelf (invullergegevens) wordt nooit doorgegeven.
+      for (const r of result.resolutions as any[]) {
+        expect(r.repairSession).toBeUndefined();
+      }
+    });
+
+    it('geeft repairStatement met signedAt null wanneer de verklaring (nog) niet ondertekend is', async () => {
+      mockPrisma.finding.findUnique.mockResolvedValue({
+        ...accessCheckFinding,
+        resolutions: [
+          buildResolution('REPORTED', {
+            repairSession: { generatedDocument: { id: 'doc-2', signatures: [] } },
+          }),
+        ],
+      });
+
+      const result = await service.getDetail(clientUser, 'org-1', 'f-1');
+      expect((result.resolutions[0] as any).repairStatement).toEqual({
+        documentId: 'doc-2',
+        signedAt: null,
+      });
+    });
+
     it('verbergt storage-keys: foto’s krijgen een download-URL', async () => {
       mockPrisma.finding.findUnique.mockResolvedValue({
         ...accessCheckFinding,

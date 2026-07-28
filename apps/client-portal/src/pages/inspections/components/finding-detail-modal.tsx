@@ -64,6 +64,8 @@ interface FindingDetailModalProps {
   inspectionId?: string;
   /** true → de oude "Als opgelost markeren"-flow wordt vervangen door online herstel (§14.9.6). */
   onlineRepair?: boolean;
+  /** B-409 (A4): navigeer naar de Documenten-tab (sluit eerst de modal). */
+  onShowDocuments?: () => void;
 }
 
 export function FindingDetailModal({
@@ -71,6 +73,7 @@ export function FindingDetailModal({
   onClose,
   inspectionId,
   onlineRepair = false,
+  onShowDocuments,
 }: FindingDetailModalProps) {
   const { data: finding, isLoading, error } = useFinding(findingId);
   const [showResolve, setShowResolve] = useState(false);
@@ -156,6 +159,7 @@ export function FindingDetailModal({
                   resolution={resolution}
                   findingId={finding.id}
                   onOpenLightbox={(images, index) => setLightbox({ images, index })}
+                  onShowDocuments={onShowDocuments}
                 />
               ))}
             </div>
@@ -204,10 +208,12 @@ function ResolutionCard({
   resolution,
   findingId,
   onOpenLightbox,
+  onShowDocuments,
 }: {
   resolution: FindingResolutionDetail;
   findingId: string;
   onOpenLightbox: (images: LightboxImage[], index: number) => void;
+  onShowDocuments?: () => void;
 }) {
   const confirm = useConfirm();
   const { showToast } = useToast();
@@ -274,6 +280,28 @@ function ResolutionCard({
             );
           })}
         </div>
+      )}
+
+      {/* B-409 (beslispunt A4): de verklaring is leidend — toon dát er een
+          (ondertekende) herstelverklaring bestaat, met verwijzing naar de
+          Documenten-tab waar de hersteller met naam benoemd wordt. */}
+      {resolution.repairStatement && (
+        <p className="mt-2 rounded bg-gray-50 px-2 py-1 text-xs text-gray-600">
+          {resolution.repairStatement.signedAt
+            ? `Voor dit herstel is op ${formatDate(resolution.repairStatement.signedAt)} een ondertekende herstelverklaring afgegeven.`
+            : 'Voor dit herstel is een herstelverklaring opgesteld.'}{' '}
+          {onShowDocuments ? (
+            <button
+              type="button"
+              onClick={onShowDocuments}
+              className="font-medium text-primary-700 hover:underline"
+            >
+              Bekijk de verklaring op de Documenten-tab
+            </button>
+          ) : (
+            <span>U vindt de verklaring op de Documenten-tab.</span>
+          )}
+        </p>
       )}
 
       {resolution.verificationNotes && (

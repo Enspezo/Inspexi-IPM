@@ -87,6 +87,7 @@ export default function InspectionDetailPage() {
           <FindingsTab
             inspectionId={inspection.id}
             onlineRepairEnabled={inspection.onlineRepairEnabled}
+            onNavigateTab={setTab}
           />
         </TabErrorBoundary>
       )}

@@ -22,6 +22,7 @@ import {
   ORG_ADMINS,
 } from '@/common';
 import { EmailService } from '@/common/services/email.service';
+import { requestContext } from '@/common/services/request-context';
 import { NotificationsService } from '@/modules/notifications/notifications.service';
 import {
   STORAGE_PROVIDER,
@@ -307,16 +308,30 @@ export class UsersService {
       throw new NotFoundException('Gebruiker niet gevonden');
     }
 
-    await this.prisma.user.update({
-      where: { id },
-      data: { isActive: false },
+    // PRD-15 §6.6: offboarding wist de AI-gesprekken van de gebruiker
+    // (AiMessage/AiPendingAction cascaden mee); AiUsageLog en AuditLog
+    // blijven bewaard (metering/herleidbaarheid, geen gespreksinhoud).
+    // Zelfde transactie als de statuswijziging — geen halve staat.
+    const purgedAiConversations = await this.prisma.$transaction(async (tx) => {
+      const { count } = await tx.aiConversation.deleteMany({
+        where: { userId: id },
+      });
+
+      await tx.user.update({
+        where: { id },
+        data: { isActive: false },
+      });
+
+      // Revoke all refresh tokens
+      await tx.refreshToken.updateMany({
+        where: { userId: id, revokedAt: null },
+        data: { revokedAt: new Date() },
+      });
+
+      return count;
     });
 
-    // Revoke all refresh tokens
-    await this.prisma.refreshToken.updateMany({
-      where: { userId: id, revokedAt: null },
-      data: { revokedAt: new Date() },
-    });
+    this.auditAiConversationPurge(id, user.orgId, purgedAiConversations, currentUser);
   }
 
   async activate(id: string, currentUser: User) {
@@ -696,7 +711,7 @@ export class UsersService {
       throw new BadRequestException('Doelgebruiker moet in dezelfde organisatie zitten');
     }
 
-    await this.prisma.$transaction(async (tx) => {
+    const purged = await this.prisma.$transaction(async (tx) => {
       // 1. Transfer ownership records
       await tx.contact.updateMany({
         where: { ownerId: id, isDeleted: false },
@@ -765,6 +780,12 @@ export class UsersService {
       await tx.notification.deleteMany({ where: { userId: id } });
       await tx.notificationPref.deleteMany({ where: { userId: id } });
 
+      // PRD-15 §6.6: AI-gesprekken wissen bij offboarding (cascade wist
+      // AiMessage/AiPendingAction mee; AiUsageLog blijft bewaard).
+      const { count: purgedAiConversations } = await tx.aiConversation.deleteMany({
+        where: { userId: id },
+      });
+
       // 6. Revoke all refresh tokens
       await tx.refreshToken.updateMany({
         where: { userId: id, revokedAt: null },
@@ -776,7 +797,43 @@ export class UsersService {
         where: { id },
         data: { isDeleted: true, deletedAt: new Date(), isActive: false },
       });
+
+      return purgedAiConversations;
     });
+
+    this.auditAiConversationPurge(id, targetUser.orgId, purged, currentUser);
+  }
+
+  /**
+   * PRD-15 §6.6: het wissen van AI-gesprekken bij offboarding is een
+   * gegevensverwijdering en moet herleidbaar zijn. AiConversation zit bewust
+   * niet in de audit-registry (interne agent-artefacten), dus we schrijven
+   * hier expliciet één samenvattende entry op de gebruiker. Fire-and-forget:
+   * een audit-fout mag de offboarding niet blokkeren.
+   */
+  private auditAiConversationPurge(
+    targetUserId: string,
+    orgId: string | null,
+    purgedCount: number,
+    currentUser: User,
+  ) {
+    if (purgedCount === 0) return;
+    const ctx = requestContext.getStore();
+    this.prisma
+      .writeAuditLog({
+        entityType: 'User',
+        entityId: targetUserId,
+        action: 'UPDATE',
+        snapshot: null,
+        changes: { aiConversationsPurged: { from: purgedCount, to: 0 } },
+        userId: currentUser.id,
+        orgId: orgId ?? ctx?.orgId ?? null,
+        ipAddress: ctx?.ipAddress,
+        source: ctx?.source,
+      })
+      .catch((err) =>
+        this.logger.error(`AI-retentie audit log fout: ${err}`),
+      );
   }
 
   private assertDeletePermission(targetUser: User, currentUser: User) {

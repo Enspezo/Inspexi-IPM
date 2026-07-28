@@ -36,7 +36,16 @@ describe('OrganizationsService', () => {
       findFirst: jest.fn(),
       update: jest.fn(),
     },
-  };
+    aiConversation: {
+      deleteMany: jest.fn(),
+    },
+    writeAuditLog: jest.fn().mockResolvedValue(undefined),
+    // update() draait in een interactieve transactie; de tx-client is in deze
+    // mock gewoon de prisma-mock zelf.
+    $transaction: jest.fn((cb: any): any =>
+      typeof cb === 'function' ? cb(mockPrismaService) : Promise.all(cb),
+    ),
+  } as any;
 
   const mockStorage = {
     upload: jest.fn(),
@@ -189,6 +198,49 @@ describe('OrganizationsService', () => {
         where: { id: 'org-1' },
         data: updateDto,
       });
+    });
+
+    it('should purge AI conversations when deactivating the org (PRD-15 §6.6)', async () => {
+      mockPrismaService.organization.findUnique.mockResolvedValue(
+        mockOrganization,
+      );
+      mockPrismaService.organization.update.mockResolvedValue({
+        ...mockOrganization,
+        isActive: false,
+      });
+      mockPrismaService.aiConversation.deleteMany.mockResolvedValue({
+        count: 5,
+      });
+
+      await service.update('org-1', { isActive: false });
+
+      expect(mockPrismaService.aiConversation.deleteMany).toHaveBeenCalledWith({
+        where: { orgId: 'org-1' },
+      });
+      // Buiten een request-context (geen ingelogde user) wordt er geen
+      // audit-entry geschreven — de verwijdering zelf gaat wél door.
+      expect(mockPrismaService.writeAuditLog).not.toHaveBeenCalled();
+    });
+
+    it('should not touch AI conversations on a regular update or when already inactive', async () => {
+      mockPrismaService.organization.findUnique.mockResolvedValue(
+        mockOrganization,
+      );
+      mockPrismaService.organization.update.mockResolvedValue({
+        ...mockOrganization,
+        name: 'Updated Org Name',
+      });
+
+      await service.update('org-1', updateDto);
+      expect(mockPrismaService.aiConversation.deleteMany).not.toHaveBeenCalled();
+
+      // Al inactief → geen (herhaalde) purge
+      mockPrismaService.organization.findUnique.mockResolvedValue({
+        ...mockOrganization,
+        isActive: false,
+      });
+      await service.update('org-1', { isActive: false });
+      expect(mockPrismaService.aiConversation.deleteMany).not.toHaveBeenCalled();
     });
 
     it('should throw NotFoundException for invalid ID', async () => {

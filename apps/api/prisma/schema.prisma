@@ -1554,8 +1554,11 @@ model AuditLog {
 // ─── AI-assistent (add-on, PRD-15) ───────────────────────
 // Privé per gebruiker. De FK-cascade op User/Organization vuurt bij een
 // HARD delete van de user/org. Reguliere offboarding is een soft-delete
-// (isDeleted/deletedAt) → AI-data blijft dan bewaard tot een harde verwijdering
-// of tot expliciete opruiming (open follow-up, zie PRD §11 fase 5).
+// (isDeleted/deletedAt); daarvoor wissen de offboarding-paden expliciet
+// (§6.6): UsersService.deactivate/softDelete en OrganizationsService.update
+// (isActive → false) draaien een aiConversation.deleteMany in dezelfde
+// transactie (AiMessage/AiPendingAction cascaden mee; AiUsageLog + AuditLog
+// blijven bewaard) en loggen de verwijdering in de audit-trail.
 
 model AiConversation {
   id         String    @id @default(uuid()) @db.Uuid

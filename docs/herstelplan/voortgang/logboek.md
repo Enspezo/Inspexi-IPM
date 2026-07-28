@@ -59,6 +59,25 @@ Conform `docs/testprogramma/00-master-testplan.md` §5: API `:3001` (`NODE_ENV=t
 - **Gevonden + gefixt (dit is waar de live-run voor was):** de `create_task`-toolschema noemde `entityType`/`entityId` "optioneel", terwijl een `Task` altijd een entiteit-koppeling vereist (non-nullable) — bevestigen strandde op een Prisma-fout (actie FAILED, geen 500 — maar de rauwe Engelse Prisma-melding wordt als `result.output` doorgegeven, zie restrisico). Fix: schema vereist nu `entityType` (enum) + `entityId` en de tooldescription stuurt de agent naar een koppeling; unit-tests toegevoegd (`tool-registry.spec.ts`). Herverificatie: voorstel kwam mét correcte koppeling en de confirm slaagde.
 - **Kleine UX-bevindingen (open, zie restrisico):** (1) de bevestigingskaart rendert alleen uit het live `pending_actions`-SSE-event — na een paginaherlaad is een openstaande PENDING-actie onzichtbaar terwijl hij het gesprek wél blokkeert (server-guard werkt; afwijzen kan dan alleen via de API); (2) markdown-opmaak (`**…**`) wordt letterlijk getoond in de drawer.
 - Restpunt in de PR-body van #178 afgevinkt. Testartefact: taak "Live-verificatie AI-agent" op het demo-contact (verdwijnt bij herseed).
+- Reviewcorrecties (R2, 28-07): systeemprompt in `ai-config.ts` gelijkgetrokken met de werkelijkheid (write-tools bestaan; voorstel → bevestiging afwachten; één schrijfactie tegelijk; nooit verplichte gegevens verzinnen), `create_task`-`summarize()` toont nu de entiteit-koppeling op de bevestigingskaart, enum-test asserteert alle 7 `TaskEntityType`-waarden, en de AI-agent-rij in `restrisico.md` weer ín de tabel getrokken.
+
+### 28 juli 2026 — Follow-up F2: testprogramma-docs bijgewerkt op het A3-besluit
+
+- Branch `docs/ins01-a3-besluit`. Alleen documentatie, geen code.
+- `05-actor-inspecteur-pwa.md` INS-01-orakel herschreven naar het huidige gedrag (besluit A3, optie b — InspeXi #40): alle org-plannen zichtbaar onder de neutrale naam "Inspecties", KPI "Toegewezen" telt alleen eigen plannen, "Toegewezen aan mij"-badge.
+- `logboek-INS.md` INS-01-kanttekening gemarkeerd als destijds-waarneming met de A3-eindstand erbij.
+- `B-223.md` sub-item a gecontroleerd: stond al correct op **opgelost** met de volledige A3-uitkomst — geen wijziging nodig.
+- `restrisico.md`: rij B-223a van "Wacht op beslispunt A3" naar **Opgelost** (bewuste keuze pull-scope gedocumenteerd).
+- Reviewcorrectie (R1, 28-07): het aantal eigen toegewezen plannen in het seed-scenario is **6** (5× `assign: true` in `seed-tp/inspectie.ts` + het demoplan in `seed.ts`, allen naar dezelfde inspecteur; 9 − 3 NULL = 6), nageteld vóór de wijziging; de eerdere "4" kwam uit de unittest-fixture. INS-01 gemarkeerd als "PASS (oud orakel) — hertest open".
+
+### 28 juli 2026 — Follow-up F3: AI-dataretentie bij offboarding (PRD-15 §6.6)
+
+- Branch `fix/ai-retention-offboarding`. PRD-15 §6.6 beloofde auto-wissen van AI-gesprekken bij deactiveren/verwijderen, maar user- én org-offboarding zijn soft-deletes — de `onDelete: Cascade` vuurde dus nooit.
+- **Fix**: expliciete `aiConversation.deleteMany` in dezelfde transactie als de statuswijziging, in drie paden: `UsersService.deactivate()`, `UsersService.softDelete()` en `OrganizationsService.update()` (alleen bij de `isActive` true→false-transitie). `AiMessage`/`AiPendingAction` cascaden mee; **`AiUsageLog` en `AuditLog` blijven bewust bewaard** (metering/herleidbaarheid, geen gespreksinhoud — conform §6.6).
+- **Herleidbaarheid**: elke purge schrijft een expliciete audit-entry (`writeAuditLog`, changes `aiConversationsPurged: {from: n, to: 0}`) op de User/Organization; NL-labels toegevoegd in `audit-field-labels.ts`. Fire-and-forget — een audit-fout blokkeert de offboarding niet.
+- Schema-comment bij `AiConversation` bijgewerkt (follow-up gesloten). **Geen migratie nodig.**
+- **Review-aanname "backfill voor reeds gedeactiveerde users/orgs ontbreekt" geverifieerd en leeg bevonden (28-07):** de AI-agent is pas op 28-07 naar `dev` geport (PR #178), de release-merge is bewust nog niet gedeployed (zie release-merge-vermelding hieronder) en er is nooit met een `ANTHROPIC_API_KEY` in productie gedraaid. Dev-DB-controle: 1 `AiConversation`-rij (de F4-live-testsessie van vandaag) en 0 gedeactiveerde/verwijderde users. Er bestaan dus geen weesgesprekken van vóór deze fix → **bewust géén backfill-migratie gebouwd**. Mocht er ooit tóch een omgeving zijn waar de agent vóór deze fix met deactiveringen draaide, dan volstaat een eenmalige `DELETE FROM imp_ai_conversations WHERE user_id IN (SELECT id FROM imp_users WHERE is_active = false OR is_deleted = true)`.
+- Tests: unit (deactivate-purge + 0-conversaties-geen-audit + softDelete-purge; org-deactivatie-purge + geen-purge bij reguliere update/al-inactief) + e2e (volledige keten: fixtures → deactivate → gesprek+cascades weg, metering intact, audit-entry aanwezig). Build 6/6, unit 2341/148, e2e users/organizations/ai-agent groen.
 
 ### 28 juli 2026 — Release-merge dev→main uitgevoerd · stale branches opgeruimd
 

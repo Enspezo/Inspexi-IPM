@@ -350,3 +350,87 @@ lokale conflicten te wissen. Serverzijde: `imp_sync_queue` kreeg hiervoor een
   inspecteurs offline door; er gaat niets verloren.
 - **Pre-deploy prod:** migratie draaien (bevat de verplichte backfill; zie ook
   `apps/api/scripts/backfill-synced-at-skew.ts` voor de eerdere skew-reparatie).
+
+## 11. Canonieke `MeasurementSheetRecord.data`-vorm (WP-D2, binnen v4)
+
+> Eigenaarsbesluit **A2** (28-07-2026): de **servervorm is canoniek**. Bevinding:
+> **B-205 deel 2** (contractdivergentie tussen de twee schrijvers van
+> `MeasurementSheetRecord.data`). **Géén contract-bump** — zie 11.4.
+
+### 11.1 De canonieke vorm
+
+```jsonc
+{
+  "<sectionCode>": {                 // sectie uit de template(-snapshot)
+    "<rijnummer>": {                 // rij-sleutel: uitsluitend cijfers ("0", "1", …)
+      "<fieldCode>": {
+        "value": "…",                // ingevulde waarde (verplicht aanwezig, mag null)
+        "passFail": "pass|fail|null" // uitkomst pass/fail-evaluatie (optioneel)
+      }
+    }
+  },
+  "__usedInstrumentsSnapshot": []    // server-owned metadata; __-prefix = gereserveerd
+}
+```
+
+- **Niet-herhalende secties zijn gewoon rij `"0"`** — de datavorm kent geen
+  `rows`/`values`-onderscheid; dat onderscheid leeft in de template.
+- De verouderde PWA-runtimevorm
+  `{ "sections": { "<code>": { "rows": [ { veld: waarde } ] } | { "values": {…} } } }`
+  is **niet langer geldig op de wire**.
+
+### 11.2 Afdwinging (server)
+
+`sheetRecordDataSchema` (`apps/api/src/modules/measurement-sheet-records/schemas/`)
+is niet langer een permissieve placeholder maar valideert de vorm hierboven, op:
+
+- **REST** `PATCH /measurement-sheet-records/:id` (create accepteert geen client-data);
+- de **`/sync`-push** (create + update, via `toDbData`) — een afwijkende vorm wordt een
+  per-record `errors[]`-item met een gerichte NL-melding
+  (`Ongeldige meetstaatgegevens: heeft de verouderde app-vorm …`);
+- **`/sync/resolve`** (de bewaarde conflict-payloads lopen door hetzelfde pad).
+
+Er is **géén echo-tolerantie** voor de oude vorm: de push verstuurt uitsluitend lokaal
+geschreven records, en een bijgewerkte PWA schrijft (en migreert, zie 11.3) altijd de
+canonieke vorm. Een pre-D2-app die de oude vorm pusht krijgt een nette fout, het record
+blijft lokaal pending en de eerstvolgende app-update herstelt het vanzelf
+(Dexie-migratie → re-push) — fail-safe, nooit stille dataverlies.
+
+### 11.3 Datamigraties (beide kanten)
+
+- **Server** (migratie `20260728100000_canonicalize_sheet_record_data`): pakt de
+  `sections`-wrapper uit naar de canonieke vorm — `rows[i]` → rij-sleutel `"i"` (dicht
+  hernummerd), `values` → rij `"0"`, platte veldwaarde → `{ value, passFail: null }`
+  (de legacy-vorm droeg nooit een pass/fail-uitkomst). Bij de **gemengde vorm**
+  (`{ …serverkeys, sections: {…} }`, ontstaan ná de WP-B1-crashguard) wint de
+  sections-inhoud per sectie. Ook openstaande `imp_sync_queue`-conflicten voor
+  `measurementSheetRecord` worden geconverteerd (payload + bewaarde serverstaat), anders
+  zou `/sync/resolve` ze na de afdwinging niet meer kunnen toepassen. `updated_at`/
+  `synced_at` blijven onaangeraakt — anders zou elk gemigreerd record een vals
+  v4-versieanker-conflict geven. Idempotent.
+- **PWA** (Dexie **v17 → v18**): dezelfde uitpak-regels voor lokale
+  `measurementSheetRecords` (incl. pending records — die pushen daarna vanzelf de
+  canonieke vorm) én voor de bewaarde conflict-snapshots in `syncRetryMeta`
+  (`serverData`/`clientData`). De PWA-schrijfpaden (`setFieldValue`/`addRow`/…)
+  produceren sindsdien native de canonieke vorm; `asRecordData()` houdt een
+  transitionele read-fallback die een onverhoopt achtergebleven legacy-vorm on-the-fly
+  converteert (en de eerstvolgende save schrijft canoniek terug).
+
+### 11.4 Waarom geen contract-bump (v4 blijft)
+
+1. De canonieke vorm **wás al het gedocumenteerde contract**: de gedeelde typedef
+   `MeasurementSheetRecordData` (PWA `@inspectie/shared`) én de REST-DTO beschreven
+   precies deze vorm; de `sections`-wrapper was een client-interne afwijking die op de
+   wire lekte — WP-D2 wijzigt het contract niet, maar dwingt het af.
+2. Een bump bestaat om incompatibele peers elkaar te laten weigeren. De enige client
+   die ooit de oude vorm stuurde is de pre-golf-4-PWA, en die is al buitengesloten
+   door de **v4-pull-guard van WP-D1**; elke v4-capabele PWA-build bevat ook D2.
+3. Voor het theoretische tussenvenster (D1-server zonder D2-PWA) is de strikte afwijzing
+   fail-safe én zelfherstellend (zie 11.2) — een v5 zou daar niets aan toevoegen.
+
+### 11.5 Pre-deploy prod
+
+1. `prisma migrate deploy` (bevat `canonicalize_sheet_record_data` — de datamigratie).
+2. Beheer-API en PWA samen deployen (API eerst), zoals bij v4 (10.5).
+3. Post-check: `SELECT count(*) FROM imp_measurement_sheet_records WHERE
+   jsonb_typeof(data->'sections') = 'object';` → moet 0 zijn.

@@ -26,7 +26,7 @@ import { AiUsageService } from './ai-usage.service';
 import { ConfirmActionDto, CreateConversationDto, SendMessageDto } from './dto';
 
 /**
- * AI-assistent (add-on, PRD-12). Gate: `AI_AGENT`-feature + de effectieve
+ * AI-assistent (add-on, PRD-15). Gate: `AI_AGENT`-feature + de effectieve
  * rollen-check in {@link AiAgentAccessGuard}. De coarse `@Roles(...ALL_STAFF)`
  * laat élke ingelogde staf-rol door de RolesGuard; de fijnmazige, per-org
  * instelbare rollencheck (default: alle staf behalve INSPECTEUR, of de

@@ -7,7 +7,7 @@ import { AI_AGENT_DEFAULT_MODEL } from './ai-config';
 import { CreateConversationDto } from './dto';
 
 /**
- * Conversatie-CRUD voor de AI-assistent (PRD-12). Gesprekken zijn privé per
+ * Conversatie-CRUD voor de AI-assistent (PRD-15). Gesprekken zijn privé per
  * gebruiker: elke query is gescoped op `orgId` + `userId`, dus andermans of
  * cross-tenant gesprekken geven 404 (geen bestaan prijsgeven).
  */

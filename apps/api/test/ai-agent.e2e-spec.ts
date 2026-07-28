@@ -7,7 +7,7 @@ import { AppModule } from '@/app.module';
 import { PrismaService } from '@/prisma';
 
 /**
- * PRD-12 — AI-assistent, backend gate + scoping (e2e).
+ * PRD-15 — AI-assistent, backend gate + scoping (e2e).
  *
  * Verifieert het samenspel van de drie gates op `/api/v1/ai/*`:
  *   1. FeatureGuard      — AI_AGENT moet in het plan zitten (anders 403 FEATURE_NOT_IN_PLAN)

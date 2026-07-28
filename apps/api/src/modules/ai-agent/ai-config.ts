@@ -14,7 +14,7 @@ export const AI_AGENT_DEFAULT_MODEL = 'claude-sonnet-5';
 
 /**
  * Standaard toegestane rollen als een org `aiAgentAllowedRoles` leeg laat
- * (PRD-12 §7.3): alle staf behalve INSPECTEUR. SUPERUSER wordt sowieso
+ * (PRD-15 §7.3): alle staf behalve INSPECTEUR. SUPERUSER wordt sowieso
  * toegelaten (platformdomein) en staat daarom niet in deze lijst.
  */
 export const DEFAULT_AI_AGENT_ROLES: Role[] = [
@@ -42,7 +42,7 @@ export const FALLBACK_PRICE: ModelPrice = {
 };
 
 /**
- * Ruim maandelijks token-plafond per org (PRD-12 §13: vast maandbedrag +
+ * Ruim maandelijks token-plafond per org (PRD-15 §13: vast maandbedrag +
  * fair-use). Bedoeld als misbruik-plafond, niet als per-token-doorbelasting.
  * Overrulebaar via `AI_AGENT_MONTHLY_TOKEN_QUOTA`.
  */

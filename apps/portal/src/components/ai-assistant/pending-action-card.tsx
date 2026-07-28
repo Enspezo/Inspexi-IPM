@@ -9,7 +9,7 @@ interface Props {
   onResolved: (id: string) => void;
 }
 
-/** Bevestigingskaart voor een voorgestelde schrijfactie (PRD-12 §4.2). */
+/** Bevestigingskaart voor een voorgestelde schrijfactie (PRD-15 §4.2). */
 export function PendingActionCard({ action, onResolved }: Props) {
   const { showToast } = useToast();
   const confirm = useConfirmAiAction();

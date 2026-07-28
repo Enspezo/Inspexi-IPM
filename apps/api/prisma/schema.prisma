@@ -152,14 +152,14 @@ enum AuditAction {
   DELETE
 }
 
-// Herkomst van een audit-mutatie (PRD-12): HUMAN = normale UI-actie,
+// Herkomst van een audit-mutatie (PRD-15): HUMAN = normale UI-actie,
 // AI = door de AI-assistent geïnitieerd (en door de gebruiker bevestigd).
 enum AuditSource {
   HUMAN
   AI
 }
 
-// AI-assistent (add-on, PRD-12)
+// AI-assistent (add-on, PRD-15)
 enum AiMessageRole {
   USER
   ASSISTANT
@@ -413,7 +413,7 @@ model Organization {
   isActive            Boolean  @default(true) @map("is_active")
   // Interne chat per organisatie aan/uit (REQ1) — te schakelen door SUPERUSER/ORG_ADMIN.
   chatEnabled         Boolean  @default(true) @map("chat_enabled")
-  // AI-assistent (add-on, PRD-12): per-org kill-switch + toegestane rollen.
+  // AI-assistent (add-on, PRD-15): per-org kill-switch + toegestane rollen.
   // Lege rollen-lijst → systeem-default (alle staf behalve INSPECTEUR).
   aiAgentEnabled      Boolean  @default(true) @map("ai_agent_enabled")
   aiAgentAllowedRoles Role[]   @default([]) @map("ai_agent_allowed_roles")
@@ -527,7 +527,7 @@ model Organization {
   chatThreads  ChatThread[]
   chatMessages ChatMessage[]
 
-  // AI-assistent (add-on, PRD-12)
+  // AI-assistent (add-on, PRD-15)
   aiConversations AiConversation[]
   aiUsageLogs     AiUsageLog[]
 
@@ -683,7 +683,7 @@ model User {
   auditLogs         AuditLog[]
   favorites         Favorite[]
 
-  // AI-assistent (add-on, PRD-12) — privé gesprekken van deze gebruiker.
+  // AI-assistent (add-on, PRD-15) — privé gesprekken van deze gebruiker.
   aiConversations AiConversation[]
 
   // Per-org feature-overrides die deze gebruiker heeft gezet (PRD-09 entitlements).
@@ -1538,7 +1538,7 @@ model AuditLog {
   snapshot   Json?
   userId     String      @map("user_id") @db.Uuid
   ipAddress  String?     @map("ip_address")
-  // Herkomst van de mutatie (PRD-12). `userId` blijft de mens-acteur; `source=AI`
+  // Herkomst van de mutatie (PRD-15). `userId` blijft de mens-acteur; `source=AI`
   // markeert dat de wijziging via de AI-assistent is uitgevoerd (toont AI-icoon).
   source     AuditSource @default(HUMAN)
   createdAt  DateTime    @default(now()) @map("created_at")
@@ -1551,7 +1551,7 @@ model AuditLog {
   @@map("imp_audit_logs")
 }
 
-// ─── AI-assistent (add-on, PRD-12) ───────────────────────
+// ─── AI-assistent (add-on, PRD-15) ───────────────────────
 // Privé per gebruiker. De FK-cascade op User/Organization vuurt bij een
 // HARD delete van de user/org. Reguliere offboarding is een soft-delete
 // (isDeleted/deletedAt) → AI-data blijft dan bewaard tot een harde verwijdering

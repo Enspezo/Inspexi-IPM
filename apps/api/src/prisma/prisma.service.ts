@@ -323,7 +323,7 @@ export class PrismaService
     userId: string;
     orgId: string | null;
     ipAddress?: string;
-    // Herkomst van de mutatie (PRD-12). Ongezet = HUMAN.
+    // Herkomst van de mutatie (PRD-15). Ongezet = HUMAN.
     source?: 'HUMAN' | 'AI';
   }): Promise<void> {
     try {

@@ -13,7 +13,7 @@ export interface AiToolContext {
 }
 
 /**
- * Een client-uitgevoerde tool (PRD-12). `mutates=false` → direct uitvoeren;
+ * Een client-uitgevoerde tool (PRD-15). `mutates=false` → direct uitvoeren;
  * `mutates=true` → achter een bevestigingskaart (`AiPendingAction`) en pas ná
  * bevestiging uitgevoerd via `run` (binnen een `source='AI'`-auditcontext).
  */
@@ -32,7 +32,7 @@ export interface AiToolDef {
  * Registry van client-tools. Lees- én write-tools delegeren naar de bestaande
  * feature-services met de ingelogde `user`, zodat org- en rol-scoping
  * (`orgScope`, `assertSameOrg`, 404 bij cross-tenant) automatisch gelden — de
- * agent kan nooit meer dan de gebruiker zelf (PRD-12 §5.2). Write-tools worden
+ * agent kan nooit meer dan de gebruiker zelf (PRD-15 §5.2). Write-tools worden
  * tijdens de agent-loop NIET uitgevoerd; hun `run` draait pas bij bevestiging.
  */
 @Injectable()

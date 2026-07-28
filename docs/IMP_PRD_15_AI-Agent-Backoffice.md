@@ -1,4 +1,6 @@
-# IMP PRD 12 — AI-Agent voor Backoffice (add-on)
+# IMP PRD 15 — AI-Agent voor Backoffice (add-on)
+
+> **Nummering:** oorspronkelijk geschreven als "PRD 12"; hernummerd naar **PRD 15** bij de port naar `dev` omdat PRD-12 al tweemaal in gebruik is (Beschikbaarheid inspecteurs, Projectfasen) en PRD-13/PRD-14 aan AI-review resp. Online herstel toebehoren.
 
 > Status: **Concept ter review** · Auteur: Claude (Cowork) · Datum: 2026-07-09
 > Taal: PRD in het Nederlands, feature-keys/code/branchnamen in het Engels (conform `CLAUDE.md`).

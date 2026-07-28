@@ -23,7 +23,7 @@ export interface SseSink {
   close(): void;
 }
 
-/** Web-search draait server-side bij Anthropic (PRD-12 §5.5). */
+/** Web-search draait server-side bij Anthropic (PRD-15 §5.5). */
 const WEB_SEARCH_TOOL = {
   type: 'web_search_20260209',
   name: 'web_search',
@@ -37,7 +37,7 @@ interface StoredToolResult {
 }
 
 /**
- * Draait de agent-beurt en beheert het bevestig-en-hervat-pad (PRD-12 §5.3–5.4).
+ * Draait de agent-beurt en beheert het bevestig-en-hervat-pad (PRD-15 §5.3–5.4).
  * Lees-tools draaien direct; zodra een beurt één of meer WRITE-tools bevat wordt
  * de beurt gepauzeerd: leesresultaten worden alvast bewaard, write-tools worden
  * `AiPendingAction`s (PENDING), en de gebruiker bevestigt ze los. Na bevestiging

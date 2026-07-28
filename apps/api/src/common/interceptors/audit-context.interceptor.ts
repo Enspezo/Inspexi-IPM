@@ -26,7 +26,7 @@ export class AuditContextInterceptor implements NestInterceptor {
       ipAddress: request.ip || request.connection?.remoteAddress,
       requestId: request.requestId,
       // Normale HTTP-requests zijn mens-acties. De AI-assistent zet source='AI'
-      // op zijn eigen executie-context (PRD-12), niet hier.
+      // op zijn eigen executie-context (PRD-15), niet hier.
       source: 'HUMAN' as const,
     };
 

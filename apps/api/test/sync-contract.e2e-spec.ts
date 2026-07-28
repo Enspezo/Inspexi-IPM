@@ -501,7 +501,7 @@ describe('Sync contract — PWA-serialized payloads (e2e)', () => {
     expect(row?.measurements).toEqual([{ name: 'R_iso', value: 210, unit: 'MΩ' }]);
   });
 
-  it('5. measurementSheetRecord (B-207) — mét templateVersion + PWA-datavorm {sections:{…}} → DB-rij', async () => {
+  it('5. measurementSheetRecord (B-207/WP-D2) — mét templateVersion + canonieke datavorm → DB-rij', async () => {
     const msrId = randomUUID();
     const tmpl = await prisma.measurementSheetTemplate.create({
       data: {
@@ -513,13 +513,24 @@ describe('Sync contract — PWA-serialized payloads (e2e)', () => {
     });
     const nowIso = new Date().toISOString();
 
+    // WP-D2 (besluit A2): de PWA serialiseert sinds Dexie v18 de canonieke
+    // servervorm { [sectie]: { [rijnummer]: { [veld]: { value, passFail } } } }.
+    const canonicalData = {
+      isolation: {
+        '0': {
+          group: { value: 'Groep 1', passFail: null },
+          r_iso: { value: 2.5, passFail: 'pass' },
+        },
+      },
+    };
+
     const data = await push({
       measurementSheetRecords: [
         {
           operation: 'create',
           data: {
-            // Exact serializeMeasurementSheetRecord (create) ná WP-A2:
-            // templateVersion als string, data in de PWA-runtime-vorm.
+            // Exact serializeMeasurementSheetRecord (create) ná WP-D2:
+            // templateVersion als string, data in de canonieke vorm.
             id: msrId,
             templateId: tmpl.id,
             assetNodeId,
@@ -527,11 +538,7 @@ describe('Sync contract — PWA-serialized payloads (e2e)', () => {
             templateVersion: tmpl.version,
             templateSnapshot: { id: tmpl.id, version: tmpl.version, sections: [] },
             status: 'COMPLETED',
-            data: {
-              sections: {
-                isolation: { rows: [{ group: 'Groep 1', r_iso: 2.5 }] },
-              },
-            },
+            data: canonicalData,
             usedInstrumentIds: [],
             completedAt: nowIso,
             createdBy: userAId,
@@ -549,9 +556,56 @@ describe('Sync contract — PWA-serialized payloads (e2e)', () => {
     expect(row?.orgId).toBe(orgAId);
     expect(row?.templateVersion).toBe(tmpl.version);
     expect(row?.createdBy).toBe(userAId);
-    expect(row?.data).toEqual({
-      sections: { isolation: { rows: [{ group: 'Groep 1', r_iso: 2.5 }] } },
+    expect(row?.data).toEqual(canonicalData);
+  });
+
+  it('5b. WP-D2 (B-205 deel 2): de verouderde PWA-datavorm {sections:{…}} wordt afgewezen met een NL-melding', async () => {
+    const msrId = randomUUID();
+    const tmpl = await prisma.measurementSheetTemplate.create({
+      data: {
+        code: `E2E-CT-${randomUUID().slice(0, 8)}`,
+        name: 'E2E Contract Meetstaat legacy',
+        normTypeCode: 'NEN1010',
+        createdBy: userAId,
+      },
     });
+
+    const data = await push({
+      measurementSheetRecords: [
+        {
+          operation: 'create',
+          data: {
+            id: msrId,
+            templateId: tmpl.id,
+            assetNodeId,
+            inspectionPlanId: planId,
+            templateVersion: tmpl.version,
+            templateSnapshot: { id: tmpl.id, version: tmpl.version, sections: [] },
+            status: 'IN_PROGRESS',
+            // De pre-D2 PWA-runtime-vorm — sinds WP-D2 niet meer geldig op de wire.
+            data: {
+              sections: {
+                isolation: { rows: [{ group: 'Groep 1', r_iso: 2.5 }] },
+              },
+            },
+            createdBy: userAId,
+            deviceId,
+          },
+        },
+      ],
+    });
+
+    expect(data.processed.measurementSheetRecords).toBe(0);
+    expect(data.errors).toHaveLength(1);
+    expect(data.errors[0].entityType).toBe('measurementSheetRecord');
+    expect(data.errors[0].entityId).toBe(msrId);
+    expect(data.errors[0].error).toContain('meetstaatgegevens');
+    expect(data.errors[0].error).toContain('verouderde app-vorm');
+    expect(data.errors[0].error).not.toMatch(/prisma|invocation/i);
+
+    expect(
+      await prisma.measurementSheetRecord.findUnique({ where: { id: msrId } }),
+    ).toBeNull();
   });
 
   it('6. regressie B-206: finding met de OUDE foute vorm (visualInspectionId = checklist-item-id) → nette NL-400, geen 500, geen rij', async () => {
@@ -616,7 +670,7 @@ describe('Sync contract — PWA-serialized payloads (e2e)', () => {
             inspectionPlanId: planId,
             templateSnapshot: { id: tmpl.id, version: tmpl.version, sections: [] },
             status: 'COMPLETED',
-            data: { sections: {} },
+            data: {},
             createdBy: userAId,
             deviceId,
           },
@@ -660,7 +714,7 @@ describe('Sync contract — PWA-serialized payloads (e2e)', () => {
             templateVersion: 1,
             templateSnapshot: { id: tmpl.id, version: 1, sections: [] },
             status: 'IN_PROGRESS',
-            data: { sections: {} },
+            data: {},
             createdBy: userAId,
             deviceId,
           },

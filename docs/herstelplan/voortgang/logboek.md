@@ -46,6 +46,19 @@ Conform `docs/testprogramma/00-master-testplan.md` §5: API `:3001` (`NODE_ENV=t
 
 ## Chronologisch logboek
 
+### 28 juli 2026 — PWA: F1 gemerged + vijf oude branches beoordeeld en opgeruimd
+
+- **F1 (`fix/pwa-login-network-error`, `1e1ffcb`)**: bleek bij aanvang al gemerged als [InspeXi #41](https://github.com/Enspezo/InspeXi/pull/41) (`dev` @ `9417efa`). Verificatie op de gemergde stand: build groen, Vitest **287 groen** (incl. de 4 nieuwe apiClient-tests). ⚠️ Wél gevonden: PR #41 maakte de **tsc-gate rood** (9× TS18046 in `apiClient.test.ts`, `catch((e) => e)` op `Promise<unknown>`); fix zit als losse commit op de salvage-branch hieronder.
+- **Branchbeoordeling PWA** (op inhoud, niet op commit-historie; zelfde methode als de Beheer-opruiming):
+  - `fix/pwa-sync-robustness-h9` en `test/pwa-core-e2e-and-sync`: diff t.o.v. `dev` leeg → **verwijderd**.
+  - `feat/pwa-v3-asset-node` (2 unieke commits): server-assigned `nodeNumber` (type, push-whitelist-uitsluiting, pull-persistentie + test, UI incl. "concept"-fallback) én de Dexie-sortfix (`getCachedAssetTypes/LocationTypes` in-memory sorteren) staan volledig op `dev` (sortfix woordelijk in `reference-cache.ts`) → **verwijderd**.
+  - `feat/pwa-login-subdomain-tenant`: de subdomein-tenant-feature zelf zit op `dev` (PR #21); de enige unieke inhoud was de meegemergde safety-net-commit `8ee7524` → beoordeling valt samen met hieronder → **verwijderd**.
+  - `fix/pwa-sync-safety-net` (`8ee7524`, nooit op `dev` beland): per onderdeel beoordeeld. Achterhaald: contractVersion-guard (vervangen door de v4-guard in `pull.ts`), logout-wis (bewust vervangen door beslispunt A5/B-220: pending werk blíjft op het toestel), conflict-loop-doorbreking (vervangen door de sticky-conflictflow van 3c/WP-D1). **Twee onderdelen bleken uniek en ontbraken echt op `dev`** → gered naar branch **`fix/pwa-branch-salvage-sync-vangnet`** (met tests, 14 nieuw):
+    - **H6**: SW-runtimecache: `/api/v1/(auth|sync)` → NetworkOnly vóór de algemene NetworkFirst-regel. Op `dev` stonden GET `/sync/pull` en `/auth/me` tot 24u in Cache Storage (datalek naar een volgende gebruiker op het toestel + stale pull-respons bij netwerkuitval).
+    - **H8**: server-tombstones respecteren `_pendingSync`: een tombstone voor een record met lokale niet-gepushte wijzigingen wordt overgeslagen (soft- én hard-delete-paden) i.p.v. blind gewist; een écht conflict loopt daarna via de reguliere push-conflictflow. Niet als aparte `_conflict`-vlag herbouwd — bewust aangesloten op de WP-D1-machinerie.
+  - Alle vijf branches remote + lokaal verwijderd; de oude branches zijn níet gemerged (aftakking van vóór 22 werkpakketten).
+- Salvage-branch gepusht, gates op de branch: tsc 0 fouten, build groen, Vitest 287 groen. **Actie: PR openen en mergen** (bevat ook de tsc-gate-fix voor #41).
+
 ### 28 juli 2026 — Follow-up F4: AI-agent live geverifieerd tegen de echte Anthropic-API
 
 - Branch `chore/ai-agent-live-verificatie`, stack lokaal (API :3001 `NODE_ENV=test`, portal :5173), echte `ANTHROPIC_API_KEY`, model `claude-sonnet-5`. Eén beknopte sessie (~100k tokens incl. cache, ruim binnen het 5M-quotum).

@@ -9,8 +9,8 @@
 | B-406 deel 2 (tekenrecht toekennen) | B9 | Alleen mitigatie (`canSign` doorgeven) — toekennen is Epic 3 | `03-beslispunten-backlog.md` §C Epic 3 |
 | B-409 (anonimisering hersteller) | C2 | Wacht op beslispunt A4 | `03-beslispunten-backlog.md` §A A4 |
 | B-220 (offline inloggen na uitloggen) | D3 | Wacht op beslispunt A5 | `03-beslispunten-backlog.md` §A A5 |
-| B-209/B-223e (versieanker) | D1 | Wacht op beslispunt A1. Mitigatie al gemerged: syncedAt/updatedAt-skew-hotfix (PR #144) + backfill-script | `03-beslispunten-backlog.md` §A A1 |
-| B-205b (canonieke datavorm) | D2 | Wacht op beslispunt A2. Mitigatie al gemerged: defensieve asRecordData (WP-B1) — geen crashes meer op gemengde vormen | `03-beslispunten-backlog.md` §A A2 |
+| B-209/B-223e (nasleep) | D1 | **Opgelost** (#165 + InspeXi #37). Restpunten: deletes kennen geen versieanker; auto-resolve "client wint" op inspecteur-eigen typen beslecht fail-closed-conflicten daar automatisch (bestaand beleid, max 1×); `openConflicts` is bewust user-gescoped (stafbrede zichtbaarheid vergt een portal-UI); v3-`syncedAt`-fallback blijft één transitievenster server-side (schoonmaak-PR later) | PR #165-body |
+| B-205b (canonieke datavorm) | D2 | In uitvoering (A2 besloten 28-07: servervorm canoniek). Mitigatie al gemerged: defensieve asRecordData (WP-B1) | WP-D2 |
 | B-223a (pull-scope inspecteur) | C3 | Wacht op beslispunt A3 | `03-beslispunten-backlog.md` §A A3 |
 | B-402/B-403 (dead-end blijft) | B9 | Alleen mitigatie: klant wordt niet meer misleid + org krijgt e-mail; stafzijde = Epic 1/2 | `03-beslispunten-backlog.md` §C |
 | B-315 (lines.0.-prefix) | B5 | Geneste DTO-fouten dragen ValidationPipe-prefix voor directe API-callers; ontprefixing hoort bij WP-C1 | WP-C1 (golf 3) |
@@ -19,7 +19,7 @@
 | B-306 (nasleep) | B7 | Interne notities stonden al publiek achter mogelijk gedeelde tokens; tokenrotatie geadviseerd, niet uitgevoerd. Publieke planning-routes dragen nog een klasse-brede feature-gate met verkeerde-org-semantiek (follow-up) | PR #138-body |
 | B-305 (nasleep) | B6 | Dropdowns cappen op 200: >200 records → stil afgekapt; ongebonden `limit` op /help/articles + /support-tickets (pre-existing) | Follow-up: server-side search/typeahead; losse kleine PR |
 | B-507 (nasleep) | B4 | Overige uploadroutes (documents/photos/location-images/certificates, quote-templates serveert nog SVG authenticated) valideren op file.mimetype; helmet-CSP dempt platformbreed. Prod: SVG-logo-datacheck vóór uitrol | Vervolgtaak-chip aangemaakt door agent; pre-deploy-stap in PR #136 |
-| syncedAt-skew (nieuw, uit A1) | — | Vals zelf-conflict bij elke re-edit; code gefixt in PR #144. **Pre-deploy prod: `scripts/backfill-synced-at-skew.ts` draaien** (aanvulling op de §8-datachecks) | PR #144 |
+| syncedAt-skew (nieuw, uit A1) | — | Vals zelf-conflict bij elke re-edit; code gefixt in PR #144. **Pre-deploy prod: `scripts/backfill-synced-at-skew.ts` draaien** (aanvulling op de §8-datachecks); de NULL-backfill zit sinds D1 in migratie `20260728061433` | PR #144 + #165 |
 | B-203 (nasleep) | C3 | Testomgeving bevat nog `-0033`/`-0034`-nodenummers (data-opruiming); datacheck aanbevolen op typedefinities zonder shortCode vóór prod | B-203.md |
 | B-312 (deploy) | C4 | CJK blijft stuk tot `fonts-noto-cjk` in de Puppeteer/Chromium-image zit — zelfde release als de code | PR #148 + FASE4-DOCGEN.md |
 | B-211 (nasleep) | A1 | Auto-sync triggert alleen op reconnect/mount (online muteren vergt de sync-pill — bewuste scope); bottom-nav overlapt sheet-submit op desktop (pre-existing, cosmetica-kandidaat) | InspeXi PR #30-body |

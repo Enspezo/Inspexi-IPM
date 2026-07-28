@@ -75,7 +75,7 @@ GOLF 4  Gecoördineerd contractwerk            3 WP    ~3-4 dagen  (na stabilisa
 | **C3** | Sync-hardening serverzijde | API | B-203, B-212, B-216, B-217, B-218, B-223a | S3 | — | ✅ gemerged (PR #150) |
 | **C4** | Documentgeneratie + tabeloverflow | API + portal | B-311, B-312, B-301 | S3 | — | ✅ gemerged (PR #148) |
 | **C5** | Config-validatie & losse rest | API + portal | B-001, B-107, B-153, B-154, B-313, B-315-rest, B-505, B-506, B-508, B-510, B-511 | S3/S4 | — | ✅ gemerged (PR #153) |
-| **D1** | Sync-versieanker + conflicten in pull | PWA + API | B-209, B-223e | S2 | golf 1-2 stabiel | 🔄 in uitvoering — A1 besloten 28-07 (`updatedAt`-anker) |
+| **D1** | Sync-versieanker + conflicten in pull | PWA + API | B-209, B-223e | S2 | golf 1-2 stabiel | ✅ gemerged (PR #165 + InspeXi #37) |
 | **D2** | Canonieke MeasurementSheetRecord-datavorm | PWA + API | B-205b | S2 | A2 | 🔄 in uitvoering — A2 besloten 28-07 (servervorm canoniek) |
 | **D3** | Offline-shell hertest + sessiebeleid | PWA | B-219, B-220 | S3→S1? | — | ✅ gemerged (InspeXi #33) — B-219 definitief S3 |
 

@@ -37,11 +37,46 @@ describe('AiToolRegistry', () => {
   });
 
   it('create_task delegates to TasksService.create with the acting user', async () => {
-    await registry.get('create_task')!.run({ user }, { title: 'Bellen', deadline: '2026-08-01' });
+    await registry
+      .get('create_task')!
+      .run({ user }, { title: 'Bellen', deadline: '2026-08-01', entityType: 'CONTACT', entityId: 'c1' });
     expect(tasks.create).toHaveBeenCalledWith(
-      expect.objectContaining({ title: 'Bellen', deadline: '2026-08-01' }),
+      expect.objectContaining({
+        title: 'Bellen',
+        deadline: '2026-08-01',
+        entityType: 'CONTACT',
+        entityId: 'c1',
+      }),
       user,
     );
+  });
+
+  it('create_task requires an entity link in its schema (F4-live: Prisma vereist entityType/entityId)', () => {
+    const schema = registry.get('create_task')!.inputSchema as any;
+    expect(schema.required).toEqual(
+      expect.arrayContaining(['title', 'entityType', 'entityId']),
+    );
+    // Exact alle TaskEntityType-waarden — vangt drift met het Prisma-enum.
+    expect(schema.properties.entityType.enum).toEqual([
+      'CONTACT',
+      'REQUEST',
+      'QUOTE',
+      'PLANNING',
+      'PROJECT',
+      'PROJECT_PHASE',
+      'USER',
+    ]);
+  });
+
+  it('create_task summarize toont de entiteit-koppeling op de bevestigingskaart', () => {
+    const summary = registry.get('create_task')!.summarize!({
+      title: 'Bellen',
+      entityType: 'CONTACT',
+      entityId: 'c1',
+      deadline: '2026-08-01',
+    });
+    expect(summary).toContain('bij contact c1');
+    expect(summary).toContain('deadline 2026-08-01');
   });
 
   it('create_note delegates to NotesService.create with entity + content', async () => {

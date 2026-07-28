@@ -216,7 +216,7 @@ export class AiToolRegistry {
       {
         name: 'create_task',
         description:
-          'Maak een nieuwe taak aan. Vereist bevestiging door de gebruiker vóór uitvoeren.',
+          'Maak een nieuwe taak aan. Een taak hangt altijd aan een entiteit: geef entityType + entityId mee (zoek zo nodig eerst de relatie/aanvraag/offerte op, of koppel aan de gebruiker zelf met USER + diens id). Vereist bevestiging door de gebruiker vóór uitvoeren.',
         inputSchema: {
           type: 'object',
           properties: {
@@ -228,14 +228,19 @@ export class AiToolRegistry {
             },
             assigneeId: { type: 'string', description: 'Gebruiker-id om aan toe te wijzen (optioneel)' },
             deadline: { type: 'string', description: 'ISO-datum (optioneel)' },
-            entityType: { type: 'string', description: 'Gekoppelde entiteit-type (optioneel)' },
-            entityId: { type: 'string', description: 'Gekoppelde entiteit-id (optioneel)' },
+            entityType: {
+              type: 'string',
+              enum: ['CONTACT', 'REQUEST', 'QUOTE', 'PLANNING', 'PROJECT', 'PROJECT_PHASE', 'USER'],
+              description: 'Type van de gekoppelde entiteit (verplicht — een taak is altijd gekoppeld)',
+            },
+            entityId: { type: 'string', description: 'Id (uuid) van de gekoppelde entiteit (verplicht)' },
           },
-          required: ['title'],
+          required: ['title', 'entityType', 'entityId'],
         },
         mutates: true,
         summarize: (i) =>
           `Taak aanmaken: "${i.title}"` +
+          (i.entityType ? ` bij ${i.entityType.toLowerCase()} ${i.entityId}` : '') +
           (i.assigneeId ? `, toegewezen aan ${i.assigneeId}` : '') +
           (i.deadline ? `, deadline ${i.deadline}` : ''),
         run: (ctx, input) =>

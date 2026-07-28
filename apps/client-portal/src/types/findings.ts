@@ -49,6 +49,15 @@ export interface ResolutionPhoto {
   url: string;
 }
 
+/**
+ * B-409 (beslispunt A4): verwijzing naar de herstelverklaring bij een
+ * REPORTED-resolutie — de verklaring (Documenten-tab) benoemt de hersteller.
+ */
+export interface RepairStatementRef {
+  documentId: string;
+  signedAt: string | null;
+}
+
 export interface FindingResolutionDetail {
   id: string;
   statusCode: string;
@@ -57,6 +66,7 @@ export interface FindingResolutionDetail {
   verifiedAt: string | null;
   verificationNotes: string | null;
   resolvedByClientUser: UserRef | null;
+  repairStatement?: RepairStatementRef | null;
   photos: ResolutionPhoto[];
 }
 

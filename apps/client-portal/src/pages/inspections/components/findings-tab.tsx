@@ -11,9 +11,15 @@ interface FindingsTabProps {
   inspectionId: string;
   /** Online herstel (PRD-14 §14.9.6): per-plan vlag — stuurt de meld-flow om. */
   onlineRepairEnabled?: boolean;
+  /** B-409 (A4): vanuit de constatering doorverwijzen naar de Documenten-tab. */
+  onNavigateTab?: (tab: 'documents') => void;
 }
 
-export function FindingsTab({ inspectionId, onlineRepairEnabled = false }: FindingsTabProps) {
+export function FindingsTab({
+  inspectionId,
+  onlineRepairEnabled = false,
+  onNavigateTab,
+}: FindingsTabProps) {
   const { data, isLoading, error } = useInspectionFindings(inspectionId);
   const { hasFeature } = useFeatures();
   const [selected, setSelected] = useState<string | null>(null);
@@ -63,6 +69,14 @@ export function FindingsTab({ inspectionId, onlineRepairEnabled = false }: Findi
           inspectionId={inspectionId}
           onlineRepair={onlineRepair}
           onClose={() => setSelected(null)}
+          onShowDocuments={
+            onNavigateTab
+              ? () => {
+                  setSelected(null);
+                  onNavigateTab('documents');
+                }
+              : undefined
+          }
         />
       )}
     </div>

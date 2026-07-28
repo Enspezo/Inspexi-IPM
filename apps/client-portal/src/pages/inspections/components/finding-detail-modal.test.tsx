@@ -111,3 +111,86 @@ describe('FindingDetailModal (B-401: servershape met assetNode, zonder asset)', 
     expect(screen.queryByText('Verdeelkast VK-01')).not.toBeInTheDocument();
   });
 });
+
+// ── B-409 (beslispunt A4): herstelverklaring-indicator bij de resolutie ─────
+
+function reportedResolution(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'res-1',
+    statusCode: 'REPORTED',
+    description: 'Wandcontactdoos vervangen',
+    resolvedAt: '2026-07-25T10:00:00.000Z',
+    verifiedAt: null,
+    verificationNotes: null,
+    resolvedByClientUserId: null,
+    resolvedByClientUser: null,
+    repairSessionId: 'sess-1',
+    photos: [],
+    ...overrides,
+  };
+}
+
+describe('FindingDetailModal — herstelverklaring-indicator (B-409 / A4)', () => {
+  beforeEach(() => {
+    apiGetMock.mockReset();
+  });
+
+  it('toont bij een REPORTED-resolutie mét ondertekende verklaring een indicator + Documenten-tab-knop', async () => {
+    mockDetail(
+      serverFindingDetail({
+        statusCode: 'resolved',
+        resolutions: [
+          reportedResolution({
+            repairStatement: { documentId: 'doc-1', signedAt: '2026-07-25T12:00:00.000Z' },
+          }),
+        ],
+      }),
+    );
+    const onShowDocuments = vi.fn();
+
+    render(
+      <FindingDetailModal findingId="f1" onClose={vi.fn()} onShowDocuments={onShowDocuments} />,
+    );
+
+    expect(
+      await screen.findByText(/op 25 juli 2026 een ondertekende herstelverklaring afgegeven/),
+    ).toBeInTheDocument();
+    const button = screen.getByRole('button', { name: 'Bekijk de verklaring op de Documenten-tab' });
+    button.click();
+    expect(onShowDocuments).toHaveBeenCalledTimes(1);
+  });
+
+  it('toont de niet-ondertekend-variant zonder knop wanneer onShowDocuments ontbreekt', async () => {
+    mockDetail(
+      serverFindingDetail({
+        statusCode: 'resolved',
+        resolutions: [
+          reportedResolution({ repairStatement: { documentId: 'doc-1', signedAt: null } }),
+        ],
+      }),
+    );
+
+    render(<FindingDetailModal findingId="f1" onClose={vi.fn()} />);
+
+    expect(
+      await screen.findByText(/Voor dit herstel is een herstelverklaring opgesteld\./),
+    ).toBeInTheDocument();
+    expect(screen.getByText('U vindt de verklaring op de Documenten-tab.')).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Bekijk de verklaring op de Documenten-tab' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('toont géén indicator zonder repairStatement (klassieke resolutie)', async () => {
+    mockDetail(
+      serverFindingDetail({
+        resolutions: [reportedResolution({ statusCode: 'PENDING_VERIFICATION', repairStatement: null })],
+      }),
+    );
+
+    render(<FindingDetailModal findingId="f1" onClose={vi.fn()} />);
+
+    expect(await screen.findByText('Kapotte wandcontactdoos')).toBeInTheDocument();
+    expect(screen.queryByText(/herstelverklaring/)).not.toBeInTheDocument();
+  });
+});

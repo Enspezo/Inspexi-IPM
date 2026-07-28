@@ -65,6 +65,24 @@ export class ClientFindingsService {
           include: {
             photos: { orderBy: { uploadedAt: 'asc' } },
             resolvedByClientUser: { select: { id: true, firstName: true, lastName: true } },
+            // B-409 (beslispunt A4, 2026-07-28): de herstelverklaring is leidend —
+            // klant-zijdig tonen we dát er een (ondertekende) verklaring bestaat.
+            // Alleen het document-id + de HERSTELLER-ondertekendatum; de sessie
+            // zelf (contactName/email) wordt hieronder weggelaten.
+            repairSession: {
+              select: {
+                generatedDocument: {
+                  select: {
+                    id: true,
+                    signatures: {
+                      where: { signerRoleCode: 'HERSTELLER', status: 'SIGNED' },
+                      select: { signedAt: true },
+                      take: 1,
+                    },
+                  },
+                },
+              },
+            },
           },
         },
       },
@@ -78,12 +96,21 @@ export class ClientFindingsService {
     // invullergegevens wél (via de staf-serializer in findings.service).
     return {
       ...finding,
-      resolutions: finding.resolutions.map((r) => {
+      resolutions: finding.resolutions.map((rWithSession) => {
+        const { repairSession, ...r } = rWithSession;
         const anonymous = r.statusCode === 'REPORTED' || r.statusCode === 'CONFLICT';
+        // B-409 (beslispunt A4): de verklaring is leidend. Bij een geslaagde
+        // herstel-flow-resolutie (REPORTED) verwijzen we naar de herstelverklaring
+        // (zichtbaar op de Documenten-tab), zodat het portaal niet langer de
+        // schijn wekt dat de invullergegevens afgeschermd zijn.
+        const statementDoc = r.statusCode === 'REPORTED' ? repairSession?.generatedDocument : null;
         return {
           ...r,
           resolvedByClientUserId: anonymous ? null : r.resolvedByClientUserId,
           resolvedByClientUser: anonymous ? null : r.resolvedByClientUser,
+          repairStatement: statementDoc
+            ? { documentId: statementDoc.id, signedAt: statementDoc.signatures[0]?.signedAt ?? null }
+            : null,
           photos: r.photos.map((p) => ({
             id: p.id,
             caption: p.caption,

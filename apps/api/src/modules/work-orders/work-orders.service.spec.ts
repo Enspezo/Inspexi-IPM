@@ -1,7 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import {
   NotFoundException,
-  ForbiddenException,
   BadRequestException,
 } from '@nestjs/common';
 import { Role, WorkOrderStatus } from '@prisma/client';
@@ -39,6 +38,7 @@ describe('WorkOrdersService', () => {
     },
     planningItem: {
       findUnique: jest.fn(),
+      findFirst: jest.fn(),
     },
     $transaction: jest.fn((cb: (tx: typeof mockTx) => Promise<unknown>) =>
       cb(mockTx),
@@ -217,37 +217,43 @@ describe('WorkOrdersService', () => {
 
   describe('findOne', () => {
     it('should return a work order by id', async () => {
-      mockPrismaService.workOrder.findUnique.mockResolvedValue(mockWorkOrder);
+      mockPrismaService.workOrder.findFirst.mockResolvedValue(mockWorkOrder);
 
       const result = await service.findOne('wo-1', mockUser);
 
       expect(result.id).toBe('wo-1');
-      expect(mockPrismaService.workOrder.findUnique).toHaveBeenCalledWith(
-        expect.objectContaining({ where: { id: 'wo-1' } }),
+      expect(mockPrismaService.workOrder.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ id: 'wo-1', orgId: 'org-1' }),
+        }),
       );
     });
 
     it('should throw NotFoundException when not found', async () => {
-      mockPrismaService.workOrder.findUnique.mockResolvedValue(null);
+      mockPrismaService.workOrder.findFirst.mockResolvedValue(null);
 
       await expect(service.findOne('nonexistent', mockUser)).rejects.toThrow(
         NotFoundException,
       );
     });
 
-    it('should throw ForbiddenException for cross-org access', async () => {
-      mockPrismaService.workOrder.findUnique.mockResolvedValue({
-        ...mockWorkOrder,
-        orgId: 'other-org',
-      });
+    it('should throw the same NotFoundException for cross-org access (B-105: geen oracle)', async () => {
+      // Org-scoped query: een vreemde-org-id levert null, identiek aan een
+      // niet-bestaand id — cross-org "bestaat niet".
+      mockPrismaService.workOrder.findFirst.mockResolvedValue(null);
 
       await expect(service.findOne('wo-1', mockUser)).rejects.toThrow(
-        ForbiddenException,
+        'Werkbon niet gevonden',
+      );
+      expect(mockPrismaService.workOrder.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ orgId: 'org-1' }),
+        }),
       );
     });
 
     it('should allow SUPERUSER cross-org access', async () => {
-      mockPrismaService.workOrder.findUnique.mockResolvedValue({
+      mockPrismaService.workOrder.findFirst.mockResolvedValue({
         ...mockWorkOrder,
         orgId: 'other-org',
       });
@@ -282,36 +288,41 @@ describe('WorkOrdersService', () => {
         orgId: 'org-1',
         location: { postalCode: '1234AB', houseNumber: '10' },
       };
-      mockPrismaService.planningItem.findUnique.mockResolvedValue(mockPlanningItem);
+      mockPrismaService.planningItem.findFirst.mockResolvedValue(mockPlanningItem);
       const created = { ...mockWorkOrder, planningItemId: 'plan-1' };
       mockPrismaService.workOrder.create.mockResolvedValue(created);
 
       const result = await service.create({ planningItemId: 'plan-1' } as any, mockUser);
 
       expect(result.planningItemId).toBe('plan-1');
-      expect(mockPrismaService.planningItem.findUnique).toHaveBeenCalledWith(
-        expect.objectContaining({ where: { id: 'plan-1' } }),
+      expect(mockPrismaService.planningItem.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ id: 'plan-1', orgId: 'org-1' }),
+        }),
       );
     });
 
     it('should throw NotFoundException when planning item not found', async () => {
-      mockPrismaService.planningItem.findUnique.mockResolvedValue(null);
+      mockPrismaService.planningItem.findFirst.mockResolvedValue(null);
 
       await expect(
         service.create({ planningItemId: 'bad-plan' } as any, mockUser),
       ).rejects.toThrow(NotFoundException);
     });
 
-    it('should throw ForbiddenException for cross-org planning item', async () => {
-      mockPrismaService.planningItem.findUnique.mockResolvedValue({
-        id: 'plan-x',
-        orgId: 'other-org',
-        location: null,
-      });
+    it('should throw the same NotFoundException for cross-org planning item (B-105)', async () => {
+      // Org-scoped query: een vreemde-org-planregel levert null → zelfde 404
+      // als een niet-bestaande planregel.
+      mockPrismaService.planningItem.findFirst.mockResolvedValue(null);
 
       await expect(
         service.create({ planningItemId: 'plan-x' } as any, mockUser),
-      ).rejects.toThrow(ForbiddenException);
+      ).rejects.toThrow('Planregel niet gevonden');
+      expect(mockPrismaService.planningItem.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ orgId: 'org-1' }),
+        }),
+      );
     });
 
     it('delegates number generation to the numbering engine', async () => {
@@ -330,7 +341,7 @@ describe('WorkOrdersService', () => {
 
   describe('update', () => {
     it('should update a work order', async () => {
-      mockPrismaService.workOrder.findUnique.mockResolvedValue(mockWorkOrder);
+      mockPrismaService.workOrder.findFirst.mockResolvedValue(mockWorkOrder);
       const updated = { ...mockWorkOrder, internalNotes: 'Updated notes' };
       mockPrismaService.workOrder.update.mockResolvedValue(updated);
 
@@ -345,49 +356,43 @@ describe('WorkOrdersService', () => {
     });
 
     it('should throw NotFoundException for non-existent work order', async () => {
-      mockPrismaService.workOrder.findUnique.mockResolvedValue(null);
+      mockPrismaService.workOrder.findFirst.mockResolvedValue(null);
 
       await expect(
         service.update('nonexistent', {} as any, mockUser),
       ).rejects.toThrow(NotFoundException);
     });
 
-    it('should throw ForbiddenException for cross-org update', async () => {
-      mockPrismaService.workOrder.findUnique.mockResolvedValue({
-        ...mockWorkOrder,
-        orgId: 'other-org',
-      });
+    it('should throw the same NotFoundException for cross-org update (B-105)', async () => {
+      mockPrismaService.workOrder.findFirst.mockResolvedValue(null);
 
       await expect(
         service.update('wo-1', {} as any, mockUser),
-      ).rejects.toThrow(ForbiddenException);
+      ).rejects.toThrow('Werkbon niet gevonden');
     });
 
     it('should throw NotFoundException when linked planning item does not exist', async () => {
-      mockPrismaService.workOrder.findUnique.mockResolvedValue(mockWorkOrder);
-      mockPrismaService.planningItem.findUnique.mockResolvedValue(null);
+      mockPrismaService.workOrder.findFirst.mockResolvedValue(mockWorkOrder);
+      mockPrismaService.planningItem.findFirst.mockResolvedValue(null);
 
       await expect(
         service.update('wo-1', { planningItemId: 'bad-plan' } as any, mockUser),
       ).rejects.toThrow(NotFoundException);
     });
 
-    it('should throw ForbiddenException when linking to cross-org planning item', async () => {
-      mockPrismaService.workOrder.findUnique.mockResolvedValue(mockWorkOrder);
-      mockPrismaService.planningItem.findUnique.mockResolvedValue({
-        id: 'plan-x',
-        orgId: 'other-org',
-      });
+    it('should throw the same NotFoundException when linking to cross-org planning item (B-105)', async () => {
+      mockPrismaService.workOrder.findFirst.mockResolvedValue(mockWorkOrder);
+      mockPrismaService.planningItem.findFirst.mockResolvedValue(null);
 
       await expect(
         service.update('wo-1', { planningItemId: 'plan-x' } as any, mockUser),
-      ).rejects.toThrow(ForbiddenException);
+      ).rejects.toThrow('Planregel niet gevonden');
     });
   });
 
   describe('updateStatus', () => {
     it('should update the status of a work order', async () => {
-      mockPrismaService.workOrder.findUnique.mockResolvedValue(mockWorkOrder);
+      mockPrismaService.workOrder.findFirst.mockResolvedValue(mockWorkOrder);
       const updated = { ...mockWorkOrder, status: WorkOrderStatus.IN_UITVOERING };
       mockPrismaService.workOrder.update.mockResolvedValue(updated);
 
@@ -406,7 +411,7 @@ describe('WorkOrdersService', () => {
     });
 
     it('should throw BadRequestException when status is already set to the given value', async () => {
-      mockPrismaService.workOrder.findUnique.mockResolvedValue({
+      mockPrismaService.workOrder.findFirst.mockResolvedValue({
         ...mockWorkOrder,
         status: WorkOrderStatus.IN_VOORBEREIDING,
       });
@@ -421,7 +426,7 @@ describe('WorkOrdersService', () => {
     });
 
     it('should throw NotFoundException for non-existent work order', async () => {
-      mockPrismaService.workOrder.findUnique.mockResolvedValue(null);
+      mockPrismaService.workOrder.findFirst.mockResolvedValue(null);
 
       await expect(
         service.updateStatus(
@@ -435,7 +440,7 @@ describe('WorkOrdersService', () => {
 
   describe('setLines', () => {
     it('should replace work order lines in a transaction', async () => {
-      mockPrismaService.workOrder.findUnique.mockResolvedValue(mockWorkOrder);
+      mockPrismaService.workOrder.findFirst.mockResolvedValue(mockWorkOrder);
       mockTx.workOrderLine.deleteMany.mockResolvedValue({});
       mockTx.workOrderLine.createMany.mockResolvedValue({});
       mockTx.workOrder.findUnique.mockResolvedValue({
@@ -478,7 +483,7 @@ describe('WorkOrdersService', () => {
     });
 
     it('should handle empty lines array (clears all lines without createMany)', async () => {
-      mockPrismaService.workOrder.findUnique.mockResolvedValue(mockWorkOrder);
+      mockPrismaService.workOrder.findFirst.mockResolvedValue(mockWorkOrder);
       mockTx.workOrderLine.deleteMany.mockResolvedValue({});
       mockTx.workOrder.findUnique.mockResolvedValue({ ...mockWorkOrder, lines: [] });
 
@@ -493,7 +498,7 @@ describe('WorkOrdersService', () => {
     });
 
     it('should throw NotFoundException for non-existent work order', async () => {
-      mockPrismaService.workOrder.findUnique.mockResolvedValue(null);
+      mockPrismaService.workOrder.findFirst.mockResolvedValue(null);
 
       await expect(
         service.setLines('nonexistent', { lines: [] } as any, mockUser),
@@ -503,7 +508,7 @@ describe('WorkOrdersService', () => {
 
   describe('remove', () => {
     it('should delete a work order', async () => {
-      mockPrismaService.workOrder.findUnique.mockResolvedValue(mockWorkOrder);
+      mockPrismaService.workOrder.findFirst.mockResolvedValue(mockWorkOrder);
       mockPrismaService.workOrder.delete.mockResolvedValue({});
 
       await service.remove('wo-1', mockUser);
@@ -514,22 +519,20 @@ describe('WorkOrdersService', () => {
     });
 
     it('should throw NotFoundException for non-existent work order', async () => {
-      mockPrismaService.workOrder.findUnique.mockResolvedValue(null);
+      mockPrismaService.workOrder.findFirst.mockResolvedValue(null);
 
       await expect(service.remove('nonexistent', mockUser)).rejects.toThrow(
         NotFoundException,
       );
     });
 
-    it('should throw ForbiddenException for cross-org delete', async () => {
-      mockPrismaService.workOrder.findUnique.mockResolvedValue({
-        ...mockWorkOrder,
-        orgId: 'other-org',
-      });
+    it('should throw the same NotFoundException for cross-org delete (B-105)', async () => {
+      mockPrismaService.workOrder.findFirst.mockResolvedValue(null);
 
       await expect(service.remove('wo-1', mockUser)).rejects.toThrow(
-        ForbiddenException,
+        'Werkbon niet gevonden',
       );
+      expect(mockPrismaService.workOrder.delete).not.toHaveBeenCalled();
     });
   });
 

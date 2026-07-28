@@ -214,11 +214,11 @@ describe('Support tickets (e2e)', () => {
 
   // ── Cross-tenant isolatie ─────────────────────────────────────────────────────
   describe('cross-tenant isolatie', () => {
-    it('org2-admin mag een org1-ticket niet inzien (403)', async () => {
+    it('org2-admin krijgt voor een org1-ticket dezelfde 404 als niet-bestaand (B-105)', async () => {
       await request(app.getHttpServer())
         .get(`/api/v1/support-tickets/${createdTicketIds[0]}`)
         .set(auth(org2AdminToken))
-        .expect(403);
+        .expect(404);
     });
 
     it('org2-admin ziet org1-tickets niet in de org-lijst', async () => {
@@ -231,12 +231,12 @@ describe('Support tickets (e2e)', () => {
       expect(ids).not.toContain(createdTicketIds[1]);
     });
 
-    it('org2-admin mag een org1-ticket niet muteren (403)', async () => {
+    it('org2-admin krijgt bij muteren van een org1-ticket dezelfde 404 (B-105)', async () => {
       await request(app.getHttpServer())
         .patch(`/api/v1/support-tickets/${createdTicketIds[0]}`)
         .set(auth(org2AdminToken))
         .send({ status: 'OPGELOST' })
-        .expect(403);
+        .expect(404);
     });
   });
 

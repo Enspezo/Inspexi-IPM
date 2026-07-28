@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { NotFoundException, ForbiddenException } from '@nestjs/common';
+import { NotFoundException } from '@nestjs/common';
 import { Role, TaskEntityType, TaskStatus, NotificationType } from '@prisma/client';
 import { TasksService } from './tasks.service';
 import { PrismaService } from '@/prisma';
@@ -12,6 +12,7 @@ describe('TasksService', () => {
     task: {
       findMany: jest.fn(),
       findUnique: jest.fn(),
+      findFirst: jest.fn(),
       create: jest.fn(),
       update: jest.fn(),
       delete: jest.fn(),
@@ -173,7 +174,7 @@ describe('TasksService', () => {
         assignee: null,
         createdBy: { id: 'user-1', firstName: 'A', lastName: 'B', email: 'a@b.nl' },
       };
-      mockPrismaService.task.findUnique.mockResolvedValue(mockTask);
+      mockPrismaService.task.findFirst.mockResolvedValue(mockTask);
       mockPrismaService.request.findMany.mockResolvedValue([
         { id: 'req-1', title: 'Test Request' },
       ]);
@@ -184,23 +185,25 @@ describe('TasksService', () => {
     });
 
     it('should throw NotFoundException for missing task', async () => {
-      mockPrismaService.task.findUnique.mockResolvedValue(null);
+      mockPrismaService.task.findFirst.mockResolvedValue(null);
 
       await expect(service.findOne('nonexistent', mockUser)).rejects.toThrow(
         NotFoundException,
       );
     });
 
-    it('should throw ForbiddenException for cross-org access', async () => {
-      mockPrismaService.task.findUnique.mockResolvedValue({
-        id: 'task-1',
-        orgId: 'other-org',
-        entityType: TaskEntityType.CONTACT,
-        entityId: 'c-1',
-      });
+    it('should throw the same NotFoundException for cross-org access (B-105: geen oracle)', async () => {
+      // Org-scoped query: een vreemde-org-id levert null, identiek aan een
+      // niet-bestaand id — cross-org "bestaat niet".
+      mockPrismaService.task.findFirst.mockResolvedValue(null);
 
       await expect(service.findOne('task-1', mockUser)).rejects.toThrow(
-        ForbiddenException,
+        'Taak niet gevonden',
+      );
+      expect(mockPrismaService.task.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ orgId: 'org-1' }),
+        }),
       );
     });
 
@@ -213,7 +216,7 @@ describe('TasksService', () => {
         assignee: null,
         createdBy: { id: 'user-2', firstName: 'A', lastName: 'B', email: 'a@b.nl' },
       };
-      mockPrismaService.task.findUnique.mockResolvedValue(mockTask);
+      mockPrismaService.task.findFirst.mockResolvedValue(mockTask);
 
       const result = await service.findOne('task-1', mockSuperuser);
 
@@ -313,7 +316,7 @@ describe('TasksService', () => {
         status: TaskStatus.TE_DOEN,
         assigneeId: null,
       };
-      mockPrismaService.task.findUnique.mockResolvedValue(existing);
+      mockPrismaService.task.findFirst.mockResolvedValue(existing);
       const updated = {
         ...existing,
         title: 'Updated',
@@ -337,7 +340,7 @@ describe('TasksService', () => {
         status: TaskStatus.TE_DOEN,
         assigneeId: null,
       };
-      mockPrismaService.task.findUnique.mockResolvedValue(existing);
+      mockPrismaService.task.findFirst.mockResolvedValue(existing);
       const updated = {
         ...existing,
         assigneeId: 'user-2',
@@ -367,7 +370,7 @@ describe('TasksService', () => {
         status: TaskStatus.TE_DOEN,
         assigneeId: 'user-2',
       };
-      mockPrismaService.task.findUnique.mockResolvedValue(existing);
+      mockPrismaService.task.findFirst.mockResolvedValue(existing);
       const updated = {
         ...existing,
         status: TaskStatus.VOLTOOID,
@@ -389,23 +392,19 @@ describe('TasksService', () => {
       );
     });
 
-    it('should throw ForbiddenException for cross-org update', async () => {
-      mockPrismaService.task.findUnique.mockResolvedValue({
-        id: 'task-1',
-        orgId: 'other-org',
-        status: TaskStatus.TE_DOEN,
-        assigneeId: null,
-      });
+    it('should throw the same NotFoundException for cross-org update (B-105)', async () => {
+      mockPrismaService.task.findFirst.mockResolvedValue(null);
 
       await expect(
         service.update('task-1', { title: 'hack' } as any, mockUser),
-      ).rejects.toThrow(ForbiddenException);
+      ).rejects.toThrow('Taak niet gevonden');
+      expect(mockPrismaService.task.update).not.toHaveBeenCalled();
     });
   });
 
   describe('remove', () => {
     it('should delete a task', async () => {
-      mockPrismaService.task.findUnique.mockResolvedValue({
+      mockPrismaService.task.findFirst.mockResolvedValue({
         id: 'task-1',
         orgId: 'org-1',
       });
@@ -419,22 +418,20 @@ describe('TasksService', () => {
     });
 
     it('should throw NotFoundException for missing task', async () => {
-      mockPrismaService.task.findUnique.mockResolvedValue(null);
+      mockPrismaService.task.findFirst.mockResolvedValue(null);
 
       await expect(service.remove('nonexistent', mockUser)).rejects.toThrow(
         NotFoundException,
       );
     });
 
-    it('should throw ForbiddenException for cross-org delete', async () => {
-      mockPrismaService.task.findUnique.mockResolvedValue({
-        id: 'task-1',
-        orgId: 'other-org',
-      });
+    it('should throw the same NotFoundException for cross-org delete (B-105)', async () => {
+      mockPrismaService.task.findFirst.mockResolvedValue(null);
 
       await expect(service.remove('task-1', mockUser)).rejects.toThrow(
-        ForbiddenException,
+        'Taak niet gevonden',
       );
+      expect(mockPrismaService.task.delete).not.toHaveBeenCalled();
     });
   });
 });

@@ -14,6 +14,7 @@ describe('DocumentsService', () => {
       create: jest.fn(),
       findMany: jest.fn(),
       findUnique: jest.fn(),
+      findFirst: jest.fn(),
       count: jest.fn(),
       update: jest.fn(),
     },
@@ -272,7 +273,7 @@ describe('DocumentsService', () => {
         entityId: 'c-1',
         uploadedBy: { id: 'user-1', firstName: 'A', lastName: 'B', email: 'a@b.nl' },
       };
-      mockPrismaService.document.findUnique.mockResolvedValue(mockDoc);
+      mockPrismaService.document.findFirst.mockResolvedValue(mockDoc);
       mockPrismaService.contact.findMany.mockResolvedValue([
         { id: 'c-1', companyName: 'ACME Corp' },
       ]);
@@ -283,35 +284,39 @@ describe('DocumentsService', () => {
     });
 
     it('should throw NotFoundException for missing document', async () => {
-      mockPrismaService.document.findUnique.mockResolvedValue(null);
+      mockPrismaService.document.findFirst.mockResolvedValue(null);
 
       await expect(service.findOne('nonexistent', mockUser)).rejects.toThrow(
         NotFoundException,
       );
     });
 
-    it('should throw NotFoundException for soft-deleted document', async () => {
-      mockPrismaService.document.findUnique.mockResolvedValue({
-        id: 'doc-1',
-        isDeleted: true,
-      });
+    it('should throw NotFoundException for soft-deleted document (scoped query)', async () => {
+      // De where-clause filtert isDeleted weg — de scoped query levert null.
+      mockPrismaService.document.findFirst.mockResolvedValue(null);
 
       await expect(service.findOne('doc-1', mockUser)).rejects.toThrow(
         NotFoundException,
       );
+      expect(mockPrismaService.document.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ isDeleted: false }),
+        }),
+      );
     });
 
-    it('should throw ForbiddenException for cross-org access', async () => {
-      mockPrismaService.document.findUnique.mockResolvedValue({
-        id: 'doc-1',
-        orgId: 'other-org',
-        isDeleted: false,
-        entityType: DocumentEntityType.CONTACT,
-        entityId: 'c-1',
-      });
+    it('should throw the same NotFoundException for cross-org access (B-105: geen oracle)', async () => {
+      // Org-scoped query: een vreemde-org-id levert null, identiek aan een
+      // niet-bestaand id — cross-org "bestaat niet".
+      mockPrismaService.document.findFirst.mockResolvedValue(null);
 
       await expect(service.findOne('doc-1', mockUser)).rejects.toThrow(
-        ForbiddenException,
+        'Document niet gevonden',
+      );
+      expect(mockPrismaService.document.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ orgId: 'org-1' }),
+        }),
       );
     });
 
@@ -324,7 +329,7 @@ describe('DocumentsService', () => {
         entityId: 'c-1',
         uploadedBy: { id: 'user-1', firstName: 'A', lastName: 'B', email: 'a@b.nl' },
       };
-      mockPrismaService.document.findUnique.mockResolvedValue(mockDoc);
+      mockPrismaService.document.findFirst.mockResolvedValue(mockDoc);
 
       const result = await service.findOne('doc-1', mockSuperuser);
 
@@ -335,7 +340,7 @@ describe('DocumentsService', () => {
   describe('download', () => {
     it('should return buffer and document metadata', async () => {
       const mockDoc = { id: 'doc-1', orgId: 'org-1', isDeleted: false, storageKey: 'key-1' };
-      mockPrismaService.document.findUnique.mockResolvedValue(mockDoc);
+      mockPrismaService.document.findFirst.mockResolvedValue(mockDoc);
       mockStorageProvider.download.mockResolvedValue(Buffer.from('content'));
 
       const result = await service.download('doc-1', mockUser);
@@ -346,23 +351,23 @@ describe('DocumentsService', () => {
     });
 
     it('should throw NotFoundException for missing document', async () => {
-      mockPrismaService.document.findUnique.mockResolvedValue(null);
+      mockPrismaService.document.findFirst.mockResolvedValue(null);
 
       await expect(service.download('nonexistent', mockUser)).rejects.toThrow(
         NotFoundException,
       );
     });
 
-    it('should throw ForbiddenException for cross-org download', async () => {
-      mockPrismaService.document.findUnique.mockResolvedValue({
-        id: 'doc-1',
-        orgId: 'other-org',
-        isDeleted: false,
-        storageKey: 'key-1',
-      });
+    it('should throw the same NotFoundException for cross-org download (B-105)', async () => {
+      mockPrismaService.document.findFirst.mockResolvedValue(null);
 
       await expect(service.download('doc-1', mockUser)).rejects.toThrow(
-        ForbiddenException,
+        'Document niet gevonden',
+      );
+      expect(mockPrismaService.document.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ orgId: 'org-1', isDeleted: false }),
+        }),
       );
     });
   });
@@ -370,7 +375,7 @@ describe('DocumentsService', () => {
   describe('update', () => {
     it('should update document description', async () => {
       const existing = { id: 'doc-1', orgId: 'org-1', isDeleted: false, description: 'old' };
-      mockPrismaService.document.findUnique.mockResolvedValue(existing);
+      mockPrismaService.document.findFirst.mockResolvedValue(existing);
       const updated = {
         ...existing,
         description: 'new desc',
@@ -390,21 +395,18 @@ describe('DocumentsService', () => {
       );
     });
 
-    it('should throw ForbiddenException for cross-org update', async () => {
-      mockPrismaService.document.findUnique.mockResolvedValue({
-        id: 'doc-1',
-        orgId: 'other-org',
-        isDeleted: false,
-      });
+    it('should throw the same NotFoundException for cross-org update (B-105)', async () => {
+      mockPrismaService.document.findFirst.mockResolvedValue(null);
 
       await expect(
         service.update('doc-1', { description: 'hack' }, mockUser),
-      ).rejects.toThrow(ForbiddenException);
+      ).rejects.toThrow('Document niet gevonden');
+      expect(mockPrismaService.document.update).not.toHaveBeenCalled();
     });
 
     it('should replace the tag-set when tagIds is provided', async () => {
       const existing = { id: 'doc-1', orgId: 'org-1', isDeleted: false, description: 'd' };
-      mockPrismaService.document.findUnique.mockResolvedValue(existing);
+      mockPrismaService.document.findFirst.mockResolvedValue(existing);
       // assertAllSameOrg + active-tag check both query documentTag.findMany
       mockPrismaService.documentTag.findMany.mockResolvedValue([{ id: 'tag-1' }]);
       mockPrismaService.document.update.mockResolvedValue({
@@ -430,7 +432,7 @@ describe('DocumentsService', () => {
 
     it('should reject tagIds from another org (cross-tenant)', async () => {
       const existing = { id: 'doc-1', orgId: 'org-1', isDeleted: false, description: 'd' };
-      mockPrismaService.document.findUnique.mockResolvedValue(existing);
+      mockPrismaService.document.findFirst.mockResolvedValue(existing);
       // assertAllSameOrg: the foreign tag is not found within org-1
       mockPrismaService.documentTag.findMany.mockResolvedValue([]);
 
@@ -443,7 +445,7 @@ describe('DocumentsService', () => {
 
   describe('remove', () => {
     it('should soft-delete a document', async () => {
-      mockPrismaService.document.findUnique.mockResolvedValue({
+      mockPrismaService.document.findFirst.mockResolvedValue({
         id: 'doc-1',
         orgId: 'org-1',
         isDeleted: false,
@@ -459,23 +461,20 @@ describe('DocumentsService', () => {
     });
 
     it('should throw NotFoundException for missing document', async () => {
-      mockPrismaService.document.findUnique.mockResolvedValue(null);
+      mockPrismaService.document.findFirst.mockResolvedValue(null);
 
       await expect(service.remove('nonexistent', mockUser)).rejects.toThrow(
         NotFoundException,
       );
     });
 
-    it('should throw ForbiddenException for cross-org delete', async () => {
-      mockPrismaService.document.findUnique.mockResolvedValue({
-        id: 'doc-1',
-        orgId: 'other-org',
-        isDeleted: false,
-      });
+    it('should throw the same NotFoundException for cross-org delete (B-105)', async () => {
+      mockPrismaService.document.findFirst.mockResolvedValue(null);
 
       await expect(service.remove('doc-1', mockUser)).rejects.toThrow(
-        ForbiddenException,
+        'Document niet gevonden',
       );
+      expect(mockPrismaService.document.update).not.toHaveBeenCalled();
     });
   });
 
@@ -494,7 +493,7 @@ describe('DocumentsService', () => {
     };
 
     it('should resolve a location name in enrichWithEntityNames', async () => {
-      mockPrismaService.document.findUnique.mockResolvedValue({
+      mockPrismaService.document.findFirst.mockResolvedValue({
         id: 'doc-1',
         orgId: 'org-1',
         isDeleted: false,

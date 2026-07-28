@@ -190,11 +190,74 @@ describe('Error contract (WP-C1): NL-meldingen + 404-oracle (e2e)', () => {
       data: { orgId: org2Id, name: 'e2e-errc Tag', color: '#3B82F6' },
     });
     foreign.documentTag = documentTag.id;
+
+    // ── B-105-restant: fixtures voor de vijf naconverteerde modules ──
+    const document = await prisma.document.create({
+      data: {
+        orgId: org2Id,
+        entityType: 'CONTACT',
+        entityId: contact.id,
+        fileName: 'e2e-errc.pdf',
+        originalName: 'e2e-errc.pdf',
+        mimeType: 'application/pdf',
+        size: 4,
+        storageKey: `${org2Id}/e2e-errc-document.pdf`,
+        uploadedById: org2Admin.id,
+      },
+    });
+    foreign.document = document.id;
+
+    const note = await prisma.note.create({
+      data: {
+        orgId: org2Id,
+        entityType: 'CONTACT',
+        entityId: contact.id,
+        content: 'e2e-errc Notitie',
+        createdById: org2Admin.id,
+      },
+    });
+    foreign.note = note.id;
+
+    const task = await prisma.task.create({
+      data: {
+        orgId: org2Id,
+        title: 'e2e-errc Taak',
+        entityType: 'CONTACT',
+        entityId: contact.id,
+        createdById: org2Admin.id,
+      },
+    });
+    foreign.task = task.id;
+
+    const workOrder = await prisma.workOrder.create({
+      data: {
+        orgId: org2Id,
+        workOrderNumber: 'e2e-errc-WB-0001',
+        createdBy: org2Admin.id,
+      },
+    });
+    foreign.workOrder = workOrder.id;
+
+    const supportTicket = await prisma.supportTicket.create({
+      data: {
+        orgId: org2Id,
+        ticketNumber: 990001,
+        subject: 'e2e-errc Ticket',
+        description: 'e2e-errc',
+        createdById: org2Admin.id,
+      },
+    });
+    foreign.supportTicket = supportTicket.id;
   });
 
   afterAll(async () => {
     try {
       // Kinderen vóór ouders; alles is e2e-errc-gemarkeerd of via id bekend.
+      await prisma.supportTicket.deleteMany({ where: { id: foreign.supportTicket } });
+      await prisma.workOrder.deleteMany({ where: { id: foreign.workOrder } });
+      await prisma.task.deleteMany({ where: { id: foreign.task } });
+      await prisma.note.deleteMany({ where: { id: foreign.note } });
+      await prisma.document.deleteMany({ where: { id: foreign.document } });
       await prisma.documentTag.deleteMany({ where: { id: foreign.documentTag } });
       await prisma.emailTemplate.deleteMany({ where: { id: foreign.emailTemplate } });
       await prisma.requestStatusHistory.deleteMany({ where: { requestId: foreign.request } });
@@ -265,6 +328,21 @@ describe('Error contract (WP-C1): NL-meldingen + 404-oracle (e2e)', () => {
       fixtureKey: 'documentTag',
     },
     { name: 'users', path: (id) => `/api/v1/users/${id}`, fixtureKey: 'user' },
+    // B-105-restant (fix/b105-existence-oracle-restant): de vijf services die
+    // ná WP-C1 nog een 403-existence-oracle hadden.
+    { name: 'documents', path: (id) => `/api/v1/documents/${id}`, fixtureKey: 'document' },
+    { name: 'notes', path: (id) => `/api/v1/notes/${id}`, fixtureKey: 'note' },
+    { name: 'tasks', path: (id) => `/api/v1/tasks/${id}`, fixtureKey: 'task' },
+    {
+      name: 'work-orders',
+      path: (id) => `/api/v1/work-orders/${id}`,
+      fixtureKey: 'workOrder',
+    },
+    {
+      name: 'support-tickets',
+      path: (id) => `/api/v1/support-tickets/${id}`,
+      fixtureKey: 'supportTicket',
+    },
   ];
 
   describe.each(ORACLE_CASES)('404-oracle: $name', ({ path, fixtureKey }) => {

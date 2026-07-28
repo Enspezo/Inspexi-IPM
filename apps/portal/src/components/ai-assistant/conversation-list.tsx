@@ -9,8 +9,12 @@ export function ConversationList() {
   const { openConversation } = useAiAgent();
 
   async function startNew() {
-    const conv = await create.mutateAsync(undefined);
-    openConversation(conv.id);
+    try {
+      const conv = await create.mutateAsync(undefined);
+      openConversation(conv.id);
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
+    }
   }
 
   return (

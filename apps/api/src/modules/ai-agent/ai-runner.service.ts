@@ -249,7 +249,7 @@ export class AiRunnerService {
         );
         stream.on('text', (delta: string) => sink.send('token', { text: delta }));
 
-        const final = await stream.finalMessage();
+        const final: Anthropic.Message = await stream.finalMessage();
 
         this.usage
           .record({

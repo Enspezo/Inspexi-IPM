@@ -1,6 +1,5 @@
 import { useState } from 'react';
-import { Button, useToast } from '@/components/ui';
-import { getErrorMessage } from '@/lib/api-client';
+import { Button } from '@/components/ui';
 import type { AiPendingActionCard } from '@/types';
 import { useConfirmAiAction, useRejectAiAction } from './hooks/use-ai';
 
@@ -11,7 +10,6 @@ interface Props {
 
 /** Bevestigingskaart voor een voorgestelde schrijfactie (PRD-15 §4.2). */
 export function PendingActionCard({ action, onResolved }: Props) {
-  const { showToast } = useToast();
   const confirm = useConfirmAiAction();
   const reject = useRejectAiAction();
   const [resolved, setResolved] = useState<null | 'confirmed' | 'rejected'>(null);
@@ -46,8 +44,8 @@ export function PendingActionCard({ action, onResolved }: Props) {
       await confirm.mutateAsync({ id: action.id, args: finalArgs });
       setResolved('confirmed');
       onResolved(action.id);
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Uitvoeren mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   }
 
@@ -56,8 +54,8 @@ export function PendingActionCard({ action, onResolved }: Props) {
       await reject.mutateAsync(action.id);
       setResolved('rejected');
       onResolved(action.id);
-    } catch (err) {
-      showToast(getErrorMessage(err, 'Afwijzen mislukt'), 'error');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
     }
   }
 

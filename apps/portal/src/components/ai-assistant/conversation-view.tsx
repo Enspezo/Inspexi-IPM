@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
+import { aiAgentKeys } from '@/lib/query-keys';
 import { Button, Spinner } from '@/components/ui';
 import type { AiMessage, AiPendingActionCard } from '@/types';
 import { useAiConversation } from '@/components/ai-assistant/hooks/use-ai';
@@ -78,8 +79,8 @@ export function ConversationView({ conversationId }: { conversationId: string })
         setIsStreaming(false);
         setActiveTool(null);
         setStreamingText('');
-        qc.invalidateQueries({ queryKey: ['ai', 'conversation', conversationId] });
-        qc.invalidateQueries({ queryKey: ['ai', 'usage'] });
+        qc.invalidateQueries({ queryKey: aiAgentKeys.conversation(conversationId) });
+        qc.invalidateQueries({ queryKey: aiAgentKeys.usage() });
       },
     };
   }

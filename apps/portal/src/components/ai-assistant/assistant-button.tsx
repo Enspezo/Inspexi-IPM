@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api-client';
+import { aiAgentKeys } from '@/lib/query-keys';
 import { useAuth } from '@/providers/auth-provider';
 import { useFeatures } from '@/providers/feature-provider';
 import { useTenant } from '@/providers/tenant-provider';
@@ -22,11 +23,14 @@ export function useAiAgentAvailable(): boolean {
   // de frontend de per-org rol-default-logica niet te dupliceren: een 403 laat
   // de query falen → geen knop. Alleen proben als de goedkope checks slagen.
   const { data } = useQuery({
-    queryKey: ['ai', 'access'],
+    queryKey: aiAgentKeys.access(),
     queryFn: () => apiClient.get<{ allowed: boolean }>('/ai/access'),
     enabled: clientEligible,
     staleTime: 5 * 60 * 1000,
     retry: false,
+    // Een 403 hier is een verwacht "geen knop"-signaal, geen fout voor de
+    // gebruiker — onderdruk de globale query-error-toast.
+    meta: { suppressErrorToast: true },
   });
 
   return clientEligible && data?.allowed === true;

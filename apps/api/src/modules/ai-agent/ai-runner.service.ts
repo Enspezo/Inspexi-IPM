@@ -1,4 +1,4 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import Anthropic from '@anthropic-ai/sdk';
 import {
   AiActionStatus,
@@ -13,7 +13,7 @@ import {
   AI_MAX_TOKENS,
   AI_SYSTEM_PROMPT,
 } from './ai-config';
-import { AI_ANTHROPIC } from './ai-anthropic.provider';
+import { AnthropicClientService } from '@/common/services/anthropic/anthropic-client.service';
 import { AiUsageService } from './ai-usage.service';
 import { AiToolRegistry } from './tools/tool-registry';
 
@@ -48,14 +48,17 @@ export class AiRunnerService {
   private readonly logger = new Logger(AiRunnerService.name);
 
   constructor(
-    @Inject(AI_ANTHROPIC) private readonly anthropic: Anthropic | null,
+    // Gedeelde client (PRD-13-conventie): dezelfde AnthropicClientService als
+    // voice en ai-review; zonder ANTHROPIC_API_KEY meldt de assistent netjes
+    // dat hij niet geconfigureerd is.
+    private readonly anthropic: AnthropicClientService,
     private readonly prisma: PrismaService,
     private readonly usage: AiUsageService,
     private readonly registry: AiToolRegistry,
   ) {}
 
   get isConfigured(): boolean {
-    return this.anthropic !== null;
+    return this.anthropic.isAvailable();
   }
 
   /** Nieuw gebruikersbericht → start een beurt en stream het antwoord. */
@@ -167,7 +170,7 @@ export class AiRunnerService {
     conversation: AiConversation,
     sink: SseSink,
   ): Promise<boolean> {
-    if (!this.anthropic) {
+    if (!this.anthropic.isAvailable()) {
       sink.send('error', { message: 'De AI-assistent is niet geconfigureerd' });
       sink.close();
       return false;
@@ -202,7 +205,6 @@ export class AiRunnerService {
     firstUserText?: string,
     signal?: AbortSignal,
   ): Promise<void> {
-    const anthropic = this.anthropic!;
     try {
       const history = await this.prisma.aiMessage.findMany({
         where: { conversationId: conversation.id },
@@ -224,7 +226,7 @@ export class AiRunnerService {
       let hitIterationLimit = true;
       for (let iter = 0; iter < AI_MAX_ITERATIONS; iter++) {
         if (signal?.aborted) return; // client is weg → stop stil, geen error-event
-        const stream = anthropic.messages.stream(
+        const stream = this.anthropic.streamMessage(
           {
             model,
             max_tokens: AI_MAX_TOKENS,
@@ -240,7 +242,10 @@ export class AiRunnerService {
             tools,
             messages,
           },
-          { signal },
+          // Expliciete timeout/retries (voorheen op de losse client-instantie):
+          // elke agent-beurt houdt een SSE-verbinding open die anders bij een
+          // hangende upstream-call een request lang blokkeert.
+          { signal, timeout: 120_000, maxRetries: 2 },
         );
         stream.on('text', (delta: string) => sink.send('token', { text: delta }));
 
@@ -334,9 +339,14 @@ export class AiRunnerService {
       if (signal?.aborted || (err as { name?: string })?.name === 'AbortError') {
         return;
       }
-      const message = err instanceof Error ? err.message : String(err);
-      this.logger.error(`AI turn error: ${message}`);
-      sink.send('error', { message });
+      // WP-C1: dit pad loopt búiten de exception-filter om (SSE-headers zijn al
+      // verstuurd) — stuur dus zelf een nette NL-melding en houd de technische
+      // details (Engelse SDK-/API-fouten) in de serverlog.
+      const detail = err instanceof Error ? err.message : String(err);
+      this.logger.error(`AI turn error: ${detail}`);
+      sink.send('error', {
+        message: 'Er ging iets mis bij de AI-assistent. Probeer het opnieuw.',
+      });
       sink.close();
     }
   }

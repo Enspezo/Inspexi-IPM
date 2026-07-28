@@ -320,6 +320,9 @@ export default function OrganizationSettingsPage() {
   const aiReviewOn = watch('aiReviewEnabled');
   // PRD-14 §14.4: online-herstel-default alleen instelbaar met het ONLINE_HERSTEL-entitlement.
   const hasOnlineRepairEntitlement = hasFeature('ONLINE_HERSTEL');
+  // AI-assistent (add-on): kill-switch/rollen alleen instelbaar mét het AI_AGENT-entitlement
+  // (B-510: aanzetten zonder abonnement weigert de backend ook).
+  const hasAiAgentEntitlement = hasFeature('AI_AGENT');
 
   useEffect(() => {
     if (organization) {
@@ -872,8 +875,15 @@ export default function OrganizationSettingsPage() {
               De AI-assistent (add-on) helpt medewerkers met backofficewerk. Uitschakelen verbergt de assistent voor iedereen in deze organisatie. Kies daaronder welke rollen hem mogen gebruiken (leeg = standaard: alle staf behalve inspecteur).
             </p>
             <div className="mt-3">
-              <Checkbox label="AI-assistent inschakelen" {...register('aiAgentEnabled')} />
+              <Checkbox
+                label="AI-assistent inschakelen"
+                disabled={!hasAiAgentEntitlement}
+                {...register('aiAgentEnabled')}
+              />
             </div>
+            {!hasAiAgentEntitlement && (
+              <p className="mt-2 text-xs text-gray-500">Niet beschikbaar in uw abonnement.</p>
+            )}
             <div className="mt-3">
               <p className="mb-1 text-sm font-medium text-gray-700">Toegestane rollen</p>
               <div className="flex flex-wrap gap-3">
@@ -885,6 +895,7 @@ export default function OrganizationSettingsPage() {
                       <input
                         type="checkbox"
                         checked={checked}
+                        disabled={!hasAiAgentEntitlement}
                         onChange={(e) => {
                           const next = e.target.checked
                             ? [...selected, role]

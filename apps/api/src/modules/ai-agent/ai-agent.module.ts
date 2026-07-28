@@ -10,14 +10,14 @@ import { AiAgentService } from './ai-agent.service';
 import { AiActionService } from './ai-action.service';
 import { AiRunnerService } from './ai-runner.service';
 import { AiUsageService } from './ai-usage.service';
-import { AiAnthropicProvider } from './ai-anthropic.provider';
 import { AiAgentAccessGuard } from './ai-agent-access.guard';
 import { AiToolRegistry } from './tools/tool-registry';
 
 /**
- * AI-assistent (add-on, PRD-12) — fase 2 (agent-kern, lezen). Importeert de
- * feature-modules waarvan de lees-tools de services hergebruiken, zodat de agent
- * exact de rechten van de gebruiker erft (geen gedupliceerde business-logica).
+ * AI-assistent (add-on) — importeert de feature-modules waarvan de tools de
+ * services hergebruiken, zodat de agent exact de rechten van de gebruiker erft
+ * (geen gedupliceerde business-logica). De Anthropic-client komt uit de
+ * globale gedeelde `AnthropicModule` (`AnthropicClientService`, PRD-13).
  */
 @Module({
   imports: [
@@ -35,7 +35,6 @@ import { AiToolRegistry } from './tools/tool-registry';
     AiRunnerService,
     AiUsageService,
     AiToolRegistry,
-    AiAnthropicProvider,
     AiAgentAccessGuard,
   ],
 })

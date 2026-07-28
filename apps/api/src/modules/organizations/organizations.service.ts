@@ -144,6 +144,17 @@ export class OrganizationsService {
         'Online herstel zit niet in uw abonnement',
       );
     }
+    // AI-assistent: zelfde B-510-regel — de kill-switch weer AAN zetten vereist
+    // het AI_AGENT-entitlement; uitzetten mag altijd. De rollenlijst is vrij
+    // instelbaar (zonder entitlement heeft die toch geen effect: de FeatureGuard
+    // blokkeert alle /ai-routes al).
+    if (dto.aiAgentEnabled === true && !current.aiAgentEnabled) {
+      await this.entitlements.assertFeature(
+        id,
+        'AI_AGENT',
+        'De AI-assistent zit niet in uw abonnement',
+      );
+    }
 
     const updated = await this.prisma.organization.update({
       where: { id },

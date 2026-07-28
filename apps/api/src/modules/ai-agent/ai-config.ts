@@ -1,14 +1,15 @@
 /**
- * AI-assistent (add-on, PRD-12) — centrale configuratie.
+ * AI-assistent (add-on) — centrale configuratie.
  *
- * Model-keuze (PRD-12 §13): Sonnet 5 als default (kosten-effectief), Opus 4.8
- * als premium-optie. Overrulebaar per deploy via `AI_AGENT_MODEL`, zodat de
- * `voice`-module (die `ANTHROPIC_MODEL` gebruikt) niet wordt beïnvloed.
+ * Model-keuze (PRD-besluit): Sonnet 5 als default (kosten-effectief), Opus 4.8
+ * als premium-optie. Overrulebaar per deploy via `ANTHROPIC_AGENT_MODEL`
+ * (zelfde env-patroon als `ANTHROPIC_MODEL` voor voice en
+ * `ANTHROPIC_REVIEW_MODEL` voor de AI-voorcontrole).
  */
 
 import { Role } from '@prisma/client';
 
-/** Kosten-effectieve default. Zie PRD-12 §5.5. */
+/** Kosten-effectieve default voor de agent. */
 export const AI_AGENT_DEFAULT_MODEL = 'claude-sonnet-5';
 
 /**
@@ -51,9 +52,9 @@ export const DEFAULT_MONTHLY_TOKEN_QUOTA = 5_000_000;
 export const AI_MAX_TOKENS = 4096;
 
 /**
- * Effort-niveau (PRD-12 §5.5): 'medium' als kosten-kwaliteit-balans. Expliciet
- * gezet zodat adaptive-thinking niet standaard op 'high' draait (kostenbeheersing
- * i.c.m. de fair-use-quota). Overrulebaar via `AI_AGENT_EFFORT`.
+ * Effort-niveau: 'medium' als kosten-kwaliteit-balans. Expliciet gezet zodat
+ * adaptive-thinking niet standaard op 'high' draait (kostenbeheersing i.c.m.
+ * de fair-use-quota).
  */
 export const AI_AGENT_DEFAULT_EFFORT = 'medium';
 

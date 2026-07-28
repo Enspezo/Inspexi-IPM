@@ -5,6 +5,14 @@ function fakeStream(final: any) {
   return { on: jest.fn(), finalMessage: jest.fn().mockResolvedValue(final) };
 }
 
+/** Gemockte gedeelde AnthropicClientService (zoals de ai-review-specs mocken). */
+function fakeAnthropicClient(available = true) {
+  return {
+    isAvailable: jest.fn().mockReturnValue(available),
+    streamMessage: jest.fn(),
+  } as any;
+}
+
 const conversation = {
   id: 'c1',
   orgId: 'orgA',
@@ -53,8 +61,8 @@ function makeDeps() {
 describe('AiRunnerService.streamTurn — read loop', () => {
   it('executes a read tool then finishes', async () => {
     const { prisma, usage, registry, readRun, sink } = makeDeps();
-    const anthropic = { messages: { stream: jest.fn() } } as any;
-    anthropic.messages.stream
+    const anthropic = fakeAnthropicClient();
+    anthropic.streamMessage
       .mockReturnValueOnce(
         fakeStream({
           content: [{ type: 'tool_use', id: 'tu1', name: 'get_task', input: { id: 't1' } }],
@@ -79,8 +87,8 @@ describe('AiRunnerService.streamTurn — read loop', () => {
 describe('AiRunnerService.streamTurn — write halt', () => {
   it('pauses on a write tool: creates a PENDING action, does NOT execute it', async () => {
     const { prisma, usage, registry, writeRun, sink } = makeDeps();
-    const anthropic = { messages: { stream: jest.fn() } } as any;
-    anthropic.messages.stream.mockReturnValueOnce(
+    const anthropic = fakeAnthropicClient();
+    anthropic.streamMessage.mockReturnValueOnce(
       fakeStream({
         content: [{ type: 'tool_use', id: 'tu1', name: 'create_task', input: { title: 'X' } }],
         stop_reason: 'tool_use',
@@ -108,8 +116,8 @@ describe('AiRunnerService.streamTurn — write halt', () => {
 
   it('in a mixed read+write turn: runs the read, defers the write, still halts', async () => {
     const { prisma, usage, registry, readRun, writeRun, sink } = makeDeps();
-    const anthropic = { messages: { stream: jest.fn() } } as any;
-    anthropic.messages.stream.mockReturnValueOnce(
+    const anthropic = fakeAnthropicClient();
+    anthropic.streamMessage.mockReturnValueOnce(
       fakeStream({
         content: [
           { type: 'tool_use', id: 'r1', name: 'get_task', input: { id: 't1' } },
@@ -140,12 +148,12 @@ describe('AiRunnerService.streamTurn — write halt', () => {
       role: 'ASSISTANT',
       content: [{ type: 'tool_use', id: 'tu1', name: 'create_task', input: {} }],
     });
-    const anthropic = { messages: { stream: jest.fn() } } as any;
+    const anthropic = fakeAnthropicClient();
 
     const runner = new AiRunnerService(anthropic, prisma, usage, registry);
     await runner.streamTurn(conversation, 'nog iets', user, sink);
 
-    expect(anthropic.messages.stream).not.toHaveBeenCalled();
+    expect(anthropic.streamMessage).not.toHaveBeenCalled();
     expect(sink.send).toHaveBeenCalledWith(
       'error',
       expect.objectContaining({ code: 'AI_PENDING_ACTIONS' }),
@@ -164,8 +172,8 @@ describe('AiRunnerService.resumeAfterActions', () => {
     prisma.aiPendingAction.findMany.mockResolvedValue([
       { toolUseId: 'tu1', status: 'EXECUTED', result: { output: { id: 'new-task' }, isError: false } },
     ]);
-    const anthropic = { messages: { stream: jest.fn() } } as any;
-    anthropic.messages.stream.mockReturnValueOnce(
+    const anthropic = fakeAnthropicClient();
+    anthropic.streamMessage.mockReturnValueOnce(
       fakeStream({ content: [{ type: 'text', text: 'Gedaan' }], stop_reason: 'end_turn', usage: {} }),
     );
 
@@ -184,7 +192,7 @@ describe('AiRunnerService.resumeAfterActions', () => {
       }),
     );
     // Lus hervat en afgerond
-    expect(anthropic.messages.stream).toHaveBeenCalled();
+    expect(anthropic.streamMessage).toHaveBeenCalled();
     expect(sink.send).toHaveBeenCalledWith('done', {});
   });
 
@@ -196,12 +204,12 @@ describe('AiRunnerService.resumeAfterActions', () => {
       content: [{ type: 'tool_use', id: 'tu1', name: 'create_task', input: {} }],
     });
     prisma.aiPendingAction.findMany.mockResolvedValue([{ toolUseId: 'tu1', status: 'PENDING' }]);
-    const anthropic = { messages: { stream: jest.fn() } } as any;
+    const anthropic = fakeAnthropicClient();
 
     const runner = new AiRunnerService(anthropic, prisma, usage, registry);
     await runner.resumeAfterActions(conversation, user, sink);
 
-    expect(anthropic.messages.stream).not.toHaveBeenCalled();
+    expect(anthropic.streamMessage).not.toHaveBeenCalled();
     expect(sink.send).toHaveBeenCalledWith(
       'error',
       expect.objectContaining({ code: 'AI_ACTIONS_STILL_PENDING' }),
@@ -212,7 +220,7 @@ describe('AiRunnerService.resumeAfterActions', () => {
 describe('AiRunnerService — not configured', () => {
   it('reports a friendly error and stops when no key', async () => {
     const { prisma, usage, registry, sink } = makeDeps();
-    const runner = new AiRunnerService(null, prisma, usage, registry);
+    const runner = new AiRunnerService(fakeAnthropicClient(false), prisma, usage, registry);
     await runner.streamTurn(conversation, 'hallo', user, sink);
     expect(runner.isConfigured).toBe(false);
     expect(usage.assertWithinQuota).not.toHaveBeenCalled();

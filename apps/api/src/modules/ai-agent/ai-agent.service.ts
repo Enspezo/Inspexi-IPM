@@ -18,9 +18,9 @@ export class AiAgentService {
     private readonly config: ConfigService,
   ) {}
 
-  /** Actueel geconfigureerd model (PRD-12 §5.5). */
+  /** Actueel geconfigureerd model (env-patroon: ANTHROPIC_<functie>_MODEL). */
   resolveModel(): string {
-    return this.config.get<string>('AI_AGENT_MODEL', AI_AGENT_DEFAULT_MODEL);
+    return this.config.get<string>('ANTHROPIC_AGENT_MODEL', AI_AGENT_DEFAULT_MODEL);
   }
 
   /** De assistent vereist een organisatiecontext (superuser heeft er geen). */

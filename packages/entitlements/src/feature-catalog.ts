@@ -31,6 +31,7 @@ export const FEATURE_KEYS = [
   'CUSTOM_FIELDS',
   'AI_REVIEW',
   'ONLINE_HERSTEL',
+  'AI_AGENT',
 ] as const;
 
 export type FeatureKey = (typeof FEATURE_KEYS)[number];
@@ -119,6 +120,14 @@ export const FEATURE_CATALOG: Record<FeatureKey, FeatureDef> = {
     description:
       'Externen en klanten melden herstel van constateringen online, incl. ondertekende herstelverklaring',
     dependsOn: ['BASIS_INSPECTIES'],
+  },
+  // AI-assistent (betaalde add-on). Minimaal Basis CRM als domein-basis.
+  AI_AGENT: {
+    key: 'AI_AGENT',
+    label: 'AI-assistent (add-on)',
+    description:
+      'AI-agent in de portal voor backoffice-werk (opzoeken, KVK/PDOK, web-search, muteren met bevestiging)',
+    dependsOn: ['BASIS_CRM'],
   },
 };
 

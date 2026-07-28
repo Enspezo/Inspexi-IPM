@@ -13,6 +13,7 @@ import { createAppQueryCache } from '@/lib/query-error-toast';
 import { QuickCreateProvider } from '@/providers/quick-create-provider';
 import { WindowTabsProvider } from '@/providers/window-tabs';
 import { ChatProvider } from '@/providers/chat-provider';
+import { AiAgentProvider } from '@/providers/ai-agent-provider';
 import { HelpProvider } from '@/providers/help-provider';
 import { registerGlobalErrorReporter } from '@/lib/global-error-reporter';
 import App from './App';
@@ -47,13 +48,15 @@ createRoot(document.getElementById('root')!).render(
                 <QueryErrorToastBridge />
                 <ConfirmProvider>
                   <ChatProvider>
-                    <HelpProvider>
-                      <QuickCreateProvider>
-                        <WindowTabsProvider>
-                          <App />
-                        </WindowTabsProvider>
-                      </QuickCreateProvider>
-                    </HelpProvider>
+                    <AiAgentProvider>
+                      <HelpProvider>
+                        <QuickCreateProvider>
+                          <WindowTabsProvider>
+                            <App />
+                          </WindowTabsProvider>
+                        </QuickCreateProvider>
+                      </HelpProvider>
+                    </AiAgentProvider>
                   </ChatProvider>
                 </ConfirmProvider>
               </ToastProvider>

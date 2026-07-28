@@ -207,6 +207,7 @@ export class PrismaService
             userId: ctx.userId,
             orgId: result.orgId ?? ctx.orgId,
             ipAddress: ctx.ipAddress,
+            source: ctx.source,
           });
         } else if (action === 'update') {
           // Defensief (zoals het delete-pad): een update met een narrow `select`
@@ -230,6 +231,7 @@ export class PrismaService
                 userId: ctx.userId,
                 orgId: result.orgId ?? before.orgId ?? ctx.orgId,
                 ipAddress: ctx.ipAddress,
+                source: ctx.source,
               });
             }
           } else if (updateEntityId != null) {
@@ -243,6 +245,7 @@ export class PrismaService
               userId: ctx.userId,
               orgId: result.orgId ?? ctx.orgId,
               ipAddress: ctx.ipAddress,
+              source: ctx.source,
             });
           }
         } else if (action === 'delete') {
@@ -255,6 +258,7 @@ export class PrismaService
             userId: ctx.userId,
             orgId: before?.orgId ?? ctx.orgId,
             ipAddress: ctx.ipAddress,
+            source: ctx.source,
           });
         }
       } catch (auditError) {
@@ -319,6 +323,8 @@ export class PrismaService
     userId: string;
     orgId: string | null;
     ipAddress?: string;
+    // Herkomst van de mutatie (PRD-12). Ongezet = HUMAN.
+    source?: 'HUMAN' | 'AI';
   }): Promise<void> {
     try {
       const id = randomUUID();
@@ -326,7 +332,7 @@ export class PrismaService
       const snapshotJson = data.snapshot ? JSON.stringify(data.snapshot) : null;
 
       await this.$executeRaw`
-        INSERT INTO imp_audit_logs (id, org_id, entity_type, entity_id, action, changes, snapshot, user_id, ip_address, created_at)
+        INSERT INTO imp_audit_logs (id, org_id, entity_type, entity_id, action, changes, snapshot, user_id, ip_address, source, created_at)
         VALUES (
           ${id}::uuid,
           ${data.orgId}::uuid,
@@ -337,6 +343,7 @@ export class PrismaService
           ${snapshotJson}::jsonb,
           ${data.userId}::uuid,
           ${data.ipAddress ?? null},
+          ${data.source ?? 'HUMAN'}::"AuditSource",
           NOW()
         )
       `;

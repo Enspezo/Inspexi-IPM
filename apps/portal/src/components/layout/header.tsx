@@ -11,6 +11,7 @@ import { useTasks } from '@/pages/tasks/hooks/use-tasks';
 import { SearchBox } from '@/components/search/search-box';
 import { QuickCreateButton } from '@/components/layout/quick-create-button';
 import { ChatButton } from '@/components/chat';
+import { AssistantButton } from '@/components/ai-assistant';
 import { TaskStatus } from '@/types';
 import type { Notification } from '@/types';
 import { getNotificationRoute } from '@/lib/notifications';
@@ -94,6 +95,7 @@ export function Header() {
       {/* RIGHT: actions */}
       <div className="flex w-48 flex-shrink-0 items-center justify-end gap-2">
         {/* Chat */}
+        <AssistantButton />
         <ChatButton />
 
         {/* Notification bell */}

@@ -53,6 +53,9 @@ export interface Organization {
   aiReviewInstructions: string | null;
   /** Online herstel standaard aan voor nieuwe inspecties (PRD-14). */
   onlineRepairDefault: boolean;
+  /** AI-assistent (add-on): kill-switch + toegestane rollen (leeg = default). */
+  aiAgentEnabled: boolean;
+  aiAgentAllowedRoles: Role[];
   /** Toegewezen SaaS-abonnement (entitlements, PRD-09); null = geen plan. */
   planId: string | null;
   createdAt: string;

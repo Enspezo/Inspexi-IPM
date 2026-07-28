@@ -79,6 +79,8 @@ export const orgSchema = z.object({
   aiReviewEnabled: z.boolean(),
   aiReviewInstructions: z.string().max(2000, 'Maximaal 2000 tekens').optional(),
   onlineRepairDefault: z.boolean(),
+  aiAgentEnabled: z.boolean(),
+  aiAgentAllowedRoles: z.array(z.nativeEnum(Role)),
 }).refine((d) => d.workdayEnd > d.workdayStart, {
   message: 'Eindtijd moet na begintijd liggen',
   path: ['workdayEnd'],
@@ -299,6 +301,7 @@ export default function OrganizationSettingsPage() {
     handleSubmit,
     reset,
     watch,
+    setValue,
     formState: { errors, isDirty, dirtyFields },
   } = useForm<OrgFormData>({
     resolver: zodResolver(orgSchema),
@@ -344,6 +347,8 @@ export default function OrganizationSettingsPage() {
         aiReviewEnabled: organization.aiReviewEnabled ?? false,
         aiReviewInstructions: organization.aiReviewInstructions ?? '',
         onlineRepairDefault: organization.onlineRepairDefault ?? false,
+        aiAgentEnabled: organization.aiAgentEnabled ?? true,
+        aiAgentAllowedRoles: organization.aiAgentAllowedRoles ?? [],
       });
     }
   }, [organization, reset]);
@@ -377,6 +382,8 @@ export default function OrganizationSettingsPage() {
       aiReviewEnabled: data.aiReviewEnabled,
       aiReviewInstructions: data.aiReviewInstructions?.trim() || null,
       onlineRepairDefault: data.onlineRepairDefault,
+      aiAgentEnabled: data.aiAgentEnabled,
+      aiAgentAllowedRoles: data.aiAgentAllowedRoles,
     };
 
     // Drempel en rol horen bij elkaar (backend-validatie + refine hierboven):
@@ -856,6 +863,40 @@ export default function OrganizationSettingsPage() {
             </p>
             <div className="mt-3">
               <Checkbox label="Interne chat inschakelen" {...register('chatEnabled')} />
+            </div>
+          </div>
+
+          <div>
+            <h3 className="text-base font-semibold text-gray-900">AI-assistent</h3>
+            <p className="mt-1 text-sm text-gray-500">
+              De AI-assistent (add-on) helpt medewerkers met backofficewerk. Uitschakelen verbergt de assistent voor iedereen in deze organisatie. Kies daaronder welke rollen hem mogen gebruiken (leeg = standaard: alle staf behalve inspecteur).
+            </p>
+            <div className="mt-3">
+              <Checkbox label="AI-assistent inschakelen" {...register('aiAgentEnabled')} />
+            </div>
+            <div className="mt-3">
+              <p className="mb-1 text-sm font-medium text-gray-700">Toegestane rollen</p>
+              <div className="flex flex-wrap gap-3">
+                {assignableRoles.map((role) => {
+                  const selected = watch('aiAgentAllowedRoles') ?? [];
+                  const checked = selected.includes(role);
+                  return (
+                    <label key={role} className="flex items-center gap-1.5 text-sm text-gray-700">
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={(e) => {
+                          const next = e.target.checked
+                            ? [...selected, role]
+                            : selected.filter((r) => r !== role);
+                          setValue('aiAgentAllowedRoles', next, { shouldDirty: true });
+                        }}
+                      />
+                      {roleLabels[role] ?? role}
+                    </label>
+                  );
+                })}
+              </div>
             </div>
           </div>
 

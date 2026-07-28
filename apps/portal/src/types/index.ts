@@ -16,3 +16,4 @@ export * from './projects';
 export * from './search';
 export * from './inspection';
 export * from './chat';
+export * from './ai';

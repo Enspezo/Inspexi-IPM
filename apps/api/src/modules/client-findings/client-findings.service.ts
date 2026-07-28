@@ -12,6 +12,7 @@ import {
 } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { PrismaService } from '@/prisma';
+import { detectImageType } from '@/common';
 import { STORAGE_PROVIDER } from '@/common/services/storage/storage.interface';
 import type { StorageProvider } from '@/common/services/storage/storage.interface';
 import type { CurrentClientUserData } from '@/common/decorators/current-client-user.decorator';
@@ -20,7 +21,6 @@ import { ResolveFindingDto } from './dto';
 
 const PENDING = 'PENDING_VERIFICATION';
 const MAX_PHOTOS = 5;
-const EXT: Record<string, string> = { 'image/jpeg': 'jpg', 'image/png': 'png' };
 
 /** Publieke URL naar de authenticated foto-download-route (verbergt de storage-key). */
 function photoDownloadUrl(id: string): string {
@@ -137,11 +137,21 @@ export class ClientFindingsService {
       );
     }
 
+    // WP-B4: magic bytes beslissen type + opslagextensie; de multer-fileFilter
+    // op de client-claim is alleen de poort. Eerst álle bestanden valideren,
+    // zodat een afgekeurd bestand geen wees-uploads achterlaat.
+    const detectedTypes = files.map((file) => {
+      const detected = detectImageType(file.buffer);
+      if (!detected || detected.mimeType === 'image/webp') {
+        throw new BadRequestException('Alleen JPG en PNG bestanden zijn toegestaan');
+      }
+      return detected;
+    });
+
     const created = await Promise.all(
-      files.map(async (file) => {
-        const ext = EXT[file.mimetype] ?? 'jpg';
-        const key = `${finding.orgId}/finding-photos/${randomUUID()}.${ext}`;
-        await this.storage.upload(key, file.buffer, file.mimetype);
+      files.map(async (file, i) => {
+        const key = `${finding.orgId}/finding-photos/${randomUUID()}.${detectedTypes[i].extension}`;
+        await this.storage.upload(key, file.buffer, detectedTypes[i].mimeType);
         return this.prisma.findingResolutionPhoto.create({
           data: { resolutionId: resolution.id, photoUrl: key },
         });

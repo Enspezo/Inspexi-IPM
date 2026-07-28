@@ -31,6 +31,11 @@ import { Role, User } from '@prisma/client';
 import { ALL_STAFF } from '@/common/auth/roles';
 import { Roles, CurrentUser } from '@/common/decorators';
 import { RequiresFeature } from '@/common/decorators/requires-feature.decorator';
+import {
+  resolveUploadedContentType,
+  setBinaryResponseHeaders,
+  sanitizeDispositionFilename,
+} from '@/common';
 import { MeasurementInstrumentsService } from './measurement-instruments.service';
 import {
   CreateMeasurementInstrumentDto,
@@ -52,8 +57,12 @@ const WRITE_ROLES = [
   Role.WERKVOORBEREIDER,
 ] as const;
 
-/** PDF + afbeeldingen (scans/foto's). Checkt `file.mimetype` (multer), niet magic bytes. */
-const ALLOWED_MIME_REGEX = /^(application\/pdf|image\/(jpeg|png|webp|svg\+xml))$/;
+/**
+ * PDF + rasterafbeeldingen (scans/foto's). Eerste poort op de client-claim;
+ * de inhoud (magic bytes) wordt in de service gevalideerd (WP-B4). SVG is
+ * geen scan/foto en niet meer toegestaan.
+ */
+const ALLOWED_MIME_REGEX = /^(application\/pdf|image\/(jpeg|png|webp))$/;
 
 class CalibrationMimeTypeValidator extends FileValidator {
   constructor() {
@@ -66,7 +75,7 @@ class CalibrationMimeTypeValidator extends FileValidator {
   }
 
   buildErrorMessage(): string {
-    return 'Bestandstype niet toegestaan. Toegestane types: PDF, JPEG, PNG, WebP, SVG.';
+    return 'Bestandstype niet toegestaan. Toegestane types: PDF, JPEG, PNG, WebP.';
   }
 }
 
@@ -195,10 +204,14 @@ export class MeasurementInstrumentsController {
     @Res() res: Response,
   ) {
     const { buffer, calibration } = await this.service.getCalibrationDocument(id, calId, user);
-    res.set({
-      'Content-Type': calibration.mimeType!,
-      'Content-Disposition': `attachment; filename="${encodeURIComponent(calibration.originalName!)}"`,
-      'Content-Length': buffer.length.toString(),
+    // WP-B4: Content-Type uit de bytes; legacy rijen met gespoofte of
+    // SVG-inhoud degraderen naar octet-stream.
+    setBinaryResponseHeaders(res, {
+      mimeType: resolveUploadedContentType(buffer).mimeType,
+      contentLength: buffer.length,
+      filename: sanitizeDispositionFilename(calibration.originalName, 'certificaat'),
+      disposition: 'attachment',
+      cacheControl: 'private, no-store',
     });
     res.send(buffer);
   }

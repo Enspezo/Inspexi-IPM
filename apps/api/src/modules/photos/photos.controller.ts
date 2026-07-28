@@ -12,6 +12,7 @@ import type { Response } from 'express';
 import { User } from '@prisma/client';
 import { Roles, CurrentUser } from '@/common/decorators';
 import { ALL_STAFF } from '@/common/auth/roles';
+import { resolveImageResponseType, setBinaryResponseHeaders } from '@/common';
 import { PhotosService } from './photos.service';
 import { PhotoUploadDto } from './dto';
 
@@ -54,8 +55,18 @@ export class PhotosController {
     @Res({ passthrough: true }) res: Response,
     @Query('thumb') thumb?: string,
   ): Promise<StreamableFile> {
-    const { buffer, mimeType } = await this.photos.getFile(id, user, Boolean(thumb));
-    res.set({ 'Content-Type': mimeType, 'Cache-Control': 'private, max-age=86400' });
+    const { buffer } = await this.photos.getFile(id, user, Boolean(thumb));
+    // WP-B4: Content-Type uit de bytes (niet uit de opgeslagen, ooit
+    // client-geclaimde mimetype) + nosniff/sandbox; legacy gespoofte inhoud
+    // degradeert naar octet-stream + attachment.
+    const resolved = resolveImageResponseType(buffer, 'foto');
+    setBinaryResponseHeaders(res, {
+      mimeType: resolved.mimeType,
+      contentLength: buffer.length,
+      filename: resolved.filename,
+      disposition: resolved.disposition,
+      cacheControl: 'private, max-age=86400',
+    });
     return new StreamableFile(buffer);
   }
 }

@@ -21,6 +21,7 @@ import { Response } from 'express';
 import { User, DocumentType } from '@prisma/client';
 import { Roles, CurrentUser } from '@/common/decorators';
 import { ALL_STAFF, ORG_ADMINS } from '@/common/auth/roles';
+import { setBinaryResponseHeaders, sanitizeDispositionFilename } from '@/common';
 import { DocumentTemplatesService } from './document-templates.service';
 import {
   UpdateDocumentTemplateDto,
@@ -234,10 +235,12 @@ export class DocumentTemplatesController {
     @Res() res: Response,
   ) {
     const { buffer, fileName } = await this.service.downloadDocxRevision(id, revisionId, user);
-    res.set({
-      'Content-Type': DOCX_MIME,
-      'Content-Disposition': `attachment; filename="${encodeURIComponent(fileName)}"`,
-      'Content-Length': String(buffer.length),
+    setBinaryResponseHeaders(res, {
+      mimeType: DOCX_MIME,
+      contentLength: buffer.length,
+      filename: sanitizeDispositionFilename(fileName, 'sjabloon.docx'),
+      disposition: 'attachment',
+      cacheControl: 'private, no-store',
     });
     res.send(buffer);
   }

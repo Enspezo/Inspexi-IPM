@@ -36,7 +36,7 @@ describe('Photos upload/download (e2e)', () => {
   let photoId: string;
 
   // A minimal but valid JPEG SOI marker so any magic-byte sniffing passes.
-  const jpegBuffer = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10]);
+  const jpegBuffer = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10]), Buffer.from("JFIF-body")]); // >= 12 bytes voor de magic-byte-detectie (WP-B4)
 
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({

@@ -147,7 +147,7 @@ describe('Documents (e2e)', () => {
         .field('entityType', 'CONTACT')
         .field('entityId', testContactId)
         .field('description', 'Test document upload')
-        .attach('file', Buffer.from('test content'), 'test.pdf')
+        .attach('file', Buffer.from('%PDF-1.7\ntest content'), 'test.pdf')
         .expect(201);
 
       expect(res.body.success).toBe(true);
@@ -162,7 +162,7 @@ describe('Documents (e2e)', () => {
         .post('/api/v1/documents')
         .field('entityType', 'CONTACT')
         .field('entityId', testContactId)
-        .attach('file', Buffer.from('test'), 'test.pdf')
+        .attach('file', Buffer.from('%PDF-1.7\ntest'), 'test.pdf')
         .expect(401);
     });
 
@@ -170,7 +170,7 @@ describe('Documents (e2e)', () => {
       await request(app.getHttpServer())
         .post('/api/v1/documents')
         .set('Authorization', `Bearer ${accessToken}`)
-        .attach('file', Buffer.from('test'), 'test.pdf')
+        .attach('file', Buffer.from('%PDF-1.7\ntest'), 'test.pdf')
         .expect(400);
     });
 
@@ -181,7 +181,7 @@ describe('Documents (e2e)', () => {
         .field('entityType', 'LOCATION')
         .field('entityId', testLocationId)
         .field('description', 'Plattegrond')
-        .attach('file', Buffer.from('floorplan'), 'plattegrond.pdf')
+        .attach('file', Buffer.from('%PDF-1.7\nfloorplan'), 'plattegrond.pdf')
         .expect(201);
 
       expect(res.body.success).toBe(true);
@@ -197,7 +197,7 @@ describe('Documents (e2e)', () => {
         .set('Authorization', `Bearer ${accessToken}`)
         .field('entityType', 'LOCATION')
         .field('entityId', foreignLocationId)
-        .attach('file', Buffer.from('hack'), 'hack.pdf')
+        .attach('file', Buffer.from('%PDF-1.7\nhack'), 'hack.pdf')
         .expect(403);
     });
   });
@@ -331,7 +331,7 @@ describe('Documents (e2e)', () => {
         .set('Authorization', `Bearer ${accessToken}`)
         .field('entityType', 'CONTACT')
         .field('entityId', testContactId)
-        .attach('file', Buffer.from('delete me'), 'delete-test.pdf');
+        .attach('file', Buffer.from('%PDF-1.7\ndelete me'), 'delete-test.pdf');
 
       const docId = uploadRes.body.data.id;
       createdDocumentIds.push(docId);

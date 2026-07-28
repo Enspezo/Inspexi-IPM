@@ -17,7 +17,7 @@ import {
 } from '../hooks/use-location-images';
 import { AddMarkerModal } from './add-marker-modal';
 
-const ACCEPTED_IMAGE_TYPES = 'image/png,image/jpeg,image/webp,image/svg+xml';
+const ACCEPTED_IMAGE_TYPES = 'image/png,image/jpeg,image/webp';
 
 /** Enum (API) → string-union (viewer); waarden zijn identiek. */
 const VIEWER_TYPE: Record<MarkerType, Marker['markerType']> = {

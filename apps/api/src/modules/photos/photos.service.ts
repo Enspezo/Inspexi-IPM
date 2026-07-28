@@ -6,7 +6,7 @@ import { Injectable, Inject, BadRequestException, Logger } from '@nestjs/common'
 import { User, PhotoEntityType, AssetNodeType, Prisma } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import { PrismaService } from '@/prisma';
-import { orgScope, assertFound } from '@/common';
+import { orgScope, assertFound, assertAllowedImageUpload } from '@/common';
 import { STORAGE_PROVIDER } from '@/common/services/storage/storage.interface';
 import type { StorageProvider } from '@/common/services/storage/storage.interface';
 import { PhotoUploadDto } from './dto';
@@ -18,8 +18,6 @@ interface SignedUrlCapable {
   getSignedUrl?: (key: string, expiresInSeconds?: number) => Promise<string>;
 }
 
-const ALLOWED_MIME = new Set(['image/jpeg', 'image/png', 'image/webp']);
-const EXT: Record<string, string> = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' };
 const WIRE_TO_ENUM: Record<string, PhotoEntityType> = {
   asset: PhotoEntityType.asset,
   finding: PhotoEntityType.finding,
@@ -68,13 +66,13 @@ export class PhotosService {
     deviceId?: string,
   ) {
     if (!file) throw new BadRequestException('Geen bestand ontvangen');
-    if (!ALLOWED_MIME.has(file.mimetype)) {
-      throw new BadRequestException('Alleen JPEG, PNG of WebP toegestaan');
-    }
+    // Magic bytes beslissen type + extensie (WP-B4); `file.mimetype` is
+    // client-supplied en telt alleen als whitelist-poort.
+    const detected = assertAllowedImageUpload(file);
     const orgId = await this.resolveEntityOrg(dto.entityType, dto.entityId, user);
     const uuid = randomUUID();
-    const key = `${orgId}/photos/${uuid}.${EXT[file.mimetype]}`;
-    await this.storage.upload(key, file.buffer, file.mimetype);
+    const key = `${orgId}/photos/${uuid}.${detected.extension}`;
+    await this.storage.upload(key, file.buffer, detected.mimeType);
 
     // Thumbnail (Fase 4) — fail-soft: bij een onleesbare/corrupte afbeelding vallen we terug
     // op de originele key, zodat de upload zelf nooit faalt op de thumbnail-stap.
@@ -97,7 +95,7 @@ export class PhotosService {
         entityId: dto.entityId,
         storagePath: key,
         thumbnailPath,
-        mimeType: file.mimetype,
+        mimeType: detected.mimeType,
         fileSize: file.size,
         caption: dto.caption,
         capturedAt: dto.capturedAt ? new Date(dto.capturedAt) : null,

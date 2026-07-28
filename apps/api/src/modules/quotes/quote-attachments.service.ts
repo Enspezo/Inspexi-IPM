@@ -2,7 +2,7 @@ import { Injectable, NotFoundException, ForbiddenException, Inject } from '@nest
 import { User, QuoteStatus } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import { PrismaService } from '@/prisma';
-import { assertFound, sanitizeStorageFilename } from '@/common';
+import { assertFound, sanitizeStorageFilename, assertAllowedAttachmentUpload } from '@/common';
 import { StorageProvider, STORAGE_PROVIDER } from '@/common/services/storage/storage.interface';
 import { findQuoteForUser } from './quotes.helpers';
 
@@ -21,6 +21,10 @@ export class QuoteAttachmentsService {
 
   async uploadAttachment(id: string, file: Express.Multer.File, user: User) {
     const quote = await findQuoteForUser(this.prisma, id, user);
+    // WP-B4: er stond hier helemaal géén typecontrole, terwijl deze bijlagen
+    // ook via de publieke token-route worden geserveerd. Zelfde whitelist +
+    // claim↔inhoud-kruiscontrole als documenten/sjabloon-bijlagen.
+    assertAllowedAttachmentUpload(file);
     const storageKey = `${quote.orgId}/quotes/${quote.id}/${randomUUID()}-${sanitizeStorageFilename(file.originalname)}`;
     await this.storage.upload(storageKey, file.buffer, file.mimetype);
     const count = await this.prisma.quoteAttachment.count({ where: { quoteId: quote.id } });

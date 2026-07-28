@@ -179,7 +179,7 @@ describe('Document Tags (e2e)', () => {
         .field('entityType', 'CONTACT')
         .field('entityId', contactId)
         .field('tagIds', tagId)
-        .attach('file', Buffer.from('tagged'), 'tagged.pdf')
+        .attach('file', Buffer.from('%PDF-1.7\ntagged'), 'tagged.pdf')
         .expect(201);
 
       docId = res.body.data.id;
@@ -195,7 +195,7 @@ describe('Document Tags (e2e)', () => {
         .field('entityType', 'CONTACT')
         .field('entityId', contactId)
         .field('tagIds', foreignTagId)
-        .attach('file', Buffer.from('hack'), 'hack.pdf')
+        .attach('file', Buffer.from('%PDF-1.7\nhack'), 'hack.pdf')
         .expect(403);
     });
 
@@ -256,7 +256,7 @@ describe('Document Tags (e2e)', () => {
         .field('entityType', 'CONTACT')
         .field('entityId', contactId)
         .field('tagIds', tempTagId)
-        .attach('file', Buffer.from('temp'), 'temp.pdf')
+        .attach('file', Buffer.from('%PDF-1.7\ntemp'), 'temp.pdf')
         .expect(201);
       const tempDocId = uploadRes.body.data.id;
       createdDocumentIds.push(tempDocId);

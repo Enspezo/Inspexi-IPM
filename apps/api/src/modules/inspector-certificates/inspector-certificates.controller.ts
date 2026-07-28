@@ -30,6 +30,11 @@ import { User } from '@prisma/client';
 import { ALL_STAFF } from '@/common/auth/roles';
 import { Roles, CurrentUser } from '@/common/decorators';
 import { RequiresFeature } from '@/common/decorators/requires-feature.decorator';
+import {
+  resolveUploadedContentType,
+  setBinaryResponseHeaders,
+  sanitizeDispositionFilename,
+} from '@/common';
 import { InspectorCertificatesService } from './inspector-certificates.service';
 import {
   CreateInspectorCertificateDto,
@@ -42,10 +47,11 @@ const MAX_FILE_SIZE = 25 * 1024 * 1024; // 25 MB
 
 /**
  * Mime-validator beperkt tot de bestandstypen die voor een diploma/certificaat
- * zinvol zijn: PDF + afbeeldingen (scans/foto's). Net als bij Documents checken we
- * `file.mimetype` (multer) i.p.v. magic bytes, zodat SVG niet onterecht sneuvelt.
+ * zinvol zijn: PDF + rasterafbeeldingen (scans/foto's). Eerste poort op de
+ * client-claim; de inhoud (magic bytes) wordt in de service gevalideerd
+ * (WP-B4). SVG is geen scan/foto en niet meer toegestaan.
  */
-const ALLOWED_MIME_REGEX = /^(application\/pdf|image\/(jpeg|png|webp|svg\+xml))$/;
+const ALLOWED_MIME_REGEX = /^(application\/pdf|image\/(jpeg|png|webp))$/;
 
 class CertificateMimeTypeValidator extends FileValidator {
   constructor() {
@@ -58,7 +64,7 @@ class CertificateMimeTypeValidator extends FileValidator {
   }
 
   buildErrorMessage(): string {
-    return 'Bestandstype niet toegestaan. Toegestane types: PDF, JPEG, PNG, WebP, SVG.';
+    return 'Bestandstype niet toegestaan. Toegestane types: PDF, JPEG, PNG, WebP.';
   }
 }
 
@@ -119,10 +125,14 @@ export class InspectorCertificatesController {
     @Res() res: Response,
   ) {
     const { buffer, certificate } = await this.service.getDocument(id, user);
-    res.set({
-      'Content-Type': certificate.mimeType!,
-      'Content-Disposition': `attachment; filename="${encodeURIComponent(certificate.originalName!)}"`,
-      'Content-Length': buffer.length.toString(),
+    // WP-B4: het geserveerde Content-Type komt uit de bytes; legacy rijen met
+    // gespoofte of SVG-inhoud degraderen naar octet-stream.
+    setBinaryResponseHeaders(res, {
+      mimeType: resolveUploadedContentType(buffer).mimeType,
+      contentLength: buffer.length,
+      filename: sanitizeDispositionFilename(certificate.originalName, 'certificaat'),
+      disposition: 'attachment',
+      cacheControl: 'private, no-store',
     });
     res.send(buffer);
   }

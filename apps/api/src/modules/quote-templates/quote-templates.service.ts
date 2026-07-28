@@ -10,7 +10,17 @@ import { User, Role, Prisma } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import * as mammoth from 'mammoth';
 import { PrismaService } from '@/prisma';
-import { paginate, buildOrderBy, orgScope, assertFound, assertSameOrg, sanitizeStorageFilename } from '@/common';
+import {
+  paginate,
+  buildOrderBy,
+  orgScope,
+  assertFound,
+  assertSameOrg,
+  sanitizeStorageFilename,
+  assertAllowedImageUpload,
+  assertAllowedAttachmentUpload,
+  assertUploadContentMatchesClaim,
+} from '@/common';
 import {
   STORAGE_PROVIDER,
   StorageProvider,
@@ -22,29 +32,6 @@ import {
   CreateFollowUpDto,
   UpdateFollowUpDto,
 } from './dto';
-
-const IMAGE_MIME_TYPES = [
-  'image/jpeg',
-  'image/png',
-  'image/svg+xml',
-  'image/webp',
-];
-
-const ATTACHMENT_MIME_TYPES = [
-  'application/pdf',
-  'image/jpeg',
-  'image/png',
-  'image/svg+xml',
-  'image/webp',
-  'application/msword',
-  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-  'application/vnd.ms-excel',
-  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-  'application/vnd.ms-powerpoint',
-  'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-  'text/csv',
-  'application/zip',
-];
 
 const DOCX_MIME_TYPES = [
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
@@ -255,6 +242,9 @@ export class QuoteTemplatesService {
         'Alleen DOCX bestanden zijn toegestaan (.docx)',
       );
     }
+    // Een .docx is een ZIP; een niet-ZIP-buffer zou anders pas bij mammoth
+    // stranden (500). Claim ↔ inhoud hier al afvangen → nette 400 (WP-B4).
+    assertUploadContentMatchesClaim(file);
 
     // Validate that required placeholder is present using text extraction
     // Supports both loop syntax ({{#offerteregels}}) and simple placeholder ({{offerteregels}})
@@ -382,21 +372,30 @@ export class QuoteTemplatesService {
   ) {
     const template = await this.findOne(id, user);
 
-    if (!IMAGE_MIME_TYPES.includes(file.mimetype)) {
-      throw new BadRequestException(
-        `Ongeldig bestandstype. Toegestaan: ${IMAGE_MIME_TYPES.join(', ')}`,
-      );
-    }
+    // Inhoud (magic bytes) beslist type én opslagextensie; SVG is niet meer
+    // toegestaan — deze afbeeldingen worden inline op het app-origin gerenderd
+    // (block-editor + offerte-PDF) en waren zo een stored-XSS-vector (B-507).
+    const detected = assertAllowedImageUpload(file);
 
-    const storageKey = `${template.orgId}/qt/${template.id}/img/${randomUUID()}-${sanitizeStorageFilename(file.originalname)}`;
-    await this.storage.upload(storageKey, file.buffer, file.mimetype);
+    const storageKey = `${template.orgId}/qt/${template.id}/img/${randomUUID()}.${detected.extension}`;
+    await this.storage.upload(storageKey, file.buffer, detected.mimeType);
 
     return { storageKey, fileName: file.originalname };
   }
 
   async getImage(id: string, storageKey: string, user: User) {
     // Verify template access
-    await this.findOne(id, user);
+    const template = await this.findOne(id, user);
+
+    // De route accepteert een vrije opslagsleutel (`:key(*)`); zonder deze
+    // prefix-check kon élke opslagsleutel — ook die van een andere organisatie —
+    // via een willekeurig eigen template-id uitgelezen worden. Scope op de
+    // offertesjabloon-bestanden van de eigen org (`/qt/` i.p.v. `/qt/{id}/`,
+    // omdat gekopieerde blokken naar afbeeldingen van een ander eigen sjabloon
+    // kunnen verwijzen).
+    if (!storageKey.startsWith(`${template.orgId}/qt/`)) {
+      throw new NotFoundException('Afbeelding niet gevonden');
+    }
 
     const exists = await this.storage.exists(storageKey);
     if (!exists) {
@@ -424,11 +423,7 @@ export class QuoteTemplatesService {
   ) {
     const template = await this.findOne(id, user);
 
-    if (!ATTACHMENT_MIME_TYPES.includes(file.mimetype)) {
-      throw new BadRequestException(
-        `Ongeldig bestandstype voor bijlage`,
-      );
-    }
+    assertAllowedAttachmentUpload(file);
 
     const storageKey = `${template.orgId}/qt/${template.id}/att/${randomUUID()}-${sanitizeStorageFilename(file.originalname)}`;
     await this.storage.upload(storageKey, file.buffer, file.mimetype);

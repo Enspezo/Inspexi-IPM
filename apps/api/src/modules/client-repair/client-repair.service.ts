@@ -50,6 +50,7 @@ import {
   RESOLUTION_CONFLICT,
   STATUS_OPEN,
   STATUS_RESOLVED,
+  detectImageType,
   type SeverityClassificationModel,
 } from '@/common';
 import { EntitlementsService } from '@/modules/entitlements/entitlements.service';
@@ -66,7 +67,6 @@ import {
 const SIGNER_ROLE_HERSTELLER = 'HERSTELLER';
 
 const MAX_PHOTOS = 5;
-const EXT: Record<string, string> = { 'image/jpeg': 'jpg', 'image/png': 'png' };
 
 /** Publieke URL naar de sessie-gescopede foto-stream (verbergt storage-keys). */
 function photoUrl(id: string): string {
@@ -585,11 +585,21 @@ export class ClientRepairService {
       );
     }
 
+    // WP-B4: magic bytes beslissen type + opslagextensie; de multer-fileFilter
+    // op de client-claim is alleen de poort. Eerst álle bestanden valideren,
+    // zodat een afgekeurd bestand geen wees-uploads achterlaat.
+    const detectedTypes = files.map((file) => {
+      const detected = detectImageType(file.buffer);
+      if (!detected || detected.mimeType === 'image/webp') {
+        throw new BadRequestException('Alleen JPG en PNG bestanden zijn toegestaan');
+      }
+      return detected;
+    });
+
     const created = await Promise.all(
-      files.map(async (file) => {
-        const ext = EXT[file.mimetype] ?? 'jpg';
-        const key = `${session.orgId}/finding-photos/${randomUUID()}.${ext}`;
-        await this.storage.upload(key, file.buffer, file.mimetype);
+      files.map(async (file, i) => {
+        const key = `${session.orgId}/finding-photos/${randomUUID()}.${detectedTypes[i].extension}`;
+        await this.storage.upload(key, file.buffer, detectedTypes[i].mimeType);
         return this.prisma.findingResolutionPhoto.create({
           data: { resolutionId: resolution.id, photoUrl: key },
         });

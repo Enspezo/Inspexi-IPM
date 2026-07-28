@@ -98,6 +98,152 @@ export function assertAllowedImageUpload(file: {
 }
 
 /**
+ * PDF-herkenning: `%PDF-` moet binnen de eerste 1024 bytes voorkomen (de
+ * PDF-spec staat rommel vóór de header toe; vrijwel alle bestanden beginnen
+ * op offset 0, maar met deze marge wijzen we geen echte PDF's af).
+ */
+export function detectPdf(buffer: Buffer | undefined | null): boolean {
+  if (!buffer || buffer.length < 5) return false;
+  return buffer.subarray(0, 1024).includes('%PDF-');
+}
+
+/** Mimetypes voor upload-routes die scans/foto's óf een PDF verwachten (certificaten, kalibraties). SVG bewust niet. */
+export const ALLOWED_PDF_OR_IMAGE_MIME_TYPES = [
+  'application/pdf',
+  ...ALLOWED_IMAGE_MIME_TYPES,
+] as const;
+
+export interface DetectedUploadType {
+  mimeType: string;
+  extension: 'png' | 'jpg' | 'webp' | 'pdf';
+}
+
+/**
+ * Als `assertAllowedImageUpload`, maar met PDF als extra toegestaan formaat.
+ * Zelfde twee poorten: claim op de whitelist, inhoud beslist wat het is.
+ */
+export function assertAllowedPdfOrImageUpload(file: {
+  buffer?: Buffer;
+  mimetype?: string;
+}): DetectedUploadType {
+  if (
+    !ALLOWED_PDF_OR_IMAGE_MIME_TYPES.includes(
+      file?.mimetype as (typeof ALLOWED_PDF_OR_IMAGE_MIME_TYPES)[number],
+    )
+  ) {
+    throw new BadRequestException('Alleen PDF, PNG, JPEG en WebP bestanden zijn toegestaan');
+  }
+
+  const raster = detectImageType(file?.buffer);
+  if (raster) return raster;
+  if (detectPdf(file?.buffer)) return { mimeType: 'application/pdf', extension: 'pdf' };
+
+  throw new BadRequestException(
+    'De inhoud van het bestand is geen geldige PDF of PNG-/JPEG-/WebP-afbeelding',
+  );
+}
+
+/**
+ * Serve-side sniff voor download-routes die PDF's én afbeeldingen kunnen
+ * bevatten. Onherkenbare inhoud (legacy SVG-rijen, gespoofte uploads van vóór
+ * deze fix) degradeert naar `application/octet-stream` — het opgeslagen
+ * (client-geclaimde) mimetype verlaat de service nooit als Content-Type.
+ */
+export function resolveUploadedContentType(buffer: Buffer | undefined | null): {
+  mimeType: string;
+  extension: string;
+} {
+  const raster = detectImageType(buffer);
+  if (raster) return raster;
+  if (detectPdf(buffer)) return { mimeType: 'application/pdf', extension: 'pdf' };
+  return { mimeType: 'application/octet-stream', extension: 'bin' };
+}
+
+/**
+ * Gedeelde whitelist voor generieke bijlage-uploads (documenten, offerte-,
+ * offertesjabloon- en e-mailsjabloon-bijlagen). Stond voorheen 3× gekopieerd
+ * (en bij offerte-bijlagen helemaal niet). SVG en CSV blijven hier toegestaan:
+ * deze bestanden worden uitsluitend met `attachment` + nosniff + sandbox-CSP
+ * teruggeserveerd en renderen dus nooit op het app-origin.
+ */
+export const ALLOWED_ATTACHMENT_MIME_TYPES = [
+  'application/pdf',
+  'image/jpeg',
+  'image/png',
+  'image/svg+xml',
+  'image/webp',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.ms-excel',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'application/vnd.ms-powerpoint',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  'text/csv',
+  'application/zip',
+] as const;
+
+const OOXML_OR_ZIP_MIME_TYPES = new Set<string>([
+  'application/zip',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+]);
+
+const RASTER_IMAGE_MIME_TYPES = new Set<string>(ALLOWED_IMAGE_MIME_TYPES);
+
+/**
+ * Kruiscontrole claim ↔ inhoud voor gemengde whitelists: claims mét een
+ * betrouwbare signature moeten die ook in de bytes waarmaken. Claims zonder
+ * signature passeren bewust ongecontroleerd:
+ *  - `text/csv` / `image/svg+xml`: platte tekst, geen magic bytes;
+ *  - legacy Office (`application/msword` e.d.): browsers sturen
+ *    `application/vnd.ms-excel` óók voor .csv-bestanden, dus een OLE2-check
+ *    zou echte uploads afwijzen.
+ * De download-headers (attachment + nosniff + sandbox) blijven het vangnet.
+ */
+export function assertUploadContentMatchesClaim(file: {
+  buffer?: Buffer;
+  mimetype?: string;
+}): void {
+  const mimetype = file?.mimetype ?? '';
+
+  if (RASTER_IMAGE_MIME_TYPES.has(mimetype) && !detectImageType(file?.buffer)) {
+    throw new BadRequestException(
+      'De inhoud van het bestand is geen geldige PNG-, JPEG- of WebP-afbeelding',
+    );
+  }
+  if (mimetype === 'application/pdf' && !detectPdf(file?.buffer)) {
+    throw new BadRequestException('De inhoud van het bestand is geen geldige PDF');
+  }
+  if (
+    OOXML_OR_ZIP_MIME_TYPES.has(mimetype) &&
+    !(file?.buffer && file.buffer.subarray(0, 2).toString('ascii') === 'PK')
+  ) {
+    throw new BadRequestException('De inhoud van het bestand is geen geldig ZIP-/Office-bestand');
+  }
+}
+
+/**
+ * Combineert de bijlage-whitelist met de claim↔inhoud-kruiscontrole; voor
+ * upload-routes van generieke bijlagen.
+ */
+export function assertAllowedAttachmentUpload(file: {
+  buffer?: Buffer;
+  mimetype?: string;
+}): void {
+  if (
+    !ALLOWED_ATTACHMENT_MIME_TYPES.includes(
+      file?.mimetype as (typeof ALLOWED_ATTACHMENT_MIME_TYPES)[number],
+    )
+  ) {
+    throw new BadRequestException(
+      'Bestandstype niet toegestaan. Toegestane types: PDF, afbeeldingen (JPEG, PNG, SVG, WebP), Word, Excel, PowerPoint, CSV, ZIP.',
+    );
+  }
+  assertUploadContentMatchesClaim(file);
+}
+
+/**
  * Bepaalt hoe een opgeslagen afbeelding teruggeserveerd wordt.
  *
  * Ook hier beslissen de bytes, niet de extensie in de opslagsleutel: rijen die

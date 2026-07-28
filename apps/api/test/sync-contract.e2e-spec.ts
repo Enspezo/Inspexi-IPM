@@ -27,10 +27,16 @@ import bcrypt from 'bcrypt';
  *  - regressies: oude foute finding-vorm → nette NL-melding (geen rauwe
  *    Prisma-P2003), meetstaat zónder templateVersion → nette NL-melding,
  *    numerieke templateVersion (legacy cache) → gecoerced naar string,
- *  - cross-tenant: finding → andermans VisualInspection wordt geweigerd.
+ *  - cross-tenant: finding → andermans VisualInspection wordt geweigerd,
+ *  - WP-B10 (B-222): classificationValues worden gevalideerd tegen het
+ *    toepasselijke classificatiemodel (hier: de NORMTYPE-fallback — het plan
+ *    heeft bewust geen inspectie-template). Modelcodes → isCritical true;
+ *    fictief vocabulaire ({"risico":"kritiek"}) → NL-fout in errors[]; een
+ *    ongewijzigde legacy-echo op een update blijft toegestaan (fasering).
  *
  * Requests raken 127.0.0.1 (unknown host) — TenantGuard scopet hier niet;
- * orgId wordt altijd server-side geïnjecteerd.
+ * orgId wordt altijd server-side geïnjecteerd. Eigen norm-type + model als
+ * fixture: de suite leunt niet op seed-data (C1-isCritical is SEED_DEMO-only).
  */
 describe('Sync contract — PWA-serialized payloads (e2e)', () => {
   let app: INestApplication;
@@ -55,6 +61,10 @@ describe('Sync contract — PWA-serialized payloads (e2e)', () => {
   let viId: string;
   let findingId: string;
   let checklistItemId: string;
+
+  // WP-B10: eigen norm-type + classificatiemodel (normtype-fallback-pad).
+  let cmId: string;
+  const NORM_CODE = 'e2ectnorm';
 
   const deviceId = 'e2e-pwa-device-1';
 
@@ -120,6 +130,41 @@ describe('Sync contract — PWA-serialized payloads (e2e)', () => {
       },
     });
     crmLocationAId = crmLocation.id;
+
+    // WP-B10 (B-222): eigen classificatiemodel + norm-type met dat model als
+    // default. Het plan krijgt bewust GEEN inspectie-template, zodat deze suite
+    // het normtype-fallback-pad van loadPlanCriticalModel e2e dekt.
+    const cm = await prisma.classificationModel.create({
+      data: {
+        code: 'E2ECTCM',
+        name: 'E2E Contract Classificatiemodel',
+        createdBy: userA.id,
+        characteristics: {
+          create: [
+            {
+              code: 'SEVERITY',
+              name: 'Ernst',
+              options: {
+                create: [
+                  { code: 'C1', name: 'Direct gevaar', color: '#dc2626', isCritical: true },
+                  { code: 'C3', name: 'Aanbeveling', color: '#ca8a04', isCritical: false },
+                ],
+              },
+            },
+          ],
+        },
+      },
+    });
+    cmId = cm.id;
+    await prisma.normTypeDefinition.create({
+      data: {
+        code: NORM_CODE,
+        label: 'E2E Contract Norm',
+        createdBy: userA.id,
+        assetTypes: [],
+        classificationModelId: cm.id,
+      },
+    });
 
     // Org B: een VisualInspection om cross-tenant tegen te toetsen.
     const orgB = await prisma.organization.create({
@@ -203,6 +248,9 @@ describe('Sync contract — PWA-serialized payloads (e2e)', () => {
       await prisma.numberingScheme.deleteMany({ where: { orgId: { in: orgIds } } });
       await prisma.syncQueue.deleteMany({ where: { userId: { in: userIds } } });
       await prisma.notification.deleteMany({ where: { orgId: { in: orgIds } } });
+      // WP-B10-fixtures: norm-type vóór het classificatiemodel (FK).
+      await prisma.normTypeDefinition.deleteMany({ where: { code: NORM_CODE } });
+      await prisma.classificationModel.deleteMany({ where: { id: cmId } });
       await prisma.auditLog.deleteMany({ where: { orgId: { in: orgIds } } });
       await prisma.refreshToken.deleteMany({ where: { userId: { in: userIds } } });
       await prisma.user.deleteMany({ where: { id: { in: userIds } } });
@@ -245,7 +293,9 @@ describe('Sync contract — PWA-serialized payloads (e2e)', () => {
             locationId: crmLocationAId,
             projectName: 'E2E Contract Plan',
             description: 'Aangemaakt op het device',
-            normTypeCode: 'NEN1010',
+            // Eigen fixture-norm (met default-classificatiemodel) — geen
+            // inspectie-template, dus het WP-B10-normtype-fallback-pad.
+            normTypeCode: NORM_CODE,
             inspectionTypeCode: 'initial',
             statusCode: 'in_progress',
             notes: 'PWA-notitie',
@@ -351,7 +401,9 @@ describe('Sync contract — PWA-serialized payloads (e2e)', () => {
             inspectionType: 'visual',
             shortDescription: 'INS16 Beschadigde behuizing',
             longDescription: 'Scheur in de kap',
-            classificationValues: { risico: 'kritiek' },
+            // WP-B10: échte modelcodes (normtype-fallback-model); de kritieke
+            // optie moet server-side isCritical zetten (B-222-acceptatie).
+            classificationValues: { SEVERITY: 'C1' },
             recommendation: 'Direct vervangen',
             normReference: '',
             checklistItemId,
@@ -409,6 +461,9 @@ describe('Sync contract — PWA-serialized payloads (e2e)', () => {
     expect(finding?.checklistItemId).toBe(checklistItemId);
     expect(finding?.createdBy).toBe(userAId);
     expect(finding?.shortDescription).toBe('INS16 Beschadigde behuizing');
+    // WP-B10 (B-222-acceptatie): de kritieke optie uit het NORMTYPE-model
+    // (het plan heeft geen inspectie-template) zet server-side isCritical.
+    expect(finding?.isCritical).toBe(true);
   });
 
   it('4. measurementRecord — serializeMeasurementRecord-vorm (incl. lege inspectorId) → DB-rij', async () => {
@@ -665,5 +720,140 @@ describe('Sync contract — PWA-serialized payloads (e2e)', () => {
     expect(pulled).toBeDefined();
     expect(pulled.visualInspectionId).toBe(viId);
     expect(pulled.checklistItemId).toBe(checklistItemId);
+    // isCritical reist mee in de pull → de PWA kan de vlag lokaal tonen.
+    expect(pulled.isCritical).toBe(true);
+  });
+
+  it('11. WP-B10 (B-222): fictief vocabulaire ({"risico":"kritiek"}) op een NIEUWE finding → NL-fout, geen rij', async () => {
+    const bogusId = randomUUID();
+
+    const data = await push({
+      findings: [
+        {
+          operation: 'create',
+          data: {
+            // De exacte pre-fix PWA-payload uit B-222 — moet nu geweigerd worden.
+            id: bogusId,
+            assetNodeId,
+            inspectionPlanId: planId,
+            inspectionType: 'visual',
+            shortDescription: 'Legacy vocabulaire',
+            classificationValues: { risico: 'kritiek' },
+            recommendation: 'n.v.t.',
+            normReference: '',
+            statusCode: 'open',
+            createdBy: userAId,
+          },
+        },
+      ],
+    });
+
+    expect(data.processed.findings).toBe(0);
+    expect(data.errors).toHaveLength(1);
+    expect(data.errors[0].entityType).toBe('finding');
+    expect(data.errors[0].entityId).toBe(bogusId);
+    expect(data.errors[0].error).toContain('Classificatie ongeldig');
+    expect(data.errors[0].error).toContain(
+      "kenmerk 'risico' bestaat niet in het classificatiemodel",
+    );
+    expect(data.errors[0].error).not.toMatch(/prisma|invocation/i);
+
+    expect(await prisma.finding.findUnique({ where: { id: bogusId } })).toBeNull();
+  });
+
+  it('12. WP-B10-fasering: een ongewijzigde legacy-echo op een UPDATE blijft toegestaan', async () => {
+    // Bestaand record met pre-fix vocabulaire (direct in de DB gezet — zo staan
+    // ze er in productie ook). De PWA echoot het volledige record bij elke push;
+    // die echo mag niet stranden, anders zit elk oud record permanent vast.
+    const legacyId = randomUUID();
+    await prisma.finding.create({
+      data: {
+        id: legacyId,
+        orgId: orgAId,
+        assetNodeId,
+        inspectionPlanId: planId,
+        inspectionType: 'visual',
+        shortDescription: 'Bestaand legacy record',
+        classificationValues: { risico: 'gering' },
+        statusCode: 'open',
+        createdBy: userAId,
+      },
+    });
+
+    const data = await push({
+      findings: [
+        {
+          operation: 'update',
+          data: {
+            id: legacyId,
+            classificationValues: { risico: 'gering' },
+            shortDescription: 'Bestaand legacy record — omschrijving aangepast',
+            syncedAt: new Date(Date.now() + 1000).toISOString(),
+          },
+        },
+      ],
+    });
+
+    expect(data.errors).toHaveLength(0);
+    expect(data.conflicts).toHaveLength(0);
+    expect(data.processed.findings).toBe(1);
+
+    const row = await prisma.finding.findUnique({ where: { id: legacyId } });
+    expect(row?.shortDescription).toBe('Bestaand legacy record — omschrijving aangepast');
+    expect(row?.isCritical).toBe(false); // legacy vocabulaire matcht niets
+  });
+
+  it('13. WP-B10: een GEWIJZIGDE classificatie moet uit het model komen — onzin-codes → NL-fout, modelcodes → isCritical volgt', async () => {
+    const legacyId = randomUUID();
+    await prisma.finding.create({
+      data: {
+        id: legacyId,
+        orgId: orgAId,
+        assetNodeId,
+        inspectionPlanId: planId,
+        inspectionType: 'visual',
+        shortDescription: 'Te herclassificeren record',
+        classificationValues: { risico: 'gering' },
+        statusCode: 'open',
+        createdBy: userAId,
+      },
+    });
+
+    // Wijziging naar ander onzin-vocabulaire → geweigerd.
+    const rejected = await push({
+      findings: [
+        {
+          operation: 'update',
+          data: {
+            id: legacyId,
+            classificationValues: { SEVERITY: 'C9' },
+            syncedAt: new Date(Date.now() + 1000).toISOString(),
+          },
+        },
+      ],
+    });
+    expect(rejected.processed.findings).toBe(0);
+    expect(rejected.errors).toHaveLength(1);
+    expect(rejected.errors[0].error).toContain("optie 'C9' is onbekend voor kenmerk 'SEVERITY'");
+
+    // Herclassificatie naar échte modelcodes → geaccepteerd + isCritical volgt.
+    const accepted = await push({
+      findings: [
+        {
+          operation: 'update',
+          data: {
+            id: legacyId,
+            classificationValues: { SEVERITY: 'C1' },
+            syncedAt: new Date(Date.now() + 1000).toISOString(),
+          },
+        },
+      ],
+    });
+    expect(accepted.errors).toHaveLength(0);
+    expect(accepted.processed.findings).toBe(1);
+
+    const row = await prisma.finding.findUnique({ where: { id: legacyId } });
+    expect(row?.classificationValues).toEqual({ SEVERITY: 'C1' });
+    expect(row?.isCritical).toBe(true);
   });
 });

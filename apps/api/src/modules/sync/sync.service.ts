@@ -10,6 +10,7 @@
 
 import { Injectable, BadRequestException, Logger } from '@nestjs/common';
 import { AssetNodeType, User, Prisma, NumberingModel, SyncStatus } from '@prisma/client';
+import { isDeepStrictEqual } from 'util';
 import { PrismaService } from '@/prisma';
 import {
   orgScope,
@@ -19,8 +20,12 @@ import {
   REVIEW_ROLES,
   STATUS_PENDING_REVIEW,
   STATUS_RESOLVED,
-  computeFindingIsCritical,
+  computeFindingIsCriticalAny,
   loadPlanCriticalModel,
+  loadFindingTemplateCriticalModel,
+  assertClassificationValuesKnown,
+  findClassificationValueIssues,
+  formatClassificationValueIssues,
   type ClassificationModelForCritical,
 } from '@/common';
 import { PushDto, ResolveDto, EntityChangeDto } from './dto';
@@ -801,8 +806,17 @@ export class SyncService {
   /**
    * Finding.isCritical is server-owned (PRD-14): het staat bewust NIET in de
    * allowed-whitelist van de sync-mapper. Herbereken de vlag bij een create of
-   * wanneer classificationValues meekomen, op basis van het classificatiemodel
-   * van het plan (per-push gecachet).
+   * wanneer classificationValues meekomen, op basis van de toepasselijke
+   * classificatiemodellen (plan-model mét normtype-fallback + eventueel het
+   * finding-template-model; per-push gecachet).
+   *
+   * WP-B10 (B-222) — validatie van de codes zelf, gefaseerd:
+   *  - create of daadwerkelijk GEWIJZIGDE classificatie → streng: onbekende
+   *    kenmerk-/optiecodes geven een NL-fout in errors[] (geen stille
+   *    datavervuiling met fictief vocabulaire meer);
+   *  - een ongewijzigde echo van bestaande (legacy-)waarden bij een update
+   *    blijft werken — de PWA stuurt het volledige record bij elke push;
+   *    hier alleen tolerant loggen zodat legacy-records traceerbaar blijven.
    */
   private async computeFindingCriticalField(
     key: SyncEntityKey,
@@ -816,15 +830,62 @@ export class SyncService {
       fields.inspectionPlanId ?? existing?.inspectionPlanId ?? data.inspectionPlanId ?? '',
     );
     if (!planId) return;
+    if (existing && fields.classificationValues === undefined) return;
 
-    if (!existing || fields.classificationValues !== undefined) {
-      let model = cache.get(planId);
-      if (model === undefined) {
-        model = await loadPlanCriticalModel(this.prisma, planId);
-        cache.set(planId, model);
+    const models = await this.loadApplicableClassificationModels(
+      planId,
+      (fields.findingTemplateId ?? existing?.findingTemplateId) as string | undefined,
+      cache,
+    );
+    const values = fields.classificationValues ?? {};
+
+    if (fields.classificationValues !== undefined) {
+      const unchangedEcho =
+        existing !== null &&
+        isDeepStrictEqual(existing.classificationValues ?? {}, fields.classificationValues);
+      if (unchangedEcho) {
+        const issues = findClassificationValueIssues(values, models);
+        if (issues.length > 0) {
+          this.logger.warn(
+            `Finding ${String(data.id ?? '')} echo't legacy-classificatie (toegestaan op update): ` +
+              formatClassificationValueIssues(issues),
+          );
+        }
+      } else {
+        assertClassificationValuesKnown(values, models);
       }
-      fields.isCritical = computeFindingIsCritical(fields.classificationValues ?? {}, model);
     }
+
+    fields.isCritical = computeFindingIsCriticalAny(values, models);
+  }
+
+  /**
+   * Toepasselijke classificatiemodellen voor een finding (WP-B10): het
+   * plan-model (template → normtype-fallback, zie loadPlanCriticalModel) plus
+   * het model van het finding-template wanneer de finding daarmee is
+   * aangemaakt. Per push gecachet onder gescheiden sleutels.
+   */
+  private async loadApplicableClassificationModels(
+    planId: string,
+    findingTemplateId: string | undefined,
+    cache: Map<string, ClassificationModelForCritical | null>,
+  ): Promise<Array<ClassificationModelForCritical | null>> {
+    const planKey = `plan:${planId}`;
+    let planModel = cache.get(planKey);
+    if (planModel === undefined) {
+      planModel = await loadPlanCriticalModel(this.prisma, planId);
+      cache.set(planKey, planModel);
+    }
+
+    if (!findingTemplateId) return [planModel];
+
+    const tplKey = `tpl:${findingTemplateId}`;
+    let templateModel = cache.get(tplKey);
+    if (templateModel === undefined) {
+      templateModel = await loadFindingTemplateCriticalModel(this.prisma, findingTemplateId);
+      cache.set(tplKey, templateModel);
+    }
+    return [planModel, templateModel];
   }
 
   /**
@@ -1028,6 +1089,11 @@ export class SyncService {
         this.assertPlanAssignmentRole(key, fields, existing, user);
         await this.assertTypeCodeChangeValid(key, fields, existing, gateOrgId);
         await this.assertReparentDepth(key, fields, existing, gateOrgId, r.entityId);
+        // WP-B10: een resolution is een definitieve write — herbereken het
+        // server-owned isCritical en valideer gewijzigde classificatiecodes
+        // (zelfde fasering als het push-pad; een client-payload met legacy-
+        // waarden die gelijk zijn aan de serverstaat blijft toegestaan).
+        await this.computeFindingCriticalField(key, fields, existing, chosen, new Map());
         this.enrichPlanSubmit(key, fields, existing);
 
         // Bewust GEEN narrow select: de audit-$use-middleware (prisma.service)
@@ -1045,6 +1111,9 @@ export class SyncService {
           where: { id: queueItem.id },
           data: { status: SyncStatus.completed, resolvedAt: new Date(), resolvedBy: user.id },
         });
+        // WP-B10: zelfde her-arming van de herinspectie-trigger als het push-pad
+        // (alleen ná een geslaagde definitieve write).
+        await this.resetCriticalRepairNotified(key, fields, existing);
         // B-218: een resolution die het plan alsnog op pending_review zet
         // start dezelfde submit-keten als push/REST (fire-and-forget).
         this.firePlanSubmittedSideEffects(key, fields, existing, user, r.entityId);

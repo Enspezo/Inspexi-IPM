@@ -145,6 +145,10 @@ Elk pakket doorloopt dezelfde cyclus:
 
 ## 8. Datachecks vóór uitrol naar productie
 
+> **Zie voor de volledige, geconsolideerde pre-deploy-checklist (incl. migratievolgorde,
+> handmatige backfill-scripts, image-vereisten en post-checks): `RUNBOOK-DEPLOY.md`.**
+> Onderstaande tabel blijft staan als oorspronkelijke bron van de datachecks.
+
 Drie fixes vragen om een controle op bestaande data. Voer deze uit vóór de betreffende PR live gaat.
 
 | Check | Query / actie | Hoort bij |

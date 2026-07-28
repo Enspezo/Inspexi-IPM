@@ -9,6 +9,16 @@ import { backfillNumbering } from './backfill-numbering';
 import { DEFAULT_VOICE_BASE_PROMPT } from '../src/modules/voice/default-base-prompt';
 import { FEATURE_KEYS } from '@inspexi/entitlements';
 import { addMonths } from '@inspexi/calibration';
+import { assertSeedAllowed } from '../src/common/config/assert-seed-allowed';
+
+// Productie-guard (audit §7.5): dit script wist de hele database. Moet vóór
+// élke databaseactie staan — bij weigering is er gegarandeerd niets geraakt.
+try {
+  assertSeedAllowed(process.env);
+} catch (e) {
+  console.error((e as Error).message);
+  process.exit(1);
+}
 
 const prisma = new PrismaClient();
 

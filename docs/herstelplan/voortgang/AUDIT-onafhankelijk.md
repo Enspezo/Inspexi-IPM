@@ -112,7 +112,7 @@ De claim "75 bevindingen afgehandeld" is verdedigbaar in de zin van *behandeld e
 | 1 — upload-sweep mergen | ✅ 28-07: PR #164 gemerged (door eigenaar); hercontrole gecombineerde stand groen (build 6/6 · unit 2285 · e2e 1210/69) — B-507-restrisico dicht |
 | 2 — B-105 afmaken | ✅ 28-07: PR #171 — 17 plekken (16 + 1 extra in `support-tickets.update()`) naar `findFirst + orgScope + assertFound`; oracle-tabel in `error-contract.e2e-spec` naar 18 modules; live byte-identiek curl-bewijs; `B-105.md` bijgesteld |
 | 3 — `main` ↔ `dev` | ✅ 28-07: onderzocht — PR #105 zit inhoudelijk volledig op `dev` (PR #116, file-niveau geverifieerd); alleen PR #124 (AI-agent backoffice, 55 bestanden/+4438) is écht main-only; proef-merge gaf 23 conflictpaden + een dubbele `password_changed_at`-migratie; geadviseerd pad: #124 eerst via eigen PR naar `dev` + hertest, daarna release-merge — zie `MAIN-DEV-ANALYSE.md` |
-| 4 — pre-deploy runbook | 🔄 in uitvoering |
-| 5 — seed-guard | 🔄 in uitvoering |
-| 6 — administratie | 🔄 in uitvoering |
+| 4 — pre-deploy runbook | ✅ 28-07: PR #175 — `docs/herstelplan/RUNBOOK-DEPLOY.md`: geconsolideerde checklist in strikte volgorde (migrate deploy incl. D1/D2 → handmatig `backfill-synced-at-skew.ts` → datachecks → `fonts-noto-cjk`-image (geen Dockerfile in repo, buiten versiebeheer borgen) → PWA ná API → `NODE_ENV=production` met DEP-8-codeverwijzingen → post-checks D2/D1/health) |
+| 5 — seed-guard | ✅ 28-07: PR #175 — `assertSeedAllowed()` in `seed.ts` + `seed-testprogramma.ts` vóór elke DB-actie; weigert `NODE_ENV=production` tenzij `FORCE_SEED=1` (NL-melding), test/dev/unset ongewijzigd; unit-spec + bewezen-weigerende productierun |
+| 6 — administratie | ✅ 28-07: PR #175 — Status-secties B-208/B-211; restrisico aangevuld (B-315 5/6/10, B-511 §9–§11, B-407 preferredDate) + dubbele B-402/B-403-rij en B-222-legacy-tabel gerepareerd; backlog-B4 afgehandeld, B5-notitie, B7 → nieuwe bevinding **B-413** (contact-brede ClientAccess) |
 | 7 — beslispunten A3/A4/A5 | 🔄 voorgelegd aan de eigenaar |

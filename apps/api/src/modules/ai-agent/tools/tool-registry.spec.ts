@@ -56,9 +56,27 @@ describe('AiToolRegistry', () => {
     expect(schema.required).toEqual(
       expect.arrayContaining(['title', 'entityType', 'entityId']),
     );
-    expect(schema.properties.entityType.enum).toEqual(
-      expect.arrayContaining(['CONTACT', 'USER']),
-    );
+    // Exact alle TaskEntityType-waarden — vangt drift met het Prisma-enum.
+    expect(schema.properties.entityType.enum).toEqual([
+      'CONTACT',
+      'REQUEST',
+      'QUOTE',
+      'PLANNING',
+      'PROJECT',
+      'PROJECT_PHASE',
+      'USER',
+    ]);
+  });
+
+  it('create_task summarize toont de entiteit-koppeling op de bevestigingskaart', () => {
+    const summary = registry.get('create_task')!.summarize!({
+      title: 'Bellen',
+      entityType: 'CONTACT',
+      entityId: 'c1',
+      deadline: '2026-08-01',
+    });
+    expect(summary).toContain('bij contact c1');
+    expect(summary).toContain('deadline 2026-08-01');
   });
 
   it('create_note delegates to NotesService.create with entity + content', async () => {

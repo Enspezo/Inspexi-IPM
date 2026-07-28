@@ -240,6 +240,7 @@ export class AiToolRegistry {
         mutates: true,
         summarize: (i) =>
           `Taak aanmaken: "${i.title}"` +
+          (i.entityType ? ` bij ${i.entityType.toLowerCase()} ${i.entityId}` : '') +
           (i.assigneeId ? `, toegewezen aan ${i.assigneeId}` : '') +
           (i.deadline ? `, deadline ${i.deadline}` : ''),
         run: (ctx, input) =>

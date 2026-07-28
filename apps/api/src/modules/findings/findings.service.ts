@@ -11,9 +11,11 @@
 import {
   Injectable,
   Inject,
+  Logger,
   BadRequestException,
 } from '@nestjs/common';
 import { User, Prisma } from '@prisma/client';
+import { isDeepStrictEqual } from 'util';
 import { PrismaService } from '@/prisma';
 import {
   orgScope,
@@ -22,8 +24,13 @@ import {
   validateJsonColumn,
   STATUS_OPEN,
   STATUS_RESOLVED,
-  computeFindingIsCritical,
+  computeFindingIsCriticalAny,
   loadPlanCriticalModel,
+  loadFindingTemplateCriticalModel,
+  assertClassificationValuesKnown,
+  findClassificationValueIssues,
+  formatClassificationValueIssues,
+  type ClassificationModelForCritical,
 } from '@/common';
 import { STORAGE_PROVIDER } from '@/common/services/storage/storage.interface';
 import type { StorageProvider } from '@/common/services/storage/storage.interface';
@@ -65,12 +72,28 @@ function serializeResolutions(resolutions: ResolutionRow[] | undefined) {
 
 @Injectable()
 export class FindingsService {
+  private readonly logger = new Logger(FindingsService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly lookups: LookupService,
     private readonly assetNodes: AssetNodesService,
     @Inject(STORAGE_PROVIDER) private readonly storage: StorageProvider,
   ) {}
+
+  /**
+   * WP-B10 (B-222): toepasselijke classificatiemodellen voor een finding —
+   * het plan-model (inspectie-template → normtype-fallback) plus het model van
+   * het finding-template wanneer aanwezig.
+   */
+  private async loadApplicableModels(
+    planId: string,
+    findingTemplateId?: string | null,
+  ): Promise<Array<ClassificationModelForCritical | null>> {
+    const planModel = await loadPlanCriticalModel(this.prisma, planId);
+    if (!findingTemplateId) return [planModel];
+    return [planModel, await loadFindingTemplateCriticalModel(this.prisma, findingTemplateId)];
+  }
 
   private async assertStatus(code: string | undefined, orgId: string): Promise<void> {
     if (!code) return;
@@ -255,11 +278,13 @@ export class FindingsService {
     }
 
     // Finding.isCritical is server-owned (PRD-14): afgeleid van classificationValues
-    // × de isCritical-vlaggen van het classificatiemodel van het plan.
-    const isCritical = computeFindingIsCritical(
-      dto.classificationValues ?? {},
-      await loadPlanCriticalModel(this.prisma, plan.id),
-    );
+    // × de isCritical-vlaggen van de toepasselijke classificatiemodellen.
+    // WP-B10 (B-222): nieuwe findings zijn streng — onbekende kenmerk-/optiecodes
+    // (fictief vocabulaire zoals {"risico":"kritiek"}) geven een NL-400 in plaats
+    // van stille datavervuiling die de PRD-14-keten dood laat.
+    const models = await this.loadApplicableModels(plan.id, dto.findingTemplateId);
+    assertClassificationValuesKnown(dto.classificationValues ?? {}, models);
+    const isCritical = computeFindingIsCriticalAny(dto.classificationValues ?? {}, models);
 
     // Nieuwe open kritieke constatering → herinspectie-trigger her-armen
     // (review #7): een eerder gevuurde melding blokkeert anders een tweede
@@ -310,12 +335,32 @@ export class FindingsService {
     if (dto.shortDescription !== undefined) data.shortDescription = dto.shortDescription;
     if (dto.longDescription !== undefined) data.longDescription = dto.longDescription;
     if (dto.classificationValues !== undefined) {
+      // WP-B10 (B-222) — gefaseerde validatie: een daadwerkelijk gewijzigde
+      // classificatie moet uit het model komen (NL-400 bij onbekende codes);
+      // een ongewijzigde echo van bestaande (legacy-)waarden blijft werken en
+      // wordt alleen gelogd.
+      const models = await this.loadApplicableModels(
+        finding.inspectionPlanId,
+        finding.findingTemplateId,
+      );
+      const unchangedEcho = isDeepStrictEqual(
+        finding.classificationValues ?? {},
+        dto.classificationValues,
+      );
+      if (unchangedEcho) {
+        const issues = findClassificationValueIssues(dto.classificationValues, models);
+        if (issues.length > 0) {
+          this.logger.warn(
+            `Finding ${finding.id} echo't legacy-classificatie (toegestaan op update): ` +
+              formatClassificationValueIssues(issues),
+          );
+        }
+      } else {
+        assertClassificationValuesKnown(dto.classificationValues, models);
+      }
       data.classificationValues = dto.classificationValues as Prisma.InputJsonValue;
       // isCritical volgt de classificatie (PRD-14, server-owned)
-      data.isCritical = computeFindingIsCritical(
-        dto.classificationValues,
-        await loadPlanCriticalModel(this.prisma, finding.inspectionPlanId),
-      );
+      data.isCritical = computeFindingIsCriticalAny(dto.classificationValues, models);
     }
     if (dto.locationDescription !== undefined) data.locationDescription = dto.locationDescription;
     if (dto.recommendation !== undefined) data.recommendation = dto.recommendation;

@@ -1,11 +1,34 @@
 // Online herstel (PRD-14): unit tests voor de server-owned isCritical-berekening.
 // Een finding is kritiek zodra minstens één classificatie-waarde verwijst naar een
-// ClassificationOption met isCritical: true in het model van het plan.
+// ClassificationOption met isCritical: true in een toepasselijk model. WP-B10
+// (B-222) voegt de normtype-fallback en het finding-template-model toe.
 import {
   computeFindingIsCritical,
+  computeFindingIsCriticalAny,
   loadPlanCriticalModel,
+  loadFindingTemplateCriticalModel,
   type ClassificationModelForCritical,
+  type PrismaForCriticalModel,
 } from './finding-critical';
+
+/** Mock-prisma met alle drie delegates; per test overschrijfbaar. */
+function prismaMock(overrides: {
+  plan?: unknown;
+  normType?: unknown;
+  findingTemplate?: unknown;
+}): PrismaForCriticalModel & {
+  inspectionPlan: { findUnique: jest.Mock };
+  normTypeDefinition: { findFirst: jest.Mock };
+  findingTemplate: { findUnique: jest.Mock };
+} {
+  return {
+    inspectionPlan: { findUnique: jest.fn().mockResolvedValue(overrides.plan ?? null) },
+    normTypeDefinition: { findFirst: jest.fn().mockResolvedValue(overrides.normType ?? null) },
+    findingTemplate: {
+      findUnique: jest.fn().mockResolvedValue(overrides.findingTemplate ?? null),
+    },
+  };
+}
 
 describe('computeFindingIsCritical', () => {
   const model: ClassificationModelForCritical = {
@@ -64,34 +87,88 @@ describe('computeFindingIsCritical', () => {
   });
 });
 
+describe('computeFindingIsCriticalAny (WP-B10)', () => {
+  const planModel: ClassificationModelForCritical = {
+    characteristics: [{ code: 'SEVERITY', options: [{ code: 'C1', isCritical: false }] }],
+  };
+  const templateModel: ClassificationModelForCritical = {
+    characteristics: [{ code: 'ERNST', options: [{ code: 'X', isCritical: true }] }],
+  };
+
+  it('is true zodra ÉÉN van de modellen de waarde als kritiek kent', () => {
+    expect(computeFindingIsCriticalAny({ ERNST: 'X' }, [planModel, templateModel])).toBe(true);
+  });
+
+  it('is false wanneer geen enkel model de waarde kritiek maakt', () => {
+    expect(computeFindingIsCriticalAny({ SEVERITY: 'C1' }, [planModel, templateModel])).toBe(false);
+  });
+
+  it('is false zonder modellen', () => {
+    expect(computeFindingIsCriticalAny({ SEVERITY: 'C1' }, [])).toBe(false);
+    expect(computeFindingIsCriticalAny({ SEVERITY: 'C1' }, [null, undefined])).toBe(false);
+  });
+});
+
 describe('loadPlanCriticalModel', () => {
-  it('geeft het classificatiemodel van het plan terug', async () => {
-    const classificationModel = {
-      characteristics: [{ code: 'SEVERITY', options: [{ code: 'C1', isCritical: true }] }],
-    };
-    const prisma = {
-      inspectionPlan: {
-        findUnique: jest
-          .fn()
-          .mockResolvedValue({ inspectionTemplate: { classificationModel } }),
-      },
-    };
+  const classificationModel = {
+    characteristics: [{ code: 'SEVERITY', options: [{ code: 'C1', isCritical: true }] }],
+  };
+
+  it('geeft het classificatiemodel van het inspectie-template terug', async () => {
+    const prisma = prismaMock({
+      plan: { normTypeCode: 'NEN1010', inspectionTemplate: { classificationModel } },
+    });
 
     await expect(loadPlanCriticalModel(prisma, 'plan-1')).resolves.toEqual(classificationModel);
     expect(prisma.inspectionPlan.findUnique).toHaveBeenCalledWith(
       expect.objectContaining({ where: { id: 'plan-1' } }),
     );
+    // Template-model aanwezig → geen normtype-lookup nodig.
+    expect(prisma.normTypeDefinition.findFirst).not.toHaveBeenCalled();
   });
 
-  it('geeft null zonder template of model (finding kan dan nooit kritiek zijn)', async () => {
-    const prisma = {
-      inspectionPlan: { findUnique: jest.fn().mockResolvedValue({ inspectionTemplate: null }) },
-    };
+  it('valt terug op het standaardmodel van het normtype (WP-B10 · B-222)', async () => {
+    const prisma = prismaMock({
+      plan: { normTypeCode: 'NEN1010', inspectionTemplate: null },
+      normType: { classificationModel },
+    });
+
+    await expect(loadPlanCriticalModel(prisma, 'plan-1')).resolves.toEqual(classificationModel);
+    expect(prisma.normTypeDefinition.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { code: 'NEN1010', deletedAt: null } }),
+    );
+  });
+
+  it('geeft null zonder template-model én zonder normtype-model', async () => {
+    const prisma = prismaMock({
+      plan: { normTypeCode: 'SCOPE_10', inspectionTemplate: null },
+      normType: { classificationModel: null },
+    });
     await expect(loadPlanCriticalModel(prisma, 'plan-1')).resolves.toBeNull();
 
-    const prismaMissing = {
-      inspectionPlan: { findUnique: jest.fn().mockResolvedValue(null) },
-    };
+    const prismaMissing = prismaMock({ plan: null });
     await expect(loadPlanCriticalModel(prismaMissing, 'plan-x')).resolves.toBeNull();
+    expect(prismaMissing.normTypeDefinition.findFirst).not.toHaveBeenCalled();
+  });
+});
+
+describe('loadFindingTemplateCriticalModel (WP-B10)', () => {
+  const classificationModel = {
+    characteristics: [{ code: 'ERNST', options: [{ code: 'X', isCritical: true }] }],
+  };
+
+  it('geeft het model van het finding-template terug', async () => {
+    const prisma = prismaMock({ findingTemplate: { classificationModel } });
+    await expect(loadFindingTemplateCriticalModel(prisma, 'tpl-1')).resolves.toEqual(
+      classificationModel,
+    );
+  });
+
+  it('geeft null zonder template of zonder model', async () => {
+    const prisma = prismaMock({ findingTemplate: null });
+    await expect(loadFindingTemplateCriticalModel(prisma, 'tpl-1')).resolves.toBeNull();
+
+    const prismaNoModel = prismaMock({ findingTemplate: { classificationModel: null } });
+    await expect(loadFindingTemplateCriticalModel(prismaNoModel, 'tpl-2')).resolves.toBeNull();
   });
 });

@@ -168,6 +168,140 @@ SELECT count(*) FROM imp_sync_queue WHERE org_id IS NULL;  -- verwacht 0 (op wee
 
 ---
 
+## Rollback-scenario (de terugweg)
+
+> De stappen hierboven beschrijven de heenweg. Terugrollen is **niet symmetrisch**: het
+> sync-contract gate't hard aan twee kanten, en twee datamigraties zijn niet (zinvol)
+> omkeerbaar. Lees dit **vóór** de deploy, niet pas als het misgaat — de belangrijkste
+> conclusie is dat na de cutover **fix-forward bijna altijd de juiste keuze is** en een
+> API-terugrol de situatie meestal verergert.
+
+### R1. Sync-contract v4 maakt de rollback asymmetrisch
+
+De PWA-pull-guard eist **gelijkheid** met `CONTRACT_VERSION = 4`
+(`ContractVersionMismatchError` in `apps/inspectie-app/src/services/sync/pull.ts`,
+Inspexi-App-repo); elke synccyclus begint met de pull, dus bij een mismatch bereikt de
+client ook de push nooit. De API serveert `contractVersion: 4`
+(`SYNC_CONTRACT_VERSION` in `apps/api/src/modules/sync/sync-mapper.ts`). Gevolgen:
+
+- **API teruggerold (pre-v4) terwijl toestellen de v4-PWA draaien:** élke sync blokkeert
+  fail-closed ("App bijwerken nodig"-melding, hoewel het hier andersom is). Inspecteurs
+  werken **offline door zonder dataverlies** — lokale wijzigingen blijven pending — maar
+  er syncet níets meer tot server en app weer hetzelfde contract spreken.
+- **PWA-rollback propageert traag:** de PWA activeert een (oudere óf nieuwere) build pas
+  bij de eerstvolgende refresh (vite-plugin-pwa). Je kunt een toestel niet dwingen; een
+  API-terugrol laat v4-toestellen dus **voor onbepaalde tijd** geblokkeerd staan.
+- **Volgorde van terugrollen** (spiegelbeeld van de heenweg "API vóór PWA"): eerst de
+  oude PWA-build terugzetten, dán pas (indien echt nodig) de API — en accepteer dat het
+  venster waarin toestellen nog v4 draaien niet door jou wordt bepaald.
+- Het offline-doorwerk-venster is veilig (zie `FASE3-SYNC.md` §10.5) zolang het kort
+  blijft; hoe langer toestellen niet syncen, hoe groter de kans op echte conflicten bij
+  de her-aansluiting.
+
+**Praktische consequentie:** rol de API alléén terug bij een defect dat de API zelf
+onbruikbaar maakt (niet booten, dataverminking). Voor al het andere: fix-forward.
+
+### R2. De twee datamigraties: wat is (niet) omkeerbaar
+
+**D1 — `20260728061433` (sync-queue-org + `synced_at`-backfill):**
+
+- *Additief en veilig te laten staan:* de nullable kolom `imp_sync_queue.org_id` + index.
+  Oude API-code negeert een extra kolom; terugdraaien van het schema is niet nodig. De
+  `org_id`-waarden zijn bovendien herafleidbaar uit `user_id` — dit deel is het enige dat
+  desgewenst verliesvrij te reconstrueren is.
+- *Feitelijk one-way, maar goedaardig:* de backfill `synced_at = updated_at WHERE
+  synced_at IS NULL`. Ná de run is niet meer te onderscheiden welke rijen gebackfilld
+  zijn en welke al gevuld waren — "terugzetten naar NULL" kan dus niet selectief. Dat
+  hoeft ook niet: pre-D1-code behandelt een gevulde `synced_at` gewoon als pull-basis;
+  de backfill laten staan is onder élke rollbackvariant veilig.
+
+**D2 — `20260728100000` (canonicalisatie `measurement_sheet_records.data`):**
+
+- Deze migratie **overschrijft** de legacy `sections`-vorm in-place (records + open
+  sync-queue-conflicten); de oorspronkelijke vorm wordt nergens bewaard. Terugdraaien =
+  de omgekeerde transformatie uitvoeren, en die is niet uniek (rij-hernummering,
+  `rows`/`values`-onderscheid) — **effectief dataverlies**.
+- Terugdraaien is óók onnodig: de canonieke vorm was al de server-/portalvorm; de oude
+  (pre-D2) API en portal lezen hem gewoon. D2 laten staan is onder elke rollbackvariant
+  veilig.
+
+**`prisma migrate resolve --rolled-back`:** dit is **boekhouding, geen rollback** — het
+markeert een als *mislukt* geregistreerde migratie zodat `migrate deploy` hem opnieuw
+probeert. Beide datamigraties draaien in één transactie: faalt er één, dan is de
+database voor díe migratie al automatisch teruggerold en is `resolve --rolled-back` (na
+het fixen van de oorzaak) de juiste vervolgstap. Voor een **geslaagde** migratie is het
+commando zinloos; er zijn géén down-migraties geschreven (bewust — zie hierboven waarom
+ze niet zinvol zijn). Laatste redmiddel bij echte verminking: een database-restore van
+de pre-deploy-backup — dat kost álle schrijfacties sinds dat moment en is alleen voor
+catastrofes. **Maak dus vóór stap 1 een backup/restorepoint** (nog te borgen: welke
+backup-/PITR-voorziening de hostingomgeving precies biedt).
+
+### R3. Wat wél veilig los terug te rollen is
+
+- **Portal- en client-portal-builds zijn stateless** (statische assets): de vorige build
+  terugzetten kan per app, los van API en database, zonder datarisico. Dit is de
+  **goedkope escape voor UI-regressies** — gebruik die in plaats van een API-terugrol.
+- De **API-image** is zelf ook stateless (state in DB + object-storage), maar een oudere
+  image herintroduceert het R1-contractprobleem en moet schema-compatibel zijn met de
+  reeds gemigreerde database. De migraties van deze release zijn additief dan wel
+  goedaardig (R2), maar **controleer dit per toekomstige release opnieuw** voordat je op
+  image-terugrol vertrouwt.
+
+### R4. Downtime, locks en het half-gemigreerde venster
+
+- **Lock-profiel D1:** `ADD COLUMN` (nullable, geen default) is metadata-only en
+  onmiddellijk. De backfill-UPDATEs nemen rij-locks over de **volledige** zeven
+  sync-tabellen + `imp_sync_queue` (join-update); duur ≈ evenredig met het aantal rijen.
+  De `CREATE INDEX` op `imp_sync_queue` is niet-`CONCURRENTLY` en blokkeert schrijfacties
+  op die tabel voor de duur van de build. Bij de huidige productie-omvang is dit naar
+  verwachting seconden-werk, maar **de werkelijke rijaantallen in prod zijn niet bekend
+  vanuit de repo** — check ze vooraf (de read-only tellingen kunnen mee in
+  `DATACHECKS-vooraf.sql`).
+- **Lock-profiel D2:** UPDATEs met een selectieve WHERE (alleen rijen met de
+  `sections`-wrapper); plpgsql-transformatie per rij. Zelfde orde van grootte.
+- **Het half-gemigreerde venster:** het runbook migreert (stap 1–3) terwijl de **oude**
+  API nog live is. Dat is schema-veilig (additief), maar let op één interactie: de oude
+  API accepteert legacy-vormige sheet-pushes en kan dus **ná D2 opnieuw**
+  `sections`-rijen wegschrijven zolang hij live is. Houd het venster tussen stap 1 en de
+  API-cutover kort, en beschouw post-check 7a als hard: bij > 0 de D2-UPDATEs uit de
+  migratie eenvoudig herhalen (idempotent).
+- **Onderhoudsvenster:** een harde downtime is niet strikt nodig (PWA's werken offline
+  door; portal-gebruikers zien hooguit trage writes tijdens de backfill-locks), maar
+  plan stap 1 t/m de API-cutover aaneengesloten op een sync-rustig moment en communiceer
+  een kort venster. Zo blijft ook het her-vervuilingsvenster van D2 minimaal.
+
+### R5. Afbreekcriteria — wanneer stoppen i.p.v. vooruit repareren
+
+Vóór de API-cutover is afbreken goedkoop (oude API draait nog, migraties zijn veilig te
+laten staan); ná de cutover is fix-forward vrijwel altijd beter (R1). Concreet:
+
+| Moment | Waarneming | Besluit |
+|---|---|---|
+| Stap 1 | `migrate deploy` faalt (transactie automatisch teruggerold) | **Stop.** Oorzaak onderzoeken; oude API blijft live en verdraagt de al toegepaste additieve migraties. Herstart later met `resolve --rolled-back` + nieuwe poging |
+| Stap 2 | Skew-script faalt halverwege | **Niet afbreken** — script is idempotent, opnieuw draaien. Wél afbreken als de fout structureel is (bv. connectie/rechten) en niet vóór de cutover op te lossen |
+| Stap 3 | Datachecks tonen treffers die niet vóór de cutover op te lossen zijn (bv. slug-botsing 3c) | **Pauzeer de cutover** — de migraties mogen blijven staan; de nieuwe image pas live als het handwerk af is |
+| Cutover | Nieuwe API-image boot niet / crash-loopt | **Terug naar de oude image** (veilig: R2/R3). PWA-uitrol (stap 5) uitstellen |
+| Stap 7a | Query > 0 rijen | **Niet terugrollen.** Oorzaak = her-vervuiling in het venster (R4) of migratie niet gedraaid; D2-UPDATEs herhalen. De nieuwe API weigert nieuwe legacy-pushes, dus dit convergeert |
+| Stap 7b | Piek in `status = 'conflict'` | **Niet terugrollen** — dat vergroot de conflictgolf. Stap 1/2 controleren en het ontbrekende deel alsnog draaien |
+| Stap 7c | Swagger open / geen throttling | **Niet terugrollen** — env-fout: `NODE_ENV=production` zetten + herstarten |
+| Stap 7c | CJK-teken ontbreekt in PDF | **Niet terugrollen** — image zonder font: image herbouwen mét `fonts-noto-cjk` en opnieuw uitrollen (fix-forward; alleen docgen is geraakt) |
+| Stap 7c | Portal-/client-portal-regressie | **Alleen de betreffende frontend-build terugrollen** (R3); API en database blijven staan |
+| Ná cutover | Dataverminking in de database zelf | Laatste redmiddel: **restore pre-deploy-backup** — kost alle writes sinds de backup; alleen bij aantoonbare corruptie, in overleg met de eigenaar |
+
+### R6. Open punten (hostingomgeving — vóór de deploy beantwoorden)
+
+Deze vragen zijn niet uit de repo te beantwoorden en horen bij het image-/platformbeheer:
+
+1. Welke **backup-/PITR-voorziening** heeft de productie-database, en hoe lang duurt een
+   restore? (Bepalend voor het "laatste redmiddel" in R5.)
+2. Blijven **oude image-tags** (API, portal, client-portal) beschikbaar en direct
+   herdeploybaar? Zonder bewaarde vorige build is R3 theorie.
+3. Welk **sync-contract serveert de huidige productie-API** feitelijk? (Bepaalt of een
+   image-terugrol toestellen op v3 of v4 laat aansluiten.)
+4. **Rijaantallen** van de zeven sync-tabellen + `imp_sync_queue` in prod (lock-duur R4).
+
+---
+
 ## Beknopte volgorde (samenvatting)
 
 1. `prisma migrate deploy` (bevat D1-backfill `20260728061433` + D2-datamigratie `20260728100000`)
@@ -177,3 +311,6 @@ SELECT count(*) FROM imp_sync_queue WHERE org_id IS NULL;  -- verwacht 0 (op wee
 5. PWA uitrollen ná de API (contract v4)
 6. `NODE_ENV=production` (JWT-uniciteit, throttling, Swagger; seed-guard weigert seeds)
 7. Post-checks: D2-query → 0, D1-sanity, health-checks
+
+Gaat er iets mis: zie **Rollback-scenario** hierboven — ná de cutover is fix-forward
+vrijwel altijd de juiste keuze; maak vóór stap 1 een database-backup/restorepoint.

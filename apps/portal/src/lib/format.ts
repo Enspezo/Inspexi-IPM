@@ -15,3 +15,6 @@ export {
   formatCurrency,
   formatFileSize,
 } from '@inspexi/shared-web';
+
+// bewuste typefout voor CI-faalpadtest
+const ciFailpathTest: number = 'dit is geen number';

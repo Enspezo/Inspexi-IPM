@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>InspeXi — Gouden Paden per Actor</title>
+<style>
+  :root{
+    --pwa:#f59e0b; --pwa-bg:#fffbeb;
+    --portal:#3b82f6; --portal-bg:#eff6ff;
+    --client:#10b981; --client-bg:#ecfdf5;
+    --public:#8b5cf6; --public-bg:#f5f3ff;
+    --api:#64748b; --api-bg:#f1f5f9;
+    --ink:#0f172a; --muted:#64748b; --line:#e2e8f0;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:#f8fafc;color:var(--ink);line-height:1.5}
+  header{background:#fff;border-bottom:1px solid var(--line);padding:20px 28px;position:sticky;top:0;z-index:20}
+  header h1{font-size:20px;font-weight:700}
+  header p{font-size:13px;color:var(--muted);margin-top:2px}
+  .legend{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
+  .legend span{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)}
+  .dot{width:10px;height:10px;border-radius:3px;display:inline-block}
+  nav{display:flex;gap:6px;flex-wrap:wrap;padding:12px 28px;background:#fff;border-bottom:1px solid var(--line);position:sticky;top:97px;z-index:19}
+  nav button{border:1px solid var(--line);background:#fff;border-radius:20px;padding:7px 14px;font-size:13px;cursor:pointer;color:var(--muted);font-weight:500}
+  nav button.active{background:var(--ink);color:#fff;border-color:var(--ink)}
+  main{max-width:1060px;margin:0 auto;padding:28px}
+  section.tab{display:none}
+  section.tab.active{display:block}
+  .flow{background:#fff;border:1px solid var(--line);border-radius:14px;padding:22px;margin-bottom:24px}
+  .flow>h2{font-size:16px;font-weight:700;margin-bottom:2px}
+  .flow>p.sub{font-size:13px;color:var(--muted);margin-bottom:16px}
+  .steps{display:flex;flex-direction:column}
+  .step{display:flex;gap:14px;position:relative;padding-bottom:18px}
+  .step:last-child{padding-bottom:0}
+  .step::before{content:"";position:absolute;left:17px;top:36px;bottom:0;width:2px;background:var(--line)}
+  .step:last-child::before{display:none}
+  .num{width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;color:#fff;flex-shrink:0;z-index:1}
+  .card{flex:1;border:1px solid var(--line);border-left-width:4px;border-radius:10px;padding:10px 14px;background:#fff}
+  .card .top{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .card h3{font-size:14px;font-weight:600}
+  .card p{font-size:13px;color:var(--muted);margin-top:3px}
+  .tag{font-size:10px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;padding:2px 8px;border-radius:10px;color:#fff}
+  .chip{display:inline-block;font-size:11px;font-weight:600;padding:2px 8px;border-radius:6px;background:#f1f5f9;color:#334155;margin:4px 4px 0 0;border:1px solid var(--line)}
+  .chip.arrow{background:none;border:none;padding:0 2px;color:#94a3b8}
+  .pwa .num{background:var(--pwa)} .pwa .card{border-left-color:var(--pwa);background:var(--pwa-bg)}
+  .portal .num{background:var(--portal)} .portal .card{border-left-color:var(--portal);background:var(--portal-bg)}
+  .client .num{background:var(--client)} .client .card{border-left-color:var(--client);background:var(--client-bg)}
+  .public .num{background:var(--public)} .public .card{border-left-color:var(--public);background:var(--public-bg)}
+  .api .num{background:var(--api)} .api .card{border-left-color:var(--api);background:var(--api-bg)}
+  .tag.pwa-t{background:var(--pwa)} .tag.portal-t{background:var(--portal)} .tag.client-t{background:var(--client)} .tag.public-t{background:var(--public)} .tag.api-t{background:var(--api)}
+  /* architectuur */
+  .arch{display:grid;grid-template-columns:1fr auto 1fr;gap:18px;align-items:center;margin:10px 0}
+  .archcol{display:flex;flex-direction:column;gap:12px}
+  .archbox{border:2px solid;border-radius:12px;padding:14px;background:#fff}
+  .archbox h4{font-size:14px;font-weight:700}
+  .archbox p{font-size:12px;color:var(--muted);margin-top:3px}
+  .archmid{display:flex;flex-direction:column;align-items:center;gap:4px;font-size:12px;color:var(--muted);text-align:center}
+  .archmid .pipe{font-size:22px;color:#94a3b8}
+  .lifecycle{margin-top:14px;padding-top:12px;border-top:1px dashed var(--line)}
+  .lifecycle h4{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin-bottom:6px}
+  footer{text-align:center;font-size:12px;color:var(--muted);padding:20px}
+  @media(max-width:720px){.arch{grid-template-columns:1fr}.archmid{flex-direction:row;justify-content:center}}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>InspeXi — Gouden paden per actor</h1>
+  <p>Workflows uit de codebase (InspeXi-Beheer + Inspexi-App PWA) · gegenereerd 17 juli 2026</p>
+  <div class="legend">
+    <span><i class="dot" style="background:var(--pwa)"></i> PWA (Inspexi-App, inspecteur)</span>
+    <span><i class="dot" style="background:var(--portal)"></i> Portal (staf, :5173)</span>
+    <span><i class="dot" style="background:var(--client)"></i> Client-portal (klant, :5174)</span>
+    <span><i class="dot" style="background:var(--public)"></i> Publieke pagina (zonder login)</span>
+    <span><i class="dot" style="background:var(--api)"></i> API / automatisch</span>
+  </div>
+</header>
+
+<nav id="nav">
+  <button data-tab="overzicht" class="active">Overzicht</button>
+  <button data-tab="backoffice">Backoffice (CRM)</button>
+  <button data-tab="planning">Werkvoorbereiding</button>
+  <button data-tab="inspecteur">Inspecteur (PWA)</button>
+  <button data-tab="review">Staf — Review &amp; rapport</button>
+  <button data-tab="klant">Klant</button>
+  <button data-tab="orgadmin">Org-admin</button>
+  <button data-tab="superuser">Superuser</button>
+</nav>
+
+<main>
+
+<!-- ══════════════ OVERZICHT ══════════════ -->
+<section class="tab active" id="overzicht">
+  <div class="flow">
+    <h2>Systeemlandschap</h2>
+    <p class="sub">Vier apps in de Beheer-monorepo + de losse PWA-repo. Alles praat met de NestJS-API (multi-tenant via subdomein).</p>
+    <div class="arch">
+      <div class="archcol">
+        <div class="archbox" style="border-color:var(--pwa);background:var(--pwa-bg)"><h4>📱 Inspexi-App (PWA)</h4><p>Aparte repo · offline-first (Dexie v14) · inspecteur in het veld · synct via <b>/sync contract v3</b> (AssetNode-boom)</p></div>
+        <div class="archbox" style="border-color:var(--portal);background:var(--portal-bg)"><h4>🖥️ Portal (staf)</h4><p>Backoffice: CRM, offertes, planning, inspectiebeheer, review, documentgeneratie, org-config</p></div>
+        <div class="archbox" style="border-color:var(--client);background:var(--client-bg)"><h4>🌐 Client-portal (klant)</h4><p>Eigen auth-realm (ClientUser) · magic-link · inspecties inzien, constateringen oplossen, ondertekenen</p></div>
+        <div class="archbox" style="border-color:var(--public);background:var(--public-bg)"><h4>🔗 Publieke pagina's</h4><p>/offerte/:token · /afspraak/:token · /sign/:requestId · /invite/:token (zonder login)</p></div>
+      </div>
+      <div class="archmid"><span class="pipe">⇄</span><span>REST /api/v1<br>+ /sync v3<br>+ notificaties/e-mail</span><span class="pipe">⇄</span></div>
+      <div class="archcol">
+        <div class="archbox" style="border-color:var(--api);background:var(--api-bg)"><h4>⚙️ NestJS API</h4><p>~60 modules · 148 Prisma-modellen · guards: JWT → Roles → Tenant · nummering-engine · audit trail</p></div>
+        <div class="archbox" style="border-color:var(--api);background:var(--api-bg)"><h4>🗄️ PostgreSQL</h4><p>Unified AssetNode-boom (ltree + triggers) · soft deletes · per-org nummering</p></div>
+        <div class="archbox" style="border-color:var(--api);background:var(--api-bg)"><h4>📄 convert-api</h4><p>DOCX ⇄ PDF microservice · Puppeteer voor PDF-generatie in de API</p></div>
+      </div>
+    </div>
+  </div>
+  <div class="flow">
+    <h2>De rode draad (end-to-end)</h2>
+    <p class="sub">Hoe één opdracht door alle apps heen loopt — details per actor in de tabs.</p>
+    <div class="steps">
+      <div class="step portal"><div class="num">1</div><div class="card"><div class="top"><h3>Aanvraag → offerte</h3><span class="tag portal-t">Portal</span></div><p>Backoffice maakt aanvraag en offerte, evt. interne goedkeuring, en verstuurt.</p></div></div>
+      <div class="step public"><div class="num">2</div><div class="card"><div class="top"><h3>Klant tekent offerte</h3><span class="tag public-t">Publiek</span></div><p>Via publieke token-link. Acceptatie maakt automatisch een project + planningitem aan.</p></div></div>
+      <div class="step portal"><div class="num">3</div><div class="card"><div class="top"><h3>Planning &amp; inspectieplan</h3><span class="tag portal-t">Portal</span></div><p>Werkvoorbereider plant sessies, wijst inspecteur toe, maakt inspectieplan met scope.</p></div></div>
+      <div class="step pwa"><div class="num">4</div><div class="card"><div class="top"><h3>Uitvoering in het veld</h3><span class="tag pwa-t">PWA</span></div><p>Inspecteur synct plan binnen, loopt assetboom + checklists af, legt constateringen/metingen/foto's vast, dient in ter review.</p></div></div>
+      <div class="step portal"><div class="num">5</div><div class="card"><div class="top"><h3>Review &amp; rapport</h3><span class="tag portal-t">Portal</span></div><p>Reviewer keurt goed, genereert rapport (PDF/Word) en vraagt handtekeningen aan.</p></div></div>
+      <div class="step client"><div class="num">6</div><div class="card"><div class="top"><h3>Klant rondt af</h3><span class="tag client-t">Client-portal</span></div><p>Klant ondertekent het rapport, lost constateringen op met foto en kan vervolgverzoeken indienen.</p></div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════ BACKOFFICE ══════════════ -->
+<section class="tab" id="backoffice">
+  <div class="flow">
+    <h2>Van aanvraag tot geaccepteerde offerte</h2>
+    <p class="sub">Actoren: MANAGER · BACKOFFICE · WERKVOORBEREIDER · ORG_ADMIN</p>
+    <div class="steps">
+      <div class="step portal"><div class="num">1</div><div class="card"><div class="top"><h3>Aanvraag aanmaken</h3><span class="tag portal-t">Portal</span></div><p><code>/requests</code> · bron handmatig/webformulier/e-mail/telefoon · start-status <b>NIEUW</b> + eerste statushistorie.</p></div></div>
+      <div class="step portal"><div class="num">2</div><div class="card"><div class="top"><h3>Behandelen</h3><span class="tag portal-t">Portal</span></div><p>Kanban of detail · statuswijziging schrijft historie + notificatie naar toegewezen gebruiker.</p><div><span class="chip">NIEUW</span><span class="chip arrow">→</span><span class="chip">IN_BEHANDELING</span></div></div></div>
+      <div class="step portal"><div class="num">3</div><div class="card"><div class="top"><h3>Offerte maken vanuit aanvraag</h3><span class="tag portal-t">Portal</span></div><p><code>POST /requests/:id/quote</code> · nieuwe offerte in <b>CONCEPT</b>; aanvraag springt automatisch naar <b>OFFERTE_GEMAAKT</b>.</p></div></div>
+      <div class="step portal"><div class="num">4</div><div class="card"><div class="top"><h3>Offerte opstellen</h3><span class="tag portal-t">Portal</span></div><p>Regels, prijstabellen/staffels, bijlagen — regels wijzigen kan alleen bij <b>CONCEPT</b>.</p></div></div>
+      <div class="step portal"><div class="num">5</div><div class="card"><div class="top"><h3>Interne goedkeuring (indien vereist)</h3><span class="tag portal-t">Portal</span></div><p>Verplicht boven bedragdrempel of bij template-vereiste; ook vrijwillig team/persoon (niet-blokkerend). Zonder goedgekeurd verplicht verzoek kan er niet verstuurd worden.</p><div><span class="chip">CONCEPT</span><span class="chip arrow">→</span><span class="chip">TER_GOEDKEURING</span><span class="chip arrow">→</span><span class="chip">GOEDGEKEURD</span><span class="chip arrow">/</span><span class="chip">terug naar CONCEPT</span></div></div></div>
+      <div class="step api"><div class="num">6</div><div class="card"><div class="top"><h3>Versturen</h3><span class="tag api-t">API · e-mail</span></div><p>E-mail met publieke tokenlink naar de klant · notificatie intern.</p><div><span class="chip">GOEDGEKEURD/CONCEPT</span><span class="chip arrow">→</span><span class="chip">VERSTUURD</span></div></div></div>
+      <div class="step public"><div class="num">7</div><div class="card"><div class="top"><h3>Klant opent offerte</h3><span class="tag public-t">Publiek</span></div><p><code>/offerte/:token</code> · eerste opening wordt geregistreerd · klant kan vragen stellen (staf beantwoordt in portal).</p><div><span class="chip">VERSTUURD</span><span class="chip arrow">→</span><span class="chip">BEKEKEN</span></div></div></div>
+      <div class="step public"><div class="num">8</div><div class="card"><div class="top"><h3>Klant ondertekent</h3><span class="tag public-t">Publiek</span></div><p>Handtekening + naam + IP vastgelegd · ondertekende PDF gestempeld en gemaild · notificatie naar maker + management.</p><div><span class="chip">BEKEKEN</span><span class="chip arrow">→</span><span class="chip">GEACCEPTEERD</span></div></div></div>
+      <div class="step api"><div class="num">9</div><div class="card"><div class="top"><h3>Automatisch: project + planning</h3><span class="tag api-t">API · automatisch</span></div><p>Bij acceptatie: project aangemaakt (projectnummer via nummering-engine) + planningitem in <b>NOG_TE_PLANNEN</b>.</p></div></div>
+      <div class="step portal"><div class="num">10</div><div class="card"><div class="top"><h3>Aanvraag winnen</h3><span class="tag portal-t">Portal</span></div><p>Handmatige statuskeuze (niet automatisch): <b>GEWONNEN</b> — of VERLOREN met reden / ON_HOLD.</p></div></div>
+    </div>
+    <div class="lifecycle"><h4>Offerte-lifecycle</h4><span class="chip">CONCEPT</span><span class="chip arrow">→</span><span class="chip">TER_GOEDKEURING</span><span class="chip arrow">→</span><span class="chip">GOEDGEKEURD</span><span class="chip arrow">→</span><span class="chip">VERSTUURD</span><span class="chip arrow">→</span><span class="chip">BEKEKEN</span><span class="chip arrow">→</span><span class="chip">GEACCEPTEERD</span><span class="chip arrow">|</span><span class="chip">AFGEWEZEN</span><span class="chip arrow">|</span><span class="chip">VERLOPEN</span></div>
+  </div>
+</section>
+
+<!-- ══════════════ PLANNING ══════════════ -->
+<section class="tab" id="planning">
+  <div class="flow">
+    <h2>Planning, sessies &amp; afspraakbevestiging</h2>
+    <p class="sub">Actor: WERKVOORBEREIDER (en management) — na offerte-acceptatie of los aangemaakt</p>
+    <div class="steps">
+      <div class="step portal"><div class="num">1</div><div class="card"><div class="top"><h3>Planningitem opstellen</h3><span class="tag portal-t">Portal</span></div><p><code>/planning</code> · enkeldags of meerdaags (meerdaags maakt sessie-stubs aan) · start <b>NOG_TE_PLANNEN</b>.</p></div></div>
+      <div class="step portal"><div class="num">2</div><div class="card"><div class="top"><h3>Inspecteurs toewijzen</h3><span class="tag portal-t">Portal</span></div><p>Per sessie of hele item · acceptatiestatus inspecteur op <b>PENDING</b> · notificatie "afspraak-acceptatieverzoek".</p><div><span class="chip">NOG_TE_PLANNEN</span><span class="chip arrow">→</span><span class="chip">CONCEPT</span></div></div></div>
+      <div class="step portal"><div class="num">3</div><div class="card"><div class="top"><h3>Inspecteur accepteert / weigert</h3><span class="tag portal-t">Portal</span></div><p>Accept → ACCEPTED · reject → REJECTED met reden · notificaties naar planner.</p></div></div>
+      <div class="step portal"><div class="num">4</div><div class="card"><div class="top"><h3>Sessie bevestigen</h3><span class="tag portal-t">Portal</span></div><p>Confirm zet de sessie definitief; verzetten kan via reschedule-verzoeken.</p><div><span class="chip">CONCEPT</span><span class="chip arrow">→</span><span class="chip">DEFINITIEF</span></div></div></div>
+      <div class="step public"><div class="num">5</div><div class="card"><div class="top"><h3>Afspraakbevestiging naar klant</h3><span class="tag public-t">Publiek</span></div><p>E-mail met <code>/afspraak/:token</code> — klant kan accepteren of verzetten · iCal-feed beschikbaar.</p></div></div>
+      <div class="step portal"><div class="num">6</div><div class="card"><div class="top"><h3>Werkbon &amp; afronden</h3><span class="tag portal-t">Portal</span></div><p>Werkbonnen (IN_VOORBEREIDING → IN_UITVOERING → UITGEVOERD) · sessie/item afronden na uitvoering.</p><div><span class="chip">DEFINITIEF</span><span class="chip arrow">→</span><span class="chip">AFGEROND</span></div></div></div>
+    </div>
+    <div class="lifecycle"><h4>Sessie-lifecycle</h4><span class="chip">NOG_TE_PLANNEN</span><span class="chip arrow">→</span><span class="chip">CONCEPT</span><span class="chip arrow">→</span><span class="chip">DEFINITIEF</span><span class="chip arrow">→</span><span class="chip">AFGEROND</span><span class="chip arrow">|</span><span class="chip">VERVALLEN</span></div>
+  </div>
+</section>
+
+<!-- ══════════════ INSPECTEUR ══════════════ -->
+<section class="tab" id="inspecteur">
+  <div class="flow">
+    <h2>Inspectie uitvoeren (offline-first)</h2>
+    <p class="sub">Actor: INSPECTEUR — volledig in de PWA (Inspexi-App, Dexie v14, sync-contract v3)</p>
+    <div class="steps">
+      <div class="step pwa"><div class="num">1</div><div class="card"><div class="top"><h3>Openen &amp; inloggen op tenant</h3><span class="tag pwa-t">PWA</span></div><p>Subdomein-detectie (of organisatie-kiezer) · JWT-login · sessie in Dexie · <b>offline login</b> mogelijk met bestaande sessie.</p></div></div>
+      <div class="step pwa"><div class="num">2</div><div class="card"><div class="top"><h3>Initiële sync</h3><span class="tag pwa-t">PWA ⇄ API</span></div><p>Pull van plannen, AssetNode-boom, uitvoeringsdata, contacten, meetmiddelen + reference-caches (checklists, templates, classificatiemodellen, lookups). Contract-guard: versie-mismatch blokkeert sync ("app bijwerken").</p></div></div>
+      <div class="step pwa"><div class="num">3</div><div class="card"><div class="top"><h3>Dashboard → inspectie kiezen</h3><span class="tag pwa-t">PWA</span></div><p>KPI's (toegewezen, in behandeling, open constateringen) · lijst met filters · nieuw plan kan ook offline aangemaakt.</p></div></div>
+      <div class="step pwa"><div class="num">4</div><div class="card"><div class="top"><h3>Assetboom doorlopen</h3><span class="tag pwa-t">PWA</span></div><p>Recursieve boom (locaties + assets) · assets/locaties toevoegen · nodeNumber komt van de server ("concept" zolang offline).</p></div></div>
+      <div class="step pwa"><div class="num">5</div><div class="card"><div class="top"><h3>Visuele inspectie / checklist</h3><span class="tag pwa-t">PWA</span></div><p>Dynamische checklist per normtype + asset-type · per item OK / NOK / NVT / notitie · voortgangsbalk · <b>NOK opent automatisch een constatering</b>.</p></div></div>
+      <div class="step pwa"><div class="num">6</div><div class="card"><div class="top"><h3>Constatering vastleggen</h3><span class="tag pwa-t">PWA</span></div><p>Finding-template kiezen → aanpassen · classificatie via dynamisch model (bv. risico) · omschrijving, aanbeveling, foto's.</p></div></div>
+      <div class="step pwa"><div class="num">7</div><div class="card"><div class="top"><h3>Meetstaat invullen</h3><span class="tag pwa-t">PWA</span></div><p>Template-gedreven formulier (secties, herhaalrijen, formules) · auto-save · meetmiddelen selecteren · <b>voice-input</b> voor meetwaarden (nl-NL) · eindcontrole + afronden.</p></div></div>
+      <div class="step pwa"><div class="num">8</div><div class="card"><div class="top"><h3>Plattegrond &amp; markers</h3><span class="tag pwa-t">PWA</span></div><p>Plattegrond uploaden (ook offline) · pan/zoom · markers plaatsen · quick-add FAB: direct asset, meting of constatering vanaf de plattegrond.</p></div></div>
+      <div class="step pwa"><div class="num">9</div><div class="card"><div class="top"><h3>Inspectie afronden (wizard)</h3><span class="tag pwa-t">PWA</span></div><p>4 stappen: assets voor rapport selecteren → samenvatting per classificatie → handtekeningen (opdrachtgever + installatieverantwoordelijke) → indienen.</p><div><span class="chip">in_progress</span><span class="chip arrow">→</span><span class="chip">pending_review</span></div></div></div>
+      <div class="step api"><div class="num">10</div><div class="card"><div class="top"><h3>Sync naar de server</h3><span class="tag api-t">PWA → API</span></div><p>Push van alle wijzigingen · daarna review &amp; rapportage in de <b>Portal</b> (geen rapportgeneratie in de PWA zelf).</p></div></div>
+    </div>
+  </div>
+  <div class="flow">
+    <h2>Sync-cyclus (onder de motorkap)</h2>
+    <p class="sub">Triggers: handmatige sync-knop · automatisch bij online-worden met pending wijzigingen · bij login · chat-poll ~7s</p>
+    <div class="steps">
+      <div class="step api"><div class="num">1</div><div class="card"><div class="top"><h3>Pull</h3><span class="tag api-t">/sync/pull</span></div><p>Delta sinds laatste cursor + tombstones · lokale records met pending wijzigingen worden níet overschreven.</p></div></div>
+      <div class="step api"><div class="num">2</div><div class="card"><div class="top"><h3>Reference-caches verversen</h3><span class="tag api-t">API</span></div><p>Asset-types, classificatiemodellen, finding-templates, meetstaat-templates, lookups.</p></div></div>
+      <div class="step api"><div class="num">3</div><div class="card"><div class="top"><h3>Push</h3><span class="tag api-t">/sync/push</span></div><p>Eén gebundelde batch, whitelist-serializers · assetNodes topologisch (ouder vóór kind) · create/update/delete afgeleid per record.</p></div></div>
+      <div class="step api"><div class="num">4</div><div class="card"><div class="top"><h3>Conflicten</h3><span class="tag api-t">/sync/resolve</span></div><p>Optimistic concurrency · uitvoeringsdata auto-resolutie (client wint) · rest via ConflictBanner "Mijn versie / Serverversie" · circuit-breaker pauzeert sync bij aanhoudende conflicten.</p></div></div>
+      <div class="step api"><div class="num">5</div><div class="card"><div class="top"><h3>Bestanden als laatste</h3><span class="tag api-t">REST</span></div><p>Plattegronden + markers → chat → foto-uploads (groot, apart endpoint).</p></div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════ REVIEW & RAPPORT ══════════════ -->
+<section class="tab" id="review">
+  <div class="flow">
+    <h2>Inspectieplan: van aanmaak tot goedgekeurd rapport</h2>
+    <p class="sub">Actoren: MANAGER / reviewer / werkvoorbereider in de portal · uitvoering door inspecteur in de PWA</p>
+    <div class="steps">
+      <div class="step portal"><div class="num">1</div><div class="card"><div class="top"><h3>Inspectieplan aanmaken</h3><span class="tag portal-t">Portal</span></div><p><code>/inspections</code> · gekoppeld aan relatie/project/locatie · inspectie-template + normtype · inspecteur (<b>toewijzings-notificatie</b>) en reviewer toewijzen · start <b>draft</b>.</p></div></div>
+      <div class="step portal"><div class="num">2</div><div class="card"><div class="top"><h3>Scope &amp; assets bepalen</h3><span class="tag portal-t">Portal</span></div><p>Hoofdlocatie + scope-deellocaties op de unified AssetNode-boom · plattegrond met Konva-markers ook in de portal zichtbaar.</p></div></div>
+      <div class="step pwa"><div class="num">3</div><div class="card"><div class="top"><h3>Uitvoering in het veld</h3><span class="tag pwa-t">PWA</span></div><p>Zie tab "Inspecteur" · plan gaat naar <b>in_progress</b> en na de afrond-wizard naar <b>pending_review</b>.</p></div></div>
+      <div class="step portal"><div class="num">4</div><div class="card"><div class="top"><h3>Review</h3><span class="tag portal-t">Portal</span></div><p>Reviewer beoordeelt; notificatie naar inspecteur.</p><div><span class="chip">pending_review</span><span class="chip arrow">→</span><span class="chip">approved</span><span class="chip arrow">of</span><span class="chip">reviewed (afgekeurd)</span></div></div></div>
+      <div class="step portal"><div class="num">5</div><div class="card"><div class="top"><h3>Document genereren</h3><span class="tag portal-t">Portal</span></div><p>Documenten-tab · plan- of rapportgeneratie uit block-editor-templates (Handlebars) · preview, <b>PDF (Puppeteer)</b> en <b>Word-export</b> · status <b>DRAFT</b>.</p></div></div>
+      <div class="step portal"><div class="num">6</div><div class="card"><div class="top"><h3>Handtekeningen aanvragen</h3><span class="tag portal-t">Portal</span></div><p>Intern tekenen of verzoek versturen.</p><div><span class="chip">DRAFT</span><span class="chip arrow">→</span><span class="chip">PENDING_SIGNATURES</span></div></div></div>
+      <div class="step public"><div class="num">7</div><div class="card"><div class="top"><h3>Extern ondertekenen</h3><span class="tag public-t">Publiek / Client-portal</span></div><p>Publieke pagina <code>/sign/:requestId</code> óf ingelogd in het client-portal · zodra álle handtekeningen binnen zijn:</p><div><span class="chip">PENDING_SIGNATURES</span><span class="chip arrow">→</span><span class="chip">SIGNED</span><span class="chip arrow">→</span><span class="chip">FINALIZED</span></div></div></div>
+    </div>
+    <div class="lifecycle"><h4>Inspectieplan-lifecycle (lookup-statussen)</h4><span class="chip">draft</span><span class="chip arrow">→</span><span class="chip">planned</span><span class="chip arrow">→</span><span class="chip">in_progress</span><span class="chip arrow">→</span><span class="chip">pending_review</span><span class="chip arrow">→</span><span class="chip">approved</span><span class="chip arrow">→</span><span class="chip">completed</span><span class="chip arrow">|</span><span class="chip">cancelled</span></div>
+  </div>
+</section>
+
+<!-- ══════════════ KLANT ══════════════ -->
+<section class="tab" id="klant">
+  <div class="flow">
+    <h2>Inloggen &amp; inspecties inzien</h2>
+    <p class="sub">Actor: KLANT (ClientUser, eigen auth-realm) — alles in het client-portal (:5174)</p>
+    <div class="steps">
+      <div class="step client"><div class="num">1</div><div class="card"><div class="top"><h3>Magic-link aanvragen</h3><span class="tag client-t">Client-portal</span></div><p>E-mailadres invullen → mail met tokenlink (ook klassiek wachtwoord-login/registratie mogelijk).</p></div></div>
+      <div class="step client"><div class="num">2</div><div class="card"><div class="top"><h3>Inloggen via <code>/magic/:token</code></h3><span class="tag client-t">Client-portal</span></div><p>Token gevalideerd → client-JWT + refresh · toegangsrollen: VIEWER / SIGNER / ADMIN.</p></div></div>
+      <div class="step client"><div class="num">3</div><div class="card"><div class="top"><h3>Dashboard &amp; inspectiedetail</h3><span class="tag client-t">Client-portal</span></div><p>Tabs: Overzicht · Constateringen · Berichten · Documenten. Berichten = tweerichtings-chat met de staf per inspectie.</p></div></div>
+    </div>
+  </div>
+  <div class="flow">
+    <h2>Constatering oplossen met foto</h2>
+    <div class="steps">
+      <div class="step client"><div class="num">1</div><div class="card"><div class="top"><h3>Oplossing indienen</h3><span class="tag client-t">Client-portal</span></div><p>Constateringen-tab → beschrijving + foto's uploaden · resolution krijgt status <b>PENDING</b> ("wacht op verificatie") · intrekken kan zolang PENDING.</p></div></div>
+      <div class="step portal"><div class="num">2</div><div class="card"><div class="top"><h3>Staf verifieert</h3><span class="tag portal-t">Portal</span></div><p>Beoordeling van de oplossing via lookup-statussen (resolution_status_types).</p></div></div>
+    </div>
+  </div>
+  <div class="flow">
+    <h2>Document ondertekenen</h2>
+    <div class="steps">
+      <div class="step client"><div class="num">1</div><div class="card"><div class="top"><h3>Document bekijken</h3><span class="tag client-t">Client-portal</span></div><p><code>/documents/:id</code> · inzien en downloaden.</p></div></div>
+      <div class="step client"><div class="num">2</div><div class="card"><div class="top"><h3>Ondertekenen (canvas)</h3><span class="tag client-t">Client-portal</span></div><p>Eigen handtekening op <b>SIGNED</b> · zodra alle handtekeningen binnen zijn gaat het hele document naar SIGNED (kan niet meer na FINALIZED).</p></div></div>
+    </div>
+  </div>
+  <div class="flow">
+    <h2>Verzoek indienen</h2>
+    <div class="steps">
+      <div class="step client"><div class="num">1</div><div class="card"><div class="top"><h3>Herinspectie of nieuwe opdracht</h3><span class="tag client-t">Client-portal</span></div><p><code>/requests/new</code> · ClientRequest met status <b>PENDING_REQUEST</b>, gekoppeld aan de relatie.</p></div></div>
+      <div class="step portal"><div class="num">2</div><div class="card"><div class="top"><h3>Staf pakt op</h3><span class="tag portal-t">Portal</span></div><p>Verzoek belandt bij de backoffice → kan uitmonden in een nieuwe aanvraag/offerte (zie tab Backoffice).</p></div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════ ORG-ADMIN ══════════════ -->
+<section class="tab" id="orgadmin">
+  <div class="flow">
+    <h2>Gebruikers uitnodigen</h2>
+    <p class="sub">Actor: ORG_ADMIN (en SUPERUSER)</p>
+    <div class="steps">
+      <div class="step portal"><div class="num">1</div><div class="card"><div class="top"><h3>Uitnodiging versturen</h3><span class="tag portal-t">Portal</span></div><p>Organisatie → Gebruikers · e-mail + rollen kiezen → Invitation + e-mail (Resend).</p></div></div>
+      <div class="step public"><div class="num">2</div><div class="card"><div class="top"><h3>Accepteren</h3><span class="tag public-t">Publiek</span></div><p><code>/invite/:token</code> · wachtwoord instellen → account actief met toegewezen rollen.</p></div></div>
+    </div>
+  </div>
+  <div class="flow">
+    <h2>Inspectie-config inrichten (per organisatie)</h2>
+    <p class="sub">Menu: Organisatie → Inspectie-config · dit voedt direct wat de inspecteur in de PWA ziet</p>
+    <div class="steps">
+      <div class="step portal"><div class="num">1</div><div class="card"><div class="top"><h3>Asset-types &amp; locatie-types</h3><span class="tag portal-t">Portal</span></div><p>Field/constraint-builder per type · bepaalt formuliervelden en nodeNumber-prefix (typecode).</p></div></div>
+      <div class="step portal"><div class="num">2</div><div class="card"><div class="top"><h3>Checklists &amp; checklist-items</h3><span class="tag portal-t">Portal</span></div><p>Per normtype/asset-type · lifecycle CONCEPT → ACTIEF → VERVALLEN (versiebeheer, PWA toont "nieuwere versie"-banner).</p></div></div>
+      <div class="step portal"><div class="num">3</div><div class="card"><div class="top"><h3>Constatering-templates</h3><span class="tag portal-t">Portal</span></div><p>Voorgedefinieerde constateringen incl. classificatie, normreferentie en aanbeveling.</p></div></div>
+      <div class="step portal"><div class="num">4</div><div class="card"><div class="top"><h3>Inspectie-templates (document-builder)</h3><span class="tag portal-t">Portal</span></div><p>Block-editor voor plan-/rapporttemplates + gekoppelde checklists/meetstaten · versiehistorie.</p></div></div>
+      <div class="step portal"><div class="num">5</div><div class="card"><div class="top"><h3>Lookups &amp; voice-prompts</h3><span class="tag portal-t">Portal</span></div><p>Per-org status/type-lijsten · voice-prompts (template-laag van het 3-laags promptmodel).</p></div></div>
+      <div class="step pwa"><div class="num">6</div><div class="card"><div class="top"><h3>Doorwerking naar de PWA</h3><span class="tag pwa-t">PWA</span></div><p>Alle config komt bij de inspecteur terecht via de reference-caches in de sync-cyclus.</p></div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════ SUPERUSER ══════════════ -->
+<section class="tab" id="superuser">
+  <div class="flow">
+    <h2>Organisatie onboarden</h2>
+    <p class="sub">Actor: SUPERUSER — op het beheerdomein (mijn.*)</p>
+    <div class="steps">
+      <div class="step portal"><div class="num">1</div><div class="card"><div class="top"><h3>Organisatie aanmaken</h3><span class="tag portal-t">Portal</span></div><p><code>/organizations</code> · slug (subdomein), branding/themakleur · verwijderen bewust niet mogelijk (offboarding via inactief → 404).</p></div></div>
+      <div class="step portal"><div class="num">2</div><div class="card"><div class="top"><h3>Abonnement &amp; features</h3><span class="tag portal-t">Portal</span></div><p>Plans/entitlements bepalen welke SaaS-features (BASIS_CRM, CRM_COMPLEET, BASIS_INSPECTIES, …) de org ziet — sidebar en routes worden erop gefilterd.</p></div></div>
+      <div class="step portal"><div class="num">3</div><div class="card"><div class="top"><h3>Org-admin uitnodigen</h3><span class="tag portal-t">Portal</span></div><p>Eerste gebruiker met rol ORG_ADMIN → die richt vervolgens de organisatie in (zie tab Org-admin).</p></div></div>
+      <div class="step portal"><div class="num">4</div><div class="card"><div class="top"><h3>Org-switcher</h3><span class="tag portal-t">Portal</span></div><p>SUPERUSER kan naar elke org springen (full page redirect naar het subdomein).</p></div></div>
+    </div>
+  </div>
+  <div class="flow">
+    <h2>Inspectie-systeem beheren (globaal, alle organisaties)</h2>
+    <p class="sub">Menu: Organisatie → Inspectie-systeem (alleen SUPERUSER)</p>
+    <div class="steps">
+      <div class="step portal"><div class="num">1</div><div class="card"><div class="top"><h3>Classificatiemodellen</h3><span class="tag portal-t">Portal</span></div><p>Modellen + kenmerken + opties (bv. risicoklassen) — gebruikt in constateringen (PWA en portal).</p></div></div>
+      <div class="step portal"><div class="num">2</div><div class="card"><div class="top"><h3>Normtypes</h3><span class="tag portal-t">Portal</span></div><p>Normtype-definities + configuraties — koppelen checklists en templates aan bijv. NEN-scopes.</p></div></div>
+      <div class="step portal"><div class="num">3</div><div class="card"><div class="top"><h3>Meetstaat-templates</h3><span class="tag portal-t">Portal</span></div><p>Form-builder: secties, velden, herhaalrijen, formules, pass/fail-regels — het meetformulier in de PWA.</p></div></div>
+      <div class="step portal"><div class="num">4</div><div class="card"><div class="top"><h3>Voice base-prompts</h3><span class="tag portal-t">Portal</span></div><p>Laag 1 van het promptmodel (base → template → user) voor voice-parsing van meetwaarden (Anthropic).</p></div></div>
+      <div class="step pwa"><div class="num">5</div><div class="card"><div class="top"><h3>Doorwerking</h3><span class="tag pwa-t">PWA</span></div><p>Globale definities komen via de sync-reference-caches in élke tenant-PWA terecht.</p></div></div>
+    </div>
+  </div>
+</section>
+
+</main>
+<footer>Gegenereerd op basis van code-analyse van InspeXi-Beheer (apps/api, apps/portal, apps/client-portal) en Inspexi-App (PWA) · juli 2026</footer>
+
+<script>
+  const nav = document.getElementById('nav');
+  nav.addEventListener('click', e => {
+    const btn = e.target.closest('button'); if (!btn) return;
+    nav.querySelectorAll('button').forEach(b => b.classList.toggle('active', b === btn));
+    document.querySelectorAll('section.tab').forEach(s => s.classList.toggle('active', s.id === btn.dataset.tab));
+    window.scrollTo({top:0});
+  });
+</script>
+</body>
+</html>

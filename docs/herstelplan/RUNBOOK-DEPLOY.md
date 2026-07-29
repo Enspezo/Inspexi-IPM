@@ -33,13 +33,29 @@ Deze run bevat onder meer twee verplichte datamigraties uit golf 4:
 `synced_at` al gevuld was (de D1-migratie uit stap 1 raakt alleen NULL-rijen). Zonder deze reparatie
 geeft elke ooit gepushte rij bij de eerstvolgende edit vanaf een vers apparaat een vals zelf-conflict.
 
+Eerst een dry-run (telt alleen, schrijft niets), dan de echte run; de echte run print aan het eind
+een per-tabel-samenvatting — **plak die in het logboek**:
+
+```bash
+cd apps/api && npx ts-node scripts/backfill-synced-at-skew.ts --dry-run
+```
+
 ```bash
 cd apps/api && npx ts-node scripts/backfill-synced-at-skew.ts
 ```
 
 Het script is idempotent en veilig (zet `synced_at = updated_at`, uitsluitend op rijen waar beide
-gevuld en ongelijk zijn). Bron: PR #144 (skew-fix + script), PR #165 (verhouding tot de D1-backfill),
-`voortgang/restrisico.md` (rij "syncedAt-skew").
+gevuld en ongelijk zijn); een tweede run raakt aantoonbaar 0 rijen
+(`test/backfill-synced-at-skew.e2e-spec.ts`). Bron: PR #144 (skew-fix + script), PR #165
+(verhouding tot de D1-backfill), `voortgang/restrisico.md` (rij "syncedAt-skew").
+
+**Verificatie ná de run** — de skew moet weg zijn. Snelste check: de dry-run nogmaals draaien →
+samenvatting `0 rijen`. Of per tabel in SQL (herhaal voor de zeven sync-tabellen; elke query → 0):
+
+```sql
+SELECT count(*) FROM imp_inspection_plans
+WHERE synced_at IS NOT NULL AND synced_at <> updated_at;
+```
 
 ## Stap 3 — Datachecks op de productie-database
 

@@ -1,0 +1,127 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [dev, main]
+  push:
+    branches: [dev]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  # Snelle poort — verplichte check op elke PR.
+  # NB: `pnpm lint` ontbreekt bewust: eslint is repo-breed niet werkend
+  # geconfigureerd (apps/api mist het package; zie PR-body). De typecheck wordt
+  # volledig gedekt door de build: portal/client-portal draaien `tsc -b` vóór
+  # `vite build`, api/convert-api typechecken via `nest build`, packages via `tsc`.
+  build-and-test:
+    name: build-and-test
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      # corepack leest de pnpm-versie uit `packageManager` in package.json —
+      # niet hard pinnen, zodat Beheer (pnpm 10) en de PWA (pnpm 8) elk hun
+      # eigen versie volgen.
+      - name: Corepack (pnpm uit packageManager-veld)
+        run: corepack enable
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      # `nest build` typecheckt tegen de gegenereerde Prisma-client; expliciet
+      # genereren i.p.v. vertrouwen op de postinstall-hook van @prisma/client.
+      - name: Prisma client genereren
+        run: pnpm --filter api prisma:generate
+
+      - name: Build (6 packages, incl. typecheck)
+        run: npx turbo run build
+
+      - name: Unit tests
+        run: pnpm test
+
+  # Volledige API-e2e tegen een echte Postgres. Mag langer duren dan de snelle
+  # poort; wordt óók per PR gedraaid zolang de looptijd dat toelaat.
+  e2e:
+    name: e2e
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: inspectie
+          POSTGRES_PASSWORD: inspectie_dev_password
+          POSTGRES_DB: inspectie
+        # Poort 5433 zodat de DATABASE_URL-conventie uit .env.example klopt.
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      # NODE_ENV=test: vereist voor de seed-guard (assert-seed-allowed) én
+      # omdat AppThrottlerGuard alleen dan rate-limiting overslaat (de e2e's
+      # rekenen daarop). Proces-env wint van de .env-waarden.
+      NODE_ENV: test
+      DATABASE_URL: postgresql://inspectie:inspectie_dev_password@localhost:5433/inspectie?schema=public
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Corepack (pnpm uit packageManager-veld)
+        run: corepack enable
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      # De e2e-suite bootstrapt AppModule in-process; ConfigModule leest
+      # apps/api/.env. De dev-placeholders uit .env.example volstaan buiten
+      # productie (JWT-fail-fast eist alleen níet de letterlijke
+      # "change-me-in-production"-waarde); NODE_ENV/DATABASE_URL komen uit de
+      # job-env hierboven.
+      - name: API .env uit voorbeeld
+        run: cp apps/api/.env.example apps/api/.env
+
+      - name: Prisma client genereren
+        run: pnpm --filter api prisma:generate
+
+      # De seed importeert @inspexi/entitlements en @inspexi/calibration via hun
+      # dist/-entrypoints — bouwen vóór de seed; turbo's cache hergebruikt dit in
+      # de test:e2e-stap.
+      - name: Build
+        run: npx turbo run build
+
+      - name: Migraties
+        run: pnpm db:migrate:deploy
+
+      - name: Seed
+        run: pnpm db:seed
+
+      # generated-documents e2e's exporteren echte PDF's via Puppeteer.
+      - name: Chromium-cache voor Puppeteer
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/puppeteer
+          key: puppeteer-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+
+      - name: Chromium voor Puppeteer installeren
+        run: pnpm --filter api exec puppeteer browsers install chrome
+
+      # turbo test:e2e dependsOn build; jest draait serieel (maxWorkers 1).
+      - name: E2E tests
+        run: pnpm test:e2e

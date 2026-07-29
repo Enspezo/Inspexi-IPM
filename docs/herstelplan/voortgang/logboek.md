@@ -46,6 +46,13 @@ Conform `docs/testprogramma/00-master-testplan.md` §5: API `:3001` (`NODE_ENV=t
 
 ## Chronologisch logboek
 
+### 29 juli 2026 — CI-workflows voor beide repo's (laatste structurele gat)
+
+- **Beheer [PR #187](https://github.com/Enspezo/Inspexi-IPM/pull/187)** + **PWA [InspeXi #43](https://github.com/Enspezo/InspeXi/pull/43)**: eerste `.github/workflows/ci.yml` in beide repo's. Beheer: job `build-and-test` (corepack → pnpm-versie uit `packageManager`, install frozen, `prisma generate`, `turbo build` 6 packages, unit-tests) + aparte `e2e`-job (Postgres 15-service op 5433, `.env` uit example, `NODE_ENV=test`, migrate deploy + seed, Chromium voor de Puppeteer-PDF-e2e's, 71 suites serieel). PWA: één job build → **typecheck** → Vitest — de typecheck is de check die de rode-typecheck-regressie (InspeXi PR #41) gevangen had, want de app-build is kale `vite build` zonder tsc.
+- **Uitzoekpunten**: Beheer-build typecheckt de frontends wél (`tsc -b && vite build` in portal/client-portal) → geen apart root-typecheck-script nodig; de PWA-build níet → `pnpm typecheck` expliciet in de workflow. pnpm-versies (10.7.0 vs 8.15.0) niet gepind maar via corepack uit `packageManager`.
+- **Lint in béide repo's bewust weggelaten**: Beheer-api mist het eslint-package (`eslint: command not found`), de PWA mist elke eslint-config (`eslint src/` → "No files matching"; `turbo lint` toonde lokaal een misleidende stale groene cache). Follow-up-punt in beide PR-body's.
+- **Branch protection** kan niet vanuit de repo: advies in beide PR-body's (PR verplicht, `build-and-test` als verplichte check, "require branches to be up to date", review op `main`) — handmatig in te stellen door de eigenaar.
+
 ### 28 juli 2026 — PWA: F1 gemerged + vijf oude branches beoordeeld en opgeruimd
 
 - **F1 (`fix/pwa-login-network-error`, `1e1ffcb`)**: bleek bij aanvang al gemerged als [InspeXi #41](https://github.com/Enspezo/InspeXi/pull/41) (`dev` @ `9417efa`). Verificatie op de gemergde stand: build groen, Vitest **287 groen** (incl. de 4 nieuwe apiClient-tests). ⚠️ Wél gevonden: PR #41 maakte de **tsc-gate rood** (9× TS18046 in `apiClient.test.ts`, `catch((e) => e)` op `Promise<unknown>`); fix zit als losse commit op de salvage-branch hieronder.

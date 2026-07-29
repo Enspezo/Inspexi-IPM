@@ -100,6 +100,12 @@ jobs:
       - name: Prisma client genereren
         run: pnpm --filter api prisma:generate
 
+      # De seed importeert @inspexi/entitlements en @inspexi/calibration via hun
+      # dist/-entrypoints — bouwen vóór de seed; turbo's cache hergebruikt dit in
+      # de test:e2e-stap.
+      - name: Build
+        run: npx turbo run build
+
       - name: Migraties
         run: pnpm db:migrate:deploy
 

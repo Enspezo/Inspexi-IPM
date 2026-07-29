@@ -88,14 +88,28 @@ glyph voor tekens zonder beschikbaar font — de tekens **verdwijnen stil** uit 
 (geen tofu-blokjes), bv. Chinese tekens in project-/relatienamen. De render-CSS verwijst sinds WP-C4
 expliciet naar `'Noto Sans CJK SC'`. Bron: PR #148, `docs/fase4/FASE4-DOCGEN.md` (kop "Deploy-fonts").
 
-> **Let op (audit §5.3): de API heeft géén Dockerfile in deze repo.** Deze vereiste is dus niet in
-> versiebeheer af te dwingen en moet buiten de repo om geborgd worden in het image-/deploybeheer
-> (de `apps/convert-api`-image installeert `fonts-noto-cjk` al wél in z'n eigen Dockerfile). Alleen
-> te testen in de echte container-image — op macOS/desktop gedraagt de font-fallback zich anders.
-> Zolang er geen Dockerfile voor de API in de repo staat, blijft dit een deploy-afhankelijkheid
-> zonder vangnet: neem hem expliciet op in de image-build-pipeline.
+**Gebruik `apps/api/Dockerfile`** — die borgt dit in versiebeheer: multi-stage pnpm-workspace-build
+(packages → `prisma generate` → `nest build` → `pnpm deploy`-prod-tree) op een runtime met
+`chromium`, **`fonts-noto-cjk`**, `PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium` en
+`NODE_ENV=production` als default (stap 6). Bouwen vanuit de **repo-root**:
 
-Zelfde image-vereiste: Chromium zelf voor Puppeteer-documentgeneratie (zie `CLAUDE.md`).
+```bash
+docker build -f apps/api/Dockerfile -t inspexi-api .
+```
+
+Snelle font-check in de gebouwde image (moet Noto Sans CJK-regels tonen):
+
+```bash
+docker run --rm --entrypoint fc-list inspexi-api : family | grep -i "Noto Sans CJK"
+```
+
+> Alleen in de echte container-image te testen — op macOS/desktop gedraagt de font-fallback zich
+> anders (daar valt Chromium terug op systeemfonts en lijkt alles ten onrechte in orde). De
+> Prisma-CLI zit bewust niet in de runtime-image: `migrate deploy` (stap 1) draait vanuit de
+> repo-checkout.
+
+Zelfde image-vereiste: Chromium zelf voor Puppeteer-documentgeneratie (zie `CLAUDE.md`) — zit in
+dezelfde Dockerfile.
 
 ## Stap 5 — PWA uitrollen NÁ de API (sync-contract v4)
 

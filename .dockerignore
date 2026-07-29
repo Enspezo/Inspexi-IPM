@@ -1,0 +1,16 @@
+# Build-context voor apps/*/Dockerfile (gebouwd vanuit de repo-root).
+.git
+**/node_modules
+**/dist
+# convert-api kopieert een vóórgebouwde dist de image in (zie diens Dockerfile)
+!apps/convert-api/dist
+**/coverage
+**/uploads
+**/.env
+**/.env.*
+!**/.env.example
+docs
+*.md
+.claude
+.turbo
+**/.turbo

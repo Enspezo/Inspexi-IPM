@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Prisma, TimeActivityType, User } from '@prisma/client';
 import { PrismaService } from '@/prisma';
 import { orgScope, requireOrg } from '@/common';
@@ -27,12 +27,29 @@ export interface ActiveTimerRow {
 
 @Injectable()
 export class LocationPingsService {
+  private readonly logger = new Logger(LocationPingsService.name);
+
   constructor(private prisma: PrismaService) {}
+
+  /** Org-brede kill-switch (PRD-16 fase 4). SUPERUSER zonder org → aan. */
+  private async orgTrackingEnabled(orgId: string | null): Promise<boolean> {
+    if (!orgId) return true;
+    const org = await this.prisma.organization.findUnique({
+      where: { id: orgId },
+      select: { travelTrackingEnabled: true },
+    });
+    return org?.travelTrackingEnabled ?? true;
+  }
 
   // ─── Opt-in (PRD-16 §6.1) ──────────────────────────────
 
   /** Alleen de gebruiker zelf; consent-moment wordt vastgelegd bij het aanzetten. */
   async setTravelTracking(user: User, enabled: boolean) {
+    if (enabled && !(await this.orgTrackingEnabled(user.orgId))) {
+      throw new BadRequestException(
+        'Locatietracking is door uw organisatie uitgeschakeld',
+      );
+    }
     const updated = await this.prisma.user.update({
       where: { id: user.id },
       data: {
@@ -53,6 +70,9 @@ export class LocationPingsService {
    */
   async ingest(user: User, dto: IngestPingsDto): Promise<{ accepted: number }> {
     const orgId = requireOrg(user);
+
+    // Org-kill-switch (fase 4): uit → stille noop, net als de andere guards.
+    if (!(await this.orgTrackingEnabled(orgId))) return { accepted: 0 };
 
     // Autoritatieve serverstaat, niet de JWT-snapshot.
     const dbUser = await this.prisma.user.findUnique({
@@ -110,6 +130,8 @@ export class LocationPingsService {
         user: {
           select: { id: true, firstName: true, lastName: true, travelTrackingEnabled: true },
         },
+        // Per entry (i.p.v. één lookup): SUPERUSER-scope kan meerdere orgs zien.
+        organization: { select: { travelTrackingEnabled: true } },
         project: { select: { id: true, projectNumber: true, title: true } },
         inspectionPlan: { select: { id: true, projectName: true } },
       },
@@ -142,6 +164,7 @@ export class LocationPingsService {
       notes: e.notes,
       hasLiveLocation:
         e.activityType === TimeActivityType.REISTIJD &&
+        e.organization.travelTrackingEnabled &&
         e.user.travelTrackingEnabled &&
         liveUserIds.has(e.userId),
     }));
@@ -162,9 +185,26 @@ export class LocationPingsService {
       orderBy: { recordedAt: 'desc' },
       include: { user: { select: { firstName: true, lastName: true } } },
     });
-    if (!ping) {
+    if (!ping || !(await this.orgTrackingEnabled(ping.orgId))) {
       throw new NotFoundException('Geen recente positie beschikbaar');
     }
+
+    // Kaart-toegangslogging (PRD-16 §7, fase 4): wie bekeek wiens positie.
+    // Duurzaam in imp_audit_logs (entityType buiten het audit-register: alleen
+    // DB-inspecteerbaar, bewust niet in de portal-historie-UI) + operationele
+    // log-regel zonder coördinaten. Fire-and-forget.
+    this.prisma
+      .writeAuditLog({
+        entityType: 'InspectorLocationAccess',
+        entityId: userId,
+        action: 'CREATE',
+        snapshot: { bekekenDoor: user.id },
+        changes: null,
+        userId: user.id,
+        orgId: ping.orgId,
+      })
+      .catch(() => undefined);
+    this.logger.log(`Kaart-toegang: gebruiker ${user.id} bekeek positie van ${userId}`);
 
     const running = await this.prisma.timeEntry.findFirst({
       where: {

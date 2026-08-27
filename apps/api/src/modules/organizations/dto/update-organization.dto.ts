@@ -67,6 +67,15 @@ export class UpdateOrganizationDto extends PartialType(CreateOrganizationDto) {
   aiAgentEnabled?: boolean;
 
   @ApiPropertyOptional({
+    example: true,
+    description:
+      'Onderweg-tracker (PRD-16) org-breed aan/uit. Geen B-510-entitlement-gate: zonder URENREGISTRATIE zijn de tracking-routes toch al ontoegankelijk, en uitzetten moet altijd kunnen.',
+  })
+  @IsOptional()
+  @IsBoolean()
+  travelTrackingEnabled?: boolean;
+
+  @ApiPropertyOptional({
     isArray: true,
     enum: Role,
     description:

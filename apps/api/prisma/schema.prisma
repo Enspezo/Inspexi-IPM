@@ -479,6 +479,11 @@ model Organization {
   // Online herstel (PRD-14): default voor `InspectionPlan.onlineRepairEnabled` bij nieuwe plannen
   onlineRepairDefault Boolean @default(false) @map("online_repair_default")
 
+  // Urenregistratie (PRD-16 fase 4): org-brede kill-switch voor de onderweg-
+  // tracker. Uit → geen opt-in, geen pings, geen kaart — ook al staat de
+  // gebruikers-toggle aan. Default aan (de individuele opt-in is de poort).
+  travelTrackingEnabled Boolean @default(true) @map("travel_tracking_enabled")
+
   users                    User[]
   invitations              Invitation[]
   contacts                 Contact[]

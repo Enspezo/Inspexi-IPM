@@ -15,6 +15,8 @@ import {
   getEntityLink,
   getEntityDisplayName,
 } from '@/lib/audit-entity-helpers';
+import { Role } from '@/types';
+import { ActiveTimersWidget } from '@/pages/uren/components/active-timers-widget';
 
 // B-001: statische tegel-definities (label/icoon/kleur); de waarden komen
 // runtime uit /portal/stats/staff-dashboard resp. de al opgehaalde taken.
@@ -236,6 +238,20 @@ export default function DashboardPage() {
 
   const hasActivity = activityData && activityData.data.length > 0;
 
+  // PRD-16 fase 4: "Nu actief"-widget — zelfde gating als het Uren-menu
+  // (URENREGISTRATIE + plannende rol; het endpoint zelf is CRM_ROLES).
+  const timerWidgetRoles = [
+    Role.SUPERUSER,
+    Role.ORG_ADMIN,
+    Role.MANAGER,
+    Role.BACKOFFICE,
+    Role.WERKVOORBEREIDER,
+  ];
+  const showTimersWidget =
+    hasFeature('URENREGISTRATIE') &&
+    !!user &&
+    user.roles.some((r) => timerWidgetRoles.includes(r));
+
   return (
     <DetailPageLayout>
       <div className="space-y-6">
@@ -278,6 +294,8 @@ export default function DashboardPage() {
         </div>
 
         {/* Bottom sections */}
+        {showTimersWidget && <ActiveTimersWidget />}
+
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
           {/* Recente activiteit */}
           <Card title="Recente activiteit">

@@ -9,8 +9,10 @@ describe('LocationPingsService', () => {
 
   const mockPrisma: any = {
     user: { findUnique: jest.fn(), update: jest.fn() },
+    organization: { findUnique: jest.fn() },
     timeEntry: { findFirst: jest.fn(), findMany: jest.fn() },
     inspectorLocationPing: { createMany: jest.fn(), groupBy: jest.fn(), findFirst: jest.fn() },
+    writeAuditLog: jest.fn().mockResolvedValue(undefined),
   };
 
   const ORG = 'org-1';
@@ -33,6 +35,7 @@ describe('LocationPingsService', () => {
     service = module.get(LocationPingsService);
 
     mockPrisma.user.findUnique.mockResolvedValue({ travelTrackingEnabled: true });
+    mockPrisma.organization.findUnique.mockResolvedValue({ travelTrackingEnabled: true });
     mockPrisma.timeEntry.findFirst.mockResolvedValue({ id: 'te-travel' });
     mockPrisma.inspectorLocationPing.createMany.mockResolvedValue({ count: 1 });
   });
@@ -95,6 +98,24 @@ describe('LocationPingsService', () => {
     });
   });
 
+  describe('org-kill-switch (fase 4)', () => {
+    it('ingest is een noop wanneer de org locatietracking heeft uitgezet', async () => {
+      mockPrisma.organization.findUnique.mockResolvedValue({ travelTrackingEnabled: false });
+      const r = await service.ingest(inspecteur, { pings: [ping()] });
+      expect(r).toEqual({ accepted: 0 });
+      expect(mockPrisma.inspectorLocationPing.createMany).not.toHaveBeenCalled();
+    });
+
+    it('tracker aanzetten is geblokkeerd wanneer de org hem heeft uitgezet; uitzetten mag altijd', async () => {
+      mockPrisma.organization.findUnique.mockResolvedValue({ travelTrackingEnabled: false });
+      await expect(service.setTravelTracking(inspecteur, true)).rejects.toThrow(
+        /uitgeschakeld/,
+      );
+      mockPrisma.user.update.mockResolvedValue({});
+      await expect(service.setTravelTracking(inspecteur, false)).resolves.toBeTruthy();
+    });
+  });
+
   describe('getActive', () => {
     it('markeert alleen REISTIJD + tracker aan + verse ping als live', async () => {
       const base = {
@@ -104,6 +125,7 @@ describe('LocationPingsService', () => {
         notes: null,
         project: null,
         inspectionPlan: null,
+        organization: { travelTrackingEnabled: true },
       };
       mockPrisma.timeEntry.findMany.mockResolvedValue([
         {

@@ -45,6 +45,9 @@ export default function TimesheetsPage() {
   const [userFilter, setUserFilter] = useState('');
   const [page, setPage] = useState(1);
   const [isExporting, setIsExporting] = useState(false);
+  // Export-periode (fase 4): begrenst de CSV op startedAt (van t/m).
+  const [exportFrom, setExportFrom] = useState('');
+  const [exportTo, setExportTo] = useState('');
 
   const { data: allUsers } = useUsers();
   const inspecteurs = (allUsers ?? []).filter((u) => u.roles.includes(Role.INSPECTEUR));
@@ -140,9 +143,15 @@ export default function TimesheetsPage() {
   const handleExport = async () => {
     setIsExporting(true);
     try {
+      // `to` is exclusief op de API → dag ophogen zodat de einddatum meetelt.
+      const toExclusive = exportTo
+        ? new Date(new Date(exportTo).getTime() + 24 * 60 * 60 * 1000).toISOString()
+        : undefined;
       await exportTimeEntriesCsv({
         userId: userFilter || undefined,
         timesheetStatus: (statusFilter as TimesheetStatus) || undefined,
+        from: exportFrom ? new Date(exportFrom).toISOString() : undefined,
+        to: toExclusive,
       });
     } catch (err) {
       showToast(getErrorMessage(err, 'Export mislukt'), 'error');
@@ -191,9 +200,35 @@ export default function TimesheetsPage() {
           title="Uren"
           description="Weekstaten van inspecteurs beoordelen en exporteren"
           actions={
-            <Button variant="secondary" onClick={handleExport} isLoading={isExporting}>
-              Exporteer CSV
-            </Button>
+            <div className="flex items-end gap-2">
+              <div>
+                <label className="mb-1 block text-xs font-medium text-gray-500" htmlFor="export-from">
+                  Van
+                </label>
+                <input
+                  id="export-from"
+                  type="date"
+                  className="rounded-lg border border-gray-300 px-2 py-1.5 text-sm"
+                  value={exportFrom}
+                  onChange={(e) => setExportFrom(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-gray-500" htmlFor="export-to">
+                  Tot en met
+                </label>
+                <input
+                  id="export-to"
+                  type="date"
+                  className="rounded-lg border border-gray-300 px-2 py-1.5 text-sm"
+                  value={exportTo}
+                  onChange={(e) => setExportTo(e.target.value)}
+                />
+              </div>
+              <Button variant="secondary" onClick={handleExport} isLoading={isExporting}>
+                Exporteer CSV
+              </Button>
+            </div>
           }
         />
 

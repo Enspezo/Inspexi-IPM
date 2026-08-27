@@ -65,3 +65,52 @@ export function formatDurationNl(minutes: number): string {
   if (h === 0) return `${m}m`;
   return m === 0 ? `${h}u` : `${h}u ${m}m`;
 }
+
+/** Offset (ms) van een tijdzone t.o.v. UTC op het gegeven moment. */
+function tzOffsetMs(date: Date, timeZone: string): number {
+  const dtf = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    hour12: false,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  });
+  const parts = Object.fromEntries(
+    dtf.formatToParts(date).map((p) => [p.type, p.value]),
+  ) as Record<string, string>;
+  const asUtc = Date.UTC(
+    Number(parts.year),
+    Number(parts.month) - 1,
+    Number(parts.day),
+    // Intl kan "24" teruggeven voor middernacht (hourCycle h24-gedrag)
+    Number(parts.hour) % 24,
+    Number(parts.minute),
+    Number(parts.second),
+  );
+  return asUtc - date.getTime();
+}
+
+/**
+ * 23:59:00 lokale tijd van de kalenderdag van `date` (org-tijdzone), als UTC-Date.
+ * Gebruikt door de nachtwaker (PRD-16 §4.3): een vergeten timer wordt server-side
+ * op dit moment afgekapt.
+ */
+export function localDayEndUtc(date: Date, timeZone = 'Europe/Amsterdam'): Date {
+  const [y, m, d] = localDateParts(date, timeZone);
+  // Eerste gok: alsof lokaal = UTC; corrigeer daarna met de werkelijke offset
+  // op dat moment (tweede pass vangt een DST-overgang rond middernacht af).
+  let guess = Date.UTC(y, m - 1, d, 23, 59, 0);
+  guess -= tzOffsetMs(new Date(guess), timeZone);
+  guess = Date.UTC(y, m - 1, d, 23, 59, 0) - tzOffsetMs(new Date(guess), timeZone);
+  return new Date(guess);
+}
+
+/** Zijn twee timestamps op dezelfde lokale kalenderdag (org-tijdzone)? */
+export function isSameLocalDay(a: Date, b: Date, timeZone = 'Europe/Amsterdam'): boolean {
+  const [ay, am, ad] = localDateParts(a, timeZone);
+  const [by, bm, bd] = localDateParts(b, timeZone);
+  return ay === by && am === bm && ad === bd;
+}

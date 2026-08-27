@@ -1,7 +1,9 @@
 import {
   durationMinutesBetween,
   formatDurationNl,
+  isSameLocalDay,
   isoWeekOf,
+  localDayEndUtc,
 } from './time-tracking.helpers';
 
 describe('time-tracking.helpers', () => {
@@ -35,6 +37,36 @@ describe('time-tracking.helpers', () => {
       const start = new Date('2026-08-27T08:00:00Z');
       expect(durationMinutesBetween(start, new Date('2026-08-27T09:25:31Z'))).toBe(86);
       expect(durationMinutesBetween(start, new Date('2026-08-27T07:00:00Z'))).toBe(0);
+    });
+  });
+
+  describe('localDayEndUtc (nachtwaker)', () => {
+    it('zomertijd: 23:59 CEST = 21:59 UTC', () => {
+      expect(localDayEndUtc(new Date('2026-08-27T06:30:00Z')).toISOString()).toBe(
+        '2026-08-27T21:59:00.000Z',
+      );
+    });
+
+    it('wintertijd: 23:59 CET = 22:59 UTC', () => {
+      expect(localDayEndUtc(new Date('2026-01-15T10:00:00Z')).toISOString()).toBe(
+        '2026-01-15T22:59:00.000Z',
+      );
+    });
+
+    it('laat op de avond (lokaal al volgende dag in UTC-termen) blijft dezelfde lokale dag', () => {
+      // 22:30 UTC = 00:30 CEST de 28e → einde lokale dag = 28 aug 23:59 CEST
+      expect(localDayEndUtc(new Date('2026-08-27T22:30:00Z')).toISOString()).toBe(
+        '2026-08-28T21:59:00.000Z',
+      );
+    });
+  });
+
+  describe('isSameLocalDay', () => {
+    it('vergelijkt op de lokale kalenderdag, niet op UTC', () => {
+      const lateEvening = new Date('2026-08-27T21:30:00Z'); // 23:30 CEST 27 aug
+      const pastMidnight = new Date('2026-08-27T22:30:00Z'); // 00:30 CEST 28 aug
+      expect(isSameLocalDay(lateEvening, pastMidnight)).toBe(false);
+      expect(isSameLocalDay(lateEvening, pastMidnight, 'UTC')).toBe(true);
     });
   });
 

@@ -256,4 +256,87 @@ describe('TimeEntriesService', () => {
       ).rejects.toThrow(BadRequestException);
     });
   });
+
+  describe('applySyncChange (PRD-16 fase 2 — offline-buffer via /sync)', () => {
+    const CLIENT_ID = '7b9e6c1a-1234-4abc-8def-0123456789ab';
+    const payload = (extra: Record<string, unknown> = {}) => ({
+      id: CLIENT_ID,
+      activityType: 'UITVOERING',
+      source: 'AGENDA',
+      projectId: 'proj-1',
+      startedAt: '2026-08-27T06:00:00.000Z',
+      endedAt: '2026-08-27T08:30:00.000Z',
+      ...extra,
+    });
+
+    it('create adopteert het client-UUID als id én clientId en berekent de duur', async () => {
+      await service.applySyncChange(inspecteur, 'create', payload());
+      expect(mockPrisma.timeEntry.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            id: CLIENT_ID,
+            clientId: CLIENT_ID,
+            userId: inspecteur.id,
+            durationMinutes: 150,
+          }),
+        }),
+      );
+    });
+
+    it('idempotente retry: bestaande clientId → succes zonder nieuwe create', async () => {
+      mockPrisma.timeEntry.findUnique.mockResolvedValue({ id: CLIENT_ID, userId: inspecteur.id });
+      const r = await service.applySyncChange(inspecteur, 'create', payload());
+      expect(r.id).toBe(CLIENT_ID);
+      expect(mockPrisma.timeEntry.create).not.toHaveBeenCalled();
+    });
+
+    it('lopende regel (geen endedAt) wordt geweigerd', async () => {
+      await expect(
+        service.applySyncChange(inspecteur, 'create', payload({ endedAt: undefined })),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('update op een regel die de server nog niet kent → toegepast als create', async () => {
+      await service.applySyncChange(inspecteur, 'update', payload());
+      expect(mockPrisma.timeEntry.create).toHaveBeenCalled();
+    });
+
+    it("update op andermans regel → 403", async () => {
+      mockPrisma.timeEntry.findUnique.mockResolvedValue({
+        id: CLIENT_ID,
+        userId: 'iemand-anders',
+        timesheet: { id: 'ts-1', status: TimesheetStatus.CONCEPT },
+      });
+      await expect(
+        service.applySyncChange(inspecteur, 'update', payload()),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('update in een ingediende week → 409', async () => {
+      mockPrisma.timeEntry.findUnique.mockResolvedValue({
+        id: CLIENT_ID,
+        userId: inspecteur.id,
+        needsProjectAssignment: false,
+        startedAt: new Date('2026-08-27T06:00:00Z'),
+        timesheetId: 'ts-1',
+        timesheet: { id: 'ts-1', status: TimesheetStatus.INGEDIEND },
+      });
+      await expect(
+        service.applySyncChange(inspecteur, 'update', payload()),
+      ).rejects.toThrow(ConflictException);
+    });
+
+    it('delete is idempotent voor een onbekende regel', async () => {
+      const r = await service.applySyncChange(inspecteur, 'delete', { id: CLIENT_ID });
+      expect(r.id).toBe(CLIENT_ID);
+      expect(mockPrisma.timeEntry.update).not.toHaveBeenCalled();
+    });
+
+    it('ongeldig id → 400', async () => {
+      await expect(
+        service.applySyncChange(inspecteur, 'create', payload({ id: 'geen-uuid' })),
+      ).rejects.toThrow(BadRequestException);
+    });
+  });
+
 });

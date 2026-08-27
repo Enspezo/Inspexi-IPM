@@ -8,11 +8,12 @@ import { NotificationsModule } from '../notifications/notifications.module';
 import { TimeTrackingController } from './time-tracking.controller';
 import { TimeEntriesService } from './time-entries.service';
 import { TimesheetsService } from './timesheets.service';
+import { TimeTrackingScheduler } from './time-tracking.scheduler';
 
 @Module({
   imports: [NotificationsModule],
   controllers: [TimeTrackingController],
-  providers: [TimeEntriesService, TimesheetsService],
+  providers: [TimeEntriesService, TimesheetsService, TimeTrackingScheduler],
   exports: [TimeEntriesService, TimesheetsService],
 })
 export class TimeTrackingModule {}

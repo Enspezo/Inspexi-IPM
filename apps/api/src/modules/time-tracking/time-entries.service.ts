@@ -335,6 +335,204 @@ export class TimeEntriesService {
     return { deleted: true };
   }
 
+  // ─── Sync-push (PWA offline-buffer, PRD-16 fase 2) ─────
+
+  /**
+   * Additieve `/sync`-push-entiteit `timeEntries` (zelfde patroon als chat):
+   * de eigenaar komt altijd uit de JWT, het client-UUID wordt geadopteerd als
+   * server-id én `clientId` (idempotente retry). Alleen afgeronde regels —
+   * een lopende timer is device-lokale staat en wordt pas gepusht ná de stop.
+   */
+  async applySyncChange(
+    user: User,
+    operation: 'create' | 'update' | 'delete',
+    data: Record<string, unknown>,
+  ): Promise<{ id: string }> {
+    const orgId = requireOrg(user);
+    const clientId = String(data.id ?? '');
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(clientId)) {
+      throw new BadRequestException('Urenregel mist een geldig id');
+    }
+
+    const existing = await this.prisma.timeEntry.findUnique({
+      where: { orgId_clientId: { orgId, clientId } },
+      include: { timesheet: { select: { id: true, status: true } } },
+    });
+
+    if (operation === 'delete') {
+      if (!existing || existing.isDeleted) return { id: clientId }; // idempotent
+      if (existing.userId !== user.id) {
+        throw new ForbiddenException('Deze urenregel hoort niet bij jouw account');
+      }
+      this.assertEntryMutable(existing.timesheet?.status ?? TimesheetStatus.CONCEPT, true);
+      await this.prisma.timeEntry.update({
+        where: { id: existing.id },
+        data: { isDeleted: true, needsProjectAssignment: false },
+      });
+      if (existing.needsProjectAssignment && existing.assignmentTaskId) {
+        this.completeAssignmentTask(existing.assignmentTaskId).catch((err) =>
+          this.logger.error('Afronden toewijs-taak mislukt', err),
+        );
+      }
+      return { id: existing.id };
+    }
+
+    const parsed = this.parseSyncPayload(data);
+
+    if (operation === 'create' && existing) return { id: existing.id }; // idempotente retry
+
+    if (!existing) {
+      // create — of een update op een regel die de server nog niet kent
+      // (offline aangemaakt én gewijzigd vóór de eerste push): pas toe als create.
+      const needsProjectAssignment = this.resolveProjectRule(
+        parsed.activityType,
+        parsed.projectId,
+        parsed.source,
+      );
+      await this.assertEntryFksInOrg(user, parsed);
+
+      const entry = await this.prisma.$transaction(async (tx) => {
+        const timesheetId = await this.ensureOpenTimesheet(
+          tx,
+          orgId,
+          user.id,
+          parsed.startedAt,
+          false,
+        );
+        return tx.timeEntry.create({
+          data: {
+            id: clientId,
+            orgId,
+            userId: user.id,
+            activityType: parsed.activityType,
+            source: parsed.source,
+            projectId: parsed.projectId,
+            inspectionPlanId: parsed.inspectionPlanId,
+            planningItemId: parsed.planningItemId,
+            startedAt: parsed.startedAt,
+            endedAt: parsed.endedAt,
+            durationMinutes: durationMinutesBetween(parsed.startedAt, parsed.endedAt),
+            stopReason: parsed.stopReason,
+            notes: parsed.notes,
+            needsProjectAssignment,
+            clientId,
+            timesheetId,
+          },
+          select: { id: true },
+        });
+      });
+      if (needsProjectAssignment) {
+        this.createAssignmentTask(entry.id, orgId, user.id, parsed.startedAt).catch((err) =>
+          this.logger.error('Aanmaken toewijs-taak mislukt', err),
+        );
+      }
+      return entry;
+    }
+
+    // update op een bestaande regel — eigenaar-semantiek (de PWA is de inspecteur zelf)
+    if (existing.userId !== user.id) {
+      throw new ForbiddenException('Deze urenregel hoort niet bij jouw account');
+    }
+    this.assertEntryMutable(existing.timesheet?.status ?? TimesheetStatus.CONCEPT, true);
+
+    const stillUnassigned =
+      existing.needsProjectAssignment &&
+      !parsed.projectId &&
+      parsed.activityType !== TimeActivityType.OVERIG;
+    if (
+      parsed.activityType !== TimeActivityType.OVERIG &&
+      !parsed.projectId &&
+      !stillUnassigned
+    ) {
+      throw new BadRequestException('Project is verplicht voor deze activiteit');
+    }
+    const clearsAssignment = existing.needsProjectAssignment && !stillUnassigned;
+    await this.assertEntryFksInOrg(user, parsed);
+
+    const updated = await this.prisma.$transaction(async (tx) => {
+      let timesheetId = existing.timesheetId;
+      const oldWeek = isoWeekOf(existing.startedAt);
+      const newWeek = isoWeekOf(parsed.startedAt);
+      if (oldWeek.year !== newWeek.year || oldWeek.week !== newWeek.week) {
+        timesheetId = await this.ensureOpenTimesheet(tx, orgId, user.id, parsed.startedAt, false);
+      }
+      return tx.timeEntry.update({
+        where: { id: existing.id },
+        data: {
+          activityType: parsed.activityType,
+          projectId: parsed.projectId,
+          inspectionPlanId: parsed.inspectionPlanId,
+          planningItemId: parsed.planningItemId,
+          startedAt: parsed.startedAt,
+          endedAt: parsed.endedAt,
+          durationMinutes: durationMinutesBetween(parsed.startedAt, parsed.endedAt),
+          stopReason: parsed.stopReason,
+          notes: parsed.notes,
+          needsProjectAssignment: clearsAssignment ? false : undefined,
+          timesheetId,
+        },
+        select: { id: true },
+      });
+    });
+    if (clearsAssignment && existing.assignmentTaskId) {
+      this.completeAssignmentTask(existing.assignmentTaskId).catch((err) =>
+        this.logger.error('Afronden toewijs-taak mislukt', err),
+      );
+    }
+    return updated;
+  }
+
+  /** Payload-validatie voor de sync-push (Beheer-veldnamen, alles behalve id/notes verplicht-ish). */
+  private parseSyncPayload(data: Record<string, unknown>): {
+    activityType: TimeActivityType;
+    source: TimeEntrySource;
+    projectId: string | null;
+    inspectionPlanId: string | null;
+    planningItemId: string | null;
+    startedAt: Date;
+    endedAt: Date;
+    stopReason: string | null;
+    notes: string | null;
+  } {
+    const activityType = data.activityType as TimeActivityType;
+    if (!Object.values(TimeActivityType).includes(activityType)) {
+      throw new BadRequestException('Onbekende activiteit');
+    }
+    const rawSource = data.source as TimeEntrySource | undefined;
+    const source =
+      rawSource && Object.values(TimeEntrySource).includes(rawSource) && rawSource !== TimeEntrySource.CORRECTIE
+        ? rawSource
+        : TimeEntrySource.HANDMATIG;
+
+    const startedAt = new Date(String(data.startedAt ?? ''));
+    const endedAt = data.endedAt ? new Date(String(data.endedAt)) : null;
+    if (Number.isNaN(startedAt.getTime())) {
+      throw new BadRequestException('Ongeldige starttijd');
+    }
+    if (!endedAt || Number.isNaN(endedAt.getTime())) {
+      // Lopende timers blijven device-lokaal; alleen afgeronde regels syncen.
+      throw new BadRequestException('Alleen afgeronde urenregels kunnen gesynchroniseerd worden');
+    }
+    if (!(endedAt.getTime() > startedAt.getTime())) {
+      throw new BadRequestException('Eindtijd moet na de starttijd liggen');
+    }
+
+    const uuidOrNull = (v: unknown): string | null =>
+      typeof v === 'string' && v.length > 0 ? v : null;
+
+    return {
+      activityType,
+      source,
+      projectId: uuidOrNull(data.projectId),
+      inspectionPlanId: uuidOrNull(data.inspectionPlanId),
+      planningItemId: uuidOrNull(data.planningItemId),
+      startedAt,
+      endedAt,
+      stopReason: typeof data.stopReason === 'string' ? data.stopReason.slice(0, 100) : null,
+      notes: typeof data.notes === 'string' ? data.notes.slice(0, 2000) : null,
+    };
+  }
+
   // ─── Interne helpers ───────────────────────────────────
 
   private isStaffViewer(user: User): boolean {

@@ -46,6 +46,7 @@ import { ChatSyncService } from '../chat/chat-sync.service';
 import { NumberingService } from '../numbering/numbering.service';
 import { AssetNodesService } from '../asset-nodes/asset-nodes.service';
 import { InspectionPlansService } from '../inspection-plans/inspection-plans.service';
+import { TimeEntriesService } from '../time-tracking/time-entries.service';
 
 type OpResult =
   | {
@@ -181,6 +182,7 @@ export class SyncService {
     private readonly numbering: NumberingService,
     private readonly assetNodes: AssetNodesService,
     private readonly inspectionPlans: InspectionPlansService,
+    private readonly timeEntries: TimeEntriesService,
   ) {}
 
   /** Expliciete map model-naam → Prisma-delegate, i.p.v. een dynamische `this.prisma[name]`. */
@@ -664,7 +666,7 @@ export class SyncService {
     const criticalModelCache = new Map<string, ClassificationModelForCritical | null>();
     // Dynamisch over alle v3-entiteiten (incl. assetNodes); de chat-keys worden door
     // de SYNC_ENTITIES-loop niet gedekt en seeden we expliciet zodat geen counter mist.
-    const processed: Record<string, number> = { chatThreads: 0, chatMessages: 0, presence: 0 };
+    const processed: Record<string, number> = { chatThreads: 0, chatMessages: 0, presence: 0, timeEntries: 0 };
     for (const key of Object.keys(SYNC_ENTITIES)) processed[key] = 0;
 
     for (const key of Object.keys(SYNC_ENTITIES) as SyncEntityKey[]) {
@@ -732,6 +734,20 @@ export class SyncService {
         const r = await this.chat.applySyncPresence(user, change.data);
         results.push({ entityType: 'presence', entityId: r.id, status: 'success' });
         processed.presence++;
+      } catch (e: unknown) {
+        results.push({ ...ref, status: 'failed', error: toClientSyncError(e, this.logger, ref) });
+      }
+    }
+
+    // Additief (PRD-16 fase 2): urenregels uit de PWA-offline-buffer. Bewust NIET
+    // via de generieke mutator — eigenaar uit de JWT, projectregel + weekstaat-lock
+    // hervalideren en de toewijs-taak-flow horen bij TimeEntriesService.
+    for (const change of dto.changes.timeEntries ?? []) {
+      const ref = { entityType: 'timeEntry', entityId: String(change.data.id ?? '') };
+      try {
+        const r = await this.timeEntries.applySyncChange(user, change.operation, change.data);
+        results.push({ entityType: 'timeEntry', entityId: r.id, status: 'success' });
+        processed.timeEntries++;
       } catch (e: unknown) {
         results.push({ ...ref, status: 'failed', error: toClientSyncError(e, this.logger, ref) });
       }

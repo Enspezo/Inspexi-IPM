@@ -13,6 +13,9 @@ import {
   Availability,
   AvailabilityExceptionType,
   EmploymentType,
+  TimeActivityType,
+  TimeEntrySource,
+  TimesheetStatus,
   ChatThreadStatus,
   ContactType,
   HelpArticleStatus,
@@ -343,4 +346,38 @@ export const AI_REVIEW_SEVERITY: StatusMap = {
   [AiReviewItemSeverity.WARNING]: { label: 'Waarschuwing', classes: 'bg-orange-100 text-orange-800' },
   [AiReviewItemSeverity.SUGGESTION]: { label: 'Suggestie', classes: 'bg-blue-100 text-blue-800' },
   [AiReviewItemSeverity.INFO]: { label: 'Informatie', classes: 'bg-gray-100 text-gray-600' },
+};
+
+// ─── PRD-16: Urenregistratie inspecteurs ──────────────────
+
+export const TIMESHEET_STATUS: StatusMap = {
+  [TimesheetStatus.CONCEPT]: { label: 'Concept', classes: 'bg-gray-100 text-gray-800' },
+  [TimesheetStatus.INGEDIEND]: { label: 'Ingediend', classes: 'bg-blue-100 text-blue-800' },
+  [TimesheetStatus.GOEDGEKEURD]: { label: 'Goedgekeurd', classes: 'bg-green-100 text-green-800' },
+  [TimesheetStatus.AFGEWEZEN]: { label: 'Afgewezen', classes: 'bg-red-100 text-red-800' },
+};
+
+export const TIME_ACTIVITY: StatusMap = {
+  [TimeActivityType.VOORBEREIDING]: { label: 'Voorbereiding', classes: 'bg-purple-100 text-purple-800' },
+  [TimeActivityType.UITVOERING]: { label: 'Uitvoering', classes: 'bg-green-100 text-green-800' },
+  [TimeActivityType.RAPPORTAGE]: { label: 'Rapportage', classes: 'bg-blue-100 text-blue-800' },
+  [TimeActivityType.REISTIJD]: { label: 'Reistijd', classes: 'bg-amber-100 text-amber-800' },
+  [TimeActivityType.OVERIG]: { label: 'Overig', classes: 'bg-gray-100 text-gray-800' },
+};
+
+export const TIME_ENTRY_SOURCE: StatusMap = {
+  [TimeEntrySource.HANDMATIG]: { label: 'Handmatig', classes: 'bg-gray-100 text-gray-600' },
+  [TimeEntrySource.AGENDA]: { label: 'Agenda', classes: 'bg-blue-100 text-blue-700' },
+  [TimeEntrySource.INSPECTIE_AUTO]: { label: 'Auto (inspectie)', classes: 'bg-green-100 text-green-700' },
+  [TimeEntrySource.REIS_AUTO]: { label: 'Auto (reis)', classes: 'bg-amber-100 text-amber-700' },
+  [TimeEntrySource.CORRECTIE]: { label: 'Correctie', classes: 'bg-orange-100 text-orange-700' },
+};
+
+/** Label-only map voor selects/weergave. */
+export const TIME_ACTIVITY_LABELS: Record<string, string> = {
+  [TimeActivityType.VOORBEREIDING]: 'Voorbereiding',
+  [TimeActivityType.UITVOERING]: 'Uitvoering',
+  [TimeActivityType.RAPPORTAGE]: 'Rapportage',
+  [TimeActivityType.REISTIJD]: 'Reistijd',
+  [TimeActivityType.OVERIG]: 'Overig',
 };

@@ -59,6 +59,8 @@ const PAGINATED_ENDPOINTS: EndpointCase[] = [
   { path: '/measurement-instruments' },
   { path: '/inspector-certificates' },
   { path: '/availability/templates' },
+  { path: '/time-entries' },
+  { path: '/timesheets' },
   { path: '/audit-logs/me' },
   { path: '/support-tickets' },
   { path: '/help/articles' },

@@ -144,6 +144,10 @@ enum NotificationType {
   HERSTEL_AFGEROND
   HERSTEL_CONFLICT
   HERINSPECTIE_VOORSTEL
+  WEEKSTAAT_INGEDIEND
+  WEEKSTAAT_GOEDGEKEURD
+  WEEKSTAAT_AFGEWEZEN
+  TIMER_NACHTWAKER
 }
 
 enum AuditAction {
@@ -201,6 +205,31 @@ enum TaskEntityType {
   PROJECT
   PROJECT_PHASE
   USER
+  TIME_ENTRY
+}
+
+// Urenregistratie inspecteurs (add-on, PRD-16)
+enum TimeActivityType {
+  VOORBEREIDING
+  UITVOERING
+  RAPPORTAGE
+  REISTIJD
+  OVERIG
+}
+
+enum TimeEntrySource {
+  HANDMATIG // handmatig gestart of aangemaakt
+  AGENDA // gestart vanaf een planning-item in de PWA
+  INSPECTIE_AUTO // auto-gestart bij openen/starten van een inspectie
+  REIS_AUTO // auto-gestart door reisdetectie
+  CORRECTIE // door backoffice toegevoegd/gecorrigeerd in de portal
+}
+
+enum TimesheetStatus {
+  CONCEPT
+  INGEDIEND
+  GOEDGEKEURD
+  AFGEWEZEN
 }
 
 enum FollowUpType {
@@ -558,6 +587,11 @@ model Organization {
   // AI-review van inspectierapporten (PRD-13)
   aiReviewRuns AiReviewRun[]
 
+  // Urenregistratie inspecteurs (add-on, PRD-16)
+  timeEntries            TimeEntry[]
+  timesheets             Timesheet[]
+  inspectorLocationPings InspectorLocationPing[]
+
   // Online herstel van constateringen (PRD-14)
   repairSessions RepairSession[]
 
@@ -763,6 +797,16 @@ model User {
   // AI-review van inspectierapporten (PRD-13)
   triggeredAiReviewRuns AiReviewRun[]  @relation("AiReviewRunTriggeredBy")
   checkedAiReviewItems  AiReviewItem[] @relation("AiReviewItemCheckedBy")
+
+  // Urenregistratie inspecteurs (add-on, PRD-16). Opt-in voor de onderweg-tracker:
+  // alleen de gebruiker zelf zet dit (PWA-toggle); consent-moment wordt vastgelegd.
+  travelTrackingEnabled   Boolean                 @default(false) @map("travel_tracking_enabled")
+  travelTrackingConsentAt DateTime?               @map("travel_tracking_consent_at")
+  timeEntries             TimeEntry[]             @relation("TimeEntryUser")
+  correctedTimeEntries    TimeEntry[]             @relation("TimeEntryCorrectedBy")
+  timesheets              Timesheet[]             @relation("TimesheetUser")
+  reviewedTimesheets      Timesheet[]             @relation("TimesheetReviewedBy")
+  inspectorLocationPings  InspectorLocationPing[]
 
   @@index([orgId, isDeleted])
   @@map("imp_users")
@@ -1787,6 +1831,7 @@ model PlanningItem {
   followers          PlanningFollower[]
   sessions           PlanningSession[]
   workOrders         WorkOrder[]
+  timeEntries        TimeEntry[]
 
   @@index([orgId, status])
   @@index([orgId, scheduledDate])
@@ -1942,6 +1987,7 @@ model Project {
 
   // Inspectiedomein (Fase 1)
   inspectionPlans InspectionPlan[]
+  timeEntries     TimeEntry[]
 
   @@unique([orgId, projectNumber])
   @@index([orgId, status])
@@ -2885,6 +2931,7 @@ model InspectionPlan {
   instrumentDefaults      InspectionPlanDefaultInstrument[]
   aiReviewRuns            AiReviewRun[]
   repairSessions          RepairSession[]
+  timeEntries             TimeEntry[]
 
   @@index([orgId, statusCode])
   @@index([contactId])
@@ -5069,4 +5116,101 @@ model AiReviewItem {
 
   @@index([runId])
   @@map("imp_ai_review_items")
+}
+
+// ─── PRD-16: Urenregistratie & locatietracking inspecteurs (add-on) ───
+
+model TimeEntry {
+  id           String           @id @default(uuid()) @db.Uuid
+  orgId        String           @map("org_id") @db.Uuid
+  userId       String           @map("user_id") @db.Uuid // de inspecteur
+  activityType TimeActivityType @map("activity_type")
+  source       TimeEntrySource  @default(HANDMATIG)
+
+  // Verplicht behalve bij OVERIG; REIS_AUTO mag tijdelijk zonder project bestaan
+  // met needsProjectAssignment=true (service-validatie, zie PRD-16 §4.3/§6.2).
+  projectId        String? @map("project_id") @db.Uuid
+  inspectionPlanId String? @map("inspection_plan_id") @db.Uuid
+  planningItemId   String? @map("planning_item_id") @db.Uuid
+
+  startedAt       DateTime  @map("started_at")
+  endedAt         DateTime? @map("ended_at") // null = lopende timer (partial unique index, zie migratie)
+  durationMinutes Int?      @map("duration_minutes") // gezet bij stop; corrigeerbaar door staf
+  notes           String?
+  stopReason      String?   @map("stop_reason") // 'gewisseld' | 'handmatig' | 'aankomst' | 'nachtwaker'
+
+  // REIS_AUTO zonder gepland item: regel telt mee maar moet vóór het indienen
+  // aan een project (of OVERIG) gekoppeld worden; de todo-taak wordt bij
+  // toewijzing automatisch voltooid. Scalar (geen FK) — zelfde patroon als
+  // AiUsageLog.conversationId.
+  needsProjectAssignment Boolean @default(false) @map("needs_project_assignment")
+  assignmentTaskId       String? @map("assignment_task_id") @db.Uuid
+
+  correctedById String? @map("corrected_by_id") @db.Uuid // staf-correctie (audit toont de diff)
+  timesheetId   String? @map("timesheet_id") @db.Uuid
+  isDeleted     Boolean @default(false) @map("is_deleted")
+  clientId      String? @map("client_id") // PWA offline-id (idempotente sync-push)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  organization   Organization    @relation(fields: [orgId], references: [id])
+  user           User            @relation("TimeEntryUser", fields: [userId], references: [id])
+  correctedBy    User?           @relation("TimeEntryCorrectedBy", fields: [correctedById], references: [id], onDelete: SetNull)
+  project        Project?        @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  inspectionPlan InspectionPlan? @relation(fields: [inspectionPlanId], references: [id], onDelete: SetNull)
+  planningItem   PlanningItem?   @relation(fields: [planningItemId], references: [id], onDelete: SetNull)
+  timesheet      Timesheet?      @relation(fields: [timesheetId], references: [id], onDelete: SetNull)
+  locationPings  InspectorLocationPing[]
+
+  @@unique([orgId, clientId])
+  @@index([orgId, userId, startedAt])
+  @@index([orgId, projectId])
+  @@index([timesheetId])
+  @@map("imp_time_entries")
+}
+
+model Timesheet {
+  id         String          @id @default(uuid()) @db.Uuid
+  orgId      String          @map("org_id") @db.Uuid
+  userId     String          @map("user_id") @db.Uuid
+  year       Int // ISO-weekjaar (kan afwijken van kalenderjaar rond de jaarwissel)
+  weekNumber Int             @map("week_number") // ISO-week 1..53
+  status     TimesheetStatus @default(CONCEPT)
+
+  submittedAt  DateTime? @map("submitted_at")
+  reviewedById String?   @map("reviewed_by_id") @db.Uuid
+  reviewedAt   DateTime? @map("reviewed_at")
+  reviewNote   String?   @map("review_note") // verplicht bij AFGEWEZEN
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [orgId], references: [id])
+  user         User         @relation("TimesheetUser", fields: [userId], references: [id])
+  reviewedBy   User?        @relation("TimesheetReviewedBy", fields: [reviewedById], references: [id], onDelete: SetNull)
+  entries      TimeEntry[]
+
+  @@unique([orgId, userId, year, weekNumber])
+  @@index([orgId, status])
+  @@map("imp_timesheets")
+}
+
+model InspectorLocationPing {
+  id          String   @id @default(uuid()) @db.Uuid
+  orgId       String   @map("org_id") @db.Uuid
+  userId      String   @map("user_id") @db.Uuid
+  timeEntryId String?  @map("time_entry_id") @db.Uuid // de lopende REISTIJD-regel
+  latitude    Decimal  @db.Decimal(10, 8)
+  longitude   Decimal  @db.Decimal(11, 8)
+  accuracyM   Int?     @map("accuracy_m")
+  recordedAt  DateTime @map("recorded_at")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  organization Organization @relation(fields: [orgId], references: [id])
+  user         User         @relation(fields: [userId], references: [id])
+  timeEntry    TimeEntry?   @relation(fields: [timeEntryId], references: [id], onDelete: SetNull)
+
+  @@index([orgId, userId, recordedAt])
+  @@map("imp_inspector_location_pings")
 }

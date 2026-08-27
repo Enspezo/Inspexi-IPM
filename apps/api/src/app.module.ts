@@ -101,6 +101,7 @@ import { VoiceModule } from './modules/voice/voice.module';
 import { AnthropicModule } from './common/services/anthropic/anthropic.module';
 // AI-voorcontrole van inspectierapporten (PRD-13)
 import { AiReviewModule } from './modules/ai-review/ai-review.module';
+import { TimeTrackingModule } from './modules/time-tracking/time-tracking.module';
 
 @Module({
   imports: [
@@ -200,6 +201,7 @@ import { AiReviewModule } from './modules/ai-review/ai-review.module';
     // Gedeelde Anthropic-client + AI-voorcontrole van inspectierapporten (PRD-13)
     AnthropicModule,
     AiReviewModule,
+    TimeTrackingModule,
     HealthModule,
   ],
   providers: [

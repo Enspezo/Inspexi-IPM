@@ -134,6 +134,8 @@ const InspectorsPage = lazy(() => import('@/pages/inspectors/inspectors-page'));
 const InspectorDetailPage = lazy(() => import('@/pages/inspectors/inspector-detail-page'));
 const AvailabilityTemplatesPage = lazy(() => import('@/pages/organization/availability-templates-page'));
 const MyAvailabilityPage = lazy(() => import('@/pages/availability/my-availability-page'));
+const TimesheetsPage = lazy(() => import('@/pages/uren/timesheets-page'));
+const TimesheetDetailPage = lazy(() => import('@/pages/uren/timesheet-detail-page'));
 const ChecklistsPage = lazy(() => import('@/pages/checklists/checklists-page'));
 const ChecklistDetailPage = lazy(() => import('@/pages/checklists/checklist-detail-page'));
 const ChecklistItemsPage = lazy(() => import('@/pages/checklist-items/checklist-items-page'));
@@ -197,6 +199,8 @@ export default function App() {
             <Route path="/profile" element={<ProfilePage />} />
             <Route path="/availability-templates" element={<AvailabilityTemplatesPage />} />
             <Route path="/my-availability" element={<MyAvailabilityPage />} />
+            <Route path="/timesheets" element={<TimesheetsPage />} />
+            <Route path="/timesheets/:id" element={<TimesheetDetailPage />} />
             <Route path="/search" element={<SearchPage />} />
             <Route path="/help" element={<HelpCenterPage />} />
             <Route path="/help/category/:slug" element={<HelpCenterPage />} />

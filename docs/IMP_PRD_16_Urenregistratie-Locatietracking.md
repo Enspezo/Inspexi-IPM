@@ -18,7 +18,7 @@ Kernbesluiten (vastgesteld met de opdrachtgever):
 3. **Weekstaat + goedkeuring**: regels ontstaan als concept; de inspecteur dient per week in; een manager/projectmanager keurt goed of wijst af.
 4. **Eén timer tegelijk per inspecteur.** Het starten van een nieuwe activiteit stopt de lopende timer automatisch (naadloze overgang reistijd → uitvoering).
 5. **Vier startmechanismen** voor een timer: vanuit de **agenda** (planning-item in de PWA), **automatisch bij start van een inspectie**, **automatisch bij gedetecteerd vertrek** (reistijd), en **handmatig**.
-6. **Reistijd = auto-timer, corrigeerbaar**: bij gedetecteerd vertrek start de reistijd-timer automatisch (met notificatie in de app), bij aankomst stopt hij; de inspecteur kan de regel achteraf corrigeren of verwijderen. Géén stille definitieve wegschrijving.
+6. **Reistijd = auto-timer, corrigeerbaar**: bij gedetecteerd vertrek start de reistijd-timer automatisch (met notificatie in de app), bij aankomst stopt hij; de inspecteur kan de regel achteraf corrigeren of verwijderen. Géén stille definitieve wegschrijving. Zonder gepland agenda-item start de timer als **"nog toe te wijzen"-regel** en krijgt de inspecteur automatisch een todo-taak om de reistijd aan een project te koppelen (§6.2).
 7. **Onderweg-tracker is een gebruikers-toggle** (aan/uit door de inspecteur zelf). Locatie is in de beheerconsole **alleen zichtbaar zolang de reistijd-timer loopt én de toggle aan staat** — met één klik van "wie is nu onderweg" naar een kaart met een duidelijke pin.
 8. **Betaalde add-on**: nieuwe entitlement-key **`URENREGISTRATIE`** in de catalogus (`@inspexi/entitlements`), zoals `AI_REVIEW`/`ONLINE_HERSTEL`.
 9. **Rapportage**: portal-overzicht met filters en totalen (basis voor goedkeuring), **Excel/CSV-export** van (goedgekeurde) uren, en een **uren-tab op de projectdetailpagina** voor nacalculatie.
@@ -138,7 +138,9 @@ model TimeEntry {
   userId           String            @map("user_id") @db.Uuid          // de inspecteur
   activityType     TimeActivityType  @map("activity_type")
   source           TimeEntrySource   @default(HANDMATIG)
-  projectId        String?           @map("project_id") @db.Uuid      // verplicht behalve OVERIG (service-validatie)
+  projectId        String?           @map("project_id") @db.Uuid      // verplicht behalve OVERIG (service-validatie, zie §4.3)
+  needsProjectAssignment Boolean     @default(false) @map("needs_project_assignment") // REIS_AUTO zonder gepland item (§6.2)
+  assignmentTaskId String?           @map("assignment_task_id") @db.Uuid // gekoppelde todo-taak; voltooid bij toewijzing
   inspectionPlanId String?           @map("inspection_plan_id") @db.Uuid
   planningItemId   String?           @map("planning_item_id") @db.Uuid
   startedAt        DateTime          @map("started_at")
@@ -205,7 +207,7 @@ model InspectorLocationPing {
   P2002 bij start → service stopt eerst de lopende timer en probeert opnieuw (of geeft 409 met de lopende timer in de body).
   ⚠️ Net als de ltree-GIST- en AI-review-index: **`DROP INDEX`-regels die `migrate dev` genereert handmatig uit nieuwe migraties strippen.**
 - **`durationMinutes`-consistentie**: bij stop berekend uit `endedAt − startedAt`; een staf-correctie mag de duur aanpassen (dan wijkt hij bewust af — de audit-diff is de verantwoording).
-- **Projectregel**: `projectId` verplicht tenzij `activityType = OVERIG` (class-validator + service-check, ook in de sync-push). FK's altijd via `assertSameOrg`/`assertAllSameOrg`.
+- **Projectregel**: `projectId` verplicht tenzij `activityType = OVERIG`, met één uitzondering: een `REIS_AUTO`-regel mag tijdelijk zonder project bestaan met `needsProjectAssignment = true` (§6.2). Toewijzing (PATCH met `projectId` of omzetten naar `OVERIG`) zet de vlag terug en voltooit de gekoppelde todo-taak (`assignmentTaskId`, status → `VOLTOOID`); het taak-aanmaken is fire-and-forget en blokkeert de timer nooit. Validatie via class-validator + service-check, ook in de sync-push. FK's altijd via `assertSameOrg`/`assertAllSameOrg`.
 - **Weekstaat-lock**: regels muteren kan alleen zolang de bijbehorende weekstaat `CONCEPT` of `AFGEWEZEN` is; `INGEDIEND`/`GOEDGEKEURD` → 409 (staf-correcties via het portal-pad mogen wél op `INGEDIEND`, nooit op `GOEDGEKEURD`).
 - **Ping-retentie 48 uur**: dagelijkse cleanup (cron/`@nestjs/schedule`) verwijdert pings ouder dan 48 u. Alleen de **laatste** ping per gebruiker wordt getoond; er is bewust géén route-weergave.
 - **Nachtwaker**: een timer die om 23:59 lokaal nog loopt wordt server-side gestopt (`stopReason: 'nachtwaker'`, notificatie naar de inspecteur) — voorkomt 40-uursregels door een vergeten stop.
@@ -236,7 +238,7 @@ Alle routes `@RequiresFeature('URENREGISTRATIE')`; org-scoped; audit trail aan v
 | `POST /time-tracking/pings` | INSPECTEUR | Batch pings `[{latitude, longitude, accuracyM, recordedAt}]`; alleen geaccepteerd als er een eigen lopende `REISTIJD`-timer is én `travelTrackingEnabled`; anders 204-noop (geen error-spam in de app). Throttle 30/min |
 | `GET /time-tracking/locations/:userId/latest` | staf | Laatste ping (< 30 min) + bestemming (coördinaat/adres van het gekoppelde planning-item of inspectieplan); anders 404 |
 | `GET /timesheets` / `GET /timesheets/:id` | staf; INSPECTEUR eigen | Weekstaten incl. totalen per activiteit |
-| `POST /timesheets/:id/submit` | INSPECTEUR (eigen) | `CONCEPT`/`AFGEWEZEN` → `INGEDIEND`; weigert bij lopende timer in die week |
+| `POST /timesheets/:id/submit` | INSPECTEUR (eigen) | `CONCEPT`/`AFGEWEZEN` → `INGEDIEND`; weigert (409) bij een lopende timer in die week óf bij regels met `needsProjectAssignment = true` (melding: eerst toewijzen) |
 | `POST /timesheets/:id/approve` · `POST /timesheets/:id/reject` | MANAGER / ORG_ADMIN | Goedkeuren resp. afwijzen (opmerking verplicht) |
 | `GET /timesheets/export` | staf | CSV-export (zelfde filters als `GET /time-entries`; Excel-compatibel, `;`-separator, nl-NL) |
 | `PATCH /users/me/travel-tracking` | INSPECTEUR | Toggle `{enabled}` → zet `travelTrackingEnabled` + `travelTrackingConsentAt` |
@@ -260,7 +262,7 @@ Alle routes `@RequiresFeature('URENREGISTRATIE')`; org-scoped; audit trail aan v
 
 Met de tracker aan draait in de actieve PWA een `watchPosition`-loop (throttled, `enableHighAccuracy: false` voor batterij):
 
-- **Vertrek**: ≥ 500 m verplaatsing t.o.v. het laatste rustpunt binnen 5 minuten, óf 2 opeenvolgende metingen met snelheid > 20 km/u → start `REISTIJD`-timer (`source: REIS_AUTO`, `startedAt` = eerste bewegingsmeting) + in-app notificatie **"Reistijd gestart — tik om te corrigeren"**. Project/planning wordt afgeleid van het **eerstvolgende geplande item van vandaag** (agenda); zonder planning-item vandaag start er níéts automatisch (handmatig blijft mogelijk).
+- **Vertrek**: ≥ 500 m verplaatsing t.o.v. het laatste rustpunt binnen 5 minuten, óf 2 opeenvolgende metingen met snelheid > 20 km/u → start `REISTIJD`-timer (`source: REIS_AUTO`, `startedAt` = eerste bewegingsmeting) + in-app notificatie **"Reistijd gestart — tik om te corrigeren"**. Project/planning wordt afgeleid van het **eerstvolgende geplande item van vandaag** (agenda). Is er vandaag géén gepland item, dan start de timer tóch — als **"nog toe te wijzen"-regel** (`projectId = null`, `needsProjectAssignment = true`): de regel telt gewoon mee als reistijd, maar moet vóór het indienen van de weekstaat aan een project (of activiteit `OVERIG`) gekoppeld worden. Bij het aanmaken van zo'n regel wordt **automatisch een todo-taak** (`Task`, status `TE_DOEN`, toegewezen aan de inspecteur zelf) aangemaakt: *"Reistijd van [datum, duur] aan een project toewijzen"* — fire-and-forget, zelfde patroon als de bestaande notificatie-dispatch; de taak wordt automatisch voltooid zodra de regel is toegewezen. In de PWA draagt de regel een badge "toewijzen" en opent tikken direct de projectkiezer.
 - **Aankomst**: binnen **200 m geofence** van de bestemming (coördinaat: `InspectionPlan.gpsLatitude/gpsLongitude`, anders on-demand geocoding van het locatie-adres via de bestaande PDOK-`GeocodingService`, server-side gecachet op de `Location`), óf > 5 min stilstand → stop `REISTIJD` (+ auto-start `UITVOERING` als die instelling aan staat).
 - **Pings**: alleen zolang de `REISTIJD`-timer loopt, elke 60 s of ≥ 250 m, gebatcht naar `POST /time-tracking/pings`.
 
@@ -317,7 +319,7 @@ F1 en F2 leveren los van elkaar waarde; F3 is pas zinvol ná F2. Het PWA-werk (F
 
 ## 10. Testplan (hoofdlijnen)
 
-- **Unit (API)**: timer-startlogica (atomisch wisselen, P2002-pad van de partial index), projectregel-validatie (`OVERIG` zonder project OK, rest 400), weekstaat-lock (mutatie op `INGEDIEND` → 409), nachtwaker, ping-guard (geen reistimer/toggle uit → 204-noop), ISO-weeknummering (jaarwissel week 52/53/1), exportformattering.
+- **Unit (API)**: timer-startlogica (atomisch wisselen, P2002-pad van de partial index), projectregel-validatie (`OVERIG` zonder project OK, rest 400; `REIS_AUTO` zonder project → `needsProjectAssignment` + taak-aanmaak, toewijzing voltooit de taak, indienen met open toewijzing → 409), weekstaat-lock (mutatie op `INGEDIEND` → 409), nachtwaker, ping-guard (geen reistimer/toggle uit → 204-noop), ISO-weeknummering (jaarwissel week 52/53/1), exportformattering.
 - **E2E**: volledige flow start→wissel→stop→indienen→afwijzen→corrigeren→goedkeuren; cross-tenant FK-injectie (project/planning/inspectieplan van org B → 403, uitbreiden in `cross-tenant.e2e-spec.ts`); rolgrenzen (INSPECTEUR kan andermans regels niet lezen, niet goedkeuren); nieuw gepagineerd endpoint in `pagination-limit.e2e-spec.ts`.
 - **Portal (Vitest)**: weekstaat-detail rendering, statusbadges, exportknop.
 - **Handmatig/browser**: kaartmodal met seed-pings; PWA-scenario's uit §6.5 op een fysiek toestel (iOS Safari + Android Chrome).

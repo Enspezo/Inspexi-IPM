@@ -8,6 +8,7 @@ describe('TimeTrackingScheduler (nachtwaker)', () => {
 
   const mockPrisma: any = {
     timeEntry: { findMany: jest.fn(), update: jest.fn() },
+    inspectorLocationPing: { deleteMany: jest.fn() },
   };
   const notifications = { dispatch: jest.fn() };
 
@@ -58,6 +59,15 @@ describe('TimeTrackingScheduler (nachtwaker)', () => {
     expect(stopped).toBe(0);
     expect(mockPrisma.timeEntry.update).not.toHaveBeenCalled();
     expect(notifications.dispatch).not.toHaveBeenCalled();
+  });
+
+  it('ping-retentie verwijdert pings ouder dan 48 uur', async () => {
+    mockPrisma.inspectorLocationPing.deleteMany.mockResolvedValue({ count: 7 });
+    const deleted = await scheduler.deleteExpiredPings(new Date('2026-08-27T12:00:00Z'));
+    expect(deleted).toBe(7);
+    expect(mockPrisma.inspectorLocationPing.deleteMany).toHaveBeenCalledWith({
+      where: { recordedAt: { lt: new Date('2026-08-25T12:00:00Z') } },
+    });
   });
 
   it('lokale-dagovergang telt, niet de UTC-dag', async () => {

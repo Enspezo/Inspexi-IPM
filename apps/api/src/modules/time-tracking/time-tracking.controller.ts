@@ -24,15 +24,19 @@ import { CurrentUser, Roles } from '@/common/decorators';
 import { RequiresFeature } from '@/common/decorators/requires-feature.decorator';
 import { ALL_STAFF, CRM_ROLES, MANAGEMENT_ROLES } from '@/common/auth/roles';
 import { ParseUuidPipe } from '@/common';
+import { Throttle } from '@nestjs/throttler';
 import { TimeEntriesService } from './time-entries.service';
 import { TimesheetsService } from './timesheets.service';
+import { LocationPingsService } from './location-pings.service';
 import {
   CreateTimeEntryDto,
+  IngestPingsDto,
   ListTimeEntriesQueryDto,
   ListTimesheetsQueryDto,
   RejectTimesheetDto,
   StartTimeEntryDto,
   UpdateTimeEntryDto,
+  UpdateTravelTrackingDto,
 } from './dto';
 
 @ApiTags('time-tracking')
@@ -43,7 +47,43 @@ export class TimeTrackingController {
   constructor(
     private readonly timeEntries: TimeEntriesService,
     private readonly timesheets: TimesheetsService,
+    private readonly locationPings: LocationPingsService,
   ) {}
+
+  // ─── Locatietracking (PRD-16 fase 3) ───────────────────
+
+  @Patch('users/me/travel-tracking')
+  @Roles(Role.INSPECTEUR)
+  @ApiOperation({ summary: 'Onderweg-tracker aan/uit (opt-in, alleen de gebruiker zelf; consent wordt vastgelegd)' })
+  async setTravelTracking(@CurrentUser() user: User, @Body() dto: UpdateTravelTrackingDto) {
+    return { success: true, data: await this.locationPings.setTravelTracking(user, dto.enabled) };
+  }
+
+  @Post('time-tracking/pings')
+  @Roles(Role.INSPECTEUR)
+  @Throttle({ default: { limit: 30, ttl: 60000 } })
+  @ApiOperation({
+    summary:
+      'Batch locatie-pings tijdens een lopende REISTIJD-timer (tracker aan vereist; anders 200-noop met accepted: 0)',
+  })
+  async ingestPings(@CurrentUser() user: User, @Body() dto: IngestPingsDto) {
+    return { success: true, data: await this.locationPings.ingest(user, dto) };
+  }
+
+  @Get('time-tracking/active')
+  @Roles(...CRM_ROLES)
+  @ApiOperation({ summary: 'Lopende timers per inspecteur (incl. of er een live positie is) — "Nu actief"' })
+  async active(@CurrentUser() user: User) {
+    return { success: true, data: await this.locationPings.getActive(user) };
+  }
+
+  @Get('time-tracking/locations/:userId/latest')
+  @Roles(...CRM_ROLES)
+  @ApiOperation({ summary: 'Laatste positie (< 30 min) van een inspecteur + bestemming van de reistimer' })
+  @ApiResponse({ status: 404, description: 'Geen recente positie beschikbaar' })
+  async latestLocation(@Param('userId', ParseUuidPipe) userId: string, @CurrentUser() user: User) {
+    return { success: true, data: await this.locationPings.getLatestLocation(userId, user) };
+  }
 
   // ─── Urenregels ────────────────────────────────────────
 

@@ -136,6 +136,7 @@ const AvailabilityTemplatesPage = lazy(() => import('@/pages/organization/availa
 const MyAvailabilityPage = lazy(() => import('@/pages/availability/my-availability-page'));
 const TimesheetsPage = lazy(() => import('@/pages/uren/timesheets-page'));
 const TimesheetDetailPage = lazy(() => import('@/pages/uren/timesheet-detail-page'));
+const TimeTrackingLivePage = lazy(() => import('@/pages/uren/live-page'));
 const ChecklistsPage = lazy(() => import('@/pages/checklists/checklists-page'));
 const ChecklistDetailPage = lazy(() => import('@/pages/checklists/checklist-detail-page'));
 const ChecklistItemsPage = lazy(() => import('@/pages/checklist-items/checklist-items-page'));
@@ -200,6 +201,7 @@ export default function App() {
             <Route path="/availability-templates" element={<AvailabilityTemplatesPage />} />
             <Route path="/my-availability" element={<MyAvailabilityPage />} />
             <Route path="/timesheets" element={<TimesheetsPage />} />
+            <Route path="/time-tracking/live" element={<TimeTrackingLivePage />} />
             <Route path="/timesheets/:id" element={<TimesheetDetailPage />} />
             <Route path="/search" element={<SearchPage />} />
             <Route path="/help" element={<HelpCenterPage />} />

@@ -4,6 +4,8 @@ import { apiClient } from '@/lib/api-client';
 import { timeEntryKeys, timesheetKeys } from '@/lib/query-keys';
 import { downloadFromPath } from '@/lib/download-file';
 import type {
+  ActiveTimer,
+  InspectorLocation,
   PaginatedResponse,
   TimeActivityType,
   TimeEntry,
@@ -121,4 +123,24 @@ export function formatMinutes(minutes: number | null | undefined): string {
   const m = minutes % 60;
   if (h === 0) return `${m}m`;
   return m === 0 ? `${h}u` : `${h}u ${m}m`;
+}
+
+// ─── Fase 3: live overzicht + kaart ───────────────────────
+
+export function useActiveTimers() {
+  return useQuery({
+    queryKey: [...timeEntryKeys.all, 'active'],
+    queryFn: () => apiClient.get<ActiveTimer[]>('/time-tracking/active'),
+    refetchInterval: 30_000,
+  });
+}
+
+export function useInspectorLocation(userId: string | null) {
+  return useQuery({
+    queryKey: [...timeEntryKeys.all, 'location', userId],
+    queryFn: () => apiClient.get<InspectorLocation>(`/time-tracking/locations/${userId}/latest`),
+    enabled: !!userId,
+    refetchInterval: 30_000,
+    retry: false,
+  });
 }

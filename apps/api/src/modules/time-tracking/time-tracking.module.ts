@@ -9,11 +9,12 @@ import { TimeTrackingController } from './time-tracking.controller';
 import { TimeEntriesService } from './time-entries.service';
 import { TimesheetsService } from './timesheets.service';
 import { TimeTrackingScheduler } from './time-tracking.scheduler';
+import { LocationPingsService } from './location-pings.service';
 
 @Module({
   imports: [NotificationsModule],
   controllers: [TimeTrackingController],
-  providers: [TimeEntriesService, TimesheetsService, TimeTrackingScheduler],
+  providers: [TimeEntriesService, TimesheetsService, TimeTrackingScheduler, LocationPingsService],
   exports: [TimeEntriesService, TimesheetsService],
 })
 export class TimeTrackingModule {}

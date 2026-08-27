@@ -80,3 +80,30 @@ export interface Timesheet {
   entries?: TimeEntry[];
   totals?: TimesheetTotals;
 }
+
+// ─── Fase 3: live overzicht + locatie ─────────────────────
+
+export interface ActiveTimer {
+  entryId: string;
+  userId: string;
+  userName: string;
+  activityType: TimeActivityType;
+  startedAt: string;
+  projectId: string | null;
+  projectNumber: string | null;
+  projectTitle: string | null;
+  inspectionPlanId: string | null;
+  inspectionPlanName: string | null;
+  notes: string | null;
+  hasLiveLocation: boolean;
+}
+
+export interface InspectorLocation {
+  userId: string;
+  userName: string;
+  latitude: number;
+  longitude: number;
+  accuracyM: number | null;
+  recordedAt: string;
+  destination: { latitude: number; longitude: number; label: string } | null;
+}

@@ -33,6 +33,27 @@ export class TimeTrackingScheduler {
     }
   }
 
+  /**
+   * Dataminimalisatie (PRD-16 §7): locatie-pings maximaal 48 uur bewaren.
+   * Alleen de laatste positie wordt ooit getoond; historie heeft geen doel.
+   */
+  @Cron(CronExpression.EVERY_HOUR)
+  async cleanupLocationPings(): Promise<void> {
+    const deleted = await this.deleteExpiredPings(new Date());
+    if (deleted > 0) {
+      this.logger.log(`Ping-retentie: ${deleted} locatie-ping(s) ouder dan 48u verwijderd.`);
+    }
+  }
+
+  /** Kern-logica, testbaar met een vaste `now`. Retourneert het aantal verwijderde pings. */
+  async deleteExpiredPings(now: Date): Promise<number> {
+    const cutoff = new Date(now.getTime() - 48 * 60 * 60 * 1000);
+    const result = await this.prisma.inspectorLocationPing.deleteMany({
+      where: { recordedAt: { lt: cutoff } },
+    });
+    return result.count;
+  }
+
   /** Kern-logica, testbaar met een vaste `now`. Retourneert het aantal gestopte timers. */
   async processOvernightTimers(now: Date): Promise<number> {
     const running = await this.prisma.timeEntry.findMany({

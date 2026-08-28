@@ -1,10 +1,11 @@
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import {
   MapContainer,
   TileLayer,
+  Circle,
   CircleMarker,
   Marker,
   Tooltip,
@@ -19,10 +20,28 @@ import {
  * locations map can reuse it without touching Leaflet directly.
  */
 
+/**
+ * Custom marker artwork, described as plain data so consumers never touch
+ * Leaflet themselves. `html` is rendered inside a DivIcon (the standard PNG
+ * markers need asset wiring under Vite, DivIcons do not).
+ */
+export interface MapIcon {
+  html: string;
+  /** [width, height] in px. Defaults to [26, 26]. */
+  size?: [number, number];
+  /** Anchor point within the icon. Defaults to its centre. */
+  anchor?: [number, number];
+}
+
 export interface MapPoint {
   id: string;
   lat: number;
   lng: number;
+  /**
+   * Custom icon. When set the point renders as a `Marker` with this DivIcon
+   * instead of the default circle marker (`color`/`radius` are then unused).
+   */
+  icon?: MapIcon;
   /** Fill color of the circle marker. Defaults to a neutral gray. */
   color?: string;
   /** Circle radius in px. Defaults to 11. */
@@ -45,9 +64,24 @@ export interface MapHomeMarker {
   label?: ReactNode;
 }
 
+/** Geographic circle (metres), e.g. a geofence or a GPS-accuracy halo. */
+export interface MapCircle {
+  id: string;
+  lat: number;
+  lng: number;
+  /** Radius in METRES (unlike MapPoint.radius, which is pixels). */
+  radiusM: number;
+  /** Stroke/fill color. Defaults to a neutral gray. */
+  color?: string;
+  fillOpacity?: number;
+  weight?: number;
+}
+
 export interface EntityMapProps {
   points: MapPoint[];
   homeMarkers?: MapHomeMarker[];
+  /** Geofence / accuracy circles, drawn under the markers. */
+  circles?: MapCircle[];
   /** Initial map center. Defaults to the centre of the Netherlands. */
   center?: [number, number];
   /** Initial zoom. Defaults to 7. */
@@ -56,8 +90,14 @@ export interface EntityMapProps {
    * Auto-fit the viewport to all `points`. Defaults to `false`, so a consumer
    * keeps its static `center`/`zoom` unless it opts in. Empty/single-point
    * cases are guarded and never throw.
+   *
+   * The fit re-runs only when the *set* of point ids changes, never when the
+   * existing points merely move. A polling consumer (e.g. the live inspector
+   * map) therefore keeps whatever the user panned/zoomed to.
    */
   fitToPoints?: boolean;
+  /** Max zoom the auto-fit may reach. Defaults to 14. */
+  fitMaxZoom?: number;
   /** Map height (CSS value). Defaults to 100%. */
   height?: string;
   className?: string;
@@ -91,28 +131,49 @@ function createHouseIcon(color: string): L.DivIcon {
   });
 }
 
+/** DivIcon from a consumer-supplied {@link MapIcon} (no Leaflet in call sites). */
+function createDivIcon({ html, size = [26, 26], anchor }: MapIcon): L.DivIcon {
+  return L.divIcon({
+    html,
+    className: '',
+    iconSize: size,
+    iconAnchor: anchor ?? [size[0] / 2, size[1] / 2],
+  });
+}
+
 /**
  * Inner child that fits the map viewport to all points. Rendered only when
  * `fitToPoints` is enabled and at least one point exists, so bounds are never
  * empty.
  */
-function FitBounds({ points }: { points: MapPoint[] }) {
+function FitBounds({ points, maxZoom }: { points: MapPoint[]; maxZoom: number }) {
   const map = useMap();
+  // Depend on the id set, not on the array identity: a poll that returns the
+  // same markers at new coordinates must not yank the viewport back from
+  // wherever the user panned it.
+  const key = points.map((p) => p.id).join('|');
+  const latest = useRef(points);
+  latest.current = points;
+
   useEffect(() => {
-    if (points.length === 0) return;
-    const bounds = L.latLngBounds(points.map((p) => [p.lat, p.lng] as [number, number]));
+    const current = latest.current;
+    if (current.length === 0) return;
+    const bounds = L.latLngBounds(current.map((p) => [p.lat, p.lng] as [number, number]));
     if (!bounds.isValid()) return;
-    map.fitBounds(bounds, { padding: [40, 40], maxZoom: 14 });
-  }, [map, points]);
+    map.fitBounds(bounds, { padding: [40, 40], maxZoom });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [map, key, maxZoom]);
   return null;
 }
 
 export function EntityMap({
   points,
   homeMarkers = [],
+  circles = [],
   center = DEFAULT_CENTER,
   zoom = DEFAULT_ZOOM,
   fitToPoints = false,
+  fitMaxZoom = 14,
   height = '100%',
   className,
 }: EntityMapProps) {
@@ -134,7 +195,21 @@ export function EntityMap({
     >
       <TileLayer url={OSM_TILE_URL} attribution={OSM_ATTRIBUTION} />
 
-      {shouldFit && <FitBounds points={points} />}
+      {shouldFit && <FitBounds points={points} maxZoom={fitMaxZoom} />}
+
+      {/* Geofence / accuracy circles — under the markers. */}
+      {circles.map((circle) => (
+        <Circle
+          key={circle.id}
+          center={[circle.lat, circle.lng]}
+          radius={circle.radiusM}
+          pathOptions={{
+            color: circle.color ?? NEUTRAL,
+            weight: circle.weight ?? 1.5,
+            fillOpacity: circle.fillOpacity ?? 0.1,
+          }}
+        />
+      ))}
 
       {/* Point markers */}
       {points.map((point) => {
@@ -154,6 +229,30 @@ export function EntityMap({
               }
             : undefined;
 
+        const overlays = (
+          <>
+            {hasPopup && <Popup>{openPopupId === point.id ? point.popup : null}</Popup>}
+            {point.tooltip != null && (
+              <Tooltip sticky offset={[12, 0]}>
+                {point.tooltip}
+              </Tooltip>
+            )}
+          </>
+        );
+
+        if (point.icon) {
+          return (
+            <Marker
+              key={point.id}
+              position={[point.lat, point.lng]}
+              icon={createDivIcon(point.icon)}
+              eventHandlers={eventHandlers}
+            >
+              {overlays}
+            </Marker>
+          );
+        }
+
         return (
           <CircleMarker
             key={point.id}
@@ -166,12 +265,7 @@ export function EntityMap({
             fillOpacity={0.88}
             eventHandlers={eventHandlers}
           >
-            {hasPopup && <Popup>{openPopupId === point.id ? point.popup : null}</Popup>}
-            {point.tooltip != null && (
-              <Tooltip sticky offset={[12, 0]}>
-                {point.tooltip}
-              </Tooltip>
-            )}
+            {overlays}
           </CircleMarker>
         );
       })}

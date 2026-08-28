@@ -1095,9 +1095,15 @@ export class SyncService {
       );
       return null;
     } catch (e: unknown) {
-      return e instanceof HttpException
-        ? e.message
-        : 'Urenregistratie zit niet in uw abonnement';
+      if (e instanceof HttpException) return e.message;
+      // Onverwacht (bv. een falende org-lookup): fail-closed voor de client, maar
+      // wél volledig loggen — anders zou een infrastructuurfout stil als
+      // "geen abonnement" bij de PWA landen (B-212-conventie).
+      this.logger.error(
+        'Entitlement-check voor urenregels faalde onverwacht',
+        e instanceof Error ? e.stack : String(e),
+      );
+      return 'Urenregistratie zit niet in uw abonnement';
     }
   }
 

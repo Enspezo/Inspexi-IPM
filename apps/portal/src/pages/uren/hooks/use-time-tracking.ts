@@ -142,5 +142,9 @@ export function useInspectorLocation(userId: string | null) {
     enabled: !!userId,
     refetchInterval: 30_000,
     retry: false,
+    // Een 404 is hier een normale uitkomst (rit beëindigd, tracker uit, of de
+    // laatste positie is verlopen) — de modal toont dat inline, dus de globale
+    // rode toast zou een tweede melding voor dezelfde situatie zijn.
+    meta: { suppressErrorToast: true },
   });
 }

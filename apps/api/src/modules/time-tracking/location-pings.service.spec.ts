@@ -150,6 +150,39 @@ describe('LocationPingsService', () => {
       // UITVOERING levert nooit een kaart-pin, ook mét verse ping.
       expect(rows.find((r) => r.userId === 'insp-2')?.hasLiveLocation).toBe(false);
     });
+
+    // Spiegelt de poorten van getLatestLocation (review B2): staat één van de
+    // toggles uit, dan mag de kaartknop niet verschijnen — die zou een 404 geven.
+    it.each([
+      ['opt-in van de inspecteur uit', { userFlag: false, orgFlag: true }],
+      ['org-kill-switch uit', { userFlag: true, orgFlag: false }],
+    ])('geen kaart-pin bij %s, ook op een REISTIJD-timer met verse ping', async (_label, flags) => {
+      const { userFlag, orgFlag } = flags as { userFlag: boolean; orgFlag: boolean };
+      mockPrisma.timeEntry.findMany.mockResolvedValue([
+        {
+          id: 'te-1',
+          userId: 'insp-1',
+          startedAt: new Date(),
+          notes: null,
+          project: null,
+          inspectionPlan: null,
+          activityType: TimeActivityType.REISTIJD,
+          organization: { travelTrackingEnabled: orgFlag },
+          user: {
+            id: 'insp-1',
+            firstName: 'Tom',
+            lastName: 'Visser',
+            travelTrackingEnabled: userFlag,
+          },
+        },
+      ]);
+      mockPrisma.inspectorLocationPing.groupBy.mockResolvedValue([
+        { userId: 'insp-1', _max: { recordedAt: new Date() } },
+      ]);
+
+      const rows = await service.getActive(manager);
+      expect(rows[0].hasLiveLocation).toBe(false);
+    });
   });
 
   describe('getLatestLocation', () => {

@@ -1,9 +1,15 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 
 // ─── Mocks ───────────────────────────────────────────────────────────────────
 // Stand-in react-leaflet primitives so we can assert the contract (markers,
 // colors, click wiring) without booting real Leaflet.
+
+// Gedeelde spy: de refit-test telt hoe vaak de kaart opnieuw gekadreerd wordt.
+const fitBounds = vi.hoisted(() => vi.fn());
+// react-leaflet's useMap geeft één stabiele kaart-instantie terug; de mock moet
+// dat nadoen, anders zou élke render als "nieuwe kaart" tellen.
+const mapInstance = vi.hoisted(() => ({}) as any);
 
 vi.mock('react-leaflet', () => ({
   MapContainer: ({ children }: any) => <div data-testid="map-container">{children}</div>,
@@ -23,10 +29,17 @@ vi.mock('react-leaflet', () => ({
       {children}
     </div>
   ),
-  Marker: ({ children }: any) => <div data-testid="home-marker">{children}</div>,
+  Marker: ({ children, icon }: any) => (
+    <div data-testid="home-marker" data-icon={icon ? 'yes' : 'no'}>
+      {children}
+    </div>
+  ),
+  Circle: ({ radius, pathOptions }: any) => (
+    <div data-testid="circle" data-radius={radius} data-color={pathOptions?.color} />
+  ),
   Tooltip: ({ children }: any) => <div data-testid="tooltip">{children}</div>,
   Popup: ({ children }: any) => <div data-testid="popup">{children}</div>,
-  useMap: () => ({ fitBounds: vi.fn() }),
+  useMap: () => Object.assign(mapInstance, { fitBounds }),
 }));
 
 // Leaflet itself is only used for the house DivIcon + latLngBounds; stub it.
@@ -44,6 +57,8 @@ import { EntityMap } from './entity-map';
 import type { MapPoint } from './entity-map';
 
 describe('EntityMap', () => {
+  beforeEach(() => fitBounds.mockClear());
+
   it('renders one circle marker per point and passes color/radius through', () => {
     const points: MapPoint[] = [
       { id: 'a', lat: 52.1, lng: 5.1, color: '#FF0000', radius: 11 },
@@ -122,5 +137,54 @@ describe('EntityMap', () => {
 
     expect(screen.getByTestId('home-marker')).toBeInTheDocument();
     expect(screen.getByText('Thuis')).toBeInTheDocument();
+  });
+
+  // ── PRD-16 (review B6): custom icons + geofence/accuracy circles ──
+  it('renders a point with a custom icon as a marker, not a circle marker', () => {
+    const points: MapPoint[] = [
+      { id: 'inspector', lat: 52.1, lng: 5.1, icon: { html: '<b>TV</b>', size: [38, 38] } },
+      { id: 'plain', lat: 52.2, lng: 5.2 },
+    ];
+
+    render(<EntityMap points={points} />);
+
+    // Alleen het punt zónder icoon blijft een circle marker.
+    expect(screen.getAllByTestId('circle-marker')).toHaveLength(1);
+    const markers = screen.getAllByTestId('home-marker');
+    expect(markers).toHaveLength(1);
+    expect(markers[0]).toHaveAttribute('data-icon', 'yes');
+  });
+
+  it('renders geographic circles with their radius in metres', () => {
+    render(
+      <EntityMap
+        points={[{ id: 'a', lat: 52.1, lng: 5.1 }]}
+        circles={[{ id: 'geofence', lat: 52.1, lng: 5.1, radiusM: 200, color: '#16a34a' }]}
+      />,
+    );
+
+    const circle = screen.getByTestId('circle');
+    expect(circle).toHaveAttribute('data-radius', '200');
+    expect(circle).toHaveAttribute('data-color', '#16a34a');
+  });
+
+  it('re-fits only when the set of point ids changes, not when a point moves', () => {
+    const points = (lat: number): MapPoint[] => [{ id: 'inspector', lat, lng: 5.1 }];
+    const { rerender } = render(<EntityMap points={points(52.1)} fitToPoints />);
+    expect(fitBounds).toHaveBeenCalledTimes(1);
+
+    // Poll levert dezelfde marker op een nieuwe positie → geen refit, zodat de
+    // pan/zoom van de gebruiker blijft staan.
+    rerender(<EntityMap points={points(52.5)} fitToPoints />);
+    expect(fitBounds).toHaveBeenCalledTimes(1);
+
+    // Er komt een bestemming bij → samenstelling wijzigt → wél opnieuw kadreren.
+    rerender(
+      <EntityMap
+        points={[...points(52.5), { id: 'destination', lat: 52.6, lng: 5.2 }]}
+        fitToPoints
+      />,
+    );
+    expect(fitBounds).toHaveBeenCalledTimes(2);
   });
 });

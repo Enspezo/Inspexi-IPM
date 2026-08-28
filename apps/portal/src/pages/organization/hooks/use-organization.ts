@@ -38,6 +38,7 @@ export interface UpdateOrganizationDto {
   aiReviewEnabled?: boolean;
   aiReviewInstructions?: string | null;
   onlineRepairDefault?: boolean;
+  travelTrackingEnabled?: boolean;
   aiAgentEnabled?: boolean;
   aiAgentAllowedRoles?: Role[];
 }

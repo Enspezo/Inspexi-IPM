@@ -79,6 +79,7 @@ export const orgSchema = z.object({
   aiReviewEnabled: z.boolean(),
   aiReviewInstructions: z.string().max(2000, 'Maximaal 2000 tekens').optional(),
   onlineRepairDefault: z.boolean(),
+  travelTrackingEnabled: z.boolean(),
   aiAgentEnabled: z.boolean(),
   aiAgentAllowedRoles: z.array(z.nativeEnum(Role)),
 }).refine((d) => d.workdayEnd > d.workdayStart, {
@@ -320,6 +321,7 @@ export default function OrganizationSettingsPage() {
   const aiReviewOn = watch('aiReviewEnabled');
   // PRD-14 §14.4: online-herstel-default alleen instelbaar met het ONLINE_HERSTEL-entitlement.
   const hasOnlineRepairEntitlement = hasFeature('ONLINE_HERSTEL');
+  const hasUrenEntitlement = hasFeature('URENREGISTRATIE');
   // AI-assistent (add-on): kill-switch/rollen alleen instelbaar mét het AI_AGENT-entitlement
   // (B-510: aanzetten zonder abonnement weigert de backend ook).
   const hasAiAgentEntitlement = hasFeature('AI_AGENT');
@@ -350,6 +352,7 @@ export default function OrganizationSettingsPage() {
         aiReviewEnabled: organization.aiReviewEnabled ?? false,
         aiReviewInstructions: organization.aiReviewInstructions ?? '',
         onlineRepairDefault: organization.onlineRepairDefault ?? false,
+        travelTrackingEnabled: organization.travelTrackingEnabled ?? true,
         aiAgentEnabled: organization.aiAgentEnabled ?? true,
         aiAgentAllowedRoles: organization.aiAgentAllowedRoles ?? [],
       });
@@ -382,6 +385,7 @@ export default function OrganizationSettingsPage() {
       quoteApprovalSelfApprovalAllowed: data.quoteApprovalSelfApprovalAllowed,
       chatEnabled: data.chatEnabled,
       inspectionReviewEnabled: data.inspectionReviewEnabled,
+      travelTrackingEnabled: data.travelTrackingEnabled,
       aiReviewEnabled: data.aiReviewEnabled,
       aiReviewInstructions: data.aiReviewInstructions?.trim() || null,
       onlineRepairDefault: data.onlineRepairDefault,
@@ -1001,6 +1005,29 @@ export default function OrganizationSettingsPage() {
             </div>
             {!hasOnlineRepairEntitlement && (
               <p className="mt-2 text-xs text-gray-500">Niet beschikbaar in uw abonnement.</p>
+            )}
+          </div>
+
+          <div>
+            <h3 className="text-base font-semibold text-gray-900">Locatietracking inspecteurs</h3>
+            <p className="mt-1 text-sm text-gray-500">
+              Org-brede aan/uit-schakelaar voor de onderweg-tracker (urenregistratie). Met deze
+              schakelaar uit kunnen inspecteurs de tracker niet aanzetten en worden er geen
+              locaties ontvangen of getoond — ook niet als een inspecteur eerder toestemming gaf.
+              Individuele inspecteurs kiezen zelf (opt-in) of ze de tracker gebruiken; het
+              consent-moment wordt vastgelegd. Posities worden alleen tijdens reistijd gedeeld en
+              na 48 uur verwijderd.
+            </p>
+            <div className="mt-3">
+              <Checkbox
+                label="Locatietracking toestaan"
+                {...register('travelTrackingEnabled')}
+              />
+            </div>
+            {!hasUrenEntitlement && (
+              <p className="mt-2 text-xs text-gray-500">
+                Urenregistratie zit niet in uw abonnement; deze instelling heeft dan geen effect.
+              </p>
             )}
           </div>
 

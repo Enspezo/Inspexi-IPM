@@ -667,3 +667,16 @@ export const auditLogKeys = {
   list: (entityType: string, entityId: string | undefined, params: ListParams) =>
     [...auditLogKeys.all, entityType, entityId, params] as const,
 };
+
+// ─── Urenregistratie (PRD-16) ─────────────────────────────────────────────
+
+export const timesheetKeys = {
+  all: ['timesheets'] as const,
+  list: (params: ListParams) => [...timesheetKeys.all, params] as const,
+  detail: (id: string) => [...timesheetKeys.all, id] as const,
+};
+
+export const timeEntryKeys = {
+  all: ['time-entries'] as const,
+  list: (params: ListParams) => [...timeEntryKeys.all, params] as const,
+};

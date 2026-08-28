@@ -44,6 +44,7 @@ import { ProjectPhasesTab } from './components/project-phases-tab';
 import { useProjectPhases } from './hooks/use-project-phases';
 import { LinkedEntitiesTab } from './components/project-linked-entities-tab';
 import { FollowersTab } from './components/project-followers-tab';
+import { ProjectHoursTab } from './components/project-hours-tab';
 import { AddFollowerModal } from './components/add-follower-modal';
 import { getErrorMessage } from '@/lib/api-client';
 import { useUsers } from '@/pages/users/hooks/use-users';
@@ -56,6 +57,7 @@ type Tab =
   | 'aanvragen'
   | 'offertes'
   | 'planning'
+  | 'uren'
   | 'volgers';
 
 const canWrite = [
@@ -75,6 +77,8 @@ export default function ProjectDetailPage() {
   const { hasFeature } = useFeatures();
   // PRD-12 §Fase E: projectfasen zitten achter de PROJECT_FASEN-entitlement.
   const hasPhaseFeature = hasFeature('PROJECT_FASEN');
+  // PRD-16: projecturen-tab achter de URENREGISTRATIE-entitlement.
+  const hasHoursFeature = hasFeature('URENREGISTRATIE');
   const { showToast } = useToast();
   const confirm = useConfirm();
   const [searchParams] = useSearchParams();
@@ -157,6 +161,8 @@ export default function ProjectDetailPage() {
     { key: 'aanvragen', label: 'Aanvragen', count: requests?.length },
     { key: 'offertes', label: 'Offertes', count: quotes?.length },
     { key: 'planning', label: 'Planning', count: planning?.length },
+    // Uren-tab alleen bij URENREGISTRATIE (PRD-16).
+    ...(hasHoursFeature ? [{ key: 'uren' as Tab, label: 'Uren' }] : []),
     { key: 'volgers', label: 'Volgers', count: followers?.length },
   ];
 
@@ -461,6 +467,11 @@ export default function ProjectDetailPage() {
                   : 'Nog niet gepland'
               }
             />
+          )}
+
+          {/* Tab: Uren (PRD-16) */}
+          {activeTab === 'uren' && hasHoursFeature && (
+            <ProjectHoursTab projectId={project.id} />
           )}
 
           {/* Tab: Volgers */}

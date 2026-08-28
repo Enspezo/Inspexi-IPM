@@ -29,7 +29,8 @@ export type NotificationModel =
   | 'MEETMIDDELEN'
   | 'CHAT'
   | 'SUPPORT'
-  | 'BESCHIKBAARHEID';
+  | 'BESCHIKBAARHEID'
+  | 'UREN';
 
 interface NotificationModelDef {
   key: NotificationModel;
@@ -164,6 +165,16 @@ export const NOTIFICATION_MODELS: NotificationModelDef[] = [
       NotificationType.BESCHIKBAARHEID_GEWIJZIGD_DOOR_MANAGER,
     ],
   },
+  {
+    key: 'UREN',
+    label: 'Uren',
+    types: [
+      NotificationType.WEEKSTAAT_INGEDIEND,
+      NotificationType.WEEKSTAAT_GOEDGEKEURD,
+      NotificationType.WEEKSTAAT_AFGEWEZEN,
+      NotificationType.TIMER_NACHTWAKER,
+    ],
+  },
 ];
 
 /** NL-labels per NotificationType (enige bron). */
@@ -215,6 +226,10 @@ export const NOTIFICATION_TYPE_LABELS: Record<NotificationType, string> = {
   [NotificationType.MILESTONE_VERLOPEN]: 'Milestone verlopen',
   [NotificationType.BESCHIKBAARHEID_GEWIJZIGD_DOOR_INSPECTEUR]: 'Beschikbaarheid gewijzigd door inspecteur',
   [NotificationType.BESCHIKBAARHEID_GEWIJZIGD_DOOR_MANAGER]: 'Beschikbaarheid gewijzigd door manager',
+  [NotificationType.WEEKSTAAT_INGEDIEND]: 'Weekstaat ingediend',
+  [NotificationType.WEEKSTAAT_GOEDGEKEURD]: 'Weekstaat goedgekeurd',
+  [NotificationType.WEEKSTAAT_AFGEWEZEN]: 'Weekstaat afgewezen',
+  [NotificationType.TIMER_NACHTWAKER]: 'Timer automatisch gestopt',
 };
 
 /** Afgeleide lookup: type → model-key. */

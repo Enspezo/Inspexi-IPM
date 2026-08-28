@@ -16,7 +16,7 @@
 // FAIL-CLOSED (= conflict) zodra élk anker ontbreekt bij een update/adoptie van
 // een bestaand record. Legacy `syncedAt` (v3) blijft als transitie-anker gelezen.
 
-import { Injectable, BadRequestException, Logger } from '@nestjs/common';
+import { Injectable, BadRequestException, HttpException, Logger } from '@nestjs/common';
 import { AssetNodeType, User, Prisma, NumberingModel, SyncStatus } from '@prisma/client';
 import { isDeepStrictEqual } from 'util';
 import { PrismaService } from '@/prisma';
@@ -36,6 +36,7 @@ import {
   formatClassificationValueIssues,
   type ClassificationModelForCritical,
 } from '@/common';
+import { EntitlementsService } from '@/modules/entitlements/entitlements.service';
 import { PushDto, ResolveDto, EntityChangeDto } from './dto';
 import {
   SYNC_ENTITIES, SyncEntityKey, SyncModelName, FkCheckModel, SyncRecordData,
@@ -46,6 +47,7 @@ import { ChatSyncService } from '../chat/chat-sync.service';
 import { NumberingService } from '../numbering/numbering.service';
 import { AssetNodesService } from '../asset-nodes/asset-nodes.service';
 import { InspectionPlansService } from '../inspection-plans/inspection-plans.service';
+import { TimeEntriesService } from '../time-tracking/time-entries.service';
 
 type OpResult =
   | {
@@ -181,6 +183,8 @@ export class SyncService {
     private readonly numbering: NumberingService,
     private readonly assetNodes: AssetNodesService,
     private readonly inspectionPlans: InspectionPlansService,
+    private readonly timeEntries: TimeEntriesService,
+    private readonly entitlements: EntitlementsService,
   ) {}
 
   /** Expliciete map model-naam → Prisma-delegate, i.p.v. een dynamische `this.prisma[name]`. */
@@ -664,7 +668,7 @@ export class SyncService {
     const criticalModelCache = new Map<string, ClassificationModelForCritical | null>();
     // Dynamisch over alle v3-entiteiten (incl. assetNodes); de chat-keys worden door
     // de SYNC_ENTITIES-loop niet gedekt en seeden we expliciet zodat geen counter mist.
-    const processed: Record<string, number> = { chatThreads: 0, chatMessages: 0, presence: 0 };
+    const processed: Record<string, number> = { chatThreads: 0, chatMessages: 0, presence: 0, timeEntries: 0 };
     for (const key of Object.keys(SYNC_ENTITIES)) processed[key] = 0;
 
     for (const key of Object.keys(SYNC_ENTITIES) as SyncEntityKey[]) {
@@ -732,6 +736,36 @@ export class SyncService {
         const r = await this.chat.applySyncPresence(user, change.data);
         results.push({ entityType: 'presence', entityId: r.id, status: 'success' });
         processed.presence++;
+      } catch (e: unknown) {
+        results.push({ ...ref, status: 'failed', error: toClientSyncError(e, this.logger, ref) });
+      }
+    }
+
+    // Additief (PRD-16 fase 2): urenregels uit de PWA-offline-buffer. Bewust NIET
+    // via de generieke mutator — eigenaar uit de JWT, projectregel + weekstaat-lock
+    // hervalideren en de toewijs-taak-flow horen bij TimeEntriesService.
+    //
+    // Entitlement-gate (PRD-16): de REST-routes hangen achter
+    // `@RequiresFeature('URENREGISTRATIE')`, maar de push-route is generiek — dus
+    // spiegelen we de gate hier service-side, net als de vier-ogen-gate
+    // (`assertPlanReviewGate`). Eén keer per push (de resolver cachet per org) en
+    // alleen wanneer de batch daadwerkelijk urenregels bevat, zodat orgs zonder de
+    // add-on geen extra query kosten. Zonder entitlement faalt elke urenregel
+    // afzonderlijk in `errors[]` — de rest van de batch (inspectiedata) loopt door;
+    // een harde 403 op de hele push zou een PWA met één stale urenregel blokkeren.
+    const timeEntryChanges = dto.changes.timeEntries ?? [];
+    const timeEntryGateError =
+      timeEntryChanges.length > 0 ? await this.timeTrackingGateError(orgId) : null;
+    for (const change of timeEntryChanges) {
+      const ref = { entityType: 'timeEntry', entityId: String(change.data.id ?? '') };
+      if (timeEntryGateError) {
+        results.push({ ...ref, status: 'failed', error: timeEntryGateError });
+        continue;
+      }
+      try {
+        const r = await this.timeEntries.applySyncChange(user, change.operation, change.data);
+        results.push({ entityType: 'timeEntry', entityId: r.id, status: 'success' });
+        processed.timeEntries++;
       } catch (e: unknown) {
         results.push({ ...ref, status: 'failed', error: toClientSyncError(e, this.logger, ref) });
       }
@@ -1038,6 +1072,38 @@ export class SyncService {
         where: { id: planId, criticalRepairNotifiedAt: { not: null } },
         data: { criticalRepairNotifiedAt: null },
       });
+    }
+  }
+
+  /**
+   * Entitlement-gate voor de `timeEntries`-push-groep (PRD-16), gespiegeld uit
+   * `@RequiresFeature('URENREGISTRATIE')` op de REST-routes. Geeft `null` wanneer de
+   * org de add-on heeft (push mag door) en anders de NL-foutmelding die per urenregel
+   * in `errors[]` belandt. Bewust geen throw: de overige entiteiten in dezelfde batch
+   * moeten gewoon verwerkt worden.
+   *
+   * `EntitlementsService.assertFeature` bepaalt de semantiek (incl. de localhost-
+   * uitzondering voor nog niet ingerichte orgs), zodat guard en sync niet uit elkaar
+   * kunnen lopen.
+   */
+  private async timeTrackingGateError(orgId: string): Promise<string | null> {
+    try {
+      await this.entitlements.assertFeature(
+        orgId,
+        'URENREGISTRATIE',
+        'Urenregistratie zit niet in uw abonnement',
+      );
+      return null;
+    } catch (e: unknown) {
+      if (e instanceof HttpException) return e.message;
+      // Onverwacht (bv. een falende org-lookup): fail-closed voor de client, maar
+      // wél volledig loggen — anders zou een infrastructuurfout stil als
+      // "geen abonnement" bij de PWA landen (B-212-conventie).
+      this.logger.error(
+        'Entitlement-check voor urenregels faalde onverwacht',
+        e instanceof Error ? e.stack : String(e),
+      );
+      return 'Urenregistratie zit niet in uw abonnement';
     }
   }
 

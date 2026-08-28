@@ -117,6 +117,9 @@ export class OrganizationsController {
         // AI-assistent: drawer-zichtbaarheid voor alle stafrollen (zelfde
         // precedent; de rol-check zelf is server-autoritatief via GET /ai/access).
         aiAgentEnabled: true,
+        // Urenregistratie (PRD-16 fase 4): de PWA gate't de onderweg-tracker
+        // hier ook op (naast de URENREGISTRATIE-feature-key).
+        travelTrackingEnabled: true,
       },
     });
     if (!org) {

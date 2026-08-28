@@ -1,4 +1,4 @@
-import { PrismaClient, Role, ContactType, LogType, PriceType, RequestSource, RequestStatus, Priority, QuoteStatus, NotificationType, PlanningStatus, AcceptanceStatus, ProjectStatus, AssetFieldType, ChecklistStatus, TemplateStatus, MeasurementSheetTemplateStatus, MeasurementSheetFieldType, FindingInspectionType, DocumentType, DocumentEntityType, TemplateMode, SectionType, ClientUserStatus, ClientAccessRole, GeneratedDocumentStatus, SignatureStatus, MarkerType, MeasurementSheetRecordStatus, InspectionExecStatus, PassFailOperator, LocationTypeScope, Availability, ChatThreadType, ChatThreadStatus, ContactDisplayMode, PhaseStatus, EmploymentType, AvailabilityExceptionType, AiReviewRunStatus, AiReviewItemSeverity, AiReviewItemStatus, RepairAccessType, RepairSessionStatus } from '@prisma/client';
+import { PrismaClient, Role, ContactType, LogType, PriceType, RequestSource, RequestStatus, Priority, QuoteStatus, NotificationType, PlanningStatus, AcceptanceStatus, ProjectStatus, AssetFieldType, ChecklistStatus, TemplateStatus, MeasurementSheetTemplateStatus, MeasurementSheetFieldType, FindingInspectionType, DocumentType, DocumentEntityType, TemplateMode, SectionType, ClientUserStatus, ClientAccessRole, GeneratedDocumentStatus, SignatureStatus, MarkerType, MeasurementSheetRecordStatus, InspectionExecStatus, PassFailOperator, LocationTypeScope, Availability, ChatThreadType, ChatThreadStatus, ContactDisplayMode, PhaseStatus, EmploymentType, AvailabilityExceptionType, AiReviewRunStatus, AiReviewItemSeverity, AiReviewItemStatus, RepairAccessType, RepairSessionStatus, TimeActivityType, TimeEntrySource, TimesheetStatus } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { randomUUID } from 'crypto';
 import * as fs from 'fs';
@@ -697,6 +697,11 @@ async function main() {
   await prisma.document.deleteMany();
   await prisma.documentTag.deleteMany();
   await prisma.task.deleteMany();
+  // Urenregistratie (PRD-16) — kinderen eerst (pings → entries → weekstaten);
+  // alle drie RESTRICTen op user en moeten dus vóór de user-cleanup.
+  await prisma.inspectorLocationPing.deleteMany();
+  await prisma.timeEntry.deleteMany();
+  await prisma.timesheet.deleteMany();
   // Beschikbaarheid inspecteurs (PRD-12) — kinderen eerst (FK → user + organization + template)
   await prisma.availabilityException.deleteMany();
   await prisma.userScheduleAssignment.deleteMany();
@@ -3733,6 +3738,143 @@ async function main() {
     );
   } else {
     console.log('  ⏭️  Online-herstel demo overgeslagen (zet SEED_DEMO=1 om aan te maken)');
+  }
+
+  // ─── Urenregistratie demo (PRD-16) — alleen bij SEED_DEMO=1 ─────────────
+  // Demo-org krijgt de URENREGISTRATIE-override; Tom Visser (inspecteur) een
+  // ingediende weekstaat van vorige week, een concept-weekstaat van deze week
+  // met een lopende REISTIJD-timer + 3 recente pings (kaart-demo, fase 3).
+  if (process.env.SEED_DEMO === '1') {
+    await prisma.organizationFeature.create({
+      data: {
+        orgId: org1.id,
+        featureKey: 'URENREGISTRATIE',
+        enabled: true,
+        updatedById: orgAdminId,
+      },
+    });
+    await prisma.user.update({
+      where: { id: org1InspecteurId },
+      data: { travelTrackingEnabled: true, travelTrackingConsentAt: new Date() },
+    });
+
+    // ISO-week van een datum (zelfde algoritme als time-tracking.helpers.ts).
+    const isoWeekOf = (date: Date): { year: number; week: number } => {
+      const dt = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+      const dayNum = (dt.getUTCDay() + 6) % 7;
+      dt.setUTCDate(dt.getUTCDate() - dayNum + 3);
+      const isoYear = dt.getUTCFullYear();
+      const jan4 = new Date(Date.UTC(isoYear, 0, 4));
+      const jan4DayNum = (jan4.getUTCDay() + 6) % 7;
+      const week = 1 + Math.round(((dt.getTime() - jan4.getTime()) / 86_400_000 - 3 + jan4DayNum) / 7);
+      return { year: isoYear, week };
+    };
+    const at = (base: Date, hour: number, minute = 0): Date => {
+      const d = new Date(base);
+      d.setUTCHours(hour, minute, 0, 0);
+      return d;
+    };
+    const minutes = (a: Date, b: Date) => Math.round((b.getTime() - a.getTime()) / 60_000);
+
+    const now = new Date();
+    const todayUtc = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+    const dayNum = (todayUtc.getUTCDay() + 6) % 7; // 0 = maandag
+    const monday = new Date(todayUtc.getTime() - dayNum * 86_400_000);
+    const prevMonday = new Date(monday.getTime() - 7 * 86_400_000);
+    const prevWeek = isoWeekOf(prevMonday);
+    const thisWeek = isoWeekOf(monday);
+
+    const prevSheet = await prisma.timesheet.create({
+      data: {
+        orgId: org1.id,
+        userId: org1InspecteurId,
+        year: prevWeek.year,
+        weekNumber: prevWeek.week,
+        status: TimesheetStatus.INGEDIEND,
+        submittedAt: at(prevMonday, 15),
+      },
+    });
+    const prevEntries: Array<{
+      day: number; // offset t.o.v. prevMonday
+      start: [number, number];
+      end: [number, number];
+      activity: TimeActivityType;
+      source: TimeEntrySource;
+      notes?: string;
+    }> = [
+      { day: 0, start: [6, 30], end: [7, 15], activity: TimeActivityType.REISTIJD, source: TimeEntrySource.REIS_AUTO },
+      { day: 0, start: [7, 15], end: [11, 30], activity: TimeActivityType.UITVOERING, source: TimeEntrySource.AGENDA },
+      { day: 0, start: [12, 0], end: [14, 0], activity: TimeActivityType.RAPPORTAGE, source: TimeEntrySource.HANDMATIG },
+      { day: 1, start: [7, 0], end: [8, 0], activity: TimeActivityType.VOORBEREIDING, source: TimeEntrySource.HANDMATIG, notes: 'Checklists en meetmiddelen klaargezet' },
+      { day: 2, start: [9, 0], end: [10, 30], activity: TimeActivityType.OVERIG, source: TimeEntrySource.HANDMATIG, notes: 'Toolbox-meeting' },
+    ];
+    for (const e of prevEntries) {
+      const dayBase = new Date(prevMonday.getTime() + e.day * 86_400_000);
+      const startedAt = at(dayBase, e.start[0], e.start[1]);
+      const endedAt = at(dayBase, e.end[0], e.end[1]);
+      await prisma.timeEntry.create({
+        data: {
+          orgId: org1.id,
+          userId: org1InspecteurId,
+          activityType: e.activity,
+          source: e.source,
+          projectId: e.activity === TimeActivityType.OVERIG ? null : project1.id,
+          startedAt,
+          endedAt,
+          durationMinutes: minutes(startedAt, endedAt),
+          stopReason: 'handmatig',
+          notes: e.notes ?? null,
+          timesheetId: prevSheet.id,
+        },
+      });
+    }
+
+    // Deze week: concept-weekstaat met een lopende REISTIJD-timer (gestart
+    // ~25 min geleden) + 3 pings richting de demo-locatie (Zuidas).
+    const thisSheet = await prisma.timesheet.create({
+      data: {
+        orgId: org1.id,
+        userId: org1InspecteurId,
+        year: thisWeek.year,
+        weekNumber: thisWeek.week,
+        status: TimesheetStatus.CONCEPT,
+      },
+    });
+    const travelStart = new Date(now.getTime() - 25 * 60_000);
+    const runningEntry = await prisma.timeEntry.create({
+      data: {
+        orgId: org1.id,
+        userId: org1InspecteurId,
+        activityType: TimeActivityType.REISTIJD,
+        source: TimeEntrySource.REIS_AUTO,
+        projectId: project1.id,
+        startedAt: travelStart,
+        timesheetId: thisSheet.id,
+      },
+    });
+    const pingCoords: Array<[number, number, number]> = [
+      [52.32017, 4.86952, 20], // A10 zuid-west, ~20 min geleden
+      [52.33205, 4.86714, 10],
+      [52.33698, 4.87243, 2], // vlak bij de Zuidas, ~2 min geleden
+    ];
+    for (const [lat, lng, minAgo] of pingCoords) {
+      await prisma.inspectorLocationPing.create({
+        data: {
+          orgId: org1.id,
+          userId: org1InspecteurId,
+          timeEntryId: runningEntry.id,
+          latitude: lat,
+          longitude: lng,
+          accuracyM: 15,
+          recordedAt: new Date(now.getTime() - minAgo * 60_000),
+        },
+      });
+    }
+    console.log(
+      `  ✓ Urenregistratie: URENREGISTRATIE-override + weekstaat week ${prevWeek.week} INGEDIEND (5 regels) + lopende REISTIJD-timer met 3 pings (SEED_DEMO=1)`,
+    );
+  } else {
+    console.log('  ⏭️  Urenregistratie-demo overgeslagen (zet SEED_DEMO=1 om aan te maken)');
   }
 
   // ─── SaaS-varianten (PRD-09 §7.1) — testmatrix-orgs ─────────────────────

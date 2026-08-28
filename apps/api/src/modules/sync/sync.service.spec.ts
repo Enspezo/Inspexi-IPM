@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { Prisma, Role, SyncStatus } from '@prisma/client';
 import { SyncService } from './sync.service';
 import { PrismaService } from '@/prisma';
@@ -8,6 +8,7 @@ import { NumberingService } from '../numbering/numbering.service';
 import { AssetNodesService } from '../asset-nodes/asset-nodes.service';
 import { InspectionPlansService } from '../inspection-plans/inspection-plans.service';
 import { TimeEntriesService } from '../time-tracking/time-entries.service';
+import { EntitlementsService } from '../entitlements/entitlements.service';
 
 describe('SyncService', () => {
   let service: SyncService;
@@ -88,11 +89,18 @@ describe('SyncService', () => {
     dispatchSubmitSideEffects: jest.fn().mockResolvedValue(undefined),
   };
 
+  // PRD-16 B1: urenregels in de push hangen achter het URENREGISTRATIE-entitlement.
+  // Default: org heeft de add-on (assertFeature resolve't), zodat bestaande tests
+  // ongemoeid blijven.
+  const mockTimeEntries = { applySyncChange: jest.fn() };
+  const mockEntitlements = { assertFeature: jest.fn().mockResolvedValue(undefined) };
+
   const user = { id: 'user-1', orgId: 'org-1', roles: [Role.INSPECTEUR] } as any;
   const superuser = { id: 'su', orgId: null, roles: [Role.SUPERUSER] } as any;
 
   beforeEach(async () => {
     jest.clearAllMocks();
+    mockEntitlements.assertFeature.mockResolvedValue(undefined);
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -102,7 +110,8 @@ describe('SyncService', () => {
         { provide: NumberingService, useValue: mockNumbering },
         { provide: AssetNodesService, useValue: mockAssetNodes },
         { provide: InspectionPlansService, useValue: mockInspectionPlans },
-        { provide: TimeEntriesService, useValue: { applySyncChange: jest.fn() } },
+        { provide: TimeEntriesService, useValue: mockTimeEntries },
+        { provide: EntitlementsService, useValue: mockEntitlements },
       ],
     }).compile();
 
@@ -828,6 +837,93 @@ describe('SyncService', () => {
   // ── PUSH: vier-ogen-gate (PRD-13) ─────────────────────
   // Spiegel van de gate in inspection-plans.service.update(): ook via de
   // sync-push mag een plan niet naar completed/approved zonder review.
+  // ── PUSH: urenregistratie-entitlement (PRD-16 · B1) ───
+  describe('push — URENREGISTRATIE entitlement gate on time entries', () => {
+    const forbidden = () =>
+      new ForbiddenException({
+        success: false,
+        message: 'Urenregistratie zit niet in uw abonnement',
+        code: 'FEATURE_NOT_IN_PLAN',
+      });
+
+    const pushWith = (extra: Record<string, unknown> = {}) =>
+      ({
+        deviceId: 'dev-1',
+        changes: {
+          timeEntries: [
+            { operation: 'update', data: { id: 'te-1', activityType: 'REISTIJD' } },
+            { operation: 'update', data: { id: 'te-2', activityType: 'UITVOERING' } },
+          ],
+          ...extra,
+        },
+      }) as any;
+
+    it('applies time entries when the org has the add-on (gate checked once)', async () => {
+      mockTimeEntries.applySyncChange
+        .mockResolvedValueOnce({ id: 'te-1' })
+        .mockResolvedValueOnce({ id: 'te-2' });
+
+      const result = await service.push(user, pushWith());
+
+      expect(result.processed.timeEntries).toBe(2);
+      expect(result.errors).toHaveLength(0);
+      // Eén resolver-aanroep per push, niet per record.
+      expect(mockEntitlements.assertFeature).toHaveBeenCalledTimes(1);
+      expect(mockEntitlements.assertFeature).toHaveBeenCalledWith(
+        'org-1',
+        'URENREGISTRATIE',
+        expect.any(String),
+      );
+    });
+
+    it('fails every time entry in errors[] without the add-on — never touches the service', async () => {
+      mockEntitlements.assertFeature.mockRejectedValue(forbidden());
+
+      const result = await service.push(user, pushWith());
+
+      expect(mockTimeEntries.applySyncChange).not.toHaveBeenCalled();
+      expect(result.processed.timeEntries).toBe(0);
+      expect(result.errors).toHaveLength(2);
+      expect(result.errors.map((e) => e.entityId)).toEqual(['te-1', 'te-2']);
+      expect(result.errors[0].error).toContain('abonnement');
+      expect(result.errors[0].entityType).toBe('timeEntry');
+    });
+
+    it('keeps processing the rest of the batch when the gate blocks time entries', async () => {
+      mockEntitlements.assertFeature.mockRejectedValue(forbidden());
+      // Geen bestaand plan → echt create-pad (isolatie van eerdere suites).
+      mockPrisma.inspectionPlan.findFirst.mockResolvedValue(null);
+      mockPrisma.inspectionPlan.create.mockResolvedValue({ id: 'p1' });
+
+      const result = await service.push(
+        user,
+        pushWith({
+          inspectionPlans: [
+            { operation: 'create', data: { id: 'p1', projectName: 'Keuring' } },
+          ],
+        }),
+      );
+
+      // Inspectiedata gaat gewoon door — geen harde 403 op de hele push.
+      expect(mockPrisma.inspectionPlan.create).toHaveBeenCalled();
+      expect(result.processed.inspectionPlans).toBe(1);
+      expect(result.errors).toHaveLength(2);
+    });
+
+    it('does not consult the resolver when the batch carries no time entries', async () => {
+      mockPrisma.inspectionPlan.create.mockResolvedValue({ id: 'p1' });
+
+      await service.push(user, {
+        deviceId: 'dev-1',
+        changes: {
+          inspectionPlans: [{ operation: 'create', data: { id: 'p1', projectName: 'Keuring' } }],
+        },
+      } as any);
+
+      expect(mockEntitlements.assertFeature).not.toHaveBeenCalled();
+    });
+  });
+
   describe('push — four-eyes gate on inspection plans', () => {
     const planUpdate = (statusCode: string) =>
       ({

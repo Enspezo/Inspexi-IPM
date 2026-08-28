@@ -1,5 +1,8 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { TimeTrackingScheduler } from './time-tracking.scheduler';
+import {
+  TIME_TRACKING_SCHEDULER_ENABLED_ENV,
+  TimeTrackingScheduler,
+} from './time-tracking.scheduler';
 import { NotificationsService } from '../notifications/notifications.service';
 import { PrismaService } from '@/prisma';
 
@@ -67,6 +70,50 @@ describe('TimeTrackingScheduler (nachtwaker)', () => {
     expect(deleted).toBe(7);
     expect(mockPrisma.inspectorLocationPing.deleteMany).toHaveBeenCalledWith({
       where: { recordedAt: { lt: new Date('2026-08-25T12:00:00Z') } },
+    });
+  });
+
+  // ── Cron-vangnet + kill-switch (review B3) ───────────
+  describe('cron-vangnet en env-kill-switch', () => {
+    const original = process.env[TIME_TRACKING_SCHEDULER_ENABLED_ENV];
+    afterEach(() => {
+      if (original === undefined) delete process.env[TIME_TRACKING_SCHEDULER_ENABLED_ENV];
+      else process.env[TIME_TRACKING_SCHEDULER_ENABLED_ENV] = original;
+    });
+
+    it.each(['0', 'false', 'FALSE'])(
+      'draait geen van beide crons wanneer de kill-switch op %s staat',
+      async (value) => {
+        process.env[TIME_TRACKING_SCHEDULER_ENABLED_ENV] = value;
+
+        await scheduler.stopOvernightTimers();
+        await scheduler.cleanupLocationPings();
+
+        expect(mockPrisma.timeEntry.findMany).not.toHaveBeenCalled();
+        expect(mockPrisma.inspectorLocationPing.deleteMany).not.toHaveBeenCalled();
+      },
+    );
+
+    it('draait standaard (env niet gezet) en bij een andere waarde', async () => {
+      delete process.env[TIME_TRACKING_SCHEDULER_ENABLED_ENV];
+      mockPrisma.timeEntry.findMany.mockResolvedValue([]);
+      mockPrisma.inspectorLocationPing.deleteMany.mockResolvedValue({ count: 0 });
+
+      await scheduler.stopOvernightTimers();
+      await scheduler.cleanupLocationPings();
+
+      expect(mockPrisma.timeEntry.findMany).toHaveBeenCalled();
+      expect(mockPrisma.inspectorLocationPing.deleteMany).toHaveBeenCalled();
+    });
+
+    it('nachtwaker-cron slikt een onverwachte fout (geen unhandled rejection)', async () => {
+      mockPrisma.timeEntry.findMany.mockRejectedValue(new Error('db down'));
+      await expect(scheduler.stopOvernightTimers()).resolves.toBeUndefined();
+    });
+
+    it('ping-retentie-cron slikt een onverwachte fout (geen unhandled rejection)', async () => {
+      mockPrisma.inspectorLocationPing.deleteMany.mockRejectedValue(new Error('db down'));
+      await expect(scheduler.cleanupLocationPings()).resolves.toBeUndefined();
     });
   });
 

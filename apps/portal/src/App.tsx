@@ -200,9 +200,6 @@ export default function App() {
             <Route path="/profile" element={<ProfilePage />} />
             <Route path="/availability-templates" element={<AvailabilityTemplatesPage />} />
             <Route path="/my-availability" element={<MyAvailabilityPage />} />
-            <Route path="/timesheets" element={<TimesheetsPage />} />
-            <Route path="/time-tracking/live" element={<TimeTrackingLivePage />} />
-            <Route path="/timesheets/:id" element={<TimesheetDetailPage />} />
             <Route path="/search" element={<SearchPage />} />
             <Route path="/help" element={<HelpCenterPage />} />
             <Route path="/help/category/:slug" element={<HelpCenterPage />} />
@@ -280,6 +277,15 @@ export default function App() {
             <Route element={<FeatureRoute feature="BASIS_UITVOERING" />}>
               <Route path="/projects" element={<ProjectsPage />} />
               <Route path="/projects/:id" element={<ProjectDetailPage />} />
+            </Route>
+
+            {/* URENREGISTRATIE — weekstaten + live overzicht (PRD-16). De routes
+                hangen op de API achter @RequiresFeature; dit is de UX-kant zodat
+                een deeplink zonder add-on niet op een leeg scherm strandt. */}
+            <Route element={<FeatureRoute feature="URENREGISTRATIE" />}>
+              <Route path="/timesheets" element={<TimesheetsPage />} />
+              <Route path="/timesheets/:id" element={<TimesheetDetailPage />} />
+              <Route path="/time-tracking/live" element={<TimeTrackingLivePage />} />
             </Route>
 
             {/* UITVOERING_COMPLEET — planning, werkbonnen */}

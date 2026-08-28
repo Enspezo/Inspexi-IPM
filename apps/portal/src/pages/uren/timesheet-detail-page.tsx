@@ -13,7 +13,6 @@ import {
 } from '@/components/ui';
 import { TIMESHEET_STATUS, TIME_ACTIVITY, TIME_ENTRY_SOURCE, TIME_ACTIVITY_LABELS } from '@/lib/status';
 import { formatDate } from '@/lib/format';
-import { getErrorMessage } from '@/lib/api-client';
 import { DetailPageLayout } from '@/components/layout/detail-page-layout';
 import { HistorySidebarSection } from '@/components/layout/sidebar-sections';
 import { useAuth } from '@/providers/auth-provider';
@@ -79,7 +78,8 @@ export default function TimesheetDetailPage() {
         setRejectOpen(false);
         setRejectNote('');
       },
-      onError: (err) => showToast(getErrorMessage(err, 'Afwijzen mislukt'), 'error'),
+      // Foutmelding komt van de gedeelde `useApiMutation`-default; een eigen
+      // onError hier zou een tweede toast opleveren.
     });
   };
 

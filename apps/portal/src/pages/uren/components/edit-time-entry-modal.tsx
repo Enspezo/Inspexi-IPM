@@ -5,7 +5,6 @@ import { TimeActivityType } from '@/types';
 import type { TimeEntry } from '@/types';
 import { Button, Input, Modal, Select, useToast } from '@/components/ui';
 import { TIME_ACTIVITY_LABELS } from '@/lib/status';
-import { getErrorMessage } from '@/lib/api-client';
 import { useProjects } from '@/pages/projects/hooks/use-projects';
 import { useUpdateTimeEntry } from '../hooks/use-time-tracking';
 
@@ -81,9 +80,8 @@ export function EditTimeEntryModal({ entry, isOpen, onClose }: Props) {
           showToast('Urenregel bijgewerkt', 'success');
           onClose();
         },
-        onError: (err) => {
-          showToast(getErrorMessage(err, 'Bijwerken mislukt'), 'error');
-        },
+        // Geen eigen onError: `useApiMutation` toont de servermelding al
+        // (een mutate-level onError zou naast de hook-default vuren → dubbele toast).
       },
     );
   };

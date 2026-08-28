@@ -8,6 +8,12 @@ import { IngestPingsDto } from './dto';
 const LIVE_WINDOW_MS = 5 * 60_000;
 /** Laatste positie tonen tot maximaal 30 minuten oud (PRD-16 §5). */
 const LATEST_WINDOW_MS = 30 * 60_000;
+/**
+ * Invariant: het "live"-venster van de kaartknop moet binnen het venster van
+ * `getLatestLocation` vallen, anders wijst de knop in de portal naar een 404.
+ * Bewaakt door een unit-test; verruim LIVE_WINDOW_MS nooit voorbij LATEST_WINDOW_MS.
+ */
+export const LOCATION_WINDOWS_MS = { live: LIVE_WINDOW_MS, latest: LATEST_WINDOW_MS } as const;
 
 export interface ActiveTimerRow {
   entryId: string;
@@ -162,6 +168,11 @@ export class LocationPingsService {
       inspectionPlanId: e.inspectionPlan?.id ?? null,
       inspectionPlanName: e.inspectionPlan?.projectName ?? null,
       notes: e.notes,
+      // Exact de poorten van `getLatestLocation` (PRD-16 kernbesluit 7), plus het
+      // strengere live-venster: lopende REISTIJD-timer (deze rij ís er één),
+      // org-kill-switch aan, opt-in van de inspecteur aan en een verse ping. Zo
+      // verschijnt de kaartknop nooit voor een positie die de kaart-endpoint met
+      // een 404 zou weigeren.
       hasLiveLocation:
         e.activityType === TimeActivityType.REISTIJD &&
         e.organization.travelTrackingEnabled &&
@@ -183,29 +194,23 @@ export class LocationPingsService {
         recordedAt: { gte: new Date(Date.now() - LATEST_WINDOW_MS) },
       },
       orderBy: { recordedAt: 'desc' },
-      include: { user: { select: { firstName: true, lastName: true } } },
+      include: {
+        user: {
+          select: { firstName: true, lastName: true, travelTrackingEnabled: true },
+        },
+      },
     });
-    if (!ping || !(await this.orgTrackingEnabled(ping.orgId))) {
+    // PRD-16 kernbesluit 7: de positie is alléén zichtbaar zolang de inspecteur
+    // zelf deelt (opt-in) en de org de tracker aan heeft staan. Een ingetrokken
+    // opt-in moet de kaart direct sluiten, ook al liggen er nog verse pings
+    // binnen het 30-minutenvenster.
+    if (!ping || !ping.user.travelTrackingEnabled || !(await this.orgTrackingEnabled(ping.orgId))) {
       throw new NotFoundException('Geen recente positie beschikbaar');
     }
 
-    // Kaart-toegangslogging (PRD-16 §7, fase 4): wie bekeek wiens positie.
-    // Duurzaam in imp_audit_logs (entityType buiten het audit-register: alleen
-    // DB-inspecteerbaar, bewust niet in de portal-historie-UI) + operationele
-    // log-regel zonder coördinaten. Fire-and-forget.
-    this.prisma
-      .writeAuditLog({
-        entityType: 'InspectorLocationAccess',
-        entityId: userId,
-        action: 'CREATE',
-        snapshot: { bekekenDoor: user.id },
-        changes: null,
-        userId: user.id,
-        orgId: ping.orgId,
-      })
-      .catch(() => undefined);
-    this.logger.log(`Kaart-toegang: gebruiker ${user.id} bekeek positie van ${userId}`);
-
+    // De bestemming komt uit de lopende reistimer — die timer is tegelijk de
+    // tweede poort: buiten 'onderweg' bestaat er geen kaart (PRD-16 kernbesluit 7),
+    // dus zoeken we hem VÓÓR de toegangslogging en 404'en we zonder timer.
     const running = await this.prisma.timeEntry.findFirst({
       where: {
         ...orgScope(user),
@@ -228,13 +233,34 @@ export class LocationPingsService {
         },
       },
     });
+    // Zelfde generieke melding als hierboven: geen enumeratie van de reden.
+    if (!running) {
+      throw new NotFoundException('Geen recente positie beschikbaar');
+    }
+
+    // Kaart-toegangslogging (PRD-16 §7, fase 4): wie bekeek wiens positie.
+    // Duurzaam in imp_audit_logs (entityType buiten het audit-register: alleen
+    // DB-inspecteerbaar, bewust niet in de portal-historie-UI) + operationele
+    // log-regel zonder coördinaten. Fire-and-forget.
+    this.prisma
+      .writeAuditLog({
+        entityType: 'InspectorLocationAccess',
+        entityId: userId,
+        action: 'CREATE',
+        snapshot: { bekekenDoor: user.id },
+        changes: null,
+        userId: user.id,
+        orgId: ping.orgId,
+      })
+      .catch(() => undefined);
+    this.logger.log(`Kaart-toegang: gebruiker ${user.id} bekeek positie van ${userId}`);
 
     let destination: {
       latitude: number;
       longitude: number;
       label: string;
     } | null = null;
-    const plan = running?.inspectionPlan;
+    const plan = running.inspectionPlan;
     if (plan) {
       const lat = plan.gpsLatitude ? Number(plan.gpsLatitude) : plan.location?.lat ?? null;
       const lng = plan.gpsLongitude ? Number(plan.gpsLongitude) : plan.location?.lng ?? null;

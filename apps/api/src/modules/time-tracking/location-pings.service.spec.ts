@@ -1,7 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { NotFoundException } from '@nestjs/common';
 import { Role, TimeActivityType } from '@prisma/client';
-import { LocationPingsService } from './location-pings.service';
+import { LocationPingsService, LOCATION_WINDOWS_MS } from './location-pings.service';
 import { PrismaService } from '@/prisma';
 
 describe('LocationPingsService', () => {
@@ -153,6 +153,28 @@ describe('LocationPingsService', () => {
   });
 
   describe('getLatestLocation', () => {
+    const freshPing = (extra: Record<string, unknown> = {}) => ({
+      orgId: ORG,
+      latitude: 52.33,
+      longitude: 4.87,
+      accuracyM: 12,
+      recordedAt: new Date(),
+      user: { firstName: 'Tom', lastName: 'Visser', travelTrackingEnabled: true },
+      ...extra,
+    });
+
+    const runningTravelTimer = {
+      inspectionPlan: {
+        projectName: 'Periodieke keuring',
+        gpsLatitude: null,
+        gpsLongitude: null,
+        addressStreet: null,
+        addressHouseNumber: null,
+        addressCity: null,
+        location: { lat: 52.337, lng: 4.872, street: 'Zuidas 1', city: 'Amsterdam' },
+      },
+    };
+
     it('geen recente ping → 404', async () => {
       mockPrisma.inspectorLocationPing.findFirst.mockResolvedValue(null);
       await expect(service.getLatestLocation('insp-1', manager)).rejects.toThrow(
@@ -160,13 +182,56 @@ describe('LocationPingsService', () => {
       );
     });
 
+    // ── PRD-16 kernbesluit 7 (review B2) ────────────────
+    it('404 wanneer de inspecteur zijn tracker heeft uitgezet, ook met verse ping', async () => {
+      mockPrisma.inspectorLocationPing.findFirst.mockResolvedValue(
+        freshPing({
+          user: { firstName: 'Tom', lastName: 'Visser', travelTrackingEnabled: false },
+        }),
+      );
+      mockPrisma.timeEntry.findFirst.mockResolvedValue(runningTravelTimer);
+
+      await expect(service.getLatestLocation('insp-1', manager)).rejects.toThrow(
+        NotFoundException,
+      );
+      // Geweigerde toegang wordt niet als kaart-inzage gelogd.
+      expect(mockPrisma.writeAuditLog).not.toHaveBeenCalled();
+    });
+
+    it('404 zonder lopende REISTIJD-timer — de kaart bestaat alleen "onderweg"', async () => {
+      mockPrisma.inspectorLocationPing.findFirst.mockResolvedValue(freshPing());
+      mockPrisma.timeEntry.findFirst.mockResolvedValue(null);
+
+      await expect(service.getLatestLocation('insp-1', manager)).rejects.toThrow(
+        NotFoundException,
+      );
+      expect(mockPrisma.writeAuditLog).not.toHaveBeenCalled();
+    });
+
+    it('logt de kaart-inzage pas wanneer er daadwerkelijk een positie teruggaat', async () => {
+      mockPrisma.inspectorLocationPing.findFirst.mockResolvedValue(freshPing());
+      mockPrisma.timeEntry.findFirst.mockResolvedValue(runningTravelTimer);
+
+      await service.getLatestLocation('insp-1', manager);
+
+      expect(mockPrisma.writeAuditLog).toHaveBeenCalledWith(
+        expect.objectContaining({ entityType: 'InspectorLocationAccess', entityId: 'insp-1' }),
+      );
+    });
+
+    it('het live-venster van de kaartknop valt binnen dat van de kaart-endpoint', () => {
+      // Anders zou hasLiveLocation een knop tonen die op een 404 uitkomt.
+      expect(LOCATION_WINDOWS_MS.live).toBeLessThanOrEqual(LOCATION_WINDOWS_MS.latest);
+    });
+
     it('levert de pin + bestemming uit plan-GPS met locatie-fallback', async () => {
       mockPrisma.inspectorLocationPing.findFirst.mockResolvedValue({
+        orgId: ORG,
         latitude: 52.33,
         longitude: 4.87,
         accuracyM: 12,
         recordedAt: new Date(),
-        user: { firstName: 'Tom', lastName: 'Visser' },
+        user: { firstName: 'Tom', lastName: 'Visser', travelTrackingEnabled: true },
       });
       mockPrisma.timeEntry.findFirst.mockResolvedValue({
         inspectionPlan: {

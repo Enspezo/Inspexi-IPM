@@ -51,7 +51,7 @@ export default defineConfig(async () => {
           // (modulepreload van 300 KB op de loginpagina). De React-kern daarom
           // eerst in een eigen chunk pinnen; daarna kunnen de zware libs veilig
           // afgesplitst worden en laden ze pas bij hun lazy consumer.
-          manualChunks(id) {
+          manualChunks(id: string) {
             if (!id.includes('/node_modules/')) return undefined;
             if (/\/node_modules\/(react|react-dom|scheduler)\//.test(id)) {
               return 'react-vendor';

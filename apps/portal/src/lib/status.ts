@@ -201,6 +201,12 @@ export const ENTITY_TYPE_LABELS: Record<string, string> = {
 // die LOOKUPS werden (plan/asset/finding/report-status, signatory/signer, pass-fail,
 // resolution, client-request) horen hier NIET — die renderen via <LookupBadge> (lib/lookups).
 
+// Generieke actief/inactief-toggle (isActive-booleans → 'ACTIEF' | 'INACTIEF').
+export const ACTIVE_STATUS: StatusMap = {
+  ACTIEF: { label: 'Actief', classes: 'bg-green-100 text-green-800' },
+  INACTIEF: { label: 'Inactief', classes: 'bg-gray-100 text-gray-600' },
+};
+
 export const CHECKLIST_STATUS: StatusMap = {
   CONCEPT: { label: 'Concept', classes: 'bg-gray-100 text-gray-700' },
   ACTIEF: { label: 'Actief', classes: 'bg-green-100 text-green-800' },

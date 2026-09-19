@@ -129,7 +129,7 @@ export function formatMinutes(minutes: number | null | undefined): string {
 
 export function useActiveTimers() {
   return useQuery({
-    queryKey: [...timeEntryKeys.all, 'active'],
+    queryKey: timeEntryKeys.active(),
     queryFn: () => apiClient.get<ActiveTimer[]>('/time-tracking/active'),
     refetchInterval: 30_000,
   });
@@ -137,7 +137,7 @@ export function useActiveTimers() {
 
 export function useInspectorLocation(userId: string | null) {
   return useQuery({
-    queryKey: [...timeEntryKeys.all, 'location', userId],
+    queryKey: timeEntryKeys.location(userId),
     queryFn: () => apiClient.get<InspectorLocation>(`/time-tracking/locations/${userId}/latest`),
     enabled: !!userId,
     refetchInterval: 30_000,

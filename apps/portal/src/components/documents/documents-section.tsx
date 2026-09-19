@@ -148,7 +148,7 @@ function DocumentRow({
             title={doc.isSharedWithClient ? 'Verberg voor opdrachtgever' : 'Deel met opdrachtgever'}
             className={`rounded p-1.5 transition-colors ${
               doc.isSharedWithClient
-                ? 'text-blue-600 hover:bg-blue-50'
+                ? 'text-primary-600 hover:bg-primary-50'
                 : 'text-gray-400 hover:bg-gray-100 hover:text-gray-600'
             }`}
           >

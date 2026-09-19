@@ -153,7 +153,7 @@ export function InspectorAssignModal({
                       type="checkbox"
                       checked={checked}
                       onChange={() => toggle(u.id)}
-                      className="h-4 w-4 rounded border-gray-300 text-blue-600"
+                      className="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
                     />
                     <span className="text-sm text-gray-900">
                       {u.firstName} {u.lastName}
@@ -171,7 +171,7 @@ export function InspectorAssignModal({
                         name="primary-inspector"
                         checked={primaryId === u.id}
                         onChange={() => setPrimaryId(u.id)}
-                        className="h-3.5 w-3.5 text-blue-600"
+                        className="h-3.5 w-3.5 text-primary-600"
                       />
                       Primair
                     </label>

@@ -136,7 +136,7 @@ export function PlanningAlgemeenTab({
                 <select
                   value={editContactPersonId ?? ''}
                   onChange={(e) => setEditContactPersonId(e.target.value || null)}
-                  className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
                 >
                   <option value="">— Geen contactpersoon —</option>
                   {allContactPersons.map((p) => (
@@ -152,7 +152,7 @@ export function PlanningAlgemeenTab({
                   <select
                     value={editLocationId ?? ''}
                     onChange={(e) => setEditLocationId(e.target.value || null)}
-                    className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
                   >
                     <option value="">— Geen locatie —</option>
                     {editLocations.map((l: any) => (
@@ -178,7 +178,7 @@ export function PlanningAlgemeenTab({
                     type="datetime-local"
                     value={editScheduledDate}
                     onChange={(e) => setEditScheduledDate(e.target.value)}
-                    className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
                   />
                 </div>
                 <div>
@@ -199,7 +199,7 @@ export function PlanningAlgemeenTab({
                   value={editInternalNotes}
                   onChange={(e) => setEditInternalNotes(e.target.value)}
                   rows={3}
-                  className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
                   placeholder="Optionele notities..."
                 />
               </div>
@@ -233,7 +233,7 @@ export function PlanningAlgemeenTab({
                       <select
                         value={quickContactPersonId ?? ''}
                         onChange={(e) => setQuickContactPersonId(e.target.value || null)}
-                        className="flex-1 rounded-md border border-gray-300 px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="flex-1 rounded-md border border-gray-300 px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
                         autoFocus
                       >
                         <option value="">— Geen —</option>
@@ -254,7 +254,7 @@ export function PlanningAlgemeenTab({
     }
                         }}
                         disabled={updateItem.isPending}
-                        className="text-xs font-medium text-blue-600 hover:text-blue-800 whitespace-nowrap"
+                        className="text-xs font-medium text-primary-600 hover:text-primary-800 whitespace-nowrap"
                       >
                         {updateItem.isPending ? '…' : 'Opslaan'}
                       </button>

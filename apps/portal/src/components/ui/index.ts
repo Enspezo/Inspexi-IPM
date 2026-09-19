@@ -20,8 +20,8 @@ export {
 export { Badge } from './badge';
 export { Table, type Column, type TableSort } from './table';
 export { SortableList, DragHandle, type SortableRenderProps } from './sortable-list';
-export { RichTextEditor } from './rich-text-editor';
-export { RichTextViewer } from './rich-text-viewer';
+// RichTextEditor/RichTextViewer bewust NIET in de barrel (tiptap ~775 KB):
+// importeer '@/components/ui/rich-text-lazy' in de consumer.
 export { SignatureEditor } from './signature-editor';
 export { AddressSearchInput, type AddressSearchInputProps } from './address-search-input';
 export { KvkSearchInput, type KvkSearchInputProps } from './kvk-search-input';

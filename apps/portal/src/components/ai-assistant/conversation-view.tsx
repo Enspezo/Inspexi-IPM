@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { aiAgentKeys } from '@/lib/query-keys';
-import { Button, Spinner } from '@/components/ui';
+import { Button, ErrorBox, Spinner } from '@/components/ui';
 import type { AiMessage, AiPendingActionCard } from '@/types';
 import { useAiConversation } from '@/components/ai-assistant/hooks/use-ai';
 import {
@@ -200,9 +200,7 @@ export function ConversationView({ conversationId }: { conversationId: string })
               </div>
             )}
 
-            {error && (
-              <p className="rounded-lg bg-danger-50 px-3 py-2 text-xs text-danger-700">{error}</p>
-            )}
+            <ErrorBox>{error}</ErrorBox>
           </>
         )}
       </div>

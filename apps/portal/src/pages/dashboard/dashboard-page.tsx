@@ -1,3 +1,4 @@
+import { lazy, Suspense } from 'react';
 import { Link } from 'react-router-dom';
 import type { ReactNode } from 'react';
 import { useAuth } from '@/providers/auth-provider';
@@ -16,8 +17,14 @@ import {
   getEntityDisplayName,
 } from '@/lib/audit-entity-helpers';
 import { Role } from '@/types';
-import { ActiveTimersWidget } from '@/pages/uren/components/active-timers-widget';
-import { formatShortDate } from '@/lib/format';
+// Lazy: de timers-widget trekt de inspecteur-kaart (Leaflet) mee; die hoort
+// niet in de dashboard-chunk voor gebruikers zonder urenregistratie.
+const ActiveTimersWidget = lazy(() =>
+  import('@/pages/uren/components/active-timers-widget').then((m) => ({
+    default: m.ActiveTimersWidget,
+  })),
+);
+import { formatRelativeTime } from '@/lib/format';
 
 // B-001: statische tegel-definities (label/icoon/kleur); de waarden komen
 // runtime uit /portal/stats/staff-dashboard resp. de al opgehaalde taken.
@@ -74,19 +81,6 @@ const STAT_TILES: StatTileDef[] = [
     bg: 'bg-purple-50',
   },
 ];
-
-function formatRelativeTime(dateStr: string): string {
-  const now = Date.now();
-  const diff = now - new Date(dateStr).getTime();
-  const minutes = Math.floor(diff / 60000);
-  if (minutes < 1) return 'Zojuist';
-  if (minutes < 60) return `${minutes} min geleden`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours} uur geleden`;
-  const days = Math.floor(hours / 24);
-  if (days < 7) return `${days} ${days === 1 ? 'dag' : 'dagen'} geleden`;
-  return formatShortDate(dateStr);
-}
 
 function ActivityRow({ entry }: { entry: AuditLogEntry }) {
   const link = getEntityLink(entry.entityType, entry.entityId, entry.snapshot);
@@ -291,7 +285,11 @@ export default function DashboardPage() {
         </div>
 
         {/* Bottom sections */}
-        {showTimersWidget && <ActiveTimersWidget />}
+        {showTimersWidget && (
+          <Suspense fallback={null}>
+            <ActiveTimersWidget />
+          </Suspense>
+        )}
 
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
           {/* Recente activiteit */}

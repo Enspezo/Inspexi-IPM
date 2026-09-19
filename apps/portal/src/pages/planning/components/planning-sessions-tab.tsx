@@ -247,7 +247,7 @@ function SessionCard({
                 type="datetime-local"
                 value={dateEditValue}
                 onChange={(e) => setDateEditValue(e.target.value)}
-                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
               />
             </div>
             <div className="flex gap-2">
@@ -265,7 +265,7 @@ function SessionCard({
             {userCanWrite && (session.status === SessionStatus.NOG_TE_PLANNEN || session.status === SessionStatus.CONCEPT) && (
               <button
                 onClick={handleOpenDateEdit}
-                className="text-xs text-blue-600 hover:text-blue-800 underline ml-1"
+                className="text-xs text-primary-600 hover:text-primary-800 underline ml-1"
               >
                 {scheduledDate ? 'Wijzigen' : 'Datum instellen'}
               </button>
@@ -280,7 +280,7 @@ function SessionCard({
               value={notesValue}
               onChange={(e) => setNotesValue(e.target.value)}
               rows={2}
-              className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
               placeholder="Optionele notitie voor deze sessie..."
             />
             <div className="flex gap-2">

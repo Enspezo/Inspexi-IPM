@@ -126,7 +126,7 @@ export function CreatePlanningForm() {
             <select
               value={contactId}
               onChange={(e) => handleContactChange(e.target.value)}
-              className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
             >
               <option value="">— Selecteer opdrachtgever —</option>
               {contacts.map((c: any) => (
@@ -145,7 +145,7 @@ export function CreatePlanningForm() {
                 <select
                   value={contactPersonId}
                   onChange={(e) => setContactPersonId(e.target.value)}
-                  className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
                 >
                   <option value="">— Geen contactpersoon —</option>
                   {contactPersons.map((p) => (
@@ -161,7 +161,7 @@ export function CreatePlanningForm() {
                 <button
                   type="button"
                   onClick={() => setShowCreatePerson(true)}
-                  className="mt-1 text-xs text-blue-600 hover:text-blue-800 font-medium"
+                  className="mt-1 text-xs text-primary-600 hover:text-primary-800 font-medium"
                 >
                   + Nieuwe contactpersoon aanmaken
                 </button>
@@ -234,7 +234,7 @@ export function CreatePlanningForm() {
               <select
                 value={locationId}
                 onChange={(e) => setLocationId(e.target.value)}
-                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
               >
                 <option value="">— Selecteer locatie —</option>
                 {locations.map((l: any) => (
@@ -266,7 +266,7 @@ export function CreatePlanningForm() {
                 type="datetime-local"
                 value={scheduledDate}
                 onChange={(e) => setScheduledDate(e.target.value)}
-                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
               />
             </div>
             <div>
@@ -294,7 +294,7 @@ export function CreatePlanningForm() {
                   setSessionCount(String(suggestedSessionCount));
                 }
               }}
-              className="mt-0.5 h-4 w-4 rounded border-gray-300 text-blue-600"
+              className="mt-0.5 h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
             />
             <div className="flex-1">
               <label htmlFor="multiday" className="text-sm font-medium text-gray-900 cursor-pointer">
@@ -335,7 +335,7 @@ export function CreatePlanningForm() {
               value={internalNotes}
               onChange={(e) => setInternalNotes(e.target.value)}
               rows={3}
-              className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
               placeholder="Optionele interne notities..."
             />
           </div>

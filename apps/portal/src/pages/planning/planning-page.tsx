@@ -3,9 +3,10 @@ import { useState, useCallback, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { PlanningStatus, Role } from '@/types';
 import type { PlanningItem } from '@/types';
-import { ActionMenu, Button, Spinner, StatusBadge, Table, Input, Select } from '@/components/ui';
+import { ActionMenu, Button, ErrorBox, Spinner, StatusBadge, Table, Input, Select } from '@/components/ui';
 import { PLANNING_STATUS } from '@/lib/status';
 import { DetailPageLayout } from '@/components/layout/detail-page-layout';
+import { PageHeader } from '@/components/layout/page-header';
 import {
   TableConfigSidebar,
   useTableConfig,
@@ -410,7 +411,7 @@ export default function PlanningPage() {
     };
   }, [view, debouncedSearch, statusFilter, page, calendarDate, apiSort]);
 
-  const { data, isLoading } = usePlanningItems(queryParams);
+  const { data, isLoading, error } = usePlanningItems(queryParams);
 
   // ─── Inspector list derived from loaded items ───────────────────────────────
   const allItems: PlanningItem[] = data?.data ?? [];
@@ -532,58 +533,58 @@ export default function PlanningPage() {
       }
     >
       {/* ── Page header ── */}
-      <div className="mb-4 flex items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Planning</h1>
-          {view === 'list' && data && (
-            <p className="mt-0.5 text-sm text-gray-500">
-              {data.total} planregel{data.total !== 1 ? 's' : ''}
-            </p>
-          )}
-        </div>
-        <div className="flex items-center gap-3">
-          {/* View toggle */}
-          <div className="flex rounded-md border border-gray-300 bg-white overflow-hidden shadow-sm">
-            {viewOptions.map(({ key, label }) => (
-              <button
-                key={key}
-                onClick={() => setView(key)}
-                className={`px-3 py-1.5 text-sm font-medium transition-colors border-r border-gray-200 last:border-r-0 ${
-                  view === key
-                    ? 'bg-blue-600 text-white'
-                    : 'text-gray-600 hover:bg-gray-50'
-                }`}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
+      <PageHeader
+        title="Planning"
+        description={
+          view === 'list' && data
+            ? `${data.total} planregel${data.total !== 1 ? 's' : ''}`
+            : undefined
+        }
+        actions={
+          <>
+            {/* View toggle */}
+            <div className="flex rounded-md border border-gray-300 bg-white overflow-hidden shadow-sm">
+              {viewOptions.map(({ key, label }) => (
+                <button
+                  key={key}
+                  onClick={() => setView(key)}
+                  className={`px-3 py-1.5 text-sm font-medium transition-colors border-r border-gray-200 last:border-r-0 ${
+                    view === key
+                      ? 'bg-primary-600 text-white'
+                      : 'text-gray-600 hover:bg-gray-50'
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
 
-          {/* Map button */}
-          <button
-            onClick={() => setMapOpen(true)}
-            title="Kaartweergave"
-            className="flex items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-600 shadow-sm transition-colors hover:bg-gray-50 hover:text-gray-800"
-          >
-            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
-            </svg>
-            Kaart
-          </button>
+            {/* Map button */}
+            <button
+              onClick={() => setMapOpen(true)}
+              title="Kaartweergave"
+              className="flex items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-600 shadow-sm transition-colors hover:bg-gray-50 hover:text-gray-800"
+            >
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
+              </svg>
+              Kaart
+            </button>
 
-          {user && user.roles.some(r => canWrite.includes(r)) && (
-            <ActionMenu
-              secondaryActions={[
-                {
-                  label: 'Nieuwe planregel',
-                  icon: <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>,
-                  onClick: () => navigate('/planning/new'),
-                },
-              ]}
-            />
-          )}
-        </div>
-      </div>
+            {user && user.roles.some(r => canWrite.includes(r)) && (
+              <ActionMenu
+                secondaryActions={[
+                  {
+                    label: 'Nieuwe planregel',
+                    icon: <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>,
+                    onClick: () => navigate('/planning/new'),
+                  },
+                ]}
+              />
+            )}
+          </>
+        }
+      />
 
       {/* ── Filters bar ── */}
       <div className="mb-4 flex flex-wrap items-center gap-3">
@@ -613,7 +614,8 @@ export default function PlanningPage() {
             <button
               onClick={() => setCalendarDate(navigatePrev(view, calendarDate))}
               className="rounded border border-gray-300 bg-white p-1.5 hover:bg-gray-50 shadow-sm"
-              title="Vorige"
+              title="Vorige periode"
+              aria-label="Vorige periode"
             >
               <svg className="h-4 w-4 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
@@ -628,13 +630,14 @@ export default function PlanningPage() {
             <button
               onClick={() => setCalendarDate(navigateNext(view, calendarDate))}
               className="rounded border border-gray-300 bg-white p-1.5 hover:bg-gray-50 shadow-sm"
-              title="Volgende"
+              title="Volgende periode"
+              aria-label="Volgende periode"
             >
               <svg className="h-4 w-4 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
               </svg>
             </button>
-            <span className="text-sm font-semibold text-gray-800 min-w-[180px]">
+            <span className="text-sm font-semibold text-gray-800 sm:min-w-[180px]">
               {getCalendarTitle(view, calendarDate)}
             </span>
           </div>
@@ -651,6 +654,9 @@ export default function PlanningPage() {
       </div>
 
       {/* ── Content ── */}
+      {error && (
+        <ErrorBox>Fout bij het laden van de planning: {error.message}</ErrorBox>
+      )}
       {isLoading ? (
         <div className="flex justify-center py-12">
           <Spinner />

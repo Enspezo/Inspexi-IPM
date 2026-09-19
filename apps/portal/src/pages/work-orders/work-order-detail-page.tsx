@@ -9,6 +9,7 @@ import {
   StatusBadge,
   Card,
   Tabs,
+  useConfirm,
   useToast,
 } from '@/components/ui';
 import { WORK_ORDER_STATUS } from '@/lib/status';
@@ -30,6 +31,7 @@ import {
   useWorkOrder,
   useUpdateWorkOrder,
   useSetWorkOrderLines,
+  useDeleteWorkOrder,
 } from './hooks/use-work-orders';
 import { editSchema } from './components/work-order-detail-shared';
 import type { EditFormData, LineFormValues } from './components/work-order-detail-shared';
@@ -38,7 +40,6 @@ import { WorkOrderAlgemeenTab } from './components/work-order-algemeen-tab';
 import { WorkOrderMeerwerkTab } from './components/work-order-meerwerk-tab';
 import {
   WorkOrderStatusChangeModal,
-  WorkOrderDeleteModal,
 } from './components/work-order-detail-modals';
 
 // ─── Constants ───────────────────────────────────────────────
@@ -83,7 +84,7 @@ export default function WorkOrderDetailPage() {
   const [tab, setTab] = useState<Tab>('algemeen');
   const [isEditing, setIsEditing] = useState(false);
   const [statusChangeOpen, setStatusChangeOpen] = useState(false);
-  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const confirm = useConfirm();
   // Fase-koppeling via custom control (buiten react-hook-form).
   const [phaseId, setPhaseId] = useState<string | null>(null);
 
@@ -95,6 +96,7 @@ export default function WorkOrderDetailPage() {
   const { data: workOrder, isLoading } = useWorkOrder(id);
   const updateWorkOrder = useUpdateWorkOrder(id);
   const setWorkOrderLines = useSetWorkOrderLines(id);
+  const deleteWorkOrder = useDeleteWorkOrder(id);
 
   const userCanWrite = user && user.roles.some((r) => canWrite.includes(r));
 
@@ -193,6 +195,28 @@ export default function WorkOrderDetailPage() {
   const grandTotal = lineTotals.reduce((sum, t) => sum + t, 0);
 
   // ─── Handlers ────────────────────────────────────────────────
+
+  const handleDelete = async () => {
+    const ok = await confirm({
+      title: 'Werkbon verwijderen',
+      message: (
+        <>
+          Weet u zeker dat u werkbon <strong>{workOrder.workOrderNumber}</strong>{' '}
+          wilt verwijderen? Dit kan niet ongedaan gemaakt worden.
+        </>
+      ),
+      confirmLabel: 'Verwijderen',
+      variant: 'danger',
+    });
+    if (!ok) return;
+    try {
+      await deleteWorkOrder.mutateAsync();
+      showToast('Werkbon verwijderd', 'success');
+      navigate('/work-orders');
+    } catch {
+      /* foutmelding wordt centraal getoond via useApiMutation */
+    }
+  };
 
   const handleSaveEdit = async (data: EditFormData) => {
     try {
@@ -405,7 +429,7 @@ export default function WorkOrderDetailPage() {
                     </p>
                     <Button
                       variant="danger"
-                      onClick={() => setDeleteConfirmOpen(true)}
+                      onClick={handleDelete}
                     >
                       Werkbon verwijderen
                     </Button>
@@ -432,15 +456,6 @@ export default function WorkOrderDetailPage() {
         />
       )}
 
-      {/* Delete confirmation modal */}
-      {deleteConfirmOpen && (
-        <WorkOrderDeleteModal
-          id={id}
-          workOrder={workOrder}
-          deleteConfirmOpen={deleteConfirmOpen}
-          setDeleteConfirmOpen={setDeleteConfirmOpen}
-        />
-      )}
     </DetailPageLayout>
   );
 }

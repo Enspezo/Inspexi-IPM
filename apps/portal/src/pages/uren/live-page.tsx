@@ -42,7 +42,7 @@ export default function LivePage() {
   const rows = timers ?? [];
 
   return (
-    <div className="space-y-6 p-6">
+    <div className="space-y-6">
       <PageHeader
         title="Nu actief"
         description="Lopende timers per inspecteur; bij een reistimer met actieve tracker is de locatie te bekijken"

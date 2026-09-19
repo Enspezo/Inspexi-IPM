@@ -5,7 +5,7 @@ import type { AuditLogEntry } from '@/types';
 import { getFieldLabel } from '@/lib/audit-field-labels';
 import { formatAuditValue, isHiddenAuditField } from '@/lib/audit-value-format';
 import { Button, Spinner } from '@/components/ui';
-import { formatShortDate } from '@/lib/format';
+import { formatRelativeTime } from '@/lib/format';
 
 const ITEMS_PER_PAGE = 10;
 
@@ -23,26 +23,6 @@ const actionBadgeClasses: Record<AuditAction, string> = {
   [AuditAction.DELETE]:
     'bg-red-100 text-red-800',
 };
-
-function formatRelativeTime(dateStr: string): string {
-  const now = Date.now();
-  const date = new Date(dateStr).getTime();
-  const diff = now - date;
-
-  const seconds = Math.floor(diff / 1000);
-  if (seconds < 60) return 'Zojuist';
-
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes} min geleden`;
-
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours} uur geleden`;
-
-  const days = Math.floor(hours / 24);
-  if (days < 7) return `${days} ${days === 1 ? 'dag' : 'dagen'} geleden`;
-
-  return formatShortDate(dateStr);
-}
 
 function getUserDisplayName(entry: AuditLogEntry): string {
   return `${entry.user.firstName} ${entry.user.lastName}`;

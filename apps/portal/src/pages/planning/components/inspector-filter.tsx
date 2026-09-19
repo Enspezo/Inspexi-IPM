@@ -39,7 +39,7 @@ export function InspectorFilter({ inspectors, selectedIds, onChange }: Inspector
     <div ref={ref} className="relative">
       <button
         onClick={() => setOpen(!open)}
-        className="flex items-center gap-2 rounded-md border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
+        className="flex items-center gap-2 rounded-md border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-primary-500"
       >
         <span className="text-xs text-gray-500 font-medium">Inspecteurs:</span>
         {allSelected ? (
@@ -86,7 +86,7 @@ export function InspectorFilter({ inspectors, selectedIds, onChange }: Inspector
             >
               <span
                 className={`flex h-4 w-4 flex-shrink-0 items-center justify-center rounded border ${
-                  allSelected ? 'border-blue-600 bg-blue-600' : 'border-gray-300'
+                  allSelected ? 'border-primary-600 bg-primary-600' : 'border-gray-300'
                 }`}
               >
                 {allSelected && (

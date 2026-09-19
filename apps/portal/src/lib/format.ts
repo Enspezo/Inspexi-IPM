@@ -11,6 +11,7 @@ export {
   formatWeekdayDate,
   formatWeekdayShortDate,
   formatNumericDate,
+  formatRelativeTime,
   formatTime,
   formatCurrency,
   formatFileSize,

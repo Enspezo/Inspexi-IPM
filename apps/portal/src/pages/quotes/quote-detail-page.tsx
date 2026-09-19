@@ -44,7 +44,7 @@ import { QuoteAttachmentsCard } from './components/quote-detail-attachments-card
 import { QuoteTasksSidebar } from './components/quote-detail-tasks-sidebar';
 import { ContactLogsSidebar } from './components/quote-detail-contact-logs-sidebar';
 import { getQuoteApprovalState } from './components/quote-detail-helpers';
-import { RichTextViewer } from '@/components/ui';
+import { RichTextViewer } from '@/components/ui/rich-text-lazy';
 import { getAccessToken, getErrorMessage } from '@/lib/api-client';
 
 const canWrite = [Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE];

@@ -2,7 +2,8 @@ import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import type { Quote, QuoteQuestion, QuoteAttachment } from '@/types';
 import { QuoteStatus } from '@/types';
-import { Spinner, SignatureCanvas, RichTextViewer } from '@/components/ui';
+import { Spinner, SignatureCanvas } from '@/components/ui';
+import { RichTextViewer } from '@/components/ui/rich-text-lazy';
 import { formatCurrency, formatDate, formatFileSize } from '@/lib/format';
 
 const API_BASE = '/api/v1';

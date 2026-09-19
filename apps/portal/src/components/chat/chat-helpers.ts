@@ -1,18 +1,9 @@
-import { Role, type ChatThread } from '@/types';
-
-/** Nederlandse rol-labels voor team-chattitels. */
-export const ROLE_LABELS: Record<string, string> = {
-  [Role.SUPERUSER]: 'Superuser',
-  [Role.ORG_ADMIN]: 'Beheerder',
-  [Role.MANAGER]: 'Manager',
-  [Role.BACKOFFICE]: 'Backoffice',
-  [Role.WERKVOORBEREIDER]: 'Werkvoorbereider',
-  [Role.INSPECTEUR]: 'Inspecteur',
-};
+import type { Role, ChatThread } from '@/types';
+import { getRoleLabel } from '@/lib/roles';
 
 export function teamLabel(role: Role | string | null | undefined): string {
   if (!role) return 'Team';
-  return `${ROLE_LABELS[role] ?? role}-team`;
+  return `${getRoleLabel(role)}-team`;
 }
 
 /** Weergavetitel van een thread (counterpart-naam of teamnaam). */

@@ -1,54 +1,92 @@
-import { useState, useEffect } from 'react';
-import { Modal, Button, Input, Spinner } from '@/components/ui';
+import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { Modal, Button, Input, Spinner, QueryErrorNotice } from '@/components/ui';
 import { useToast } from '@/components/ui';
 import { apiClient, getErrorMessage } from '@/lib/api-client';
+import { planningKeys, quoteKeys, requestKeys } from '@/lib/query-keys';
+import { useDebounce } from '@/hooks/use-debounce';
 import { PhaseSelect } from '@/components/projects/phase-select';
 import { useFeatures } from '@/providers/feature-provider';
 import { useAssignToProject } from '../hooks/use-projects';
+import type { PaginatedResponse, PlanningItem, Quote, Request } from '@/types';
+
+type LinkableEntityType = 'requests' | 'quotes' | 'planning';
+type LinkableEntity = Request | Quote | PlanningItem;
 
 interface Props {
   projectId: string;
-  entityType: 'requests' | 'quotes' | 'planning';
+  entityType: LinkableEntityType;
   onClose: () => void;
 }
 
-const entityLabels: Record<string, string> = {
+const entityLabels: Record<LinkableEntityType, string> = {
   requests: 'Aanvragen',
   quotes: 'Offertes',
   planning: 'Planregels',
 };
 
-const entityEndpoints: Record<string, string> = {
+const entityEndpoints: Record<LinkableEntityType, string> = {
   requests: '/requests',
   quotes: '/quotes',
   planning: '/planning',
 };
+
+const entityKeys = {
+  requests: requestKeys,
+  quotes: quoteKeys,
+  planning: planningKeys,
+} as const;
+
+/**
+ * Nog-niet-gekoppelde entiteiten voor de koppel-modal. Gekeyed via de domein-
+ * factory zodat invalidaties op `requestKeys.all` e.d. deze lijst ook verversen;
+ * de `unlinkedOnly`-marker houdt de cache gescheiden van de overzichtspagina's.
+ */
+function useLinkableEntities(entityType: LinkableEntityType, search: string) {
+  const params = { search: search || undefined, limit: 50, unlinkedOnly: true };
+  return useQuery({
+    queryKey: entityKeys[entityType].list(params),
+    queryFn: async () => {
+      const qs = new URLSearchParams({ limit: '50' });
+      if (search) qs.set('search', search);
+      const res = await apiClient.get<PaginatedResponse<LinkableEntity>>(
+        `${entityEndpoints[entityType]}?${qs.toString()}`,
+      );
+      // Alleen items zonder project tonen — die kunnen gekoppeld worden.
+      return res.data.filter((item) => !item.projectId);
+    },
+    // De modal toont zelf een QueryErrorNotice; geen dubbele globale toast.
+    meta: { suppressErrorToast: true },
+  });
+}
+
+function contactName(contact?: {
+  companyName?: string | null;
+  firstName?: string | null;
+  lastName?: string | null;
+}): string {
+  if (!contact) return '';
+  return (
+    contact.companyName ||
+    [contact.firstName, contact.lastName].filter(Boolean).join(' ') ||
+    ''
+  );
+}
 
 export function LinkEntitiesModal({ projectId, entityType, onClose }: Props) {
   const { showToast } = useToast();
   const { hasFeature } = useFeatures();
   const assignMutation = useAssignToProject(projectId);
   const [search, setSearch] = useState('');
-  const [items, setItems] = useState<any[]>([]);
-  const [loading, setLoading] = useState(false);
+  const debouncedSearch = useDebounce(search.trim());
   const [selected, setSelected] = useState<Set<string>>(new Set());
   // Optionele fase-koppeling bij het koppelen (PRD-12 §12.7.2); aanvragen kennen geen
   // fase en de hele fase-laag zit achter PROJECT_FASEN (§Fase E).
   const [phaseId, setPhaseId] = useState<string | null>(null);
   const supportsPhase = entityType !== 'requests' && hasFeature('PROJECT_FASEN');
 
-  useEffect(() => {
-    setLoading(true);
-    apiClient
-      .get<{ data: any[] } | any[]>(`${entityEndpoints[entityType]}?limit=50${search ? `&search=${encodeURIComponent(search)}` : ''}`)
-      .then((res) => {
-        const data = Array.isArray(res) ? res : res.data;
-        // Filter items that don't have a projectId yet
-        setItems(data.filter((item: any) => !item.projectId));
-      })
-      .catch(() => setItems([]))
-      .finally(() => setLoading(false));
-  }, [entityType, search]);
+  const { data, isLoading, error, refetch } = useLinkableEntities(entityType, debouncedSearch);
+  const items = data ?? [];
 
   const toggleItem = (id: string) => {
     setSelected((prev) => {
@@ -91,20 +129,17 @@ export function LinkEntitiesModal({ projectId, entityType, onClose }: Props) {
     }
   };
 
-  const getItemLabel = (item: any) => {
-    if (entityType === 'requests') return item.title || `Aanvraag #${item.id.substring(0, 8)}`;
-    if (entityType === 'quotes') return item.quoteNumber || item.subject || `Offerte #${item.id.substring(0, 8)}`;
-    return item.productName || `Planregel #${item.id.substring(0, 8)}`;
+  const getItemLabel = (item: LinkableEntity): string => {
+    if ('quoteNumber' in item) {
+      return item.quoteNumber || item.subject || `Offerte #${item.id.substring(0, 8)}`;
+    }
+    if ('productName' in item) {
+      return item.productName || `Planregel #${item.id.substring(0, 8)}`;
+    }
+    return item.title || `Aanvraag #${item.id.substring(0, 8)}`;
   };
 
-  const getItemSubLabel = (item: any) => {
-    if (entityType === 'requests') {
-      const contact = item.contact;
-      return contact?.companyName || [contact?.firstName, contact?.lastName].filter(Boolean).join(' ') || '';
-    }
-    if (entityType === 'quotes') return item.contact?.companyName || '';
-    return item.contact?.companyName || '';
-  };
+  const getItemSubLabel = (item: LinkableEntity): string => contactName(item.contact);
 
   return (
     <Modal isOpen onClose={onClose} title={`${entityLabels[entityType]} koppelen`}>
@@ -124,8 +159,14 @@ export function LinkEntitiesModal({ projectId, entityType, onClose }: Props) {
           />
         )}
 
+        <QueryErrorNotice
+          error={error}
+          label={entityLabels[entityType]}
+          onRetry={() => refetch()}
+        />
+
         <div className="max-h-80 space-y-2 overflow-y-auto">
-          {loading ? (
+          {isLoading ? (
             <div className="flex justify-center py-8">
               <Spinner />
             </div>

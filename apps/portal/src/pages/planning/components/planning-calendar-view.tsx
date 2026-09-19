@@ -262,7 +262,7 @@ function MonthView({
                       <span
                         className={`inline-flex h-6 w-6 items-center justify-center rounded-full text-xs font-semibold ${
                           today
-                            ? 'bg-blue-600 text-white'
+                            ? 'bg-primary-600 text-white'
                             : inMonth
                             ? 'text-gray-900'
                             : 'text-gray-300'
@@ -339,7 +339,7 @@ function TimeGrid({
               <div className="text-xs text-gray-500">{DAYS_SHORT[dowIdx]}</div>
               <div
                 className={`mx-auto mt-0.5 flex h-7 w-7 items-center justify-center rounded-full text-sm font-semibold ${
-                  today ? 'bg-blue-600 text-white' : 'text-gray-900'
+                  today ? 'bg-primary-600 text-white' : 'text-gray-900'
                 }`}
               >
                 {day.getDate()}
@@ -353,7 +353,7 @@ function TimeGrid({
               onClick={() => onDayHeaderClick(day)}
               title={`${DAYS_SHORT[dowIdx]} ${day.getDate()} bekijken`}
               className={`flex-1 border-l border-gray-100 py-2 text-center cursor-pointer transition-colors hover:bg-gray-50 ${
-                today ? 'bg-blue-50' : ''
+                today ? 'bg-primary-50' : ''
               }`}
             >
               {inner}
@@ -362,7 +362,7 @@ function TimeGrid({
             <div
               key={i}
               className={`flex-1 border-l border-gray-100 py-2 text-center ${
-                today ? 'bg-blue-50' : ''
+                today ? 'bg-primary-50' : ''
               }`}
             >
               {inner}
@@ -398,7 +398,7 @@ function TimeGrid({
             <div
               key={dayIdx}
               className={`relative flex-1 border-l border-gray-100 ${
-                todayCol ? 'bg-blue-50/20' : ''
+                todayCol ? 'bg-primary-50/20' : ''
               }`}
               title={unavailable ? 'Niet beschikbaar' : undefined}
               style={{
@@ -424,8 +424,8 @@ function TimeGrid({
                     className="pointer-events-none absolute left-0 right-0 z-10 flex items-center"
                     style={{ top: (currentHourFrac - dayStart) * HOUR_HEIGHT }}
                   >
-                    <div className="-ml-1 h-2.5 w-2.5 rounded-full bg-blue-500 border-2 border-white shadow" />
-                    <div className="h-px flex-1 bg-blue-500" />
+                    <div className="-ml-1 h-2.5 w-2.5 rounded-full bg-primary-500 border-2 border-white shadow" />
+                    <div className="h-px flex-1 bg-primary-500" />
                   </div>
                 )}
 

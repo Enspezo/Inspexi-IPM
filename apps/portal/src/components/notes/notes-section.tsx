@@ -11,22 +11,7 @@ import {
   useUpdateNote,
   useDeleteNote,
 } from '@/pages/notes/hooks/use-notes';
-import { formatShortDate } from '@/lib/format';
-
-function formatRelativeTime(dateStr: string): string {
-  const now = new Date();
-  const date = new Date(dateStr);
-  const diffMs = now.getTime() - date.getTime();
-  const diffMinutes = Math.floor(diffMs / 60000);
-  const diffHours = Math.floor(diffMinutes / 60);
-  const diffDays = Math.floor(diffHours / 24);
-
-  if (diffMinutes < 1) return 'zojuist';
-  if (diffMinutes < 60) return `${diffMinutes} minuten geleden`;
-  if (diffHours < 24) return `${diffHours} uur geleden`;
-  if (diffDays === 1) return 'gisteren';
-  return formatShortDate(date);
-}
+import { formatRelativeTime } from '@/lib/format';
 
 interface NoteItemProps {
   note: Note;

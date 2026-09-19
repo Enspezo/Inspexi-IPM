@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
 import { useAuth } from '@/providers/auth-provider';
-import { Table, type Column, Spinner } from '@/components/ui';
+import { Table, type Column, ErrorBox, Spinner } from '@/components/ui';
+import { PageHeader } from '@/components/layout/page-header';
 import { useSearch } from './hooks/use-search';
 import type {
   SearchEntityType,
@@ -564,7 +565,11 @@ export default function SearchPage() {
   });
 
   // Preview call — gives us totals for all tabs
-  const { data: previewData, isLoading: isPreviewLoading } = useSearch({
+  const {
+    data: previewData,
+    isLoading: isPreviewLoading,
+    error: previewError,
+  } = useSearch({
     q,
     limit: 4,
   });
@@ -576,7 +581,11 @@ export default function SearchPage() {
   const activeType: SearchEntityType | null = typeParam ?? firstTypeWithResults ?? null;
 
   // Paginated call for active tab
-  const { data: tabData, isLoading: isTabLoading } = useSearch({
+  const {
+    data: tabData,
+    isLoading: isTabLoading,
+    error: tabError,
+  } = useSearch({
     q,
     type: activeType ?? undefined,
     limit: LIMIT,
@@ -595,6 +604,7 @@ export default function SearchPage() {
   };
 
   const hasAnyResults = previewData?.groups.some((g) => g.total > 0);
+  const loadError = previewError ?? tabError;
 
   if (!q) {
     return (
@@ -628,22 +638,24 @@ export default function SearchPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div>
-        <h1 className="text-xl font-semibold text-gray-900">
-          Zoekresultaten voor &ldquo;{q}&rdquo;
-        </h1>
-        {hasAnyResults && (
-          <p className="mt-1 text-sm text-gray-500">
-            {previewData?.groups
-              .filter((g) => g.total > 0)
-              .map((g) => `${g.total} ${TAB_LABELS[g.type].toLowerCase()}`)
-              .join(', ')}
-          </p>
-        )}
-      </div>
+      <PageHeader
+        title={`Zoekresultaten voor “${q}”`}
+        description={
+          hasAnyResults
+            ? previewData?.groups
+                .filter((g) => g.total > 0)
+                .map((g) => `${g.total} ${TAB_LABELS[g.type].toLowerCase()}`)
+                .join(', ')
+            : undefined
+        }
+      />
+
+      {loadError && (
+        <ErrorBox>Fout bij het zoeken: {loadError.message}</ErrorBox>
+      )}
 
       {/* No results */}
-      {!hasAnyResults && (
+      {!hasAnyResults && !loadError && (
         <div className="flex flex-col items-center justify-center rounded-xl border border-gray-200 bg-white py-16 text-center">
           <svg
             className="mb-4 h-10 w-10 text-gray-300"

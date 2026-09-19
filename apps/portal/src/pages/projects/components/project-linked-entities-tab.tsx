@@ -2,7 +2,7 @@ import { Button } from '@/components/ui';
 
 // ─── Linked Entities Tab ────────────────────────────────────
 
-export function LinkedEntitiesTab({
+export function LinkedEntitiesTab<T extends { id: string }>({
   items,
   entityType,
   canWrite,
@@ -12,14 +12,14 @@ export function LinkedEntitiesTab({
   getLabel,
   getSubLabel,
 }: {
-  items: any[];
+  items: T[];
   entityType: string;
   canWrite: boolean;
   onLink: () => void;
   onUnlink: (id: string, label: string) => void;
   onNavigate: (id: string) => void;
-  getLabel: (item: any) => string;
-  getSubLabel: (item: any) => string;
+  getLabel: (item: T) => string;
+  getSubLabel: (item: T) => string;
 }) {
   const entityLabels: Record<string, string> = {
     requests: 'Aanvragen',

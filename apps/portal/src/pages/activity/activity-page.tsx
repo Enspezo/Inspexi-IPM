@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { DetailPageLayout } from '@/components/layout/detail-page-layout';
+import { PageHeader } from '@/components/layout/page-header';
 import { Card, Spinner, Button, StatusBadge } from '@/components/ui';
 import { formatDateTime } from '@/lib/format';
 import { AUDIT_ACTION } from '@/lib/status';
@@ -200,28 +201,25 @@ export default function ActivityPage() {
     <DetailPageLayout>
       <div className="space-y-6">
         {/* Header */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-2xl font-bold text-gray-900">Activiteiten</h2>
-            <p className="mt-1 text-sm text-gray-500">
-              Overzicht van alle acties die u hebt uitgevoerd
-              {data && (
-                <span className="ml-1 text-gray-400">
-                  ({data.total.toLocaleString('nl-NL')} {data.total === 1 ? 'resultaat' : 'resultaten'})
-                </span>
-              )}
-            </p>
-          </div>
-          <Link
-            to="/dashboard"
-            className="flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700"
-          >
-            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-            </svg>
-            Dashboard
-          </Link>
-        </div>
+        <PageHeader
+          title="Activiteiten"
+          description={
+            data
+              ? `Overzicht van alle acties die u hebt uitgevoerd (${data.total.toLocaleString('nl-NL')} ${data.total === 1 ? 'resultaat' : 'resultaten'})`
+              : 'Overzicht van alle acties die u hebt uitgevoerd'
+          }
+          actions={
+            <Link
+              to="/dashboard"
+              className="flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700"
+            >
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+              Dashboard
+            </Link>
+          }
+        />
 
         {/* Filters */}
         <Card>

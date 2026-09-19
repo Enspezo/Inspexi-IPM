@@ -140,6 +140,7 @@ export function FilterRow<T>({
       <button
         type="button"
         onClick={onRemove}
+        aria-label="Filter verwijderen"
         className="flex-shrink-0 rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
       >
         <svg

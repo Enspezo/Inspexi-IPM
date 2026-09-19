@@ -4,6 +4,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { formatDateTimeNl } from '@/common';
 
 @Injectable()
 export class PdfService {
@@ -138,13 +139,7 @@ export class PdfService {
     }
 
     // Add signing metadata text
-    const dateStr = signedAt.toLocaleDateString('nl-NL', {
-      day: 'numeric',
-      month: 'long',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
+    const dateStr = formatDateTimeNl(signedAt);
 
     const textY = 30;
     lastPage.drawText(`Digitaal ondertekend door ${clientName}`, {

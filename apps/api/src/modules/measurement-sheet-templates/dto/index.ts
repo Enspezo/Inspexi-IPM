@@ -1,7 +1,6 @@
 export { CreateMeasurementSheetTemplateDto } from './create-template.dto';
 export { UpdateMeasurementSheetTemplateDto } from './update-template.dto';
 export { QueryMeasurementSheetTemplatesDto } from './query-templates.dto';
-export { ForAssetQueryDto } from './for-asset.dto';
 export {
   PublishMeasurementSheetTemplateDto,
   RetireMeasurementSheetTemplateDto,

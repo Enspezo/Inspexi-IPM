@@ -146,10 +146,10 @@ export function OverviewTab({ inspection, onNavigateTab }: OverviewTabProps) {
           />
         </dl>
         {inspection.description && (
-          <div className="mt-4 border-t border-gray-100 pt-4">
+          <dl className="mt-4 border-t border-gray-100 pt-4">
             <dt className="text-sm font-medium text-gray-500">Omschrijving</dt>
             <dd className="mt-1 whitespace-pre-wrap text-sm text-gray-900">{inspection.description}</dd>
-          </div>
+          </dl>
         )}
       </Card>
 

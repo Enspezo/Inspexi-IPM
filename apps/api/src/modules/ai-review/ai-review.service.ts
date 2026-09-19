@@ -50,6 +50,14 @@ const MAX_RUNS_LISTED = 20;
 
 const VALID_SEVERITIES = new Set<string>(Object.values(AiReviewItemSeverity));
 
+/** Categorieën uit het tool-schema (single source: ook in `REVIEW_TOOL`). */
+const REVIEW_CATEGORIES = ['VOLLEDIGHEID', 'CONSISTENTIE', 'NORMERING', 'TAAL', 'OVERIG'] as const;
+const VALID_CATEGORIES = new Set<string>(REVIEW_CATEGORIES);
+const DEFAULT_CATEGORY = 'OVERIG';
+/** Lengtebegrenzingen (model-output is niet te vertrouwen; kolommen zijn text). */
+const MAX_TITLE_LENGTH = 200;
+const MAX_DESCRIPTION_LENGTH = 2000;
+
 /** Ruwe item-shape zoals de tool-use die aanlevert (vóór validatie). */
 interface RawReviewItem {
   severity?: string;
@@ -85,7 +93,7 @@ const REVIEW_TOOL: Anthropic.Tool = {
             severity: { type: 'string', enum: ['CRITICAL', 'WARNING', 'SUGGESTION', 'INFO'] },
             category: {
               type: 'string',
-              enum: ['VOLLEDIGHEID', 'CONSISTENTIE', 'NORMERING', 'TAAL', 'OVERIG'],
+              enum: [...REVIEW_CATEGORIES],
             },
             title: { type: 'string', description: 'Korte NL-titel van het aandachtspunt.' },
             description: { type: 'string', description: 'NL-omschrijving met concrete verwijzing.' },
@@ -384,9 +392,13 @@ export class AiReviewService {
         severity: (VALID_SEVERITIES.has(i.severity ?? '')
           ? i.severity
           : AiReviewItemSeverity.INFO) as AiReviewItemSeverity,
-        category: typeof i.category === 'string' && i.category ? i.category : 'OVERIG',
-        title: i.title,
-        description: i.description,
+        // Onbekende/afwijkende categorie → veilige default (schema-enum is de bron).
+        category:
+          typeof i.category === 'string' && VALID_CATEGORIES.has(i.category.trim().toUpperCase())
+            ? i.category.trim().toUpperCase()
+            : DEFAULT_CATEGORY,
+        title: i.title.trim().slice(0, MAX_TITLE_LENGTH),
+        description: i.description.trim().slice(0, MAX_DESCRIPTION_LENGTH),
         assetNodeId:
           i.assetNodeId && input.knownAssetNodeIds.has(i.assetNodeId) ? i.assetNodeId : null,
         findingId: i.findingId && input.knownFindingIds.has(i.findingId) ? i.findingId : null,

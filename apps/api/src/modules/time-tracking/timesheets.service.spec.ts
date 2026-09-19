@@ -10,7 +10,14 @@ describe('TimesheetsService', () => {
   let service: TimesheetsService;
 
   const mockPrisma: any = {
-    timesheet: { findFirst: jest.fn(), findMany: jest.fn(), count: jest.fn(), update: jest.fn() },
+    timesheet: {
+      findFirst: jest.fn(),
+      findMany: jest.fn(),
+      count: jest.fn(),
+      update: jest.fn(),
+      updateMany: jest.fn(),
+      findUniqueOrThrow: jest.fn(),
+    },
     timeEntry: {
       count: jest.fn(),
       groupBy: jest.fn(),
@@ -18,6 +25,7 @@ describe('TimesheetsService', () => {
       findMany: jest.fn(),
     },
     user: { findMany: jest.fn() },
+    $transaction: jest.fn(),
   };
   const notifications = { dispatch: jest.fn() };
   const timeEntries = { buildWhere: jest.fn().mockReturnValue({}) };
@@ -49,6 +57,8 @@ describe('TimesheetsService', () => {
     }).compile();
     service = module.get(TimesheetsService);
 
+    // tx-client = zelfde mock; $transaction voert de callback direct uit.
+    mockPrisma.$transaction.mockImplementation((fn: any) => fn(mockPrisma));
     mockPrisma.timeEntry.groupBy.mockResolvedValue([]);
     mockPrisma.timeEntry.aggregate.mockResolvedValue({ _sum: { durationMinutes: 480 } });
     mockPrisma.user.findMany.mockResolvedValue([{ id: 'mgr-1' }]);
@@ -62,7 +72,8 @@ describe('TimesheetsService', () => {
         .mockResolvedValueOnce(0)
         .mockResolvedValueOnce(0)
         .mockResolvedValueOnce(5);
-      mockPrisma.timesheet.update.mockResolvedValue({
+      mockPrisma.timesheet.updateMany.mockResolvedValue({ count: 1 });
+      mockPrisma.timesheet.findUniqueOrThrow.mockResolvedValue({
         ...baseSheet,
         status: TimesheetStatus.INGEDIEND,
       });
@@ -71,6 +82,11 @@ describe('TimesheetsService', () => {
     it('CONCEPT → INGEDIEND + notificatie naar goedkeurders', async () => {
       const result = await service.submit('ts-1', inspecteur);
       expect(result.status).toBe(TimesheetStatus.INGEDIEND);
+      expect(mockPrisma.timesheet.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'ts-1', status: { in: ['CONCEPT', 'AFGEWEZEN'] } },
+        }),
+      );
       await new Promise(process.nextTick);
       expect(notifications.dispatch).toHaveBeenCalledWith(
         expect.objectContaining({ type: 'WEEKSTAAT_INGEDIEND', recipientUserIds: ['mgr-1'] }),
@@ -106,6 +122,12 @@ describe('TimesheetsService', () => {
         .mockResolvedValueOnce(0)
         .mockResolvedValueOnce(0);
       await expect(service.submit('ts-1', inspecteur)).rejects.toThrow(ConflictException);
+    });
+
+    it('gelijktijdige statuswissel (updateMany raakt 0 rijen) → 409', async () => {
+      mockPrisma.timesheet.updateMany.mockResolvedValue({ count: 0 });
+      await expect(service.submit('ts-1', inspecteur)).rejects.toThrow(ConflictException);
+      expect(mockPrisma.timesheet.findUniqueOrThrow).not.toHaveBeenCalled();
     });
 
     it('al goedgekeurd → 409', async () => {

@@ -13,6 +13,7 @@ import { AvailabilityResolutionService } from '@/modules/availability/availabili
 
 describe('PlanningPublicService', () => {
   let service: PlanningPublicService;
+  let module: TestingModule;
 
   const mockPrismaService = {
     planningItem: {
@@ -113,7 +114,7 @@ describe('PlanningPublicService', () => {
   beforeEach(async () => {
     jest.clearAllMocks();
 
-    const module: TestingModule = await Test.createTestingModule({
+    module = await Test.createTestingModule({
       providers: [
         PlanningPublicService,
         PlanningService,
@@ -167,9 +168,9 @@ describe('PlanningPublicService', () => {
     };
 
     it('should return a planning item by public token with documents', async () => {
-      mockPrismaService.planningItem.findUnique
+      mockPrismaService.planningItem.findFirst
         .mockResolvedValueOnce(selectShapedItem)  // findByPublicToken
-        .mockResolvedValueOnce({ id: 'plan-1', quoteId: null }); // getSharedDocuments
+        .mockResolvedValueOnce({ id: 'plan-1', orgId: 'org-1', quoteId: null }); // getSharedDocuments
       // Org-modus voor inspecteur-contactresolutie (apart opgehaald, lekt niet naar de response).
       mockPrismaService.organization.findUnique.mockResolvedValue({
         inspectorPhoneDisplay: 'NONE',
@@ -186,9 +187,9 @@ describe('PlanningPublicService', () => {
     });
 
     it('B-306: gebruikt een expliciete select-allowlist zonder internalNotes en stript orgId', async () => {
-      mockPrismaService.planningItem.findUnique
+      mockPrismaService.planningItem.findFirst
         .mockResolvedValueOnce(selectShapedItem)
-        .mockResolvedValueOnce({ id: 'plan-1', quoteId: null });
+        .mockResolvedValueOnce({ id: 'plan-1', orgId: 'org-1', quoteId: null });
       mockPrismaService.organization.findUnique.mockResolvedValue({
         inspectorPhoneDisplay: 'NONE',
         inspectorEmailDisplay: 'NONE',
@@ -201,7 +202,7 @@ describe('PlanningPublicService', () => {
 
       // De query moet een select-allowlist gebruiken (geen include+spread meer)
       // en mag interne velden zoals internalNotes nooit opvragen.
-      const queryArg = mockPrismaService.planningItem.findUnique.mock.calls[0][0];
+      const queryArg = mockPrismaService.planningItem.findFirst.mock.calls[0][0];
       expect(queryArg.include).toBeUndefined();
       expect(queryArg.select).toBeDefined();
       expect(queryArg.select.internalNotes).toBeUndefined();
@@ -214,9 +215,39 @@ describe('PlanningPublicService', () => {
     });
 
     it('should throw NotFoundException for unknown token', async () => {
-      mockPrismaService.planningItem.findUnique.mockResolvedValue(null);
+      mockPrismaService.planningItem.findFirst.mockResolvedValue(null);
 
       await expect(service.findByPublicToken('unknown-token')).rejects.toThrow(NotFoundException);
+    });
+
+    it('WP-B7/F1: bindt de token-lookup aan de bezochte tenant en gate\'t tegen de eigenaar-org', async () => {
+      mockPrismaService.planningItem.findFirst
+        .mockResolvedValueOnce(selectShapedItem)
+        .mockResolvedValueOnce({ id: 'plan-1', orgId: 'org-1', quoteId: null });
+      mockPrismaService.organization.findUnique.mockResolvedValue({
+        inspectorPhoneDisplay: 'NONE',
+        inspectorEmailDisplay: 'NONE',
+        inspectorStaticPhone: null,
+        inspectorStaticEmail: null,
+      });
+      mockPrismaService.document.findMany.mockResolvedValue([]);
+      const entitlements = module.get(EntitlementsService) as { assertFeature: jest.Mock };
+
+      await service.findByPublicToken('token-abc', {
+        slug: 'acme',
+        organization: null,
+        orgId: 'org-visited',
+        isSuperuserDomain: false,
+      });
+
+      const queryArg = mockPrismaService.planningItem.findFirst.mock.calls[0][0];
+      expect(queryArg.where).toEqual({ publicToken: 'token-abc', orgId: 'org-visited' });
+      // Entitlement tegen de EIGENAAR (org-1 uit het item), niet de bezochte tenant.
+      expect(entitlements.assertFeature).toHaveBeenCalledWith('org-1', 'UITVOERING_COMPLEET');
+      // Gedeelde documenten zijn org-gebonden aan de afspraak.
+      expect(mockPrismaService.document.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: expect.objectContaining({ orgId: 'org-1' }) }),
+      );
     });
   });
 
@@ -224,7 +255,7 @@ describe('PlanningPublicService', () => {
 
   describe('createRescheduleRequest', () => {
     it('should create a reschedule request from public portal', async () => {
-      mockPrismaService.planningItem.findUnique.mockResolvedValue({
+      mockPrismaService.planningItem.findFirst.mockResolvedValue({
         id: 'plan-1',
         orgId: 'org-1',
         createdBy: 'user-1',
@@ -248,7 +279,7 @@ describe('PlanningPublicService', () => {
     });
 
     it('should throw NotFoundException for unknown token', async () => {
-      mockPrismaService.planningItem.findUnique.mockResolvedValue(null);
+      mockPrismaService.planningItem.findFirst.mockResolvedValue(null);
 
       await expect(
         service.createRescheduleRequest('bad-token', { preferredDate: '2026-05-01', reason: 'x' } as any),
@@ -256,7 +287,7 @@ describe('PlanningPublicService', () => {
     });
 
     it('should throw BadRequestException when item is already cancelled', async () => {
-      mockPrismaService.planningItem.findUnique.mockResolvedValue({
+      mockPrismaService.planningItem.findFirst.mockResolvedValue({
         id: 'plan-1',
         orgId: 'org-1',
         createdBy: 'user-1',

@@ -666,8 +666,8 @@ describe('Client Portal (e2e)', () => {
     await postA('/api/v1/client/auth/refresh').set('Cookie', cookie2).expect(200);
   });
 
-  it('weigert refresh zonder cookie', async () => {
-    const res = await postA('/api/v1/client/auth/refresh').expect(200);
+  it('weigert refresh zonder cookie met een echte 401 (F8, spiegelt de staf-realm)', async () => {
+    const res = await postA('/api/v1/client/auth/refresh').expect(401);
     expect(res.body.success).toBe(false);
   });
 

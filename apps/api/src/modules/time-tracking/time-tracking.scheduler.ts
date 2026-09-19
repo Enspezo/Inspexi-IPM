@@ -9,6 +9,7 @@ import {
   isSameLocalDay,
   localDayEndUtc,
 } from './time-tracking.helpers';
+import { isEnabledFlag, isSchedulerEnabled } from '@/common/config/scheduler-enabled';
 
 /**
  * Env-kill-switch voor beide time-tracking-crons. Default aan; alleen de
@@ -138,9 +139,8 @@ export class TimeTrackingScheduler {
     return err instanceof Error ? (err.stack ?? err.message) : String(err);
   }
 
-  /** Default aan; alleen '0'/'false' (case-insensitief) schakelt uit. */
+  /** Globale `SCHEDULER_ENABLED` (F5) én de eigen switch moeten aan staan. */
   private static isEnabled(): boolean {
-    const raw = process.env[TIME_TRACKING_SCHEDULER_ENABLED_ENV]?.trim().toLowerCase();
-    return raw !== '0' && raw !== 'false';
+    return isSchedulerEnabled() && isEnabledFlag(process.env[TIME_TRACKING_SCHEDULER_ENABLED_ENV]);
   }
 }

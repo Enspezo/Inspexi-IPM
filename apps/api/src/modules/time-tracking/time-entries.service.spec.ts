@@ -23,6 +23,7 @@ describe('TimeEntriesService', () => {
     project: { findUnique: jest.fn() },
     inspectionPlan: { findUnique: jest.fn() },
     planningItem: { findUnique: jest.fn() },
+    organization: { findUnique: jest.fn() },
     $transaction: jest.fn(),
   };
 
@@ -47,6 +48,7 @@ describe('TimeEntriesService', () => {
       Promise.resolve({ id: 'te-new', ...data }),
     );
     mockPrisma.project.findUnique.mockResolvedValue({ orgId: ORG });
+    mockPrisma.organization.findUnique.mockResolvedValue({ timezone: 'Europe/Amsterdam' });
   });
 
   describe('start — projectregel (PRD-16 §4.3)', () => {
@@ -324,6 +326,37 @@ describe('TimeEntriesService', () => {
       await expect(
         service.applySyncChange(inspecteur, 'update', payload()),
       ).rejects.toThrow(ConflictException);
+    });
+
+    it('update op een verwijderde regel (tombstone) is idempotent en raakt de regel niet aan', async () => {
+      mockPrisma.timeEntry.findUnique.mockResolvedValue({
+        id: CLIENT_ID,
+        userId: inspecteur.id,
+        isDeleted: true,
+        needsProjectAssignment: false,
+        startedAt: new Date('2026-08-27T06:00:00Z'),
+        timesheetId: 'ts-1',
+        timesheet: { id: 'ts-1', status: TimesheetStatus.CONCEPT },
+      });
+      const r = await service.applySyncChange(inspecteur, 'update', payload());
+      expect(r.id).toBe(CLIENT_ID);
+      expect(mockPrisma.timeEntry.update).not.toHaveBeenCalled();
+      expect(mockPrisma.timeEntry.create).not.toHaveBeenCalled();
+    });
+
+    it('ISO-week wordt in de org-tijdzone bepaald (Pacific/Kiritimati: zo 30 aug 12:00Z = wk 36, niet wk 35)', async () => {
+      mockPrisma.organization.findUnique.mockResolvedValue({ timezone: 'Pacific/Kiritimati' });
+      // 2026-08-30T12:00Z = zondag 30 aug in NL (week 35) maar al maandag 31 aug (week 36) op Kiritimati (UTC+14).
+      await service.applySyncChange(
+        inspecteur,
+        'create',
+        payload({ startedAt: '2026-08-30T12:00:00.000Z', endedAt: '2026-08-30T13:00:00.000Z' }),
+      );
+      expect(mockPrisma.timesheet.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          create: expect.objectContaining({ year: 2026, weekNumber: 36 }),
+        }),
+      );
     });
 
     it('delete is idempotent voor een onbekende regel', async () => {

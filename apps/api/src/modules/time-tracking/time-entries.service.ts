@@ -8,7 +8,6 @@ import {
 } from '@nestjs/common';
 import {
   Prisma,
-  Role,
   TaskEntityType,
   TaskStatus,
   TaskType,
@@ -26,8 +25,15 @@ import {
   paginate,
   requireOrg,
 } from '@/common';
-import { CRM_ROLES, MANAGEMENT_ROLES } from '@/common/auth/roles';
-import { durationMinutesBetween, formatDateNl, isoWeekOf } from './time-tracking.helpers';
+import { isManagement } from '@/common/auth/role-helpers';
+import {
+  DEFAULT_TIME_ZONE,
+  durationMinutesBetween,
+  formatDateNl,
+  isSameIsoWeek,
+  isStaffViewer,
+  isoWeekOf,
+} from './time-tracking.helpers';
 import {
   CreateTimeEntryDto,
   ListTimeEntriesQueryDto,
@@ -76,13 +82,21 @@ export class TimeEntriesService {
       source,
     );
     await this.assertEntryFksInOrg(user, dto);
+    const timeZone = await this.orgTimeZone(orgId);
 
     let stoppedEntry: { id: string } | null = null;
     let entry;
     try {
       entry = await this.prisma.$transaction(async (tx) => {
         stoppedEntry = await this.stopRunningTx(tx, orgId, user.id, 'gewisseld');
-        const timesheetId = await this.ensureOpenTimesheet(tx, orgId, user.id, startedAt, false);
+        const timesheetId = await this.ensureOpenTimesheet(
+          tx,
+          orgId,
+          user.id,
+          startedAt,
+          timeZone,
+          false,
+        );
         return tx.timeEntry.create({
           data: {
             orgId,
@@ -112,7 +126,7 @@ export class TimeEntriesService {
 
     if (needsProjectAssignment) {
       // Fire-and-forget: het taak-aanmaken mag het starten van de timer nooit blokkeren.
-      this.createAssignmentTask(entry.id, orgId, user.id, startedAt).catch((err) =>
+      this.createAssignmentTask(entry.id, orgId, user.id, startedAt, timeZone).catch((err) =>
         this.logger.error('Aanmaken toewijs-taak mislukt', err),
       );
     }
@@ -164,9 +178,17 @@ export class TimeEntriesService {
     // Handmatige regels kennen de REIS_AUTO-uitzondering niet.
     this.resolveProjectRule(dto.activityType, dto.projectId ?? null, TimeEntrySource.HANDMATIG);
     await this.assertEntryFksInOrg(user, dto);
+    const timeZone = await this.orgTimeZone(orgId);
 
     return this.prisma.$transaction(async (tx) => {
-      const timesheetId = await this.ensureOpenTimesheet(tx, orgId, user.id, startedAt, false);
+      const timesheetId = await this.ensureOpenTimesheet(
+        tx,
+        orgId,
+        user.id,
+        startedAt,
+        timeZone,
+        false,
+      );
       return tx.timeEntry.create({
         data: {
           orgId,
@@ -212,7 +234,7 @@ export class TimeEntriesService {
     };
 
     // INSPECTEUR zonder kantoorrol ziet uitsluitend eigen regels.
-    if (!this.isStaffViewer(user)) {
+    if (!isStaffViewer(user)) {
       where.userId = user.id;
     } else if (query.userId) {
       where.userId = query.userId;
@@ -234,7 +256,7 @@ export class TimeEntriesService {
   async update(id: string, user: User, dto: UpdateTimeEntryDto) {
     const entry = await this.loadEntry(id, user);
     const isOwner = entry.userId === user.id;
-    const isManager = user.roles.some((r) => (MANAGEMENT_ROLES as readonly Role[]).includes(r));
+    const isManager = isManagement(user);
 
     if (!isOwner && !isManager) {
       throw new ForbiddenException('Alleen de inspecteur zelf of een manager kan deze regel wijzigen');
@@ -251,34 +273,27 @@ export class TimeEntriesService {
       throw new BadRequestException('Eindtijd moet na de starttijd liggen');
     }
 
-    const stillUnassigned =
-      entry.needsProjectAssignment && !effProjectId && effActivity !== TimeActivityType.OVERIG;
-    if (effActivity !== TimeActivityType.OVERIG && !effProjectId && !stillUnassigned) {
-      throw new BadRequestException('Project is verplicht voor deze activiteit');
-    }
-    const clearsAssignment = entry.needsProjectAssignment && !stillUnassigned;
+    const clearsAssignment = this.resolveUpdateProjectRule(entry, effActivity, effProjectId);
 
     await this.assertEntryFksInOrg(user, {
       projectId: dto.projectId ?? undefined,
       inspectionPlanId: dto.inspectionPlanId ?? undefined,
       planningItemId: dto.planningItemId ?? undefined,
     });
+    const timeZone = await this.orgTimeZone(entry.orgId);
 
     const updated = await this.prisma.$transaction(async (tx) => {
       // Verschuift de regel naar een andere ISO-week → herkoppel de weekstaat.
       let timesheetId = entry.timesheetId;
-      if (dto.startedAt) {
-        const oldWeek = isoWeekOf(entry.startedAt);
-        const newWeek = isoWeekOf(startedAt);
-        if (oldWeek.year !== newWeek.year || oldWeek.week !== newWeek.week) {
-          timesheetId = await this.ensureOpenTimesheet(
-            tx,
-            entry.orgId,
-            entry.userId,
-            startedAt,
-            !isOwner,
-          );
-        }
+      if (dto.startedAt && !isSameIsoWeek(entry.startedAt, startedAt, timeZone)) {
+        timesheetId = await this.ensureOpenTimesheet(
+          tx,
+          entry.orgId,
+          entry.userId,
+          startedAt,
+          timeZone,
+          !isOwner,
+        );
       }
 
       return tx.timeEntry.update({
@@ -312,7 +327,7 @@ export class TimeEntriesService {
   async remove(id: string, user: User) {
     const entry = await this.loadEntry(id, user);
     const isOwner = entry.userId === user.id;
-    const isManager = user.roles.some((r) => (MANAGEMENT_ROLES as readonly Role[]).includes(r));
+    const isManager = isManagement(user);
     if (!isOwner && !isManager) {
       throw new ForbiddenException('Alleen de inspecteur zelf of een manager kan deze regel verwijderen');
     }
@@ -380,6 +395,11 @@ export class TimeEntriesService {
     const parsed = this.parseSyncPayload(data);
 
     if (operation === 'create' && existing) return { id: existing.id }; // idempotente retry
+    // Update op een al verwijderde regel (tombstone): idempotent, net als delete —
+    // een verlate offline-wijziging mag een soft-delete nooit terugdraaien.
+    if (existing?.isDeleted) return { id: existing.id };
+
+    const timeZone = await this.orgTimeZone(orgId);
 
     if (!existing) {
       // create — of een update op een regel die de server nog niet kent
@@ -397,6 +417,7 @@ export class TimeEntriesService {
           orgId,
           user.id,
           parsed.startedAt,
+          timeZone,
           false,
         );
         return tx.timeEntry.create({
@@ -422,7 +443,7 @@ export class TimeEntriesService {
         });
       });
       if (needsProjectAssignment) {
-        this.createAssignmentTask(entry.id, orgId, user.id, parsed.startedAt).catch((err) =>
+        this.createAssignmentTask(entry.id, orgId, user.id, parsed.startedAt, timeZone).catch((err) =>
           this.logger.error('Aanmaken toewijs-taak mislukt', err),
         );
       }
@@ -435,26 +456,24 @@ export class TimeEntriesService {
     }
     this.assertEntryMutable(existing.timesheet?.status ?? TimesheetStatus.CONCEPT, true);
 
-    const stillUnassigned =
-      existing.needsProjectAssignment &&
-      !parsed.projectId &&
-      parsed.activityType !== TimeActivityType.OVERIG;
-    if (
-      parsed.activityType !== TimeActivityType.OVERIG &&
-      !parsed.projectId &&
-      !stillUnassigned
-    ) {
-      throw new BadRequestException('Project is verplicht voor deze activiteit');
-    }
-    const clearsAssignment = existing.needsProjectAssignment && !stillUnassigned;
+    const clearsAssignment = this.resolveUpdateProjectRule(
+      existing,
+      parsed.activityType,
+      parsed.projectId,
+    );
     await this.assertEntryFksInOrg(user, parsed);
 
     const updated = await this.prisma.$transaction(async (tx) => {
       let timesheetId = existing.timesheetId;
-      const oldWeek = isoWeekOf(existing.startedAt);
-      const newWeek = isoWeekOf(parsed.startedAt);
-      if (oldWeek.year !== newWeek.year || oldWeek.week !== newWeek.week) {
-        timesheetId = await this.ensureOpenTimesheet(tx, orgId, user.id, parsed.startedAt, false);
+      if (!isSameIsoWeek(existing.startedAt, parsed.startedAt, timeZone)) {
+        timesheetId = await this.ensureOpenTimesheet(
+          tx,
+          orgId,
+          user.id,
+          parsed.startedAt,
+          timeZone,
+          false,
+        );
       }
       return tx.timeEntry.update({
         where: { id: existing.id },
@@ -535,8 +554,35 @@ export class TimeEntriesService {
 
   // ─── Interne helpers ───────────────────────────────────
 
-  private isStaffViewer(user: User): boolean {
-    return user.roles.some((r) => (CRM_ROLES as readonly Role[]).includes(r));
+  /**
+   * Org-tijdzone voor de ISO-weekbepaling (zelfde bron als de nachtwaker in de
+   * scheduler); één lookup per aanroep, vóór de transactie.
+   */
+  private async orgTimeZone(orgId: string): Promise<string> {
+    const org = await this.prisma.organization.findUnique({
+      where: { id: orgId },
+      select: { timezone: true },
+    });
+    return org?.timezone || DEFAULT_TIME_ZONE;
+  }
+
+  /**
+   * Projectregel bij het wijzigen van een bestaande regel (portal-PATCH én
+   * sync-update): project verplicht behalve bij OVERIG, tenzij de regel nog op
+   * `needsProjectAssignment` staat (REIS_AUTO zonder project). Retourneert of
+   * de wijziging die vlag wist.
+   */
+  private resolveUpdateProjectRule(
+    existing: { needsProjectAssignment: boolean },
+    activityType: TimeActivityType,
+    projectId: string | null,
+  ): boolean {
+    const stillUnassigned =
+      existing.needsProjectAssignment && !projectId && activityType !== TimeActivityType.OVERIG;
+    if (activityType !== TimeActivityType.OVERIG && !projectId && !stillUnassigned) {
+      throw new BadRequestException('Project is verplicht voor deze activiteit');
+    }
+    return existing.needsProjectAssignment && !stillUnassigned;
   }
 
   private parseStartedAt(value: string | undefined): Date {
@@ -630,9 +676,10 @@ export class TimeEntriesService {
     orgId: string,
     userId: string,
     startedAt: Date,
+    timeZone: string,
     allowSubmittedForCorrection: boolean,
   ): Promise<string> {
-    const { year, week } = isoWeekOf(startedAt);
+    const { year, week } = isoWeekOf(startedAt, timeZone);
     const timesheet = await tx.timesheet.upsert({
       where: { orgId_userId_year_weekNumber: { orgId, userId, year, weekNumber: week } },
       create: { orgId, userId, year, weekNumber: week },
@@ -648,30 +695,36 @@ export class TimeEntriesService {
     return timesheet.id;
   }
 
-  /** Todo-taak "reistijd toewijzen" (PRD-16 §6.2) — buiten de starttransactie. */
+  /**
+   * Todo-taak "reistijd toewijzen" (PRD-16 §6.2) — buiten de starttransactie,
+   * maar taak + terugkoppeling op de regel wél atomisch (geen wees-taak).
+   */
   private async createAssignmentTask(
     entryId: string,
     orgId: string,
     userId: string,
     startedAt: Date,
+    timeZone: string,
   ): Promise<void> {
-    const task = await this.prisma.task.create({
-      data: {
-        orgId,
-        title: `Reistijd van ${formatDateNl(startedAt)} aan een project toewijzen`,
-        description:
-          'Automatisch gestarte reistijd zonder gepland agenda-item. Koppel de urenregel aan een project (of activiteit Overig) vóór het indienen van de weekstaat.',
-        taskType: TaskType.TO_DO,
-        entityType: TaskEntityType.TIME_ENTRY,
-        entityId: entryId,
-        assigneeId: userId,
-        createdById: userId,
-      },
-      select: { id: true },
-    });
-    await this.prisma.timeEntry.update({
-      where: { id: entryId },
-      data: { assignmentTaskId: task.id },
+    await this.prisma.$transaction(async (tx) => {
+      const task = await tx.task.create({
+        data: {
+          orgId,
+          title: `Reistijd van ${formatDateNl(startedAt, timeZone)} aan een project toewijzen`,
+          description:
+            'Automatisch gestarte reistijd zonder gepland agenda-item. Koppel de urenregel aan een project (of activiteit Overig) vóór het indienen van de weekstaat.',
+          taskType: TaskType.TO_DO,
+          entityType: TaskEntityType.TIME_ENTRY,
+          entityId: entryId,
+          assigneeId: userId,
+          createdById: userId,
+        },
+        select: { id: true },
+      });
+      await tx.timeEntry.update({
+        where: { id: entryId },
+        data: { assignmentTaskId: task.id },
+      });
     });
   }
 

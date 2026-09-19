@@ -69,7 +69,7 @@ describe('tenant utilities', () => {
           ...window.location,
           hostname: 'localhost',
           protocol: 'http:',
-          port: '5173',
+          port: '5174',
         },
         writable: true,
       });
@@ -77,7 +77,7 @@ describe('tenant utilities', () => {
       const { getOrgUrl } = await import('./tenant');
       const url = getOrgUrl('testorg', '/dashboard');
 
-      expect(url).toBe('http://testorg.localhost:5173/dashboard');
+      expect(url).toBe('http://testorg.localhost:5174/dashboard');
     });
 
     it('should default path to /', async () => {
@@ -86,7 +86,7 @@ describe('tenant utilities', () => {
           ...window.location,
           hostname: 'localhost',
           protocol: 'http:',
-          port: '5173',
+          port: '5174',
         },
         writable: true,
       });
@@ -94,7 +94,7 @@ describe('tenant utilities', () => {
       const { getOrgUrl } = await import('./tenant');
       const url = getOrgUrl('myorg');
 
-      expect(url).toBe('http://myorg.localhost:5173/');
+      expect(url).toBe('http://myorg.localhost:5174/');
     });
   });
 
@@ -105,7 +105,7 @@ describe('tenant utilities', () => {
           ...window.location,
           hostname: 'inspexidemo.localhost',
           protocol: 'http:',
-          port: '5173',
+          port: '5174',
         },
         writable: true,
       });
@@ -113,7 +113,7 @@ describe('tenant utilities', () => {
       const { getBaseDomainUrl } = await import('./tenant');
       const url = getBaseDomainUrl('/login');
 
-      expect(url).toBe('http://mijn.localhost:5173/login');
+      expect(url).toBe('http://mijn.localhost:5174/login');
     });
   });
 

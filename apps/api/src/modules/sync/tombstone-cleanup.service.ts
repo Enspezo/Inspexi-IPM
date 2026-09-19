@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '@/prisma';
+import { isEnabledFlag, isSchedulerEnabled } from '@/common/config/scheduler-enabled';
 
 /**
  * Retentie voor sync-tombstones: records die langer dan dit aantal dagen geleden
@@ -203,9 +204,8 @@ export class TombstoneCleanupService {
     return err instanceof Error ? (err.stack ?? err.message) : String(err);
   }
 
-  /** Default aan; alleen '0'/'false' (case-insensitief) schakelt uit. */
+  /** Globale `SCHEDULER_ENABLED` (F5) én de eigen switch moeten aan staan. */
   private static isEnabled(): boolean {
-    const raw = process.env[TOMBSTONE_CLEANUP_ENABLED_ENV]?.trim().toLowerCase();
-    return raw !== '0' && raw !== 'false';
+    return isSchedulerEnabled() && isEnabledFlag(process.env[TOMBSTONE_CLEANUP_ENABLED_ENV]);
   }
 }

@@ -2,6 +2,7 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import {
@@ -14,10 +15,9 @@ import {
 } from '@prisma/client';
 import { PrismaService } from '@/prisma';
 import { assertFound, buildOrderBy, orgScope, paginate } from '@/common';
-import { CRM_ROLES, MANAGEMENT_ROLES } from '@/common/auth/roles';
 import { NotificationsService } from '../notifications/notifications.service';
 import { TimeEntriesService } from './time-entries.service';
-import { formatDurationNl } from './time-tracking.helpers';
+import { formatDurationNl, isStaffViewer } from './time-tracking.helpers';
 import { ListTimeEntriesQueryDto, ListTimesheetsQueryDto } from './dto';
 
 /** NL-labels voor de CSV-export (portal heeft zijn eigen status-map). */
@@ -38,6 +38,8 @@ export interface TimesheetTotals {
 
 @Injectable()
 export class TimesheetsService {
+  private readonly logger = new Logger(TimesheetsService.name);
+
   constructor(
     private prisma: PrismaService,
     private notifications: NotificationsService,
@@ -50,7 +52,7 @@ export class TimesheetsService {
     const { page = 1, limit = 20, sortBy, sortOrder = 'desc' } = query;
     const where: Prisma.TimesheetWhereInput = { ...orgScope(user) };
 
-    if (!this.isStaffViewer(user)) {
+    if (!isStaffViewer(user)) {
       where.userId = user.id;
     } else if (query.userId) {
       where.userId = query.userId;
@@ -85,32 +87,34 @@ export class TimesheetsService {
   }
 
   async findOne(id: string, user: User) {
-    const timesheet = await this.prisma.timesheet.findFirst({
-      where: { id, ...orgScope(user) },
-      include: {
-        user: { select: { id: true, firstName: true, lastName: true } },
-        reviewedBy: { select: { id: true, firstName: true, lastName: true } },
-        entries: {
-          where: { isDeleted: false },
-          orderBy: { startedAt: 'asc' },
-          include: {
-            project: { select: { id: true, projectNumber: true, title: true } },
-            inspectionPlan: { select: { id: true, projectName: true } },
-            planningItem: { select: { id: true, productName: true } },
-            correctedBy: { select: { id: true, firstName: true, lastName: true } },
+    const timesheet = assertFound(
+      await this.prisma.timesheet.findFirst({
+        where: { id, ...orgScope(user) },
+        include: {
+          user: { select: { id: true, firstName: true, lastName: true } },
+          reviewedBy: { select: { id: true, firstName: true, lastName: true } },
+          entries: {
+            where: { isDeleted: false },
+            orderBy: { startedAt: 'asc' },
+            include: {
+              project: { select: { id: true, projectNumber: true, title: true } },
+              inspectionPlan: { select: { id: true, projectName: true } },
+              planningItem: { select: { id: true, productName: true } },
+              correctedBy: { select: { id: true, firstName: true, lastName: true } },
+            },
           },
         },
-      },
-    });
-    assertFound(timesheet, 'Weekstaat');
+      }),
+      'Weekstaat',
+    );
 
-    if (!this.isStaffViewer(user) && timesheet!.userId !== user.id) {
+    if (!isStaffViewer(user) && timesheet.userId !== user.id) {
       // Zelfde melding als "bestaat niet" — geen existence-oracle.
       throw new NotFoundException('Weekstaat niet gevonden');
     }
 
-    const totals = await this.totalsFor([timesheet!.id]);
-    return { ...timesheet, totals: totals.get(timesheet!.id) ?? emptyTotals() };
+    const totals = await this.totalsFor([timesheet.id]);
+    return { ...timesheet, totals: totals.get(timesheet.id) ?? emptyTotals() };
   }
 
   // ─── Statusflow ────────────────────────────────────────
@@ -124,33 +128,47 @@ export class TimesheetsService {
       throw new ConflictException('Deze weekstaat is al ingediend of goedgekeurd');
     }
 
-    const [running, unassigned, entryCount] = await Promise.all([
-      this.prisma.timeEntry.count({
-        where: { timesheetId: id, endedAt: null, isDeleted: false },
-      }),
-      this.prisma.timeEntry.count({
-        where: { timesheetId: id, needsProjectAssignment: true, isDeleted: false },
-      }),
-      this.prisma.timeEntry.count({ where: { timesheetId: id, isDeleted: false } }),
-    ]);
-    if (running > 0) {
-      throw new ConflictException('Stop eerst de lopende timer in deze week');
-    }
-    if (unassigned > 0) {
-      throw new ConflictException(
-        'Wijs eerst alle automatische reistijd-regels aan een project toe',
-      );
-    }
-    if (entryCount === 0) {
-      throw new ConflictException('Deze weekstaat bevat nog geen urenregels');
-    }
+    // Checks + statuswissel in één transactie; de updateMany is bovendien op
+    // status geguard zodat een gelijktijdige submit/approve niet stilletjes
+    // overschreven wordt (0 rijen → 409).
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const [running, unassigned, entryCount] = await Promise.all([
+        tx.timeEntry.count({
+          where: { timesheetId: id, endedAt: null, isDeleted: false },
+        }),
+        tx.timeEntry.count({
+          where: { timesheetId: id, needsProjectAssignment: true, isDeleted: false },
+        }),
+        tx.timeEntry.count({ where: { timesheetId: id, isDeleted: false } }),
+      ]);
+      if (running > 0) {
+        throw new ConflictException('Stop eerst de lopende timer in deze week');
+      }
+      if (unassigned > 0) {
+        throw new ConflictException(
+          'Wijs eerst alle automatische reistijd-regels aan een project toe',
+        );
+      }
+      if (entryCount === 0) {
+        throw new ConflictException('Deze weekstaat bevat nog geen urenregels');
+      }
 
-    const updated = await this.prisma.timesheet.update({
-      where: { id },
-      data: { status: TimesheetStatus.INGEDIEND, submittedAt: new Date(), reviewNote: null },
+      const result = await tx.timesheet.updateMany({
+        where: {
+          id,
+          status: { in: [TimesheetStatus.CONCEPT, TimesheetStatus.AFGEWEZEN] },
+        },
+        data: { status: TimesheetStatus.INGEDIEND, submittedAt: new Date(), reviewNote: null },
+      });
+      if (result.count === 0) {
+        throw new ConflictException('Deze weekstaat is al ingediend of goedgekeurd');
+      }
+      return tx.timesheet.findUniqueOrThrow({ where: { id } });
     });
 
-    this.notifyApprovers(timesheet.orgId, user, updated).catch(() => undefined);
+    this.notifyApprovers(timesheet.orgId, user, updated).catch((err) =>
+      this.logger.error('Notificatie weekstaat-ingediend mislukt', err),
+    );
     return updated;
   }
 
@@ -263,30 +281,26 @@ export class TimesheetsService {
 
   // ─── Interne helpers ───────────────────────────────────
 
-  private isStaffViewer(user: User): boolean {
-    return user.roles.some((r) => (CRM_ROLES as readonly Role[]).includes(r));
-  }
-
   private async loadOwn(id: string, user: User) {
-    const timesheet = await this.prisma.timesheet.findFirst({
-      where: { id, ...orgScope(user) },
-    });
-    assertFound(timesheet, 'Weekstaat');
-    if (timesheet!.userId !== user.id) {
+    const timesheet = assertFound(
+      await this.prisma.timesheet.findFirst({ where: { id, ...orgScope(user) } }),
+      'Weekstaat',
+    );
+    if (timesheet.userId !== user.id) {
       throw new ForbiddenException('Alleen de inspecteur zelf kan deze weekstaat indienen');
     }
-    return timesheet!;
+    return timesheet;
   }
 
   private async loadForReview(id: string, user: User) {
-    const timesheet = await this.prisma.timesheet.findFirst({
-      where: { id, ...orgScope(user) },
-    });
-    assertFound(timesheet, 'Weekstaat');
-    if (timesheet!.status !== TimesheetStatus.INGEDIEND) {
+    const timesheet = assertFound(
+      await this.prisma.timesheet.findFirst({ where: { id, ...orgScope(user) } }),
+      'Weekstaat',
+    );
+    if (timesheet.status !== TimesheetStatus.INGEDIEND) {
       throw new ConflictException('Alleen ingediende weekstaten kunnen beoordeeld worden');
     }
-    return timesheet!;
+    return timesheet;
   }
 
   /** Totalen (per activiteit + totaal) per weekstaat, in één groupBy. */

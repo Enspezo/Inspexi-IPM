@@ -5,6 +5,7 @@ import { EmailTemplateType } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { STORAGE_PROVIDER, type StorageProvider } from '../../common/services/storage/storage.interface';
 import { renderTemplate, wrapInEmailLayout } from '../email-templates/template-renderer';
+import { formatTimeNl, formatWeekdayDateNl } from '@/common';
 
 interface ConfirmationEmailParams {
   to: string;
@@ -114,17 +115,12 @@ export class PlanningEmailService {
 
   private formatDate(date: Date | null): string {
     if (!date) return 'Datum wordt nog bepaald';
-    return date.toLocaleDateString('nl-NL', {
-      weekday: 'long',
-      day: 'numeric',
-      month: 'long',
-      year: 'numeric',
-    });
+    return formatWeekdayDateNl(date);
   }
 
   private formatTime(date: Date | null): string {
     if (!date) return '';
-    return date.toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' });
+    return formatTimeNl(date);
   }
 
   private formatDuration(hours: number | null): string {

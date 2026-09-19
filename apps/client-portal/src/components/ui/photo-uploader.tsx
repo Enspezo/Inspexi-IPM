@@ -2,6 +2,8 @@ import { useRef, useState, useEffect, type DragEvent } from 'react';
 import { clsx } from 'clsx';
 
 interface PhotoUploaderProps {
+  /** Id for the (visually hidden) file input, so an external `<label htmlFor>` can point at it. */
+  id?: string;
   files: File[];
   onChange: (files: File[]) => void;
   maxFiles?: number;
@@ -11,7 +13,7 @@ interface PhotoUploaderProps {
 const ACCEPTED = ['image/jpeg', 'image/png', 'image/jpg'];
 
 /** Gecontroleerde foto-uploader (JPG/PNG) voor constatering-resolutie. Parent houdt `files` vast. */
-export function PhotoUploader({ files, onChange, maxFiles = 5, maxSizeMb = 5 }: PhotoUploaderProps) {
+export function PhotoUploader({ id, files, onChange, maxFiles = 5, maxSizeMb = 5 }: PhotoUploaderProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragOver, setDragOver] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -47,8 +49,9 @@ export function PhotoUploader({ files, onChange, maxFiles = 5, maxSizeMb = 5 }: 
   return (
     <div>
       {files.length < maxFiles && (
-        <div
-          onClick={() => inputRef.current?.click()}
+        // Dropzone = <label> around a visually hidden file input: clickable, droppable AND
+        // keyboard-operable (Tab → Enter/Space opens the file picker via the input).
+        <label
           onDrop={handleDrop}
           onDragOver={(e) => {
             e.preventDefault();
@@ -57,28 +60,31 @@ export function PhotoUploader({ files, onChange, maxFiles = 5, maxSizeMb = 5 }: 
           onDragLeave={() => setDragOver(false)}
           className={clsx(
             'flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed px-4 py-6 text-center transition-colors',
+            'focus-within:ring-2 focus-within:ring-primary-500/40',
             dragOver ? 'border-primary-500 bg-primary-50' : 'border-gray-300 hover:border-gray-400',
           )}
         >
-          <svg className="h-8 w-8 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <svg className="h-8 w-8 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
           </svg>
-          <p className="mt-2 text-sm text-gray-600">Sleep foto's hierheen of klik om te selecteren</p>
-          <p className="mt-1 text-xs text-gray-400">
+          <span className="mt-2 text-sm text-gray-600">Sleep foto's hierheen of klik om te selecteren</span>
+          <span className="mt-1 text-xs text-gray-400">
             JPG of PNG, max {maxSizeMb}MB per foto ({files.length}/{maxFiles})
-          </p>
+          </span>
           <input
             ref={inputRef}
+            id={id}
             type="file"
             accept="image/jpeg,image/png"
             multiple
-            className="hidden"
+            aria-label="Foto's selecteren"
+            className="sr-only"
             onChange={(e) => {
               if (e.target.files) validateAndAdd(e.target.files);
               e.target.value = '';
             }}
           />
-        </div>
+        </label>
       )}
       {error && <p className="mt-2 text-sm text-danger-600">{error}</p>}
       {files.length > 0 && (
@@ -111,7 +117,8 @@ function PhotoPreview({ file, onRemove }: { file: File; onRemove: () => void }) 
       <button
         type="button"
         onClick={onRemove}
-        className="absolute right-1 top-1 rounded-full bg-black/60 p-1 text-white opacity-0 transition-opacity group-hover:opacity-100"
+        // Always visible on touch/small screens; hover/focus-revealed on desktop.
+        className="absolute right-1 top-1 rounded-full bg-black/60 p-1 text-white transition-opacity focus-visible:opacity-100 md:opacity-0 md:group-hover:opacity-100"
         aria-label="Foto verwijderen"
       >
         <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">

@@ -8,6 +8,7 @@ import {
   REQUIRES_FEATURE_KEY,
   ALLOW_DOWNGRADED_EXPORT_KEY,
 } from '../decorators/requires-feature.decorator';
+import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
 import { TenantContext } from '../interfaces/tenant-context.interface';
 import { EntitlementsService } from '@/modules/entitlements/entitlements.service';
 import { FeatureKey } from '@inspexi/entitlements';
@@ -31,10 +32,11 @@ describe('FeatureGuard', () => {
   };
 
   /** Configureer de twee metadata-lookups van de guard. */
-  const setMeta = (opts: { feature?: FeatureKey[]; downgrade?: boolean }) => {
+  const setMeta = (opts: { feature?: FeatureKey[]; downgrade?: boolean; isPublic?: boolean }) => {
     (reflector.getAllAndOverride as jest.Mock).mockImplementation((key) => {
       if (key === REQUIRES_FEATURE_KEY) return opts.feature;
       if (key === ALLOW_DOWNGRADED_EXPORT_KEY) return opts.downgrade;
+      if (key === IS_PUBLIC_KEY) return opts.isPublic;
       return undefined;
     });
   };
@@ -125,6 +127,13 @@ describe('FeatureGuard', () => {
       const guard = await buildGuard('localhost');
       setMeta({ feature: ['CRM_COMPLEET'], downgrade: false });
       await expect(guard.canActivate(ctx(undefined, tenant(null)))).resolves.toBe(true);
+    });
+
+    it('F1: allows a @Public() handler on the apex host in production (gate lives in the service)', async () => {
+      const guard = await buildGuard('inspexi.nl');
+      setMeta({ feature: ['UITVOERING_COMPLEET'], downgrade: false, isPublic: true });
+      await expect(guard.canActivate(ctx(undefined, tenant(null, true)))).resolves.toBe(true);
+      expect(entitlements.getEnabledFeatures).not.toHaveBeenCalled();
     });
 
     it('fails secure in production when org cannot be resolved', async () => {

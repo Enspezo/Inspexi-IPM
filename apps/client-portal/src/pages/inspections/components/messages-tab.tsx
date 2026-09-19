@@ -2,14 +2,16 @@ import { useState, useEffect, useRef } from 'react';
 import { clsx } from 'clsx';
 import { useMessages, useSendMessage, useMarkMessageRead } from '../hooks/use-messages';
 import { useClientAuth } from '@/providers/client-auth-provider';
-import { Spinner, Button } from '@/components/ui';
+import { Spinner, Button, ErrorBox, useToast } from '@/components/ui';
+import { getErrorMessage } from '@/lib/api-client';
 import { formatDateTime } from '@/lib/format';
 import { personName } from '@/lib/labels';
 import type { InspectionMessage } from '@/types';
 
 export function MessagesTab({ inspectionId }: { inspectionId: string }) {
   const { user } = useClientAuth();
-  const { data: messages, isLoading } = useMessages(inspectionId);
+  const { showToast } = useToast();
+  const { data: messages, isLoading, error } = useMessages(inspectionId);
   const send = useSendMessage(inspectionId);
   const markRead = useMarkMessageRead(inspectionId);
   const [text, setText] = useState('');
@@ -34,8 +36,9 @@ export function MessagesTab({ inspectionId }: { inspectionId: string }) {
     try {
       await send.mutateAsync(content);
       setText('');
-    } catch {
-      /* foutmelding blijft achterwege; gebruiker kan opnieuw proberen */
+    } catch (err) {
+      // Input is kept so the user can retry.
+      showToast(getErrorMessage(err, 'Versturen mislukt'), 'error');
     }
   };
 
@@ -46,6 +49,8 @@ export function MessagesTab({ inspectionId }: { inspectionId: string }) {
           <div className="flex flex-1 items-center justify-center">
             <Spinner />
           </div>
+        ) : error ? (
+          <ErrorBox>Kon de berichten niet laden. Probeer het later opnieuw.</ErrorBox>
         ) : (messages ?? []).length === 0 ? (
           <div className="flex flex-1 flex-col items-center justify-center text-sm text-gray-500">
             <svg className="mb-2 h-8 w-8 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">

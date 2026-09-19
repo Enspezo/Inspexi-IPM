@@ -2,6 +2,7 @@
 // via het subdomein en het bijwerken van lastActivityAt.
 import { ExecutionContext, UnauthorizedException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
+import { ConfigService } from '@nestjs/config';
 import { RepairSessionStatus } from '@prisma/client';
 import { RepairSessionGuard } from './repair-session.guard';
 import { PrismaService } from '@/prisma';
@@ -38,14 +39,21 @@ describe('RepairSessionGuard', () => {
     ...overrides,
   });
 
+  const buildGuard = async (baseDomain = 'localhost'): Promise<RepairSessionGuard> => {
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        RepairSessionGuard,
+        { provide: PrismaService, useValue: mockPrisma },
+        { provide: ConfigService, useValue: { get: jest.fn(() => baseDomain) } },
+      ],
+    }).compile();
+    return module.get<RepairSessionGuard>(RepairSessionGuard);
+  };
+
   beforeEach(async () => {
     jest.clearAllMocks();
 
-    const module: TestingModule = await Test.createTestingModule({
-      providers: [RepairSessionGuard, { provide: PrismaService, useValue: mockPrisma }],
-    }).compile();
-
-    guard = module.get<RepairSessionGuard>(RepairSessionGuard);
+    guard = await buildGuard();
 
     // De fire-and-forget updates (expiry-flip + lastActivityAt) resolven default.
     mockPrisma.repairSession.update.mockResolvedValue({});
@@ -124,11 +132,29 @@ describe('RepairSessionGuard', () => {
     });
   });
 
-  it('laat een request zonder tenant-org door (unknown host, bv. E2E op 127.0.0.1)', async () => {
+  it('laat een request zonder tenant-org door op localhost (unknown host, bv. E2E op 127.0.0.1)', async () => {
     mockPrisma.repairSession.findUnique.mockResolvedValue(activeSession());
 
     await expect(
       guard.canActivate(createContext(buildRequest('Bearer tok-123', null))),
+    ).resolves.toBe(true);
+  });
+
+  it('F10: weigert een request zonder tenant-org buiten localhost (fail-secure, spiegelt TenantGuard)', async () => {
+    const prodGuard = await buildGuard('inspexi.nl');
+    mockPrisma.repairSession.findUnique.mockResolvedValue(activeSession());
+
+    await expect(
+      prodGuard.canActivate(createContext(buildRequest('Bearer tok-123', null))),
+    ).rejects.toThrow('Gebruik het subdomein van uw organisatie');
+  });
+
+  it('F10: laat een request zonder tenant-context (middleware niet toegepast) door, ook buiten localhost', async () => {
+    const prodGuard = await buildGuard('inspexi.nl');
+    mockPrisma.repairSession.findUnique.mockResolvedValue(activeSession());
+
+    await expect(
+      prodGuard.canActivate(createContext(buildRequest('Bearer tok-123'))),
     ).resolves.toBe(true);
   });
 

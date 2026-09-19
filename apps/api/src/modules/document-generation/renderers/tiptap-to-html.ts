@@ -8,6 +8,8 @@
  * hard break, horizontal rule.
  */
 
+import { escapeHtml } from '@/common/utils/html-safe';
+
 // ──────────────────────────── Types ────────────────────────────
 
 interface PmMark {
@@ -24,15 +26,6 @@ interface PmNode {
 }
 
 // ──────────────────────────── Utilities ────────────────────────────
-
-function escapeHtml(str: string): string {
-  return str
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
 
 function attrs(obj: Record<string, string | number | null | undefined>): string {
   return Object.entries(obj)

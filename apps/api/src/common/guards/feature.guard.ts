@@ -12,6 +12,7 @@ import {
   REQUIRES_FEATURE_KEY,
   ALLOW_DOWNGRADED_EXPORT_KEY,
 } from '../decorators/requires-feature.decorator';
+import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
 import { TenantContext } from '../interfaces/tenant-context.interface';
 import { EntitlementsService } from '@/modules/entitlements/entitlements.service';
 import { FeatureKey } from '@inspexi/entitlements';
@@ -31,6 +32,14 @@ import { FeatureKey } from '@inspexi/entitlements';
  * gezet. Een onbekende host (bv. `127.0.0.1` in e2e) heeft `tenant.orgId = null`
  * en valt op localhost open — net als bij de TenantGuard; in productie falen we
  * daar veilig dicht.
+ *
+ * Publieke routes (`@Public()`): de guard slaat ze ALTIJD over. Gemailde
+ * publieke links (offerte, afspraak, ondertekenen) landen op het kale
+ * `PUBLIC_URL`-apex-domein waar `tenant.orgId = null` is; de guard zou daar in
+ * productie hard 403 geven (staging-review F1). Een publieke route gate't
+ * daarom in de service tegen de EIGENAAR-org (`entitlements.assertFeature(
+ * item.orgId, …)` — WP-B7-patroon, zie `QuotePublicService`), nooit via een
+ * klasse-brede `@RequiresFeature` op een publieke controller.
  *
  * Dev/e2e-uitzondering: een org zónder enige toegekende feature (geen plan en
  * geen overrides → lege set) is "nog niet ingericht" en valt op localhost open,
@@ -67,6 +76,16 @@ export class FeatureGuard implements CanActivate {
     // Niet-gegate route (geen feature-key, geen export-pad) → core/platform,
     // altijd door.
     if (!allowDowngradedExport && requiredFeatures.length === 0) {
+      return true;
+    }
+
+    // Defence-in-depth (F1): een @Public()-handler heeft geen tenant-org op het
+    // apex-domein — de feature-gate hoort dan in de service (tegen de eigenaar).
+    const isPublic = this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [
+      context.getHandler(),
+      context.getClass(),
+    ]);
+    if (isPublic) {
       return true;
     }
 

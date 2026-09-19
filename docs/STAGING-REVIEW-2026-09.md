@@ -87,11 +87,14 @@ local-date "tomorrow", `<dl>` semantics, tracked `vite.config.d.ts` removed.
 
 ---
 
-## 3. Verification
+## 3. Verification (branch head)
 
-Filled in at the end of the branch:
-
-- `npx turbo run build` — all packages
-- API unit (`jest`), API e2e (serial, seeded DB), portal + client-portal `vitest`
-- Bundle: main chunk before/after (see `bundle-before.txt` / `bundle-after.txt` in the PR)
-- Browser smoke on `inspexidemo.localhost:5173` / `:5174` with before/after screenshots per visible change (attached to the PR)
+| Check | Result |
+|-------|--------|
+| `npx turbo run build` | 6/6 tasks green |
+| API unit (`jest`) | 157 suites, 2454 tests green |
+| API e2e (`test/jest-e2e.json`, serial, seeded DB) | 71 suites, 1236 tests green |
+| Portal `tsc --noEmit` + `vitest` | clean, 41 files / 384 tests green (was red on `dev`) |
+| Client-portal `tsc --noEmit` + `vitest` | clean, 13 files / 64 tests green |
+| Portal entry chunk | 943 KB (281 KB gz) → 451 KB (125 KB gz); no konva/docx `modulepreload` on `/login` |
+| Browser smoke | `inspexidemo.localhost:5173` / `:5174`, before/after screenshots per visible change attached to the PR |

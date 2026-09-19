@@ -23,6 +23,7 @@ import {
   useErrorReports,
   useUpdateErrorReportStatus,
 } from './hooks/use-error-reports';
+import { formatDateTime } from '@/lib/format';
 
 const statusFilterOptions = [
   { value: '', label: 'Alle statussen' },
@@ -61,7 +62,7 @@ function ErrorReportDetailModal({
           <div>
             <p className="text-xs font-medium text-gray-500 mb-0.5">Datum</p>
             <p className="text-sm text-gray-900">
-              {new Date(report.createdAt).toLocaleString('nl-NL')}
+              {formatDateTime(report.createdAt)}
             </p>
           </div>
           <div>

@@ -6,6 +6,7 @@ import { SidebarSection } from '@/components/layout/detail-page-layout';
 import { NotesSidebarSection, HistorySidebarSection, DocumentsSidebarSection } from '@/components/layout/sidebar-sections';
 import { useUpdateTask } from '@/pages/tasks/hooks/use-tasks';
 import { getErrorMessage } from '@/lib/api-client';
+import { formatDate } from '@/lib/format';
 
 export function PlanningDetailSidebar({
   id,
@@ -69,7 +70,7 @@ export function PlanningDetailSidebar({
                   </Link>
                   {task.deadline && (
                     <p className="text-xs text-gray-400">
-                      {new Date(task.deadline).toLocaleDateString('nl-NL', { day: 'numeric', month: 'long', year: 'numeric' })}
+                      {formatDate(task.deadline)}
                     </p>
                   )}
                 </div>

@@ -43,6 +43,7 @@ import { ContactHistorySidebar } from './components/contact-history-sidebar';
 import { ContactTasksSidebar } from './components/contact-tasks-sidebar';
 import { ViesNameModal } from './components/vies-name-modal';
 import { getErrorMessage } from '@/lib/api-client';
+import { formatDateTimeLong } from '@/lib/format';
 
 type Tab = 'algemeen' | 'adressen' | 'locaties' | 'aanvragen' | 'offertes' | 'planning' | 'projecten' | 'inkoop';
 
@@ -486,7 +487,7 @@ export default function ContactDetailPage() {
       {/* Acties onderaan */}
       <div className="flex items-center justify-between border-t border-gray-200 pt-6">
         <p className="text-xs text-gray-400">
-          Aangemaakt op {new Date(contact.createdAt).toLocaleString('nl-NL', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+          Aangemaakt op {formatDateTimeLong(contact.createdAt)}
         </p>
         {(userCanWrite || userCanManage) && (
           <div className="flex gap-2">

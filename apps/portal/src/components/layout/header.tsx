@@ -15,6 +15,7 @@ import { AssistantButton } from '@/components/ai-assistant';
 import { TaskStatus } from '@/types';
 import type { Notification } from '@/types';
 import { getNotificationRoute } from '@/lib/notifications';
+import { formatNumericDate } from '@/lib/format';
 
 function formatRelativeTime(dateStr: string): string {
   const now = new Date();
@@ -28,7 +29,7 @@ function formatRelativeTime(dateStr: string): string {
   if (diffMin < 60) return `${diffMin} min geleden`;
   if (diffHour < 24) return `${diffHour} uur geleden`;
   if (diffDay < 7) return `${diffDay} dag${diffDay > 1 ? 'en' : ''} geleden`;
-  return date.toLocaleDateString('nl-NL');
+  return formatNumericDate(date);
 }
 
 export function Header() {

@@ -18,6 +18,7 @@ import {
   type ColumnDef,
 } from '@/components/table-config';
 import { useNotes } from './hooks/use-notes';
+import { formatNumericDate } from '@/lib/format';
 
 const entityTypeFilterOptions = [
   { value: '', label: 'Alle entiteiten' },
@@ -129,7 +130,7 @@ export default function NotesPage() {
       getFilterValue: (note) => note.createdAt,
       render: (note) => (
         <span className="text-xs text-gray-500">
-          {new Date(note.createdAt).toLocaleDateString('nl-NL')}
+          {formatNumericDate(note.createdAt)}
         </span>
       ),
     },

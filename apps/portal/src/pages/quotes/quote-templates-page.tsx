@@ -31,6 +31,7 @@ import {
   useCreateQuoteTemplate,
   useDeleteQuoteTemplate,
 } from './hooks/use-quote-templates';
+import { formatNumericDate } from '@/lib/format';
 
 const adminRoles = [Role.SUPERUSER, Role.ORG_ADMIN];
 
@@ -145,7 +146,7 @@ export default function QuoteTemplatesPage() {
       getFilterValue: (t) => t.createdAt,
       render: (t) => (
         <span className="text-gray-500 text-xs">
-          {new Date(t.createdAt).toLocaleDateString('nl-NL')}
+          {formatNumericDate(t.createdAt)}
         </span>
       ),
     },

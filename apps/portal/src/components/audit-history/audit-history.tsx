@@ -5,6 +5,7 @@ import type { AuditLogEntry } from '@/types';
 import { getFieldLabel } from '@/lib/audit-field-labels';
 import { formatAuditValue, isHiddenAuditField } from '@/lib/audit-value-format';
 import { Button, Spinner } from '@/components/ui';
+import { formatShortDate } from '@/lib/format';
 
 const ITEMS_PER_PAGE = 10;
 
@@ -40,11 +41,7 @@ function formatRelativeTime(dateStr: string): string {
   const days = Math.floor(hours / 24);
   if (days < 7) return `${days} ${days === 1 ? 'dag' : 'dagen'} geleden`;
 
-  return new Date(dateStr).toLocaleDateString('nl-NL', {
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-  });
+  return formatShortDate(dateStr);
 }
 
 function getUserDisplayName(entry: AuditLogEntry): string {

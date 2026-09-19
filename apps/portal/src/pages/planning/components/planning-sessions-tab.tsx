@@ -13,6 +13,7 @@ import {
 import { toDatetimeLocal } from './planning-detail-shared';
 import { useAvailabilityOverride } from '../hooks/use-availability-override';
 import { InspectorAssignModal } from './planning-inspector-assign-modal';
+import { formatWeekdayShortDate, formatNumericDate, formatTime } from '@/lib/format';
 
 export function SessionsTab({
   sessions,
@@ -134,10 +135,10 @@ function SessionCard({
 
   const scheduledDate = session.scheduledDate ? new Date(session.scheduledDate) : null;
   const dateStr = scheduledDate
-    ? scheduledDate.toLocaleDateString('nl-NL', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })
+    ? formatWeekdayShortDate(scheduledDate)
     : 'Datum nog niet bepaald';
   const timeStr = scheduledDate
-    ? scheduledDate.toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' })
+    ? formatTime(scheduledDate)
     : '';
 
   const handleSaveNotes = async () => {
@@ -229,7 +230,7 @@ function SessionCard({
           </span>
           {session.originalDate && (
             <span className="text-xs text-amber-600">
-              Verzet (was {new Date(session.originalDate).toLocaleDateString('nl-NL')})
+              Verzet (was {formatNumericDate(session.originalDate)})
             </span>
           )}
         </div>

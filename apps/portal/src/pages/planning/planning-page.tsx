@@ -27,6 +27,7 @@ import {
 } from './components/planning-calendar-view';
 import { InspectorFilter, type InspectorOption } from './components/inspector-filter';
 import { PlanningMapModal } from './components/planning-map-modal';
+import { formatShortDate, formatWeekdayShortDate } from '@/lib/format';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -271,8 +272,8 @@ export default function PlanningPage() {
           const first = sessionDates[0];
           const last = sessionDates[sessionDates.length - 1];
           const range = first.getTime() === last.getTime()
-            ? first.toLocaleDateString('nl-NL', { day: 'numeric', month: 'short', year: 'numeric' })
-            : `${first.toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' })} – ${last.toLocaleDateString('nl-NL', { day: 'numeric', month: 'short', year: 'numeric' })}`;
+            ? formatShortDate(first)
+            : `${first.toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' })} – ${formatShortDate(last)}`;
           return (
             <div className="space-y-0.5">
               <span>{range}</span>
@@ -281,7 +282,7 @@ export default function PlanningPage() {
           );
         }
         return item.scheduledDate ? (
-          new Date(item.scheduledDate).toLocaleDateString('nl-NL', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })
+          formatWeekdayShortDate(item.scheduledDate)
         ) : (
           <span className="text-gray-400">Niet gepland</span>
         );

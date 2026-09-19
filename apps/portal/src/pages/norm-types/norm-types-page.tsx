@@ -15,6 +15,7 @@ import { useAuth } from '@/providers/auth-provider';
 import { getErrorMessage } from '@/lib/api-client';
 import { useNormTypes, useRestoreNormType } from './hooks/use-norm-types';
 import { CreateNormTypeModal } from './components/create-norm-type-modal';
+import { formatNumericDate } from '@/lib/format';
 
 export default function NormTypesPage() {
   const { user } = useAuth();
@@ -77,7 +78,7 @@ export default function NormTypesPage() {
     {
       key: 'createdAt', header: 'Aangemaakt', sortable: true, sortKey: 'createdAt',
       filterable: true, filterType: 'date', getFilterValue: (n) => n.createdAt,
-      render: (n) => <span className="text-xs text-gray-500">{new Date(n.createdAt).toLocaleDateString('nl-NL')}</span>,
+      render: (n) => <span className="text-xs text-gray-500">{formatNumericDate(n.createdAt)}</span>,
     },
     {
       key: 'actions', header: '', pinned: true, pinnedPosition: 'end', sidebarLabel: 'Acties',

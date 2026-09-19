@@ -15,6 +15,7 @@ import { getAccessToken, getErrorMessage } from '@/lib/api-client';
 import { useFindingTemplates } from './hooks/use-finding-templates';
 import { CreateFindingTemplateModal } from './components/create-finding-template-modal';
 import { ImportFindingTemplatesModal } from './components/import-finding-templates-modal';
+import { formatNumericDate } from '@/lib/format';
 
 const MANAGE_ROLES: Role[] = [Role.SUPERUSER, Role.ORG_ADMIN];
 
@@ -147,7 +148,7 @@ export default function FindingTemplatesPage() {
       sortKey: 'createdAt',
       getFilterValue: (t) => t.createdAt,
       render: (t) => (
-        <span className="text-xs text-gray-500">{new Date(t.createdAt).toLocaleDateString('nl-NL')}</span>
+        <span className="text-xs text-gray-500">{formatNumericDate(t.createdAt)}</span>
       ),
     },
   ];

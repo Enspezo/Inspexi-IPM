@@ -34,6 +34,7 @@ const base = {
   inspectionReviewEnabled: true,
   aiReviewEnabled: false,
   onlineRepairDefault: false,
+  travelTrackingEnabled: false,
   aiAgentEnabled: true,
   aiAgentAllowedRoles: [],
 };

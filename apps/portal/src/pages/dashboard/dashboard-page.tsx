@@ -17,6 +17,7 @@ import {
 } from '@/lib/audit-entity-helpers';
 import { Role } from '@/types';
 import { ActiveTimersWidget } from '@/pages/uren/components/active-timers-widget';
+import { formatShortDate } from '@/lib/format';
 
 // B-001: statische tegel-definities (label/icoon/kleur); de waarden komen
 // runtime uit /portal/stats/staff-dashboard resp. de al opgehaalde taken.
@@ -84,11 +85,7 @@ function formatRelativeTime(dateStr: string): string {
   if (hours < 24) return `${hours} uur geleden`;
   const days = Math.floor(hours / 24);
   if (days < 7) return `${days} ${days === 1 ? 'dag' : 'dagen'} geleden`;
-  return new Date(dateStr).toLocaleDateString('nl-NL', {
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-  });
+  return formatShortDate(dateStr);
 }
 
 function ActivityRow({ entry }: { entry: AuditLogEntry }) {

@@ -1,5 +1,6 @@
 import { useRef, useEffect } from 'react';
 import type { PlanningItem, PlanningSession } from '@/types';
+import { formatTime } from '@/lib/format';
 
 // ─── Calendar Event ───────────────────────────────────────────────────────────
 
@@ -465,7 +466,7 @@ function TimeGrid({
                     </div>
                     {height > 40 && (
                       <div className="truncate text-[11px] opacity-90 mt-0.5">
-                        {start.toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' })}
+                        {formatTime(start)}
                         {event.durationHours ? ` · ${event.durationHours} uur` : ''}
                       </div>
                     )}

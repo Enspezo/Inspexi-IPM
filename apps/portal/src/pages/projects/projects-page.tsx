@@ -18,6 +18,7 @@ import { useProjects, useAllProjects } from './hooks/use-projects';
 import { CreateProjectModal } from './components/create-project-modal';
 import { ProjectManagerFilter, type ProjectManagerOption } from './components/project-manager-filter';
 import { ProjectsKanban } from './components/projects-kanban';
+import { formatNumericDate } from '@/lib/format';
 
 type ViewMode = 'table' | 'kanban';
 
@@ -205,9 +206,7 @@ export default function ProjectsPage() {
       sortKey: 'startDate',
       sidebarLabel: 'Startdatum',
       render: (row) =>
-        row.startDate
-          ? new Date(row.startDate).toLocaleDateString('nl-NL')
-          : '—',
+        formatNumericDate(row.startDate),
     },
     {
       key: 'expectedEndDate',
@@ -218,9 +217,7 @@ export default function ProjectsPage() {
       sortKey: 'expectedEndDate',
       sidebarLabel: 'Verwachte einddatum',
       render: (row) =>
-        row.expectedEndDate
-          ? new Date(row.expectedEndDate).toLocaleDateString('nl-NL')
-          : '—',
+        formatNumericDate(row.expectedEndDate),
     },
   ];
 

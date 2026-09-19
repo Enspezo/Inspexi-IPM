@@ -11,6 +11,7 @@ import { TableConfigSidebar, useTableConfig, type ColumnDef } from '@/components
 import { useAuth } from '@/providers/auth-provider';
 import { useLocationTypes } from './hooks/use-location-types';
 import { CreateLocationTypeModal } from './components/create-location-type-modal';
+import { formatNumericDate } from '@/lib/format';
 
 const MANAGE_ROLES: Role[] = [Role.SUPERUSER, Role.ORG_ADMIN];
 
@@ -67,7 +68,7 @@ export default function LocationTypesPage() {
     {
       key: 'createdAt', header: 'Aangemaakt', sortable: true, sortKey: 'createdAt',
       filterable: true, filterType: 'date', getFilterValue: (t) => t.createdAt,
-      render: (t) => <span className="text-xs text-gray-500">{new Date(t.createdAt).toLocaleDateString('nl-NL')}</span>,
+      render: (t) => <span className="text-xs text-gray-500">{formatNumericDate(t.createdAt)}</span>,
     },
   ];
 

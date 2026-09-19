@@ -14,6 +14,7 @@ import { useAuth } from '@/providers/auth-provider';
 import { useProduct, useUpdateProduct } from './hooks/use-products';
 import { useProductGroupsCompact } from '@/pages/product-groups/hooks/use-product-groups';
 import { getErrorMessage } from '@/lib/api-client';
+import { formatDateTimeLong } from '@/lib/format';
 
 const canWrite = [Role.SUPERUSER, Role.ORG_ADMIN];
 
@@ -302,7 +303,7 @@ export default function ProductDetailPage() {
         {/* Acties onderaan */}
         <div className="flex items-center justify-between border-t border-gray-200 pt-6">
           <p className="text-xs text-gray-400">
-            Aangemaakt op {new Date(product.createdAt).toLocaleString('nl-NL', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+            Aangemaakt op {formatDateTimeLong(product.createdAt)}
           </p>
           {userCanWrite && !isEditing && (
             <Button variant="secondary" onClick={() => setIsEditing(true)}>

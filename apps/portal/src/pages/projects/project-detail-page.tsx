@@ -48,6 +48,7 @@ import { ProjectHoursTab } from './components/project-hours-tab';
 import { AddFollowerModal } from './components/add-follower-modal';
 import { getErrorMessage } from '@/lib/api-client';
 import { useUsers } from '@/pages/users/hooks/use-users';
+import { formatDate, formatNumericDate } from '@/lib/format';
 
 // ─── Constants ─────────────────────────────────────────────
 
@@ -290,7 +291,7 @@ export default function ProjectDetailPage() {
                         </Link>
                         {task.deadline && (
                           <p className="text-xs text-gray-400">
-                            {new Date(task.deadline).toLocaleDateString('nl-NL', { day: 'numeric', month: 'long', year: 'numeric' })}
+                            {formatDate(task.deadline)}
                           </p>
                         )}
                       </div>
@@ -463,7 +464,7 @@ export default function ProjectDetailPage() {
               getLabel={(item) => item.productName}
               getSubLabel={(item) =>
                 item.scheduledDate
-                  ? new Date(item.scheduledDate).toLocaleDateString('nl-NL')
+                  ? formatNumericDate(item.scheduledDate)
                   : 'Nog niet gepland'
               }
             />

@@ -11,6 +11,7 @@ import { useAvailabilityOverride } from '../hooks/use-availability-override';
 import { InspectorAssignModal } from './planning-inspector-assign-modal';
 import { useCreateWorkOrder, usePlanningWorkOrders } from '@/pages/work-orders/hooks/use-work-orders';
 import { toDatetimeLocal } from './planning-detail-shared';
+import { formatDateTime, formatDateTimeLong } from '@/lib/format';
 
 export function PlanningAlgemeenTab({
   id,
@@ -412,7 +413,7 @@ export function PlanningAlgemeenTab({
                         </div>
                         <div className="text-xs text-gray-500">
                           {wo.startTime
-                            ? new Date(wo.startTime).toLocaleString('nl-NL', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+                            ? formatDateTime(wo.startTime)
                             : 'Geen starttijd'}
                         </div>
                       </div>
@@ -430,7 +431,7 @@ export function PlanningAlgemeenTab({
 
       <div className="flex items-center justify-between border-t border-gray-200 pt-6">
         <p className="text-xs text-gray-400">
-          Aangemaakt op {new Date(item.createdAt).toLocaleString('nl-NL', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+          Aangemaakt op {formatDateTimeLong(item.createdAt)}
           {item.createdByUser && ` door ${item.createdByUser.firstName} ${item.createdByUser.lastName}`}
         </p>
         {canEditDirectly && !editMode && (

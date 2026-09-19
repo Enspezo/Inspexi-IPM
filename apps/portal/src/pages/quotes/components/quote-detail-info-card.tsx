@@ -192,7 +192,7 @@ export function QuoteInfoCard({
         <div>
           <dt className="text-sm font-medium text-gray-500">Geldig tot</dt>
           <dd className="mt-1 text-sm text-gray-900">
-            {quote.validUntil ? new Date(quote.validUntil).toLocaleDateString('nl-NL', { day: 'numeric', month: 'long', year: 'numeric' }) : '—'}
+            {formatDate(quote.validUntil)}
           </dd>
         </div>
         {hasPhaseFeature &&

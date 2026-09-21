@@ -14,6 +14,7 @@ import { Role } from '@/types';
 import { MEASUREMENT_SHEET_STATUS } from '@/lib/status';
 import { useMeasurementSheetTemplates } from './hooks/use-measurement-sheet-templates';
 import { CreateTemplateModal } from './components/create-template-modal';
+import { formatNumericDate } from '@/lib/format';
 
 export default function MeasurementSheetTemplatesPage() {
   const [search, setSearch] = useState('');
@@ -57,7 +58,7 @@ export default function MeasurementSheetTemplatesPage() {
     {
       key: 'createdAt', header: 'Aangemaakt', filterable: true, filterType: 'date',
       sortable: true, sortKey: 'createdAt', getFilterValue: (t) => t.createdAt,
-      render: (t) => <span className="text-xs text-gray-500">{new Date(t.createdAt).toLocaleDateString('nl-NL')}</span>,
+      render: (t) => <span className="text-xs text-gray-500">{formatNumericDate(t.createdAt)}</span>,
     },
   ];
 

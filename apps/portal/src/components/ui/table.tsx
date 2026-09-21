@@ -104,7 +104,7 @@ export function Table<T>({
                     {isSortable ? (
                       <button
                         onClick={() => onSort(column.key)}
-                        className="group inline-flex items-center gap-1 hover:text-gray-700 transition-colors"
+                        className="group inline-flex items-center gap-1 uppercase tracking-wider hover:text-gray-700 transition-colors"
                       >
                         {column.header}
                         <SortIcon direction={activeDirection} />

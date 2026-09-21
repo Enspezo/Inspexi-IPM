@@ -448,6 +448,11 @@ export const userKeys = {
     [...userKeys.all, userId, 'record-counts'] as const,
 };
 
+export const invitationKeys = {
+  all: ['invitation'] as const,
+  detail: (token: string) => [...invitationKeys.all, token] as const,
+};
+
 export const meKeys = {
   all: ['me'] as const,
 };
@@ -615,6 +620,8 @@ export const helpKeys = {
   article: (slug: string) => [...helpKeys.all, 'article', slug] as const,
   adminArticles: (params: ListParams) =>
     [...helpKeys.all, 'admin', 'articles', params] as const,
+  adminCategories: (audience: string) =>
+    [...helpKeys.all, 'admin', 'categories', audience] as const,
   contextual: (moduleKey: string, q: string) =>
     [...helpKeys.all, 'contextual', moduleKey, q] as const,
 };
@@ -679,4 +686,8 @@ export const timesheetKeys = {
 export const timeEntryKeys = {
   all: ['time-entries'] as const,
   list: (params: ListParams) => [...timeEntryKeys.all, params] as const,
+  /** Lopende timers ("Nu actief", PRD-16 §6.4). */
+  active: () => [...timeEntryKeys.all, 'active'] as const,
+  /** Laatst bekende positie van een inspecteur (reistimer + tracker). */
+  location: (userId: string | null) => [...timeEntryKeys.all, 'location', userId] as const,
 };

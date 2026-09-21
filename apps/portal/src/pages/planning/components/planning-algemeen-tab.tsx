@@ -11,6 +11,7 @@ import { useAvailabilityOverride } from '../hooks/use-availability-override';
 import { InspectorAssignModal } from './planning-inspector-assign-modal';
 import { useCreateWorkOrder, usePlanningWorkOrders } from '@/pages/work-orders/hooks/use-work-orders';
 import { toDatetimeLocal } from './planning-detail-shared';
+import { formatDateTime, formatDateTimeLong } from '@/lib/format';
 
 export function PlanningAlgemeenTab({
   id,
@@ -135,7 +136,7 @@ export function PlanningAlgemeenTab({
                 <select
                   value={editContactPersonId ?? ''}
                   onChange={(e) => setEditContactPersonId(e.target.value || null)}
-                  className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
                 >
                   <option value="">— Geen contactpersoon —</option>
                   {allContactPersons.map((p) => (
@@ -151,7 +152,7 @@ export function PlanningAlgemeenTab({
                   <select
                     value={editLocationId ?? ''}
                     onChange={(e) => setEditLocationId(e.target.value || null)}
-                    className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
                   >
                     <option value="">— Geen locatie —</option>
                     {editLocations.map((l: any) => (
@@ -177,7 +178,7 @@ export function PlanningAlgemeenTab({
                     type="datetime-local"
                     value={editScheduledDate}
                     onChange={(e) => setEditScheduledDate(e.target.value)}
-                    className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
                   />
                 </div>
                 <div>
@@ -198,7 +199,7 @@ export function PlanningAlgemeenTab({
                   value={editInternalNotes}
                   onChange={(e) => setEditInternalNotes(e.target.value)}
                   rows={3}
-                  className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
                   placeholder="Optionele notities..."
                 />
               </div>
@@ -232,7 +233,7 @@ export function PlanningAlgemeenTab({
                       <select
                         value={quickContactPersonId ?? ''}
                         onChange={(e) => setQuickContactPersonId(e.target.value || null)}
-                        className="flex-1 rounded-md border border-gray-300 px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="flex-1 rounded-md border border-gray-300 px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
                         autoFocus
                       >
                         <option value="">— Geen —</option>
@@ -253,7 +254,7 @@ export function PlanningAlgemeenTab({
     }
                         }}
                         disabled={updateItem.isPending}
-                        className="text-xs font-medium text-blue-600 hover:text-blue-800 whitespace-nowrap"
+                        className="text-xs font-medium text-primary-600 hover:text-primary-800 whitespace-nowrap"
                       >
                         {updateItem.isPending ? '…' : 'Opslaan'}
                       </button>
@@ -412,7 +413,7 @@ export function PlanningAlgemeenTab({
                         </div>
                         <div className="text-xs text-gray-500">
                           {wo.startTime
-                            ? new Date(wo.startTime).toLocaleString('nl-NL', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+                            ? formatDateTime(wo.startTime)
                             : 'Geen starttijd'}
                         </div>
                       </div>
@@ -430,7 +431,7 @@ export function PlanningAlgemeenTab({
 
       <div className="flex items-center justify-between border-t border-gray-200 pt-6">
         <p className="text-xs text-gray-400">
-          Aangemaakt op {new Date(item.createdAt).toLocaleString('nl-NL', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+          Aangemaakt op {formatDateTimeLong(item.createdAt)}
           {item.createdByUser && ` door ${item.createdByUser.firstName} ${item.createdByUser.lastName}`}
         </p>
         {canEditDirectly && !editMode && (

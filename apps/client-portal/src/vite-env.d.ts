@@ -8,6 +8,12 @@ interface ImportMetaEnv {
    * cross-domein-URL zou de subdomein-tenancy breken.
    */
   readonly VITE_API_URL?: string;
+  /**
+   * Optionele expliciete basisdomein-override (bv. `staging.example.com`). Gezet → strikte
+   * tenant-resolutie: `<slug>.<VITE_BASE_DOMAIN>` (superuser-subdomein blijft `mijn`).
+   * Leeg → heuristiek (localhost / *.localhost / *.inspexi.nl).
+   */
+  readonly VITE_BASE_DOMAIN?: string;
 }
 
 interface ImportMeta {

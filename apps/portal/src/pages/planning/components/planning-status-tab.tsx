@@ -5,6 +5,7 @@ import { PLANNING_STATUS, getStatusConfig } from '@/lib/status';
 import { useUpdatePlanningStatus } from '../hooks/use-planning';
 import { planningStatusLabel } from './planning-detail-shared';
 import { getErrorMessage } from '@/lib/api-client';
+import { formatDateTime } from '@/lib/format';
 
 export function PlanningStatusTab({
   id,
@@ -101,7 +102,7 @@ export function PlanningStatusTab({
                 <div className="flex items-start justify-between">
                   <p className="text-sm text-gray-900">{entry.description}</p>
                   <span className="ml-4 shrink-0 text-xs text-gray-400">
-                    {new Date(entry.createdAt).toLocaleString('nl-NL')}
+                    {formatDateTime(entry.createdAt)}
                   </span>
                 </div>
                 {entry.user && (

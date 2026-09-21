@@ -30,7 +30,7 @@ import {
 } from '@/components/table-config';
 import { useDocuments } from './hooks/use-documents';
 import { downloadFile } from '@/lib/download-file';
-import { formatFileSize } from '@/lib/format';
+import { formatFileSize, formatShortDate } from '@/lib/format';
 import { DocumentPreviewModal, UploadDocumentModal } from '@/components/documents';
 
 const entityTypeFilterOptions = [
@@ -239,11 +239,7 @@ export default function DocumentsPage() {
       getFilterValue: (doc) => doc.createdAt,
       render: (doc) => (
         <span className="whitespace-nowrap text-xs text-gray-500">
-          {new Date(doc.createdAt).toLocaleDateString('nl-NL', {
-            day: 'numeric',
-            month: 'short',
-            year: 'numeric',
-          })}
+          {formatShortDate(doc.createdAt)}
         </span>
       ),
     },

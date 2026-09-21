@@ -15,6 +15,7 @@ import {
 import { ChatAvatar, PresenceLabel, TeamAvatar } from './chat-avatar';
 import { ChatComposer } from './chat-composer';
 import { threadTitle } from './chat-helpers';
+import { formatTime } from '@/lib/format';
 
 function MessageReference({
   message,
@@ -175,10 +176,7 @@ export function ChatThreadView({ threadId }: { threadId: string }) {
                     <MessageReference message={m} onNavigate={close} />
                   </div>
                   <span className="mt-0.5 px-1 text-[10px] text-gray-400">
-                    {new Date(m.createdAt).toLocaleTimeString('nl-NL', {
-                      hour: '2-digit',
-                      minute: '2-digit',
-                    })}
+                    {formatTime(m.createdAt)}
                   </span>
                 </div>
               </div>

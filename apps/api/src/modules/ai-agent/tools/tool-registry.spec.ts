@@ -1,7 +1,10 @@
+import { BadRequestException } from '@nestjs/common';
 import { User } from '@prisma/client';
+import { CreateTaskDto } from '@/modules/tasks/dto';
 import { AiToolRegistry } from './tool-registry';
 
 const user = { id: 'u1', orgId: 'orgA' } as User;
+const CONTACT_ID = '5f1c2a3e-1111-4222-8333-444455556666';
 
 describe('AiToolRegistry', () => {
   let contacts: any;
@@ -39,16 +42,40 @@ describe('AiToolRegistry', () => {
   it('create_task delegates to TasksService.create with the acting user', async () => {
     await registry
       .get('create_task')!
-      .run({ user }, { title: 'Bellen', deadline: '2026-08-01', entityType: 'CONTACT', entityId: 'c1' });
+      .run({ user }, { title: 'Bellen', deadline: '2026-08-01', entityType: 'CONTACT', entityId: CONTACT_ID });
     expect(tasks.create).toHaveBeenCalledWith(
       expect.objectContaining({
         title: 'Bellen',
         deadline: '2026-08-01',
         entityType: 'CONTACT',
-        entityId: 'c1',
+        entityId: CONTACT_ID,
       }),
       user,
     );
+    // Gevalideerde DTO-instantie (geen rauw object) gaat naar de service.
+    expect(tasks.create.mock.calls[0][0]).toBeInstanceOf(CreateTaskDto);
+  });
+
+  it('write tools run the DTO validation: invalid input → 400 and the service is not called', async () => {
+    await expect(
+      registry.get('create_task')!.run({ user }, { title: 'Bellen', entityType: 'CONTACT', entityId: 'geen-uuid' }),
+    ).rejects.toThrow(BadRequestException);
+    await expect(
+      registry.get('update_task')!.run({ user }, { id: 't1', status: 'ONBEKEND' }),
+    ).rejects.toThrow(BadRequestException);
+    await expect(
+      registry.get('create_note')!.run({ user }, { entityType: 'CONTACT', entityId: CONTACT_ID, content: '' }),
+    ).rejects.toThrow(BadRequestException);
+    expect(tasks.create).not.toHaveBeenCalled();
+    expect(tasks.update).not.toHaveBeenCalled();
+    expect(notes.create).not.toHaveBeenCalled();
+  });
+
+  it('update_task passes only the allowlisted, validated fields (undefined stripped)', async () => {
+    await registry.get('update_task')!.run({ user }, { id: 't1', status: 'VOLTOOID', extra: 'x' });
+    const dto = tasks.update.mock.calls[0][1];
+    expect(dto).toEqual({ status: 'VOLTOOID' });
+    expect(tasks.update).toHaveBeenCalledWith('t1', dto, user);
   });
 
   it('create_task requires an entity link in its schema (F4-live: Prisma vereist entityType/entityId)', () => {
@@ -80,9 +107,9 @@ describe('AiToolRegistry', () => {
   });
 
   it('create_note delegates to NotesService.create with entity + content', async () => {
-    await registry.get('create_note')!.run({ user }, { entityType: 'CONTACT', entityId: 'c1', content: 'hoi' });
+    await registry.get('create_note')!.run({ user }, { entityType: 'CONTACT', entityId: CONTACT_ID, content: 'hoi' });
     expect(notes.create).toHaveBeenCalledWith(
-      expect.objectContaining({ entityType: 'CONTACT', entityId: 'c1', content: 'hoi' }),
+      expect.objectContaining({ entityType: 'CONTACT', entityId: CONTACT_ID, content: 'hoi' }),
       user,
     );
   });

@@ -10,8 +10,27 @@ export interface TenantInfo {
   isBaseDomain: boolean;
 }
 
-/** Detect the base domain from the current hostname */
+/**
+ * Explicitly configured base domain (build-time `VITE_BASE_DOMAIN`, e.g.
+ * `staging.example.com`). When set, tenant resolution is strict: the hostname must be
+ * the base domain itself or exactly one label deeper (`<slug>.<base>`); the heuristic
+ * below is skipped entirely. Leading dots and casing are normalised. Empty/unset →
+ * null → heuristic detection.
+ */
+function getConfiguredBaseDomain(): string | null {
+  const raw = import.meta.env.VITE_BASE_DOMAIN;
+  if (typeof raw !== 'string') return null;
+  const normalised = raw.trim().toLowerCase().replace(/^\.+/, '').replace(/\.+$/, '');
+  return normalised || null;
+}
+
+/** Detect the base domain from the current hostname (heuristic; used without VITE_BASE_DOMAIN) */
 function detectBaseDomain(): string {
+  const configured = getConfiguredBaseDomain();
+  if (configured) {
+    return configured;
+  }
+
   const hostname = window.location.hostname;
 
   // *.localhost → localhost
@@ -51,6 +70,8 @@ export function getBaseDomain(): string {
  * - `voorbeeldbedrijf.localhost` → `{ slug: 'voorbeeldbedrijf', isBaseDomain: false }`
  * - `mijn.localhost` → `{ slug: null, isBaseDomain: true }`
  * - `localhost` → `{ slug: null, isBaseDomain: true }`
+ * - with `VITE_BASE_DOMAIN=staging.example.com`: `demo.staging.example.com` →
+ *   `{ slug: 'demo', isBaseDomain: false }`; `mijn.staging.example.com` → superuser
  */
 export function getTenantInfo(): TenantInfo {
   const hostname = window.location.hostname;

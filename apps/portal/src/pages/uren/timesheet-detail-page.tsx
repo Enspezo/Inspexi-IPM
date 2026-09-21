@@ -12,7 +12,7 @@ import {
   useToast,
 } from '@/components/ui';
 import { TIMESHEET_STATUS, TIME_ACTIVITY, TIME_ENTRY_SOURCE, TIME_ACTIVITY_LABELS } from '@/lib/status';
-import { formatDate } from '@/lib/format';
+import { formatDate, formatTime } from '@/lib/format';
 import { DetailPageLayout } from '@/components/layout/detail-page-layout';
 import { HistorySidebarSection } from '@/components/layout/sidebar-sections';
 import { useAuth } from '@/providers/auth-provider';
@@ -25,8 +25,6 @@ import {
 import { EditTimeEntryModal } from './components/edit-time-entry-modal';
 
 const reviewRoles = [Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER];
-
-const timeFmt = new Intl.DateTimeFormat('nl-NL', { hour: '2-digit', minute: '2-digit' });
 
 export default function TimesheetDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -166,9 +164,9 @@ export default function TimesheetDetailPage() {
               {entries.map((entry) => (
                 <li key={entry.id} className="flex flex-wrap items-center gap-3 py-2">
                   <span className="w-24 shrink-0 text-sm tabular-nums text-gray-600">
-                    {timeFmt.format(new Date(entry.startedAt))}
+                    {formatTime(entry.startedAt)}
                     {' – '}
-                    {entry.endedAt ? timeFmt.format(new Date(entry.endedAt)) : '…'}
+                    {entry.endedAt ? formatTime(entry.endedAt) : '…'}
                   </span>
                   <StatusBadge map={TIME_ACTIVITY} status={entry.activityType} />
                   <span className="min-w-0 flex-1 truncate text-sm text-gray-900">
@@ -217,7 +215,7 @@ export default function TimesheetDetailPage() {
             </label>
             <textarea
               id="reject-note"
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+              className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm shadow-sm placeholder:text-gray-400 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
               rows={4}
               value={rejectNote}
               onChange={(e) => setRejectNote(e.target.value)}

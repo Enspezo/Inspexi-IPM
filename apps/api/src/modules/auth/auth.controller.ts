@@ -171,6 +171,7 @@ export class AuthController {
   @Public()
   @Post('verify-email')
   @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 10, ttl: 60000 } }) // F7: token-brute-force remmen
   @ApiOperation({ summary: 'Bevestig e-mailadres met token' })
   @ApiResponse({ status: 200, description: 'E-mail bevestigd' })
   @ApiResponse({ status: 400, description: 'Ongeldige of verlopen token' })

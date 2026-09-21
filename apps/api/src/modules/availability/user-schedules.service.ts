@@ -9,6 +9,7 @@ import { PrismaService } from '@/prisma';
 import { assertSameOrg, assertFound, isSuperuser, isCrm } from '@/common';
 import { AssignScheduleDto } from './dto';
 import { AvailabilityNotifier } from './availability-notifier.service';
+import { assertUserInScope as assertUserInScopeHelper } from './availability.helpers';
 
 const assignmentInclude = {
   template: { select: { id: true, name: true, isActive: true, isDeleted: true } },
@@ -163,18 +164,8 @@ export class UserSchedulesService {
   // ─── Helpers ────────────────────────────────────────────
 
   /** Doelgebruiker moet bestaan en (voor niet-superusers) bij de org van de actor horen. */
-  private async assertUserInScope(userId: string, actor: User) {
-    const target = assertFound(
-      await this.prisma.user.findUnique({
-        where: { id: userId },
-        select: { id: true, orgId: true },
-      }),
-      'Gebruiker',
-    );
-    if (!isSuperuser(actor) && target.orgId !== actor.orgId) {
-      throw new NotFoundException('Gebruiker niet gevonden');
-    }
-    return target;
+  private assertUserInScope(userId: string, actor: User) {
+    return assertUserInScopeHelper(this.prisma, userId, actor);
   }
 
   /** 'YYYY-MM-DD' → Date op UTC-middernacht (past bij de @db.Date-kolom). */

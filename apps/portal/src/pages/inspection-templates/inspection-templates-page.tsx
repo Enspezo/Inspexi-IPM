@@ -12,6 +12,7 @@ import { useAuth } from '@/providers/auth-provider';
 import { TEMPLATE_STATUS } from '@/lib/status';
 import { useInspectionTemplates } from './hooks/use-inspection-templates';
 import { CreateInspectionTemplateModal } from './components/create-inspection-template-modal';
+import { formatNumericDate } from '@/lib/format';
 
 const MANAGE_ROLES: Role[] = [Role.SUPERUSER, Role.ORG_ADMIN];
 
@@ -59,7 +60,7 @@ export default function InspectionTemplatesPage() {
     {
       key: 'createdAt', header: 'Aangemaakt', filterable: true, filterType: 'date',
       sortable: true, sortKey: 'createdAt', getFilterValue: (t) => t.createdAt,
-      render: (t) => <span className="text-xs text-gray-500">{new Date(t.createdAt).toLocaleDateString('nl-NL')}</span>,
+      render: (t) => <span className="text-xs text-gray-500">{formatNumericDate(t.createdAt)}</span>,
     },
   ];
 

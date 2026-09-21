@@ -11,7 +11,7 @@ import {
 } from '@nestjs/common';
 import { User, DocumentType, GeneratedDocumentStatus, SignatureStatus } from '@prisma/client';
 import { PrismaService } from '@/prisma';
-import { orgScope, assertFound, assertSameOrg, requireOrg, escapeHtml, isSafeDataImage } from '@/common';
+import { orgScope, assertFound, assertSameOrg, requireOrg, escapeHtml, isSafeDataImage, formatShortDateTimeNl } from '@/common';
 import { STORAGE_PROVIDER } from '@/common/services/storage/storage.interface';
 import type { StorageProvider } from '@/common/services/storage/storage.interface';
 import { DocumentRenderService } from '../document-generation/document-render.service';
@@ -344,12 +344,6 @@ export class GeneratedDocumentsService {
 
   private formatDate(date: Date | null): string {
     if (!date) return '-';
-    return new Intl.DateTimeFormat('nl-NL', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    }).format(new Date(date));
+    return formatShortDateTimeNl(date);
   }
 }

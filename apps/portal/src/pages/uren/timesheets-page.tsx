@@ -5,6 +5,7 @@ import type { Timesheet } from '@/types';
 import {
   Button,
   ErrorBox,
+  Input,
   Select,
   Spinner,
   StatusBadge,
@@ -201,26 +202,20 @@ export default function TimesheetsPage() {
           description="Weekstaten van inspecteurs beoordelen en exporteren"
           actions={
             <div className="flex items-end gap-2">
-              <div>
-                <label className="mb-1 block text-xs font-medium text-gray-500" htmlFor="export-from">
-                  Van
-                </label>
-                <input
+              <div className="w-40">
+                <Input
                   id="export-from"
+                  label="Van"
                   type="date"
-                  className="rounded-lg border border-gray-300 px-2 py-1.5 text-sm"
                   value={exportFrom}
                   onChange={(e) => setExportFrom(e.target.value)}
                 />
               </div>
-              <div>
-                <label className="mb-1 block text-xs font-medium text-gray-500" htmlFor="export-to">
-                  Tot en met
-                </label>
-                <input
+              <div className="w-40">
+                <Input
                   id="export-to"
+                  label="Tot en met"
                   type="date"
-                  className="rounded-lg border border-gray-300 px-2 py-1.5 text-sm"
                   value={exportTo}
                   onChange={(e) => setExportTo(e.target.value)}
                 />

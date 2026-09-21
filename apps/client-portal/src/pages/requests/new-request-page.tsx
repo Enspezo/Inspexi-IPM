@@ -1,15 +1,10 @@
-import { useState, type FormEvent } from 'react';
+import { useId, useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { useClientMe, useCreateNewAssignment } from './hooks/use-requests';
 import { Spinner, Card, Button, Input, Select, ErrorBox } from '@/components/ui';
 import { getErrorMessage } from '@/lib/api-client';
 import { contactName } from '@/lib/labels';
-
-function tomorrow(): string {
-  const d = new Date();
-  d.setDate(d.getDate() + 1);
-  return d.toISOString().slice(0, 10);
-}
+import { toLocalDateInputValue, tomorrowInputValue } from '@/lib/format';
 
 export default function NewRequestPage() {
   const { data: me, isLoading } = useClientMe();
@@ -18,6 +13,7 @@ export default function NewRequestPage() {
   const accessOptions = (me?.access ?? []).map((a) => ({ value: a.contact.id, label: contactName(a.contact) }));
   const singleContactId = accessOptions.length === 1 ? accessOptions[0].value : '';
 
+  const descriptionId = useId();
   const [contactId, setContactId] = useState('');
   const [subject, setSubject] = useState('');
   const [description, setDescription] = useState('');
@@ -33,7 +29,7 @@ export default function NewRequestPage() {
     if (!effectiveContactId) next.contactId = 'Selecteer een opdrachtgever.';
     if (!subject.trim()) next.subject = 'Onderwerp is verplicht.';
     if (description.trim().length < 10) next.description = 'Omschrijving moet minimaal 10 tekens bevatten.';
-    if (preferredDate && preferredDate <= new Date().toISOString().slice(0, 10)) {
+    if (preferredDate && preferredDate <= toLocalDateInputValue(new Date())) {
       next.preferredDate = 'Voorkeursdatum moet in de toekomst liggen.';
     }
     setErrors(next);
@@ -141,8 +137,11 @@ export default function NewRequestPage() {
             />
 
             <div>
-              <label className="mb-1.5 block text-sm font-medium text-gray-700">Omschrijving</label>
+              <label htmlFor={descriptionId} className="mb-1.5 block text-sm font-medium text-gray-700">
+                Omschrijving
+              </label>
               <textarea
+                id={descriptionId}
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 rows={4}
@@ -159,7 +158,7 @@ export default function NewRequestPage() {
             <Input
               type="date"
               label="Voorkeursdatum (optioneel)"
-              min={tomorrow()}
+              min={tomorrowInputValue()}
               value={preferredDate}
               onChange={(e) => setPreferredDate(e.target.value)}
               error={errors.preferredDate}

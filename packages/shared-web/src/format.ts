@@ -88,6 +88,25 @@ export function formatWeekdayShortDate(value: DateInput): string {
   });
 }
 
+/**
+ * Relatieve tijd t.o.v. nu: "zojuist", "5 min geleden", "3 uur geleden",
+ * "gisteren"; ouder dan een dag valt terug op formatShortDate ("8 jun 2026").
+ * Toekomstige datums tellen als "zojuist".
+ */
+export function formatRelativeTime(value: DateInput, now: Date = new Date()): string {
+  const date = toDate(value);
+  if (!date) return '—';
+  const diffMs = now.getTime() - date.getTime();
+  const minutes = Math.floor(diffMs / 60000);
+  if (minutes < 1) return 'zojuist';
+  if (minutes < 60) return `${minutes} min geleden`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} uur geleden`;
+  const days = Math.floor(hours / 24);
+  if (days === 1) return 'gisteren';
+  return formatShortDate(date);
+}
+
 /** "8-6-2026" (numeriek, nl-NL default) */
 export function formatNumericDate(value: DateInput): string {
   const date = toDate(value);

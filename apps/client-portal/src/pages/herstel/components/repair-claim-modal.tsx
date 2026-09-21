@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useId, useRef, useState } from 'react';
 import { Modal, Button, ErrorBox, PhotoUploader } from '@/components/ui';
 import { ApiClientError, getErrorMessage } from '@/lib/api-client';
 import {
@@ -28,6 +28,7 @@ export function RepairClaimModal({ finding, onClose }: RepairClaimModalProps) {
   const invalidate = useInvalidateRepairSession();
 
   const [description, setDescription] = useState('');
+  const photosId = useId();
   const [files, setFiles] = useState<File[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [conflictMessage, setConflictMessage] = useState<string | null>(null);
@@ -151,10 +152,10 @@ export function RepairClaimModal({ finding, onClose }: RepairClaimModalProps) {
         </div>
 
         <div>
-          <label className="mb-1.5 block text-sm font-medium text-gray-700">
+          <label htmlFor={photosId} className="mb-1.5 block text-sm font-medium text-gray-700">
             Bewijsfoto's <span className="text-danger-600">*</span>
           </label>
-          <PhotoUploader files={files} onChange={setFiles} maxFiles={5} maxSizeMb={5} />
+          <PhotoUploader id={photosId} files={files} onChange={setFiles} maxFiles={5} maxSizeMb={5} />
           {files.length === 0 && (
             <p className="mt-1.5 text-xs text-gray-500">Minimaal één foto is verplicht.</p>
           )}

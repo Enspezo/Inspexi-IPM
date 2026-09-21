@@ -1,34 +1,59 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import {
   AcceptanceStatus,
   NotificationType,
+  Prisma,
   RescheduleStatus,
 } from '@prisma/client';
 import { PrismaService } from '@/prisma';
-import { assertFound, resolveInspectorContact } from '@/common';
+import { assertFound, publicTenantWhere, resolveInspectorContact } from '@/common';
+import { TenantContext } from '@/common/interfaces/tenant-context.interface';
+import { EntitlementsService } from '@/modules/entitlements/entitlements.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { PlanningService } from './planning.service';
 import { AddQuestionDto, CreateRescheduleRequestDto } from './dto';
 
+/**
+ * Publieke afspraakpagina (`/public/planning/:token`).
+ *
+ * WP-B7/F1: de `publicToken`-lookup is gebonden aan de bezochte tenant
+ * (`publicTenantWhere`) en de feature-gate (`UITVOERING_COMPLEET`) wordt in de
+ * service tegen de EIGENAAR-org van de afspraak afgedwongen — niet via een
+ * klasse-brede `@RequiresFeature` op de publieke controller, die op het
+ * apex-domein (`PUBLIC_URL`, geen tenant-org) in productie hard 403 zou geven.
+ */
 @Injectable()
 export class PlanningPublicService {
   constructor(
     private prisma: PrismaService,
+    private config: ConfigService,
+    private entitlements: EntitlementsService,
     private notifications: NotificationsService,
     private planning: PlanningService,
   ) {}
 
+  /** Tenant-gebonden where-fragment voor de token-lookup (generieke 404 op een vreemd subdomein). */
+  private tokenWhere(token: string, tenant?: TenantContext): Prisma.PlanningItemWhereInput {
+    return { publicToken: token, ...publicTenantWhere(tenant, this.config, 'Afspraak') };
+  }
+
+  /** Entitlement tegen de EIGENAAR van de afspraak (niet de bezoekende tenant). */
+  private assertOwnerFeature(orgId: string): Promise<void> {
+    return this.entitlements.assertFeature(orgId, 'UITVOERING_COMPLEET');
+  }
+
   // ─── Public portal ─────────────────────────────────────────
 
-  async findByPublicToken(token: string) {
+  async findByPublicToken(token: string, tenant?: TenantContext) {
     // B-306 (WP-B7): expliciete select-allowlist i.p.v. een include+spread die élk
     // kolomveld (incl. `internalNotes`) publiek maakte. Alleen wat de publieke
     // afspraakpagina daadwerkelijk toont mag hier staan — een nieuw veld toevoegen
     // is een bewuste, geteste beslissing (zie de key-snapshot-e2e in
     // test/public-endpoints.e2e-spec.ts). `orgId` is server-side nodig voor de
     // inspecteur-contactresolutie en wordt vóór de return weer weggestript.
-    const item = assertFound(await this.prisma.planningItem.findUnique({
-      where: { publicToken: token },
+    const item = assertFound(await this.prisma.planningItem.findFirst({
+      where: this.tokenWhere(token, tenant),
       select: {
         id: true,
         orgId: true, // intern — wordt hieronder uit de response gestript
@@ -113,6 +138,7 @@ export class PlanningPublicService {
         },
       },
     }), 'Afspraak');
+    await this.assertOwnerFeature(item.orgId);
 
     // Org-modus + statische waarden apart ophalen — deze verlaten de response nooit.
     const orgContactSettings = assertFound(
@@ -162,20 +188,21 @@ export class PlanningPublicService {
     }));
 
     // Attach shared documents (from this planning item + linked quote + linked request)
-    const documents = await this.getSharedDocuments(token);
+    const documents = await this.getSharedDocuments(token, tenant);
     // `orgId` was alleen nodig voor de contactresolutie hierboven — nooit teruggeven.
     const { orgId: _orgId, ...publicItem } = item;
     return { ...publicItem, inspectors, sessions, documents };
   }
 
-  async addClientQuestion(token: string, dto: AddQuestionDto) {
+  async addClientQuestion(token: string, dto: AddQuestionDto, tenant?: TenantContext) {
     const item = assertFound(
-      await this.prisma.planningItem.findUnique({
-        where: { publicToken: token },
+      await this.prisma.planningItem.findFirst({
+        where: this.tokenWhere(token, tenant),
         select: { id: true, orgId: true, createdBy: true, productName: true },
       }),
       'Afspraak',
     );
+    await this.assertOwnerFeature(item.orgId);
 
     const entry = await this.prisma.planningHistory.create({
       data: { planningItemId: item.id, userId: null, action: 'VRAAG_KLANT', description: dto.message },
@@ -194,14 +221,19 @@ export class PlanningPublicService {
     return entry;
   }
 
-  async createRescheduleRequest(token: string, dto: CreateRescheduleRequestDto) {
+  async createRescheduleRequest(
+    token: string,
+    dto: CreateRescheduleRequestDto,
+    tenant?: TenantContext,
+  ) {
     const item = assertFound(
-      await this.prisma.planningItem.findUnique({
-        where: { publicToken: token },
+      await this.prisma.planningItem.findFirst({
+        where: this.tokenWhere(token, tenant),
         select: { id: true, orgId: true, createdBy: true, productName: true, isCancelled: true },
       }),
       'Afspraak',
     );
+    await this.assertOwnerFeature(item.orgId);
     if (item.isCancelled) throw new BadRequestException('Deze afspraak is al geannuleerd');
 
     const request = await this.prisma.rescheduleRequest.create({
@@ -234,16 +266,11 @@ export class PlanningPublicService {
     return request;
   }
 
-  async getSharedDocuments(token: string) {
-    const item = assertFound(
-      await this.prisma.planningItem.findUnique({
-        where: { publicToken: token },
-        select: { id: true, quoteId: true },
-      }),
-      'Afspraak',
-    );
-
-    // Build OR conditions: always include PLANNING docs, optionally QUOTE + REQUEST docs
+  /**
+   * Entiteit-filters waar dit token toegang toe geeft: PLANNING-docs van de
+   * afspraak zelf, plus QUOTE-/REQUEST-docs van de gekoppelde offerte/aanvraag.
+   */
+  private async sharedEntityFilters(item: { id: string; quoteId: string | null }) {
     const entityFilters: Array<{ entityType: any; entityId: string }> = [
       { entityType: 'PLANNING' as any, entityId: item.id },
     ];
@@ -257,14 +284,83 @@ export class PlanningPublicService {
         entityFilters.push({ entityType: 'REQUEST' as any, entityId: quote.requestId });
       }
     }
+    return entityFilters;
+  }
 
+  async getSharedDocuments(token: string, tenant?: TenantContext) {
+    const item = assertFound(
+      await this.prisma.planningItem.findFirst({
+        where: this.tokenWhere(token, tenant),
+        select: { id: true, orgId: true, quoteId: true },
+      }),
+      'Afspraak',
+    );
+    await this.assertOwnerFeature(item.orgId);
+
+    const entityFilters = await this.sharedEntityFilters(item);
     return this.prisma.document.findMany({
       where: {
         OR: entityFilters,
+        orgId: item.orgId,
         isSharedWithClient: true,
         isDeleted: false,
       },
       orderBy: { createdAt: 'desc' },
     });
+  }
+
+  /** Eén gedeelde bijlage (metadata) voor download — org-gebonden aan de afspraak. */
+  async findSharedDocument(token: string, docId: string, tenant?: TenantContext) {
+    const item = assertFound(
+      await this.prisma.planningItem.findFirst({
+        where: this.tokenWhere(token, tenant),
+        select: { id: true, orgId: true, quoteId: true },
+      }),
+      'Afspraak',
+    );
+    await this.assertOwnerFeature(item.orgId);
+
+    const entityFilters = await this.sharedEntityFilters(item);
+    return assertFound(
+      await this.prisma.document.findFirst({
+        where: {
+          id: docId,
+          OR: entityFilters,
+          orgId: item.orgId,
+          isSharedWithClient: true,
+          isDeleted: false,
+        },
+      }),
+      'Document',
+    );
+  }
+
+  /** Afspraak + relaties voor het .ics-bestand (zie `PlanningIcalService.generateSingleEvent`). */
+  async findForIcs(token: string, tenant?: TenantContext) {
+    const item = assertFound(
+      await this.prisma.planningItem.findFirst({
+        where: this.tokenWhere(token, tenant),
+        include: {
+          location: { select: { street: true, houseNumber: true, postalCode: true, city: true } },
+          contact: { select: { companyName: true, firstName: true, lastName: true } },
+          sessions: {
+            where: { isCancelled: false },
+            orderBy: { sessionNumber: 'asc' },
+            select: {
+              id: true,
+              sessionNumber: true,
+              scheduledDate: true,
+              durationHours: true,
+              status: true,
+              isCancelled: true,
+              notes: true,
+            },
+          },
+        },
+      }),
+      'Afspraak',
+    );
+    await this.assertOwnerFeature(item.orgId);
+    return item;
   }
 }

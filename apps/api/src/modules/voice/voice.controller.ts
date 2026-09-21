@@ -11,9 +11,10 @@ import { ParseMeasurementDto } from './dto';
 
 const VOICE_USERS = ALL_STAFF;
 
+// F1: @RequiresFeature staat op de handler, niet op de klasse — `GET /voice/status`
+// is @Public() (status-probe zonder tenant-org) en zou anders in productie 403 geven.
 @ApiTags('Voice')
 @ApiBearerAuth()
-@RequiresFeature('BASIS_INSPECTIES')
 @Controller('voice')
 export class VoiceController {
   constructor(private readonly parse: VoiceParseService) {}
@@ -26,6 +27,7 @@ export class VoiceController {
   }
 
   @Post('parse-measurement')
+  @RequiresFeature('BASIS_INSPECTIES')
   @Roles(...VOICE_USERS)
   @ApiOperation({ summary: 'Gesproken meting → gestructureerde JSON (PWA-contract — stabiel houden)' })
   async parseMeasurement(

@@ -7,6 +7,7 @@ import type { Project } from '@/types';
 import { Button, InfoField, StatusBadge, Input, Select, Card } from '@/components/ui';
 import { PROJECT_STATUS } from '@/lib/status';
 import type { ProjectLocation } from '../hooks/use-projects';
+import { formatDateTimeLong, formatNumericDate } from '@/lib/format';
 
 // ─── Constants ─────────────────────────────────────────────
 
@@ -141,15 +142,15 @@ export function OverviewTab({
                 />
                 <InfoField
                   label="Startdatum"
-                  value={project.startDate ? new Date(project.startDate).toLocaleDateString('nl-NL') : null}
+                  value={formatNumericDate(project.startDate)}
                 />
                 <InfoField
                   label="Verwachte einddatum"
-                  value={project.expectedEndDate ? new Date(project.expectedEndDate).toLocaleDateString('nl-NL') : null}
+                  value={formatNumericDate(project.expectedEndDate)}
                 />
                 <InfoField
                   label="Einddatum"
-                  value={project.endDate ? new Date(project.endDate).toLocaleDateString('nl-NL') : null}
+                  value={formatNumericDate(project.endDate)}
                 />
               </dl>
             </Card>
@@ -206,7 +207,7 @@ export function OverviewTab({
           {/* Bottom actions */}
           <div className="flex items-center justify-between border-t border-gray-200 pt-6">
             <p className="text-xs text-gray-400">
-              Aangemaakt op {new Date(project.createdAt).toLocaleString('nl-NL', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+              Aangemaakt op {formatDateTimeLong(project.createdAt)}
               {project.createdByUser && ` door ${project.createdByUser.firstName} ${project.createdByUser.lastName}`}
             </p>
             {canWrite && (

@@ -1,3 +1,4 @@
+import { getRoleLabel } from '@/lib/roles';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -26,6 +27,7 @@ import { getTypeLabel } from '@/lib/notifications';
 import { getErrorMessage } from '@/lib/api-client';
 import { useFeatures } from '@/providers/feature-provider';
 import { useAiReviewStatus } from '@/pages/inspections/hooks/use-ai-review';
+import { PageHeader } from '@/components/layout/page-header';
 
 const CONTACT_DISPLAY_OPTIONS = [
   { value: ContactDisplayMode.NONE, label: 'Geen' },
@@ -93,13 +95,6 @@ export const orgSchema = z.object({
 type OrgFormData = z.infer<typeof orgSchema>;
 
 
-const roleLabels: Record<string, string> = {
-  [Role.ORG_ADMIN]: 'Org Admin',
-  [Role.MANAGER]: 'Manager',
-  [Role.BACKOFFICE]: 'Backoffice',
-  [Role.WERKVOORBEREIDER]: 'Werkvoorbereider',
-  [Role.INSPECTEUR]: 'Inspecteur',
-};
 
 const assignableRoles = [
   Role.ORG_ADMIN,
@@ -213,7 +208,7 @@ function GroupNotificationPrefsCard() {
                 : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
             }`}
           >
-            {roleLabels[role] || role}
+            {getRoleLabel(role)}
           </button>
         ))}
       </div>
@@ -493,9 +488,7 @@ export default function OrganizationSettingsPage() {
   if (loadError || !organization) {
     return (
       <div>
-        <h1 className="mb-6 text-2xl font-bold text-gray-900">
-          Organisatie-instellingen
-        </h1>
+        <PageHeader title="Organisatie-instellingen" />
         <ErrorBox>
           De organisatiegegevens konden niet geladen worden. Controleer of u de juiste
           rechten heeft of probeer het later opnieuw.
@@ -520,14 +513,10 @@ export default function OrganizationSettingsPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-bold text-gray-900">
-          Organisatie-instellingen
-        </h2>
-        <p className="mt-1 text-sm text-gray-500">
-          Beheer de instellingen van uw organisatie
-        </p>
-      </div>
+      <PageHeader
+        title="Organisatie-instellingen"
+        description="Beheer de instellingen van uw organisatie"
+      />
 
       {/* Tab navigation */}
       <Tabs tabs={tabs} active={activeTab} onChange={setActiveTab} />
@@ -753,7 +742,7 @@ export default function OrganizationSettingsPage() {
                 error={errors.quoteApprovalRequiredRole?.message}
                 options={[
                   { value: '', label: 'Geen' },
-                  ...assignableRoles.map((role) => ({ value: role, label: roleLabels[role] })),
+                  ...assignableRoles.map((role) => ({ value: role, label: getRoleLabel(role) })),
                 ]}
                 {...register('quoteApprovalRequiredRole')}
               />
@@ -907,7 +896,7 @@ export default function OrganizationSettingsPage() {
                           setValue('aiAgentAllowedRoles', next, { shouldDirty: true });
                         }}
                       />
-                      {roleLabels[role] ?? role}
+                      {getRoleLabel(role)}
                     </label>
                   );
                 })}

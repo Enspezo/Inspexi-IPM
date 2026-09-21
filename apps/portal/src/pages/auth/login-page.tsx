@@ -5,7 +5,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useAuth } from '@/providers/auth-provider';
 import { useTenant } from '@/providers/tenant-provider';
-import { Button, Checkbox, Input, Spinner } from '@/components/ui';
+import { Button, Checkbox, ErrorBox, Input, Spinner } from '@/components/ui';
 
 const loginSchema = z.object({
   email: z
@@ -117,11 +117,7 @@ export default function LoginPage() {
         {/* Card */}
         <div className="rounded-2xl bg-white p-8 shadow-2xl">
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
-            {error && (
-              <div className="rounded-lg bg-danger-50 p-3 text-sm text-danger-600">
-                {error}
-              </div>
-            )}
+            <ErrorBox>{error}</ErrorBox>
 
             <Input
               label="E-mailadres"

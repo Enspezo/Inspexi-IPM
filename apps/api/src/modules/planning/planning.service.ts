@@ -14,7 +14,7 @@ import {
 } from '@prisma/client';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '@/prisma';
-import { paginate, orgScope, assertFound, assertSameOrg, assertAllSameOrg, assertOrgAccess, resolvePhaseLink, PROJECT_FASEN_FEATURE, PROJECT_FASEN_REQUIRED_MESSAGE } from '@/common';
+import { paginate, orgScope, assertFound, assertSameOrg, assertAllSameOrg, assertOrgAccess, resolvePhaseLink, PROJECT_FASEN_FEATURE, PROJECT_FASEN_REQUIRED_MESSAGE, formatDateTimeNl } from '@/common';
 import { EntitlementsService } from '@/modules/entitlements/entitlements.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { WorkOrdersService } from '../work-orders/work-orders.service';
@@ -506,13 +506,7 @@ export class PlanningService {
         .filter((uid) => uid !== user.id);
 
       if (inspectorUserIds.length > 0) {
-        const newDateFormatted = new Date(updated.scheduledDate).toLocaleDateString('nl-NL', {
-          day: 'numeric',
-          month: 'long',
-          year: 'numeric',
-          hour: '2-digit',
-          minute: '2-digit',
-        });
+        const newDateFormatted = formatDateTimeNl(updated.scheduledDate);
 
         this.notifications.dispatch({
           type: NotificationType.AFSPRAAK_VERPLAATST,

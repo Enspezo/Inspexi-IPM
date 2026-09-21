@@ -10,7 +10,7 @@ import {
   NoteEntityType,
 } from '@/types';
 import { ActionMenu, Button, Card, ErrorBox, Spinner, StatusBadge, Input, Table, useConfirm, useToast, type Column } from '@/components/ui';
-import { formatCurrency, formatDate } from '@/lib/format';
+import { formatCurrency, formatDate, formatDateTimeLong } from '@/lib/format';
 import { QUOTE_STATUS } from '@/lib/status';
 import { DetailPageLayout, SidebarSection } from '@/components/layout/detail-page-layout';
 import { FavoriteStar } from '@/components/favorites/favorite-star';
@@ -43,8 +43,8 @@ import { QuoteQuestionsCard } from './components/quote-detail-questions-card';
 import { QuoteAttachmentsCard } from './components/quote-detail-attachments-card';
 import { QuoteTasksSidebar } from './components/quote-detail-tasks-sidebar';
 import { ContactLogsSidebar } from './components/quote-detail-contact-logs-sidebar';
-import { formatDateTimeLong, getQuoteApprovalState } from './components/quote-detail-helpers';
-import { RichTextViewer } from '@/components/ui';
+import { getQuoteApprovalState } from './components/quote-detail-helpers';
+import { RichTextViewer } from '@/components/ui/rich-text-lazy';
 import { getAccessToken, getErrorMessage } from '@/lib/api-client';
 
 const canWrite = [Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE];
@@ -460,7 +460,7 @@ export default function QuoteDetailPage() {
         {/* Acties onderaan */}
         <div className="flex items-center justify-between border-t border-gray-200 pt-6">
           <p className="text-xs text-gray-400">
-            Aangemaakt op {new Date(quote.createdAt).toLocaleString('nl-NL', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+            Aangemaakt op {formatDateTimeLong(quote.createdAt)}
             {quote.createdByUser && ` door ${quote.createdByUser.firstName} ${quote.createdByUser.lastName}`}
           </p>
           {userCanWrite && (

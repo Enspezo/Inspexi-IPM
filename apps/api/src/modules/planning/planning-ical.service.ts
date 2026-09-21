@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '@/prisma';
 import { AcceptanceStatus, SessionStatus } from '@prisma/client';
+import { EntitlementsService } from '@/modules/entitlements/entitlements.service';
 
 interface IcalSession {
   id: string;
@@ -16,7 +17,10 @@ interface IcalSession {
 export class PlanningIcalService {
   private readonly logger = new Logger(PlanningIcalService.name);
 
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private entitlements: EntitlementsService,
+  ) {}
 
   private formatDate(date: Date): string {
     return date.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
@@ -130,13 +134,17 @@ export class PlanningIcalService {
   async generatePersonalFeed(icalToken: string): Promise<string> {
     const user = await this.prisma.user.findUnique({
       where: { icalToken },
-      select: { id: true, firstName: true, lastName: true },
+      select: { id: true, orgId: true, firstName: true, lastName: true },
     });
 
     if (!user) {
       this.logger.warn(`iCal feed-request met ongeldig token (${icalToken.slice(0, 8)}…)`);
       return this.emptyCalendar();
     }
+
+    // F1: feature-gate tegen de org van de token-eigenaar (de publieke route
+    // draagt bewust geen @RequiresFeature — zie PlanningIcalController).
+    await this.entitlements.assertFeature(user.orgId, 'UITVOERING_COMPLEET');
 
     // Single-day: accepted PlanningInspector entries
     const inspectorItems = await this.prisma.planningInspector.findMany({

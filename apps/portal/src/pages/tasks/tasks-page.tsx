@@ -28,6 +28,7 @@ import {
 import { useAuth } from '@/providers/auth-provider';
 import { useTasks } from './hooks/use-tasks';
 import { CreateTaskModal } from './components/create-task-modal';
+import { formatNumericDate } from '@/lib/format';
 
 const statusFilterOptions = [
   { value: '', label: 'Alle statussen' },
@@ -204,7 +205,7 @@ export default function TasksPage() {
         const isOverdue = task.status !== TaskStatus.VOLTOOID && date < new Date();
         return (
           <span className={`text-xs ${isOverdue ? 'font-medium text-red-600' : 'text-gray-500'}`}>
-            {date.toLocaleDateString('nl-NL')}
+            {formatNumericDate(date)}
           </span>
         );
       },
@@ -219,7 +220,7 @@ export default function TasksPage() {
       getFilterValue: (task) => task.createdAt,
       render: (task) => (
         <span className="text-gray-500 text-xs">
-          {new Date(task.createdAt).toLocaleDateString('nl-NL')}
+          {formatNumericDate(task.createdAt)}
         </span>
       ),
     },

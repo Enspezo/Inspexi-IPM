@@ -17,6 +17,7 @@ import {
 } from '@nestjs/common';
 import { RequiresFeature } from '@/common/decorators/requires-feature.decorator';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { Throttle } from '@nestjs/throttler';
 import { ApiTags, ApiOperation, ApiConsumes } from '@nestjs/swagger';
 import { Response, Request } from 'express';
 import { User, QuoteStatus } from '@prisma/client';
@@ -338,6 +339,7 @@ export class QuotesController {
 // van de offerte. De feature-gate zit nu in de services, tegen `quote.orgId`.
 // Elke handler injecteert @CurrentTenant() zodat de services de token-lookup aan
 // het bezochte subdomein kunnen binden (zie `publicTenantWhere` in @/common).
+// Token-routes zijn capability-URLs → per-IP throttle 30/min (F7).
 
 @ApiTags('public-quotes')
 @Controller('public/quotes')
@@ -350,6 +352,7 @@ export class PublicQuotesController {
   ) {}
 
   @Get(':token')
+  @Throttle({ default: { limit: 30, ttl: 60000 } })
   @ApiOperation({ summary: 'Offerte ophalen via publieke token' })
   @Public()
   async getByToken(@Param('token') token: string, @CurrentTenant() tenant: TenantContext) {
@@ -358,6 +361,7 @@ export class PublicQuotesController {
   }
 
   @Get(':token/pdf')
+  @Throttle({ default: { limit: 30, ttl: 60000 } })
   @ApiOperation({ summary: 'Offerte-PDF via publieke token' })
   @Public()
   async downloadPdf(
@@ -375,6 +379,7 @@ export class PublicQuotesController {
   }
 
   @Post(':token/questions')
+  @Throttle({ default: { limit: 30, ttl: 60000 } })
   @ApiOperation({ summary: 'Klantvraag stellen via publieke token' })
   @Public()
   @HttpCode(HttpStatus.CREATED)
@@ -388,6 +393,7 @@ export class PublicQuotesController {
   }
 
   @Post(':token/sign')
+  @Throttle({ default: { limit: 30, ttl: 60000 } })
   @ApiOperation({ summary: 'Offerte ondertekenen via publieke token' })
   @Public()
   @HttpCode(HttpStatus.OK)
@@ -404,6 +410,7 @@ export class PublicQuotesController {
   }
 
   @Get(':token/attachments/:attachmentId/download')
+  @Throttle({ default: { limit: 30, ttl: 60000 } })
   @ApiOperation({ summary: 'Bijlage downloaden via publieke token' })
   @Public()
   async downloadAttachment(

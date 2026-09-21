@@ -6,6 +6,20 @@
  * zondagavond 23:30 start hoort bij die week, ook al is het in UTC al maandag.
  */
 
+import { isCrm } from '@/common/auth/role-helpers';
+import { DEFAULT_TIME_ZONE } from '@/common/utils/format-date';
+import type { Role } from '@prisma/client';
+
+export { DEFAULT_TIME_ZONE };
+
+/**
+ * Staf die andermans uren mag inzien (alle kantoorrollen); een INSPECTEUR
+ * zonder kantoorrol ziet uitsluitend zijn eigen regels/weekstaten.
+ */
+export function isStaffViewer(user: { roles: Role[] }): boolean {
+  return isCrm(user);
+}
+
 export interface IsoWeek {
   /** ISO-weekjaar — kan rond de jaarwissel afwijken van het kalenderjaar. */
   year: number;
@@ -29,7 +43,7 @@ function localDateParts(date: Date, timeZone: string): [number, number, number] 
 }
 
 /** ISO-weeknummer + ISO-weekjaar van een timestamp in de org-tijdzone. */
-export function isoWeekOf(date: Date, timeZone = 'Europe/Amsterdam'): IsoWeek {
+export function isoWeekOf(date: Date, timeZone = DEFAULT_TIME_ZONE): IsoWeek {
   const [y, m, d] = localDateParts(date, timeZone);
   // Standaard ISO-8601-algoritme op UTC-middernacht van de lokale datum:
   // verschuif naar de donderdag van de week; diens jaar is het ISO-weekjaar.
@@ -43,13 +57,20 @@ export function isoWeekOf(date: Date, timeZone = 'Europe/Amsterdam'): IsoWeek {
   return { year: isoYear, week };
 }
 
+/** Vallen twee timestamps in dezelfde ISO-week (org-tijdzone)? */
+export function isSameIsoWeek(a: Date, b: Date, timeZone = DEFAULT_TIME_ZONE): boolean {
+  const wa = isoWeekOf(a, timeZone);
+  const wb = isoWeekOf(b, timeZone);
+  return wa.year === wb.year && wa.week === wb.week;
+}
+
 /** Duur in hele minuten tussen twee timestamps (afgerond, nooit negatief). */
 export function durationMinutesBetween(start: Date, end: Date): number {
   return Math.max(0, Math.round((end.getTime() - start.getTime()) / 60_000));
 }
 
 /** Datum als "d maand yyyy" (nl-NL) in de org-tijdzone — voor taak-/notificatieteksten. */
-export function formatDateNl(date: Date, timeZone = 'Europe/Amsterdam'): string {
+export function formatDateNl(date: Date, timeZone = DEFAULT_TIME_ZONE): string {
   return new Intl.DateTimeFormat('nl-NL', {
     timeZone,
     day: 'numeric',
@@ -98,7 +119,7 @@ function tzOffsetMs(date: Date, timeZone: string): number {
  * Gebruikt door de nachtwaker (PRD-16 §4.3): een vergeten timer wordt server-side
  * op dit moment afgekapt.
  */
-export function localDayEndUtc(date: Date, timeZone = 'Europe/Amsterdam'): Date {
+export function localDayEndUtc(date: Date, timeZone = DEFAULT_TIME_ZONE): Date {
   const [y, m, d] = localDateParts(date, timeZone);
   // Eerste gok: alsof lokaal = UTC; corrigeer daarna met de werkelijke offset
   // op dat moment (tweede pass vangt een DST-overgang rond middernacht af).
@@ -109,7 +130,7 @@ export function localDayEndUtc(date: Date, timeZone = 'Europe/Amsterdam'): Date 
 }
 
 /** Zijn twee timestamps op dezelfde lokale kalenderdag (org-tijdzone)? */
-export function isSameLocalDay(a: Date, b: Date, timeZone = 'Europe/Amsterdam'): boolean {
+export function isSameLocalDay(a: Date, b: Date, timeZone = DEFAULT_TIME_ZONE): boolean {
   const [ay, am, ad] = localDateParts(a, timeZone);
   const [by, bm, bd] = localDateParts(b, timeZone);
   return ay === by && am === bm && ad === bd;

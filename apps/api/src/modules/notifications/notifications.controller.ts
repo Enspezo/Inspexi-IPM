@@ -7,6 +7,7 @@ import {
   Query,
   Res,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { RequiresFeature } from '@/common/decorators/requires-feature.decorator';
 import {
   ApiTags,
@@ -72,6 +73,7 @@ export class NotificationsController {
   }
 
   @Public()
+  @Throttle({ default: { limit: 30, ttl: 60000 } }) // F7: token-route, per-IP
   @Get('unsubscribe')
   @ApiOperation({ summary: 'Afmelden voor e-mailnotificaties via token' })
   @ApiResponse({ status: 200, description: 'Succesvol afgemeld' })

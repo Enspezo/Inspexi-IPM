@@ -42,10 +42,24 @@ export default defineConfig(async () => {
           // Zware, zelden-gebruikte libs in eigen vendor-chunks houden zodat ze
           // los gecachet worden en alleen laden bij de lazy preview-/plattegrond-
           // schermen die ze nodig hebben (zie file-preview-modal & floor-plan-tab).
-          manualChunks: {
-            'docx-preview': ['docx-preview'],
-            xlsx: ['xlsx'],
-            konva: ['konva', 'react-konva'],
+          //
+          // LET OP (Rollup-gedrag): een manual chunk absorbeert ÁLLE statische
+          // dependencies van zijn modules die nog niet in een andere manual
+          // chunk zitten. react-konva → react-reconciler → react/scheduler, dus
+          // zonder de expliciete 'react-vendor'-regel belandt React zélf in de
+          // konva-chunk en importeert élke chunk (incl. /login) de konva-bundel
+          // (modulepreload van 300 KB op de loginpagina). De React-kern daarom
+          // eerst in een eigen chunk pinnen; daarna kunnen de zware libs veilig
+          // afgesplitst worden en laden ze pas bij hun lazy consumer.
+          manualChunks(id: string) {
+            if (!id.includes('/node_modules/')) return undefined;
+            if (/\/node_modules\/(react|react-dom|scheduler)\//.test(id)) {
+              return 'react-vendor';
+            }
+            if (id.includes('/node_modules/docx-preview/')) return 'docx-preview';
+            if (id.includes('/node_modules/xlsx/')) return 'xlsx';
+            if (/\/node_modules\/(konva|react-konva)\//.test(id)) return 'konva';
+            return undefined;
           },
         },
       },

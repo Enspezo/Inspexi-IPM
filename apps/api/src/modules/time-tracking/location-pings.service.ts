@@ -252,7 +252,7 @@ export class LocationPingsService {
         userId: user.id,
         orgId: ping.orgId,
       })
-      .catch(() => undefined);
+      .catch((err) => this.logger.error('Kaart-toegangslog wegschrijven mislukt', err));
     this.logger.log(`Kaart-toegang: gebruiker ${user.id} bekeek positie van ${userId}`);
 
     let destination: {

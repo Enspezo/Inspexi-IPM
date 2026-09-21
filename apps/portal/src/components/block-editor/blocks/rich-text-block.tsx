@@ -1,4 +1,4 @@
-import { RichTextEditor } from '@/components/ui';
+import { RichTextEditor } from '@/components/ui/rich-text-lazy';
 import type { Editor } from '@tiptap/react';
 
 interface RichTextBlockProps {

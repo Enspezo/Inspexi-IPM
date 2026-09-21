@@ -1,11 +1,49 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { User } from '@prisma/client';
+import { plainToInstance, type ClassConstructor } from 'class-transformer';
+import { validate, type ValidationError } from 'class-validator';
 import { ContactsService } from '@/modules/contacts/contacts.service';
 import { RequestsService } from '@/modules/requests/requests.service';
 import { TasksService } from '@/modules/tasks/tasks.service';
+import { CreateTaskDto, UpdateTaskDto } from '@/modules/tasks/dto';
 import { NotesService } from '@/modules/notes/notes.service';
+import { CreateNoteDto } from '@/modules/notes/dto';
 import { KvkService } from '@/modules/kvk/kvk.service';
 import { GeocodingService } from '@/modules/geocoding/geocoding.service';
+
+function collectConstraintMessages(errors: ValidationError[]): string[] {
+  const out: string[] = [];
+  for (const err of errors) {
+    if (err.constraints) out.push(...Object.values(err.constraints));
+    if (err.children?.length) out.push(...collectConstraintMessages(err.children));
+  }
+  return out;
+}
+
+/**
+ * Tool-input door dezelfde DTO-validatie halen als een HTTP-request (de
+ * write-tools omzeilen de globale `ValidationPipe`): whitelist + verbod op
+ * onbekende velden (mass-assignment) + class-validator-regels. Bij fouten een
+ * NL 400 zodat de agent/bevestigingskaart een nette melding toont.
+ */
+export async function validateToolInput<T extends object>(
+  cls: ClassConstructor<T>,
+  input: unknown,
+): Promise<T> {
+  const instance = plainToInstance(cls, input ?? {});
+  const errors = await validate(instance, {
+    whitelist: true,
+    forbidNonWhitelisted: true,
+    forbidUnknownValues: true,
+  });
+  if (errors.length > 0) {
+    const messages = collectConstraintMessages(errors);
+    throw new BadRequestException(
+      `Ongeldige invoer voor deze actie: ${messages.join('; ') || 'validatie mislukt'}`,
+    );
+  }
+  return instance;
+}
 
 /** Uitvoeringscontext van een tool: de agent handelt als deze gebruiker. */
 export interface AiToolContext {
@@ -243,9 +281,9 @@ export class AiToolRegistry {
           (i.entityType ? ` bij ${i.entityType.toLowerCase()} ${i.entityId}` : '') +
           (i.assigneeId ? `, toegewezen aan ${i.assigneeId}` : '') +
           (i.deadline ? `, deadline ${i.deadline}` : ''),
-        run: (ctx, input) =>
+        run: async (ctx, input) =>
           this.tasks.create(
-            {
+            await validateToolInput(CreateTaskDto, {
               title: input.title,
               description: input.description,
               taskType: input.taskType,
@@ -253,7 +291,7 @@ export class AiToolRegistry {
               deadline: input.deadline,
               entityType: input.entityType,
               entityId: input.entityId,
-            } as any,
+            }),
             ctx.user,
           ),
       },
@@ -279,18 +317,18 @@ export class AiToolRegistry {
           `Taak bijwerken (${i.id})` +
           (i.status ? ` → status ${i.status}` : '') +
           (i.assigneeId ? `, toewijzen aan ${i.assigneeId}` : ''),
-        run: (ctx, input) =>
+        run: async (ctx, input) =>
           // Expliciete allowlist: nooit rauwe input doorgeven (mass-assignment).
           this.tasks.update(
             input.id,
-            {
+            await validateToolInput(UpdateTaskDto, {
               title: input.title,
               description: input.description,
               status: input.status,
               taskType: input.taskType,
               assigneeId: input.assigneeId,
               deadline: input.deadline,
-            } as any,
+            }),
             ctx.user,
           ),
       },
@@ -313,13 +351,13 @@ export class AiToolRegistry {
         mutates: true,
         summarize: (i) =>
           `Notitie toevoegen aan ${i.entityType} ${i.entityId}: "${String(i.content).slice(0, 80)}"`,
-        run: (ctx, input) =>
+        run: async (ctx, input) =>
           this.notes.create(
-            {
+            await validateToolInput(CreateNoteDto, {
               entityType: input.entityType,
               entityId: input.entityId,
               content: input.content,
-            } as any,
+            }),
             ctx.user,
           ),
       },

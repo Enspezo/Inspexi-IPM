@@ -13,6 +13,7 @@ import {
 import { toDatetimeLocal } from './planning-detail-shared';
 import { useAvailabilityOverride } from '../hooks/use-availability-override';
 import { InspectorAssignModal } from './planning-inspector-assign-modal';
+import { formatWeekdayShortDate, formatNumericDate, formatTime } from '@/lib/format';
 
 export function SessionsTab({
   sessions,
@@ -134,10 +135,10 @@ function SessionCard({
 
   const scheduledDate = session.scheduledDate ? new Date(session.scheduledDate) : null;
   const dateStr = scheduledDate
-    ? scheduledDate.toLocaleDateString('nl-NL', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })
+    ? formatWeekdayShortDate(scheduledDate)
     : 'Datum nog niet bepaald';
   const timeStr = scheduledDate
-    ? scheduledDate.toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' })
+    ? formatTime(scheduledDate)
     : '';
 
   const handleSaveNotes = async () => {
@@ -229,7 +230,7 @@ function SessionCard({
           </span>
           {session.originalDate && (
             <span className="text-xs text-amber-600">
-              Verzet (was {new Date(session.originalDate).toLocaleDateString('nl-NL')})
+              Verzet (was {formatNumericDate(session.originalDate)})
             </span>
           )}
         </div>
@@ -246,7 +247,7 @@ function SessionCard({
                 type="datetime-local"
                 value={dateEditValue}
                 onChange={(e) => setDateEditValue(e.target.value)}
-                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
               />
             </div>
             <div className="flex gap-2">
@@ -264,7 +265,7 @@ function SessionCard({
             {userCanWrite && (session.status === SessionStatus.NOG_TE_PLANNEN || session.status === SessionStatus.CONCEPT) && (
               <button
                 onClick={handleOpenDateEdit}
-                className="text-xs text-blue-600 hover:text-blue-800 underline ml-1"
+                className="text-xs text-primary-600 hover:text-primary-800 underline ml-1"
               >
                 {scheduledDate ? 'Wijzigen' : 'Datum instellen'}
               </button>
@@ -279,7 +280,7 @@ function SessionCard({
               value={notesValue}
               onChange={(e) => setNotesValue(e.target.value)}
               rows={2}
-              className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
               placeholder="Optionele notitie voor deze sessie..."
             />
             <div className="flex gap-2">

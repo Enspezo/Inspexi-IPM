@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { SupportAccessService } from './support-access.service';
+import { isSchedulerEnabled, SCHEDULER_ENABLED_ENV } from '@/common/config/scheduler-enabled';
 
 /**
  * IMP_PRD-10 Fase 5 — JIT-expiry van support-toegang.
@@ -14,9 +15,21 @@ export class SupportAccessScheduler {
 
   @Cron(CronExpression.EVERY_10_MINUTES)
   async expire(): Promise<void> {
-    const count = await this.supportAccess.expireGrants();
-    if (count > 0) {
-      this.logger.log(`Support-toegang verlopen voor ${count} organisatie(s).`);
+    if (!isSchedulerEnabled()) {
+      this.logger.debug(`Support-toegang-expiry overgeslagen: uitgeschakeld via ${SCHEDULER_ENABLED_ENV}.`);
+      return;
+    }
+    // F5: de cron mag nooit een unhandled rejection produceren.
+    try {
+      const count = await this.supportAccess.expireGrants();
+      if (count > 0) {
+        this.logger.log(`Support-toegang verlopen voor ${count} organisatie(s).`);
+      }
+    } catch (err) {
+      this.logger.error(
+        'Support-toegang-expiry-cron faalde onverwacht.',
+        err instanceof Error ? (err.stack ?? err.message) : String(err),
+      );
     }
   }
 }

@@ -13,6 +13,7 @@ import {
   Logger,
   UnauthorizedException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import type { Request } from 'express';
 import type { RepairSession } from '@prisma/client';
 import { RepairSessionStatus } from '@prisma/client';
@@ -28,8 +29,14 @@ export interface RequestWithRepairSession extends Request {
 @Injectable()
 export class RepairSessionGuard implements CanActivate {
   private readonly logger = new Logger(RepairSessionGuard.name);
+  private readonly isLocalhost: boolean;
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly config: ConfigService,
+  ) {
+    this.isLocalhost = this.config.get<string>('BASE_DOMAIN', 'localhost') === 'localhost';
+  }
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest<RequestWithRepairSession>();
@@ -55,10 +62,16 @@ export class RepairSessionGuard implements CanActivate {
     }
 
     // Org-match via het subdomein: een sessie van org A is onbruikbaar op org B's
-    // subdomein. Op een "unknown host" (bv. 127.0.0.1 in E2E) is er geen tenant-org.
+    // subdomein. Zonder tenant-org (onbekende host, bv. 127.0.0.1 in E2E, of het
+    // apex-/superuser-domein) alleen op localhost door; in productie fail-secure
+    // (F10 — spiegelt de TenantGuard). `request.tenant` ontbreekt alleen als de
+    // middleware niet is toegepast (unit-tests zonder HTTP-laag) → door.
     const tenantOrgId = request.tenant?.orgId ?? null;
     if (tenantOrgId && tenantOrgId !== session.orgId) {
       throw new UnauthorizedException('Ongeldige herstelsessie');
+    }
+    if (request.tenant && tenantOrgId === null && !this.isLocalhost) {
+      throw new UnauthorizedException('Gebruik het subdomein van uw organisatie');
     }
 
     request.repairSession = session;

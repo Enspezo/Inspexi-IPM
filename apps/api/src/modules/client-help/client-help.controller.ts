@@ -3,6 +3,7 @@
 // ClientJwtAuthGuard; afgeschermde routes wél. Specifieke routes vóór param-routes.
 
 import { Controller, Get, Param, UseGuards } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { Public, CurrentTenant } from '@/common/decorators';
 import { ClientJwtAuthGuard } from '@/common/guards/client-jwt-auth.guard';
@@ -15,13 +16,16 @@ export class ClientHelpController {
   constructor(private readonly service: ClientHelpService) {}
 
   // ── Publiek (zonder login): alleen publieke categorieën ──────────────────
+  // F7: anonieme routes per-IP throttlen (30/min).
   @Get('public/categories')
+  @Throttle({ default: { limit: 30, ttl: 60000 } })
   @ApiOperation({ summary: 'Publieke externe KB-categorieën (zonder login)' })
   async publicCategories(@CurrentTenant('orgId') orgId: string | null) {
     return { success: true, data: await this.service.listCategories(orgId, true) };
   }
 
   @Get('public/articles/:slug')
+  @Throttle({ default: { limit: 30, ttl: 60000 } })
   @ApiOperation({ summary: 'Publiek extern KB-artikel (zonder login)' })
   async publicArticle(
     @CurrentTenant('orgId') orgId: string | null,

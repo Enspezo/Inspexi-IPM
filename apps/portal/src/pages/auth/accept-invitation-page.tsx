@@ -5,7 +5,8 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { apiClient, getErrorMessage } from '@/lib/api-client';
-import { Button, Input, Spinner } from '@/components/ui';
+import { Button, ErrorBox, Input, Spinner } from '@/components/ui';
+import { invitationKeys } from '@/lib/query-keys';
 
 const acceptSchema = z
   .object({
@@ -45,7 +46,7 @@ export default function AcceptInvitationPage() {
     isLoading: isValidating,
     error: invitationError,
   } = useQuery<InvitationInfo>({
-    queryKey: ['invitation', token],
+    queryKey: invitationKeys.detail(token!),
     queryFn: () => apiClient.get<InvitationInfo>(`/users/invitation/${token}`),
     enabled: !!token,
     retry: false,
@@ -169,11 +170,7 @@ export default function AcceptInvitationPage() {
                 </p>
               </div>
 
-              {error && (
-                <div className="rounded-lg bg-danger-50 p-3 text-sm text-danger-600">
-                  {error}
-                </div>
-              )}
+              <ErrorBox>{error}</ErrorBox>
 
               <div className="grid grid-cols-2 gap-4">
                 <Input

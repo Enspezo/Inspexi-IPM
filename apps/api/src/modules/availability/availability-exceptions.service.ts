@@ -1,7 +1,7 @@
 import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { AvailabilityException, Prisma, User } from '@prisma/client';
 import { PrismaService } from '@/prisma';
-import { assertFound, isManagement, isSuperuser } from '@/common';
+import { isManagement, isSuperuser } from '@/common';
 import {
   CreateAvailabilityExceptionDto,
   UpdateAvailabilityExceptionDto,
@@ -13,6 +13,7 @@ import {
   validateExceptionInput,
 } from './availability-exception.helpers';
 import { AvailabilityNotifier } from './availability-notifier.service';
+import { assertUserInScope as assertUserInScopeHelper } from './availability.helpers';
 import { dateKeyToUTC } from './availability-resolution.helpers';
 
 @Injectable()
@@ -93,18 +94,8 @@ export class AvailabilityExceptionsService {
   // ─── Autorisatie / scoping ────────────────────────────────
 
   /** Doelgebruiker moet bestaan en (voor niet-superusers) bij de org van de actor horen. */
-  private async assertUserInScope(userId: string, actor: User) {
-    const target = assertFound(
-      await this.prisma.user.findUnique({
-        where: { id: userId },
-        select: { id: true, orgId: true },
-      }),
-      'Gebruiker',
-    );
-    if (!isSuperuser(actor) && target.orgId !== actor.orgId) {
-      throw new NotFoundException('Gebruiker niet gevonden');
-    }
-    return target;
+  private assertUserInScope(userId: string, actor: User) {
+    return assertUserInScopeHelper(this.prisma, userId, actor);
   }
 
   /** Schrijfrecht op een uitzondering voor `userId`: eigenaar óf MANAGEMENT_ROLES. */

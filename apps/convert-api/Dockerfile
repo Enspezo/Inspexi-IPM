@@ -1,4 +1,5 @@
-FROM node:20-slim
+# Pinned to bookworm: see apps/api/Dockerfile.
+FROM node:22-bookworm-slim
 
 # Install LibreOffice (headless) and fonts for document rendering
 # fonts-noto-cjk (B-312): zonder CJK-font vallen Chinese/Japanse/Koreaanse tekens

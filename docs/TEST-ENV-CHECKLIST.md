@@ -19,7 +19,7 @@ explicit `TODO` referencing a finding number `[DEP-n]` from the accompanying rev
 
 | Component | Requirement | Source of truth |
 |---|---|---|
-| Node.js | **20.x** (`.nvmrc` = `20`, `engines.node >= 20`) | `/.nvmrc`, `/package.json` |
+| Node.js | **22.x** (`.nvmrc` = `22`, `engines.node >= 22`) | `/.nvmrc`, `/package.json` |
 | pnpm | **>= 10** (repo pins `pnpm@10.7.0`) | `/package.json` `packageManager` |
 | PostgreSQL | **15** with permission to `CREATE EXTENSION` for `pg_trgm` **and** `ltree` (both created inside migrations) | `apps/api/prisma/schema.prisma` (`extensions = [pg_trgm]`, `previewFeatures=["postgresqlExtensions"]`); migrations `20260623214008_help_trigram_search`, `20260629093657_unified_asset_node_tree` |
 | LibreOffice | `soffice` (writer+calc) on the **convert-api** host — used by `libreoffice-convert` | `apps/convert-api/Dockerfile`, `CONVERT-API.md` |
@@ -227,7 +227,7 @@ so no WS upgrade rules are required.
   fatal — but reset/invite/magic-link emails simply won't arrive without a working key.
 - **Storage**: `STORAGE_DRIVER=local` → persistent `UPLOAD_DIR` volume; `STORAGE_DRIVER=r2` → all four
   `R2_*` credentials + `R2_PUBLIC_URL`. **Either way keep the `R2_*` keys present in the env** `[DEP-2]`.
-- **convert-api**: deploy the container (`apps/convert-api/Dockerfile`, node:20-slim + LibreOffice) or a
+- **convert-api**: deploy the container (`apps/convert-api/Dockerfile`, node:22-bookworm-slim + LibreOffice) or a
   systemd unit; share `CONVERT_API_KEY` with the API and point `CONVERT_API_URL` at it.
 - **KvK / PDOK**: work with shipped defaults; keep `KVK_USE_TEST_ENV=true` in test.
 
@@ -310,7 +310,7 @@ value/action remains.
 | `[DEP-1]` | No `migrate deploy` npm script | **Fixed** | `pnpm db:migrate:deploy` (or `--filter api prisma:migrate:deploy`) now exists; use it (§4). |
 | `[DEP-2]` | `R2StorageProvider` `getOrThrow`s R2_* at boot even for `local` | **Fixed** | Provider is now instantiated lazily only when `STORAGE_DRIVER=r2`; `local` boots without R2_* keys. |
 | `[DEP-3]` | No API health endpoint | **Fixed** | `@Public() GET /api/v1/health` added (light `SELECT 1`); point the LB at it. |
-| `[DEP-4]` | API Dockerfile landed in PR #186 (`apps/api/Dockerfile`, node:20-slim + Chromium, non-root, HEALTHCHECK). Still missing: SPA images (portal, client-portal), a staging compose file and an in-image migration path | **Partly done** | Build an API image on `node:20-slim` + `chromium` (see below); or run under a supervisor with Chromium present. Deliberately not shipped — a pnpm-workspace + Prisma + Chromium image can't be validated in this repo's CI here. |
+| `[DEP-4]` | API Dockerfile landed in PR #186 (`apps/api/Dockerfile`, node:22-bookworm-slim + Chromium, non-root, HEALTHCHECK). Still missing: SPA images (portal, client-portal), a staging compose file and an in-image migration path | **Partly done** | Build an API image on `node:22-bookworm-slim` + `chromium` (see below); or run under a supervisor with Chromium present. Deliberately not shipped — a pnpm-workspace + Prisma + Chromium image can't be validated in this repo's CI here. |
 | `[DEP-5]` | Client-portal reset emails used staff `PUBLIC_URL` | **Fixed** | Client resets now use `CLIENT_PUBLIC_URL` (fallback `PUBLIC_URL`); set it to the client-portal host. |
 | `[DEP-6]` | `PUBLIC_URL` has no per-org subdomain templating | **Open (decision)** | Pick a single host. Mailed public links (quote, planning, signing, iCal) land on the apex host, where the request carries **no tenant org**. The public controllers therefore carry no class-level `@RequiresFeature` (the `FeatureGuard` also skips `@Public()` handlers — F1); each public service gates the feature against the **owner org** of the token's record and binds the token lookup to the visited tenant via `publicTenantWhere` (org subdomain → must match; apex → unbound; unknown host → 404 in production). Links work, but carry no slug. |
 | `[DEP-7]` | `API_BASE_URL` missing from `.env.example` | **Fixed** | Documented; set it to the public API URL for working unsubscribe links. |
@@ -326,12 +326,12 @@ value/action remains.
 
 ### API container image (`[DEP-4]` starting point — validate before use)
 
-The API needs Node 20, Chromium for Puppeteer, the Prisma client, and the compiled
+The API needs Node 22, Chromium for Puppeteer, the Prisma client, and the compiled
 workspace packages. A robust image builds inside a multi-stage Dockerfile and uses
 `pnpm deploy` (pnpm symlinks don't survive a raw `node_modules` copy). Minimum
 requirements:
 
-- Base with Chromium: `node:20-slim` + `apt-get install -y chromium fonts-liberation fonts-dejavu`,
+- Base with Chromium: `node:22-bookworm-slim` + `apt-get install -y chromium fonts-liberation fonts-dejavu`,
   then set `PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium` and skip Puppeteer's own download.
 - Build stage: `pnpm install --frozen-lockfile`, `pnpm --filter api exec prisma generate`,
   `pnpm build`, then `pnpm --filter api deploy --prod /out` (bundles the workspace deps).

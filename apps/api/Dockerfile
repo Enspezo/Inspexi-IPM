@@ -20,7 +20,9 @@
 # niet vanuit de container. De gegenereerde Prisma-client + query-engine
 # (linux/OpenSSL 3) zitten wél in de image (prisma generate in /deploy).
 
-FROM node:20-slim AS base
+# Pinned to bookworm so a change of the default Debian release behind the
+# plain `22-slim` tag cannot silently change the apt package set below.
+FROM node:22-bookworm-slim AS base
 ENV PNPM_HOME=/pnpm \
     PATH=/pnpm:$PATH \
     # Systeem-Chromium wordt gebruikt; geen eigen browser-download van Puppeteer.

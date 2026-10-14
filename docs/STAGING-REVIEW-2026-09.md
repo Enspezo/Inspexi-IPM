@@ -71,13 +71,13 @@ local-date "tomorrow", `<dl>` semantics, tracked `vite.config.d.ts` removed.
 
 | # | Item | Why it matters | Owner |
 |---|------|----------------|-------|
-| O1 | **CI is not on `dev`** — `.github/workflows/ci.yml` lives on `ci/github-workflows` (3 commits). | No build/test gate on PRs to dev. | Merge that PR first. |
+| O1 | ~~CI is not on `dev`~~ **Done (Oct 2026):** `.github/workflows/ci.yml` runs build-and-test + e2e on PRs into and pushes onto `dev`, `staging` and `main`; branch protection on `dev` and `staging` requires `build-and-test`. | — | — |
 | O2 | **No deploy artifact for the SPAs, no reverse proxy, no staging compose.** | Only the API and convert-api have Dockerfiles; `VITE_*` are build-time. | Decide hosting (Docker host vs PaaS) → add `apps/portal/Dockerfile`, `apps/client-portal/Dockerfile` (nginx, SPA fallback, `/api` proxied with `Host` + `X-Forwarded-*` preserved) and `docker-compose.staging.yml`. |
 | O3 | **Client-portal host scheme (DEP-11).** Nested subdomains are `unknown` to the middleware; the refresh cookie is `domain=.BASE_DOMAIN`. | Pick `<slug>.<BASE_DOMAIN>` for staff and a single-level label or path for the client portal; set `VITE_BASE_DOMAIN`, `CLIENT_PUBLIC_URL`. | Product decision. |
 | O4 | Migrations have no in-image path (Prisma CLI excluded from the runtime image; runbook assumes a checkout). | PaaS release commands need one. | Add a `migrate` stage or keep `prisma` in the image. |
 | O5 | convert-api image: `npm install` without lockfile, copies a host-built `dist`, runs as root. | Non-reproducible. | Build in-image with pnpm, `USER node`. |
 | O6 | Uploads default to a container path with `STORAGE_DRIVER=local`. | Lost on redeploy. | Volume or `STORAGE_DRIVER=r2`. |
-| O7 | Node 20 is EOL (April 2026) in `.nvmrc`, Dockerfiles, CI, `engines`. | Security updates. | Bump to 22 in one PR after CI is green. |
+| O7 | ~~Node 20 is EOL~~ **Done (Oct 2026):** `.nvmrc`, `engines`, CI and both Dockerfiles on Node 22 (`node:22-bookworm-slim`, pinned to the same Debian release as before). | — | — |
 | O8 | Refresh-token rotation has no reuse detection; concurrent refreshes from two tabs log one out. | Occasional forced logout. | Grace window / token family. |
 | O9 | No e2e suite for PRD-16 time-tracking (start/stop 409, timesheet state machine, pings, CSV, sync push). | Newest domain untested end-to-end. | `test/time-tracking.e2e-spec.ts`. |
 | O10 | AI conversation history sent unbounded to the model; `listConversations` unbounded. | Long chats eventually fail. | Cap / window messages. |

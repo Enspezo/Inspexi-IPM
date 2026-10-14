@@ -236,6 +236,20 @@ export const AUDITED_ENTITIES: readonly AuditedEntity[] = [
     display: (r) =>
       r.reason ? `Uitzondering: ${r.reason}` : `Uitzondering #${shortId(r)}`,
   },
+
+  // Urenregistratie inspecteurs (PRD-16) — locatie-pings worden bewust niet
+  // geaudit (hoog volume, 48u-retentie; privacy: geen tweede kopie van posities).
+  {
+    model: 'TimeEntry',
+    table: 'imp_time_entries',
+    display: (r) => `Urenregel #${shortId(r)}`,
+  },
+  {
+    model: 'Timesheet',
+    table: 'imp_timesheets',
+    display: (r) =>
+      r.weekNumber && r.year ? `Weekstaat week ${r.weekNumber} (${r.year})` : `Weekstaat #${shortId(r)}`,
+  },
 ];
 
 /** Builds a display function from an entry's `display` / `displayFields`, falling back to id. */

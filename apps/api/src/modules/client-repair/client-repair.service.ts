@@ -51,6 +51,8 @@ import {
   STATUS_OPEN,
   STATUS_RESOLVED,
   detectImageType,
+  formatDateNl,
+  formatDateTimeNl,
   type SeverityClassificationModel,
 } from '@/common';
 import { EntitlementsService } from '@/modules/entitlements/entitlements.service';
@@ -680,20 +682,14 @@ export class ClientRepairService {
 
   // ── Herstelverklaring (fase 3) ──────────────────────────
 
-  /** Datumlabel in NL-notatie (Europe/Amsterdam is de projectbreed gehanteerde weergave). */
+  /** Datumlabel in NL-notatie (org-tijdzone-bewust via de gedeelde helper). */
   private formatDate(value: Date | null): string | null {
     if (!value) return null;
-    return new Intl.DateTimeFormat('nl-NL', { day: 'numeric', month: 'long', year: 'numeric' }).format(value);
+    return formatDateNl(value);
   }
 
   private formatDateTime(value: Date): string {
-    return new Intl.DateTimeFormat('nl-NL', {
-      day: 'numeric',
-      month: 'long',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    }).format(value);
+    return formatDateTimeNl(value);
   }
 
   /** Foto → verkleinde JPEG-data-URI (de PDF-renderer laat alleen data:-URL's toe). */
@@ -752,51 +748,64 @@ export class ClientRepairService {
       throw new BadRequestException('Elke herstelmelding heeft minimaal één bewijsfoto nodig');
     }
 
-    // Invullergegevens op de sessie (PRD §14.5).
-    const updatedSession = await this.prisma.repairSession.update({
-      where: { id: session.id },
-      data: {
-        contactName: dto.contactName.trim(),
-        companyName: dto.companyName?.trim() || null,
-        email,
-      },
-    });
+    // Invullergegevens op de sessie (PRD §14.5). De HTML wordt vóór de transactie
+    // gebouwd (foto-downloads + thumbnails zijn traag en horen niet in een tx).
+    const sessionForHtml: RepairSession = {
+      ...session,
+      contactName: dto.contactName.trim(),
+      companyName: dto.companyName?.trim() || null,
+      email,
+    };
+    const html = await this.buildDeclarationHtml(sessionForHtml, resolutions);
 
-    const html = await this.buildDeclarationHtml(updatedSession, resolutions);
-
-    // Vervang een eerder concept (niet stapelen); een al ondertekende verklaring blijft staan.
-    if (session.generatedDocumentId) {
-      const previous = await this.prisma.generatedDocument.findFirst({
-        where: { id: session.generatedDocumentId, orgId: session.orgId },
-        select: { id: true, status: true },
+    // Sessie-update → vorig concept verwijderen → nieuw document → koppelen:
+    // atomisch, zodat een fout halverwege geen sessie zonder (of met een
+    // verweesd) document achterlaat.
+    const document = await this.prisma.$transaction(async (tx) => {
+      await tx.repairSession.update({
+        where: { id: session.id },
+        data: {
+          contactName: sessionForHtml.contactName,
+          companyName: sessionForHtml.companyName,
+          email,
+        },
       });
-      if (previous && previous.status !== GeneratedDocumentStatus.SIGNED) {
-        await this.prisma.generatedDocument.delete({ where: { id: previous.id } });
-      }
-    }
 
-    const document = await this.prisma.generatedDocument.create({
-      data: {
-        orgId: session.orgId,
-        inspectionPlanId: session.inspectionPlanId,
-        documentType: DocumentType.HERSTELVERKLARING,
-        htmlContent: html,
-        status: GeneratedDocumentStatus.DRAFT,
-        signatures: {
-          create: {
-            signerRoleCode: SIGNER_ROLE_HERSTELLER,
-            signerName: dto.contactName.trim(),
-            signerEmail: email,
-            status: SignatureStatus.PENDING,
+      // Vervang een eerder concept (niet stapelen); een al ondertekende verklaring blijft staan.
+      if (session.generatedDocumentId) {
+        const previous = await tx.generatedDocument.findFirst({
+          where: { id: session.generatedDocumentId, orgId: session.orgId },
+          select: { id: true, status: true },
+        });
+        if (previous && previous.status !== GeneratedDocumentStatus.SIGNED) {
+          await tx.generatedDocument.delete({ where: { id: previous.id } });
+        }
+      }
+
+      const created = await tx.generatedDocument.create({
+        data: {
+          orgId: session.orgId,
+          inspectionPlanId: session.inspectionPlanId,
+          documentType: DocumentType.HERSTELVERKLARING,
+          htmlContent: html,
+          status: GeneratedDocumentStatus.DRAFT,
+          signatures: {
+            create: {
+              signerRoleCode: SIGNER_ROLE_HERSTELLER,
+              signerName: sessionForHtml.contactName!,
+              signerEmail: email,
+              status: SignatureStatus.PENDING,
+            },
           },
         },
-      },
-      select: { id: true, htmlContent: true },
-    });
+        select: { id: true, htmlContent: true },
+      });
 
-    await this.prisma.repairSession.update({
-      where: { id: session.id },
-      data: { generatedDocumentId: document.id },
+      await tx.repairSession.update({
+        where: { id: session.id },
+        data: { generatedDocumentId: created.id },
+      });
+      return created;
     });
 
     return { documentId: document.id, htmlPreview: document.htmlContent };

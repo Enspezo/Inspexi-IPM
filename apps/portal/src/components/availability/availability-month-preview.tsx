@@ -170,7 +170,7 @@ export function AvailabilityMonthPreview({ userId, enabled = true }: Availabilit
                   <div className="flex items-center justify-between">
                     <span
                       className={`inline-flex h-5 w-5 items-center justify-center rounded-full text-[11px] font-semibold ${
-                        isToday ? 'bg-blue-600 text-white' : 'text-gray-700'
+                        isToday ? 'bg-primary-600 text-white' : 'text-gray-700'
                       }`}
                     >
                       {day.getDate()}

@@ -42,6 +42,7 @@ export function ColumnListItem({
       {/* Drag handle */}
       <button
         type="button"
+        aria-label="Verslepen"
         className={`flex-shrink-0 cursor-grab touch-none text-gray-400 ${
           pinned ? 'invisible' : ''
         }`}

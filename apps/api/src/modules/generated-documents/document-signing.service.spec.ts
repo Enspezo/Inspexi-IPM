@@ -7,6 +7,7 @@ import { GeneratedDocumentsService } from './generated-documents.service';
 import { PrismaService } from '@/prisma';
 import { EmailService } from '@/common/services/email.service';
 import { LookupService } from '../lookups/lookup.service';
+import { EntitlementsService } from '@/modules/entitlements/entitlements.service';
 
 describe('DocumentSigningService', () => {
   let service: DocumentSigningService;
@@ -26,6 +27,8 @@ describe('DocumentSigningService', () => {
   const mockConfig = { get: jest.fn((_k: string, def?: string) => def) };
   // Org-scoped document fetch is delegated to the core service (sub-service pattern).
   const mockDocuments = { findById: jest.fn() };
+  // F1: publieke ondertekenroutes gaten in de service tegen de eigenaar-org.
+  const mockEntitlements = { assertFeature: jest.fn().mockResolvedValue(undefined) };
 
   const user = {
     id: 'user-1',
@@ -48,6 +51,7 @@ describe('DocumentSigningService', () => {
         { provide: ConfigService, useValue: mockConfig },
         { provide: LookupService, useValue: mockLookups },
         { provide: GeneratedDocumentsService, useValue: mockDocuments },
+        { provide: EntitlementsService, useValue: mockEntitlements },
       ],
     }).compile();
 
@@ -241,6 +245,7 @@ describe('DocumentSigningService', () => {
         generatedDocumentId: 'gd-1',
         generatedDocument: {
           id: 'gd-1',
+          orgId: 'org-1',
           documentType: DocumentType.PLAN,
           htmlContent: '<html>te tekenen</html>',
           editedContent: null,
@@ -259,12 +264,26 @@ describe('DocumentSigningService', () => {
       expect(JSON.stringify(result)).not.toContain('internalNotes');
     });
 
+    it('F1: getSignatureRequest gates BASIS_INSPECTIES against the document owner org', async () => {
+      mockPrisma.documentSignature.findFirst.mockResolvedValue({
+        id: 'sig-1',
+        status: SignatureStatus.REQUESTED,
+        signatureRequestSentAt: new Date(),
+        signerRoleCode: 'INSPECTOR',
+        signerName: 'Jan Klant',
+        generatedDocumentId: 'gd-1',
+        generatedDocument: { id: 'gd-1', orgId: 'org-owner', documentType: DocumentType.PLAN, htmlContent: '<p/>', editedContent: null, isEdited: false, inspectionPlan: { projectName: 'x', referenceNumber: 'y' } },
+      });
+      await service.getSignatureRequest('req-1');
+      expect(mockEntitlements.assertFeature).toHaveBeenCalledWith('org-owner', 'BASIS_INSPECTIES');
+    });
+
     it('getSignatureRequest rejects an already-signed request', async () => {
       mockPrisma.documentSignature.findFirst.mockResolvedValue({
         id: 'sig-1',
         status: SignatureStatus.SIGNED,
         signatureRequestSentAt: new Date(),
-        generatedDocument: { id: 'gd-1', documentType: 'PLAN', htmlContent: '', editedContent: null, isEdited: false, inspectionPlan: { projectName: 'x', referenceNumber: 'y' } },
+        generatedDocument: { id: 'gd-1', orgId: 'org-1', documentType: 'PLAN', htmlContent: '', editedContent: null, isEdited: false, inspectionPlan: { projectName: 'x', referenceNumber: 'y' } },
       });
       await expect(service.getSignatureRequest('req-1')).rejects.toThrow(BadRequestException);
     });
@@ -275,6 +294,7 @@ describe('DocumentSigningService', () => {
         status: SignatureStatus.REQUESTED,
         signatureRequestSentAt: new Date(),
         generatedDocumentId: 'gd-1',
+        generatedDocument: { orgId: 'org-1' },
         signerName: 'Jan Klant',
       });
       mockPrisma.documentSignature.update.mockResolvedValue({ id: 'sig-1', status: 'SIGNED' });
@@ -302,6 +322,7 @@ describe('DocumentSigningService', () => {
         status: SignatureStatus.REQUESTED,
         signatureRequestSentAt: new Date(),
         generatedDocumentId: 'gd-1',
+        generatedDocument: { orgId: 'org-1' },
         signerName: 'Jan Klant',
       });
       mockPrisma.documentSignature.update.mockResolvedValue({ id: 'sig-1', status: 'SIGNED' });
@@ -334,6 +355,7 @@ describe('DocumentSigningService', () => {
         status: SignatureStatus.REQUESTED,
         signatureRequestSentAt: new Date(),
         generatedDocumentId: 'gd-1',
+        generatedDocument: { orgId: 'org-1' },
         signerName: 'Jan Klant',
       });
       mockPrisma.documentSignature.update.mockResolvedValue({ id: 'sig-1', status: 'SIGNED' });

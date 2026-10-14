@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Modal } from '@/components/ui';
 import { useWindowTabs } from '@/providers/window-tabs';
-import { EntityMap } from '@/components/map/entity-map';
+import { EntityMap } from '@/components/map/entity-map-lazy';
 import type { MapPoint, MapHomeMarker } from '@/components/map/entity-map';
 import {
   geocodeSequentially,
@@ -306,7 +306,7 @@ export function PlanningMapModal({ isOpen, onClose, items }: Props) {
                 {[0, 1, 2].map((i) => (
                   <span
                     key={i}
-                    className="w-2 h-2 rounded-full bg-blue-500 animate-bounce"
+                    className="w-2 h-2 rounded-full bg-primary-500 animate-bounce"
                     style={{ animationDelay: `${i * 0.15}s` }}
                   />
                 ))}

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { clsx } from 'clsx';
-import { Spinner, useToast } from '@/components/ui';
+import { ErrorBox, Spinner, useToast } from '@/components/ui';
 import { PageHeader } from '@/components/layout/page-header';
 import { ENTITY_TYPE_LABELS, getEntityLink } from '@/lib/audit-entity-helpers';
 import type { FavoritableEntityType, FavoriteGroup } from '@/types';
@@ -77,7 +77,7 @@ function FavoritesGroupSection({ group }: { group: FavoriteGroup }) {
 }
 
 export default function FavoritesPage() {
-  const { data, isLoading } = useFavorites();
+  const { data, isLoading, error } = useFavorites();
   const [filter, setFilter] = useState<Filter>('all');
 
   if (isLoading) {
@@ -103,6 +103,10 @@ export default function FavoritesPage() {
         title="Favorieten"
         description="Je gemarkeerde records, gegroepeerd per type."
       />
+
+      {error && (
+        <ErrorBox>Fout bij het laden van favorieten: {error.message}</ErrorBox>
+      )}
 
       {!hasFavorites ? (
         <div className="flex flex-col items-center justify-center rounded-xl border border-gray-200 bg-white py-16 text-center">

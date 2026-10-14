@@ -32,6 +32,7 @@ export const FEATURE_KEYS = [
   'AI_REVIEW',
   'ONLINE_HERSTEL',
   'AI_AGENT',
+  'URENREGISTRATIE',
 ] as const;
 
 export type FeatureKey = (typeof FEATURE_KEYS)[number];
@@ -128,6 +129,15 @@ export const FEATURE_CATALOG: Record<FeatureKey, FeatureDef> = {
     description:
       'AI-agent in de portal voor backoffice-werk (opzoeken, KVK/PDOK, web-search, muteren met bevestiging)',
     dependsOn: ['BASIS_CRM'],
+  },
+  // Urenregistratie & reistijd (betaalde add-on, PRD-16). Urenregels koppelen
+  // aan projecten, dus Basis Uitvoering is de domein-basis.
+  URENREGISTRATIE: {
+    key: 'URENREGISTRATIE',
+    label: 'Urenregistratie & reistijd (add-on)',
+    description:
+      'Urenstaat voor inspecteurs (PWA-timers, weekstaten met goedkeuring) incl. automatische reistijd en locatie tijdens het reizen',
+    dependsOn: ['BASIS_UITVOERING'],
   },
 };
 

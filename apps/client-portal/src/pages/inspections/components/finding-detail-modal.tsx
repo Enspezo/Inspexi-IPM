@@ -265,16 +265,18 @@ function ResolutionCard({
           {resolution.photos.map((photo, idx) => {
             const url = blobUrls[idx];
             return url ? (
-              <img
+              <button
                 key={photo.id}
-                src={url}
-                alt={photo.caption ?? 'Foto'}
+                type="button"
+                aria-label="Foto vergroten"
                 onClick={() => {
                   const target = lightboxImages.findIndex((li) => li.url === url);
                   onOpenLightbox(lightboxImages, target < 0 ? 0 : target);
                 }}
-                className="h-16 w-16 cursor-pointer rounded object-cover"
-              />
+                className="h-16 w-16 overflow-hidden rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+              >
+                <img src={url} alt={photo.caption ?? 'Foto'} className="h-full w-full object-cover" />
+              </button>
             ) : (
               <div key={photo.id} className="h-16 w-16 animate-pulse rounded bg-gray-100" />
             );

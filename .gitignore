@@ -21,6 +21,7 @@ dist/
 # TypeScript build artifacts
 *.tsbuildinfo
 apps/portal/vite.config.d.ts
+apps/client-portal/vite.config.d.ts
 
 # IDE
 .idea/

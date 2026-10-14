@@ -23,16 +23,18 @@ function PhotoStrip({ photos }: { photos: RepairPhotoRef[] }) {
         {photos.map((photo, idx) => {
           const url = blobUrls[idx];
           return url ? (
-            <img
+            <button
               key={photo.id}
-              src={url}
-              alt="Foto"
+              type="button"
+              aria-label="Foto vergroten"
               onClick={() => {
                 const target = lightboxImages.findIndex((li) => li.url === url);
                 setLightboxIndex(target < 0 ? 0 : target);
               }}
-              className="h-20 w-20 cursor-pointer rounded-lg object-cover"
-            />
+              className="h-20 w-20 overflow-hidden rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+            >
+              <img src={url} alt="Foto" className="h-full w-full object-cover" />
+            </button>
           ) : (
             <div key={photo.id} className="h-20 w-20 animate-pulse rounded-lg bg-gray-100" />
           );

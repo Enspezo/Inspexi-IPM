@@ -5,15 +5,7 @@ import { ApprovalKind, ApprovalStatus, Role } from '@/types';
 import type { QuoteApprovalRequest, User } from '@/types';
 import { formatDateTimeLong } from './quote-detail-helpers';
 import { useReviewVoluntaryApproval, useCancelVoluntaryApproval } from '../hooks/use-quotes';
-
-const ROLE_LABELS: Record<string, string> = {
-  [Role.SUPERUSER]: 'Superuser',
-  [Role.ORG_ADMIN]: 'Org Admin',
-  [Role.MANAGER]: 'Manager',
-  [Role.BACKOFFICE]: 'Backoffice',
-  [Role.WERKVOORBEREIDER]: 'Werkvoorbereider',
-  [Role.INSPECTEUR]: 'Inspecteur',
-};
+import { getRoleLabel } from '@/lib/roles';
 
 const MANDATORY_FALLBACK_ROLES = [Role.MANAGER, Role.ORG_ADMIN];
 
@@ -22,10 +14,10 @@ function describeTarget(a: QuoteApprovalRequest): string {
   switch (a.kind) {
     case ApprovalKind.THRESHOLD:
       return a.approverRole
-        ? `Verplichte goedkeuring — rol: ${ROLE_LABELS[a.approverRole] ?? a.approverRole}`
+        ? `Verplichte goedkeuring — rol: ${getRoleLabel(a.approverRole)}`
         : 'Verplichte goedkeuring';
     case ApprovalKind.VOLUNTARY_TEAM:
-      return `Vrijwillig — team: ${a.approverRole ? ROLE_LABELS[a.approverRole] ?? a.approverRole : '—'}`;
+      return `Vrijwillig — team: ${getRoleLabel(a.approverRole)}`;
     case ApprovalKind.VOLUNTARY_PERSON:
       return `Vrijwillig — persoon: ${
         a.approverUser ? `${a.approverUser.firstName} ${a.approverUser.lastName}` : '—'

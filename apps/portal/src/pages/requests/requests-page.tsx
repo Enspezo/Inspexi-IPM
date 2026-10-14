@@ -29,6 +29,7 @@ import { useWindowTabs } from '@/providers/window-tabs';
 import { useRequests } from './hooks/use-requests';
 import { CreateRequestModal } from './components/create-request-modal';
 import { RequestsKanban } from './components/requests-kanban';
+import { formatNumericDate } from '@/lib/format';
 
 type ViewMode = 'table' | 'kanban';
 
@@ -245,7 +246,7 @@ export default function RequestsPage() {
       getFilterValue: (req) => req.createdAt,
       render: (req) => (
         <span className="text-gray-500 text-xs">
-          {new Date(req.createdAt).toLocaleDateString('nl-NL')}
+          {formatNumericDate(req.createdAt)}
         </span>
       ),
     },

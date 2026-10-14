@@ -364,6 +364,33 @@ const entityLabels: Record<string, Record<string, string>> = {
     closedAt: 'Gesloten op',
     lastMessageAt: 'Laatste bericht',
   },
+  TimeEntry: {
+    activityType: 'Activiteit',
+    source: 'Bron',
+    projectId: 'Project',
+    inspectionPlanId: 'Inspectieplan',
+    planningItemId: 'Planning-item',
+    startedAt: 'Start',
+    endedAt: 'Eind',
+    durationMinutes: 'Duur (min)',
+    notes: 'Notitie',
+    stopReason: 'Stopreden',
+    needsProjectAssignment: 'Nog toe te wijzen',
+    assignmentTaskId: 'Toewijs-taak',
+    correctedById: 'Gecorrigeerd door',
+    timesheetId: 'Weekstaat',
+    clientId: 'Offline-id',
+  },
+  Timesheet: {
+    userId: 'Inspecteur',
+    year: 'Jaar',
+    weekNumber: 'Weeknummer',
+    status: 'Status',
+    submittedAt: 'Ingediend op',
+    reviewedById: 'Beoordeeld door',
+    reviewedAt: 'Beoordeeld op',
+    reviewNote: 'Toelichting beoordeling',
+  },
 };
 
 export function getFieldLabel(entityType: string, field: string): string {

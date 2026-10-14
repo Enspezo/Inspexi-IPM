@@ -4,6 +4,7 @@ import { MeasurementInstrumentStatus, NotificationType, Role } from '@prisma/cli
 import { DEFAULT_CALIBRATION_WARN_DAYS } from '@inspexi/calibration';
 import { PrismaService } from '@/prisma';
 import { NotificationsService } from '@/modules/notifications/notifications.service';
+import { isSchedulerEnabled, SCHEDULER_ENABLED_ENV } from '@/common/config/scheduler-enabled';
 
 type ExpiryStage = '30d' | 'expired';
 
@@ -28,9 +29,21 @@ export class MeasurementInstrumentsScheduler {
 
   @Cron(CronExpression.EVERY_DAY_AT_6AM)
   async checkExpiringCalibrations(): Promise<void> {
-    this.logger.log('Controle op (bijna) verlopen kalibraties...');
-    const count = await this.processDueCalibrations(new Date());
-    this.logger.log(`Kalibratie-controle klaar; ${count} notificatie(s) verstuurd.`);
+    if (!isSchedulerEnabled()) {
+      this.logger.debug(`Kalibratie-controle overgeslagen: uitgeschakeld via ${SCHEDULER_ENABLED_ENV}.`);
+      return;
+    }
+    // F5: de cron mag nooit een unhandled rejection produceren.
+    try {
+      this.logger.log('Controle op (bijna) verlopen kalibraties...');
+      const count = await this.processDueCalibrations(new Date());
+      this.logger.log(`Kalibratie-controle klaar; ${count} notificatie(s) verstuurd.`);
+    } catch (err) {
+      this.logger.error(
+        'Kalibratie-controle-cron faalde onverwacht.',
+        err instanceof Error ? (err.stack ?? err.message) : String(err),
+      );
+    }
   }
 
   /**

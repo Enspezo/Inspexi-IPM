@@ -2,20 +2,27 @@ import { useState, useRef } from 'react';
 
 interface SignatureCanvasProps {
   onSave: (dataUrl: string) => void;
+  /** Called when the user clears the canvas, so the parent can drop a previously saved signature. */
+  onClear?: () => void;
 }
 
-export function SignatureCanvas({ onSave }: SignatureCanvasProps) {
+export function SignatureCanvas({ onSave, onClear }: SignatureCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isDrawing, setIsDrawing] = useState(false);
   const [isEmpty, setIsEmpty] = useState(true);
 
+  // The canvas has an intrinsic 480x160 bitmap but is stretched to the container width via
+  // CSS (`w-full`), so pointer coordinates must be scaled from CSS pixels to bitmap pixels.
   const getPos = (e: React.MouseEvent | React.TouchEvent) => {
     const canvas = canvasRef.current!;
     const rect = canvas.getBoundingClientRect();
-    if ('touches' in e) {
-      return { x: e.touches[0].clientX - rect.left, y: e.touches[0].clientY - rect.top };
-    }
-    return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+    const scaleX = rect.width > 0 ? canvas.width / rect.width : 1;
+    const scaleY = rect.height > 0 ? canvas.height / rect.height : 1;
+    const point = 'touches' in e ? e.touches[0] : e;
+    return {
+      x: (point.clientX - rect.left) * scaleX,
+      y: (point.clientY - rect.top) * scaleY,
+    };
   };
 
   const startDrawing = (e: React.MouseEvent | React.TouchEvent) => {
@@ -49,6 +56,7 @@ export function SignatureCanvas({ onSave }: SignatureCanvasProps) {
     const ctx = canvas.getContext('2d')!;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     setIsEmpty(true);
+    onClear?.();
   };
 
   const save = () => {

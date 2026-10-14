@@ -2,6 +2,7 @@ import type { PlanningItem } from '@/types';
 import { Button, Input, useToast } from '@/components/ui';
 import { useAddPlanningQuestion } from '../hooks/use-planning-questions';
 import { getErrorMessage } from '@/lib/api-client';
+import { formatDateTime } from '@/lib/format';
 
 export function PlanningGeschiedenisTab({
   id,
@@ -53,7 +54,7 @@ export function PlanningGeschiedenisTab({
                 {entry.user
                   ? `${entry.user.firstName} ${entry.user.lastName}`
                   : 'Systeem / Klant'}{' '}
-                · {new Date(entry.createdAt).toLocaleString('nl-NL')}
+                · {formatDateTime(entry.createdAt)}
               </div>
             </div>
           </div>

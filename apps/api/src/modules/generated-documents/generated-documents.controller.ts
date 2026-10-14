@@ -200,8 +200,13 @@ export class GeneratedDocumentsController {
 }
 
 // ── Publieke ondertekening (geen auth) ─────────────────────
+//
+// F1 (staging-review, WP-B7-patroon): bewust GEEN klasse-brede @RequiresFeature —
+// de FeatureGuard zou de entitlement tegen de BEZOEKENDE tenant evalueren en op
+// het apex-domein (`PUBLIC_URL`, geen tenant-org) in productie 403 geven. De
+// BASIS_INSPECTIES-gate zit in DocumentSigningService, tegen de eigenaar-org
+// van het document.
 @ApiTags('Signature Requests (public)')
-@RequiresFeature('BASIS_INSPECTIES')
 @Controller('signature-requests')
 export class SignatureRequestsController {
   constructor(private readonly signing: DocumentSigningService) {}

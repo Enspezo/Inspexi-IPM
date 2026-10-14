@@ -103,7 +103,7 @@ export function useHelpArticleFeedback() {
  */
 export function useAdminHelpCategories(audience?: HelpAudience) {
   return useQuery<HelpCategory[]>({
-    queryKey: ['help', 'admin', 'categories', audience ?? 'all'],
+    queryKey: helpKeys.adminCategories(audience ?? 'all'),
     queryFn: () =>
       apiClient.get<HelpCategory[]>(
         `/help/admin/categories${audience ? `?audience=${audience}` : ''}`,

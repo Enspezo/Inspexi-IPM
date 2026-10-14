@@ -5,7 +5,8 @@ import { useChat } from '@/providers/chat-provider';
 import { Role, type ChatUser } from '@/types';
 import { useChatUsers, useCreateThread } from '@/pages/chat/hooks/use-chat';
 import { ChatAvatar, PresenceLabel, TeamAvatar } from './chat-avatar';
-import { ROLE_LABELS, teamLabel } from './chat-helpers';
+import { teamLabel } from './chat-helpers';
+import { getRoleLabel } from '@/lib/roles';
 
 function useDebounced<T>(value: T, delay = 250): T {
   const [debounced, setDebounced] = useState(value);
@@ -173,7 +174,7 @@ export function NewChatView() {
                   <TeamAvatar />
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-medium text-gray-900">{teamLabel(role)}</p>
-                    <span className="text-xs text-gray-500">{ROLE_LABELS[role] ?? role}</span>
+                    <span className="text-xs text-gray-500">{getRoleLabel(role)}</span>
                   </div>
                 </button>
               ))

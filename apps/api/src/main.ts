@@ -10,6 +10,7 @@ import { AppModule } from './app.module';
 import { AllExceptionsFilter } from './common/filters';
 import { createAppValidationPipe } from './common/validation/nl-validation';
 import { validateJwtSecrets } from './common/config/validate-jwt-secrets';
+import { validateConfig } from './common/config/validate-config';
 
 const processLogger = new Logger('Process');
 
@@ -32,6 +33,9 @@ async function bootstrap() {
   // Fail-fast: weiger te starten met ontbrekende/default/gedeelde JWT-secrets
   // (vóór het opzetten van de Nest-app, zodat een misconfiguratie meteen stopt).
   validateJwtSecrets(process.env, process.env.NODE_ENV);
+  // F3: overige runtime-config (NODE_ENV-waarde, PUBLIC_URL, CONVERT_API_KEY,
+  // RESEND_API_KEY) — streng in productie, permissief in development/test.
+  validateConfig(process.env, (message) => new Logger('Config').warn(message));
 
   // We registreren de body-parsers hieronder zelf (bodyParser: false) zodat we per
   // route gedifferentieerde limieten kunnen zetten. De default Nest/Express-limiet
@@ -74,12 +78,22 @@ async function bootstrap() {
   const portalPort = process.env.PORTAL_PORT || '5173';
   const isLocalhost = baseDomain === 'localhost';
 
-  // Trust proxy: in productie staat de API achter precies één reverse proxy.
-  // 'trust proxy = 1' laat Express X-Forwarded-Host/-For/-Proto van die proxy
-  // gebruiken voor req.hostname (tenant-resolutie!) en req.ip (rate limiting),
-  // maar negeert door clients meegestuurde extra headers. Lokaal (geen proxy)
-  // expliciet uit, zodat een client de tenant-hostname niet kan spoofen.
-  app.set('trust proxy', isLocalhost ? false : 1);
+  // Trust proxy: in productie staat de API achter één of meer reverse proxies.
+  // 'trust proxy = N' laat Express X-Forwarded-Host/-For/-Proto van de laatste N
+  // hops gebruiken voor req.hostname (tenant-resolutie!) en req.ip (rate
+  // limiting), maar negeert door clients meegestuurde extra headers. Het aantal
+  // hops moet exact de topologie volgen (F6/DEP-14): te laag → req.ip is het
+  // proxy-IP (throttling raakt iedereen tegelijk); te hoog → een client kan zijn
+  // IP/hostname spoofen. `TRUST_PROXY_HOPS` (default 1; Cloudflare → nginx = 2).
+  // Lokaal (geen proxy) expliciet uit, zodat een client de tenant-hostname niet
+  // kan spoofen.
+  const trustProxyHops = Number.parseInt(process.env.TRUST_PROXY_HOPS ?? '1', 10);
+  if (!Number.isInteger(trustProxyHops) || trustProxyHops < 1) {
+    throw new Error(
+      `TRUST_PROXY_HOPS="${process.env.TRUST_PROXY_HOPS}" is ongeldig; verwacht een geheel getal ≥ 1`,
+    );
+  }
+  app.set('trust proxy', isLocalhost ? false : trustProxyHops);
 
   // Beveiligingsheaders (WP-B4 / B-507) — platformbreed vangnet naast de
   // route-specifieke headers op de bestandsroutes (logo, avatar, documenten).
@@ -213,7 +227,8 @@ async function bootstrap() {
     SwaggerModule.setup('api/docs', app, document);
   }
 
-  const port = process.env.API_PORT || 3000;
+  // API_PORT is the explicit setting; PORT is what most PaaS platforms inject.
+  const port = process.env.API_PORT || process.env.PORT || 3000;
   await app.listen(port);
   console.log(`🚀 API running on http://localhost:${port}/api/v1`);
   if (enableSwagger) {

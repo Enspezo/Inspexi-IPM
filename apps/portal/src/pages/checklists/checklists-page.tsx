@@ -14,6 +14,7 @@ import { CHECKLIST_STATUS } from '@/lib/status';
 import { useChecklists } from './hooks/use-checklists';
 import { CreateChecklistModal } from './components/create-checklist-modal';
 import { ImportChecklistModal } from './components/import-checklist-modal';
+import { formatNumericDate } from '@/lib/format';
 
 const MANAGE_ROLES: Role[] = [Role.SUPERUSER, Role.ORG_ADMIN];
 
@@ -62,7 +63,7 @@ export default function ChecklistsPage() {
     {
       key: 'createdAt', header: 'Aangemaakt', filterable: true, filterType: 'date',
       sortable: true, sortKey: 'createdAt', getFilterValue: (c) => c.createdAt,
-      render: (c) => <span className="text-xs text-gray-500">{new Date(c.createdAt).toLocaleDateString('nl-NL')}</span>,
+      render: (c) => <span className="text-xs text-gray-500">{formatNumericDate(c.createdAt)}</span>,
     },
   ];
 

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { Modal, Button, Input, Checkbox, ErrorBox, SignatureCanvas } from '@/components/ui';
 import { useClientAuth } from '@/providers/client-auth-provider';
 import { useSignDocument } from '@/pages/documents/hooks/use-documents';
@@ -23,6 +23,7 @@ export function SignatureModal({
 }: SignatureModalProps) {
   const { user } = useClientAuth();
   const sign = useSignDocument(documentId);
+  const signatureLabelId = useId();
   const [signatureImage, setSignatureImage] = useState<string | null>(null);
   const [signerName, setSignerName] = useState(user ? `${user.firstName} ${user.lastName}` : '');
   const [agreed, setAgreed] = useState(false);
@@ -66,8 +67,15 @@ export function SignatureModal({
           </p>
 
           <div>
-            <label className="mb-1.5 block text-sm font-medium text-gray-700">Handtekening</label>
-            <SignatureCanvas onSave={(dataUrl) => setSignatureImage(dataUrl)} />
+            <p id={signatureLabelId} className="mb-1.5 block text-sm font-medium text-gray-700">
+              Handtekening
+            </p>
+            <div role="group" aria-labelledby={signatureLabelId}>
+              <SignatureCanvas
+                onSave={(dataUrl) => setSignatureImage(dataUrl)}
+                onClear={() => setSignatureImage(null)}
+              />
+            </div>
             {signatureImage && (
               <p className="mt-1 text-xs font-medium text-success-600">✓ Handtekening vastgelegd</p>
             )}

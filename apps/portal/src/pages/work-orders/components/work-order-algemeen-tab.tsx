@@ -8,6 +8,7 @@ import { PhaseSelect, PhaseInfoField } from '@/components/projects/phase-select'
 import { useFeatures } from '@/providers/feature-provider';
 import { useUpdateWorkOrder } from '../hooks/use-work-orders';
 import type { EditFormData } from './work-order-detail-shared';
+import { formatDateTime } from '@/lib/format';
 
 export function WorkOrderAlgemeenTab({
   workOrder,
@@ -106,19 +107,13 @@ export function WorkOrderAlgemeenTab({
               <InfoField
                 label="Starttijd"
                 value={
-                  workOrder.startTime
-                    ? new Date(workOrder.startTime).toLocaleString(
-                        'nl-NL',
-                      )
-                    : null
+                  formatDateTime(workOrder.startTime)
                 }
               />
               <InfoField
                 label="Eindtijd"
                 value={
-                  workOrder.endTime
-                    ? new Date(workOrder.endTime).toLocaleString('nl-NL')
-                    : null
+                  formatDateTime(workOrder.endTime)
                 }
               />
               <div className="sm:col-span-2">
@@ -129,9 +124,7 @@ export function WorkOrderAlgemeenTab({
               </div>
               <InfoField
                 label="Aangemaakt op"
-                value={new Date(workOrder.createdAt).toLocaleString(
-                  'nl-NL',
-                )}
+                value={formatDateTime(workOrder.createdAt)}
               />
               <InfoField
                 label="Aangemaakt door"

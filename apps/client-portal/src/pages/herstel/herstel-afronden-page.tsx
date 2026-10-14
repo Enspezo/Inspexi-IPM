@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useId, useMemo, useState } from 'react';
 import { Link, Navigate } from 'react-router-dom';
 import { clsx } from 'clsx';
 import {
@@ -87,6 +87,7 @@ export default function HerstelAfrondenPage() {
   const [fieldErrors, setFieldErrors] = useState<{ contactName?: string; email?: string }>({});
   const [error, setError] = useState<string | null>(null);
   const [preview, setPreview] = useState<RepairCompleteResult | null>(null);
+  const signatureLabelId = useId();
   const [signatureImage, setSignatureImage] = useState<string | null>(null);
   const [agreed, setAgreed] = useState(false);
 
@@ -361,8 +362,15 @@ export default function HerstelAfrondenPage() {
           {step === 4 && (
             <div className="space-y-4">
               <div>
-                <label className="mb-1.5 block text-sm font-medium text-gray-700">Handtekening</label>
-                <SignatureCanvas onSave={(dataUrl) => setSignatureImage(dataUrl)} />
+                <p id={signatureLabelId} className="mb-1.5 block text-sm font-medium text-gray-700">
+                  Handtekening
+                </p>
+                <div role="group" aria-labelledby={signatureLabelId}>
+                  <SignatureCanvas
+                    onSave={(dataUrl) => setSignatureImage(dataUrl)}
+                    onClear={() => setSignatureImage(null)}
+                  />
+                </div>
                 {signatureImage && (
                   <p className="mt-1 text-xs font-medium text-success-600">✓ Handtekening vastgelegd</p>
                 )}

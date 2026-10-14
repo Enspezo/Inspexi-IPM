@@ -1,14 +1,8 @@
-import { getErrorMessage } from '@/lib/api-client';
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { Button, Modal, Select, useToast } from '@/components/ui';
 import { WORK_ORDER_STATUS, getStatusConfig } from '@/lib/status';
 import { WorkOrderStatus } from '@/types';
-import type { WorkOrder } from '@/types';
-import {
-  useUpdateWorkOrderStatus,
-  useDeleteWorkOrder,
-} from '../hooks/use-work-orders';
+import { useUpdateWorkOrderStatus } from '../hooks/use-work-orders';
 
 export function WorkOrderStatusChangeModal({
   id,
@@ -98,63 +92,6 @@ export function WorkOrderStatusChangeModal({
             isLoading={updateStatus.isPending}
           >
             Status wijzigen
-          </Button>
-        </div>
-      </div>
-    </Modal>
-  );
-}
-
-export function WorkOrderDeleteModal({
-  id,
-  workOrder,
-  deleteConfirmOpen,
-  setDeleteConfirmOpen,
-}: {
-  id: string | undefined;
-  workOrder: WorkOrder;
-  deleteConfirmOpen: boolean;
-  setDeleteConfirmOpen: React.Dispatch<React.SetStateAction<boolean>>;
-}) {
-  const navigate = useNavigate();
-  const { showToast } = useToast();
-  const deleteWorkOrder = useDeleteWorkOrder(id);
-
-  const handleDelete = async () => {
-    try {
-      await deleteWorkOrder.mutateAsync();
-      showToast('Werkbon verwijderd', 'success');
-      navigate('/work-orders');
-    } catch {
-      /* foutmelding wordt centraal getoond via useApiMutation */
-    }
-  };
-
-  return (
-    <Modal
-      isOpen={deleteConfirmOpen}
-      onClose={() => setDeleteConfirmOpen(false)}
-      title="Werkbon verwijderen"
-    >
-      <div className="space-y-4">
-        <p className="text-sm text-gray-600">
-          Weet u zeker dat u werkbon{' '}
-          <strong>{workOrder.workOrderNumber}</strong> wilt verwijderen? Dit
-          kan niet ongedaan gemaakt worden.
-        </p>
-        <div className="flex justify-end gap-2 pt-2">
-          <Button
-            variant="secondary"
-            onClick={() => setDeleteConfirmOpen(false)}
-          >
-            Annuleren
-          </Button>
-          <Button
-            variant="danger"
-            onClick={handleDelete}
-            isLoading={deleteWorkOrder.isPending}
-          >
-            Verwijderen
           </Button>
         </div>
       </div>

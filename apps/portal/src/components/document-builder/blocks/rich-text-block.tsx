@@ -2,7 +2,7 @@
 // RichTextBlock — Rijke tekst (hergebruikt de gedeelde RichTextEditor)
 // ===========================================
 
-import { RichTextEditor, RichTextViewer } from '@/components/ui';
+import { RichTextEditor, RichTextViewer } from '@/components/ui/rich-text-lazy';
 import type { DocBlockProps, RichTextContent } from '../types';
 
 export function RichTextBlock({ content, onChange, isReadOnly }: DocBlockProps<RichTextContent>) {

@@ -1,5 +1,6 @@
 import { useCustomFieldsByEntityType } from '@/pages/organization/hooks/use-custom-fields';
 import type { CustomFieldEntityType, CustomFieldType } from '@/types';
+import { formatNumericDate } from '@/lib/format';
 
 interface CustomFieldsDisplayProps {
   entityType: CustomFieldEntityType;
@@ -15,7 +16,7 @@ function formatValue(value: unknown, fieldType: CustomFieldType): string {
     case 'NUMBER':
       return Number(value).toLocaleString('nl-NL');
     case 'DATE':
-      return new Date(value as string).toLocaleDateString('nl-NL');
+      return formatNumericDate(value as string);
     case 'BOOLEAN':
       return value ? 'Ja' : 'Nee';
     case 'SELECT':

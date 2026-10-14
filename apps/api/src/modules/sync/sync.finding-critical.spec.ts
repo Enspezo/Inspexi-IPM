@@ -13,6 +13,8 @@ import { ChatSyncService } from '../chat/chat-sync.service';
 import { NumberingService } from '../numbering/numbering.service';
 import { AssetNodesService } from '../asset-nodes/asset-nodes.service';
 import { InspectionPlansService } from '../inspection-plans/inspection-plans.service';
+import { TimeEntriesService } from '../time-tracking/time-entries.service';
+import { EntitlementsService } from '../entitlements/entitlements.service';
 
 describe('SyncService — finding isCritical (PRD-14)', () => {
   let service: SyncService;
@@ -122,6 +124,11 @@ describe('SyncService — finding isCritical (PRD-14)', () => {
         { provide: NumberingService, useValue: mockNumbering },
         { provide: AssetNodesService, useValue: mockAssetNodes },
         { provide: InspectionPlansService, useValue: mockInspectionPlans },
+        { provide: TimeEntriesService, useValue: { applySyncChange: jest.fn() } },
+        {
+          provide: EntitlementsService,
+          useValue: { assertFeature: jest.fn().mockResolvedValue(undefined) },
+        },
       ],
     }).compile();
 

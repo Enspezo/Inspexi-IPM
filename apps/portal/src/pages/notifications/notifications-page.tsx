@@ -23,6 +23,7 @@ import {
   useMarkAllRead,
   useUnreadCount,
 } from './hooks/use-notifications';
+import { formatDateTime } from '@/lib/format';
 
 const modelFilterOptions = [
   { value: '', label: 'Alle modellen' },
@@ -144,13 +145,7 @@ export default function NotificationsPage() {
       getFilterValue: (notif) => notif.createdAt,
       render: (notif) => (
         <span className="whitespace-nowrap text-xs text-gray-500">
-          {new Date(notif.createdAt).toLocaleDateString('nl-NL', {
-            day: 'numeric',
-            month: 'short',
-            year: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit',
-          })}
+          {formatDateTime(notif.createdAt)}
         </span>
       ),
     },

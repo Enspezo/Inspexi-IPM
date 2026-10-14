@@ -48,7 +48,7 @@ export function PlanningRescheduleModal({
             value={rescheduleReason}
             onChange={(e) => setRescheduleReason(e.target.value)}
             rows={3}
-            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
             placeholder="Vul een reden in (verplicht)"
           />
         </div>
@@ -101,7 +101,7 @@ export function PlanningRejectModal({
             value={rejectReason}
             onChange={(e) => setRejectReason(e.target.value)}
             rows={3}
-            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
             placeholder="Vul een reden in (verplicht)"
           />
         </div>
@@ -156,7 +156,7 @@ export function SessionRejectModal({
             value={sessionRejectReason}
             onChange={(e) => setSessionRejectReason(e.target.value)}
             rows={3}
-            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
             placeholder="Vul een reden in (verplicht)"
           />
         </div>
@@ -214,7 +214,7 @@ export function SessionRescheduleModal({
             value={sessionRescheduleReason}
             onChange={(e) => setSessionRescheduleReason(e.target.value)}
             rows={3}
-            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
             placeholder="Vul een reden in (verplicht)"
           />
         </div>

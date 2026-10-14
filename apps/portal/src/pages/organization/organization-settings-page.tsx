@@ -1,3 +1,4 @@
+import { getRoleLabel } from '@/lib/roles';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -26,6 +27,7 @@ import { getTypeLabel } from '@/lib/notifications';
 import { getErrorMessage } from '@/lib/api-client';
 import { useFeatures } from '@/providers/feature-provider';
 import { useAiReviewStatus } from '@/pages/inspections/hooks/use-ai-review';
+import { PageHeader } from '@/components/layout/page-header';
 
 const CONTACT_DISPLAY_OPTIONS = [
   { value: ContactDisplayMode.NONE, label: 'Geen' },
@@ -79,6 +81,7 @@ export const orgSchema = z.object({
   aiReviewEnabled: z.boolean(),
   aiReviewInstructions: z.string().max(2000, 'Maximaal 2000 tekens').optional(),
   onlineRepairDefault: z.boolean(),
+  travelTrackingEnabled: z.boolean(),
   aiAgentEnabled: z.boolean(),
   aiAgentAllowedRoles: z.array(z.nativeEnum(Role)),
 }).refine((d) => d.workdayEnd > d.workdayStart, {
@@ -92,13 +95,6 @@ export const orgSchema = z.object({
 type OrgFormData = z.infer<typeof orgSchema>;
 
 
-const roleLabels: Record<string, string> = {
-  [Role.ORG_ADMIN]: 'Org Admin',
-  [Role.MANAGER]: 'Manager',
-  [Role.BACKOFFICE]: 'Backoffice',
-  [Role.WERKVOORBEREIDER]: 'Werkvoorbereider',
-  [Role.INSPECTEUR]: 'Inspecteur',
-};
 
 const assignableRoles = [
   Role.ORG_ADMIN,
@@ -212,7 +208,7 @@ function GroupNotificationPrefsCard() {
                 : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
             }`}
           >
-            {roleLabels[role] || role}
+            {getRoleLabel(role)}
           </button>
         ))}
       </div>
@@ -320,6 +316,7 @@ export default function OrganizationSettingsPage() {
   const aiReviewOn = watch('aiReviewEnabled');
   // PRD-14 §14.4: online-herstel-default alleen instelbaar met het ONLINE_HERSTEL-entitlement.
   const hasOnlineRepairEntitlement = hasFeature('ONLINE_HERSTEL');
+  const hasUrenEntitlement = hasFeature('URENREGISTRATIE');
   // AI-assistent (add-on): kill-switch/rollen alleen instelbaar mét het AI_AGENT-entitlement
   // (B-510: aanzetten zonder abonnement weigert de backend ook).
   const hasAiAgentEntitlement = hasFeature('AI_AGENT');
@@ -350,6 +347,7 @@ export default function OrganizationSettingsPage() {
         aiReviewEnabled: organization.aiReviewEnabled ?? false,
         aiReviewInstructions: organization.aiReviewInstructions ?? '',
         onlineRepairDefault: organization.onlineRepairDefault ?? false,
+        travelTrackingEnabled: organization.travelTrackingEnabled ?? true,
         aiAgentEnabled: organization.aiAgentEnabled ?? true,
         aiAgentAllowedRoles: organization.aiAgentAllowedRoles ?? [],
       });
@@ -382,6 +380,7 @@ export default function OrganizationSettingsPage() {
       quoteApprovalSelfApprovalAllowed: data.quoteApprovalSelfApprovalAllowed,
       chatEnabled: data.chatEnabled,
       inspectionReviewEnabled: data.inspectionReviewEnabled,
+      travelTrackingEnabled: data.travelTrackingEnabled,
       aiReviewEnabled: data.aiReviewEnabled,
       aiReviewInstructions: data.aiReviewInstructions?.trim() || null,
       onlineRepairDefault: data.onlineRepairDefault,
@@ -489,9 +488,7 @@ export default function OrganizationSettingsPage() {
   if (loadError || !organization) {
     return (
       <div>
-        <h1 className="mb-6 text-2xl font-bold text-gray-900">
-          Organisatie-instellingen
-        </h1>
+        <PageHeader title="Organisatie-instellingen" />
         <ErrorBox>
           De organisatiegegevens konden niet geladen worden. Controleer of u de juiste
           rechten heeft of probeer het later opnieuw.
@@ -516,14 +513,10 @@ export default function OrganizationSettingsPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-bold text-gray-900">
-          Organisatie-instellingen
-        </h2>
-        <p className="mt-1 text-sm text-gray-500">
-          Beheer de instellingen van uw organisatie
-        </p>
-      </div>
+      <PageHeader
+        title="Organisatie-instellingen"
+        description="Beheer de instellingen van uw organisatie"
+      />
 
       {/* Tab navigation */}
       <Tabs tabs={tabs} active={activeTab} onChange={setActiveTab} />
@@ -749,7 +742,7 @@ export default function OrganizationSettingsPage() {
                 error={errors.quoteApprovalRequiredRole?.message}
                 options={[
                   { value: '', label: 'Geen' },
-                  ...assignableRoles.map((role) => ({ value: role, label: roleLabels[role] })),
+                  ...assignableRoles.map((role) => ({ value: role, label: getRoleLabel(role) })),
                 ]}
                 {...register('quoteApprovalRequiredRole')}
               />
@@ -903,7 +896,7 @@ export default function OrganizationSettingsPage() {
                           setValue('aiAgentAllowedRoles', next, { shouldDirty: true });
                         }}
                       />
-                      {roleLabels[role] ?? role}
+                      {getRoleLabel(role)}
                     </label>
                   );
                 })}
@@ -1001,6 +994,29 @@ export default function OrganizationSettingsPage() {
             </div>
             {!hasOnlineRepairEntitlement && (
               <p className="mt-2 text-xs text-gray-500">Niet beschikbaar in uw abonnement.</p>
+            )}
+          </div>
+
+          <div>
+            <h3 className="text-base font-semibold text-gray-900">Locatietracking inspecteurs</h3>
+            <p className="mt-1 text-sm text-gray-500">
+              Org-brede aan/uit-schakelaar voor de onderweg-tracker (urenregistratie). Met deze
+              schakelaar uit kunnen inspecteurs de tracker niet aanzetten en worden er geen
+              locaties ontvangen of getoond — ook niet als een inspecteur eerder toestemming gaf.
+              Individuele inspecteurs kiezen zelf (opt-in) of ze de tracker gebruiken; het
+              consent-moment wordt vastgelegd. Posities worden alleen tijdens reistijd gedeeld en
+              na 48 uur verwijderd.
+            </p>
+            <div className="mt-3">
+              <Checkbox
+                label="Locatietracking toestaan"
+                {...register('travelTrackingEnabled')}
+              />
+            </div>
+            {!hasUrenEntitlement && (
+              <p className="mt-2 text-xs text-gray-500">
+                Urenregistratie zit niet in uw abonnement; deze instelling heeft dan geen effect.
+              </p>
             )}
           </div>
 

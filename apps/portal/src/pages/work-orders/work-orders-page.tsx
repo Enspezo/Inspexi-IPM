@@ -24,6 +24,7 @@ import {
 import { useAuth } from '@/providers/auth-provider';
 import { useWorkOrders } from './hooks/use-work-orders';
 import { CreateWorkOrderModal } from './components/create-work-order-modal';
+import { formatNumericDate } from '@/lib/format';
 
 const statusFilterOptions = [
   { value: '', label: 'Alle statussen' },
@@ -192,7 +193,7 @@ export default function WorkOrdersPage() {
       getFilterValue: (wo) => wo.createdAt,
       render: (wo) => (
         <span className="text-gray-500 text-xs">
-          {new Date(wo.createdAt).toLocaleDateString('nl-NL')}
+          {formatNumericDate(wo.createdAt)}
         </span>
       ),
     },

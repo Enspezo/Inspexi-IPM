@@ -5,7 +5,6 @@ import {
   IsArray,
   ValidateNested,
   IsObject,
-  IsUUID,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 
@@ -62,14 +61,6 @@ export class ImportFindingTemplatesDto {
   @ValidateNested({ each: true })
   @Type(() => ImportTemplateDto)
   findingTemplates: ImportTemplateDto[];
-}
-
-export class ExportFindingTemplatesDto {
-  @ApiPropertyOptional({ type: [String] })
-  @IsOptional()
-  @IsArray()
-  @IsUUID('4', { each: true })
-  ids?: string[];
 }
 
 /** Export-formaat (response shape). */

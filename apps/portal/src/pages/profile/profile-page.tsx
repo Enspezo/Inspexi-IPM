@@ -21,6 +21,7 @@ import { HomeAddressCard } from './components/home-address-card';
 import { ApprovalDefaultsCard } from './components/approval-defaults-card';
 import { MyDefaultInstrumentsSection } from '@/pages/meetmiddelen/components/my-default-instruments-section';
 import { ActivityTab } from './components/activity-tab';
+import { PageHeader } from '@/components/layout/page-header';
 
 const profileSchema = z.object({
   firstName: z.string().min(1, 'Voornaam is verplicht'),
@@ -95,12 +96,7 @@ export default function ProfilePage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-bold text-gray-900">Profiel</h2>
-        <p className="mt-1 text-sm text-gray-500">
-          Beheer uw persoonlijke gegevens
-        </p>
-      </div>
+      <PageHeader title="Profiel" description="Beheer uw persoonlijke gegevens" />
 
       {/* Tabs */}
       <Tabs tabs={tabs} active={activeTab} onChange={setActiveTab} />

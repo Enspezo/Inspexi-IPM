@@ -122,6 +122,27 @@ export class TasksService {
       }
     }
 
+    const timeEntryIds = tasks
+      .filter((t) => t.entityType === TaskEntityType.TIME_ENTRY)
+      .map((t) => t.entityId);
+
+    if (timeEntryIds.length > 0) {
+      const entries = await this.prisma.timeEntry.findMany({
+        where: { id: { in: timeEntryIds } },
+        select: { id: true, startedAt: true, project: { select: { projectNumber: true } } },
+      });
+      const dateFmt = new Intl.DateTimeFormat('nl-NL', {
+        timeZone: 'Europe/Amsterdam',
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+      });
+      for (const e of entries) {
+        const suffix = e.project?.projectNumber ? ` — ${e.project.projectNumber}` : '';
+        nameMap.set(e.id, `Urenregel ${dateFmt.format(e.startedAt)}${suffix}`);
+      }
+    }
+
     return nameMap;
   }
 
@@ -221,6 +242,8 @@ export class TasksService {
         return assertSameOrg(this.prisma.project, entityId, orgId, 'Project');
       case TaskEntityType.USER:
         return assertSameOrg(this.prisma.user, entityId, orgId, 'Gebruiker');
+      case TaskEntityType.TIME_ENTRY:
+        return assertSameOrg(this.prisma.timeEntry, entityId, orgId, 'Urenregel');
     }
   }
 

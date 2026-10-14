@@ -12,6 +12,7 @@ import { TableConfigSidebar, useTableConfig, type ColumnDef } from '@/components
 import { useAuth } from '@/providers/auth-provider';
 import { useClassificationModelsAdmin } from './hooks/use-classification-models';
 import { CreateClassificationModelModal } from './components/create-classification-model-modal';
+import { formatNumericDate } from '@/lib/format';
 
 export default function ClassificationModelsPage() {
   const [search, setSearch] = useState('');
@@ -47,7 +48,7 @@ export default function ClassificationModelsPage() {
     {
       key: 'createdAt', header: 'Aangemaakt', sortable: true, sortKey: 'createdAt',
       filterable: true, filterType: 'date', getFilterValue: (m) => m.createdAt,
-      render: (m) => <span className="text-xs text-gray-500">{new Date(m.createdAt).toLocaleDateString('nl-NL')}</span>,
+      render: (m) => <span className="text-xs text-gray-500">{formatNumericDate(m.createdAt)}</span>,
     },
   ];
 

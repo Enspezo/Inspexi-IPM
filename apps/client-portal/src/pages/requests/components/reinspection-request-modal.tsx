@@ -1,18 +1,13 @@
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { Modal, Button, Input, ErrorBox } from '@/components/ui';
 import { useCreateReinspection } from '../hooks/use-requests';
 import { getErrorMessage } from '@/lib/api-client';
+import { tomorrowInputValue } from '@/lib/format';
 
 interface ReinspectionRequestModalProps {
   inspectionPlanId: string;
   projectName: string;
   onClose: () => void;
-}
-
-function tomorrow(): string {
-  const d = new Date();
-  d.setDate(d.getDate() + 1);
-  return d.toISOString().slice(0, 10);
 }
 
 export function ReinspectionRequestModal({
@@ -21,6 +16,7 @@ export function ReinspectionRequestModal({
   onClose,
 }: ReinspectionRequestModalProps) {
   const create = useCreateReinspection();
+  const descriptionId = useId();
   const [description, setDescription] = useState('');
   const [preferredDate, setPreferredDate] = useState('');
   const [fieldError, setFieldError] = useState<string | null>(null);
@@ -76,8 +72,11 @@ export function ReinspectionRequestModal({
           </div>
 
           <div>
-            <label className="mb-1.5 block text-sm font-medium text-gray-700">Reden voor herinspectie</label>
+            <label htmlFor={descriptionId} className="mb-1.5 block text-sm font-medium text-gray-700">
+              Reden voor herinspectie
+            </label>
             <textarea
+              id={descriptionId}
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               rows={4}
@@ -94,7 +93,7 @@ export function ReinspectionRequestModal({
           <Input
             type="date"
             label="Voorkeursdatum (optioneel)"
-            min={tomorrow()}
+            min={tomorrowInputValue()}
             value={preferredDate}
             onChange={(e) => setPreferredDate(e.target.value)}
           />

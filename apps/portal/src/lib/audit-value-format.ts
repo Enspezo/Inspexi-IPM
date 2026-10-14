@@ -172,6 +172,18 @@ const enumLabels: Record<string, string> = {
   CHECKED: 'Afgevinkt',
   DISMISSED: 'Afgewezen',
 
+  // TimeActivityType / TimeEntrySource / TimesheetStatus (PRD-16)
+  VOORBEREIDING: 'Voorbereiding',
+  UITVOERING: 'Uitvoering',
+  RAPPORTAGE: 'Rapportage',
+  REISTIJD: 'Reistijd',
+  HANDMATIG: 'Handmatig',
+  AGENDA: 'Agenda',
+  INSPECTIE_AUTO: 'Automatisch (inspectie)',
+  REIS_AUTO: 'Automatisch (reis)',
+  CORRECTIE: 'Correctie',
+  INGEDIEND: 'Ingediend',
+
   // SupportTicketCategory
   VRAAG: 'Vraag',
   PROBLEEM: 'Probleem',

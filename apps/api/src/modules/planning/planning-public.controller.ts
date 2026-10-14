@@ -9,13 +9,13 @@ import {
   HttpCode,
   HttpStatus,
   Logger,
-  NotFoundException,
 } from '@nestjs/common';
-import { RequiresFeature } from '@/common/decorators/requires-feature.decorator';
+import { Throttle } from '@nestjs/throttler';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { Request, Response } from 'express';
-import { Public } from '@/common/decorators';
+import { Public, CurrentTenant } from '@/common/decorators';
 import { setBinaryResponseHeaders, sanitizeDispositionFilename } from '@/common';
+import { TenantContext } from '@/common/interfaces/tenant-context.interface';
 import { PlanningPublicService } from './planning-public.service';
 import { PlanningIcalService } from './planning-ical.service';
 import { AddQuestionDto, CreateRescheduleRequestDto } from './dto';
@@ -24,88 +24,87 @@ import {
   StorageProvider,
 } from '@/common/services/storage/storage.interface';
 import { Inject } from '@nestjs/common';
-import { PrismaService } from '@/prisma';
 
 // @Public() staat per route (niet op klasseniveau) zodat een nieuw endpoint niet
 // per ongeluk publiek wordt — elke route verklaart dat expliciet.
+//
+// F1 (staging-review, WP-B7-patroon): bewust GEEN klasse-brede @RequiresFeature —
+// de FeatureGuard zou de entitlement tegen de BEZOEKENDE tenant evalueren en op
+// het apex-domein (`PUBLIC_URL`, geen tenant-org) in productie 403 geven. De
+// feature-gate (UITVOERING_COMPLEET) zit in PlanningPublicService, tegen de
+// eigenaar-org van de afspraak. Elke handler injecteert @CurrentTenant() zodat
+// de token-lookup aan het bezochte subdomein gebonden is (`publicTenantWhere`).
+// Token-routes zijn capability-URLs → per-IP throttle (F7).
 @ApiTags('Planning (public)')
-@RequiresFeature('UITVOERING_COMPLEET')
 @Controller('public/planning')
 export class PlanningPublicController {
   constructor(
     private readonly service: PlanningPublicService,
     private readonly icalService: PlanningIcalService,
-    private readonly prisma: PrismaService,
     @Inject(STORAGE_PROVIDER) private readonly storage: StorageProvider,
   ) {}
 
   @Public()
+  @Throttle({ default: { limit: 30, ttl: 60000 } })
   @Get(':token')
   @ApiOperation({ summary: 'Afspraakdetails ophalen (publiek)' })
-  async findByToken(@Param('token') token: string) {
-    const data = await this.service.findByPublicToken(token);
+  async findByToken(@Param('token') token: string, @CurrentTenant() tenant: TenantContext) {
+    const data = await this.service.findByPublicToken(token, tenant);
     return { success: true, data };
   }
 
   @Public()
+  @Throttle({ default: { limit: 30, ttl: 60000 } })
   @Post(':token/questions')
   @ApiOperation({ summary: 'Vraag stellen als klant (publiek)' })
   @HttpCode(HttpStatus.CREATED)
-  async addClientQuestion(@Param('token') token: string, @Body() dto: AddQuestionDto) {
-    const data = await this.service.addClientQuestion(token, dto);
+  async addClientQuestion(
+    @Param('token') token: string,
+    @Body() dto: AddQuestionDto,
+    @CurrentTenant() tenant: TenantContext,
+  ) {
+    const data = await this.service.addClientQuestion(token, dto, tenant);
     return { success: true, data };
   }
 
   @Public()
+  @Throttle({ default: { limit: 30, ttl: 60000 } })
   @Post(':token/reschedule-request')
   @ApiOperation({ summary: 'Afspraak verzetverzoek indienen (klant, publiek)' })
   @HttpCode(HttpStatus.CREATED)
   async createRescheduleRequest(
     @Param('token') token: string,
     @Body() dto: CreateRescheduleRequestDto,
+    @CurrentTenant() tenant: TenantContext,
   ) {
-    const data = await this.service.createRescheduleRequest(token, dto);
+    const data = await this.service.createRescheduleRequest(token, dto, tenant);
     return { success: true, data };
   }
 
   @Public()
+  @Throttle({ default: { limit: 30, ttl: 60000 } })
   @Get(':token/documents')
   @ApiOperation({ summary: 'Gedeelde bijlagen ophalen (publiek)' })
-  async getSharedDocuments(@Param('token') token: string) {
-    const data = await this.service.getSharedDocuments(token);
+  async getSharedDocuments(
+    @Param('token') token: string,
+    @CurrentTenant() tenant: TenantContext,
+  ) {
+    const data = await this.service.getSharedDocuments(token, tenant);
     return { success: true, data };
   }
 
   @Public()
+  @Throttle({ default: { limit: 30, ttl: 60000 } })
   @Get(':token/documents/:docId/download')
   @ApiOperation({ summary: 'Gedeelde bijlage downloaden (publiek)' })
   async downloadSharedDocument(
     @Param('token') token: string,
     @Param('docId') docId: string,
+    @CurrentTenant() tenant: TenantContext,
     @Res() res: Response,
   ) {
-    // Verify the planning item exists via token
-    const item = await this.prisma.planningItem.findUnique({
-      where: { publicToken: token },
-      select: { id: true, quoteId: true },
-    });
-    if (!item) throw new NotFoundException('Afspraak niet gevonden');
-
-    // Collect all entity IDs that this public token authorises access to
-    const allowedEntityIds: string[] = [item.id];
-    if (item.quoteId) {
-      allowedEntityIds.push(item.quoteId);
-      const quote = await this.prisma.quote.findUnique({
-        where: { id: item.quoteId },
-        select: { requestId: true },
-      });
-      if (quote?.requestId) allowedEntityIds.push(quote.requestId);
-    }
-
-    const doc = await this.prisma.document.findUnique({ where: { id: docId } });
-    if (!doc || !allowedEntityIds.includes(doc.entityId) || !doc.isSharedWithClient || doc.isDeleted) {
-      throw new NotFoundException('Document niet gevonden');
-    }
+    // Token → afspraak → toegestane entiteiten → document (org-gebonden): in de service.
+    const doc = await this.service.findSharedDocument(token, docId, tenant);
 
     const buffer = await this.storage.download(doc.storageKey);
     // Publieke route: attachment + nosniff + sandbox via de gedeelde helper (WP-B4).
@@ -120,30 +119,15 @@ export class PlanningPublicController {
   }
 
   @Public()
+  @Throttle({ default: { limit: 30, ttl: 60000 } })
   @Get(':token/ics')
   @ApiOperation({ summary: '.ics bestand downloaden (publiek)' })
-  async downloadIcs(@Param('token') token: string, @Res() res: Response) {
-    const item = await this.prisma.planningItem.findUnique({
-      where: { publicToken: token },
-      include: {
-        location: { select: { street: true, houseNumber: true, postalCode: true, city: true } },
-        contact: { select: { companyName: true, firstName: true, lastName: true } },
-        sessions: {
-          where: { isCancelled: false },
-          orderBy: { sessionNumber: 'asc' },
-          select: {
-            id: true,
-            sessionNumber: true,
-            scheduledDate: true,
-            durationHours: true,
-            status: true,
-            isCancelled: true,
-            notes: true,
-          },
-        },
-      },
-    });
-    if (!item) throw new NotFoundException('Afspraak niet gevonden');
+  async downloadIcs(
+    @Param('token') token: string,
+    @CurrentTenant() tenant: TenantContext,
+    @Res() res: Response,
+  ) {
+    const item = await this.service.findForIcs(token, tenant);
 
     const ics = this.icalService.generateSingleEvent(item);
     res.set({
@@ -155,9 +139,11 @@ export class PlanningPublicController {
 }
 
 // ─── iCal feed controller ──────────────────────────────────
+//
+// F1: geen klasse-brede @RequiresFeature (zie hierboven); de feed-gate zit in
+// PlanningIcalService.generatePersonalFeed tegen de org van de token-eigenaar.
 
 @ApiTags('iCal')
-@RequiresFeature('UITVOERING_COMPLEET')
 @Controller('ical')
 export class PlanningIcalController {
   private readonly logger = new Logger(PlanningIcalController.name);
@@ -165,6 +151,7 @@ export class PlanningIcalController {
   constructor(private readonly icalService: PlanningIcalService) {}
 
   @Public()
+  @Throttle({ default: { limit: 30, ttl: 60000 } })
   @Get(':ical_token.ics')
   @ApiOperation({ summary: 'Persoonlijke iCal feed voor inspecteur' })
   async getPersonalFeed(

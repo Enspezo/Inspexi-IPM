@@ -26,11 +26,7 @@ import {
   computeWeeklyMinutes,
   formatHours,
 } from '@/components/availability/format-availability';
-
-const ACTIVE_STATUS = {
-  actief: { label: 'Actief', classes: 'bg-green-100 text-green-700' },
-  inactief: { label: 'Inactief', classes: 'bg-gray-100 text-gray-500' },
-};
+import { ACTIVE_STATUS } from '@/lib/status';
 
 export default function AvailabilityTemplatesPage() {
   const { showToast } = useToast();
@@ -105,7 +101,7 @@ export default function AvailabilityTemplatesPage() {
       sortable: true,
       getFilterValue: (t) => String(t.isActive),
       render: (t) => (
-        <StatusBadge map={ACTIVE_STATUS} status={t.isActive ? 'actief' : 'inactief'} />
+        <StatusBadge map={ACTIVE_STATUS} status={t.isActive ? 'ACTIEF' : 'INACTIEF'} />
       ),
     },
     {

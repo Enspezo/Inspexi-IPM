@@ -5,7 +5,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { TaskStatus, TaskType, TaskEntityType, DocumentEntityType, Role } from '@/types';
 import { ActionMenu, Button, Card, ErrorBox, Input, Spinner, StatusBadge, Select, useConfirm, useToast } from '@/components/ui';
-import { formatDate } from '@/lib/format';
+import { formatDate, formatDateTimeLong } from '@/lib/format';
 import { ENTITY_TYPE_LABELS, TASK_STATUS, TASK_TYPE } from '@/lib/status';
 import { DetailPageLayout } from '@/components/layout/detail-page-layout';
 import { FavoriteStar } from '@/components/favorites/favorite-star';
@@ -305,7 +305,7 @@ export default function TaskDetailPage() {
             <div className="flex justify-between">
               <dt className="text-sm text-gray-500">Deadline</dt>
               <dd className={`text-sm ${isOverdue ? 'font-medium text-red-600' : 'text-gray-900'}`}>
-                {task.deadline ? formatDate(task.deadline) : '—'}
+                {formatDate(task.deadline)}
                 {isOverdue && ' (verlopen)'}
               </dd>
             </div>
@@ -393,7 +393,7 @@ export default function TaskDetailPage() {
       {/* Acties onderaan */}
       <div className="flex items-center justify-between border-t border-gray-200 pt-6">
         <p className="text-xs text-gray-400">
-          Aangemaakt op {new Date(task.createdAt).toLocaleString('nl-NL', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+          Aangemaakt op {formatDateTimeLong(task.createdAt)}
           {task.createdBy && ` door ${task.createdBy.firstName} ${task.createdBy.lastName}`}
         </p>
         {userCanWrite && (

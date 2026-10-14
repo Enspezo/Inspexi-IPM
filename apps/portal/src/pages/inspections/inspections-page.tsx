@@ -16,6 +16,7 @@ import { useFeatures } from '@/providers/feature-provider';
 import { useWindowTabs } from '@/providers/window-tabs';
 import { useInspectionPlans } from './hooks/use-inspections';
 import { CreateInspectionModal } from './components/create-inspection-modal';
+import { formatNumericDate } from '@/lib/format';
 
 const canWriteRoles = [Role.SUPERUSER, Role.ORG_ADMIN, Role.MANAGER, Role.BACKOFFICE, Role.WERKVOORBEREIDER];
 
@@ -97,13 +98,13 @@ export default function InspectionsPage() {
       sortable: true, sortKey: 'plannedDate', getFilterValue: (p) => p.plannedDate,
       render: (p) =>
         p.plannedDate
-          ? <span className="text-xs text-gray-500">{new Date(p.plannedDate).toLocaleDateString('nl-NL')}</span>
+          ? <span className="text-xs text-gray-500">{formatNumericDate(p.plannedDate)}</span>
           : <span className="text-gray-400">—</span>,
     },
     {
       key: 'createdAt', header: 'Aangemaakt', filterable: true, filterType: 'date',
       sortable: true, sortKey: 'createdAt', getFilterValue: (p) => p.createdAt,
-      render: (p) => <span className="text-xs text-gray-500">{new Date(p.createdAt).toLocaleDateString('nl-NL')}</span>,
+      render: (p) => <span className="text-xs text-gray-500">{formatNumericDate(p.createdAt)}</span>,
     },
     ...(hasPhaseFeature
       ? [{

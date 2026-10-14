@@ -11,7 +11,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Resend } from 'resend';
-import { escapeHtml } from '@/common';
+import { escapeHtml, formatShortDateNl } from '@/common';
 
 const WRAP_START =
   '<div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; color: #374151;">';
@@ -77,7 +77,7 @@ export class ClientRequestEmailService {
             ${row('Omschrijving', escapeHtml(description))}
             ${row(
               'Voorkeursdatum',
-              preferredDate ? preferredDate.toLocaleDateString('nl-NL') : null,
+              preferredDate ? formatShortDateNl(preferredDate) : null,
             )}
             ${row('Opdrachtgever', escapeHtml(contactName))}
             ${row('Ingediend door', escapeHtml(clientUserName))}

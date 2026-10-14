@@ -14,6 +14,7 @@ import { useEmailTemplates, useDeleteEmailTemplate } from './hooks/use-email-tem
 import { CreateEmailTemplateModal } from './components/create-email-template-modal';
 import { EMAIL_TYPE_LABELS } from './components/email-type-labels';
 import { getErrorMessage } from '@/lib/api-client';
+import { formatNumericDate } from '@/lib/format';
 
 export default function EmailTemplatesPage() {
   const navigate = useNavigate();
@@ -107,7 +108,7 @@ export default function EmailTemplatesPage() {
       getFilterValue: (t) => t.createdAt,
       render: (t) => (
         <span className="text-gray-500 text-xs">
-          {new Date(t.createdAt).toLocaleDateString('nl-NL')}
+          {formatNumericDate(t.createdAt)}
         </span>
       ),
     },

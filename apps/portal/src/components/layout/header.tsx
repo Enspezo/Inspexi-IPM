@@ -15,21 +15,7 @@ import { AssistantButton } from '@/components/ai-assistant';
 import { TaskStatus } from '@/types';
 import type { Notification } from '@/types';
 import { getNotificationRoute } from '@/lib/notifications';
-
-function formatRelativeTime(dateStr: string): string {
-  const now = new Date();
-  const date = new Date(dateStr);
-  const diffMs = now.getTime() - date.getTime();
-  const diffMin = Math.floor(diffMs / 60000);
-  const diffHour = Math.floor(diffMs / 3600000);
-  const diffDay = Math.floor(diffMs / 86400000);
-
-  if (diffMin < 1) return 'zojuist';
-  if (diffMin < 60) return `${diffMin} min geleden`;
-  if (diffHour < 24) return `${diffHour} uur geleden`;
-  if (diffDay < 7) return `${diffDay} dag${diffDay > 1 ? 'en' : ''} geleden`;
-  return date.toLocaleDateString('nl-NL');
-}
+import { formatRelativeTime } from '@/lib/format';
 
 export function Header() {
   const { user, logout } = useAuth();
@@ -81,19 +67,21 @@ export function Header() {
   };
 
   return (
-    <header className="flex h-16 items-center border-b border-gray-200 bg-white px-6">
-      {/* LEFT: global quick-create button — present on every view */}
-      <div className="flex w-48 flex-shrink-0 items-center">
+    <header className="flex h-16 items-center gap-3 border-b border-gray-200 bg-white px-4 md:px-6">
+      {/* LEFT: global quick-create button — present on every view.
+          Vaste breedte pas vanaf lg zodat links/rechts symmetrisch blijven
+          en de zoekbalk exact gecentreerd staat; daaronder krimpt hij mee. */}
+      <div className="flex min-w-0 flex-shrink-0 items-center lg:w-48">
         <QuickCreateButton />
       </div>
 
       {/* CENTER: Search box */}
-      <div className="flex flex-1 items-center justify-center">
+      <div className="flex min-w-0 flex-1 items-center justify-center">
         <SearchBox />
       </div>
 
       {/* RIGHT: actions */}
-      <div className="flex w-48 flex-shrink-0 items-center justify-end gap-2">
+      <div className="flex min-w-0 flex-shrink-0 items-center justify-end gap-2 lg:w-48">
         {/* Chat */}
         <AssistantButton />
         <ChatButton />
@@ -105,6 +93,7 @@ export function Header() {
               setIsNotifOpen(!isNotifOpen);
               setIsDropdownOpen(false);
             }}
+            aria-label="Notificaties"
             className="relative rounded-lg p-2 text-gray-400 transition-colors hover:bg-gray-50 hover:text-gray-600"
           >
             <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -209,14 +198,15 @@ export function Header() {
               setIsDropdownOpen(!isDropdownOpen);
               setIsNotifOpen(false);
             }}
+            aria-label="Gebruikersmenu"
             className="flex items-center gap-3 rounded-lg px-3 py-2 transition-colors hover:bg-gray-50"
           >
             <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary-100 text-sm font-medium text-primary-700">
               {user?.firstName?.[0]}
               {user?.lastName?.[0]}
             </div>
-            <div className="hidden text-left sm:block">
-              <p className="text-sm font-medium text-gray-700">
+            <div className="hidden text-left md:block">
+              <p className="max-w-[12rem] truncate text-sm font-medium text-gray-700">
                 {user?.firstName} {user?.lastName}
               </p>
             </div>

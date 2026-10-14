@@ -42,6 +42,7 @@ import { AssetsTab } from './components/assets-tab';
 import { DocumentsTab } from './components/documents-tab';
 import { AiReviewPanel } from './components/ai-review-panel';
 import { OnlineRepairSection } from './components/online-repair-section';
+import { formatNumericDate } from '@/lib/format';
 
 // Konva-zware tab apart laden: alleen wanneer de gebruiker hem opent.
 const FloorPlanTab = lazy(() =>
@@ -362,8 +363,8 @@ export default function InspectionDetailPage() {
                   {showPhase && (
                     <PhaseInfoField phase={plan.projectPhase} projectId={plan.projectId} />
                   )}
-                  <InfoField label="Geplande datum" value={plan.plannedDate ? new Date(plan.plannedDate).toLocaleDateString('nl-NL') : null} />
-                  <InfoField label="Deadline" value={plan.deadline ? new Date(plan.deadline).toLocaleDateString('nl-NL') : null} />
+                  <InfoField label="Geplande datum" value={formatNumericDate(plan.plannedDate)} />
+                  <InfoField label="Deadline" value={formatNumericDate(plan.deadline)} />
                   <InfoField label="Omschrijving" value={plan.description} />
                   <InfoField label="Notities" value={plan.notes} />
                 </dl>

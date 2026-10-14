@@ -134,6 +134,9 @@ const InspectorsPage = lazy(() => import('@/pages/inspectors/inspectors-page'));
 const InspectorDetailPage = lazy(() => import('@/pages/inspectors/inspector-detail-page'));
 const AvailabilityTemplatesPage = lazy(() => import('@/pages/organization/availability-templates-page'));
 const MyAvailabilityPage = lazy(() => import('@/pages/availability/my-availability-page'));
+const TimesheetsPage = lazy(() => import('@/pages/uren/timesheets-page'));
+const TimesheetDetailPage = lazy(() => import('@/pages/uren/timesheet-detail-page'));
+const TimeTrackingLivePage = lazy(() => import('@/pages/uren/live-page'));
 const ChecklistsPage = lazy(() => import('@/pages/checklists/checklists-page'));
 const ChecklistDetailPage = lazy(() => import('@/pages/checklists/checklist-detail-page'));
 const ChecklistItemsPage = lazy(() => import('@/pages/checklist-items/checklist-items-page'));
@@ -274,6 +277,15 @@ export default function App() {
             <Route element={<FeatureRoute feature="BASIS_UITVOERING" />}>
               <Route path="/projects" element={<ProjectsPage />} />
               <Route path="/projects/:id" element={<ProjectDetailPage />} />
+            </Route>
+
+            {/* URENREGISTRATIE — weekstaten + live overzicht (PRD-16). De routes
+                hangen op de API achter @RequiresFeature; dit is de UX-kant zodat
+                een deeplink zonder add-on niet op een leeg scherm strandt. */}
+            <Route element={<FeatureRoute feature="URENREGISTRATIE" />}>
+              <Route path="/timesheets" element={<TimesheetsPage />} />
+              <Route path="/timesheets/:id" element={<TimesheetDetailPage />} />
+              <Route path="/time-tracking/live" element={<TimeTrackingLivePage />} />
             </Route>
 
             {/* UITVOERING_COMPLEET — planning, werkbonnen */}

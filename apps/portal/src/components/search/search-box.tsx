@@ -99,8 +99,8 @@ export function SearchBox() {
   return (
     <div
       ref={containerRef}
-      className={`relative transition-all duration-200 ${
-        isFocused ? 'w-[512px]' : 'w-80'
+      className={`relative w-full max-w-full transition-all duration-200 ${
+        isFocused ? 'md:w-[512px]' : 'md:w-80'
       }`}
     >
       <div className="pointer-events-none absolute inset-y-0 left-3 flex items-center">

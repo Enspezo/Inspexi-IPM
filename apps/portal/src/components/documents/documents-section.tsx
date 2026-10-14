@@ -3,7 +3,7 @@ import { Button, Select, Spinner, TagPill, useConfirm, useToast } from '@/compon
 import { useDocuments, useDeleteDocument, useUpdateDocument } from '@/pages/documents/hooks/use-documents';
 import { useDocumentTagsCompact } from '@/pages/organization/hooks/use-document-tags';
 import { downloadFile } from '@/lib/download-file';
-import { formatFileSize } from '@/lib/format';
+import { formatFileSize, formatShortDate } from '@/lib/format';
 import { UploadDocumentModal } from './upload-document-modal';
 import { DocumentPreviewModal } from './document-preview-modal';
 import type { DocumentEntityType, CrmDocument } from '@/types';
@@ -118,11 +118,7 @@ function DocumentRow({
           </span>
           <span>&middot;</span>
           <span>
-            {new Date(doc.createdAt).toLocaleDateString('nl-NL', {
-              day: 'numeric',
-              month: 'short',
-              year: 'numeric',
-            })}
+            {formatShortDate(doc.createdAt)}
           </span>
           {showSharedWithClient && doc.isSharedWithClient && (
             <>
@@ -152,7 +148,7 @@ function DocumentRow({
             title={doc.isSharedWithClient ? 'Verberg voor opdrachtgever' : 'Deel met opdrachtgever'}
             className={`rounded p-1.5 transition-colors ${
               doc.isSharedWithClient
-                ? 'text-blue-600 hover:bg-blue-50'
+                ? 'text-primary-600 hover:bg-primary-50'
                 : 'text-gray-400 hover:bg-gray-100 hover:text-gray-600'
             }`}
           >

@@ -73,6 +73,14 @@ export class PushChangesGroupDto {
   @ApiPropertyOptional({ type: [EntityChangeDto] })
   @IsOptional() @IsArray() @ValidateNested({ each: true }) @Type(() => EntityChangeDto)
   presence?: EntityChangeDto[];
+
+  // Additief (PRD-16 fase 2): offline gebufferde urenregels. Eigenaar komt uit
+  // de JWT; client-UUID = server-id + clientId (idempotent). Alleen afgeronde
+  // regels — lopende timers zijn device-lokale staat. Verwerkt via
+  // TimeEntriesService.applySyncChange, niet via de generieke mutator.
+  @ApiPropertyOptional({ type: [EntityChangeDto] })
+  @IsOptional() @IsArray() @ValidateNested({ each: true }) @Type(() => EntityChangeDto)
+  timeEntries?: EntityChangeDto[];
 }
 
 export class PushDto {

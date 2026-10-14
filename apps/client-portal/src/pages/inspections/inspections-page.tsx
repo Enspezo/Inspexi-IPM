@@ -30,6 +30,7 @@ export default function InspectionsPage() {
 
       <div className="max-w-sm">
         <Input
+          aria-label="Zoeken"
           placeholder="Zoeken op locatie, projectnaam…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}

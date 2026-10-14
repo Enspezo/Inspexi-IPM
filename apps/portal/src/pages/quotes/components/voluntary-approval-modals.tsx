@@ -3,16 +3,9 @@ import { Modal, Button, Select, useToast } from '@/components/ui';
 import { getErrorMessage } from '@/lib/api-client';
 import { useAuth } from '@/providers/auth-provider';
 import { Role } from '@/types';
+import { getRoleLabel } from '@/lib/roles';
 import { useSelectableUsers } from '@/pages/users/hooks/use-users';
 import { useRequestTeamApproval, useRequestPersonApproval } from '../hooks/use-quotes';
-
-const ROLE_LABELS: Record<string, string> = {
-  [Role.ORG_ADMIN]: 'Org Admin',
-  [Role.MANAGER]: 'Manager',
-  [Role.BACKOFFICE]: 'Backoffice',
-  [Role.WERKVOORBEREIDER]: 'Werkvoorbereider',
-  [Role.INSPECTEUR]: 'Inspecteur',
-};
 
 interface BaseProps {
   quoteId: string;
@@ -65,13 +58,13 @@ export function RequestTeamApprovalModal({ quoteId, quoteNumber, isOpen, onClose
         {needsChoice ? (
           <Select
             label="Team / rol"
-            options={ownRoles.map((r) => ({ value: r, label: ROLE_LABELS[r] ?? r }))}
+            options={ownRoles.map((r) => ({ value: r, label: getRoleLabel(r) }))}
             value={role}
             onChange={(e) => setRole(e.target.value)}
           />
         ) : (
           <p className="text-sm text-gray-500">
-            Verzoek aan team: <strong>{ROLE_LABELS[ownRoles[0]] ?? ownRoles[0] ?? '—'}</strong>
+            Verzoek aan team: <strong>{getRoleLabel(ownRoles[0])}</strong>
           </p>
         )}
         <div>

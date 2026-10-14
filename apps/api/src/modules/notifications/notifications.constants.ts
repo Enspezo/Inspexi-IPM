@@ -26,7 +26,8 @@ export type NotificationModel =
   | 'MEETMIDDELEN'
   | 'CHAT'
   | 'SUPPORT'
-  | 'BESCHIKBAARHEID';
+  | 'BESCHIKBAARHEID'
+  | 'UREN';
 
 export const NOTIFICATION_MODEL_KEYS: NotificationModel[] = [
   'OFFERTES',
@@ -42,6 +43,7 @@ export const NOTIFICATION_MODEL_KEYS: NotificationModel[] = [
   'CHAT',
   'SUPPORT',
   'BESCHIKBAARHEID',
+  'UREN',
 ];
 
 export const NOTIFICATION_MODEL_TYPES: Record<
@@ -117,6 +119,13 @@ export const NOTIFICATION_MODEL_TYPES: Record<
   BESCHIKBAARHEID: [
     NotificationType.BESCHIKBAARHEID_GEWIJZIGD_DOOR_INSPECTEUR,
     NotificationType.BESCHIKBAARHEID_GEWIJZIGD_DOOR_MANAGER,
+  ],
+  // Urenregistratie (PRD-16)
+  UREN: [
+    NotificationType.WEEKSTAAT_INGEDIEND,
+    NotificationType.WEEKSTAAT_GOEDGEKEURD,
+    NotificationType.WEEKSTAAT_AFGEWEZEN,
+    NotificationType.TIMER_NACHTWAKER,
   ],
 };
 

@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { User, QuoteStatus, NotificationType } from '@prisma/client';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '@/prisma';
@@ -12,6 +12,8 @@ import { findQuoteForUser, getPublicUrl } from './quotes.helpers';
 
 @Injectable()
 export class QuoteQuestionsService {
+  private readonly logger = new Logger(QuoteQuestionsService.name);
+
   constructor(
     private prisma: PrismaService,
     private notifications: NotificationsService,
@@ -50,7 +52,7 @@ export class QuoteQuestionsService {
     if (contactEmail && quote.publicToken) {
       const org = await this.prisma.organization.findUnique({ where: { id: quote.orgId }, select: { name: true, senderName: true, senderEmail: true } });
       const quoteUrl = getPublicUrl(this.config, `/offerte/${quote.publicToken}`);
-      this.emailService.sendQuoteAnswerEmail({ to: contactEmail, quoteNumber: quote.quoteNumber, answer: dto.message, quoteUrl, orgName: org?.name ?? 'InspeXi', senderName: org?.senderName, senderEmail: org?.senderEmail, orgId: quote.orgId }).catch(() => {});
+      this.emailService.sendQuoteAnswerEmail({ to: contactEmail, quoteNumber: quote.quoteNumber, answer: dto.message, quoteUrl, orgName: org?.name ?? 'InspeXi', senderName: org?.senderName, senderEmail: org?.senderEmail, orgId: quote.orgId }).catch((err) => this.logger.error('Versturen antwoord-e-mail mislukt', err));
     }
     return answer;
   }

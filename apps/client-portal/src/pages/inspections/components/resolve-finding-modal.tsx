@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { Modal, Button, ErrorBox, PhotoUploader } from '@/components/ui';
 import { useResolveFinding } from '../hooks/use-findings';
 import { getErrorMessage } from '@/lib/api-client';
@@ -13,6 +13,8 @@ interface ResolveFindingModalProps {
 export function ResolveFindingModal({ finding, onClose, onSuccess }: ResolveFindingModalProps) {
   const resolve = useResolveFinding(finding.id);
   const [description, setDescription] = useState('');
+  const descriptionId = useId();
+  const photosId = useId();
   const [files, setFiles] = useState<File[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
@@ -60,8 +62,11 @@ export function ResolveFindingModal({ finding, onClose, onSuccess }: ResolveFind
           </div>
 
           <div>
-            <label className="mb-1.5 block text-sm font-medium text-gray-700">Toelichting (optioneel)</label>
+            <label htmlFor={descriptionId} className="mb-1.5 block text-sm font-medium text-gray-700">
+              Toelichting (optioneel)
+            </label>
             <textarea
+              id={descriptionId}
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               rows={3}
@@ -71,8 +76,10 @@ export function ResolveFindingModal({ finding, onClose, onSuccess }: ResolveFind
           </div>
 
           <div>
-            <label className="mb-1.5 block text-sm font-medium text-gray-700">Foto's (optioneel)</label>
-            <PhotoUploader files={files} onChange={setFiles} maxFiles={5} maxSizeMb={5} />
+            <label htmlFor={photosId} className="mb-1.5 block text-sm font-medium text-gray-700">
+              Foto's (optioneel)
+            </label>
+            <PhotoUploader id={photosId} files={files} onChange={setFiles} maxFiles={5} maxSizeMb={5} />
           </div>
 
           <ErrorBox>{error}</ErrorBox>

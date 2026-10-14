@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { useId, useState, type ReactNode } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { clsx } from 'clsx';
 import { useClientAuth } from '@/providers/client-auth-provider';
@@ -54,12 +54,15 @@ export function ClientLayout() {
   const { orgBranding } = useTenant();
   const navigate = useNavigate();
   const [menuOpen, setMenuOpen] = useState(false);
+  const mobileMenuId = useId();
 
   const orgName = orgBranding?.name ?? 'Klantportaal';
 
-  const handleLogout = () => {
-    logout();
-    navigate('/login');
+  const handleLogout = async () => {
+    // Wait for the server-side token revocation + local clearTokens before leaving the
+    // protected area; navigating first let ProtectedRoute/apiClient bounce on stale state.
+    await logout();
+    navigate('/login', { replace: true });
   };
 
   const navLinkClass = ({ isActive }: { isActive: boolean }) =>
@@ -103,6 +106,7 @@ export function ClientLayout() {
               </span>
             )}
             <button
+              type="button"
               onClick={handleLogout}
               className="hidden items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 sm:inline-flex"
             >
@@ -112,9 +116,12 @@ export function ClientLayout() {
               Uitloggen
             </button>
             <button
+              type="button"
               onClick={() => setMenuOpen((v) => !v)}
               className="rounded-lg p-2 text-gray-600 hover:bg-gray-100 md:hidden"
-              aria-label="Menu"
+              aria-label={menuOpen ? 'Menu sluiten' : 'Menu openen'}
+              aria-expanded={menuOpen}
+              aria-controls={mobileMenuId}
             >
               <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 {menuOpen ? (
@@ -128,7 +135,7 @@ export function ClientLayout() {
         </div>
 
         {menuOpen && (
-          <div className="border-t border-gray-200 px-4 py-3 md:hidden">
+          <div id={mobileMenuId} className="border-t border-gray-200 px-4 py-3 md:hidden">
             <nav className="flex flex-col gap-1">
               {NAV_ITEMS.map((item) => (
                 <NavLink
@@ -149,6 +156,7 @@ export function ClientLayout() {
                 </p>
               )}
               <button
+                type="button"
                 onClick={handleLogout}
                 className="mt-2 inline-flex w-full items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-danger-600 hover:bg-danger-50"
               >

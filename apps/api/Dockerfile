@@ -77,7 +77,10 @@ RUN apt-get update && \
 ENV NODE_ENV=production \
     PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium \
     API_PORT=3000 \
-    UPLOAD_DIR=/app/uploads
+    UPLOAD_DIR=/app/uploads \
+    # Proces-tijdzone: vangnet voor date-formatting zonder expliciete timeZone
+    # (de gedeelde helpers in common/utils/format-date.ts geven hem wél door).
+    TZ=Europe/Amsterdam
 
 WORKDIR /app
 COPY --from=build --chown=node:node /deploy /app

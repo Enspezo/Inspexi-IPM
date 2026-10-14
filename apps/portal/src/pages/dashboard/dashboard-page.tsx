@@ -1,3 +1,4 @@
+import { lazy, Suspense } from 'react';
 import { Link } from 'react-router-dom';
 import type { ReactNode } from 'react';
 import { useAuth } from '@/providers/auth-provider';
@@ -15,6 +16,15 @@ import {
   getEntityLink,
   getEntityDisplayName,
 } from '@/lib/audit-entity-helpers';
+import { Role } from '@/types';
+// Lazy: de timers-widget trekt de inspecteur-kaart (Leaflet) mee; die hoort
+// niet in de dashboard-chunk voor gebruikers zonder urenregistratie.
+const ActiveTimersWidget = lazy(() =>
+  import('@/pages/uren/components/active-timers-widget').then((m) => ({
+    default: m.ActiveTimersWidget,
+  })),
+);
+import { formatRelativeTime } from '@/lib/format';
 
 // B-001: statische tegel-definities (label/icoon/kleur); de waarden komen
 // runtime uit /portal/stats/staff-dashboard resp. de al opgehaalde taken.
@@ -71,23 +81,6 @@ const STAT_TILES: StatTileDef[] = [
     bg: 'bg-purple-50',
   },
 ];
-
-function formatRelativeTime(dateStr: string): string {
-  const now = Date.now();
-  const diff = now - new Date(dateStr).getTime();
-  const minutes = Math.floor(diff / 60000);
-  if (minutes < 1) return 'Zojuist';
-  if (minutes < 60) return `${minutes} min geleden`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours} uur geleden`;
-  const days = Math.floor(hours / 24);
-  if (days < 7) return `${days} ${days === 1 ? 'dag' : 'dagen'} geleden`;
-  return new Date(dateStr).toLocaleDateString('nl-NL', {
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-  });
-}
 
 function ActivityRow({ entry }: { entry: AuditLogEntry }) {
   const link = getEntityLink(entry.entityType, entry.entityId, entry.snapshot);
@@ -236,6 +229,20 @@ export default function DashboardPage() {
 
   const hasActivity = activityData && activityData.data.length > 0;
 
+  // PRD-16 fase 4: "Nu actief"-widget — zelfde gating als het Uren-menu
+  // (URENREGISTRATIE + plannende rol; het endpoint zelf is CRM_ROLES).
+  const timerWidgetRoles = [
+    Role.SUPERUSER,
+    Role.ORG_ADMIN,
+    Role.MANAGER,
+    Role.BACKOFFICE,
+    Role.WERKVOORBEREIDER,
+  ];
+  const showTimersWidget =
+    hasFeature('URENREGISTRATIE') &&
+    !!user &&
+    user.roles.some((r) => timerWidgetRoles.includes(r));
+
   return (
     <DetailPageLayout>
       <div className="space-y-6">
@@ -278,6 +285,12 @@ export default function DashboardPage() {
         </div>
 
         {/* Bottom sections */}
+        {showTimersWidget && (
+          <Suspense fallback={null}>
+            <ActiveTimersWidget />
+          </Suspense>
+        )}
+
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
           {/* Recente activiteit */}
           <Card title="Recente activiteit">

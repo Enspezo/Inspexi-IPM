@@ -1,4 +1,4 @@
-import { formatFileSize } from '@/lib/format';
+import { formatFileSize, formatDateTime } from '@/lib/format';
 import type { QuoteTemplateDocxRevision } from '@/types';
 
 // ── DOCX: Revisies tab ─────────────────────────────────
@@ -35,13 +35,7 @@ export function RevisionsTab({
                       <span> · {rev.uploadedBy.firstName} {rev.uploadedBy.lastName}</span>
                     )}
                     {' · '}
-                    {new Date(rev.createdAt).toLocaleDateString('nl-NL', {
-                      day: 'numeric',
-                      month: 'short',
-                      year: 'numeric',
-                      hour: '2-digit',
-                      minute: '2-digit',
-                    })}
+                    {formatDateTime(rev.createdAt)}
                   </p>
                 </div>
               </div>

@@ -7,7 +7,18 @@
 // Het refresh-token is stateful (DB-gehasht, roteerbaar/intrekbaar) en wordt als httpOnly,
 // secure, sameSite-cookie op pad /api/v1/client/auth gezet — nooit in de response-body.
 
-import { Controller, Post, Get, Body, Req, Res, UseGuards, HttpCode, HttpStatus } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Get,
+  Body,
+  Req,
+  Res,
+  UseGuards,
+  HttpCode,
+  HttpStatus,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Request, Response } from 'express';
 import { RequiresFeature } from '@/common/decorators/requires-feature.decorator';
@@ -130,7 +141,10 @@ export class ClientAuthController {
   ) {
     const refreshToken = req.cookies?.[CLIENT_REFRESH_COOKIE];
     if (!refreshToken) {
-      return { success: false, message: 'Geen refresh-token' };
+      // F8 (spiegelt de staf-realm, B-153): een ontbrekende cookie is een
+      // niet-geauthenticeerd verzoek en hoort een echte 401 te geven, niet een
+      // 200 met `success:false` — het klantportaal stuurt op de HTTP-status.
+      throw new UnauthorizedException('Geen refresh-token');
     }
     const result = await this.service.refresh(refreshToken, orgId, this.sessionMeta(req));
     return { success: true, data: this.setRefreshCookie(res, result) };

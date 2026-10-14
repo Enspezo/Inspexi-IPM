@@ -677,6 +677,44 @@ describe('UsersService', () => {
         include: { organization: true },
       });
     });
+    it('does not null home address / default approver when only firstName is given (partial PATCH)', async () => {
+      // After ValidationPipe every declared DTO property exists on the instance (ES2022
+      // class fields), so an `'x' in dto` guard would wrongly write `null` for untouched fields.
+      const updateDto = Object.assign(
+        Object.create({}),
+        {
+          firstName: 'Alleen',
+          homeStreet: undefined,
+          homeHouseNumber: undefined,
+          homePostalCode: undefined,
+          homeCity: undefined,
+          homeLat: undefined,
+          homeLng: undefined,
+          defaultApprovalPersonId: undefined,
+        },
+      );
+      mockPrismaService.user.update.mockResolvedValue({ ...mockUser, firstName: 'Alleen' });
+
+      await service.updateProfile('user-1', updateDto);
+
+      const call = mockPrismaService.user.update.mock.calls[0][0];
+      expect(call.data).toEqual({ firstName: 'Alleen' });
+      expect(call.data).not.toHaveProperty('homeStreet');
+      expect(call.data).not.toHaveProperty('defaultApprovalPersonId');
+    });
+
+    it('clears home address / default approver when explicitly set to null', async () => {
+      mockPrismaService.user.update.mockResolvedValue({ ...mockUser });
+
+      await service.updateProfile('user-1', {
+        homeStreet: null,
+        homeLat: null,
+        defaultApprovalPersonId: null,
+      });
+
+      const call = mockPrismaService.user.update.mock.calls[0][0];
+      expect(call.data).toEqual({ homeStreet: null, homeLat: null, defaultApprovalPersonId: null });
+    });
   });
 
   describe('adminUpdateUser() — dienstvorm (PRD-12)', () => {

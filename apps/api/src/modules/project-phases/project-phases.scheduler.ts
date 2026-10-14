@@ -5,6 +5,7 @@ import { PrismaService } from '@/prisma';
 import { NotificationsService } from '@/modules/notifications/notifications.service';
 import { EntitlementsService } from '@/modules/entitlements/entitlements.service';
 import { PROJECT_FASEN_FEATURE } from '@/common';
+import { isSchedulerEnabled, SCHEDULER_ENABLED_ENV } from '@/common/config/scheduler-enabled';
 
 type MilestoneStage = 'upcoming' | 'overdue';
 
@@ -32,9 +33,21 @@ export class ProjectPhasesScheduler {
 
   @Cron(CronExpression.EVERY_DAY_AT_6AM)
   async checkDueMilestones(): Promise<void> {
-    this.logger.log('Controle op milestone-reminders...');
-    const count = await this.processDueMilestones(new Date());
-    this.logger.log(`Milestone-controle klaar; ${count} notificatie(s) verstuurd.`);
+    if (!isSchedulerEnabled()) {
+      this.logger.debug(`Milestone-controle overgeslagen: uitgeschakeld via ${SCHEDULER_ENABLED_ENV}.`);
+      return;
+    }
+    // F5: de cron mag nooit een unhandled rejection produceren.
+    try {
+      this.logger.log('Controle op milestone-reminders...');
+      const count = await this.processDueMilestones(new Date());
+      this.logger.log(`Milestone-controle klaar; ${count} notificatie(s) verstuurd.`);
+    } catch (err) {
+      this.logger.error(
+        'Milestone-controle-cron faalde onverwacht.',
+        err instanceof Error ? (err.stack ?? err.message) : String(err),
+      );
+    }
   }
 
   /**

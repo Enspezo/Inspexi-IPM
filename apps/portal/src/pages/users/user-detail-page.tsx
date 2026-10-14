@@ -6,7 +6,7 @@ import { z } from 'zod';
 import { Role, TaskEntityType, DocumentEntityType, TaskStatus } from '@/types';
 import type { User } from '@/types';
 import { ActionMenu, Button, Card, Checkbox, ErrorBox, InfoField, Input, Spinner, Badge, Tabs, useToast } from '@/components/ui';
-import { formatDate } from '@/lib/format';
+import { formatDate, formatDateTimeLong } from '@/lib/format';
 import { DetailPageLayout, SidebarSection } from '@/components/layout/detail-page-layout';
 import { AuditHistory } from '@/components/audit-history/audit-history';
 import { useAuth } from '@/providers/auth-provider';
@@ -542,7 +542,7 @@ export default function UserDetailPage() {
                   />
                   <InfoField
                     label="E-mail geverifieerd"
-                    value={userRecord.emailVerifiedAt ? formatDate(userRecord.emailVerifiedAt) : null}
+                    value={formatDate(userRecord.emailVerifiedAt)}
                   />
                 </dl>
               )}
@@ -586,7 +586,7 @@ export default function UserDetailPage() {
 
             <div className="flex items-center justify-between border-t border-gray-200 pt-6">
               <p className="text-xs text-gray-400">
-                Aangemaakt op {new Date(userRecord.createdAt).toLocaleString('nl-NL', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                Aangemaakt op {formatDateTimeLong(userRecord.createdAt)}
               </p>
               {userCanWrite && !isEditing && (
                 <Button variant="secondary" onClick={() => setIsEditing(true)}>

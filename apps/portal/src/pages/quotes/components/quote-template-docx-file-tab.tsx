@@ -126,7 +126,7 @@ export function DocxFileTab({
 
             {/* Preview */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Preview</label>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Voorbeeld</label>
               <ErrorBoundary
                 key={docxPreviewVersion}
                 fallback={() => (

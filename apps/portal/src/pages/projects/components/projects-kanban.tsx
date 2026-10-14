@@ -10,6 +10,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useApiMutation } from '@/hooks/use-api-mutation';
 import { apiClient } from '@/lib/api-client';
 import { projectKeys, projectsAllKeys } from '@/lib/query-keys';
+import { formatNumericDate } from '@/lib/format';
 
 // ─── Config ────────────────────────────────────────────────────────────────
 
@@ -126,9 +127,7 @@ function KanbanCard({ project, onDragStart }: KanbanCardProps) {
       {/* Footer: startdatum + projectmanager */}
       <div className="flex items-center justify-between gap-2">
         <span className="text-xs text-gray-500">
-          {project.startDate
-            ? new Date(project.startDate).toLocaleDateString('nl-NL')
-            : '—'}
+          {formatNumericDate(project.startDate)}
         </span>
 
         {project.projectManager ? (

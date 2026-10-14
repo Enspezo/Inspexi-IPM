@@ -41,6 +41,7 @@ export default function KennisbankPage({ publicMode = false }: Props) {
 
       <div className="max-w-sm">
         <Input
+          aria-label="Zoeken"
           placeholder="Zoeken in de kennisbank…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}

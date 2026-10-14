@@ -22,3 +22,21 @@ export function addressLine(a: AddressFields | null | undefined): string {
   const line = [street, city].filter(Boolean).join(', ');
   return line || '—';
 }
+
+/**
+ * `YYYY-MM-DD` for an `<input type="date">` built from LOCAL date parts. `toISOString()`
+ * would use UTC and shift the day around midnight (e.g. 23:30 CEST → "yesterday").
+ */
+export function toLocalDateInputValue(date: Date): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+/** Local "tomorrow" as `YYYY-MM-DD` (min-value for preferred-date inputs). */
+export function tomorrowInputValue(now: Date = new Date()): string {
+  const d = new Date(now);
+  d.setDate(d.getDate() + 1);
+  return toLocalDateInputValue(d);
+}

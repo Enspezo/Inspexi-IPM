@@ -3,6 +3,7 @@ import { Cron, CronExpression } from '@nestjs/schedule';
 import { QuoteStatus, NotificationType } from '@prisma/client';
 import { PrismaService } from '@/prisma';
 import { NotificationsService } from '@/modules/notifications/notifications.service';
+import { isSchedulerEnabled, SCHEDULER_ENABLED_ENV } from '@/common/config/scheduler-enabled';
 
 @Injectable()
 export class QuoteSchedulerService {
@@ -20,6 +21,21 @@ export class QuoteSchedulerService {
    */
   @Cron(CronExpression.EVERY_DAY_AT_2AM)
   async expireOverdueQuotes(): Promise<void> {
+    if (!isSchedulerEnabled()) {
+      this.logger.debug(`Quote expiry check skipped: disabled via ${SCHEDULER_ENABLED_ENV}.`);
+      return;
+    }
+    // F5: a cron must never produce an unhandled rejection (a failing findMany
+    // would otherwise surface as a process-level error).
+    try {
+      await this.runExpiry();
+    } catch (err) {
+      this.logger.error('Quote expiry cron failed unexpectedly.', this.stack(err));
+    }
+  }
+
+  /** Core logic; separated so the cron wrapper can guard it. */
+  private async runExpiry(): Promise<void> {
     this.logger.log('Running quote expiry check...');
 
     const now = new Date();
@@ -67,5 +83,9 @@ export class QuoteSchedulerService {
     }
 
     this.logger.log(`Expired ${expiredQuotes.length} quote(s).`);
+  }
+
+  private stack(err: unknown): string {
+    return err instanceof Error ? (err.stack ?? err.message) : String(err);
   }
 }

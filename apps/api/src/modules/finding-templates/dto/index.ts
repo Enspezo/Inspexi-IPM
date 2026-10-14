@@ -4,6 +4,5 @@ export { QueryFindingTemplatesDto } from './query-finding-templates.dto';
 export {
   ImportTemplateDto,
   ImportFindingTemplatesDto,
-  ExportFindingTemplatesDto,
   FindingTemplateExport,
 } from './import-export.dto';

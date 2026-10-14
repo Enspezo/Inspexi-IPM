@@ -14,7 +14,7 @@ import {
   Input,
   Select,
 } from '@/components/ui';
-import { formatCurrency } from '@/lib/format';
+import { formatCurrency, formatNumericDate } from '@/lib/format';
 import { QUOTE_STATUS } from '@/lib/status';
 import { DetailPageLayout } from '@/components/layout/detail-page-layout';
 import { PageHeader } from '@/components/layout/page-header';
@@ -214,9 +214,7 @@ export default function QuotesPage() {
       getFilterValue: (quote) => quote.validUntil,
       render: (quote) => (
         <span className="text-gray-500 text-xs">
-          {quote.validUntil
-            ? new Date(quote.validUntil).toLocaleDateString('nl-NL')
-            : '\u2014'}
+          {formatNumericDate(quote.validUntil)}
         </span>
       ),
     },
@@ -230,7 +228,7 @@ export default function QuotesPage() {
       getFilterValue: (quote) => quote.createdAt,
       render: (quote) => (
         <span className="text-gray-500 text-xs">
-          {new Date(quote.createdAt).toLocaleDateString('nl-NL')}
+          {formatNumericDate(quote.createdAt)}
         </span>
       ),
     },

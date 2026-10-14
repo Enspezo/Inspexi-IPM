@@ -10,7 +10,7 @@ import {
   ProjectStatus,
 } from '@/types';
 import { useConfirm } from '@/components/ui';
-import { ActionMenu, Button, Spinner, StatusBadge, Modal, Tabs } from '@/components/ui';
+import { ActionMenu, Spinner, StatusBadge, Tabs } from '@/components/ui';
 import { PROJECT_STATUS } from '@/lib/status';
 import { DetailPageLayout, SidebarSection } from '@/components/layout/detail-page-layout';
 import { FavoriteStar } from '@/components/favorites/favorite-star';
@@ -44,9 +44,11 @@ import { ProjectPhasesTab } from './components/project-phases-tab';
 import { useProjectPhases } from './hooks/use-project-phases';
 import { LinkedEntitiesTab } from './components/project-linked-entities-tab';
 import { FollowersTab } from './components/project-followers-tab';
+import { ProjectHoursTab } from './components/project-hours-tab';
 import { AddFollowerModal } from './components/add-follower-modal';
 import { getErrorMessage } from '@/lib/api-client';
 import { useUsers } from '@/pages/users/hooks/use-users';
+import { formatDate, formatNumericDate } from '@/lib/format';
 
 // ─── Constants ─────────────────────────────────────────────
 
@@ -56,6 +58,7 @@ type Tab =
   | 'aanvragen'
   | 'offertes'
   | 'planning'
+  | 'uren'
   | 'volgers';
 
 const canWrite = [
@@ -75,6 +78,8 @@ export default function ProjectDetailPage() {
   const { hasFeature } = useFeatures();
   // PRD-12 §Fase E: projectfasen zitten achter de PROJECT_FASEN-entitlement.
   const hasPhaseFeature = hasFeature('PROJECT_FASEN');
+  // PRD-16: projecturen-tab achter de URENREGISTRATIE-entitlement.
+  const hasHoursFeature = hasFeature('URENREGISTRATIE');
   const { showToast } = useToast();
   const confirm = useConfirm();
   const [searchParams] = useSearchParams();
@@ -87,16 +92,6 @@ export default function ProjectDetailPage() {
   >(null);
   const [isTaskOpen, setIsTaskOpen] = useState(false);
   const [addFollowerOpen, setAddFollowerOpen] = useState(false);
-  const [confirmDelete, setConfirmDelete] = useState(false);
-  const [confirmUnlink, setConfirmUnlink] = useState<{
-    entityType: 'requests' | 'quotes' | 'planning';
-    entityId: string;
-    label: string;
-  } | null>(null);
-  const [confirmRemoveFollower, setConfirmRemoveFollower] = useState<{
-    followerId: string;
-    name: string;
-  } | null>(null);
 
   const { data: project, isLoading, error } = useProject(id!);
   const updateMutation = useUpdateProject(id!);
@@ -157,6 +152,8 @@ export default function ProjectDetailPage() {
     { key: 'aanvragen', label: 'Aanvragen', count: requests?.length },
     { key: 'offertes', label: 'Offertes', count: quotes?.length },
     { key: 'planning', label: 'Planning', count: planning?.length },
+    // Uren-tab alleen bij URENREGISTRATIE (PRD-16).
+    ...(hasHoursFeature ? [{ key: 'uren' as Tab, label: 'Uren' }] : []),
     { key: 'volgers', label: 'Volgers', count: followers?.length },
   ];
 
@@ -188,12 +185,18 @@ export default function ProjectDetailPage() {
     entityId: string,
     label: string,
   ) => {
-    setConfirmUnlink({ entityType, entityId, label });
-  };
-
-  const confirmUnlinkAction = async () => {
-    if (!confirmUnlink) return;
-    const { entityType, entityId } = confirmUnlink;
+    const ok = await confirm({
+      title: 'Ontkoppelen bevestigen',
+      message: (
+        <>
+          Weet je zeker dat je <span className="font-medium">{label}</span> wilt
+          ontkoppelen van dit project?
+        </>
+      ),
+      confirmLabel: 'Ontkoppelen',
+      variant: 'danger',
+    });
+    if (!ok) return;
     const payload: Record<string, string[]> = {};
     if (entityType === 'requests') payload.requestIds = [entityId];
     if (entityType === 'quotes') payload.quoteIds = [entityId];
@@ -203,28 +206,39 @@ export default function ProjectDetailPage() {
       showToast('Ontkoppeld', 'success');
     } catch {
       /* foutmelding wordt centraal getoond via useApiMutation */
-    } finally {
-      setConfirmUnlink(null);
     }
   };
 
-  const handleRemoveFollower = (followerId: string, name: string) => {
-    setConfirmRemoveFollower({ followerId, name });
-  };
-
-  const confirmRemoveFollowerAction = async () => {
-    if (!confirmRemoveFollower) return;
+  const handleRemoveFollower = async (followerId: string, name: string) => {
+    const ok = await confirm({
+      title: 'Volger verwijderen',
+      message: (
+        <>
+          Weet je zeker dat je <span className="font-medium">{name}</span> als
+          volger wilt verwijderen?
+        </>
+      ),
+      confirmLabel: 'Verwijderen',
+      variant: 'danger',
+    });
+    if (!ok) return;
     try {
-      await removeFollowerMutation.mutateAsync(confirmRemoveFollower.followerId);
+      await removeFollowerMutation.mutateAsync(followerId);
       showToast('Volger verwijderd', 'success');
     } catch {
       /* foutmelding wordt centraal getoond via useApiMutation */
-    } finally {
-      setConfirmRemoveFollower(null);
     }
   };
 
   const handleDelete = async () => {
+    const ok = await confirm({
+      title: 'Project verwijderen',
+      message:
+        'Weet je zeker dat je dit project wilt verwijderen? Dit kan niet ongedaan worden gemaakt.',
+      confirmLabel: 'Verwijderen',
+      variant: 'danger',
+    });
+    if (!ok) return;
     try {
       await deleteMutation.mutateAsync();
       showToast('Project verwijderd', 'success');
@@ -284,7 +298,7 @@ export default function ProjectDetailPage() {
                         </Link>
                         {task.deadline && (
                           <p className="text-xs text-gray-400">
-                            {new Date(task.deadline).toLocaleDateString('nl-NL', { day: 'numeric', month: 'long', year: 'numeric' })}
+                            {formatDate(task.deadline)}
                           </p>
                         )}
                       </div>
@@ -332,9 +346,9 @@ export default function ProjectDetailPage() {
               </div>
               <div className="flex items-center gap-3">
                 <FavoriteStar entityType="Project" entityId={project.id} />
-                <h1 className="text-2xl font-bold text-gray-900">
+                <h2 className="text-2xl font-bold text-gray-900">
                   {project.projectNumber}
-                </h1>
+                </h2>
                 <StatusBadge status={project.status} map={PROJECT_STATUS} />
               </div>
               <p className="mt-1 text-gray-600">{project.title}</p>
@@ -401,7 +415,7 @@ export default function ProjectDetailPage() {
     }
               }}
               isUpdating={updateMutation.isPending}
-              onDelete={() => setConfirmDelete(true)}
+              onDelete={handleDelete}
             />
           )}
 
@@ -457,10 +471,15 @@ export default function ProjectDetailPage() {
               getLabel={(item) => item.productName}
               getSubLabel={(item) =>
                 item.scheduledDate
-                  ? new Date(item.scheduledDate).toLocaleDateString('nl-NL')
+                  ? formatNumericDate(item.scheduledDate)
                   : 'Nog niet gepland'
               }
             />
+          )}
+
+          {/* Tab: Uren (PRD-16) */}
+          {activeTab === 'uren' && hasHoursFeature && (
+            <ProjectHoursTab projectId={project.id} />
           )}
 
           {/* Tab: Volgers */}
@@ -516,90 +535,6 @@ export default function ProjectDetailPage() {
         />
       )}
 
-      {/* Confirm delete */}
-      {confirmDelete && (
-        <Modal
-          isOpen
-          onClose={() => setConfirmDelete(false)}
-          title="Project verwijderen"
-        >
-          <p className="text-sm text-gray-600">
-            Weet je zeker dat je dit project wilt verwijderen? Dit kan niet
-            ongedaan worden gemaakt.
-          </p>
-          <div className="mt-4 flex justify-end gap-3">
-            <Button
-              variant="secondary"
-              onClick={() => setConfirmDelete(false)}
-            >
-              Annuleren
-            </Button>
-            <Button
-              variant="danger"
-              onClick={handleDelete}
-              isLoading={deleteMutation.isPending}
-            >
-              Verwijderen
-            </Button>
-          </div>
-        </Modal>
-      )}
-
-      {/* Confirm unlink */}
-      {confirmUnlink && (
-        <Modal
-          isOpen
-          onClose={() => setConfirmUnlink(null)}
-          title="Ontkoppelen bevestigen"
-        >
-          <p className="text-sm text-gray-600">
-            Weet je zeker dat je <span className="font-medium">{confirmUnlink.label}</span> wilt ontkoppelen van dit project?
-          </p>
-          <div className="mt-4 flex justify-end gap-3">
-            <Button
-              variant="secondary"
-              onClick={() => setConfirmUnlink(null)}
-            >
-              Annuleren
-            </Button>
-            <Button
-              variant="danger"
-              onClick={confirmUnlinkAction}
-              isLoading={unassignMutation.isPending}
-            >
-              Ontkoppelen
-            </Button>
-          </div>
-        </Modal>
-      )}
-
-      {/* Confirm remove follower */}
-      {confirmRemoveFollower && (
-        <Modal
-          isOpen
-          onClose={() => setConfirmRemoveFollower(null)}
-          title="Volger verwijderen"
-        >
-          <p className="text-sm text-gray-600">
-            Weet je zeker dat je <span className="font-medium">{confirmRemoveFollower.name}</span> als volger wilt verwijderen?
-          </p>
-          <div className="mt-4 flex justify-end gap-3">
-            <Button
-              variant="secondary"
-              onClick={() => setConfirmRemoveFollower(null)}
-            >
-              Annuleren
-            </Button>
-            <Button
-              variant="danger"
-              onClick={confirmRemoveFollowerAction}
-              isLoading={removeFollowerMutation.isPending}
-            >
-              Verwijderen
-            </Button>
-          </div>
-        </Modal>
-      )}
     </>
   );
 }

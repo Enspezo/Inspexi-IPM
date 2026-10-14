@@ -448,12 +448,12 @@ export class UsersService {
       data.emailVerifiedAt = null; // Reset verification
     }
 
-    if ('homeStreet' in dto) data.homeStreet = dto.homeStreet || null;
-    if ('homeHouseNumber' in dto) data.homeHouseNumber = dto.homeHouseNumber || null;
-    if ('homePostalCode' in dto) data.homePostalCode = dto.homePostalCode || null;
-    if ('homeCity' in dto) data.homeCity = dto.homeCity || null;
-    if ('homeLat' in dto) data.homeLat = dto.homeLat ?? null;
-    if ('homeLng' in dto) data.homeLng = dto.homeLng ?? null;
+    if (dto.homeStreet !== undefined) data.homeStreet = dto.homeStreet || null;
+    if (dto.homeHouseNumber !== undefined) data.homeHouseNumber = dto.homeHouseNumber || null;
+    if (dto.homePostalCode !== undefined) data.homePostalCode = dto.homePostalCode || null;
+    if (dto.homeCity !== undefined) data.homeCity = dto.homeCity || null;
+    if (dto.homeLat !== undefined) data.homeLat = dto.homeLat ?? null;
+    if (dto.homeLng !== undefined) data.homeLng = dto.homeLng ?? null;
 
     // Klantportaal-contactgegevens + per-kanaal toestemming.
     if (dto.contactPhone !== undefined) data.contactPhone = (dto.contactPhone || '').trim() || null;
@@ -467,7 +467,7 @@ export class UsersService {
     if (dto.contactEmail !== undefined && !data.contactEmail) data.shareEmailWithClients = false;
 
     // Standaard vrijwillige goedkeurder (persoon): org-scoped valideren (REQ5).
-    if ('defaultApprovalPersonId' in dto) {
+    if (dto.defaultApprovalPersonId !== undefined) {
       if (!dto.defaultApprovalPersonId) {
         data.defaultApprovalPersonId = null;
       } else if (dto.defaultApprovalPersonId === id) {
@@ -524,12 +524,12 @@ export class UsersService {
       data.emailVerifiedAt = null;
     }
 
-    if ('homeStreet' in dto) data.homeStreet = dto.homeStreet || null;
-    if ('homeHouseNumber' in dto) data.homeHouseNumber = dto.homeHouseNumber || null;
-    if ('homePostalCode' in dto) data.homePostalCode = dto.homePostalCode || null;
-    if ('homeCity' in dto) data.homeCity = dto.homeCity || null;
-    if ('homeLat' in dto) data.homeLat = dto.homeLat ?? null;
-    if ('homeLng' in dto) data.homeLng = dto.homeLng ?? null;
+    if (dto.homeStreet !== undefined) data.homeStreet = dto.homeStreet || null;
+    if (dto.homeHouseNumber !== undefined) data.homeHouseNumber = dto.homeHouseNumber || null;
+    if (dto.homePostalCode !== undefined) data.homePostalCode = dto.homePostalCode || null;
+    if (dto.homeCity !== undefined) data.homeCity = dto.homeCity || null;
+    if (dto.homeLat !== undefined) data.homeLat = dto.homeLat ?? null;
+    if (dto.homeLng !== undefined) data.homeLng = dto.homeLng ?? null;
 
     // Klantportaal-contactgegevens + per-kanaal toestemming (namens de inspecteur beheerd).
     // Identieke normalisatie als in updateProfile.

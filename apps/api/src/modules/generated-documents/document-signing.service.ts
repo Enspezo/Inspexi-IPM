@@ -14,6 +14,7 @@ import { assertFound } from '@/common';
 import { REVIEW_ROLES } from '@/common/auth/roles';
 import { hasRole } from '@/common/auth/role-helpers';
 import { EmailService } from '@/common/services/email.service';
+import { EntitlementsService } from '@/modules/entitlements/entitlements.service';
 import { LookupService, LOOKUP_KIND } from '../lookups/lookup.service';
 import { GeneratedDocumentsService } from './generated-documents.service';
 import { RequestSignatureDto, SignDocumentDto, PublicSignDto } from './dto';
@@ -50,7 +51,17 @@ export class DocumentSigningService {
     private readonly config: ConfigService,
     private readonly lookups: LookupService,
     private readonly documents: GeneratedDocumentsService,
+    private readonly entitlements: EntitlementsService,
   ) {}
+
+  /**
+   * F1: de publieke signature-requests-routes dragen geen @RequiresFeature (op het
+   * apex-domein is er geen tenant-org); de gate geldt tegen de EIGENAAR van het
+   * document.
+   */
+  private assertOwnerFeature(orgId: string): Promise<void> {
+    return this.entitlements.assertFeature(orgId, 'BASIS_INSPECTIES');
+  }
 
   // ── Intern (staf, geauthenticeerd) ─────────────────────
   async requestSignature(id: string, user: User, dto: RequestSignatureDto) {
@@ -183,6 +194,7 @@ export class DocumentSigningService {
           generatedDocument: {
             select: {
               id: true,
+              orgId: true, // intern — entitlement tegen de eigenaar, niet in de response
               documentType: true,
               htmlContent: true,
               editedContent: true,
@@ -194,6 +206,7 @@ export class DocumentSigningService {
       }),
       'Ondertekenverzoek',
     );
+    await this.assertOwnerFeature(sig.generatedDocument.orgId);
 
     // Lazy expiry: REQUESTED ouder dan TTL → EXPIRED.
     let status = sig.status;
@@ -233,9 +246,13 @@ export class DocumentSigningService {
 
   async signViaRequest(requestId: string, dto: PublicSignDto, ipAddress?: string) {
     const sig = assertFound(
-      await this.prisma.documentSignature.findFirst({ where: { signatureRequestId: requestId } }),
+      await this.prisma.documentSignature.findFirst({
+        where: { signatureRequestId: requestId },
+        include: { generatedDocument: { select: { orgId: true } } },
+      }),
       'Ondertekenverzoek',
     );
+    await this.assertOwnerFeature(sig.generatedDocument.orgId);
     if (sig.status === SignatureStatus.SIGNED) throw new BadRequestException('Al ondertekend');
     if (sig.status === SignatureStatus.EXPIRED) throw new BadRequestException('Verzoek verlopen');
     if (sig.signatureRequestSentAt) {

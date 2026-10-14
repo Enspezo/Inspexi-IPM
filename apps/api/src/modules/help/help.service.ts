@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ForbiddenException,
   Injectable,
+  Logger,
 } from '@nestjs/common';
 import { HelpAudience, Prisma, User } from '@prisma/client';
 import { PrismaService } from '@/prisma';
@@ -28,6 +29,8 @@ type HelpArticleWithCategory = Prisma.HelpArticleGetPayload<{
 
 @Injectable()
 export class HelpService {
+  private readonly logger = new Logger(HelpService.name);
+
   constructor(private prisma: PrismaService) {}
 
   /**
@@ -137,7 +140,9 @@ export class HelpService {
       'Artikel',
     );
     // Fire-and-forget viewCount-bump (audit-bypass — zie bumpCounter).
-    this.bumpCounter(article.id, 'view_count').catch(() => undefined);
+    this.bumpCounter(article.id, 'view_count').catch((err) =>
+      this.logger.error('Bijwerken view_count mislukt', err),
+    );
     return article;
   }
 

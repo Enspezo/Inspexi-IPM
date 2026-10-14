@@ -1,5 +1,31 @@
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
+import type { User } from '@prisma/client';
+import type { PrismaService } from '@/prisma';
+import { assertFound, isSuperuser } from '@/common';
 import { AvailabilityTemplateSlotDto } from './dto';
+
+/**
+ * Target user must exist and (for non-superusers) belong to the actor's org.
+ * Cross-tenant ids get the same 404 as "does not exist" (no existence oracle).
+ * Shared by the exceptions- and schedules-services.
+ */
+export async function assertUserInScope(
+  prisma: Pick<PrismaService, 'user'>,
+  userId: string,
+  actor: User,
+): Promise<{ id: string; orgId: string | null }> {
+  const target = assertFound(
+    await prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, orgId: true },
+    }),
+    'Gebruiker',
+  );
+  if (!isSuperuser(actor) && target.orgId !== actor.orgId) {
+    throw new NotFoundException('Gebruiker niet gevonden');
+  }
+  return target;
+}
 
 const WEEKDAY_LABELS = ['', 'maandag', 'dinsdag', 'woensdag', 'donderdag', 'vrijdag', 'zaterdag', 'zondag'];
 

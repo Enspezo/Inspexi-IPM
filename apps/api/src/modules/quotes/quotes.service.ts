@@ -10,7 +10,7 @@ import { User, Role, Prisma, QuoteStatus, QuoteTemplate, RequestStatus, Notifica
 import { ConfigService } from '@nestjs/config';
 import { randomUUID } from 'crypto';
 import { PrismaService } from '@/prisma';
-import { paginate, buildOrderBy, orgScope, assertFound, assertSameOrg, assertAllSameOrg, resolvePhaseLink, PROJECT_FASEN_FEATURE, PROJECT_FASEN_REQUIRED_MESSAGE } from '@/common';
+import { paginate, buildOrderBy, orgScope, assertFound, assertSameOrg, assertAllSameOrg, resolvePhaseLink, PROJECT_FASEN_FEATURE, PROJECT_FASEN_REQUIRED_MESSAGE, formatShortDateNl } from '@/common';
 import { EntitlementsService } from '@/modules/entitlements/entitlements.service';
 import { NumberingService } from '@/modules/numbering/numbering.service';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -487,7 +487,7 @@ export class QuotesService {
       const emailVars = {
         organisatie: { naam: org?.name ?? 'InspeXi', email: org?.senderEmail ?? '' },
         contact: { bedrijfsnaam: quote.contact?.companyName ?? '', voornaam: quote.contact?.firstName ?? '', achternaam: quote.contact?.lastName ?? '', email: quote.contact?.email ?? dto.to },
-        offerte: { nummer: quote.quoteNumber, onderwerp: dto.subject, totaal: `€ ${Number(quote.total).toFixed(2)}`, vervalDatum: quote.validUntil ? new Date(quote.validUntil).toLocaleDateString('nl-NL') : '', url: quoteUrl },
+        offerte: { nummer: quote.quoteNumber, onderwerp: dto.subject, totaal: `€ ${Number(quote.total).toFixed(2)}`, vervalDatum: quote.validUntil ? formatShortDateNl(quote.validUntil) : '', url: quoteUrl },
         gebruiker: { voornaam: user.firstName ?? '', achternaam: user.lastName ?? '', email: user.email },
       };
       const rendered = await this.emailTemplatesService.tryRenderById(template.sendEmailTemplateId, emailVars, org?.name);

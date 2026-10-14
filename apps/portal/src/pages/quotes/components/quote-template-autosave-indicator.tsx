@@ -1,4 +1,5 @@
 import { Spinner } from '@/components/ui';
+import { formatTime } from '@/lib/format';
 
 // ── Autosave indicator ───────────────────────────────────
 
@@ -43,7 +44,7 @@ export function AutosaveIndicator({
       <span>{labels[status]}</span>
       {status === 'saved' && lastSaved && (
         <span className="text-gray-400">
-          {lastSaved.toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' })}
+          {formatTime(lastSaved)}
         </span>
       )}
     </div>

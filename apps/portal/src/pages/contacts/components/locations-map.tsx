@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { EntityMap } from '@/components/map/entity-map';
+import { EntityMap } from '@/components/map/entity-map-lazy';
 import type { MapPoint } from '@/components/map/entity-map';
 import {
   geocodeSequentially,

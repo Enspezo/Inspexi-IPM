@@ -11,6 +11,11 @@
  *    draait.
  *  - Onderling gelijk → alleen in productie weigeren (lokaal/CI mag dezelfde
  *    dev-waarde delen zonder de boot te blokkeren).
+ *  - Voorbeeldwaarde uit `.env.example` (exact, of met de markers `dev-only` /
+ *    `vervang-mij`) of korter dan 32 tekens → alleen in productie weigeren. De
+ *    repo is publiek, dus wie `.env.example` kopieert draait anders met bekende
+ *    secrets en tokens van beide auth-realms zijn te vervalsen. Dev/test en de
+ *    CI-e2e-job (NODE_ENV=test) booten bewust wél met de voorbeeldwaarden.
  */
 
 export const JWT_SECRET_KEYS = [
@@ -21,6 +26,24 @@ export const JWT_SECRET_KEYS = [
 ] as const;
 
 const PLACEHOLDER = 'change-me-in-production';
+
+/** Exacte voorbeeldwaarden uit `apps/api/.env.example` — houd synchroon. */
+const EXAMPLE_VALUES = new Set([
+  'dev-only-jwt-secret-vervang-mij-0001',
+  'dev-only-jwt-refresh-secret-vervang-mij-0002',
+  'dev-only-client-jwt-secret-vervang-mij-0003',
+  'dev-only-client-jwt-refresh-secret-vervang-mij-0004',
+]);
+
+/** Markers die elke (toekomstige) voorbeeldwaarde draagt; case-insensitive. */
+const EXAMPLE_MARKERS = ['dev-only', 'vervang-mij'];
+
+export const MIN_PRODUCTION_SECRET_LENGTH = 32;
+
+function isExampleValue(value: string): boolean {
+  const lower = value.toLowerCase();
+  return EXAMPLE_VALUES.has(value) || EXAMPLE_MARKERS.some((m) => lower.includes(m));
+}
 
 export function validateJwtSecrets(
   env: Record<string, string | undefined>,
@@ -37,9 +60,21 @@ export function validateJwtSecrets(
     }
   }
 
-  // Onderling-gelijk alleen in productie afdwingen. Vergelijk paarsgewijs zodat
-  // de foutmelding aanwijst wélke twee secrets gelijk zijn.
   if (nodeEnv === 'production') {
+    for (const key of JWT_SECRET_KEYS) {
+      const value = env[key];
+      if (!value || value.trim().length === 0 || value === PLACEHOLDER) continue;
+      if (isExampleValue(value)) {
+        errors.push(`${key} staat nog op een voorbeeldwaarde uit .env.example`);
+      } else if (value.length < MIN_PRODUCTION_SECRET_LENGTH) {
+        errors.push(
+          `${key} is te kort (minimaal ${MIN_PRODUCTION_SECRET_LENGTH} tekens vereist)`,
+        );
+      }
+    }
+
+    // Onderling-gelijk alleen in productie afdwingen. Vergelijk paarsgewijs zodat
+    // de foutmelding aanwijst wélke twee secrets gelijk zijn.
     for (let i = 0; i < JWT_SECRET_KEYS.length; i++) {
       for (let j = i + 1; j < JWT_SECRET_KEYS.length; j++) {
         const a = env[JWT_SECRET_KEYS[i]];

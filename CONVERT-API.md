@@ -22,7 +22,7 @@ Standalone NestJS microservice die DOCX-bestanden converteert naar PDF via Libre
 
 ### Vereisten
 
-- Node.js 20+
+- Node.js 22+
 - LibreOffice geïnstalleerd:
   - **macOS**: `brew install --cask libreoffice`
   - **Ubuntu/Debian**: `sudo apt install libreoffice-writer`
@@ -140,7 +140,7 @@ docker compose up -d convert-api
 
 - Linux (Ubuntu 22.04+ aanbevolen)
 - Docker + Docker Compose
-- Of: Node.js 20+ met LibreOffice (`sudo apt install libreoffice-writer fonts-liberation fonts-dejavu`)
+- Of: Node.js 22+ met LibreOffice (`sudo apt install libreoffice-writer fonts-liberation fonts-dejavu`)
 - Minimaal 1 GB RAM (LibreOffice is geheugenintensief)
 
 ### 2. Environment
